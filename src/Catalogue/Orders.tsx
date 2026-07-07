@@ -460,6 +460,7 @@ const OrdersPage: React.FC = () => {
     const [paymentFilter, setPaymentFilter] = useState<'paid' | 'unpaid'>('unpaid');
     const [editingOrder, setEditingOrder] = useState<Order | null>(null);
     const [editExpenses, setEditExpenses] = useState<{ id: number; name: string; amount: number | '' }[]>([]);
+    const [cartSearchQuery, setCartSearchQuery] = useState<string>('');
     const [editDiscount, setEditDiscount] = useState<number>(0);
     const [editDiscountPercent, setEditDiscountPercent] = useState<number>(0);
     const [showBillDiscountFields, setShowBillDiscountFields] = useState<boolean>(false);
@@ -815,6 +816,20 @@ const OrdersPage: React.FC = () => {
             moq: liveMoq,
         };
     });
+    // 👈 NEW: when the user types in the item search bar, bring matching cart items to the top
+    // (same "search bumps result to top" behavior as the main Orders search)
+    const displayedOrderItems = useMemo(() => {
+        const q = cartSearchQuery.trim().toLowerCase();
+        if (!q) return mappedOrderItems;
+
+        return [...mappedOrderItems].sort((a, b) => {
+            const aMatch = (a.name || '').toLowerCase().includes(q);
+            const bMatch = (b.name || '').toLowerCase().includes(q);
+            if (aMatch && !bMatch) return -1;
+            if (!aMatch && bMatch) return 1;
+            return 0; // keep original relative order otherwise
+        });
+    }, [mappedOrderItems, cartSearchQuery]);
 
     const handleQuantityChange = (id: string, newQuantity: number) => {
         if (!editingOrder) return;
@@ -1042,15 +1057,51 @@ const OrdersPage: React.FC = () => {
 
         const fetchPendingRequests = async () => {
             try {
-                const snap = await getDocs(
-                    collection(db, "companies", currentUser.companyId, "AuthorizedUser")
+                const companyId = currentUser.companyId;
+
+                
+                const settingsSnap = await getDoc(
+                    doc(db, "companies", companyId, "settings", "catalogue-sales-settings")
                 );
+                const requireApproval = settingsSnap.exists()
+                    ? settingsSnap.data()?.requireApproval === true
+                    : false;
 
-                const pending = snap.docs.filter(
-                    (d: any) => d.data()?.status === "pending"
-                ).length;
+                if (requireApproval) {
+                    
+                    const approvalSnap = await getDocs(
+                        collection(db, "companies", companyId, "AuthorizedUser")
+                    );
+                    const pending = approvalSnap.docs.filter(
+                        (d: any) => d.data()?.status === "pending"
+                    ).length;
+                    setPendingRequestCount(pending);
+                } else {
+                    
+                    const [notifySnap, bulkSnap, personalizationSnap] = await Promise.all([
+                        getDocs(collection(db, "companies", companyId, "NotifyRequests")),
+                        getDocs(collection(db, "companies", companyId, "BulkQuoteRequests")),
+                        getDocs(collection(db, "companies", companyId, "PersonalizationRequests")),
+                    ]);
 
-                setPendingRequestCount(pending);
+                    const notifyPhones = new Set(
+                        notifySnap.docs.map((d: any) =>
+                            (d.data()?.customerNumber || "").replace(/\D/g, "")
+                        )
+                    );
+
+                    const unmatchedPhones = new Set<string>();
+                    bulkSnap.docs.forEach((d: any) => {
+                        const phone = (d.data()?.customerNumber || "").replace(/\D/g, "");
+                        if (phone && !notifyPhones.has(phone)) unmatchedPhones.add(phone);
+                    });
+                    personalizationSnap.docs.forEach((d: any) => {
+                        const phone = (d.data()?.customerNumber || "").replace(/\D/g, "");
+                        if (phone && !notifyPhones.has(phone)) unmatchedPhones.add(phone);
+                    });
+
+                    setPendingRequestCount(notifySnap.docs.length + unmatchedPhones.size);
+                }
             } catch (err) {
                 console.error("Pending request fetch error:", err);
             }
@@ -2816,6 +2867,7 @@ const OrdersPage: React.FC = () => {
                                                     e.stopPropagation();
                                                     setEditingOrder(Order);
                                                     setSelectedItemForEdit(null);
+                                                    setCartSearchQuery('');
                                                     // Restore saved expenses
                                                     setEditExpenses(
                                                         Array.isArray((Order as any).expenses) && (Order as any).expenses.length > 0
@@ -3980,6 +4032,7 @@ const OrdersPage: React.FC = () => {
                                                 const newTotal = updatedItems.reduce((sum, i) => sum + ((i.finalPrice ?? (Number(i.salesPrice || 0) > 0 ? Number(i.salesPrice) : Number(i.mrp))) * Number(i.quantity || 0)), 0);
                                                 setEditingOrder({ ...editingOrder, items: updatedItems, totalAmount: newTotal });
                                             }}
+                                            onSearchChange={setCartSearchQuery}
                                             placeholder="Search item to add..."
                                         />
                                     </div>
@@ -3992,7 +4045,7 @@ const OrdersPage: React.FC = () => {
                                         {/* Items List Container */}
                                         <div className="h-auto">
                                             <GenericCartList
-                                                items={mappedOrderItems}
+                                                items={displayedOrderItems}
                                                 availableItems={availableItems}
                                                 basePriceKey="mrp"
                                                 priceLabel="MRP"
@@ -4154,6 +4207,7 @@ const OrdersPage: React.FC = () => {
                             <button
                                 onClick={() => {
                                     setEditingOrder(null);
+                                    setCartSearchQuery('');
                                     setTransportName(''); setGrRrNo(''); setGrRrDate(''); setVehicleNo(''); setStationFrom(''); setPinCode('');
                                 }}
                                 className="flex-1 py-2.5 bg-gray-400 text-black text-sm font-bold hover:bg-slate-300 rounded-sm transition-colors"

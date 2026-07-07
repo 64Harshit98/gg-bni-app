@@ -190,7 +190,8 @@ const DashboardContent = () => {
         const isSalesRole =
           role.includes('sales') ||
           role === 'salesman' ||
-          role === 'sales person';
+          role === 'sales person' ||
+          role === 'manager';
         if (!isSalesRole) return;
 
         // Grab the best available display name

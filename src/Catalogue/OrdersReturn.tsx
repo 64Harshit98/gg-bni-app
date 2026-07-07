@@ -102,6 +102,8 @@ const OrdersReturnPage: React.FC = () => {
 
   const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
   const [isItemDrawerOpen, setIsItemDrawerOpen] = useState(false);
+  const [exchangeSearchQuery, setExchangeSearchQuery] = useState<string>('');
+  const [returnItemSearchQuery, setReturnItemSearchQuery] = useState<string>('');
 
   const itemsToReturn = useMemo(() => {
     if (modeOfReturn === 'Exchange') {
@@ -431,6 +433,7 @@ const OrdersReturnPage: React.FC = () => {
     setSelectedReturnIds(new Set());
     setExchangeItems([]);
     setSearchSaleQuery('');
+    setExchangeSearchQuery('');
     navigate(`${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`);
   };
 
@@ -570,9 +573,21 @@ const OrdersReturnPage: React.FC = () => {
       });
     }
   };
+  const filteredReturnItems = useMemo(() => {
+    const q = returnItemSearchQuery.trim().toLowerCase();
+    if (!q) return originalSaleItems;
+
+    return [...originalSaleItems].sort((a, b) => {
+      const aMatch = (a.name || '').toLowerCase().includes(q);
+      const bMatch = (b.name || '').toLowerCase().includes(q);
+      if (aMatch && !bMatch) return -1;
+      if (!aMatch && bMatch) return 1;
+      return 0;
+    });
+  }, [originalSaleItems, returnItemSearchQuery]);
 
   const mappedExchangeItems: SalesItem[] = useMemo(() => {
-    return exchangeItems.map(item => {
+    const mapped = exchangeItems.map(item => {
       const realItem = availableItems.find(i => i.id === item.originalItemId);
 
       return {
@@ -593,7 +608,18 @@ const OrdersReturnPage: React.FC = () => {
         customPrice: item.customPrice ?? item.unitPrice,
       } as SalesItem;
     });
-  }, [exchangeItems, availableItems]);
+    const q = exchangeSearchQuery.trim().toLowerCase();
+    if (!q) return mapped;
+
+    // 👈 NEW: same "search bumps result to top" behavior as the Orders page search
+    return [...mapped].sort((a, b) => {
+      const aMatch = (a.name || '').toLowerCase().includes(q);
+      const bMatch = (b.name || '').toLowerCase().includes(q);
+      if (aMatch && !bMatch) return -1;
+      if (!aMatch && bMatch) return 1;
+      return 0; // keep original relative order otherwise
+    });
+  }, [exchangeItems, availableItems, exchangeSearchQuery]);
 
   const refreshSelectedOrder = async (orderId: string) => {
     if (!currentUser?.companyId) return;
@@ -1050,6 +1076,7 @@ const OrdersReturnPage: React.FC = () => {
   useEffect(() => {
     if (modeOfReturn !== 'Exchange') {
       setExchangeItems([]);
+      setExchangeSearchQuery('');
     }
   }, [modeOfReturn]);
 
@@ -1311,6 +1338,21 @@ const OrdersReturnPage: React.FC = () => {
                 </div>
 
                 <h3 className="text-sm font-bold text-gray-700 mb-2 border-b pb-1">Select Return Items</h3>
+                <div className="flex items-end gap-1 mb-3">
+                  <div className="flex-grow">
+                    <input
+                      type="text"
+                      value={returnItemSearchQuery}
+                      onChange={(e) => setReturnItemSearchQuery(e.target.value)}
+                      placeholder="Search items in this return..."
+                      className="w-full p-2 border rounded-sm focus:ring-2 focus:ring-[#F97316] outline-none"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <button onClick={() => setScannerPurpose('item')} className="p-2.5 bg-gray-800 text-white rounded-sm">
+                    <IconScanCircle width={20} height={20} />
+                  </button>
+                </div>
                 <div className="flex flex-col gap-2">
                   {originalSaleItems.length === 0 && (
                     <p className="text-sm text-gray-500">
@@ -1318,7 +1360,7 @@ const OrdersReturnPage: React.FC = () => {
                     </p>
                   )}
 
-                  {originalSaleItems.map((item) => (
+                  {filteredReturnItems.map((item) => (
                     <ReturnListItem
                       key={item.id}
                       item={item}
@@ -1327,15 +1369,9 @@ const OrdersReturnPage: React.FC = () => {
                       onQuantityChange={(id, val) => {
                         const item = originalSaleItems.find(i => i.id === id);
                         if (!item) return;
-
-                        const safeQty = Math.min(
-                          Math.max(1, val),
-                          (item as any).originalQuantity
-                        );
-
+                        const safeQty = Math.min(Math.max(1, val), (item as any).originalQuantity);
                         handleListChange(setOriginalSaleItems, id, 'quantity', safeQty);
                       }}
-
                       showMrp={true}
                     />
                   ))}
@@ -1369,6 +1405,7 @@ const OrdersReturnPage: React.FC = () => {
                           onItemSelected={handleExchangeItemSelected}
                           isLoading={isLoading}
                           error={error}
+                          onSearchChange={setExchangeSearchQuery}
                         /></div>
                       <button onClick={() => setScannerPurpose('item')} className="p-2.5 bg-gray-800 text-white rounded-sm"><IconScanCircle width={20} height={20} /></button>
                     </div>
@@ -1413,7 +1450,7 @@ const OrdersReturnPage: React.FC = () => {
 
                             onDeleteItem={(id: any) => handleRemoveFromList(setExchangeItems, id)}
                             onDiscountChange={handleDiscountChange}
-                            onDiscount2Change={() => {}} 
+                            onDiscount2Change={() => { }}
                             onCustomPriceChange={handleCustomPriceChange}
                             onCustomPriceBlur={handleCustomPriceBlur}
                             onQuantityChange={handleQuantityChange}

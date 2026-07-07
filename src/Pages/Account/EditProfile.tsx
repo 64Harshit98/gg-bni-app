@@ -531,6 +531,12 @@ const EditProfilePage: React.FC = () => {
     setSubmitError(null);
     setSubmitSuccess(null);
 
+     // GSTIN can be edited but never fully removed once it has been saved
+    if (profile.gstin && profile.gstin.trim() !== '' && (!formData.gstin || formData.gstin.trim() === '')) {
+      setSubmitError('GSTIN cannot be removed once added. You can only edit/update it.');
+      return;
+    }
+
     if (formData.postalCode && formData.postalCode.length !== 6) {
       setSubmitError('Postal code must be exactly 6 digits.');
       return;

@@ -131,6 +131,8 @@ const PurchaseReturnPage: React.FC = () => {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
   const [isItemDrawerOpen, setIsItemDrawerOpen] = useState(false);
+  const [newItemsSearchQuery, setNewItemsSearchQuery] = useState<string>('');
+const [returnItemSearchQuery, setReturnItemSearchQuery] = useState<string>('');
 
   const handleOpenEditDrawer = (item: Item) => {
     // We must find the actual inventory item using the originalItemId
@@ -165,6 +167,30 @@ const PurchaseReturnPage: React.FC = () => {
     originalPurchaseItems.filter(item => selectedReturnIds.has(item.id)),
     [originalPurchaseItems, selectedReturnIds]
   );
+  const filteredReturnItems = useMemo(() => {
+    const q = returnItemSearchQuery.trim().toLowerCase();
+    if (!q) return originalPurchaseItems;
+
+    return [...originalPurchaseItems].sort((a, b) => {
+      const aMatch = (a.name || '').toLowerCase().includes(q);
+      const bMatch = (b.name || '').toLowerCase().includes(q);
+      if (aMatch && !bMatch) return -1;
+      if (!aMatch && bMatch) return 1;
+      return 0;
+    });
+  }, [originalPurchaseItems, returnItemSearchQuery]);
+  const displayedNewItemsReceived = useMemo(() => {
+    const q = newItemsSearchQuery.trim().toLowerCase();
+    if (!q) return newItemsReceived;
+
+    return [...newItemsReceived].sort((a, b) => {
+      const aMatch = (a.name || '').toLowerCase().includes(q);
+      const bMatch = (b.name || '').toLowerCase().includes(q);
+      if (aMatch && !bMatch) return -1;
+      if (!aMatch && bMatch) return 1;
+      return 0; // keep original relative order otherwise
+    });
+  }, [newItemsReceived, newItemsSearchQuery]);
 
   useEffect(() => {
     if (!currentUser || !currentUser.companyId || !dbOperations) {
@@ -332,6 +358,8 @@ const PurchaseReturnPage: React.FC = () => {
 
     setSelectedReturnIds(new Set());
     setNewItemsReceived([]);
+    setNewItemsSearchQuery('');
+    setReturnItemSearchQuery('');
     setSearchQuery(purchase.invoiceNumber || purchase.partyName);
     setIsDropdownOpen(false);
   };
@@ -357,6 +385,8 @@ const PurchaseReturnPage: React.FC = () => {
     setSelectedReturnIds(new Set());
     setNewItemsReceived([]);
     setSearchQuery('');
+    setNewItemsSearchQuery('');
+    setReturnItemSearchQuery('');
     navigate(ROUTES.PURCHASE_RETURN);
   };
 
@@ -1002,8 +1032,30 @@ const PurchaseReturnPage: React.FC = () => {
                 </div>
 
                 <h3 className="text-sm font-bold text-gray-700 mb-2 border-b pb-1">Select Return Items</h3>
+                <div className="flex items-end gap-1 mb-3">
+                  <div className="flex-grow">
+                    <input
+                      type="text"
+                      value={returnItemSearchQuery}
+                      onChange={(e) => setReturnItemSearchQuery(e.target.value)}
+                      placeholder="Search items in this return..."
+                      className="w-full p-2 border rounded-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <button onClick={() => setScannerPurpose('item')} className="p-2.5 bg-gray-800 text-white rounded-sm flex items-center justify-center">
+                        <IconScanCircle width={24} height={24} />
+                      </button>
+                </div>
+
+                {originalPurchaseItems.length === 0 && (
+                  <p className="text-sm text-gray-500 mb-2">
+                    No returnable items found for this purchase.
+                  </p>
+                )}
+
                 <div className="flex flex-col gap-2">
-                  {originalPurchaseItems.map((item) => (
+                  {filteredReturnItems.map((item) => (
                     <ReturnListItem
                       key={item.id}
                       item={item}
@@ -1039,9 +1091,10 @@ const PurchaseReturnPage: React.FC = () => {
                           onItemSelected={handleNewItemSelected}
                           isLoading={isLoading}
                           error={error}
+                          onSearchChange={setNewItemsSearchQuery}
                         />
                       </div>
-                      <button onClick={() => setScannerPurpose('item')} className="p-2.5 bg-gray-800 text-white rounded-md flex items-center justify-center">
+                      <button onClick={() => setScannerPurpose('item')} className="p-2.5 bg-gray-800 text-white rounded-sm flex items-center justify-center">
                         <IconScanCircle width={24} height={24} />
                       </button>
                     </div>
@@ -1051,7 +1104,7 @@ const PurchaseReturnPage: React.FC = () => {
                         <div className="bg-gray-50 px-3 py-2 border-b text-xs font-bold text-gray-500 uppercase">Received Items</div>
                         <div className="max-h-60 overflow-y-auto bg-gray-50">
                           <GenericCartList<ReturnCartItem>
-                            items={newItemsReceived}
+                            items={displayedNewItemsReceived}
                             availableItems={availableItems}
                             basePriceKey="mrp"
                             priceLabel="MRP"

@@ -122,8 +122,10 @@ const SalesReturnPage: React.FC = () => {
 
   const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
   const [isItemDrawerOpen, setIsItemDrawerOpen] = useState(false);
+  const [exchangeSearchQuery, setExchangeSearchQuery] = useState<string>('');
 
   const [isDiscountLocked, setIsDiscountLocked] = useState(true);
+  const [returnItemSearchQuery, setReturnItemSearchQuery] = useState<string>('');
   const [discountInfo, setDiscountInfo] = useState<string | null>(null);
   const [isPriceLocked, setIsPriceLocked] = useState(true);
   const [priceInfo, setPriceInfo] = useState<string | null>(null);
@@ -188,6 +190,18 @@ const SalesReturnPage: React.FC = () => {
     originalSaleItems.filter(item => selectedReturnIds.has(item.id)),
     [originalSaleItems, selectedReturnIds]
   );
+  const filteredReturnItems = useMemo(() => {
+    const q = returnItemSearchQuery.trim().toLowerCase();
+    if (!q) return originalSaleItems;
+
+    return [...originalSaleItems].sort((a, b) => {
+      const aMatch = (a.name || '').toLowerCase().includes(q);
+      const bMatch = (b.name || '').toLowerCase().includes(q);
+      if (aMatch && !bMatch) return -1;
+      if (!aMatch && bMatch) return 1;
+      return 0;
+    });
+  }, [originalSaleItems, returnItemSearchQuery]);
 
   useEffect(() => {
     if (!currentUser || !currentUser.companyId || !dbOperations) {
@@ -335,6 +349,8 @@ const SalesReturnPage: React.FC = () => {
     );
     setSelectedReturnIds(new Set());
     setExchangeItems([]);
+    setExchangeSearchQuery('');
+    setReturnItemSearchQuery('');
     setSearchSaleQuery(sale.invoiceNumber || sale.partyName);
     setIsSalesDropdownOpen(false);
   };
@@ -404,6 +420,8 @@ const SalesReturnPage: React.FC = () => {
     setSelectedReturnIds(new Set());
     setExchangeItems([]);
     setSearchSaleQuery('');
+    setExchangeSearchQuery('');
+    setReturnItemSearchQuery('');
     navigate(ROUTES.SALES_RETURN);
   };
 
@@ -513,7 +531,7 @@ const SalesReturnPage: React.FC = () => {
   };
 
   const mappedExchangeItems: SalesItem[] = useMemo(() => {
-    return exchangeItems.map(item => ({
+    const mapped = exchangeItems.map(item => ({
       id: item.id,
       productId: item.originalItemId,
       name: item.name,
@@ -533,7 +551,18 @@ const SalesReturnPage: React.FC = () => {
       customPrice: item.customPrice ?? item.unitPrice,
       unitMultiplier: 1, // Kill multiplier math
     } as SalesItem));
-  }, [exchangeItems]);
+    const q = exchangeSearchQuery.trim().toLowerCase();
+    if (!q) return mapped;
+
+    // 👈 NEW: same "search bumps result to top" behavior as the Orders page search
+    return [...mapped].sort((a, b) => {
+      const aMatch = (a.name || '').toLowerCase().includes(q);
+      const bMatch = (b.name || '').toLowerCase().includes(q);
+      if (aMatch && !bMatch) return -1;
+      if (!aMatch && bMatch) return 1;
+      return 0; // keep original relative order otherwise
+    });
+  }, [exchangeItems, exchangeSearchQuery]);
 
   // --- FIXED USEMEMO: Recalculates tax and MRP separately ---
   const { totalReturnGross, totalReturnValue, totalExchangeValue, finalBalance, discountDeducted, totalMrp, totalTax } = useMemo(() => {
@@ -944,8 +973,8 @@ const SalesReturnPage: React.FC = () => {
               <div className="relative" ref={salesDropdownRef}>
                 <label htmlFor="search-sale" className="block text-sm font-medium mb-1 text-gray-700">Search Original Sale</label>
                 <div className="flex gap-2">
-                  <input id="search-sale" type="text" value={searchSaleQuery} onChange={(e) => { setSearchSaleQuery(e.target.value); setIsSalesDropdownOpen(true); }} onFocus={() => setIsSalesDropdownOpen(true)} placeholder={selectedSale ? `${selectedSale.partyName} (${selectedSale.invoiceNumber})` : "Invoice or Name..."} className="flex-grow p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" autoComplete="off" readOnly={!!selectedSale} />
-                  {selectedSale && (<button onClick={handleClear} className=" px-3 bg-gray-200 text-gray-700 font-semibold rounded-lg whitespace-nowrap hover:bg-gray-300">Clear</button>)}
+                  <input id="search-sale" type="text" value={searchSaleQuery} onChange={(e) => { setSearchSaleQuery(e.target.value); setIsSalesDropdownOpen(true); }} onFocus={() => setIsSalesDropdownOpen(true)} placeholder={selectedSale ? `${selectedSale.partyName} (${selectedSale.invoiceNumber})` : "Invoice or Name..."} className="flex-grow p-2 border rounded-sm focus:ring-2 focus:ring-blue-500 outline-none" autoComplete="off" readOnly={!!selectedSale} />
+                  {selectedSale && (<button onClick={handleClear} className=" px-3 bg-gray-200 text-gray-700 font-semibold rounded-sm whitespace-nowrap hover:bg-gray-300">Clear</button>)}
                 </div>
                 {isSalesDropdownOpen && !selectedSale && (
                   <div className="absolute top-full w-full z-20 mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
@@ -999,10 +1028,28 @@ const SalesReturnPage: React.FC = () => {
                     </div>
                   </div>
                   <h3 className="text-sm font-bold text-gray-700 mb-2 border-b pb-1">Select Return Items</h3>
+                  <div className="flex items-end gap-1 mb-3">
+                    <div className="flex-grow">
+                      <input
+                        type="text"
+                        value={returnItemSearchQuery}
+                        onChange={(e) => setReturnItemSearchQuery(e.target.value)}
+                        placeholder="Search items in this return..."
+                        className="w-full p-2 border rounded-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                        autoComplete="off"
+                      />
+                    </div>
+                    <button onClick={() => setScannerPurpose('item')} className="p-2.5 bg-gray-800 text-white rounded-sm"><IconScanCircle width={20} height={20} /></button>
+                  </div>
 
+                  {originalSaleItems.length === 0 && (
+                    <p className="text-sm text-gray-500 mb-2">
+                      No returnable items found for this sale.
+                    </p>
+                  )}
                   {/* Normal list, scroll controlled by main panel */}
                   <div className="flex flex-col gap-2">
-                    {originalSaleItems.map((item) => (
+                    {filteredReturnItems.map((item) => (
                       <ReturnListItem key={item.id} item={item} isSelected={selectedReturnIds.has(item.id)} onToggle={handleToggleReturnItem} onQuantityChange={(id, val) => handleListChange(setOriginalSaleItems, id, 'quantity', val)} showMrp={true} />
                     ))}
                   </div>
@@ -1017,6 +1064,7 @@ const SalesReturnPage: React.FC = () => {
                       setModeOfReturn(value)
                       if (value !== 'Exchange')
                         setExchangeItems([])
+                      setExchangeSearchQuery('');
                     }}
                       className="w-full p-2 border rounded bg-white">
                       <option disabled={isDueSale}>Credit Note</option>
@@ -1027,8 +1075,8 @@ const SalesReturnPage: React.FC = () => {
                   {modeOfReturn === 'Exchange' && (
                     <>
                       <div className="flex items-end gap-1 mb-3">
-                        <div className="flex-grow"><SearchableItemInput label="Add Exchange Item" placeholder="Search inventory..." items={availableItems} onItemSelected={handleExchangeItemSelected} isLoading={isLoading} error={error} /></div>
-                        <button onClick={() => setScannerPurpose('item')} className="p-2.5 bg-gray-800 text-white rounded-md"><IconScanCircle width={20} height={20} /></button>
+                        <div className="flex-grow"><SearchableItemInput label="Add Exchange Item" placeholder="Search inventory..." items={availableItems} onItemSelected={handleExchangeItemSelected} isLoading={isLoading} error={error} onSearchChange={setExchangeSearchQuery} /></div>
+                        <button onClick={() => setScannerPurpose('item')} className="p-2.5 bg-gray-800 text-white rounded-sm"><IconScanCircle width={20} height={20} /></button>
                       </div>
                       <div className="flex gap-2 text-xs text-red-500 mb-2">
                         {discountInfo && <span>{discountInfo}</span>}
@@ -1131,7 +1179,8 @@ const SalesReturnPage: React.FC = () => {
                   setModeOfReturn(value)
                   if (value !== 'Exchange')
                     setExchangeItems([])
-                }} className="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none">
+                  setExchangeSearchQuery('');
+                }} className="w-full p-3 border border-gray-300 rounded-sm bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none">
                   <option disabled={isDueSale} >Credit Note</option>
                   <option>Exchange</option>
                   <option>Cash Refund</option>

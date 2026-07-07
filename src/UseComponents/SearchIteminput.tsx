@@ -16,6 +16,7 @@ interface SearchableItemInputProps {
     onCategoryChange?: (category: string) => void;
     categories?: string[];
     itemGroupMap?: Record<string, string>;
+    onSearchChange?: (query: string) => void;
 }
 
 const THROTTLE_DELAY = 500;
@@ -31,6 +32,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
     onCategoryChange,
     categories = [],
     itemGroupMap = {},
+     onSearchChange,
 }) => {
     const [searchQuery, setSearchQuery] = useState<string>('');
     const [throttledQuery, setThrottledQuery] = useState<string>('');
@@ -126,6 +128,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
         onItemSelected(item);
         setSearchQuery('');
         setThrottledQuery('');
+        onSearchChange?.('');
         setIsDropdownOpen(false);
         setActiveIndex(-1);
     };
@@ -133,6 +136,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
     const handleClear = () => {
         setSearchQuery('');
         setThrottledQuery('');
+        onSearchChange?.('');
         inputRef.current?.focus();
         setIsDropdownOpen(false);
     };
@@ -218,6 +222,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
                     value={searchQuery}
                     onChange={(e) => {
                         setSearchQuery(e.target.value);
+                        onSearchChange?.(e.target.value);
                         setIsDropdownOpen(true);
                         setActiveIndex(-1);
                     }}

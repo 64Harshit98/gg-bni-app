@@ -10,6 +10,7 @@ import Loading from '../Loading/Loading';
 import { useAuth } from '../../context/auth-context';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
+import { botMasterService } from '../Additional/Whatsapp/WhatsappApi';
 
 // ─── Config ───────────────────────────────────────────────
 const SUPER_ADMIN_UIDS = [
@@ -49,6 +50,7 @@ const SuperAdminCompanies: React.FC = () => {
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [sendingId, setSendingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({
     pack: 'free',
     validity: 'active' as 'active' | 'inactive',
@@ -93,7 +95,62 @@ const SuperAdminCompanies: React.FC = () => {
       setDeletingId(null);
     }
   };
+  const handleSendReminder = async (company: CompanyData) => {
+    if (!company.phone || company.phone === 'N/A') {
+      alert('Company phone number is missing.');
+      return;
+    }
 
+    const confirmSend = window.confirm(`Send WhatsApp reminder to ${company.name} at ${company.phone}?`);
+    if (!confirmSend) return;
+
+    setSendingId(company.id);
+
+    try {
+      const SUPER_ADMIN_TOKEN = 'YOUR_MASTER_TOKEN';
+      const SUPER_ADMIN_WA_NUMBER = 'YOUR_MASTER_NUMBER';
+
+      const daysLeft = getDaysLeft(company.expiryDate);
+      const expiryStr = formatExpiry(company.expiryDate) || 'soon';
+
+      let timeText = '';
+      if (daysLeft === null) {
+        timeText = 'is expiring soon';
+      } else if (daysLeft < 0) {
+        timeText = `expired on *${expiryStr}* (${Math.abs(daysLeft)} days ago)`;
+      } else if (daysLeft === 0) {
+        timeText = `is expiring *today*`;
+      } else {
+        timeText = `is expiring in *${daysLeft} days* (on *${expiryStr}*)`;
+      }
+
+      const message = `Dear ${company.ownerName || 'User'},\n\nThis is a gentle reminder that your *${company.pack.toUpperCase().replace('POS_', '')}* plan ${timeText}.\n\nPlease renew your plan to continue using our services without interruption.\n\nThank you!`;
+
+      const response = await botMasterService.sendMessage(
+        SUPER_ADMIN_TOKEN,
+        SUPER_ADMIN_WA_NUMBER,
+        company.phone,
+        message
+      );
+
+      let isSuccess = false;
+      if (Array.isArray(response) && response.length > 0) {
+        const res = response[0];
+        if (res.status === 'sent' || res.status === 'delivered') isSuccess = true;
+      } else if (response?.status === 'sent' || response?.status === 'success' || response?.status === 200) {
+        isSuccess = true;
+      }
+
+      if (!isSuccess) throw new Error('API reported failure.');
+      alert('Reminder sent via WhatsApp!');
+
+    } catch (err: any) {
+      console.error('Reminder Send Error:', err);
+      alert('Failed to send reminder.');
+    } finally {
+      setSendingId(null);
+    }
+  };
   // ── Fetch ──────────────────────────────────────────────
   useEffect(() => {
     const fetchCompanies = async () => {
@@ -156,7 +213,12 @@ const SuperAdminCompanies: React.FC = () => {
     };
     fetchCompanies();
   }, []);
-
+  const getDaysLeft = (expiryDate: any) => {
+    if (!expiryDate) return null;
+    const d = expiryDate.toDate ? expiryDate.toDate() : new Date(expiryDate);
+    const diff = d.getTime() - new Date().getTime();
+    return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  };
   // ── Helpers ────────────────────────────────────────────
   const getStatus = (company: CompanyData): FilterType => {
     const now = new Date();
@@ -354,6 +416,7 @@ const SuperAdminCompanies: React.FC = () => {
             const soon = isExpiringSoon(company.expiryDate);
             const isEditing = editingId === company.id;
             const expiryStr = formatExpiry(company.expiryDate);
+            const daysLeft = getDaysLeft(company.expiryDate);
 
             return (
               <div
@@ -514,6 +577,31 @@ const SuperAdminCompanies: React.FC = () => {
                       >
                         Save Changes
                       </button>
+
+                      {/* ADD THIS ENTIRE BLOCK: */}
+                      {(daysLeft !== null && daysLeft <= 3) && (
+                        <button
+                          onClick={() => handleSendReminder(company)}
+                          disabled={sendingId === company.id}
+                          className={`w-full sm:w-auto px-6 py-2 text-white text-sm font-semibold rounded-sm transition-colors flex items-center justify-center gap-2 ${sendingId === company.id
+                            ? 'bg-green-400 cursor-not-allowed'
+                            : 'bg-green-600 hover:bg-green-700'
+                            }`}
+                        >
+                          {sendingId === company.id ? (
+                            <>
+                              <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                              Sending...
+                            </>
+                          ) : (
+                            'Send WA Reminder'
+                          )}
+                        </button>
+                      )}
+                      {/* END OF NEW BLOCK */}
 
                       <button
                         onClick={() => handleDeleteCompany(company.id)}

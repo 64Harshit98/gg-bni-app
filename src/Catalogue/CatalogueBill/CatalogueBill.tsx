@@ -750,8 +750,8 @@ export const CatalogueBill = async (
       doc.rect(startX, finalY, contentWidth, 10);
       doc.setFont('helvetica', 'bold'); doc.text('BANK DETAIL :', startX + 2, finalY + 4);
       doc.line(startX + 2, finalY + 4.5, startX + 2 + doc.getTextWidth('BANK DETAIL :'), finalY + 4.5);
-      doc.text(`Bank name : ${data.bankName || ''} , A/C NO. ${data.accountNumber || ''}`, startX + 35, finalY + 4);
-      doc.text(`IFSC Code ${data.ifscCode || ''}`, startX + 35, finalY + 8);
+      doc.text(`Bank name : ${data.bankName || ''} , A/C NO : ${data.accountNumber || ''}`, startX + 35, finalY + 4);
+      doc.text(`IFSC Code : ${data.ifscCode || ''}`, startX + 35, finalY + 8);
       finalY += 10;
     }
 

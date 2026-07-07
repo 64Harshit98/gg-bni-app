@@ -388,7 +388,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
 
                 const savedPayments = sessionStorage.getItem(SESSION_STORAGE_PAYMENTS_KEY);
                 if (savedPayments) loadedPayments = JSON.parse(savedPayments);
-                
+
             } catch (e) { }
         }
 
@@ -864,7 +864,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     {enableCustomerDetails && (
                         <div className="md:w-1/2 flex flex-col border-b md:border-b-0 md:border-r border-gray-200 bg-white">
 
-                            <div className="p-2 md:p-5 space-y-1 md:space-y-3 flex-1 overflow-y-auto">
+                            <div className="p-2 md:p-3 space-y-1 md:space-y-3 flex-1 overflow-y-auto">
                                 {!isCalculator && (
                                     <div className="flex justify-between items-center mb-2">
                                         <h3 className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-wider">{partyLabel} Info</h3>
@@ -926,24 +926,24 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                 </div>
 
                                 {!isCalculator && (
-                                    <div className="pt-1 md:pt-2 flex flex-col gap-1.5 md:gap-2 w-full">
+                                    <div className="pt-1 md:pt-2 flex flex-col gap-1.5 md:gap-1 w-full">
                                         <div className="flex items-center justify-between w-full">
                                             <div onClick={() => setIsDetailsExpanded(!isDetailsExpanded)} className="flex items-center justify-start cursor-pointer text-blue-600 hover:text-blue-700 transition-colors text-[10px] md:text-xs font-semibold select-none">
-                                                <span>{isDetailsExpanded ? '- Hide' : '+ Add'} GST & Address</span>
+                                                <span>{isDetailsExpanded ? '-' : '+'} GST & Address</span>
                                             </div>
                                             {isSale && enableNarration && (
                                                 <div onClick={() => setIsNarrationExpanded(!isNarrationExpanded)} className="flex items-center justify-start cursor-pointer text-gray-500 hover:text-gray-700 transition-colors text-[10px] md:text-xs font-semibold select-none">
-                                                    <span>{isNarrationExpanded ? '- Hide' : '+ Add'} Narration</span>
+                                                    <span>{isNarrationExpanded ? '- ' : '+'} Narration</span>
                                                 </div>
                                             )}
                                             {isSale && enableExtraExpense && (
                                                 <div onClick={() => setExpenses(prev => [...prev, { id: Date.now(), name: '', amount: '' }])} className="flex items-center justify-end cursor-pointer text-orange-600 hover:text-orange-700 transition-colors text-[10px] md:text-xs font-semibold select-none">
-                                                    <span>+ Add Expense</span>
+                                                    <span>+ Expense</span>
                                                 </div>
                                             )}
                                             {enableTransportDetails && (
                                                 <div onClick={() => setShowTransportModal(true)} className="flex items-center justify-end cursor-pointer text-teal-600 hover:text-teal-700 transition-colors text-[10px] md:text-xs font-semibold select-none">
-                                                    <span>{hasTransportDetails ? '✓ Transport Details' : '+ Add Transport Details'}</span>
+                                                    <span>{hasTransportDetails ? '✓ Transport Details' : '+ Transport Details'}</span>
                                                 </div>
                                             )}
                                         </div>
@@ -964,7 +964,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                         {expenses.length > 0 && (
                                             <div className="flex flex-col gap-1.5 md:gap-2 mt-1.5 md:mt-3 animate-in slide-in-from-top-2 fade-in duration-200">
                                                 {expenses.map((expense) => (
-                                                    <div key={expense.id} className="flex items-center gap-1.5 md:gap-2 p-1.5 md:p-2 bg-orange-50 rounded-lg border border-orange-100">
+                                                    <div key={expense.id} className="flex items-center gap-1.5 md:gap-2 p-1.5 md:p-1.5 bg-orange-50 rounded-xs border border-orange-100">
                                                         <input type="text" placeholder="Expense Name" value={expense.name} onChange={(e) => setExpenses(prev => prev.map(ex => ex.id === expense.id ? { ...ex, name: e.target.value } : ex))} className="flex-1 p-2 text-xs md:text-sm rounded-xs border border-orange-200 bg-white focus:border-orange-500 outline-none" />
                                                         <input type="number" placeholder="Amt (₹)" value={expense.amount} onChange={(e) => setExpenses(prev => prev.map(ex => ex.id === expense.id ? { ...ex, amount: parseFloat(e.target.value) || '' } : ex))} className="w-20 md:w-28 p-2 text-xs md:text-sm rounded-xs border border-orange-200 bg-white focus:border-orange-500 outline-none" />
                                                         <button onClick={() => setExpenses(prev => prev.filter(ex => ex.id !== expense.id))} className="p-1 md:p-1.5 rounded-full bg-orange-100 hover:bg-red-100 text-orange-400 hover:text-red-500 transition-colors flex-shrink-0"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button>

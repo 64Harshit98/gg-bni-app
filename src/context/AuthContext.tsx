@@ -158,8 +158,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         if (rawPackFromDB === 'enterprise') {
           resolvedPlan = PLANS.ENTERPRISE;
-        } else if (rawPackFromDB.includes('pro')) {
-          resolvedPlan = PLANS.POS_PRO;
         } else {
           resolvedPlan = normalizePlan(cData.pack) as PLANS;
         }

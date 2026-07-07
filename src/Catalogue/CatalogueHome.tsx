@@ -183,7 +183,7 @@ const HomePageContent: React.FC = () => {
                         if (Array.isArray(o.items) && o.items.length > 0) {
                             // Dynamically calculate the total from items for absolute accuracy
                             const itemsTotal = o.items.reduce((sum: number, item: any) => {
-                                return sum + ((item.finalPrice || 0) * (item.quantity || 0));
+                                return sum + ((item.finalPrice || 0));
                             }, 0);
 
                             // Apply any order-level discounts as a percentage
@@ -210,7 +210,7 @@ const HomePageContent: React.FC = () => {
                                 itemStats.set(item.id, {
                                     name: item.name,
                                     totalQuantity: cur.totalQuantity + (item.quantity || 0),
-                                    totalAmount: cur.totalAmount + ((item.finalPrice || 0) * (item.quantity || 0)),
+                                    totalAmount: cur.totalAmount + ((item.finalPrice || 0)),
                                 });
                             });
                         }

@@ -70,7 +70,7 @@ export const OrderTimeline: React.FC<OrderTimelineProps> = ({
                         <React.Fragment key={status}>
                             <div className="flex flex-col items-center flex-1 min-w-0">
                                 <button
-                                    className={`relative flex flex-col items-center w-full group ${status === "Upcoming" ? "cursor-not-allowed" : "cursor-pointer"}`}
+                                    className={`relative flex flex-col items-center w-full group`}
                                     onClick={() => handleViewStatus(status)}
                                 >
                                     {isTopLabel && (
@@ -84,9 +84,9 @@ export const OrderTimeline: React.FC<OrderTimelineProps> = ({
                                                 Coming Soon
                                             </span>
                                         ) : ( */}
-                                            <span className="text-xs sm:text-sm md:text-xl font-bold text-white">
-                                                {isDataVisible ? count : '∗'}
-                                            </span>
+                                        <span className="text-xs sm:text-sm md:text-xl font-bold text-white">
+                                            {isDataVisible ? count : '∗'}
+                                        </span>
                                     </div>
                                     {!isTopLabel && (
                                         <span className="absolute top-full mt-2 text-center text-[10px] sm:text-xs md:text-sm text-gray-600 font-bold whitespace-pre-line leading-tight w-max">

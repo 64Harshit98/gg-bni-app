@@ -76,6 +76,8 @@ export interface OrderItem {
     effectiveUnitPrice?: number;
     customPrice?: number;
     taxRate?: number;
+    taxableAmount?: number; // <-- Add this
+    taxAmount?: number;
 }
 
 // 1. Updated Status Types
@@ -736,12 +738,21 @@ const OrdersPage: React.FC = () => {
 
             const taxRate = Number(item.tax ?? item.taxRate ?? 0);
             const taxType = (item.taxType || '').toLowerCase();
-            if (taxRate > 0 && (taxType === 'exclusive' || taxType === 'regular')) {
-                dynamicTax += rowNet * (taxRate / 100);
+
+            // Handle both Exclusive AND Inclusive tax extraction
+            if (taxRate > 0) {
+                if (taxType === 'exclusive' || taxType === 'regular') {
+                    dynamicTax += rowNet * (taxRate / 100);
+                } else if (taxType === 'inclusive') {
+                    const baseAmount = rowNet / (1 + (taxRate / 100));
+                    dynamicTax += (rowNet - baseAmount);
+                }
             }
             return sum + rowNet;
         }, 0);
+
         const expensesTotal = editExpenses.reduce((sum, e) => sum + (parseFloat(e.amount.toString()) || 0), 0);
+
         return Math.max(0, itemsTotal + dynamicTax + expensesTotal - editDiscount);
     }, [editingOrder?.items, editExpenses, editDiscount]);
 
@@ -867,16 +878,20 @@ const OrdersPage: React.FC = () => {
             const salesPrice = Number(item.salesPrice || 0);
             const basePrice = mrp > 0 ? mrp : salesPrice;
 
-            // Apply discount1 first
             const priceAfterDiscount1 = basePrice * (1 - discountValue / 100);
-
-            // Then apply discount2 on top of discount1 result
             const discount2 = Number(item.discount2 ?? 0);
             const newNetPrice = priceAfterDiscount1 * (1 - discount2 / 100);
 
             const taxRate = Number(item.tax || item.taxRate || 0);
-            const isExclusive = item.taxType?.toLowerCase() === 'exclusive' || item.taxType?.toLowerCase() === 'regular';
-            const newFinalPrice = isExclusive ? newNetPrice + (newNetPrice * (taxRate / 100)) : newNetPrice;
+            const taxType = (item.taxType || '').toLowerCase();
+
+            const qty = Number(item.quantity || 1);
+            const lineTotal = newNetPrice * qty;
+
+            let newFinalPrice = lineTotal;
+            if (taxType === 'exclusive' || taxType === 'regular') {
+                newFinalPrice = lineTotal + (lineTotal * (taxRate / 100));
+            }
 
             return {
                 ...item,
@@ -900,23 +915,24 @@ const OrdersPage: React.FC = () => {
             const salesPrice = Number(item.salesPrice || 0);
             const basePrice = mrp > 0 ? mrp : salesPrice;
 
-            // discount1 stays unchanged — only apply it to get intermediate price
             const discount1 = Number(item.discount ?? 0);
             const priceAfterDiscount1 = basePrice * (1 - discount1 / 100);
-
-            // discount2 applies on priceAfterDiscount1 only
             const newNetPrice = priceAfterDiscount1 * (1 - discount2Value / 100);
 
             const taxRate = Number(item.tax || item.taxRate || 0);
-            const isExclusive = item.taxType?.toLowerCase() === 'exclusive' || item.taxType?.toLowerCase() === 'regular';
-            const newFinalPrice = isExclusive
-                ? newNetPrice + (newNetPrice * (taxRate / 100))
-                : newNetPrice;
+            const taxType = (item.taxType || '').toLowerCase();
+
+            const qty = Number(item.quantity || 1);
+            const lineTotal = newNetPrice * qty;
+
+            let newFinalPrice = lineTotal;
+            if (taxType === 'exclusive' || taxType === 'regular') {
+                newFinalPrice = lineTotal + (lineTotal * (taxRate / 100));
+            }
 
             return {
                 ...item,
                 discount2: Number(discount2Value.toFixed(2)),
-                // Do NOT touch item.discount — it stays as is
                 effectiveUnitPrice: Number(newNetPrice.toFixed(2)),
                 customPrice: Number(newNetPrice.toFixed(2)),
                 finalPrice: Number(newFinalPrice.toFixed(2)),
@@ -1326,9 +1342,10 @@ const OrdersPage: React.FC = () => {
 
                 items: itemsWithBase64,
 
-                grandTotal: Math.max(0, itemsWithBase64.reduce((sum, i) => sum + i.total, 0) + (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0) - Number(Order.manualDiscount || 0)),
-                paidAmount: Order.status === 'Paid' ? Math.max(0, itemsWithBase64.reduce((sum, i) => sum + i.total, 0) + (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0) - Number(Order.manualDiscount || 0)) : Number(Order.paidAmount || 0),
-                advancePaid: Order.status === 'Paid' ? Math.max(0, itemsWithBase64.reduce((sum, i) => sum + i.total, 0) + (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0) - Number(Order.manualDiscount || 0)) : Number(Order.paidAmount || 0),
+                // Replace these 3 lines inside rawBillData in handlePdfAction
+                grandTotal: Math.max(0, itemsWithBase64.reduce((sum, i) => sum + i.total, 0) + (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0) + Number(Order.totalTax || 0) - Number(Order.manualDiscount || 0)),
+                paidAmount: Order.status === 'Paid' ? Math.max(0, itemsWithBase64.reduce((sum, i) => sum + i.total, 0) + (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0) + Number(Order.totalTax || 0) - Number(Order.manualDiscount || 0)) : Number(Order.paidAmount || 0),
+                advancePaid: Order.status === 'Paid' ? Math.max(0, itemsWithBase64.reduce((sum, i) => sum + i.total, 0) + (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0) + Number(Order.totalTax || 0) - Number(Order.manualDiscount || 0)) : Number(Order.paidAmount || 0),
                 dueAmount: Order.status === 'Paid' ? 0 : Math.max(0, Order.totalAmount - Number(Order.paidAmount || 0)),
                 previousBalance: wpPreviousBalance,
 
@@ -1450,9 +1467,9 @@ const OrdersPage: React.FC = () => {
                     date: Order.time,
                 },
                 items: itemsWithBase64,
-                grandTotal: Math.max(0, itemsWithBase64.reduce((sum, i) => sum + i.total, 0) + (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0) - Number(Order.manualDiscount || 0)),
-                paidAmount: Order.status === 'Paid' ? Math.max(0, itemsWithBase64.reduce((sum, i) => sum + i.total, 0) + (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0) - Number(Order.manualDiscount || 0)) : Number(Order.paidAmount || 0),
-                advancePaid: Order.status === 'Paid' ? Math.max(0, itemsWithBase64.reduce((sum, i) => sum + i.total, 0) + (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0) - Number(Order.manualDiscount || 0)) : Number(Order.paidAmount || 0),
+                grandTotal: Math.max(0, itemsWithBase64.reduce((sum, i) => sum + i.total, 0) + (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0) + Number(Order.totalTax || 0) - Number(Order.manualDiscount || 0)),
+                paidAmount: Order.status === 'Paid' ? Math.max(0, itemsWithBase64.reduce((sum, i) => sum + i.total, 0) + (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0) + Number(Order.totalTax || 0) - Number(Order.manualDiscount || 0)) : Number(Order.paidAmount || 0),
+                advancePaid: Order.status === 'Paid' ? Math.max(0, itemsWithBase64.reduce((sum, i) => sum + i.total, 0) + (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0) + Number(Order.totalTax || 0) - Number(Order.manualDiscount || 0)) : Number(Order.paidAmount || 0),
                 dueAmount: Order.status === 'Paid' ? 0 : Math.max(0, Order.totalAmount - Number(Order.paidAmount || 0)),
             };
 
@@ -2249,19 +2266,48 @@ const OrdersPage: React.FC = () => {
 
             // ── Helper: build the Firestore update payload ──────────────────────
             const buildUpdatePayload = (extraFields: Record<string, any> = {}) => {
-
-                // 1. Sweep undefined values from the items array
                 const safeItems = (editingOrder.items || []).map(item => {
                     const safeItem = { ...item };
+
+                    const qty = Number(safeItem.quantity || 0);
+                    const unitPrice = Number(safeItem.effectiveUnitPrice ?? safeItem.customPrice ?? safeItem.salesPrice ?? safeItem.mrp ?? 0);
+                    const lineTotal = unitPrice * qty;
+
+                    const taxRate = Number(safeItem.tax ?? safeItem.taxRate ?? 0);
+                    const taxType = (safeItem.taxType || '').toLowerCase();
+
+                    let itemTaxableBase = lineTotal;
+                    let itemTaxAmount = 0;
+                    let itemFinalPrice = lineTotal;
+
+                    // Recalculate exact item-level tax amounts
+                    if (taxRate > 0) {
+                        if (taxType === 'inclusive') {
+                            itemTaxableBase = lineTotal / (1 + (taxRate / 100));
+                            itemTaxAmount = lineTotal - itemTaxableBase;
+                            itemFinalPrice = lineTotal;
+                        } else if (taxType === 'exclusive' || taxType === 'regular') {
+                            itemTaxableBase = lineTotal;
+                            itemTaxAmount = lineTotal * (taxRate / 100);
+                            itemFinalPrice = itemTaxableBase + itemTaxAmount;
+                        }
+                    }
+
+                    // Save the updated breakdown to the item object
+                    safeItem.taxableAmount = Number(itemTaxableBase.toFixed(2));
+                    safeItem.taxAmount = Number(itemTaxAmount.toFixed(2));
+                    safeItem.finalPrice = Number(itemFinalPrice.toFixed(2));
+
+                    // Strip undefined values to prevent Firebase errors
                     Object.keys(safeItem).forEach(key => {
                         if (safeItem[key as keyof typeof safeItem] === undefined) {
                             delete safeItem[key as keyof typeof safeItem];
                         }
                     });
+
                     return safeItem;
                 });
 
-                // 2. Build the payload with safety fallbacks for optional fields
                 const payload: any = {
                     items: safeItems,
                     totalAmount: newTotal,

@@ -368,7 +368,7 @@ const SubscriptionPage: React.FC = () => {
                                     {currentTiers.map(tier => (
                                         <th
                                             key={tier.id}
-                                            className={`pt-6 pb-4 px-4 text-center border-b border-gray-200 relative ${tier.recommended ? 'bg-yellow-50' : 'bg-white'}`}
+                                            className={`pt-6 pb-4 px-2 text-center border-b border-gray-200 relative ${tier.recommended ? 'bg-yellow-50' : 'bg-white'}`}
                                         >
                                             {tier.recommended && (
                                                 <span className="absolute top-2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-yellow-400 text-yellow-900 text-[9px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wide whitespace-nowrap">

@@ -4,6 +4,7 @@ import {
   doc,
   getDoc,
   setDoc,
+  serverTimestamp,
 } from 'firebase/firestore';
 import { Spinner } from '../../constants/Spinner';
 import { Modal } from '../../constants/Modal';
@@ -13,6 +14,17 @@ import { useAuth } from '../../context/auth-context';
 //import CataShowWrapper from '../../context/CataShowWrapper';
 import { InfoTooltip } from '../../Components/InfoToolTip';
 import BackButton from '../../Components/BackButton';
+import {
+  PackageX,
+  BellRing,
+  EyeOff,
+  ShieldCheck,
+  Percent,
+  Receipt,
+  Truck,
+  ClipboardList,
+  Hash,
+} from 'lucide-react';
 
 export interface CatalogueSalesSettings {
   companyId: string
@@ -72,14 +84,18 @@ export const getDefaultCatalogueSalesSettings = (companyId: string): CatalogueSa
 
 interface CardProps {
   title: string;
+  icon?: React.ReactNode;
   children: React.ReactNode;
   action?: React.ReactNode;
 }
 
-const SettingsCard: React.FC<CardProps> = ({ title, children, action }) => (
+const SettingsCard: React.FC<CardProps> = ({ title, icon, children, action }) => (
   <section className="bg-white rounded-sm border border-gray-200 shadow-sm p-5 md:p-6 space-y-5 transition-shadow">
     <div className="flex items-center justify-between gap-3">
-      <h2 className="text-base md:text-lg font-semibold text-gray-800">{title}</h2>
+      <div className="flex items-center gap-2">
+        {icon && <span className="text-[#F97316]">{icon}</span>}
+        <h2 className="text-base md:text-lg font-semibold text-gray-800">{title}</h2>
+      </div>
       {action}
     </div>
     {children}
@@ -94,18 +110,24 @@ export interface ToggleRowProps {
   onChange: (checked: boolean) => void;
   tooltip?: string;
   disabled?: boolean;
+  icon?: React.ReactNode;
 }
 
 export const ToggleRow: React.FC<ToggleRowProps> = ({
-  id, label, description, checked, onChange, tooltip, disabled = false
+  id, label, description, checked, onChange, tooltip, disabled = false, icon
 }) => (
   <div className={`flex items-start justify-between gap-4 rounded-sm bg-gray-50/60 border border-gray-100 p-3.5 md:p-4 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
-    <div className="min-w-0">
-      <div className="flex items-center gap-2">
-        <label htmlFor={id} className="text-sm font-semibold text-gray-800 leading-5">{label}</label>
-        <InfoTooltip text={tooltip || description} />
+    <div className="min-w-0 flex gap-3">
+      {icon && (
+        <span className="mt-0.5 shrink-0 text-[#F97316]">{icon}</span>
+      )}
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <label htmlFor={id} className="text-sm font-semibold text-gray-800 leading-5">{label}</label>
+          <InfoTooltip text={tooltip || description} />
+        </div>
+        <p className="hidden md:block text-xs text-gray-500 mt-1 leading-relaxed">{description}</p>
       </div>
-      <p className="hidden md:block text-xs text-gray-500 mt-1 leading-relaxed">{description}</p>
     </div>
     <label htmlFor={id} className="relative inline-flex cursor-pointer items-center">
       <input
@@ -128,6 +150,11 @@ const CatalogueSalesSettings: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
+
+  // GST number prompt states
+  const [showGstModal, setShowGstModal] = useState<boolean>(false);
+  const [gstNumberInput, setGstNumberInput] = useState<string>('');
+  const [pendingGstScheme, setPendingGstScheme] = useState<'regular' | 'composition' | null>(null);
 
   useEffect(() => {
     if (!currentUser?.companyId) {
@@ -216,6 +243,52 @@ const CatalogueSalesSettings: React.FC = () => {
     }
   };
 
+  // Checks business_info for an existing GST number before allowing scheme change
+  const checkAndPromptGst = async (newScheme: 'regular' | 'composition') => {
+    if (!currentUser?.companyId) return;
+    try {
+      const companyId = currentUser.companyId;
+      const businessInfoRef = doc(db, 'companies', companyId, 'business_info', companyId);
+      const snap = await getDoc(businessInfoRef);
+      const existingGst = snap.exists() ? snap.data().gstin : undefined;
+
+      if (!existingGst) {
+        setPendingGstScheme(newScheme);
+        setGstNumberInput('');
+        setShowGstModal(true);
+      } else {
+        handleChange('gstScheme', newScheme);
+      }
+    } catch (err) {
+      console.error('Failed to check business GST info:', err);
+      setModal({ message: 'Failed to verify GST details.', type: State.ERROR });
+    }
+  };
+
+  // Saves entered GST number to business_info and applies the pending scheme
+  const handleGstNumberSave = async () => {
+    if (!currentUser?.companyId || !pendingGstScheme) return;
+    const trimmed = gstNumberInput.trim().toUpperCase();
+
+    if (trimmed.length !== 15) {
+      setModal({ message: 'GST number must be exactly 15 characters.', type: State.ERROR });
+      return;
+    }
+
+    try {
+      const companyId = currentUser.companyId;
+      const businessInfoRef = doc(db, 'companies', companyId, 'business_info', companyId);
+      await setDoc(businessInfoRef, { gstin: trimmed, updatedAt: serverTimestamp() }, { merge: true });
+
+      handleChange('gstScheme', pendingGstScheme);
+      setShowGstModal(false);
+      setPendingGstScheme(null);
+    } catch (err) {
+      console.error('Failed to save GST number:', err);
+      setModal({ message: 'Failed to save GST number.', type: State.ERROR });
+    }
+  };
+
   if (isLoading || !settings) {
     return (
       <div className="flex flex-col min-h-screen items-center justify-center">
@@ -229,6 +302,45 @@ const CatalogueSalesSettings: React.FC = () => {
     <div className="flex flex-col min-h-screen bg-white w-full">
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
+      {showGstModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-sm shadow-lg w-full max-w-sm p-5 space-y-4">
+            <h3 className="text-base font-semibold text-gray-800">Enter GST Number</h3>
+            <p className="text-xs text-gray-500">
+              GST number is required to enable this tax scheme. This will be saved to your business profile.
+            </p>
+            <input
+              type="text"
+              value={gstNumberInput}
+              onChange={(e) => setGstNumberInput(e.target.value.toUpperCase().slice(0, 15))}
+              placeholder="e.g., 22AAAAA0000A1Z5"
+              maxLength={15}
+              className="w-full p-2.5 text-sm border border-gray-300 rounded-sm focus:ring-[#F97316] focus:border-[#F97316] outline-none"
+              autoFocus
+            />
+            <p className={`text-xs -mt-2 ${gstNumberInput.length === 15 ? 'text-green-600' : 'text-gray-400'}`}>
+              {gstNumberInput.length}/15 characters
+            </p>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => { setShowGstModal(false); setPendingGstScheme(null); }}
+                className="px-4 py-2 text-sm font-semibold text-gray-600 rounded-sm hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleGstNumberSave}
+                className="px-4 py-2 text-sm font-semibold text-white bg-[#F97316] rounded-sm hover:bg-[#F97316]"
+              >
+                Save & Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
         <BackButton />
         <h1 className="text-lg font-semibold text-gray-800">Sales Settings</h1>
@@ -239,8 +351,8 @@ const CatalogueSalesSettings: React.FC = () => {
       <main className="flex-grow min-h-0 p-3 sm:p-4 md:p-5 bg-gray-50 w-full overflow-y-auto box-border pb-44 md:pb-24">
         <form onSubmit={handleSave} className="max-w-5xl mx-auto space-y-5">
 
-          {/* ── Visibility ──────────────────────────────────────────────────── */}
-          <SettingsCard title="Visibility">
+          {/* ── Inventory & Stock ─────────────────────────────────────────── */}
+          <SettingsCard title="Inventory & Stock" icon={<PackageX size={18} />}>
             <ToggleRow
               id="allow-negative-inventory"
               label="Allow Negative Inventory"
@@ -248,18 +360,19 @@ const CatalogueSalesSettings: React.FC = () => {
               checked={settings.allowNegativeInventory}
               onChange={(checked) => handleCheckboxChange('allowNegativeInventory', checked)}
               tooltip="Permit catalogue orders for items with no recorded stock."
+              icon={<PackageX size={18} />}
             />
 
-            <div>
-              <ToggleRow
-                id="Hide Out of Stock Items"
-                label="Hide Out of Stock Items"
-                description="Hide Out of Stock Items."
-                checked={settings.hideOutOfStock ?? false}
-                onChange={(checked) => handleCheckboxChange('hideOutOfStock', checked)}
-                tooltip="Hide Out Of Stock Items from Customers."
-              />
-            </div>
+            <ToggleRow
+              id="Hide Out of Stock Items"
+              label="Hide Out of Stock Items"
+              description="Hide Out of Stock Items."
+              checked={settings.hideOutOfStock ?? false}
+              onChange={(checked) => handleCheckboxChange('hideOutOfStock', checked)}
+              tooltip="Hide Out Of Stock Items from Customers."
+              icon={<EyeOff size={18} />}
+            />
+
             <ToggleRow
               id="enable-out-of-stock-notification"
               label="Enable 'Notify Me' Button"
@@ -267,8 +380,12 @@ const CatalogueSalesSettings: React.FC = () => {
               checked={settings.enableOutOfStockNotification ?? false}
               onChange={(checked) => handleCheckboxChange('enableOutOfStockNotification', checked)}
               tooltip="When enabled, customers will see a 'Notify Me' button instead of 'Add to Cart' for out-of-stock items. Their requests appear in the Pre-Order Requests page."
+              icon={<BellRing size={18} />}
             />
+          </SettingsCard>
 
+          {/* ── Customer Access ───────────────────────────────────────────── */}
+          <SettingsCard title="Customer Access" icon={<ShieldCheck size={18} />}>
             <ToggleRow
               id="hide-price"
               label="Hide Price from Customers"
@@ -276,6 +393,7 @@ const CatalogueSalesSettings: React.FC = () => {
               checked={settings.hidePrice ?? false}
               onChange={(checked) => handleCheckboxChange('hidePrice', checked)}
               tooltip="Completely hides item prices on the customer-facing catalogue."
+              icon={<EyeOff size={18} />}
             />
             <ToggleRow
               id="require-approval"
@@ -284,11 +402,11 @@ const CatalogueSalesSettings: React.FC = () => {
               checked={settings.requireApproval ?? false}
               onChange={(checked) => handleCheckboxChange('requireApproval', checked)}
               tooltip="Enables an approval gate — customers fill a lead form and you manually approve or decline them."
+              icon={<ShieldCheck size={18} />}
             />
           </SettingsCard>
 
-          {/* ── Pricing & Tax ───────────────────────────────────────────────── */}
-          <SettingsCard title="Pricing & Tax">
+          <SettingsCard title="Pricing & Tax" icon={<Percent size={18} />}>
             <div className="space-y-3">
               <ToggleRow
                 id="item-discount"
@@ -297,14 +415,7 @@ const CatalogueSalesSettings: React.FC = () => {
                 checked={settings.enableItemWiseDiscount ?? false}
                 onChange={(checked) => handleCheckboxChange('enableItemWiseDiscount', checked)}
                 tooltip="Allow discounts to be applied to individual cart items."
-              />
-              <ToggleRow
-                id="enable-transport-details"
-                label="Enable Transport Details"
-                description="Show transport details fields (transporter name, GR/RR No, vehicle no, etc.) on the order edit screen."
-                checked={settings.enableTransportDetails ?? false}
-                onChange={(checked) => handleCheckboxChange('enableTransportDetails', checked)}
-                tooltip="Allows adding transport/logistics information to each order."
+                icon={<Percent size={18} />}
               />
               {/* GST Scheme */}
               <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">
@@ -321,7 +432,13 @@ const CatalogueSalesSettings: React.FC = () => {
                     <button
                       key={opt.value}
                       type="button"
-                      onClick={() => handleChange('gstScheme', opt.value)}
+                      onClick={() => {
+                        if (opt.value !== 'none' && settings.gstScheme === 'none') {
+                          checkAndPromptGst(opt.value as 'regular' | 'composition');
+                        } else {
+                          handleChange('gstScheme', opt.value);
+                        }
+                      }}
                       className={`min-w-0 min-h-[42px] px-2 py-2 rounded-sm text-[11px] sm:text-sm font-semibold border leading-tight text-center whitespace-normal break-words ${settings.gstScheme === opt.value
                         ? 'bg-[#F97316] text-white border-[#F97316]'
                         : 'bg-white text-gray-700 border-gray-300'
@@ -356,10 +473,11 @@ const CatalogueSalesSettings: React.FC = () => {
           {/* ── Order Rules & Voucher in a 2-col grid ──────────────────────── */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
 
-            {/* Order Rules */}
-            <SettingsCard title="Order Rules">
-              <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">
+            {/* Order & Delivery */}
+            <SettingsCard title="Order & Delivery" icon={<ClipboardList size={18} />}>
+              <div className="rounded-sm bg-gray-50 border border-gray-100 p-3 mb-3">
                 <div className="flex items-center gap-2 mb-1">
+                  <Receipt size={16} className="text-[#F97316]" />
                   <label htmlFor="min-order" className="text-sm font-semibold text-gray-800">
                     Minimum Order Value (₹)
                   </label>
@@ -376,10 +494,20 @@ const CatalogueSalesSettings: React.FC = () => {
                 />
                 <p className="text-xs text-gray-500 mt-1.5">Leave blank or 0 to disable minimum order.</p>
               </div>
+
+              <ToggleRow
+                id="enable-transport-details"
+                label="Enable Transport Details"
+                description="Show transport details fields (transporter name, GR/RR No, vehicle no, etc.) on the order edit screen."
+                checked={settings.enableTransportDetails ?? false}
+                onChange={(checked) => handleCheckboxChange('enableTransportDetails', checked)}
+                tooltip="Allows adding transport/logistics information to each order."
+                icon={<Truck size={18} />}
+              />
             </SettingsCard>
 
             {/* Voucher Numbering */}
-            <SettingsCard title="Voucher Numbering">
+            <SettingsCard title="Voucher Numbering" icon={<Hash size={18} />}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <div className="flex items-center mb-1 gap-2">

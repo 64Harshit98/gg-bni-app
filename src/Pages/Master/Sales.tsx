@@ -212,6 +212,7 @@ const Sales: React.FC = () => {
     const [listSelectedCategory] = useState<string>('All');
     const [gridSearchQuery, setGridSearchQuery] = useState<string>('');
     const [itemGroupMap, setItemGroupMap] = useState<Record<string, string>>({});
+    const [cartSearchQuery, setCartSearchQuery] = useState<string>('');
     const [isFooterExpanded, setIsFooterExpanded] = useState(false);
 
     const userRole = currentUser?.role || '';
@@ -939,6 +940,7 @@ const Sales: React.FC = () => {
     };
     const handleConfirmClearCart = () => {
         setItems([]);
+        setCartSearchQuery('');
         setShowClearCartConfirm(false);
     };
     const handleItemSelected = (selectedItem: Item | null) => {
@@ -1133,9 +1135,22 @@ const Sales: React.FC = () => {
         }));
     };
     const displayItems = useMemo(() => {
-        if (listSelectedCategory === 'All') return items;
-        return items.filter(item => (item.itemGroupId || 'Others') === listSelectedCategory);
-    }, [items, listSelectedCategory]);
+        const base = listSelectedCategory === 'All'
+            ? items
+            : items.filter(item => (item.itemGroupId || 'Others') === listSelectedCategory);
+
+        const q = cartSearchQuery.trim().toLowerCase();
+        if (!q) return base;
+
+        // 👈 NEW: same "search bumps result to top" behavior as the Orders page search
+        return [...base].sort((a, b) => {
+            const aMatch = (a.name || '').toLowerCase().includes(q);
+            const bMatch = (b.name || '').toLowerCase().includes(q);
+            if (aMatch && !bMatch) return -1;
+            if (!aMatch && bMatch) return 1;
+            return 0; // keep original relative order otherwise
+        });
+    }, [items, listSelectedCategory, cartSearchQuery]);
 
     const handleProceedToPayment = () => {
         if (items.length === 0) {
@@ -2706,6 +2721,7 @@ const Sales: React.FC = () => {
                                     onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })}
                                     categories={categories}
                                     itemGroupMap={itemGroupMap}
+                                    onSearchChange={setCartSearchQuery}
                                 />
                             </div>
                             <button onClick={() => setIsScannerOpen(true)} className='bg-gray-700 text-white p-3 border border-gray-700 rounded-sm font-semibold transition hover:bg-gray-800' title="Scan Barcode">

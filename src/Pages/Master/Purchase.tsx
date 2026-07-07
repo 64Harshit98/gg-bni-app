@@ -126,6 +126,7 @@ const PurchasePage: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [gridSearchQuery, setGridSearchQuery] = useState<string>('');
   const [itemGroupMap, setItemGroupMap] = useState<Record<string, string>>({});
+  const [cartSearchQuery, setCartSearchQuery] = useState<string>('');
   const [isFooterExpanded, setIsFooterExpanded] = useState(false);
   const [sortOrder, setSortOrder] = useState<'az' | 'za' | 'price_asc' | 'price_desc'>('az');
 
@@ -222,7 +223,7 @@ const PurchasePage: React.FC = () => {
 
               // Use the saved transaction discount, NOT master item sale discount
               const transactionDiscount = item.discount || 0;
-               const transactionDiscount2 = item.purchasediscount2 || 0;
+              const transactionDiscount2 = item.purchasediscount2 || 0;
 
               return {
                 // FIX: Force a brand new unique ID for React list rendering
@@ -269,7 +270,7 @@ const PurchasePage: React.FC = () => {
   }, [dbOperations, currentUser, purchaseIdToEdit, pageIsLoading, navigate]);
 
   const cartItemsAdapter = useMemo(() => {
-    return items.map(item => ({
+    const mapped = items.map(item => ({
       ...item,
       purchasePrice: Number(item.purchasePrice || 0),
       customPrice: item.purchasePrice,
@@ -278,7 +279,18 @@ const PurchasePage: React.FC = () => {
       discount2: item.purchasediscount2 ?? 0,
       isEditable: item.isEditable ?? true
     }));
-  }, [items]);
+    const q = cartSearchQuery.trim().toLowerCase();
+    if (!q) return mapped;
+
+    // 👈 NEW: same "search bumps result to top" behavior as the Orders page search
+    return [...mapped].sort((a, b) => {
+      const aMatch = (a.name || '').toLowerCase().includes(q);
+      const bMatch = (b.name || '').toLowerCase().includes(q);
+      if (aMatch && !bMatch) return -1;
+      if (!aMatch && bMatch) return 1;
+      return 0; // keep original relative order otherwise
+    });
+  }, [items, cartSearchQuery]);
 
   // --- LOGIC 1: ADD ITEM ---
   const addItemToCart = (itemToAdd: Item) => {
@@ -391,7 +403,7 @@ const PurchasePage: React.FC = () => {
     const n = typeof v === 'string' ? parseFloat(v) : v;
     const safeDiscount = isNaN(n) ? 0 : n;
 
-     setItems(prev => prev.map(i => {
+    setItems(prev => prev.map(i => {
       if (i.id === id) {
         const basePrice = (i.mrp && i.mrp > 0) ? i.mrp : (i.originalPurchasePrice || 0);
         const safeDiscount2 = i.purchasediscount2 || 0;
@@ -594,6 +606,7 @@ const PurchasePage: React.FC = () => {
 
   const handleConfirmClearCart = () => {
     setItems([]);
+    setCartSearchQuery('');
     setShowClearCartConfirm(false);
   };
 
@@ -1079,7 +1092,7 @@ const PurchasePage: React.FC = () => {
         calculatedDiscount = masterPurchaseDiscount;
         finalNetPrice = 0;
       }
-// Apply second discount on top, compounded
+      // Apply second discount on top, compounded
       const existingDiscount2 = cartItem.purchasediscount2 || 0;
       finalNetPrice = finalNetPrice * (1 - (existingDiscount2 / 100));
       const stock = (updatedItemData as any).stock ?? (updatedItemData as any).Stock ?? cartItem.stock;
@@ -2014,7 +2027,9 @@ const PurchasePage: React.FC = () => {
               <div className="flex-grow">
                 <SearchableItemInput label="Search & Add Item" placeholder="Search by name or barcode..." items={availableItems} onItemSelected={handleItemSelected} isLoading={pageIsLoading} error={error} categories={categories}
                   onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })}
-                  itemGroupMap={itemGroupMap} />
+                  itemGroupMap={itemGroupMap}
+                  onSearchChange={setCartSearchQuery}
+                />
               </div>
               {/* Change your existing camera button's onClick to this: */}
               <button

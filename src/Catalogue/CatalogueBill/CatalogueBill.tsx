@@ -298,7 +298,7 @@ export const CatalogueBill = async (
   const billGstin = data.customer?.billing?.gstin || "";
 
   const shipName = data.customer?.shipping?.name || "";
- const shipFullAddress = [
+  const shipFullAddress = [
     data.customer?.shipping?.address || "",
     data.customer?.shipping?.city || "",
     data.customer?.shipping?.state || ""
@@ -633,29 +633,44 @@ export const CatalogueBill = async (
     if (finalY > pageHeight - 80) { doc.addPage(); finalY = margin; }
     const vBoxX = endX - 25;
 
+    let hasExpensesAbove = false;
+
     if (data.extraExpenses && data.extraExpenses.length > 0) {
-      doc.rect(startX, finalY, contentWidth, 6 * data.extraExpenses.length);
-      doc.line(vBoxX, finalY, vBoxX, finalY + (6 * data.extraExpenses.length));
+      hasExpensesAbove = true;
+      const expH = 6 * data.extraExpenses.length;
+      doc.line(startX, finalY, startX, finalY + expH);   // left
+      doc.line(endX, finalY, endX, finalY + expH);       // right
+      doc.line(startX, finalY, endX, finalY);            // top only (no bottom border)
+      doc.line(vBoxX, finalY, vBoxX, finalY + expH);
       data.extraExpenses.forEach(exp => {
-        doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9); doc.setFont('helvetica', 'bold');
         doc.text(`Add : ${exp.name} (+)`, vBoxX - 2, finalY + 4, { align: 'right' });
         doc.text(Number(exp.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + 4, { align: 'right' });
         finalY += 6;
       });
     } else if (data.extraExpenseName && data.extraExpenseAmount) {
+      hasExpensesAbove = true;
       const names = data.extraExpenseName.split(',').map(n => n.trim()).filter(Boolean);
-      doc.rect(startX, finalY, contentWidth, 6 * names.length);
-      doc.line(vBoxX, finalY, vBoxX, finalY + (6 * names.length));
+      const expH = 6 * names.length;
+      doc.line(startX, finalY, startX, finalY + expH);   // left
+      doc.line(endX, finalY, endX, finalY + expH);       // right
+      doc.line(startX, finalY, endX, finalY);            // top only (no bottom border)
+      doc.line(vBoxX, finalY, vBoxX, finalY + expH);
       names.forEach((name, idx) => {
-        doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9); doc.setFont('helvetica', 'bold');
         doc.text(`Add : ${name} (+)`, vBoxX - 2, finalY + 4, { align: 'right' });
         if (idx === names.length - 1) doc.text(Number(data.extraExpenseAmount).toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + 4, { align: 'right' });
         finalY += 6;
       });
     }
 
-    doc.rect(startX, finalY, contentWidth, 6); doc.line(vBoxX, finalY, vBoxX, finalY + 6);
-    doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+    // Rounded off row — skip top border if expenses row is directly above it
+    doc.line(startX, finalY, startX, finalY + 6);                 // left
+    doc.line(endX, finalY, endX, finalY + 6);                     // right
+    if (!hasExpensesAbove) doc.line(startX, finalY, endX, finalY); // top (only if no expenses above)
+    doc.line(startX, finalY + 6, endX, finalY + 6);                // bottom
+    doc.line(vBoxX, finalY, vBoxX, finalY + 6);
+    doc.setFontSize(9); doc.setFont('helvetica', 'bold');
     doc.text('Add : Rounded off (+)', vBoxX - 2, finalY + 4, { align: 'right' });
     doc.text(roundOffAmt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), endX - 2, finalY + 4, { align: 'right' });
     finalY += 6;
@@ -665,22 +680,30 @@ export const CatalogueBill = async (
     doc.rect(startX, finalY, contentWidth, 8);
     doc.text('Grand Total', pageWidth / 6, finalY + 5.5);
     doc.text(`${totalQty.toFixed(3)} Unit`, pageWidth / 3, finalY + 5.5);
-    doc.text('Rs.', endX - 35, finalY + 5.5);
-    doc.rect(endX - 30, finalY, 30, 8);
+    doc.text('Rs.', vBoxX - 7, finalY + 5.5);
+    doc.rect(vBoxX, finalY, endX - vBoxX, 8);
     doc.text(invoiceTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + 5.5, { align: 'right' });
     finalY += 8;
 
     if (advance > 0 && !isEstimate) {
-      doc.rect(startX, finalY, contentWidth, 6); doc.line(vBoxX, finalY, vBoxX, finalY + 6);
-      doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+      // Advance Paid row — no bottom border (so it joins visually with Balance Due below)
+      doc.line(startX, finalY, startX, finalY + 6);       // left
+      doc.line(endX, finalY, endX, finalY + 6);           // right
+      doc.line(startX, finalY, endX, finalY);             // top
+      doc.line(vBoxX, finalY, vBoxX, finalY + 6);
+      doc.setFontSize(9); doc.setFont('helvetica', 'bold');
       doc.text('Advance Paid (-)', vBoxX - 2, finalY + 4, { align: 'right' });
       doc.text(advance.toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + 4, { align: 'right' });
       finalY += 6;
 
+      // Balance Due row — no top border (removes the line between the two rows)
       doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-      doc.rect(startX, finalY, contentWidth, 8);
+      doc.line(startX, finalY, startX, finalY + 8);          // left
+      doc.line(endX, finalY, endX, finalY + 8);              // right
+      doc.line(startX, finalY + 8, endX, finalY + 8);        // bottom
       doc.text('Balance Due', vBoxX - 6, finalY + 5.5, { align: 'right' });
-      doc.rect(endX - 30, finalY, 30, 8);
+      doc.line(vBoxX, finalY, vBoxX, finalY + 8);            // amount box left divider — now matches expense/rounding off vBoxX
+      doc.line(vBoxX, finalY + 8, endX, finalY + 8);         // amount box bottom
       doc.text(settledAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + 5.5, { align: 'right' });
       finalY += 8;
     }
@@ -750,8 +773,8 @@ export const CatalogueBill = async (
       doc.rect(startX, finalY, contentWidth, 10);
       doc.setFont('helvetica', 'bold'); doc.text('BANK DETAIL :', startX + 2, finalY + 4);
       doc.line(startX + 2, finalY + 4.5, startX + 2 + doc.getTextWidth('BANK DETAIL :'), finalY + 4.5);
-      doc.text(`Bank name : ${data.bankName || ''} , A/C NO : ${data.accountNumber || ''}`, startX + 35, finalY + 4);
-      doc.text(`IFSC Code : ${data.ifscCode || ''}`, startX + 35, finalY + 8);
+      doc.text(`A/C Holder Name : ${data.accountName || ''}   IFSC Code : ${data.ifscCode || ''}`, startX + 35, finalY + 4);
+      doc.text(`Bank name : ${data.bankName || ''} , A/C NO. ${data.accountNumber || ''}`, startX + 35, finalY + 8);
       finalY += 10;
     }
 

@@ -68,7 +68,45 @@ const getSafeDate = (val: any): Date | null => {
   if (typeof val === 'string' || typeof val === 'number') return new Date(val);
   return null;
 };
-
+const SAMPLE_DASHBOARD_DATA: DashboardData = {
+  totalSales: 48250,
+  totalOrders: 132,
+  percentageChange: 12.4,
+  salesByDate: [
+    { name: '01/07', sales: 5200, previousSales: 0, count: 14, qty: 14, quantity: 14, bills: 14, Bills: 14 },
+    { name: '02/07', sales: 7100, previousSales: 0, count: 19, qty: 19, quantity: 19, bills: 19, Bills: 19 },
+    { name: '03/07', sales: 4300, previousSales: 0, count: 11, qty: 11, quantity: 11, bills: 11, Bills: 11 },
+    { name: '04/07', sales: 8900, previousSales: 0, count: 23, qty: 23, quantity: 23, bills: 23, Bills: 23 },
+    { name: '05/07', sales: 6400, previousSales: 0, count: 17, qty: 17, quantity: 17, bills: 17, Bills: 17 },
+    { name: '06/07', sales: 9800, previousSales: 0, count: 26, qty: 26, quantity: 26, bills: 26, Bills: 26 },
+    { name: '07/07', sales: 6550, previousSales: 0, count: 18, qty: 18, quantity: 18, bills: 18, Bills: 18 },
+  ],
+  paymentMethods: [
+    { name: 'Cash', amount: 21000, quantity: 58 },
+    { name: 'Card', amount: 15250, quantity: 41 },
+    { name: 'UPI', amount: 12000, quantity: 33 },
+  ],
+  topItems: [
+    { name: 'Sample Item A', amount: 9800, quantity: 45 },
+    { name: 'Sample Item B', amount: 7600, quantity: 32 },
+    { name: 'Sample Item C', amount: 6200, quantity: 28 },
+    { name: 'Sample Item D', amount: 5100, quantity: 21 },
+    { name: 'Sample Item E', amount: 4300, quantity: 18 },
+  ],
+  topCustomers: [
+    { name: 'Sample Customer 1', amount: 8200, quantity: 12 },
+    { name: 'Sample Customer 2', amount: 6900, quantity: 9 },
+    { name: 'Sample Customer 3', amount: 5400, quantity: 7 },
+    { name: 'Sample Customer 4', amount: 4100, quantity: 6 },
+    { name: 'Sample Customer 5', amount: 3300, quantity: 5 },
+  ],
+  topSalesmen: [
+    { name: 'Sample Salesperson 1', amount: 15200, quantity: 40 },
+    { name: 'Sample Salesperson 2', amount: 11800, quantity: 31 },
+    { name: 'Sample Salesperson 3', amount: 9400, quantity: 24 },
+  ],
+  lastUpdated: Date.now(),
+};
 const useBusinessName = () => {
   const [businessName, setBusinessName] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -142,7 +180,9 @@ const DashboardContent = () => {
     };
     fetchExpiry();
   }, [currentUser?.companyId]);
-
+  const isTutorialActive = tutorialStep > 0 && tutorialStep <= TOTAL_STEPS;
+  const displayData = isTutorialActive ? SAMPLE_DASHBOARD_DATA : data;
+  const effectiveDataVisible = isTutorialActive ? true : isDataVisible;
   const showBadge = daysRemaining !== null && daysRemaining <= 7 && daysRemaining >= 0;
   const isUrgent = daysRemaining !== null && daysRemaining <= 2;
   const hasCataloguePermission = currentUser?.permissions?.includes(Permissions.ViewCatalogue);
@@ -419,7 +459,7 @@ const DashboardContent = () => {
             </TutorialStep>
           </ShowWrapper>
 
-          {loading && !data ? (
+          {(loading && !data && !isTutorialActive) ? (
             <div className="flex h-64 items-center justify-center text-slate-500"><FiLoader className="animate-spin mr-2" /> Loading Dashboard...</div>
           ) : (
             <>
@@ -432,7 +472,7 @@ const DashboardContent = () => {
                     <div ref={setTutorialRef(4)} className="order-1 h-full min-h-0 md:col-span-4 md:order-1">
                       <ShowWrapper requiredPermission={Permissions.ViewSalescard}>
                         <div className="h-full min-h-0 [&>*]:h-full">
-                          <SalesCard isDataVisible={isDataVisible} totalSales={Math.ceil(data?.totalSales || 0)} percentageChange={data?.percentageChange || 0} />
+                          <SalesCard isDataVisible={effectiveDataVisible} totalSales={Math.ceil(displayData?.totalSales || 0)} percentageChange={displayData?.percentageChange || 0} />
                         </div>
                       </ShowWrapper>
                     </div>
@@ -443,7 +483,7 @@ const DashboardContent = () => {
                     <div ref={setTutorialRef(5)} className="order-2 h-full min-h-0 md:col-span-6 md:order-2">
                       <ShowWrapper requiredPermission={Permissions.ViewSalesbarchart}>
                         <div className="h-full min-h-0 [&>*]:h-full">
-                          <SalesBarChartReport isDataVisible={isDataVisible} data={data?.salesByDate || []} />
+                          <SalesBarChartReport isDataVisible={effectiveDataVisible} data={displayData?.salesByDate || []} />
                         </div>
                       </ShowWrapper>
                     </div>
@@ -456,7 +496,7 @@ const DashboardContent = () => {
                   <TutorialStep step={6} currentStep={tutorialStep} text="See your top 5 best-selling items by revenue for the selected period." onNext={() => next(7)} onSkip={skip}>
                     <div ref={setTutorialRef(6)} className="h-full [&>*]:h-full">
                       <ShowWrapper requiredPermission={Permissions.ViewTopSoldItems}>
-                        <TopSoldItemsCard isDataVisible={isDataVisible} items={data?.topItems || []} />
+                        <TopSoldItemsCard isDataVisible={effectiveDataVisible} items={displayData?.topItems || []} />
                       </ShowWrapper>
                     </div>
                   </TutorialStep>
@@ -465,7 +505,7 @@ const DashboardContent = () => {
                   <TutorialStep step={7} currentStep={tutorialStep} text="Track your top 5 performing salespeople ranked by total sales amount." onNext={() => next(8)} onSkip={skip}>
                     <div ref={setTutorialRef(7)} className="h-full [&>*]:h-full">
                       <ShowWrapper requiredPermission={Permissions.ViewTopSalesperson}>
-                        <TopSalespersonCard isDataVisible={isDataVisible} salesmen={data?.topSalesmen || []} />
+                        <TopSalespersonCard isDataVisible={effectiveDataVisible} salesmen={displayData?.topSalesmen || []} />
                       </ShowWrapper>
                     </div>
                   </TutorialStep>
@@ -474,7 +514,7 @@ const DashboardContent = () => {
                   <TutorialStep step={8} currentStep={tutorialStep} text="Your top 5 customers by purchase value. Great for identifying your most loyal buyers." onNext={() => next(9)} onSkip={skip}>
                     <div ref={setTutorialRef(8)} className="h-full [&>*]:h-full">
                       <ShowWrapper requiredPermission={Permissions.ViewTopCustomers}>
-                        <TopEntitiesList isDataVisible={isDataVisible} titleOverride="Top Customers" items={data?.topCustomers || []} />
+                        <TopEntitiesList isDataVisible={effectiveDataVisible} titleOverride="Top Customers" items={displayData?.topCustomers || []} />
                       </ShowWrapper>
                     </div>
                   </TutorialStep>
@@ -501,7 +541,7 @@ const DashboardContent = () => {
                   <div ref={setTutorialRef(9)} className="grid grid-cols-1 md:grid-cols-10 gap-2">
                     <div className="md:col-span-4">
                       <ShowWrapper requiredPermission={Permissions.ViewPaymentmethods}>
-                        <PaymentChart isDataVisible={isDataVisible} data={data?.paymentMethods || []} />
+                        <PaymentChart isDataVisible={effectiveDataVisible} data={displayData?.paymentMethods || []} />
                       </ShowWrapper>
                     </div>
                   </div>

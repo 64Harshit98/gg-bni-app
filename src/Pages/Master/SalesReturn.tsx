@@ -1097,6 +1097,7 @@ const SalesReturnPage: React.FC = () => {
                                 enableRounding: salesSettings?.enableRounding ?? true,
                                 roundingInterval: (salesSettings as any)?.roundingInterval ?? 1,
                                 enableItemWiseDiscount: salesSettings?.enableItemWiseDiscount ?? true,
+                                enableDiscount2: salesSettings?.enableDiscount2 ?? false,
                                 lockDiscount: isDiscountLocked,
                                 lockPrice: isPriceLocked
                               }}

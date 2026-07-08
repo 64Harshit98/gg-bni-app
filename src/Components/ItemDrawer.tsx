@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Item, ItemGroup } from '../constants/models';
 import { useDatabase } from '../context/auth-context';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { db, storage } from '../lib/Firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { FiSave, FiX, FiPackage, FiCamera } from 'react-icons/fi';
@@ -19,6 +20,7 @@ interface ItemEditDrawerProps {
     isOpen: boolean;
     onClose: () => void;
     onSaveSuccess: (updatedItem: Partial<Item>) => void;
+    itemGroupRoute?: string;
 }
 
 // Brought over the formatImageUrl function from ItemAdd to ensure Drive/Dropbox links work seamlessly
@@ -76,7 +78,8 @@ const UNIT_OPTIONS = [
     { value: 'ton', label: 'Ton (1000)' },
 ];
 
-export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, onClose, onSaveSuccess }) => {
+export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, onClose, onSaveSuccess, itemGroupRoute = '/item-group' }) => {
+    const navigate = useNavigate();
     const cameraInputRef = useRef<HTMLInputElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null); // Added ref for the standard file input
     const dbOperations = useDatabase();
@@ -372,12 +375,39 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
             setModal({ message: "Please enter a valid quantity for the Packet.", type: State.ERROR });
             return;
         }
+        const newBarcode = String(formData.barcode || '').trim();
+        const oldBarcode = String((item as any).barcode || '').trim();
 
+        if (!newBarcode) {
+            setModal({ message: "Barcode is required and cannot be empty.", type: State.ERROR });
+            return;
+        }
         setIsSaving(true);
         setModal(null);
         setUploadProgress(null);
 
         try {
+            // --- DUPLICATE BARCODE CHECK ---
+            // Only check if the barcode was actually changed, to avoid unnecessary reads
+            if (newBarcode !== oldBarcode) {
+                const itemsRef = collection(db, 'companies', companyId, 'items');
+                const dupQuery = query(itemsRef, where('barcode', '==', newBarcode), limit(1));
+                const dupSnapshot = await getDocs(dupQuery);
+
+                if (!dupSnapshot.empty) {
+                    const existingDoc = dupSnapshot.docs[0];
+                    const existingData = existingDoc.data();
+                    const isSameItem = existingDoc.id === item.id;
+                    const isDeleted = existingData.isDeleted || existingData.deleted;
+
+                    if (!isSameItem && !isDeleted) {
+                        setModal({ message: `Barcode ${newBarcode} already exists on another item.`, type: State.ERROR });
+                        setIsSaving(false);
+                        return;
+                    }
+                }
+            }
+
             // Apply formatting logic in case user pasted a raw Drive/Dropbox link
             let newImageUrl = formData.imageUrl ? formatImageUrl(formData.imageUrl) : null;
 
@@ -885,6 +915,11 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                     value={selectedCategories[0] || ''}
                                     onChange={(e) => {
                                         const val = e.target.value;
+                                        if (val === 'ADD_NEW_GROUP') {
+                                            onClose();
+                                            navigate(itemGroupRoute);
+                                            return;
+                                        }
                                         setSelectedCategories(prev => {
                                             const rest = prev.slice(1);
                                             return val ? [val, ...rest] : rest;
@@ -894,6 +929,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                     className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                     <option value="">Uncategorized</option>
+                                    <option value="ADD_NEW_GROUP" className="font-semibold bg-gray-100">+ Add New Group</option>
                                     {itemGroups.map((group) => (
                                         <option key={group.id} value={group.id}>
                                             {group.name}
@@ -937,6 +973,11 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                             onChange={(e) => {
                                                 const val = e.target.value;
                                                 if (!val) return;
+                                                if (val === 'ADD_NEW_GROUP') {
+                                                    onClose();
+                                                    navigate(itemGroupRoute);
+                                                    return;
+                                                }
                                                 if (!selectedCategories.includes(val)) {
                                                     setSelectedCategories(prev => [...prev, val]);
                                                 }
@@ -946,6 +987,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                             disabled={isSaving}
                                         >
                                             <option value="">Add more</option>
+                                            <option value="ADD_NEW_GROUP" className="font-semibold bg-gray-100">+ Add New Group</option>
                                             {itemGroups
                                                 .filter(g => !selectedCategories.includes(g.id!))
                                                 .map(g => (

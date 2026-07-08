@@ -74,6 +74,41 @@ const useBusinessName = (userId?: string, companyId?: string) => {
 
     return { businessName, loading };
 };
+// AFTER
+const SAMPLE_CATALOGUE_DATA: CatalogueDashboardData = {
+    totalSalesAmount: 36500,
+    totalSalesCount: 84,
+    chartData: [
+        { date: '2026-07-01', sales: 4200, bills: 10 },
+        { date: '2026-07-02', sales: 5600, bills: 13 },
+        { date: '2026-07-03', sales: 3100, bills: 8 },
+        { date: '2026-07-04', sales: 6800, bills: 16 },
+        { date: '2026-07-05', sales: 4900, bills: 12 },
+        { date: '2026-07-06', sales: 7200, bills: 17 },
+        { date: '2026-07-07', sales: 4700, bills: 8 },
+    ],
+    topByQuantity: [
+        { id: 'sample-1', name: 'Sample Item A', totalQuantity: 42, totalAmount: 8400 },
+        { id: 'sample-2', name: 'Sample Item B', totalQuantity: 31, totalAmount: 6200 },
+        { id: 'sample-3', name: 'Sample Item C', totalQuantity: 24, totalAmount: 4800 },
+        { id: 'sample-4', name: 'Sample Item D', totalQuantity: 18, totalAmount: 3600 },
+        { id: 'sample-5', name: 'Sample Item E', totalQuantity: 12, totalAmount: 2400 },
+    ],
+    topByAmount: [
+        { id: 'sample-1', name: 'Sample Item A', totalQuantity: 42, totalAmount: 8400 },
+        { id: 'sample-2', name: 'Sample Item B', totalQuantity: 31, totalAmount: 6200 },
+        { id: 'sample-3', name: 'Sample Item C', totalQuantity: 24, totalAmount: 4800 },
+        { id: 'sample-4', name: 'Sample Item D', totalQuantity: 18, totalAmount: 3600 },
+        { id: 'sample-5', name: 'Sample Item E', totalQuantity: 12, totalAmount: 2400 },
+    ],
+    orderCounts: {
+        Upcoming: 6,
+        Confirmed: 10,
+        Packed: 5,
+        Completed: 63,
+    },
+};
+
 // Total tutorial steps
 const TOTAL_STEPS = 7;
 
@@ -85,6 +120,7 @@ const HomePageContent: React.FC = () => {
     const { businessName, loading: nameLoading } = useBusinessName(currentUser?.uid, currentUser?.companyId);
 
     const [tutorialStep, setTutorialStep] = useState(0);
+    const isTutorialActive = tutorialStep > 0 && tutorialStep <= TOTAL_STEPS;
 
     // ─── Refs for autoscroll ──────────────────────────────────────────────────
     const tutorialRefs = useRef<(HTMLElement | null)[]>([]);
@@ -136,6 +172,9 @@ const HomePageContent: React.FC = () => {
 
     const [data, setData] = useState<WithCacheMeta<CatalogueDashboardData> | null>(null);
     const [loading, setLoading] = useState(true);
+
+    const displayData = isTutorialActive ? SAMPLE_CATALOGUE_DATA : data;
+    const effectiveDataVisible = isTutorialActive ? true : isDataVisible;
 
     const fetchData = useCallback(async (forceRefresh = false) => {
         if (!currentUser?.companyId || !filters.startDate || !filters.endDate) {
@@ -395,7 +434,7 @@ const HomePageContent: React.FC = () => {
                         </div>
                     </TutorialStep>
                     {/* Full-page loader shown only on the very first load */}
-                    {loading && !data ? (
+                    {(loading && !data && !isTutorialActive) ? (
                         <div className="flex h-64 items-center justify-center text-slate-500">
                             <FiLoader className="animate-spin mr-2" /> Loading Dashboard...
                         </div>
@@ -407,9 +446,9 @@ const HomePageContent: React.FC = () => {
                                 <TutorialStep step={4} currentStep={tutorialStep} text="This shows your total completed sales for the selected period." onNext={() => next(5)} onSkip={skip}>
                                     <div ref={setTutorialRef(4)} className="h-full [&>*]:h-full">
                                         <CompletedSalesCard
-                                            isDataVisible={isDataVisible}
-                                            totalSalesAmount={data?.totalSalesAmount ?? 0}
-                                            totalSalesCount={data?.totalSalesCount ?? 0}
+                                            isDataVisible={effectiveDataVisible}
+                                            totalSalesAmount={displayData?.totalSalesAmount ?? 0}
+                                            totalSalesCount={displayData?.totalSalesCount ?? 0}
                                             loading={loading}
                                         />
                                     </div>
@@ -417,8 +456,8 @@ const HomePageContent: React.FC = () => {
                                 <TutorialStep step={5} currentStep={tutorialStep} text="Track your order journey from upcoming to completed." onNext={() => next(6)} onSkip={skip}>
                                     <div ref={setTutorialRef(5)} className="h-full [&>*]:h-full">
                                         <OrderTimeline
-                                            isDataVisible={isDataVisible}
-                                            orderCounts={data?.orderCounts ?? {}}
+                                            isDataVisible={effectiveDataVisible}
+                                            orderCounts={displayData?.orderCounts ?? {}}
                                             loading={loading}
                                         />
                                     </div>
@@ -431,10 +470,10 @@ const HomePageContent: React.FC = () => {
                                 <TutorialStep step={6} currentStep={tutorialStep} text="This bar chart shows your order sales performance over the selected date range." onNext={() => next(7)} onSkip={skip}>
                                     <div ref={setTutorialRef(6)} className="h-full [&>*]:h-full">
                                         <OrderBarChartReport
-                                            isDataVisible={isDataVisible}
-                                            chartData={data?.chartData ?? []}
-                                            totalSales={data?.totalSalesAmount ?? 0}
-                                            totalBills={data?.totalSalesCount ?? 0}
+                                            isDataVisible={effectiveDataVisible}
+                                            chartData={displayData?.chartData ?? []}
+                                            totalSales={displayData?.totalSalesAmount ?? 0}
+                                            totalBills={displayData?.totalSalesCount ?? 0}
                                             loading={loading}
                                         />
                                     </div>
@@ -459,9 +498,9 @@ const HomePageContent: React.FC = () => {
                                 >
                                     <div ref={setTutorialRef(7)} className="h-full [&>*]:h-full">
                                         <TopSoldItemsCard
-                                            isDataVisible={isDataVisible}
-                                            topByQuantity={data?.topByQuantity ?? []}
-                                            topByAmount={data?.topByAmount ?? []}
+                                            isDataVisible={effectiveDataVisible}
+                                            topByQuantity={displayData?.topByQuantity ?? []}
+                                            topByAmount={displayData?.topByAmount ?? []}
                                             loading={loading}
                                         />
                                     </div>

@@ -23,6 +23,7 @@ export interface PurchaseSettings {
     enableBarcodePrinting: boolean;
     copyVoucherAfterSaving: boolean;
     roundingOff: boolean;
+    enableDiscount2?: boolean;
     voucherName: string;
     voucherPrefix: string;
     currentVoucherNumber: number;
@@ -42,6 +43,7 @@ export const getDefaultPurchaseSettings = (companyId: string): PurchaseSettings 
     enableBarcodePrinting: true,
     copyVoucherAfterSaving: false,
     roundingOff: false,
+    enableDiscount2: false,
     voucherName: 'Purchase',
     voucherPrefix: 'PUR',
     currentVoucherNumber: 1,
@@ -410,6 +412,14 @@ const PurchaseSettingsPage: React.FC = () => {
                                 checked={settings.enableBarcodePrinting}
                                 onChange={(checked) => handleCheckboxChange('enableBarcodePrinting', checked)}
                                 tooltip="Show an option to print barcodes after saving a purchase."
+                            />
+                            <ToggleRow
+                                id="item-discount-2"
+                                label="Enable Second Discount (Disc2)"
+                                description="Show a second discount field, applied on top of Disc1."
+                                checked={settings.enableDiscount2 ?? false}
+                                onChange={(checked) => handleCheckboxChange('enableDiscount2', checked)}
+                                tooltip="Adds a compounding second discount field (Disc2%) in the purchase cart, on top of the existing item discount."
                             />
                         </SettingsCard>
 

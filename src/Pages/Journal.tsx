@@ -46,6 +46,30 @@ import { resolveCompanyLogoBase64 } from '../Catalogue/hooks/useCompanyLogo';
 // ─── Total tutorial steps for Journal ───────────────────────────────────────
 const TOTAL_STEPS = 6;
 
+// ─── Sample data shown ONLY while the tutorial is running, so the screen
+//     never looks empty behind the walkthrough tooltips ──────────────────
+const SAMPLE_INVOICES: Invoice[] = [
+  {
+    id: 'sample-1',
+    invoiceNumber: 'INV-1001',
+    amount: 2450,
+    time: '10:45 AM, 07/07',
+    status: 'Paid',
+    type: 'Credit',
+    partyName: 'Rahul Traders',
+    partyNumber: '9876543210',
+    createdAt: new Date(),
+    dueAmount: 0,
+    items: [
+      { id: 'i1', name: 'Sample Item A', quantity: 2, finalPrice: 1200, mrp: 700, unit: 'Pcs' },
+      { id: 'i2', name: 'Sample Item B', quantity: 1, finalPrice: 1250, mrp: 1250, unit: 'Pcs' },
+    ],
+    paymentMethods: { cash: 2450, due: 0 },
+    paymentHistory: [],
+    returnHistory: [],
+  },
+];
+
 interface InvoiceItem {
   id: string;
   name: string;
@@ -400,9 +424,20 @@ const Journal: React.FC = () => {
   const skip = () => {
     completeTutorial(currentUser, 'journalTutorialDone', setTutorialStep);
   };
+  // True only while the walkthrough is actively running
+  const isTutorialActive = tutorialStep > 0 && tutorialStep <= TOTAL_STEPS;
 
   useTutorial(currentUser, setTutorialStep, 'journalTutorialDone');
-
+// When the tutorial reaches the "invoice card" step, auto-expand a matching
+  // sample invoice so the person actually sees the detail view, not a blank card.
+  useEffect(() => {
+    if (isTutorialActive && tutorialStep === 6) {
+      const target = SAMPLE_INVOICES.find(
+        (inv) => inv.type === activeType && inv.status === activeTab
+      );
+      if (target) setExpandedInvoiceId(target.id);
+    }
+  }, [tutorialStep, isTutorialActive, activeType, activeTab]);
   // ─── Autoscroll: whenever tutorialStep changes, scroll that element into view
   useEffect(() => {
     if (tutorialStep === 0) return;
@@ -538,6 +573,14 @@ const Journal: React.FC = () => {
   }, []);
 
   const filteredInvoices = useMemo(() => {
+     // While the tutorial is active, always show the sample invoices,
+    // regardless of date filter / search / tab state, so every tutorial
+    // step has real-looking cards to point at.
+    if (isTutorialActive) {
+      return SAMPLE_INVOICES.filter(
+        (invoice) => invoice.type === activeType && invoice.status === activeTab
+      );
+    }
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
@@ -578,7 +621,7 @@ const Journal: React.FC = () => {
         });
       })
       .filter((invoice) => invoice.type === activeType && invoice.status === activeTab);
-  }, [invoices, activeType, activeTab, searchQuery, activeDateFilter, customStartDate, customEndDate]);
+  }, [invoices, activeType, activeTab, searchQuery, activeDateFilter, customStartDate, customEndDate, isTutorialActive]);
 
   const selectedPeriodText = useMemo(() => {
     const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
@@ -1649,7 +1692,13 @@ const Journal: React.FC = () => {
         );
       });
     }
-    return <p className="p-8 text-center text-base text-slate-500">No invoices found for this selection.</p>;
+    return (
+      <p className="p-8 text-center text-base text-slate-500">
+        {isTutorialActive
+          ? 'Sample data will appear here once you switch to a matching tab.'
+          : 'No invoices found for this selection.'}
+      </p>
+    );
   };
 
   return (
@@ -2046,8 +2095,31 @@ const Journal: React.FC = () => {
           step={5}
           currentStep={tutorialStep}
           text="Toggle between Paid and Unpaid invoices. Unpaid shows your outstanding dues."
+          onNext={() => next(6)}
+          onSkip={skip}
+        >
+          <CustomToggle>
+            <CustomToggleItem className="mr-2" onClick={() => setActiveTab('Paid')} data-state={activeTab === 'Paid' ? 'on' : 'off'}>Paid</CustomToggleItem>
+            <CustomToggleItem onClick={() => setActiveTab('Unpaid')} data-state={activeTab === 'Unpaid' ? 'on' : 'off'}>Unpaid</CustomToggleItem>
+          </CustomToggle>
+        </TutorialStep>
+
+        {activeTab === 'Unpaid' && (
+          <div className="mx-2 mt-2 p-2 bg-red-50 border border-red-200 rounded-sm flex justify-between items-center shadow-sm animate-in fade-in slide-in-from-top-2">
+            <div>
+              <p className="text-sm text-red-600 font-bold tracking-wider">
+                {activeType === 'Credit' ? 'Total Receivables : ' : 'Total Payables : '}
+                {totalUnpaidAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+              </p>
+            </div>
+          </div>
+        )}
+ <TutorialStep
+          step={6}
+          currentStep={tutorialStep}
+          text="Tap any invoice to see full details — items, discounts, tax, and payment breakdown."
           onNext={async () => {
-            // When the last step is completed, also persist in Firestore
+            // Last step — persist tutorial completion in Firestore
             if (!currentUser?.companyId) {
               setTutorialStep(0);
               window.dispatchEvent(new Event("journal_tutorial_done"));
@@ -2068,26 +2140,11 @@ const Journal: React.FC = () => {
           onSkip={skip}
           isLast
         >
-          <CustomToggle>
-            <CustomToggleItem className="mr-2" onClick={() => setActiveTab('Paid')} data-state={activeTab === 'Paid' ? 'on' : 'off'}>Paid</CustomToggleItem>
-            <CustomToggleItem onClick={() => setActiveTab('Unpaid')} data-state={activeTab === 'Unpaid' ? 'on' : 'off'}>Unpaid</CustomToggleItem>
-          </CustomToggle>
-        </TutorialStep>
-
-        {activeTab === 'Unpaid' && (
-          <div className="mx-2 mt-2 p-2 bg-red-50 border border-red-200 rounded-sm flex justify-between items-center shadow-sm animate-in fade-in slide-in-from-top-2">
-            <div>
-              <p className="text-sm text-red-600 font-bold tracking-wider">
-                {activeType === 'Credit' ? 'Total Receivables : ' : 'Total Payables : '}
-                {totalUnpaidAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
-              </p>
-            </div>
-          </div>
-        )}
-
-        <div className="flex-grow overflow-y-auto bg-slate-100 space-y-3 pt-2 pb-24">
+        <div
+            ref={setTutorialRef(6) as any} className="flex-grow overflow-y-auto bg-slate-100 space-y-3 pt-2 pb-24">
           {renderContent()}
         </div>
+        </TutorialStep>
       </div>
     </div>
   );

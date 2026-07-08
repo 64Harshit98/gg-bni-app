@@ -1265,6 +1265,7 @@ const MyShop: React.FC = () => {
                         await syncNotifyStock(companyId, selectedItemForEdit.id!, isNowInStock);
                     }
                 }}
+                itemGroupRoute={`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`}
             />
 
             {showUncategorizedWarning && (

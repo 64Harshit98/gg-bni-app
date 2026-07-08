@@ -90,7 +90,7 @@ const CatalogueSupport: React.FC = () => {
             isOpen={openSection === 'faq-1'}
             onClick={() => toggleSection('faq-1')}
           >
-            Go to the <Link to={ROUTES.SUBSCRIPTION_PAGE}><strong>Subscription</strong></Link> page from your account menu. Toggle between Monthly or Yearly billing, select the plan that suits you (Basic or Pro), and click "Choose". Your benefits will be active after your payment is verified.
+            Go to the <Link to={ROUTES.SUBSCRIPTION_PAGE}><strong>Subscription</strong></Link> page from your account menu. Select the category (POS, Catalogue, or Both), choose the plan that best fits your business, and tap "Choose". Your benefits will be active after your payment is verified.
           </AccordionItem>
 
           <AccordionItem

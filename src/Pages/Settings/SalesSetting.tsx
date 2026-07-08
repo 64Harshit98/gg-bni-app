@@ -46,6 +46,7 @@ export interface SalesSettings {
     roundingInterval?: number;
     hideMrp?: boolean;
     enableItemWiseDiscount?: boolean;
+    enableDiscount2?: boolean;
     lockDiscountEntry?: boolean;
     lockSalePriceEntry?: boolean;
     defaultDiscount?: number;
@@ -95,6 +96,7 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     cartInsertionOrder: 'top',
     hideMrp: false,
     enableItemWiseDiscount: true,
+    enableDiscount2: false,
     lockDiscountEntry: false,
     lockSalePriceEntry: false,
     defaultDiscount: 0,
@@ -692,6 +694,16 @@ const SalesSettingsPage: React.FC = () => {
                                         onChange={(checked) => handleCheckboxChange('enableItemWiseDiscount', checked)}
                                         tooltip="Allow discounts to be applied to individual cart items."
                                         icon={<Percent size={18} />}
+                                    />
+                                    <ToggleRow
+                                        id="item-discount-2"
+                                        label="Enable Second Discount (Disc2)"
+                                        description="Show a second discount field, applied on top of Disc1."
+                                        checked={settings.enableDiscount2 ?? false}
+                                        onChange={(checked) => handleCheckboxChange('enableDiscount2', checked)}
+                                        tooltip="Adds a compounding second discount field (Disc2%) in the cart, on top of the existing item discount."
+                                        icon={<Percent size={18} />}
+                                        disabled={!settings.enableItemWiseDiscount}
                                     />
                                     <ToggleRow
                                         id="lock-discount"

@@ -50,6 +50,7 @@ export interface CatalogueSalesSettings {
   cartInsertionOrder?: 'top' | 'bottom';
   requireApproval: boolean;
   enableItemWiseDiscount?: boolean;
+  enableDiscount2?: boolean;
   hideOutOfStock?: boolean;
   enableTransportDetails?: boolean;
 }
@@ -78,6 +79,7 @@ export const getDefaultCatalogueSalesSettings = (companyId: string): CatalogueSa
   cartInsertionOrder: 'top',
   requireApproval: false,
   enableItemWiseDiscount: false,
+  enableDiscount2: false,
   hideOutOfStock: false,
   enableTransportDetails: false,
 });
@@ -416,6 +418,16 @@ const CatalogueSalesSettings: React.FC = () => {
                 onChange={(checked) => handleCheckboxChange('enableItemWiseDiscount', checked)}
                 tooltip="Allow discounts to be applied to individual cart items."
                 icon={<Percent size={18} />}
+              />
+               <ToggleRow
+                id="item-discount-2"
+                label="Enable Second Discount (Disc2)"
+                description="Show a second discount field, applied on top of Disc1."
+                checked={settings.enableDiscount2 ?? false}
+                onChange={(checked) => handleCheckboxChange('enableDiscount2', checked)}
+                tooltip="Adds a compounding second discount field (Disc2%) in the order edit cart, on top of the existing item discount."
+                icon={<Percent size={18} />}
+                disabled={!settings.enableItemWiseDiscount}
               />
               {/* GST Scheme */}
               <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">

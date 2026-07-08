@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useLayoutEffect } from "react";
-
+import { createPortal } from "react-dom";
 interface Props {
   step: number;
   currentStep: number;
@@ -34,10 +34,21 @@ export const TutorialStep: React.FC<Props> = ({
 
   useLayoutEffect(() => {
     if (!isActive) return;
+    let frame: number;
+    let elapsed = 0;
+    const loop = () => {
+      updateRect();
+      elapsed += 16;
+      if (elapsed < 1000) {
+        frame = requestAnimationFrame(loop);
+      }
+    };
+    frame = requestAnimationFrame(loop);
     const timeout = setTimeout(() => updateRect(), 50);
     window.addEventListener("scroll", updateRect, true);
     window.addEventListener("resize", updateRect);
     return () => {
+      cancelAnimationFrame(frame);
       clearTimeout(timeout);
       window.removeEventListener("scroll", updateRect, true);
       window.removeEventListener("resize", updateRect);
@@ -77,11 +88,11 @@ export const TutorialStep: React.FC<Props> = ({
   };
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
 
-useEffect(() => {
-  const handleResize = () => setIsMobile(window.innerWidth < 768);
-  window.addEventListener("resize", handleResize);
-  return () => window.removeEventListener("resize", handleResize);
-}, []);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   const computedArrowAlign = isMobile ? mobileArrowAlign : arrowAlign;
 
@@ -91,11 +102,11 @@ useEffect(() => {
         {children}
       </div>
 
-      {isActive && rect && (
+      {isActive && rect && createPortal(
         <>
           {/* ✅ NEW: Invisible Shield to block ALL clicks from reaching the highlighted element */}
           <div
-            className="fixed inset-0 z-40 pointer-events-auto"
+            className="fixed inset-0 z-[9998] pointer-events-auto"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -104,7 +115,7 @@ useEffect(() => {
 
           {/* Overlay (Visually unchanged, but pointer events pass through to the shield) */}
           <div
-            className="fixed inset-0 z-40 pointer-events-none"
+            className="fixed inset-0 z-[9998] pointer-events-none"
             style={{
               background: "rgba(0,0,0,0.55)",
               clipPath: `polygon(
@@ -127,7 +138,7 @@ useEffect(() => {
             const { top, left, placeBelow } = getTooltipStyle(rect);
             return (
               <div
-                className="fixed z-50 bg-white rounded-sm shadow-xl p-4 w-64"
+                className="fixed z-[9999] bg-white rounded-sm shadow-xl p-4 w-64"
                 style={{ top, left }}
               >
                 {!placeBelow ? (
@@ -136,22 +147,23 @@ useEffect(() => {
                   <div className={`absolute -top-2 ${computedArrowAlign === 'left' ? 'left-6' : 'right-6'} w-4 h-4 bg-white border-l border-t border-gray-100 rotate-45`} />
                 )}
 
-            <p className="text-sm font-medium text-gray-800 mb-3">{text}</p>
-            <div className="flex justify-between items-center">
-              <button onClick={onSkip} className="text-xs text-gray-400 hover:text-gray-600">
-                Skip tour
-              </button>
-              <button
-                onClick={onNext}
-                className="text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-sm"
-              >
-                {isLast ? "Finish" : "Next →"}
-              </button>
-            </div>
+                <p className="text-sm font-medium text-gray-800 mb-3">{text}</p>
+                <div className="flex justify-between items-center">
+                  <button onClick={onSkip} className="text-xs text-gray-400 hover:text-gray-600">
+                    Skip tour
+                  </button>
+                  <button
+                    onClick={onNext}
+                    className="text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-sm"
+                  >
+                    {isLast ? "Finish" : "Next →"}
+                  </button>
+                </div>
               </div>
             );
           })()}
-        </>
+        </>,
+        document.body
       )}
     </>
   );

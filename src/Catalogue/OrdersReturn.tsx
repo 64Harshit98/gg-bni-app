@@ -1429,6 +1429,7 @@ const OrdersReturnPage: React.FC = () => {
                               enableRounding: false,
                               roundingInterval: 1,
                               enableItemWiseDiscount: catalogueSettings?.enableItemWiseDiscount ?? false,
+                              enableDiscount2: false,
                               lockDiscount: false,
                               lockPrice: false,
                               hideMrp: false
@@ -1466,6 +1467,7 @@ const OrdersReturnPage: React.FC = () => {
                         isOpen={isItemDrawerOpen}
                         onClose={handleCloseEditDrawer}
                         onSaveSuccess={handleSaveSuccess}
+                        itemGroupRoute={`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`}
                       />
                     )}
                   </>

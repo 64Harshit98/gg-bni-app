@@ -1112,6 +1112,7 @@ const [returnItemSearchQuery, setReturnItemSearchQuery] = useState<string>('');
                               enableRounding: false,
                               roundingInterval: 1,
                               enableItemWiseDiscount: true, // Enable discount editing
+                              enableDiscount2: false,         // Disable Discount 2
                               lockDiscount: false,          // Unlock Discount
                               lockPrice: false              // Unlock Price
                             }}
@@ -1267,6 +1268,8 @@ const [returnItemSearchQuery, setReturnItemSearchQuery] = useState<string>('');
         onTaxModeChange={setActiveTaxMode}
         isTaxToggleLocked={true} // Locked because it inherits the original invoice's tax mode
         totalMrp={totalMrp}
+
+        allowDueBilling={true}
 
         onPaymentComplete={saveReturnTransaction}
         initialPartyName={supplierName}

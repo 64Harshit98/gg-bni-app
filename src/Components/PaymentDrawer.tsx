@@ -181,6 +181,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const collectionName = isSale ? 'customers' : 'suppliers';
     const partyLabel = isSale ? 'Customer' : 'Supplier';
     const isCalculator = mode === 'calculator';
+    const isPurchaseReturnMode = mode === 'purchase' ;
 
     // --- STATE ---
     const [partyName, setPartyName] = useState('');
@@ -1018,7 +1019,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                         <div className="grid grid-cols-2 gap-6">
                             {transactiontypes.map((mode) => {
                                 const isDueField = mode.id.toLowerCase().includes('due') || mode.name.toLowerCase().includes('due');
-                                const isDisabled = isSale && isDueField && !allowDueBilling;
+                                const isDisabled = isPurchaseReturnMode ? false : (isSale && isDueField && !allowDueBilling);
 
                                 return (
                                     <FloatingLabelInput

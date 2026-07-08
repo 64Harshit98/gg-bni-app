@@ -26,6 +26,7 @@ interface GenericCartListProps<T extends CartItem> {
     enableRounding: boolean;
     roundingInterval: number;
     enableItemWiseDiscount: boolean;
+    enableDiscount2: boolean;
     lockDiscount: boolean;
     lockPrice: boolean;
     hideMrp?: boolean;
@@ -266,7 +267,7 @@ export const GenericCartList = <T extends CartItem>({
                       />
                     </div>
                   )}
-                  {settings.enableItemWiseDiscount && (
+                  {settings.enableItemWiseDiscount && settings.enableDiscount2 && (
                     <div className="relative w-13 flex-shrink-0">
                       <label className="absolute -top-1 left-2 bg-white px-1 text-[10px] text-gray-500 leading-none z-10">Disc2%</label>
                       <FloatingInput
@@ -429,7 +430,7 @@ export const GenericCartList = <T extends CartItem>({
                   </div>
                 )}
                 {/* Disc2% — floating label box */}
-                {settings.enableItemWiseDiscount && (
+                {settings.enableItemWiseDiscount && settings.enableDiscount2 && (
                   <div className="relative w-14 flex-shrink-0">
                     <label className="absolute -top-1 left-2 bg-white px-1 text-[10px] text-gray-500 leading-none z-10">Disc2%</label>
                     <FloatingInput

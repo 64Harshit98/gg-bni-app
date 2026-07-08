@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronLeft } from 'lucide-react'
 import { collection, doc, updateDoc, deleteDoc, onSnapshot, getDoc } from "firebase/firestore";
@@ -68,6 +68,11 @@ function RequestPage() {
     const [searchQuery, setSearchQuery] = useState('')
     const [isFilterOpen, setIsFilterOpen] = useState(false)
     const [completedFilter, setCompletedFilter] = useState<'all' | 'approved' | 'declined'>('all')
+    const [isDateFilterOpen, setIsDateFilterOpen] = useState(false)
+    const [activeDateFilter, setActiveDateFilter] = useState<string>('today')
+    const [customStartDate, setCustomStartDate] = useState<string>('')
+    const [customEndDate, setCustomEndDate] = useState<string>('')
+    const dateFilterRef = useRef<HTMLDivElement>(null)
     const [replyOpen, setReplyOpen] = useState<Record<string, boolean>>({})
     const [replyMessage, setReplyMessage] = useState<Record<string, string>>({})
     const [sendingId, setSendingId] = useState<string | null>(null)   // tracks which row is currently sending
@@ -126,6 +131,63 @@ function RequestPage() {
         hours = hours % 12 || 12; // 0 -> 12
 
         return `${day}/${month} , ${hours}:${minutes} ${ampm}`;
+    };
+
+    const dateFilters = [
+        { label: 'All', value: 'all' },
+        { label: 'Today', value: 'today' },
+        { label: 'Yesterday', value: 'yesterday' },
+        { label: 'Last 7 Days', value: 'last7' },
+        { label: 'Last 15 Days', value: 'last15' },
+        { label: 'Last 30 Days', value: 'last30' },
+        { label: 'Custom Range', value: 'custom' },
+    ];
+
+    const handleDateFilterSelect = (value: string) => {
+        setActiveDateFilter(value);
+        if (value !== 'custom') {
+            setIsDateFilterOpen(false);
+        }
+    };
+
+    const handleApplyCustomDate = () => {
+        if (customStartDate && customEndDate) {
+            setIsDateFilterOpen(false);
+        }
+    };
+
+    const matchesDateFilter = (timestamp: any) => {
+        if (activeDateFilter === 'all') return true;
+        if (!timestamp?.toDate) return false;
+
+        const itemDate: Date = timestamp.toDate();
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const daysAgo = (date: Date, days: number) =>
+            new Date(date.getFullYear(), date.getMonth(), date.getDate() - days);
+
+        switch (activeDateFilter) {
+            case 'today':
+                return itemDate >= today;
+            case 'yesterday':
+                return itemDate >= daysAgo(today, 1) && itemDate < today;
+            case 'last7':
+                return itemDate >= daysAgo(today, 7);
+            case 'last15':
+                return itemDate >= daysAgo(today, 15);
+            case 'last30':
+                return itemDate >= daysAgo(today, 30);
+            case 'custom': {
+                if (!customStartDate || !customEndDate) return true;
+                const start = new Date(customStartDate);
+                start.setHours(0, 0, 0, 0);
+                const end = new Date(customEndDate);
+                end.setHours(23, 59, 59, 999);
+                return itemDate >= start && itemDate <= end;
+            }
+            default:
+                return true;
+        }
     };
 
     const getStatusStyle = (status?: string) => {
@@ -204,6 +266,15 @@ function RequestPage() {
         }, 250); // animation duration
     };
 
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dateFilterRef.current && !dateFilterRef.current.contains(event.target as Node)) {
+                setIsDateFilterOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
     const filteredRequests = useMemo(() => {
         const queryText = searchQuery.toLowerCase();
         return requests
@@ -213,7 +284,7 @@ function RequestPage() {
                     (req.customerNumber || "").includes(queryText);
 
                 if (!matchesSearch) return false;
-
+                if (!matchesDateFilter(req.createdAt)) return false;
                 if (requestType === "notify") {
                     return req.type === "notify";
                 }
@@ -235,7 +306,7 @@ function RequestPage() {
                 return true;
             })
             .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-    }, [requests, searchQuery, requestType, approvalStatus, completedFilter]);
+    }, [requests, searchQuery, requestType, approvalStatus, completedFilter, activeDateFilter, customStartDate, customEndDate]);
 
     // Map phone → bulk quotes for fast lookup inside expanded cards
     const bulkByPhone = useMemo(() => {
@@ -270,13 +341,14 @@ function RequestPage() {
         return bulkQuotes.filter(bq => {
             const phone = (bq.customerNumber || '').replace(/\D/g, '');
             if (knownPhones.has(phone)) return false;
+             if (!matchesDateFilter(bq.createdAt)) return false; 
             if (!queryText) return true;
             return (
                 (bq.customerName || '').toLowerCase().includes(queryText) ||
                 (bq.customerNumber || '').includes(queryText)
             );
         });
-    }, [bulkQuotes, requests, searchQuery]);
+    }, [bulkQuotes, requests, searchQuery, activeDateFilter, customStartDate, customEndDate]);
     const unmatchedPersonalizations = useMemo(() => {
         const knownPhones = new Set(
             requests
@@ -287,13 +359,14 @@ function RequestPage() {
         return personalizationRequests.filter(pr => {
             const phone = (pr.customerNumber || '').replace(/\D/g, '');
             if (knownPhones.has(phone)) return false;
+            if (!matchesDateFilter(pr.createdAt)) return false;
             if (!queryText) return true;
             return (
                 (pr.customerName || '').toLowerCase().includes(queryText) ||
                 (pr.customerNumber || '').includes(queryText)
             );
         });
-    }, [personalizationRequests, requests, searchQuery]);
+    }, [personalizationRequests, requests, searchQuery, activeDateFilter, customStartDate, customEndDate]);
 
     // Merged pre-order cards: group unmatched bulk + query by phone, one card per customer
     const mergedPreOrderCards = useMemo(() => {
@@ -650,13 +723,65 @@ function RequestPage() {
                         </h1>
                     </div>
 
-                    {/* RIGHT SEARCH ICON */}
-                    <button
-                        onClick={() => setIsSearchOpen(prev => !prev)}
-                        className="p-2 rounded-sm hover:bg-gray-100 transition-colors"
-                    >
-                        <Search size={18} className="text-[#F97316]" />
-                    </button>
+                    {/* RIGHT SIDE — SEARCH + DATE FILTER */}
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => setIsSearchOpen(prev => !prev)}
+                            className="p-2 rounded-sm hover:bg-gray-100 transition-colors"
+                        >
+                            <Search size={18} className="text-[#F97316]" />
+                        </button>
+
+                        <div ref={dateFilterRef} className="relative">
+                            <button
+                                onClick={() => setIsDateFilterOpen(prev => !prev)}
+                                className="p-2 rounded-sm hover:bg-gray-100 transition-colors"
+                                title="Filter by date"
+                            >
+                                <Filter size={18} className="text-[#F97316]" />
+                            </button>
+
+                            {isDateFilterOpen && (
+                                <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-sm shadow-md z-50 p-3">
+                                    <ul className="py-1 border-b mb-2">
+                                        {dateFilters.map(filter => (
+                                            <li key={filter.value}>
+                                                <button
+                                                    onClick={() => handleDateFilterSelect(filter.value)}
+                                                    className={`w-full text-left px-3 py-2 text-xs rounded-sm hover:bg-gray-50 ${activeDateFilter === filter.value ? 'bg-orange-50 text-[#F97316] font-bold' : 'text-gray-700'
+                                                        }`}
+                                                >
+                                                    {filter.label}
+                                                </button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                    {activeDateFilter === 'custom' && (
+                                        <div className="space-y-2 mt-2">
+                                            <input
+                                                type="date"
+                                                value={customStartDate}
+                                                onChange={(e) => setCustomStartDate(e.target.value)}
+                                                className="text-xs p-1.5 border border-gray-300 rounded-sm w-full outline-none focus:border-[#F97316]"
+                                            />
+                                            <input
+                                                type="date"
+                                                value={customEndDate}
+                                                onChange={(e) => setCustomEndDate(e.target.value)}
+                                                className="text-xs p-1.5 border border-gray-300 rounded-sm w-full outline-none focus:border-[#F97316]"
+                                            />
+                                            <button
+                                                onClick={handleApplyCustomDate}
+                                                className="w-full bg-[#F97316] text-white py-1.5 rounded-sm text-xs font-bold mt-2 hover:opacity-90 transition-opacity"
+                                            >
+                                                Apply Filter
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
             </header>
 

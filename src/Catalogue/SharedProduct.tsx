@@ -1554,7 +1554,7 @@ const SharedProduct: React.FC = () => {
                                             }
                                             setBulkQuoteItem(item);
                                         }}
-                                        className="absolute bottom-1.5 left-1.5 z-10 bg-[#F97316] text-white text-[8px] font-black uppercase tracking-tight px-1.5 py-1 rounded-sm shadow-md hover:bg-[#F97316] transition-colors"
+                                        className="absolute bottom-1.5 right-1.5 z-10 bg-[#F97316] text-white text-[8px] font-black uppercase tracking-tight px-1.5 py-1 rounded-sm shadow-md hover:bg-[#F97316] transition-colors"
                                         title="Request Bulk Price"
                                     >
                                         Bulk

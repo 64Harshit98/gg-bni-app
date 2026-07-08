@@ -507,25 +507,41 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     if (finalY > pageHeight - 80) { doc.addPage(); finalY = margin; }
     const vBoxX = endX - 25;
 
-    const addRow = (label: string, amt: number, h: number) => {
-      doc.rect(startX, finalY, contentWidth, h); doc.line(vBoxX, finalY, vBoxX, finalY + h);
-      doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+    const addRow = (label: string, amt: number, h: number, noTopBorder: boolean = false, noBottomBorder: boolean = false) => {
+      doc.line(startX, finalY, startX, finalY + h);                          // left
+      doc.line(endX, finalY, endX, finalY + h);                              // right
+      if (!noTopBorder) doc.line(startX, finalY, endX, finalY);              // top
+      if (!noBottomBorder) doc.line(startX, finalY + h, endX, finalY + h);   // bottom
+      doc.line(vBoxX, finalY, vBoxX, finalY + h);
+      doc.setFontSize(9); doc.setFont('helvetica', 'bold');
       doc.text(label, vBoxX - 2, finalY + 4, { align: 'right' });
       doc.text(amt.toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + 4, { align: 'right' });
       finalY += h;
     };
-
+    let hasExpensesAbove = false;
 
     if (data.expenses && data.expenses.length > 0) {
-      doc.rect(startX, finalY, contentWidth, 6 * data.expenses.length); doc.line(vBoxX, finalY, vBoxX, finalY + (6 * data.expenses.length));
+      hasExpensesAbove = true;
+      const expH = 6 * data.expenses.length;
+      doc.line(startX, finalY, startX, finalY + expH);   // left
+      doc.line(endX, finalY, endX, finalY + expH);       // right
+      doc.line(startX, finalY, endX, finalY);            // top only (no bottom border)
+      doc.line(vBoxX, finalY, vBoxX, finalY + expH);
+      doc.setFontSize(9); doc.setFont('helvetica', 'bold');
       data.expenses.forEach(exp => {
         doc.text(`Add : ${exp.name} (+)`, vBoxX - 2, finalY + 4, { align: 'right' });
         doc.text(exp.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + 4, { align: 'right' });
         finalY += 6;
       });
     } else if (data.extraExpenseName && data.extraExpenseAmount) {
+      hasExpensesAbove = true;
       const names = data.extraExpenseName.split(',').map(n => n.trim()).filter(Boolean);
-      doc.rect(startX, finalY, contentWidth, 6 * names.length); doc.line(vBoxX, finalY, vBoxX, finalY + (6 * names.length));
+      const expH = 6 * names.length;
+      doc.line(startX, finalY, startX, finalY + expH);   // left
+      doc.line(endX, finalY, endX, finalY + expH);       // right
+      doc.line(startX, finalY, endX, finalY);            // top only (no bottom border)
+      doc.line(vBoxX, finalY, vBoxX, finalY + expH);
+      doc.setFontSize(9); doc.setFont('helvetica', 'bold');
       names.forEach((name, idx) => {
         doc.text(`Add : ${name} (+)`, vBoxX - 2, finalY + 4, { align: 'right' });
         if (idx === names.length - 1) doc.text(data.extraExpenseAmount!.toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + 4, { align: 'right' });
@@ -533,26 +549,29 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       });
     }
 
-    addRow('Add : Rounded off (+)', roundOffAmt, 6);
+    addRow('Add : Rounded off (+)', roundOffAmt, 6, hasExpensesAbove);
 
     // --- GRAND TOTAL (True Invoice Total) ---
     doc.setFontSize(9); doc.setFont('helvetica', 'bold');
     doc.rect(startX, finalY, contentWidth, 8);
     doc.text('Grand Total', pageWidth / 6, finalY + 5.5);
     doc.text(`${totalQty.toFixed(3)} Unit`, pageWidth / 3, finalY + 5.5);
-    doc.text('Rs.', endX - 35, finalY + 5.5);
-    doc.rect(endX - 30, finalY, 30, 8);
+    doc.text('Rs.', vBoxX - 7, finalY + 5.5);
+    doc.rect(vBoxX, finalY, endX - vBoxX, 8);
     doc.text(invoiceTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + 5.5, { align: 'right' });
     finalY += 8;
 
     // --- ADVANCE & SETTLED AMOUNT ---
     if (advance > 0 && !isEstimate) {
-      addRow('Amount Paid (-)', advance, 6);
+      addRow('Amount Paid (-)', advance, 6, false, true); // no bottom border on this row
 
       doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-      doc.rect(startX, finalY, contentWidth, 6);
+      doc.line(startX, finalY, startX, finalY + 6);          // outer box left
+      doc.line(endX, finalY, endX, finalY + 6);              // outer box right
+      doc.line(startX, finalY + 6, endX, finalY + 6);        // outer box bottom (no top border)
       doc.text('Balance Due', vBoxX - 6, finalY + 5.5, { align: 'right' });
-      doc.rect(endX - 30, finalY, 30, 6);
+      doc.line(vBoxX, finalY, vBoxX, finalY + 6);            // amount box left — now matches expense/rounding off vBoxX
+      doc.line(vBoxX, finalY + 6, endX, finalY + 6);         // amount box bottom (no top border)
       doc.text(settledAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + 5.5, { align: 'right' });
       finalY += 8;
     }
@@ -611,7 +630,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     // Amount in Words & Due
     // Fix: Convert the actual invoice total to words
     doc.rect(startX, finalY, contentWidth, wordsH);
-    doc.setFontSize(8); doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9); doc.setFont('helvetica', 'bold');
     doc.text(`Rs. ${convertNumberToWords(invoiceTotal)}`, startX + 2, finalY + (hasPrevOrDue ? 7 : 5.5));
     if (hasPrevOrDue) {
       const divX = startX + leftColW;
@@ -627,8 +646,8 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       doc.rect(startX, finalY, contentWidth, 10);
       doc.setFont('helvetica', 'bold'); doc.text('BANK DETAIL :', startX + 2, finalY + 4);
       doc.line(startX + 2, finalY + 4.5, startX + 2 + doc.getTextWidth('BANK DETAIL :'), finalY + 4.5);
-      doc.text(`Bank name : ${data.bankDetails?.bankName || ''} , A/C NO : ${data.bankDetails?.accountNumber || ''}`, startX + 35, finalY + 4);
-      doc.text(`IFSC Code : ${data.bankDetails?.ifsc || data.bankDetails?.ifscCode || ''}`, startX + 35, finalY + 8);
+      doc.text(`A/C Holder Name : ${data.bankDetails?.accountName || ''}   IFSC Code : ${data.bankDetails?.ifsc || data.bankDetails?.ifscCode || ''}`, startX + 35, finalY + 4);
+      doc.text(`Bank name : ${data.bankDetails?.bankName || ''} , A/C NO : ${data.bankDetails?.accountNumber || ''}`, startX + 35, finalY + 8);
       finalY += 10;
     }
 

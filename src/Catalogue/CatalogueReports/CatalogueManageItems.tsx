@@ -12,6 +12,7 @@ import { State } from '../../enums';
 
 import type { Item } from '../../constants/models';
 import BackButton from '../../Components/BackButton';
+import { ROUTES } from '../../constants/indesx';
 
 const UNASSIGNED_GROUP_NAME = 'Uncategorized';
 
@@ -350,6 +351,7 @@ const ManageItems: React.FC = () => {
         isOpen={isEditDrawerOpen}
         onClose={closeEditDrawer}
         onSaveSuccess={() => { }}
+        itemGroupRoute={`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`}
       />
 
       {/* -------------------- DELETE CONFIRM MODAL -------------------- */}

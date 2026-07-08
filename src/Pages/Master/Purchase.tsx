@@ -2068,6 +2068,7 @@ const PurchasePage: React.FC = () => {
                   enableRounding: false,
                   roundingInterval: 0,
                   enableItemWiseDiscount: true,
+                  enableDiscount2: purchaseSettings?.enableDiscount2 ?? false,
                   lockDiscount: false,
                   lockPrice: false
                 }}

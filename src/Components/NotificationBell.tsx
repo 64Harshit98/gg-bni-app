@@ -54,10 +54,12 @@ const NotificationBell: React.FC = () => {
 
                 if (n.status === "OVERDUE") {
                   bgColor = "bg-red-50";
-                } else if (n.status === "UPCOMING") {
+                } else if (n.status === "UPCOMING" || n.status === "Upcoming") {
                   bgColor = "bg-yellow-50";
                 } else if (n.status === "PAID") {
                   bgColor = "bg-green-50";
+                } else if (n.status === "Confirmed") {
+                  bgColor = "bg-blue-50";
                 }
 
                 return (

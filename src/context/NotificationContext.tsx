@@ -126,7 +126,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                   invoiceNumber: orderData.orderId,
                   partyName: partyName,
                   amount: amount,
-                  status: 'UPCOMING',
+                  // ✅ CHANGED: use the order's actual status instead of hardcoding it,
+                  // so we can show a different message for Upcoming vs Confirmed orders
+                  status: orderData.status || 'Upcoming',
                   createdAt: exactOrderDate,
 
                   // ✅ ADD THIS: Pass the unique Firestore document ID
@@ -158,7 +160,14 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       let message = "";
 
       if (detail.type === "NEW_ORDER") {
-        message = `🔔 New order from ${detail.partyName || "Customer"} (Order ${detail.invoiceNumber || "-"}) — Amount ₹${detail.amount || 0}`;
+        if (detail.status === "Confirmed") {
+          message = `✅ Order confirmed for ${detail.partyName || "Customer"} (${detail.invoiceNumber || "-"}) — Amount ₹${detail.amount || 0}`;
+        } else {
+          // Upcoming/draft orders don't have a real order number yet —
+          // invoiceNumber here is actually "DRAFT-<phoneNumber>", so strip the prefix
+          const phoneNumber = detail.invoiceNumber?.replace(/^DRAFT-/, "") || "-";
+          message = `🔔 New upcoming order from ${detail.partyName || "Customer"} (${phoneNumber}) — Amount ₹${detail.amount || 0}`;
+        }
       } else if (detail.type === "PAYMENT_RECEIVED") {
         message = `✅ Payment received from ${detail.partyName || "Customer"} (Order ${detail.invoiceNumber || "-"}) — Amount ₹${detail.amount || 0}`;
       } else if (detail.status === "OVERDUE") {

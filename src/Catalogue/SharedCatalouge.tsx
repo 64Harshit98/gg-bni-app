@@ -23,7 +23,7 @@ const CollageImage: React.FC<{ src: string; alt: string }> = ({ src, alt }) => {
     if (isBroken) {
         return (
             <div className="w-full h-full flex items-center justify-center bg-gray-50">
-                <FiPackage className="h-5 w-5 text-gray-200" />
+                <FiPackage className="h-10 w-10 text-gray-200" />
             </div>
         );
     }

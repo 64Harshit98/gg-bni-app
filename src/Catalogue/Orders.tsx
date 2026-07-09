@@ -3121,7 +3121,7 @@ const OrdersPage: React.FC = () => {
                                                             // const returnedQty = getReturnedQuantityForItem(item, Order);
 
                                                             // Collect per-return-event entries for this item
-                                                            const returnedEntries: { qty: number; modeOfReturn: string; returnedAt: any }[] = [];
+                                                            const returnedEntries: { qty: number; modeOfReturn: string; returnedAt: any; unitPrice: number }[] = [];
                                                             (Order.returnHistory || []).forEach((h: any) => {
                                                                 (h.returnedItems || []).forEach((r: any) => {
                                                                     const matches =
@@ -3134,6 +3134,7 @@ const OrdersPage: React.FC = () => {
                                                                             qty: Number(r.quantity || 0),
                                                                             modeOfReturn: h.modeOfReturn || '',
                                                                             returnedAt: h.returnedAt,
+                                                                            unitPrice: Number(r.effectiveUnitPrice ?? r.customPrice ?? r.salesPrice ?? r.mrp ?? 0),
                                                                         });
                                                                     }
                                                                 });
@@ -3178,115 +3179,115 @@ const OrdersPage: React.FC = () => {
                                                                         </div>
                                                                     )}
 
-                                                                    {/* RETURNED ENTRIES — one crossed-out row per return event */}
-                                                                    {returnedEntries.map((entry, rIdx) => (
-                                                                        entry.qty > 0 && (
-                                                                            <div key={rIdx} className="flex justify-between items-start mt-1 -mb-1">
-                                                                                <div className="flex-1">
-                                                                                    <p className="text-[11px] font-extrabold leading-tight mb-1"
-                                                                                        style={{ textDecoration: 'line-through', color: '#94a3b8' }}>
-                                                                                        {item.name}
-                                                                                        <span className="ml-1 text-[9px] font-semibold text-gray-400">
-                                                                                            {item.unit || "pcs"}
+                                                                {/* RETURNED ENTRIES — one crossed-out row per return event */}
+                                                                {returnedEntries.map((entry, rIdx) => (
+                                                                    entry.qty > 0 && (
+                                                                        <div key={rIdx} className="flex justify-between items-start mt-1 -mb-1">
+                                                                            <div className="flex-1">
+                                                                                <p className="text-[11px] font-extrabold leading-tight mb-1"
+                                                                                    style={{ textDecoration: 'line-through', color: '#94a3b8' }}>
+                                                                                    {item.name}
+                                                                                    <span className="ml-1 text-[9px] font-semibold text-gray-400">
+                                                                                        {item.unit || "pcs"}
+                                                                                    </span>
+                                                                                </p>
+                                                                                <div className="flex flex-wrap items-center gap-1.5 mt-0.5 mb-1">
+                                                                                    {entry.modeOfReturn && (
+                                                                                        <span className={`text-[7px] uppercase font-bold px-1.5 py-0.5 rounded border ${entry.modeOfReturn.toUpperCase() === 'EXCHANGE'
+                                                                                            ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                                                                            : entry.modeOfReturn.toUpperCase().includes('CASH') || entry.modeOfReturn.toUpperCase().includes('REFUND')
+                                                                                                ? 'bg-green-50 text-green-700 border-green-200'
+                                                                                                : 'bg-orange-50 text-[#F97316] border-orange-200'
+                                                                                            }`}>
+                                                                                            {entry.modeOfReturn}
                                                                                         </span>
-                                                                                    </p>
-                                                                                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5 mb-1">
-                                                                                        {entry.modeOfReturn && (
-                                                                                            <span className={`text-[7px] uppercase font-bold px-1.5 py-0.5 rounded border ${entry.modeOfReturn.toUpperCase() === 'EXCHANGE'
+                                                                                    )}
+                                                                                    {entry.returnedAt && (
+                                                                                        <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wide">
+                                                                                            {new Date(
+                                                                                                entry.returnedAt?.toDate
+                                                                                                    ? entry.returnedAt.toDate()
+                                                                                                    : entry.returnedAt
+                                                                                            ).toLocaleDateString('en-GB', {
+                                                                                                day: '2-digit', month: 'short', year: '2-digit'
+                                                                                            })}
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="text-right ml-4">
+                                                                                <p className="text-[13px] font-black" style={{ color: '#94a3b8', textDecoration: 'line-through' }}>
+                                                                                    ₹{formatAmount(entry.unitPrice * entry.qty)}
+                                                                                </p>
+                                                                                <p className="text-[9px] font-bold text-slate-400">
+                                                                                    Qty: {entry.qty}
+                                                                                </p>
+                                                                            </div>
+                                                                        </div>
+                                                                    )
+                                                                ))}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                    {/* Show fully removed returned items */}
+                                                    {Order.returnHistory?.flatMap((h: any) => h.returnedItems || [])
+                                                        .filter((r: any) => !Order.items?.some(item =>
+                                                            String(item.itemId) === String(r.originalItemId) ||
+                                                            String(item.id) === String(r.originalItemId)
+                                                        ))
+                                                        .map((r: any, idx: number) => (
+                                                            <div key={`removed-${idx}`} className="p-2">
+                                                                <div className="flex justify-between items-start -mb-1">
+                                                                    <div className="flex-1">
+                                                                        <p className="text-[11px] font-extrabold leading-tight mb-1"
+                                                                            style={{ textDecoration: 'line-through', color: '#94a3b8' }}>
+                                                                            {r.name}
+                                                                            <span className="ml-1 text-[9px] font-semibold text-gray-400">
+                                                                                {r.unit || "pcs"}
+                                                                            </span>
+                                                                        </p>
+                                                                        {/* Return mode badge + date */}
+                                                                        <div className="flex flex-wrap items-center gap-1.5 mt-1 mb-1">
+                                                                            {(() => {
+                                                                                const matchedHistory = Order.returnHistory?.find((h: any) =>
+                                                                                    h.returnedItems?.some((ri: any) =>
+                                                                                        String(ri.originalItemId) === String(r.originalItemId) ||
+                                                                                        String(ri.id) === String(r.originalItemId)
+                                                                                    )
+                                                                                );
+                                                                                return (
+                                                                                    <>
+                                                                                        {matchedHistory?.modeOfReturn && (
+                                                                                            <span className={`text-[7px] uppercase font-bold px-1.5 py-0.5 rounded border ${matchedHistory.modeOfReturn === 'EXCHANGE'
                                                                                                 ? 'bg-purple-50 text-purple-700 border-purple-200'
-                                                                                                : entry.modeOfReturn.toUpperCase().includes('CASH') || entry.modeOfReturn.toUpperCase().includes('REFUND')
+                                                                                                : matchedHistory.modeOfReturn === 'CASH REFUND'
                                                                                                     ? 'bg-green-50 text-green-700 border-green-200'
                                                                                                     : 'bg-orange-50 text-[#F97316] border-orange-200'
                                                                                                 }`}>
-                                                                                                {entry.modeOfReturn}
+                                                                                                {matchedHistory.modeOfReturn}
                                                                                             </span>
                                                                                         )}
-                                                                                        {entry.returnedAt && (
+                                                                                        {matchedHistory?.returnedAt && (
                                                                                             <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wide">
                                                                                                 {new Date(
-                                                                                                    entry.returnedAt?.toDate
-                                                                                                        ? entry.returnedAt.toDate()
-                                                                                                        : entry.returnedAt
+                                                                                                    (matchedHistory.returnedAt as any)?.toDate
+                                                                                                        ? (matchedHistory.returnedAt as any).toDate()
+                                                                                                        : matchedHistory.returnedAt
                                                                                                 ).toLocaleDateString('en-GB', {
                                                                                                     day: '2-digit', month: 'short', year: '2-digit'
                                                                                                 })}
                                                                                             </span>
                                                                                         )}
-                                                                                    </div>
-                                                                                </div>
-                                                                                <div className="text-right ml-4">
-                                                                                    <p className="text-[13px] font-black" style={{ color: '#94a3b8', textDecoration: 'line-through' }}>
-                                                                                        ₹{formatAmount(unitPrice * entry.qty)}
-                                                                                    </p>
-                                                                                    <p className="text-[9px] font-bold text-slate-400">
-                                                                                        Qty: {entry.qty}
-                                                                                    </p>
-                                                                                </div>
-                                                                            </div>
-                                                                        )
-                                                                    ))}
-                                                                </div>
-                                                            );
-                                                        })}
-                                                        {/* Show fully removed returned items */}
-                                                        {Order.returnHistory?.flatMap((h: any) => h.returnedItems || [])
-                                                            .filter((r: any) => !Order.items?.some(item =>
-                                                                String(item.itemId) === String(r.originalItemId) ||
-                                                                String(item.id) === String(r.originalItemId)
-                                                            ))
-                                                            .map((r: any, idx: number) => (
-                                                                <div key={`removed-${idx}`} className="p-2">
-                                                                    <div className="flex justify-between items-start -mb-1">
-                                                                        <div className="flex-1">
-                                                                            <p className="text-[11px] font-extrabold leading-tight mb-1"
-                                                                                style={{ textDecoration: 'line-through', color: '#94a3b8' }}>
-                                                                                {r.name}
-                                                                                <span className="ml-1 text-[9px] font-semibold text-gray-400">
-                                                                                    {r.unit || "pcs"}
-                                                                                </span>
+                                                                                    </>
+                                                                                );
+                                                                            })()}
+                                                                        </div>
+                                                                        {r.note && (
+                                                                            <p className="text-[9px] leading-tight flex items-baseline gap-1.5 mt-1 opacity-80">
+                                                                                <span className="font-black uppercase tracking-widest">Note:</span>
+                                                                                <span className="italic text-slate-400">{r.note}</span>
                                                                             </p>
-                                                                            {/* Return mode badge + date */}
-                                                                            <div className="flex flex-wrap items-center gap-1.5 mt-1 mb-1">
-                                                                                {(() => {
-                                                                                    const matchedHistory = Order.returnHistory?.find((h: any) =>
-                                                                                        h.returnedItems?.some((ri: any) =>
-                                                                                            String(ri.originalItemId) === String(r.originalItemId) ||
-                                                                                            String(ri.id) === String(r.originalItemId)
-                                                                                        )
-                                                                                    );
-                                                                                    return (
-                                                                                        <>
-                                                                                            {matchedHistory?.modeOfReturn && (
-                                                                                                <span className={`text-[7px] uppercase font-bold px-1.5 py-0.5 rounded border ${matchedHistory.modeOfReturn === 'EXCHANGE'
-                                                                                                    ? 'bg-purple-50 text-purple-700 border-purple-200'
-                                                                                                    : matchedHistory.modeOfReturn === 'CASH REFUND'
-                                                                                                        ? 'bg-green-50 text-green-700 border-green-200'
-                                                                                                        : 'bg-orange-50 text-[#F97316] border-orange-200'
-                                                                                                    }`}>
-                                                                                                    {matchedHistory.modeOfReturn}
-                                                                                                </span>
-                                                                                            )}
-                                                                                            {matchedHistory?.returnedAt && (
-                                                                                                <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wide">
-                                                                                                    {new Date(
-                                                                                                        (matchedHistory.returnedAt as any)?.toDate
-                                                                                                            ? (matchedHistory.returnedAt as any).toDate()
-                                                                                                            : matchedHistory.returnedAt
-                                                                                                    ).toLocaleDateString('en-GB', {
-                                                                                                        day: '2-digit', month: 'short', year: '2-digit'
-                                                                                                    })}
-                                                                                                </span>
-                                                                                            )}
-                                                                                        </>
-                                                                                    );
-                                                                                })()}
-                                                                            </div>
-                                                                            {r.note && (
-                                                                                <p className="text-[9px] leading-tight flex items-baseline gap-1.5 mt-1 opacity-80">
-                                                                                    <span className="font-black uppercase tracking-widest">Note:</span>
-                                                                                    <span className="italic text-slate-400">{r.note}</span>
-                                                                                </p>
-                                                                            )}
+                                                                        )}
 
                                                                         </div>
                                                                         <div className="text-right ml-4">

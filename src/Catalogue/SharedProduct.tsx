@@ -253,7 +253,7 @@ const SharedProduct: React.FC = () => {
         });
         return () => unsubscribe();
     }, [effectiveCompanyId]);
-    const cartIconRef = useRef<HTMLButtonElement | null>(null);
+    const cartIconRef = useRef<HTMLDivElement | null>(null);
     const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -778,13 +778,13 @@ const SharedProduct: React.FC = () => {
         }
     };
 
-    const animateToCart = (img: HTMLImageElement) => {
+    const animateToCart = (sourceEl: HTMLElement) => {
         if (!cartIconRef.current) return;
 
         const cartRect = cartIconRef.current.getBoundingClientRect();
-        const imgRect = img.getBoundingClientRect();
+        const imgRect = sourceEl.getBoundingClientRect();
 
-        const clone = img.cloneNode(true) as HTMLImageElement;
+        const clone = sourceEl.cloneNode(true) as HTMLElement;
 
         clone.style.position = "fixed";
         clone.style.left = `${imgRect.left}px`;
@@ -1388,7 +1388,6 @@ const SharedProduct: React.FC = () => {
                             <span className="text-[8px] leading-none">Query</span>
                         </button>
                         <button
-                            ref={cartIconRef}
                             onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation(); // Forces the browser to ONLY click this button
@@ -1679,7 +1678,9 @@ const SharedProduct: React.FC = () => {
                                                     if (disableAddToCart) return;
                                                     const card = e.currentTarget.closest(".group");
                                                     const img = card?.querySelector("img") as HTMLImageElement;
-                                                    if (img) animateToCart(img);
+                                                    const fallback = card?.querySelector(".aspect-square") as HTMLElement;
+                                                    const sourceEl = img || fallback;
+                                                    if (sourceEl) animateToCart(sourceEl);
                                                     addToCart(item);
                                                 }}
                                                 className={`w-full py-2 rounded-xs text-[12px] font-black uppercase tracking-widest mt-1 shadow-sm transition-all flex items-center justify-center gap-2 ${disableAddToCart
@@ -1709,6 +1710,7 @@ const SharedProduct: React.FC = () => {
 
             {/* --- STICKY BOTTOM CART --- */}
             <div
+                ref={cartIconRef}
                 onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation(); // Forces the browser to ONLY click this button

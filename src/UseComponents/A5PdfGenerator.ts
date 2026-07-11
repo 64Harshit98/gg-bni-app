@@ -158,7 +158,7 @@ export const generateA5Invoice = async (
 
         const sectionStartY = cursorY;
 
-        const sectionHeight = 24;
+        const sectionHeight = 26;
         const totalWidth = pageWidth - 10;
         const boxWidth = totalWidth / 3;
 
@@ -190,19 +190,24 @@ export const generateA5Invoice = async (
         doc.text(
             `Invoice No : ${data.invoice.number || ""}`,
             invoiceX,
-            sectionStartY + 10
+            sectionStartY + 8
         );
 
         doc.text(
             `Date : ${data.invoice.date || ""}`,
             invoiceX,
-            sectionStartY + 15
+            sectionStartY + 11
+        );
+
+         const placeLines = doc.splitTextToSize(
+            `Place : ${data.shipTo?.address || ""}`,
+            boxWidth - 6
         );
 
         doc.text(
-            `Place : ${data.shipTo?.address || ""}`,
+            placeLines,
             invoiceX,
-            sectionStartY + 20
+            sectionStartY + 14
         );
 
 

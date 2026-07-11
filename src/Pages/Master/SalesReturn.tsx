@@ -623,24 +623,35 @@ const SalesReturnPage: React.FC = () => {
     });
 
     let discountDeducted = 0;
+
     if (selectedSale) {
       const originalInvoiceTotal = selectedSale.items.reduce((sum, item: any) => sum + (Number(item.finalPrice || 0)), 0);
       const originalManualDiscount = Number(selectedSale.manualDiscount) || 0;
       if (originalInvoiceTotal > 0 && originalManualDiscount > 0) {
         const ratio = (returnGross + returnExclusiveTax) / originalInvoiceTotal;
-        discountDeducted = Math.round(originalManualDiscount * ratio * 100) / 100;
+        if (originalManualDiscount > 0) {
+          discountDeducted = Math.round(originalManualDiscount * ratio * 100) / 100;
+        }
       }
     }
 
-    const totalReturnValue = returnGross + returnExclusiveTax - discountDeducted;
+    const totalReturnValue = returnGross + returnExclusiveTax;
     const totalExchangeVal = exchangeGross + exchangeExclusiveTax;
     const finalBalance = totalReturnValue - totalExchangeVal;
+
+    const paidAmountOnSale = Object.entries(selectedSale?.paymentMethods || {})
+      .filter(([key]) => key !== 'due')
+      .reduce((sum, [, val]) => sum + (Number(val) || 0), 0);
+
+    const cappedFinalBalance = finalBalance > 0
+      ? Math.min(finalBalance, paidAmountOnSale)
+      : finalBalance;
 
     return {
       totalReturnGross: returnGross,
       totalReturnValue,
       totalExchangeValue: totalExchangeVal,
-      finalBalance: Math.round(finalBalance),
+      finalBalance: Math.round(cappedFinalBalance),
       discountDeducted,
       totalMrp: Math.abs(exchangeMrpTotal - returnMrpTotal),
       totalTax: Math.abs(exchangeTaxAmount - returnTaxAmount) // <-- Export the absolute tax difference
@@ -916,7 +927,14 @@ const SalesReturnPage: React.FC = () => {
     }
   };
 
-  const isDueSale = (selectedSale?.paymentMethods?.due ?? 0) > 0;
+  const paidAmountOnSale = useMemo(() => {
+    const methods = selectedSale?.paymentMethods || {};
+    return Object.entries(methods)
+      .filter(([key]) => key !== 'due')
+      .reduce((sum, [, val]) => sum + (Number(val) || 0), 0);
+  }, [selectedSale]);
+
+  const isDueSale = paidAmountOnSale <= 0 && (selectedSale?.paymentMethods?.due ?? 0) > 0;
   useEffect(() => {
     if (isDueSale) {
       setModeOfReturn('Exchange');
@@ -929,6 +947,11 @@ const SalesReturnPage: React.FC = () => {
 
     // --- SCRUM-973 FIX: Block at the UI level ---
     const isCreditNote = modeOfReturn === 'Credit Note' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Credit Note');
+    const isCashRefund = modeOfReturn === 'Cash Refund' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Cash Refund');
+
+    if ((isCreditNote || isCashRefund) && isDueSale && finalBalance > 0) {
+      return setModal({ type: State.ERROR, message: 'Credit Note / Cash Refund cannot be issued for a sale with pending dues. Please choose Exchange.' });
+    }
     if (isCreditNote && finalBalance > 0 && partyNumber.trim().length < 3) {
       return setModal({ type: State.ERROR, message: 'A valid Customer Number is required to issue a Credit Note.' });
     }
@@ -1198,6 +1221,10 @@ const SalesReturnPage: React.FC = () => {
                     <span>- ₹{discountDeducted.toFixed(2)}</span>
                   </div>
                 )}
+                <div className="flex justify-between text-gray-700">
+                  <span>Paid Amount</span>
+                  <span className="font-medium">₹{paidAmountOnSale.toFixed(2)}</span>
+                </div>
                 <div className="flex justify-between font-semibold border-t border-gray-200 pt-2">
                   <span>Net Return Value</span>
                   <span>₹{totalReturnValue.toFixed(2)}</span>

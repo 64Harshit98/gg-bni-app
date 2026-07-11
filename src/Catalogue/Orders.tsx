@@ -806,10 +806,13 @@ const OrdersPage: React.FC = () => {
             // Handle both Exclusive AND Inclusive tax extraction
             if (taxRate > 0) {
                 if (taxType === 'exclusive' || taxType === 'regular') {
-                    dynamicTax += rowNet * (taxRate / 100);
+                    const rowTax = rowNet * (taxRate / 100);
+                    dynamicTax += rowTax;
+                    return sum + rowNet + rowTax; // exclusive: tax added on top of base
                 } else if (taxType === 'inclusive') {
                     const baseAmount = rowNet / (1 + (taxRate / 100));
                     dynamicTax += (rowNet - baseAmount);
+                    return sum + rowNet; // inclusive: tax already inside rowNet, don't add again
                 }
             }
             return sum + rowNet;
@@ -817,7 +820,7 @@ const OrdersPage: React.FC = () => {
 
         const expensesTotal = editExpenses.reduce((sum, e) => sum + (parseFloat(e.amount.toString()) || 0), 0);
 
-        return Math.max(0, itemsTotal + dynamicTax + expensesTotal - editDiscount);
+        return Math.max(0, itemsTotal + expensesTotal - editDiscount);
     }, [editingOrder?.items, editExpenses, editDiscount]);
 
     const handleNetPriceChange = (id: string, value: string) => {
@@ -1623,12 +1626,21 @@ const OrdersPage: React.FC = () => {
 
             const itemsSubtotal = (Order.items || []).reduce((sum, item) => {
                 const unitPrice = item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0;
-                return sum + (Number(unitPrice) * Number(item.quantity || 0));
+                const qty = Number(item.quantity || 0);
+                const rowNet = Number(unitPrice) * qty;
+
+                const taxRate = Number(item.tax ?? item.taxRate ?? 0);
+                const taxType = (item.taxType || '').toLowerCase();
+                const extraTax = (taxRate > 0 && (taxType === 'exclusive' || taxType === 'regular'))
+                    ? rowNet * (taxRate / 100)
+                    : 0;
+
+                return sum + rowNet + extraTax;
             }, 0);
             const orderExpensesTotal = (Order.expenses || []).reduce(
                 (sum, ex) => sum + (parseFloat(String(ex.amount)) || 0), 0
             );
-            const total = Math.max(0, itemsSubtotal + orderExpensesTotal + Number(Order.totalTax || 0) - Number(Order.manualDiscount || 0));
+            const total = Math.max(0, itemsSubtotal + orderExpensesTotal - Number(Order.manualDiscount || 0));
             const paid = Number(Order.paidAmount || 0);
             const due = Math.max(0, total - paid);
 
@@ -1808,8 +1820,13 @@ const OrdersPage: React.FC = () => {
 
             const taxRate = Number(item.tax ?? item.taxRate ?? 0);
             const taxType = (item.taxType || '').toLowerCase();
-            if (taxRate > 0 && (taxType === 'exclusive' || taxType === 'regular')) {
-                dynamicTax += rowNet * (taxRate / 100);
+             if (taxRate > 0) {
+                if (taxType === 'exclusive' || taxType === 'regular') {
+                    dynamicTax += rowNet * (taxRate / 100);
+                } else if (taxType === 'inclusive') {
+                    const baseAmount = rowNet / (1 + (taxRate / 100));
+                    dynamicTax += (rowNet - baseAmount);
+                }
             }
             return sum + rowNet;
         }, 0);
@@ -2304,10 +2321,16 @@ const OrdersPage: React.FC = () => {
             const newTotalTax = (editingOrder.items || []).reduce((sum, item) => {
                 const qty = Number(item.quantity || 0);
                 const unitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
+                const rowNet = unitPrice * qty;
                 const taxRate = Number(item.tax ?? item.taxRate ?? 0);
                 const taxType = (item.taxType || '').toLowerCase();
-                if (taxRate > 0 && (taxType === 'exclusive' || taxType === 'regular')) {
-                    return sum + (unitPrice * qty * (taxRate / 100));
+                if (taxRate > 0) {
+                    if (taxType === 'exclusive' || taxType === 'regular') {
+                        return sum + (rowNet * (taxRate / 100));
+                    } else if (taxType === 'inclusive') {
+                        const baseAmount = rowNet / (1 + (taxRate / 100));
+                        return sum + (rowNet - baseAmount);
+                    }
                 }
                 return sum;
             }, 0);
@@ -2555,8 +2578,13 @@ const OrdersPage: React.FC = () => {
 
                 const taxRate = Number(item.tax ?? item.taxRate ?? 0);
                 const taxType = (item.taxType || '').toLowerCase();
-                if (taxRate > 0 && (taxType === 'exclusive' || taxType === 'regular')) {
-                    dynamicTax += rowNet * (taxRate / 100);
+                if (taxRate > 0) {
+                    if (taxType === 'exclusive' || taxType === 'regular') {
+                        dynamicTax += rowNet * (taxRate / 100);
+                    } else if (taxType === 'inclusive') {
+                        const baseAmount = rowNet / (1 + (taxRate / 100));
+                        dynamicTax += (rowNet - baseAmount);
+                    }
                 }
                 return sum + rowNet;
             }, 0);
@@ -2642,8 +2670,13 @@ const OrdersPage: React.FC = () => {
 
                 const taxRate = Number(item.tax ?? item.taxRate ?? 0);
                 const taxType = (item.taxType || '').toLowerCase();
-                if (taxRate > 0 && (taxType === 'exclusive' || taxType === 'regular')) {
-                    dynamicTax += rowNet * (taxRate / 100);
+                if (taxRate > 0) {
+                    if (taxType === 'exclusive' || taxType === 'regular') {
+                        dynamicTax += rowNet * (taxRate / 100);
+                    } else if (taxType === 'inclusive') {
+                        const baseAmount = rowNet / (1 + (taxRate / 100));
+                        dynamicTax += (rowNet - baseAmount);
+                    }
                 }
                 return sum + rowNet;
             }, 0);
@@ -2905,279 +2938,290 @@ const OrdersPage: React.FC = () => {
 
             {/* --- 7. ORDERS LIST --- */}
 
-                <div ref={setTutorialRef(5) as any} className="flex-grow overflow-y-hidden bg-slate-100 space-y-2 p-1 md:p-4">
-                    {dataLoading ? (
-                        <div className="flex justify-center py-10"><Spinner /></div>
-                    ) : error ? (
-                        <p className="p-8 text-center text-red-500">{error}</p>
-                    ) : filteredOrders.length > 0 ? (
-                        <AnimatePresence>
-                            {filteredOrders.map((Order) => {
-                                const returnMethods =
-                                    Order.returnHistory && Order.returnHistory.length > 0
-                                        ? Array.from(
-                                            new Set(
-                                                Order.returnHistory.map(r => r.modeOfReturn)
-                                            )) : [];
-                                const isExpanded = expandedorderId === Order.id;
-                                const isUpcomingStatus = Order.status === 'Upcoming';
-                                const itemsSubtotal = (Order.items || []).reduce((sum, item) => {
-                                    const unitPrice = item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0;
-                                    return sum + (Number(unitPrice) * Number(item.quantity || 0));
-                                }, 0);
-                                const orderExpensesTotal = (Order.expenses || []).reduce(
-                                    (sum, ex) => sum + (parseFloat(String(ex.amount)) || 0), 0
-                                );
-                                const total = Math.max(0, itemsSubtotal + orderExpensesTotal + Number(Order.totalTax || 0) - Number(Order.manualDiscount || 0));
-                                let paid = Number(Order.paidAmount || 0);
-                                let due = Math.max(0, total - paid);
-                                const isPaid = Order.status === 'Paid';
-                                const isFinalStage = Order.status === 'Completed' || Order.status === 'Paid';
+            <div ref={setTutorialRef(5) as any} className="flex-grow overflow-y-hidden bg-slate-100 space-y-2 p-1 md:p-4">
+                {dataLoading ? (
+                    <div className="flex justify-center py-10"><Spinner /></div>
+                ) : error ? (
+                    <p className="p-8 text-center text-red-500">{error}</p>
+                ) : filteredOrders.length > 0 ? (
+                    <AnimatePresence>
+                        {filteredOrders.map((Order) => {
+                            const returnMethods =
+                                Order.returnHistory && Order.returnHistory.length > 0
+                                    ? Array.from(
+                                        new Set(
+                                            Order.returnHistory.map(r => r.modeOfReturn)
+                                        )) : [];
+                            const isExpanded = expandedorderId === Order.id;
+                            const isUpcomingStatus = Order.status === 'Upcoming';
+                            // Add extra tax on top ONLY for exclusive/regular items.
+                            // Inclusive items already have tax baked into unitPrice — don't add Order.totalTax again.
+                            const itemsSubtotal = (Order.items || []).reduce((sum, item) => {
+                                const unitPrice = item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0;
+                                const qty = Number(item.quantity || 0);
+                                const rowNet = Number(unitPrice) * qty;
 
-                                // --- FIX: Ghost Due Amount on Returned Orders ---
-                                // If the order is fully Paid, force due to 0 and paid to total. 
-                                // This patches DB inconsistencies caused by return logic missing expenses.
-                                if (isPaid) {
-                                    due = 0;
-                                    paid = total;
-                                }
-                                // ------------------------------------------------
-                               const cardContent = (
-                                    <motion.div
-                                        key={Order.id}
-                                        initial={{ opacity: 0, y: 20 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        exit={{ opacity: 0, y: -20 }}
-                                        transition={{ duration: 0.25 }}
-                                    >
-                                        <CustomCard key={Order.id} onClick={() => handleOrderClick(Order.id)} className="p-4 mb-3 bg-white shadow-sm border border-gray-100 rounded-sm cursor-pointer relative">
-                                            {/* 🔁 RETURN METHOD BADGE - TOP LEFT */}
-                                            {returnMethods.length > 0 && (
-                                                <div className="absolute -top-0.5 left-0 flex flex-wrap gap-1 p-1">
-                                                    {returnMethods.map((method, index) => (
-                                                        <span
-                                                            key={`${method}-${index}`}
-                                                            className={`text-[7px] uppercase font-bold px-2 py-0.5 rounded border ${method === 'EXCHANGE'
-                                                                ? 'bg-purple-50 text-purple-700 border-purple-200'
-                                                                : method === 'CASH REFUND'
-                                                                    ? 'bg-green-50 text-green-700 border-green-200'
-                                                                    : 'bg-orange-50 text-[#F97316] border-orange-200'
-                                                                }`}
-                                                        >
-                                                            {method}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            )}
-                                            {!isUpcomingStatus && (
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setEditingOrder(Order);
-                                                        setSelectedItemForEdit(null);
-                                                        setCartSearchQuery('');
-                                                        // Restore saved expenses
-                                                        setEditExpenses(
-                                                            Array.isArray((Order as any).expenses) && (Order as any).expenses.length > 0
-                                                                ? (Order as any).expenses.map((ex: any) => ({ ...ex, id: ex.id || Date.now() }))
-                                                                : []
-                                                        );
-                                                        // Restore saved discount
-                                                        const savedDiscount = Number((Order as any).manualDiscount || 0);
-                                                        setEditDiscount(savedDiscount);
-                                                        // Restore saved transport details
-                                                        const savedTransport = (Order as any).transportDetails || {};
-                                                        setTransportName(savedTransport.transportName || '');
-                                                        setGrRrNo(savedTransport.grRrNo || '');
-                                                        setGrRrDate(savedTransport.grRrDate || '');
-                                                        setVehicleNo(savedTransport.vehicleNo || '');
-                                                        setStationFrom(savedTransport.stationFrom || '');
-                                                        setPinCode(savedTransport.pinCode || '');
-                                                        const itemsBase = (Order.items || []).reduce((sum, item) => {
-                                                            const salesPrice = Number(item.salesPrice || 0);
-                                                            const mrp = Number(item.mrp || 0);
-                                                            const price = item.finalPrice ?? (salesPrice > 0 ? salesPrice : mrp);
-                                                            return sum + price * Number(item.quantity || 0);
-                                                        }, 0);
-                                                        setEditDiscountPercent(itemsBase > 0 ? parseFloat(((savedDiscount / itemsBase) * 100).toFixed(2)) : 0);
-                                                        setShowBillDiscountFields(savedDiscount > 0);
-                                                    }}
-                                                    className="absolute top-5 left-2 p-2 bg-white/90 backdrop-blur-sm text-slate-500 rounded-sm transition-all duration-300 z-20 group"
-                                                >
-                                                    <div className="flex items-center cursor-pointer">
-                                                        <IconEdit className='h-3 w-3' />
-                                                    </div>
-                                                </button>
-                                            )}
-                                            <div className="flex right-5 top-0 absolute justify-end gap-1 flex-wrap max-w-[50%] text-right pointer-events-auto">
-                                                {(() => {
-                                                    const seen = new Set<string>();
+                                const taxRate = Number(item.tax ?? item.taxRate ?? 0);
+                                const taxType = (item.taxType || '').toLowerCase();
+                                const extraTax = (taxRate > 0 && (taxType === 'exclusive' || taxType === 'regular'))
+                                    ? rowNet * (taxRate / 100)
+                                    : 0;
 
-                                                    // Collect from original payment methods
-                                                    if (Order.paymentMethods) {
-                                                        Object.entries(Order.paymentMethods).forEach(([method, amount]) => {
-                                                            if (method.toLowerCase() !== 'due' && Number(amount) > 0) {
-                                                                seen.add(method.trim().toUpperCase());
-                                                            }
-                                                        });
-                                                    }
+                                return sum + rowNet + extraTax;
+                            }, 0);
+                            const orderExpensesTotal = (Order.expenses || []).reduce(
+                                (sum, ex) => sum + (parseFloat(String(ex.amount)) || 0), 0
+                            );
+                            const total = Math.max(0, itemsSubtotal + orderExpensesTotal - Number(Order.manualDiscount || 0));
+                            let paid = Number(Order.paidAmount || 0);
+                            let due = Math.max(0, total - paid);
+                            const isPaid = Order.status === 'Paid';
+                            const isFinalStage = Order.status === 'Completed' || Order.status === 'Paid';
 
-                                                    const latestReturn = Order.returnHistory?.[Order.returnHistory.length - 1];
-                                                    if (latestReturn?.paymentDetails) {
-                                                        Object.entries(latestReturn.paymentDetails).forEach(([method, amount]) => {
-                                                            if (method.toLowerCase() !== 'due' && Number(amount) > 0) {
-                                                                seen.add(method.trim().toUpperCase());
-                                                            }
-                                                        });
-                                                    }
-
-                                                    return Array.from(seen).map((method) => (
-                                                        <span
-                                                            key={method}
-                                                            className="text-[8px] uppercase font-bold px-1.5 py-0.5 rounded-sm tracking-wider bg-blue-50 text-blue-600 border border-blue-100 whitespace-nowrap"
-                                                        >
-                                                            {method}
-                                                        </span>
-                                                    ));
-                                                })()}
+                            // --- FIX: Ghost Due Amount on Returned Orders ---
+                            // If the order is fully Paid, force due to 0 and paid to total. 
+                            // This patches DB inconsistencies caused by return logic missing expenses.
+                            if (isPaid) {
+                                due = 0;
+                                paid = total;
+                            }
+                            // ------------------------------------------------
+                            const cardContent = (
+                                <motion.div
+                                    key={Order.id}
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -20 }}
+                                    transition={{ duration: 0.25 }}
+                                >
+                                    <CustomCard key={Order.id} onClick={() => handleOrderClick(Order.id)} className="p-4 mb-3 bg-white shadow-sm border border-gray-100 rounded-sm cursor-pointer relative">
+                                        {/* 🔁 RETURN METHOD BADGE - TOP LEFT */}
+                                        {returnMethods.length > 0 && (
+                                            <div className="absolute -top-0.5 left-0 flex flex-wrap gap-1 p-1">
+                                                {returnMethods.map((method, index) => (
+                                                    <span
+                                                        key={`${method}-${index}`}
+                                                        className={`text-[7px] uppercase font-bold px-2 py-0.5 rounded border ${method === 'EXCHANGE'
+                                                            ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                                            : method === 'CASH REFUND'
+                                                                ? 'bg-green-50 text-green-700 border-green-200'
+                                                                : 'bg-orange-50 text-[#F97316] border-orange-200'
+                                                            }`}
+                                                    >
+                                                        {method}
+                                                    </span>
+                                                ))}
                                             </div>
+                                        )}
+                                        {!isUpcomingStatus && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setEditingOrder(Order);
+                                                    setSelectedItemForEdit(null);
+                                                    setCartSearchQuery('');
+                                                    // Restore saved expenses
+                                                    setEditExpenses(
+                                                        Array.isArray((Order as any).expenses) && (Order as any).expenses.length > 0
+                                                            ? (Order as any).expenses.map((ex: any) => ({ ...ex, id: ex.id || Date.now() }))
+                                                            : []
+                                                    );
+                                                    // Restore saved discount
+                                                    const savedDiscount = Number((Order as any).manualDiscount || 0);
+                                                    setEditDiscount(savedDiscount);
+                                                    // Restore saved transport details
+                                                    const savedTransport = (Order as any).transportDetails || {};
+                                                    setTransportName(savedTransport.transportName || '');
+                                                    setGrRrNo(savedTransport.grRrNo || '');
+                                                    setGrRrDate(savedTransport.grRrDate || '');
+                                                    setVehicleNo(savedTransport.vehicleNo || '');
+                                                    setStationFrom(savedTransport.stationFrom || '');
+                                                    setPinCode(savedTransport.pinCode || '');
+                                                    const itemsBase = (Order.items || []).reduce((sum, item) => {
+                                                        const salesPrice = Number(item.salesPrice || 0);
+                                                        const mrp = Number(item.mrp || 0);
+                                                        const price = item.finalPrice ?? (salesPrice > 0 ? salesPrice : mrp);
+                                                        return sum + price * Number(item.quantity || 0);
+                                                    }, 0);
+                                                    setEditDiscountPercent(itemsBase > 0 ? parseFloat(((savedDiscount / itemsBase) * 100).toFixed(2)) : 0);
+                                                    setShowBillDiscountFields(savedDiscount > 0);
+                                                }}
+                                                className="absolute top-5 left-2 p-2 bg-white/90 backdrop-blur-sm text-slate-500 rounded-sm transition-all duration-300 z-20 group"
+                                            >
+                                                <div className="flex items-center cursor-pointer">
+                                                    <IconEdit className='h-3 w-3' />
+                                                </div>
+                                            </button>
+                                        )}
+                                        <div className="flex right-5 top-0 absolute justify-end gap-1 flex-wrap max-w-[50%] text-right pointer-events-auto">
+                                            {(() => {
+                                                const seen = new Set<string>();
 
-                                            <div className="flex justify-between items-start pl-6 mt-1">
-                                                <div>
-                                                    {!isUpcomingStatus && (
-                                                        <h3 className="text-base font-bold text-slate-800">
-                                                            {Order.orderId}
-                                                        </h3>
+                                                // Collect from original payment methods
+                                                if (Order.paymentMethods) {
+                                                    Object.entries(Order.paymentMethods).forEach(([method, amount]) => {
+                                                        if (method.toLowerCase() !== 'due' && Number(amount) > 0) {
+                                                            seen.add(method.trim().toUpperCase());
+                                                        }
+                                                    });
+                                                }
+
+                                                const latestReturn = Order.returnHistory?.[Order.returnHistory.length - 1];
+                                                if (latestReturn?.paymentDetails) {
+                                                    Object.entries(latestReturn.paymentDetails).forEach(([method, amount]) => {
+                                                        if (method.toLowerCase() !== 'due' && Number(amount) > 0) {
+                                                            seen.add(method.trim().toUpperCase());
+                                                        }
+                                                    });
+                                                }
+
+                                                return Array.from(seen).map((method) => (
+                                                    <span
+                                                        key={method}
+                                                        className="text-[8px] uppercase font-bold px-1.5 py-0.5 rounded-sm tracking-wider bg-blue-50 text-blue-600 border border-blue-100 whitespace-nowrap"
+                                                    >
+                                                        {method}
+                                                    </span>
+                                                ));
+                                            })()}
+                                        </div>
+
+                                        <div className="flex justify-between items-start pl-6 mt-1">
+                                            <div>
+                                                {!isUpcomingStatus && (
+                                                    <h3 className="text-base font-bold text-slate-800">
+                                                        {Order.orderId}
+                                                    </h3>
+                                                )}
+                                                <p className="text-black text-sm font-medium">
+                                                    {Order.userName}
+                                                    {Order.status === "Upcoming" && Order.userLoginPhone && (
+                                                        <span className="ml-2 text-[10px] text-black font-semibold border p-1 bg-gray-100">
+                                                            {Order.userLoginPhone}
+                                                        </span>
                                                     )}
-                                                    <p className="text-black text-sm font-medium">
-                                                        {Order.userName}
-                                                        {Order.status === "Upcoming" && Order.userLoginPhone && (
-                                                            <span className="ml-2 text-[10px] text-black font-semibold border p-1 bg-gray-100">
-                                                                {Order.userLoginPhone}
-                                                            </span>
-                                                        )}
+                                                </p>
+                                                <p className="text-[10px] text-gray-600 mt-1">{Order.time}</p>
+                                            </div>
+                                            <div className="text-right flex flex-col items-end">
+                                                <div className="flex items-center gap-2">
+                                                    <p className="text-lg font-bold text-black">₹{formatAmount(total)}
                                                     </p>
-                                                    <p className="text-[10px] text-gray-600 mt-1">{Order.time}</p>
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}><path d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
                                                 </div>
-                                                <div className="text-right flex flex-col items-end">
-                                                    <div className="flex items-center gap-2">
-                                                        <p className="text-lg font-bold text-black">₹{formatAmount(total)}
-                                                        </p>
-                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}><path d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
-                                                    </div>
-                                                    <p className="text-[10px] font-boldpx-2 py-0.5 mt-1 mr-6">Items: {Order.items?.length || 0}</p>
-                                                </div>
+                                                <p className="text-[10px] font-boldpx-2 py-0.5 mt-1 mr-6">Items: {Order.items?.length || 0}</p>
                                             </div>
+                                        </div>
 
-                                            {isExpanded && (
-                                                <div className={`mt-1 border-t pt-4 ${isUpcomingStatus ? "pb-2" : ""}`}>
-                                                    {/* Addresses Section */}
-                                                    {!isUpcomingStatus && (
-                                                        <div className="grid grid-cols-2 gap-4 mb-1 pb-4">
-                                                            <div className="space-y-1">
-                                                                <p className="text-[8px] font-black text-[#F97316] uppercase">Billing Address</p>
-                                                                <p className="text-[11px] font-bold text-slate-800">{Order.billingDetails?.name}</p>
-                                                                <p className="text-[10px] text-gray-500 leading-tight">{Order.billingDetails?.address}</p>
-                                                                {(Order.billingDetails?.city || Order.billingDetails?.state) && (
-                                                                    <p className="text-[10px] text-gray-500 leading-tight">
-                                                                        {[Order.billingDetails?.city, Order.billingDetails?.state].filter(Boolean).join(', ')}
-                                                                    </p>
-                                                                )}
-                                                                <p className="text-[10px] text-gray-500">{Order.billingDetails?.phone}</p>
-                                                            </div>
-                                                            <div className="space-y-1 border-l pl-4">
-                                                                <p className="text-[8px] font-black text-blue-500 uppercase">Shipping Address</p>
-                                                                <p className="text-[11px] font-bold text-slate-800">{Order.shippingDetails?.name || Order.billingDetails?.name}</p>
-                                                                <p className="text-[10px] text-gray-500 leading-tight">{Order.shippingDetails?.address || Order.billingDetails?.address}</p>
-                                                                {(Order.shippingDetails?.city || Order.shippingDetails?.state || Order.billingDetails?.city || Order.billingDetails?.state) && (
-                                                                    <p className="text-[10px] text-gray-500 leading-tight">
-                                                                        {[
-                                                                            Order.shippingDetails?.city || Order.billingDetails?.city,
-                                                                            Order.shippingDetails?.state || Order.billingDetails?.state
-                                                                        ].filter(Boolean).join(', ')}
-                                                                    </p>
-                                                                )}
-                                                                <p className="text-[10px] text-gray-500">{Order.shippingDetails?.phone}</p>
-                                                            </div>
+                                        {isExpanded && (
+                                            <div className={`mt-1 border-t pt-4 ${isUpcomingStatus ? "pb-2" : ""}`}>
+                                                {/* Addresses Section */}
+                                                {!isUpcomingStatus && (
+                                                    <div className="grid grid-cols-2 gap-4 mb-1 pb-4">
+                                                        <div className="space-y-1">
+                                                            <p className="text-[8px] font-black text-[#F97316] uppercase">Billing Address</p>
+                                                            <p className="text-[11px] font-bold text-slate-800">{Order.billingDetails?.name}</p>
+                                                            <p className="text-[10px] text-gray-500 leading-tight">{Order.billingDetails?.address}</p>
+                                                            {(Order.billingDetails?.city || Order.billingDetails?.state) && (
+                                                                <p className="text-[10px] text-gray-500 leading-tight">
+                                                                    {[Order.billingDetails?.city, Order.billingDetails?.state].filter(Boolean).join(', ')}
+                                                                </p>
+                                                            )}
+                                                            <p className="text-[10px] text-gray-500">{Order.billingDetails?.phone}</p>
                                                         </div>
+                                                        <div className="space-y-1 border-l pl-4">
+                                                            <p className="text-[8px] font-black text-blue-500 uppercase">Shipping Address</p>
+                                                            <p className="text-[11px] font-bold text-slate-800">{Order.shippingDetails?.name || Order.billingDetails?.name}</p>
+                                                            <p className="text-[10px] text-gray-500 leading-tight">{Order.shippingDetails?.address || Order.billingDetails?.address}</p>
+                                                            {(Order.shippingDetails?.city || Order.shippingDetails?.state || Order.billingDetails?.city || Order.billingDetails?.state) && (
+                                                                <p className="text-[10px] text-gray-500 leading-tight">
+                                                                    {[
+                                                                        Order.shippingDetails?.city || Order.billingDetails?.city,
+                                                                        Order.shippingDetails?.state || Order.billingDetails?.state
+                                                                    ].filter(Boolean).join(', ')}
+                                                                </p>
+                                                            )}
+                                                            <p className="text-[10px] text-gray-500">{Order.shippingDetails?.phone}</p>
+                                                        </div>
+                                                    </div>
 
+                                                )}
+                                                {/* Items Section */}
+                                                <div>
+                                                    {isExpanded && Order.specialInstruction && (
+                                                        <div className="mb-1 bg-gray-50 border border-gray-200 rounded-sm p-2">
+
+                                                            <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest mb-1">
+                                                                Special Instructions
+                                                            </p>
+
+                                                            <p className="text-[11px] text-gray-700 font-medium leading-snug break-words">
+                                                                {Order.specialInstruction}
+                                                            </p>
+
+                                                        </div>
                                                     )}
-                                                    {/* Items Section */}
-                                                    <div>
-                                                        {isExpanded && Order.specialInstruction && (
-                                                            <div className="mb-1 bg-gray-50 border border-gray-200 rounded-sm p-2">
+                                                    {Order.items?.map((item, idx) => {
+                                                        // const returnedQty = getReturnedQuantityForItem(item, Order);
 
-                                                                <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest mb-1">
-                                                                    Special Instructions
-                                                                </p>
-
-                                                                <p className="text-[11px] text-gray-700 font-medium leading-snug break-words">
-                                                                    {Order.specialInstruction}
-                                                                </p>
-
-                                                            </div>
-                                                        )}
-                                                        {Order.items?.map((item, idx) => {
-                                                            // const returnedQty = getReturnedQuantityForItem(item, Order);
-
-                                                            // Collect per-return-event entries for this item
-                                                            const returnedEntries: { qty: number; modeOfReturn: string; returnedAt: any; unitPrice: number }[] = [];
-                                                            (Order.returnHistory || []).forEach((h: any) => {
-                                                                (h.returnedItems || []).forEach((r: any) => {
-                                                                    const matches =
-                                                                        String(r.originalItemId) === String(item.itemId) ||
-                                                                        String(r.originalItemId) === String(item.id) ||
-                                                                        String(r.id) === String(item.itemId) ||
-                                                                        String(r.id) === String(item.id);
-                                                                    if (matches) {
-                                                                        returnedEntries.push({
-                                                                            qty: Number(r.quantity || 0),
-                                                                            modeOfReturn: h.modeOfReturn || '',
-                                                                            returnedAt: h.returnedAt,
-                                                                            unitPrice: Number(r.effectiveUnitPrice ?? r.customPrice ?? r.salesPrice ?? r.mrp ?? 0),
-                                                                        });
-                                                                    }
-                                                                });
+                                                        // Collect per-return-event entries for this item
+                                                        const returnedEntries: { qty: number; modeOfReturn: string; returnedAt: any; unitPrice: number }[] = [];
+                                                        (Order.returnHistory || []).forEach((h: any) => {
+                                                            (h.returnedItems || []).forEach((r: any) => {
+                                                                const matches =
+                                                                    String(r.originalItemId) === String(item.itemId) ||
+                                                                    String(r.originalItemId) === String(item.id) ||
+                                                                    String(r.id) === String(item.itemId) ||
+                                                                    String(r.id) === String(item.id);
+                                                                if (matches) {
+                                                                    returnedEntries.push({
+                                                                        qty: Number(r.quantity || 0),
+                                                                        modeOfReturn: h.modeOfReturn || '',
+                                                                        returnedAt: h.returnedAt,
+                                                                        unitPrice: Number(r.effectiveUnitPrice ?? r.customPrice ?? r.salesPrice ?? r.mrp ?? 0),
+                                                                    });
+                                                                }
                                                             });
-                                                            const totalReturnedFromHistory = returnedEntries.reduce((sum, e) => sum + e.qty, 0);
-                                                            // item.quantity may already reflect post-return qty, so add back returned qty to get original
-                                                            const originalQty = Number(item.quantity || 0) + totalReturnedFromHistory;
-                                                            const remainingQty = originalQty - totalReturnedFromHistory; // = item.quantity
-                                                            // Extract the pure base price for display so the visual math aligns with the Tax row below it
-                                                            const unitPrice = item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0;
+                                                        });
+                                                        const totalReturnedFromHistory = returnedEntries.reduce((sum, e) => sum + e.qty, 0);
+                                                        // item.quantity may already reflect post-return qty, so add back returned qty to get original
+                                                        const originalQty = Number(item.quantity || 0) + totalReturnedFromHistory;
+                                                        const remainingQty = originalQty - totalReturnedFromHistory; // = item.quantity
+                                                        // Extract the pure base price for display so the visual math aligns with the Tax row below it
+                                                        const unitPrice = item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0;
 
-                                                            return (
-                                                                <div key={idx} className="p-2 cursor-pointer">
-                                                                    {/* REMAINING QUANTITY ROW */}
-                                                                    {remainingQty > 0 && (
-                                                                        <div className="flex justify-between items-start -mb-1">
-                                                                            <div className="flex-1">
-                                                                                <p className="text-[11px] font-extrabold leading-tight mb-1" style={{ color: '#1e293b' }}>
-                                                                                    {item.name}
-                                                                                    <span className="ml-1 text-[9px] font-semibold text-gray-500">
-                                                                                        {item.unit || "pcs"}
-                                                                                    </span>
+                                                        return (
+                                                            <div key={idx} className="p-2 cursor-pointer">
+                                                                {/* REMAINING QUANTITY ROW */}
+                                                                {remainingQty > 0 && (
+                                                                    <div className="flex justify-between items-start -mb-1">
+                                                                        <div className="flex-1">
+                                                                            <p className="text-[11px] font-extrabold leading-tight mb-1" style={{ color: '#1e293b' }}>
+                                                                                {item.name}
+                                                                                <span className="ml-1 text-[9px] font-semibold text-gray-500">
+                                                                                    {item.unit || "pcs"}
+                                                                                </span>
+                                                                            </p>
+                                                                            {item.note && (
+                                                                                <p className="text-[9px] leading-tight flex items-baseline gap-1.5 mt-1 opacity-80">
+                                                                                    <span className="font-black uppercase tracking-widest font-xs">Note:</span>
+                                                                                    <span className="font-xs italic text-slate-600">{item.note}</span>
                                                                                 </p>
-                                                                                {item.note && (
-                                                                                    <p className="text-[9px] leading-tight flex items-baseline gap-1.5 mt-1 opacity-80">
-                                                                                        <span className="font-black uppercase tracking-widest font-xs">Note:</span>
-                                                                                        <span className="font-xs italic text-slate-600">{item.note}</span>
-                                                                                    </p>
-                                                                                )}
-                                                                                <p className="text-[10px] text-gray-400">
-                                                                                    ₹{formatAmount(unitPrice)} per {item.unit || "pcs"}
-                                                                                </p>
-                                                                            </div>
-                                                                            <div className="text-right ml-4">
-                                                                                <p className="text-[13px] font-black text-slate-900">
-                                                                                    ₹{formatAmount(unitPrice * remainingQty)}
-                                                                                </p>
-                                                                                <p className="text-[9px] font-bold text-slate-500 bg-white">
-                                                                                    Qty: {remainingQty}
-                                                                                </p>
-                                                                            </div>
+                                                                            )}
+                                                                            <p className="text-[10px] text-gray-400">
+                                                                                ₹{formatAmount(unitPrice)} per {item.unit || "pcs"}
+                                                                            </p>
                                                                         </div>
-                                                                    )}
+                                                                        <div className="text-right ml-4">
+                                                                            <p className="text-[13px] font-black text-slate-900">
+                                                                                ₹{formatAmount(unitPrice * remainingQty)}
+                                                                            </p>
+                                                                            <p className="text-[9px] font-bold text-slate-500 bg-white">
+                                                                                Qty: {remainingQty}
+                                                                            </p>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
 
                                                                 {/* RETURNED ENTRIES — one crossed-out row per return event */}
                                                                 {returnedEntries.map((entry, rIdx) => (
@@ -3289,257 +3333,182 @@ const OrdersPage: React.FC = () => {
                                                                             </p>
                                                                         )}
 
-                                                                        </div>
-                                                                        <div className="text-right ml-4">
-                                                                            <p className="text-[13px] font-black" style={{ color: '#94a3b8', textDecoration: 'line-through' }}>
-                                                                                ₹{formatAmount((r.effectiveUnitPrice ?? r.customPrice ?? r.salesPrice ?? r.mrp ?? 0)
-                                                                                    * r.quantity)}                                                                        </p>
-                                                                            <p className="text-[9px] font-bold text-slate-400">Qty: {r.quantity}</p>
-                                                                        </div>
                                                                     </div>
-                                                                </div>
-                                                            ))
-                                                        }
-                                                        {/* Expenses & Discount display (saved on order) */}
-                                                        {!isUpcomingStatus && (
-                                                            <>
-                                                                {Array.isArray(Order.expenses) && Order.expenses.length > 0 && (
-                                                                    <div className="px-2 pt-1 space-y-0.5">
-                                                                        {Order.expenses.map((ex, idx) => (
-                                                                            <div key={idx} className="flex justify-between items-center">
-                                                                                <span className="text-[8px] font-bold text-orange-500 uppercase tracking-wide">
-                                                                                    {ex.name || 'Expense'}
-                                                                                </span>
-                                                                                <span className="text-[9px] font-black text-orange-600">
-                                                                                    +₹{formatAmount(parseFloat(String(ex.amount)) || 0)}
-                                                                                </span>
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                )}
-                                                                {Number(Order.totalTax || 0) > 0 && (
-                                                                    <div className="px-2 pt-0.5 flex justify-between items-center border-t">
-                                                                        <span className="text-[8px] font-bold text-slate-500 uppercase tracking-wide">
-                                                                            Tax
-                                                                        </span>
-                                                                        <span className="text-[9px] font-black text-orange-500">
-                                                                            +₹{formatAmount(Number(Order.totalTax))}
-                                                                        </span>
-                                                                    </div>
-                                                                )}
-                                                                {Number(Order.manualDiscount || 0) > 0 && (
-                                                                    <div className="px-2 pt-0.5 flex justify-between items-center border-t">
-                                                                        <span className="text-[8px] font-bold text-red-500 uppercase tracking-wide">Bill Discount</span>
-                                                                        <span className="text-[9px] font-black text-red-600">
-                                                                            -₹{formatAmount(Number(Order.manualDiscount))}
-                                                                        </span>
-                                                                    </div>
-                                                                )}
-                                                            </>
-                                                        )}
-                                                        {/* Totals Section */}
-                                                        {!isUpcomingStatus && (
-                                                            <div className="border-t mt-1 p-2 flex items-center justify-between">
-                                                                <div className="flex flex-wrap gap-1.5 items-center">
-                                                                    {paid > 0 && (
-                                                                        (() => {
-                                                                            // Merge all payment sources into one map
-                                                                            const mergedMethods: Record<string, number> = {};
-
-                                                                            if (Order.paymentMethods && Object.keys(Order.paymentMethods).length > 0) {
-                                                                                Object.entries(Order.paymentMethods).forEach(([method, amount]) => {
-                                                                                    if (method.toLowerCase() !== 'due' && Number(amount) > 0) {
-                                                                                        const key = method.trim().toUpperCase();
-                                                                                        mergedMethods[key] = (mergedMethods[key] || 0) + Number(amount);
-                                                                                    }
-                                                                                });
-                                                                            } else if (Order.paymentMethod && paid > 0) {
-                                                                                mergedMethods[Order.paymentMethod.trim().toUpperCase()] = paid;
-                                                                            }
-                                                                            return Object.entries(mergedMethods).map(([method, amount]) => (
-                                                                                <div
-                                                                                    key={method}
-                                                                                    className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-green-100"
-                                                                                >
-                                                                                    <span className="text-[10px] font-bold text-green-800 uppercase">
-                                                                                        {method}
-                                                                                    </span>
-                                                                                    <span className="text-[10px] font-black text-green-600">
-                                                                                        ₹{Number(amount).toFixed(2)}
-                                                                                    </span>
-                                                                                </div>
-                                                                            ));
-                                                                        })()
-                                                                    )}
-                                                                </div>
-
-                                                                <div className='flex gap-3 items-center'>
-                                                                    <div className="text-right border-r border-slate-200 pr-3">
-                                                                        <p className="text-[7px] font-bold text-green-600 uppercase tracking-tighter leading-none mb-0.5">Paid</p>
-                                                                        <p className="text-[11px] font-black text-green-700 leading-none">₹{paid.toFixed(2)}</p>
-                                                                    </div>
-
-                                                                    <div className="text-right border-r border-slate-200 pr-3">
-                                                                        <p className="text-[7px] font-bold text-blue-600 uppercase tracking-tighter leading-none mb-0.5">C.Note</p>
-                                                                        <p className="text-[11px] font-black text-blue-700 leading-none">
-                                                                            ₹{Number(Order.creditNoteAmount || 0).toFixed(2)}
-                                                                        </p>
-                                                                    </div>
-
-                                                                    {Number(Order.refundAmount || 0) > 0 && (
-                                                                        <div className="text-right border-r border-slate-200 pr-3">
-                                                                            <p className="text-[7px] font-bold text-red-600  uppercase tracking-tighter leading-none mb-0.5">Refund</p>
-                                                                            <p className="text-[11px] font-black text-red-600 leading-none">
-                                                                                ₹{Number(Order.refundAmount || 0).toFixed(2)}
-                                                                            </p>
-                                                                        </div>
-                                                                    )}
-                                                                    <div className="text-right">
-                                                                        <p className="text-[7px] font-bold text-red-600 uppercase tracking-tighter leading-none mb-0.5">Due</p>
-                                                                        <p className="text-[11px] font-black text-red-700 leading-none">₹{due.toFixed(2)}</p>
+                                                                    <div className="text-right ml-4">
+                                                                        <p className="text-[13px] font-black" style={{ color: '#94a3b8', textDecoration: 'line-through' }}>
+                                                                            ₹{formatAmount((r.effectiveUnitPrice ?? r.customPrice ?? r.salesPrice ?? r.mrp ?? 0)
+                                                                                * r.quantity)}                                                                        </p>
+                                                                        <p className="text-[9px] font-bold text-slate-400">Qty: {r.quantity}</p>
                                                                     </div>
                                                                 </div>
                                                             </div>
-                                                        )}
-                                                    </div>
-                                                    {/* Buttons Section - Updated Grid & Logic */}
-                                                    {(
-                                                        <div
-                                                            className={`grid ${isUpcomingStatus
-                                                                ? Order.userLoginPhone ? 'grid-cols-3' : 'grid-cols-1'
-                                                                : Order.status === "Packed"
-                                                                    ? 'grid-cols-5 md:grid-cols-5'
-                                                                    : Order.status === "Paid"
-                                                                        ? 'grid-cols-3'
-                                                                        : Order.status === "Completed"
-                                                                            ? (!isPaid ? 'grid-cols-5' : 'grid-cols-4')
-                                                                            : 'grid-cols-4'
-                                                                } gap-3 pt-6 border-t`}
-                                                        >
-                                                            {/* UPCOMING STAGE BUTTONS */}
-                                                            {isUpcomingStatus && Order.userLoginPhone && (
-                                                                <>
-                                                                    <a
-                                                                        href={`tel:${Order.userLoginPhone.replace(/\D/g, '')}`}
-                                                                        onClick={(e) => e.stopPropagation()}
-                                                                        className="py-2.5 bg-white border border-emerald-200 text-emerald-600 text-xs font-bold rounded-sm text-center"
-                                                                    >
-                                                                        Call
-                                                                    </a>
-
-                                                                    <a
-                                                                        href={`https://wa.me/${Order.userLoginPhone.replace(/\D/g, '')}`}
-                                                                        target="_blank"
-                                                                        rel="noopener noreferrer"
-                                                                        onClick={(e) => e.stopPropagation()}
-                                                                        className="py-2.5 bg-[#25D366] text-white text-xs font-bold rounded-sm text-center"
-                                                                    >
-                                                                        WhatsApp
-                                                                    </a>
-
-                                                                    <button
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            handleDeleteOrder(Order.id);
-                                                                        }}
-                                                                        className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm cursor-pointer"
-                                                                    >
-                                                                        Delete
-                                                                    </button>
-                                                                </>
+                                                        ))
+                                                    }
+                                                    {/* Expenses & Discount display (saved on order) */}
+                                                    {!isUpcomingStatus && (
+                                                        <>
+                                                            {Array.isArray(Order.expenses) && Order.expenses.length > 0 && (
+                                                                <div className="px-2 pt-1 space-y-0.5">
+                                                                    {Order.expenses.map((ex, idx) => (
+                                                                        <div key={idx} className="flex justify-between items-center">
+                                                                            <span className="text-[8px] font-bold text-orange-500 uppercase tracking-wide">
+                                                                                {ex.name || 'Expense'}
+                                                                            </span>
+                                                                            <span className="text-[9px] font-black text-orange-600">
+                                                                                +₹{formatAmount(parseFloat(String(ex.amount)) || 0)}
+                                                                            </span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
                                                             )}
+                                                            {Number(Order.totalTax || 0) > 0 && (
+                                                                <div className="px-2 pt-0.5 flex justify-between items-center border-t">
+                                                                    <span className="text-[8px] font-bold text-slate-500 uppercase tracking-wide">
+                                                                        Tax
+                                                                    </span>
+                                                                    <span className="text-[9px] font-black text-orange-500">
+                                                                        +₹{formatAmount(Number(Order.totalTax))}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                            {Number(Order.manualDiscount || 0) > 0 && (
+                                                                <div className="px-2 pt-0.5 flex justify-between items-center border-t">
+                                                                    <span className="text-[8px] font-bold text-red-500 uppercase tracking-wide">Bill Discount</span>
+                                                                    <span className="text-[9px] font-black text-red-600">
+                                                                        -₹{formatAmount(Number(Order.manualDiscount))}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    )}
+                                                    {/* Totals Section */}
+                                                    {!isUpcomingStatus && (
+                                                        <div className="border-t mt-1 p-2 flex items-center justify-between">
+                                                            <div className="flex flex-wrap gap-1.5 items-center">
+                                                                {paid > 0 && (
+                                                                    (() => {
+                                                                        // Merge all payment sources into one map
+                                                                        const mergedMethods: Record<string, number> = {};
 
-                                                            {!isUpcomingStatus && (isFinalStage ? (
-                                                                <>
+                                                                        if (Order.paymentMethods && Object.keys(Order.paymentMethods).length > 0) {
+                                                                            Object.entries(Order.paymentMethods).forEach(([method, amount]) => {
+                                                                                if (method.toLowerCase() !== 'due' && Number(amount) > 0) {
+                                                                                    const key = method.trim().toUpperCase();
+                                                                                    mergedMethods[key] = (mergedMethods[key] || 0) + Number(amount);
+                                                                                }
+                                                                            });
+                                                                        } else if (Order.paymentMethod && paid > 0) {
+                                                                            mergedMethods[Order.paymentMethod.trim().toUpperCase()] = paid;
+                                                                        }
+                                                                        return Object.entries(mergedMethods).map(([method, amount]) => (
+                                                                            <div
+                                                                                key={method}
+                                                                                className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-green-100"
+                                                                            >
+                                                                                <span className="text-[10px] font-bold text-green-800 uppercase">
+                                                                                    {method}
+                                                                                </span>
+                                                                                <span className="text-[10px] font-black text-green-600">
+                                                                                    ₹{Number(amount).toFixed(2)}
+                                                                                </span>
+                                                                            </div>
+                                                                        ));
+                                                                    })()
+                                                                )}
+                                                            </div>
 
-                                                                    {/* DELETE */}
-                                                                    <button
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            handleDeleteOrder(Order.id);
-                                                                        }}
-                                                                        className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm cursor-pointer"
-                                                                    >
-                                                                        Delete
-                                                                    </button>
+                                                            <div className='flex gap-3 items-center'>
+                                                                <div className="text-right border-r border-slate-200 pr-3">
+                                                                    <p className="text-[7px] font-bold text-green-600 uppercase tracking-tighter leading-none mb-0.5">Paid</p>
+                                                                    <p className="text-[11px] font-black text-green-700 leading-none">₹{paid.toFixed(2)}</p>
+                                                                </div>
 
-                                                                    {/* SETTLE – only UNPAID */}
-                                                                    {!isPaid && (
-                                                                        <button
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                setShowPaymentModal(Order);
-                                                                            }}
-                                                                            className="py-2.5 bg-emerald-500 text-white text-xs font-bold rounded-sm"
-                                                                        >
-                                                                            Settle
-                                                                        </button>
-                                                                    )}
-                                                                    {/* REMIND – only UNPAID Completed orders */}
-                                                                    {!isPaid && Order.status === 'Completed' && (
-                                                                        <button
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                handleSendReminder(Order);
-                                                                            }}
-                                                                            disabled={sendingPdf}
-                                                                            className="py-2.5 bg-amber-500 text-white text-xs font-bold rounded-sm disabled:opacity-50 flex items-center justify-center"
-                                                                        >
-                                                                            {sendingPdf ? <Spinner /> : "Remind"}
-                                                                        </button>
-                                                                    )}
+                                                                <div className="text-right border-r border-slate-200 pr-3">
+                                                                    <p className="text-[7px] font-bold text-blue-600 uppercase tracking-tighter leading-none mb-0.5">C.Note</p>
+                                                                    <p className="text-[11px] font-black text-blue-700 leading-none">
+                                                                        ₹{Number(Order.creditNoteAmount || 0).toFixed(2)}
+                                                                    </p>
+                                                                </div>
 
-                                                                    {/* RETURN – PAID + UNPAID dono me */}
-                                                                    <button
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            navigate(
-                                                                                `${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`,
-                                                                                { state: { selectedOrder: Order.orderId } }
-                                                                            );
-                                                                        }}
-                                                                        className="py-2.5 bg-sky-500 text-white text-xs font-bold rounded-sm"
-                                                                    >
-                                                                        Return
-                                                                    </button>
+                                                                {Number(Order.refundAmount || 0) > 0 && (
+                                                                    <div className="text-right border-r border-slate-200 pr-3">
+                                                                        <p className="text-[7px] font-bold text-red-600  uppercase tracking-tighter leading-none mb-0.5">Refund</p>
+                                                                        <p className="text-[11px] font-black text-red-600 leading-none">
+                                                                            ₹{Number(Order.refundAmount || 0).toFixed(2)}
+                                                                        </p>
+                                                                    </div>
+                                                                )}
+                                                                <div className="text-right">
+                                                                    <p className="text-[7px] font-bold text-red-600 uppercase tracking-tighter leading-none mb-0.5">Due</p>
+                                                                    <p className="text-[11px] font-black text-red-700 leading-none">₹{due.toFixed(2)}</p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                {/* Buttons Section - Updated Grid & Logic */}
+                                                {(
+                                                    <div
+                                                        className={`grid ${isUpcomingStatus
+                                                            ? Order.userLoginPhone ? 'grid-cols-3' : 'grid-cols-1'
+                                                            : Order.status === "Packed"
+                                                                ? 'grid-cols-5 md:grid-cols-5'
+                                                                : Order.status === "Paid"
+                                                                    ? 'grid-cols-3'
+                                                                    : Order.status === "Completed"
+                                                                        ? (!isPaid ? 'grid-cols-5' : 'grid-cols-4')
+                                                                        : 'grid-cols-4'
+                                                            } gap-3 pt-6 border-t`}
+                                                    >
+                                                        {/* UPCOMING STAGE BUTTONS */}
+                                                        {isUpcomingStatus && Order.userLoginPhone && (
+                                                            <>
+                                                                <a
+                                                                    href={`tel:${Order.userLoginPhone.replace(/\D/g, '')}`}
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                    className="py-2.5 bg-white border border-emerald-200 text-emerald-600 text-xs font-bold rounded-sm text-center"
+                                                                >
+                                                                    Call
+                                                                </a>
 
-                                                                    {/* PRINT */}
-                                                                    <button
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            setSelectedOrderForAction(Order);
-                                                                        }}
-                                                                        disabled={pdfLoadingOrderId === Order.id}
-                                                                        className="py-2.5 bg-black text-white text-xs font-bold rounded-sm flex items-center justify-center"
-                                                                    >
-                                                                        Print
-                                                                    </button>
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    {Order.status === "Packed" && (
-                                                                        <button
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                handlePreviousStatus(Order.id, Order.status);
-                                                                            }}
-                                                                            className="w-full py-2.5 bg-gray-200 text-black text-sm font-bold rounded-sm flex items-center justify-center flex-col">
-                                                                            ←
-                                                                            <span className='text-[10px]'>back</span>
-                                                                        </button>
-                                                                    )}
-                                                                    {/* DELETE */}
-                                                                    <button
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            handleDeleteOrder(Order.id);
-                                                                        }}
-                                                                        className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm"
-                                                                    >
-                                                                        Delete
-                                                                    </button>
+                                                                <a
+                                                                    href={`https://wa.me/${Order.userLoginPhone.replace(/\D/g, '')}`}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                    className="py-2.5 bg-[#25D366] text-white text-xs font-bold rounded-sm text-center"
+                                                                >
+                                                                    WhatsApp
+                                                                </a>
 
-                                                                    {/* ADVANCE */}
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleDeleteOrder(Order.id);
+                                                                    }}
+                                                                    className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm cursor-pointer"
+                                                                >
+                                                                    Delete
+                                                                </button>
+                                                            </>
+                                                        )}
+
+                                                        {!isUpcomingStatus && (isFinalStage ? (
+                                                            <>
+
+                                                                {/* DELETE */}
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleDeleteOrder(Order.id);
+                                                                    }}
+                                                                    className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm cursor-pointer"
+                                                                >
+                                                                    Delete
+                                                                </button>
+
+                                                                {/* SETTLE – only UNPAID */}
+                                                                {!isPaid && (
                                                                     <button
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
@@ -3547,78 +3516,153 @@ const OrdersPage: React.FC = () => {
                                                                         }}
                                                                         className="py-2.5 bg-emerald-500 text-white text-xs font-bold rounded-sm"
                                                                     >
-                                                                        Advance
+                                                                        Settle
                                                                     </button>
-
-                                                                    {/* PRINT */}
+                                                                )}
+                                                                {/* REMIND – only UNPAID Completed orders */}
+                                                                {!isPaid && Order.status === 'Completed' && (
                                                                     <button
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
-                                                                            setSelectedOrderForAction(Order);
+                                                                            handleSendReminder(Order);
                                                                         }}
-                                                                        className="py-2.5 bg-black text-white text-xs font-bold rounded-sm"
+                                                                        disabled={sendingPdf}
+                                                                        className="py-2.5 bg-amber-500 text-white text-xs font-bold rounded-sm disabled:opacity-50 flex items-center justify-center"
                                                                     >
-                                                                        {pdfLoadingOrderId === Order.id ? (
-                                                                            <div className="flex items-center gap-2">
-                                                                                <Spinner />
-                                                                                <span>...Printing</span>
-                                                                            </div>
-                                                                        ) : (
-                                                                            "Print"
-                                                                        )}
+                                                                        {sendingPdf ? <Spinner /> : "Remind"}
                                                                     </button>
+                                                                )}
 
-                                                                    {/* PREVIOUS ARROW (only Packed stage) */}
-                                                                    {(Order.status === "Confirmed" || Order.status === "Packed") && (
-                                                                        <button
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                handleUpdateStatus(Order.id, Order.status);
-                                                                            }}
-                                                                            disabled={isUpdatingStatus === Order.id}
-                                                                            className="py-2.5 bg-[#00A2FF] text-white text-xs font-bold rounded-sm flex items-center justify-center flex-col"
-                                                                        >
-                                                                            →
-                                                                            <span className='text-[10px]'>Next</span>
-                                                                        </button>
+                                                                {/* RETURN – PAID + UNPAID dono me */}
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        navigate(
+                                                                            `${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`,
+                                                                            { state: { selectedOrder: Order.orderId } }
+                                                                        );
+                                                                    }}
+                                                                    className="py-2.5 bg-sky-500 text-white text-xs font-bold rounded-sm"
+                                                                >
+                                                                    Return
+                                                                </button>
+
+                                                                {/* PRINT */}
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setSelectedOrderForAction(Order);
+                                                                    }}
+                                                                    disabled={pdfLoadingOrderId === Order.id}
+                                                                    className="py-2.5 bg-black text-white text-xs font-bold rounded-sm flex items-center justify-center"
+                                                                >
+                                                                    Print
+                                                                </button>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                {Order.status === "Packed" && (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handlePreviousStatus(Order.id, Order.status);
+                                                                        }}
+                                                                        className="w-full py-2.5 bg-gray-200 text-black text-sm font-bold rounded-sm flex items-center justify-center flex-col">
+                                                                        ←
+                                                                        <span className='text-[10px]'>back</span>
+                                                                    </button>
+                                                                )}
+                                                                {/* DELETE */}
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleDeleteOrder(Order.id);
+                                                                    }}
+                                                                    className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm"
+                                                                >
+                                                                    Delete
+                                                                </button>
+
+                                                                {/* ADVANCE */}
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setShowPaymentModal(Order);
+                                                                    }}
+                                                                    className="py-2.5 bg-emerald-500 text-white text-xs font-bold rounded-sm"
+                                                                >
+                                                                    Advance
+                                                                </button>
+
+                                                                {/* PRINT */}
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setSelectedOrderForAction(Order);
+                                                                    }}
+                                                                    className="py-2.5 bg-black text-white text-xs font-bold rounded-sm"
+                                                                >
+                                                                    {pdfLoadingOrderId === Order.id ? (
+                                                                        <div className="flex items-center gap-2">
+                                                                            <Spinner />
+                                                                            <span>...Printing</span>
+                                                                        </div>
+                                                                    ) : (
+                                                                        "Print"
                                                                     )}
-                                                                </>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </CustomCard>
-                                    </motion.div>
+                                                                </button>
+
+                                                                {/* PREVIOUS ARROW (only Packed stage) */}
+                                                                {(Order.status === "Confirmed" || Order.status === "Packed") && (
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handleUpdateStatus(Order.id, Order.status);
+                                                                        }}
+                                                                        disabled={isUpdatingStatus === Order.id}
+                                                                        className="py-2.5 bg-[#00A2FF] text-white text-xs font-bold rounded-sm flex items-center justify-center flex-col"
+                                                                    >
+                                                                        →
+                                                                        <span className='text-[10px]'>Next</span>
+                                                                    </button>
+                                                                )}
+                                                            </>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </CustomCard>
+                                </motion.div>
+                            );
+
+                            if (isTutorialActive && tutorialStep === 5 && Order.id === expandedorderId) {
+                                return (
+                                    <TutorialStep
+                                        key={`tutorial-${Order.id}`}
+                                        step={5}
+                                        currentStep={tutorialStep}
+                                        text="Tap any order to see full details — items, addresses, payments, and status actions."
+                                        onNext={handleTutorialFinish}
+                                        onSkip={skip}
+                                        isLast
+                                    >
+                                        {cardContent}
+                                    </TutorialStep>
                                 );
+                            }
 
-                                if (isTutorialActive && tutorialStep === 5 && Order.id === expandedorderId) {
-                                    return (
-                                        <TutorialStep
-                                            key={`tutorial-${Order.id}`}
-                                            step={5}
-                                            currentStep={tutorialStep}
-                                            text="Tap any order to see full details — items, addresses, payments, and status actions."
-                                            onNext={handleTutorialFinish}
-                                            onSkip={skip}
-                                            isLast
-                                        >
-                                            {cardContent}
-                                        </TutorialStep>
-                                    );
-                                }
-
-                                return cardContent;
-                            })}
-                        </AnimatePresence>
-                    ) : (
-                        <p className="p-8 text-center text-slate-500">
-                            {isTutorialActive
-                                ? 'Sample orders will appear here once you switch to a matching status.'
-                                : 'No Orders found.'}
-                        </p>
-                    )}
-                </div>
+                            return cardContent;
+                        })}
+                    </AnimatePresence>
+                ) : (
+                    <p className="p-8 text-center text-slate-500">
+                        {isTutorialActive
+                            ? 'Sample orders will appear here once you switch to a matching status.'
+                            : 'No Orders found.'}
+                    </p>
+                )}
+            </div>
 
             {/* Modals (SelectedAction, QR, Payment, Editing) Same as provided */}
             {selectedOrderForAction && (
@@ -3773,15 +3817,23 @@ const OrdersPage: React.FC = () => {
                 // FIX 3: Include Expenses and Discounts in the Payment Drawer Total
                 const itemsTotal = (showPaymentModal.items || []).reduce((sum, item) => {
                     const unitPrice = item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0;
-                    return sum + (Number(unitPrice) * Number(item.quantity || 0));
+                    const qty = Number(item.quantity || 0);
+                    const rowNet = Number(unitPrice) * qty;
+
+                    const taxRate = Number(item.tax ?? item.taxRate ?? 0);
+                    const taxType = (item.taxType || '').toLowerCase();
+                    const extraTax = (taxRate > 0 && (taxType === 'exclusive' || taxType === 'regular'))
+                        ? rowNet * (taxRate / 100)
+                        : 0;
+
+                    return sum + rowNet + extraTax;
                 }, 0);
 
                 const expTotal = (showPaymentModal.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0);
-                const taxTotal = Number(showPaymentModal.totalTax || 0);
                 const discTotal = Number(showPaymentModal.manualDiscount || 0);
 
                 // FIX: Round the total to 2 decimal places
-                const updatedTotal = Number(Math.max(0, itemsTotal + expTotal + taxTotal - discTotal).toFixed(2));
+                const updatedTotal = Number(Math.max(0, itemsTotal + expTotal - discTotal).toFixed(2));
 
                 // Current paid
                 const alreadyPaid = Number(showPaymentModal.paidAmount || 0);

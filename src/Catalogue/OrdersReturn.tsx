@@ -271,13 +271,16 @@ const OrdersReturnPage: React.FC = () => {
         .map((item: any) => {
           const id = item.id;
           if (!id) return null;
-
           const qty = Number(item.quantity) || 0;
-          const price =
-            Number(item.customPrice ?? item.unitPrice ?? item.salesPrice ?? item.mrp) || 0;
-          const unit = price;
-          const total = price * qty;
-
+          const lineTotal = Number(item.finalPrice ?? item.amount ?? 0);
+          const fallbackUnit = qty > 0 ? lineTotal / qty : 0;
+          const unit =
+            item.effectiveUnitPrice !== undefined
+              ? Number(item.effectiveUnitPrice)
+              : fallbackUnit ||
+              Number(item.customPrice ?? item.unitPrice ?? item.salesPrice ?? item.mrp) ||
+              0;
+          const total = unit * qty;
 
           return {
             id,
@@ -293,7 +296,20 @@ const OrdersReturnPage: React.FC = () => {
         .filter(Boolean) as TransactionItem[]
     );
   };
+const paidAmountOnSale = useMemo(() => {
+    const methods = selectedSale?.paymentMethods || {};
+    return Object.entries(methods)
+      .filter(([key]) => key !== 'due')
+      .reduce((sum, [, val]) => sum + (Number(val) || 0), 0);
+  }, [selectedSale]);
 
+  const isDueSale = paidAmountOnSale <= 0 && (selectedSale?.paymentMethods?.due ?? 0) > 0;
+
+  useEffect(() => {
+    if (isDueSale) {
+      setModeOfReturn('Exchange');
+    }
+  }, [isDueSale]);
 
   const handleToggleReturnItem = (itemId: string) => {
     if (!originalSaleItems.find(i => i.id === itemId)) return;
@@ -701,12 +717,16 @@ const OrdersReturnPage: React.FC = () => {
       // Credit Note & Cash Refund
       fb = totalReturnValue;
     }
+const paidSoFar = Object.entries(selectedSale?.paymentMethods || {})
+      .filter(([key]) => key !== 'due')
+      .reduce((sum, [, val]) => sum + (Number(val) || 0), 0);
 
+    const cappedFb = fb > 0 ? Math.min(fb, paidSoFar) : fb;
     return {
       totalReturnGross: trg,
       totalReturnValue,
       totalExchangeValue: tev,
-      finalBalance: fb,
+      finalBalance: Math.round(cappedFb * 100) / 100,
       discountDeducted: dd
     };
   }, [itemsToReturn, exchangeItems, selectedSale, modeOfReturn]);
@@ -740,8 +760,11 @@ const OrdersReturnPage: React.FC = () => {
         const qty = Number(item.quantity) || 1;
         const total = Number(item.finalPrice || item.amount || 0);
         const unit =
-          Number(item.customPrice ?? item.unitPrice ?? item.salesPrice) ||
-          (qty > 0 ? total / qty : 0);
+          item.effectiveUnitPrice !== undefined
+            ? Number(item.effectiveUnitPrice)
+            : (qty > 0 ? total / qty : 0) ||
+            Number(item.customPrice ?? item.unitPrice ?? item.salesPrice) ||
+            0;
 
         originalItemsMap.set(safeId, {
           ...item,
@@ -1089,7 +1112,19 @@ const OrdersReturnPage: React.FC = () => {
         message: 'No items selected.'
       });
     }
+const isCreditNote =
+      modeOfReturn === 'Credit Note' ||
+      (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Credit Note');
+    const isCashRefund =
+      modeOfReturn === 'Cash Refund' ||
+      (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Cash Refund');
 
+    if ((isCreditNote || isCashRefund) && isDueSale && finalBalance > 0) {
+      return setModal({
+        type: State.ERROR,
+        message: 'Credit Note / Cash Refund cannot be issued for an unpaid order. Please choose Exchange.'
+      });
+    }
     //  CREDIT NOTE
     if (modeOfReturn === 'Credit Note') {
       if (itemsToReturn.length === 0) {
@@ -1384,7 +1419,7 @@ const OrdersReturnPage: React.FC = () => {
                 <div className="md:hidden mb-4">
                   <label className="block font-medium text-sm mb-1">Transaction Type</label>
                   <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-2 border rounded bg-white">
-                    <option>Credit Note</option>
+                    <option disabled={isDueSale}>Credit Note</option>
                     <option>Exchange</option>
                     <option>Refund</option>
                   </select>
@@ -1520,7 +1555,7 @@ const OrdersReturnPage: React.FC = () => {
               <div className="mb-6">
                 <label className="block text-sm font-semibold text-gray-600 mb-2">Transaction Type</label>
                 <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm bg-gray-50 focus:ring-2 focus:ring-[#F97316] outline-none">
-                  <option>Credit Note</option>
+                  <option disabled={isDueSale}>Credit Note</option>
                   <option>Exchange</option>
                   <option>Cash Refund</option>
                 </select>
@@ -1538,6 +1573,10 @@ const OrdersReturnPage: React.FC = () => {
                     <span>- ₹{discountDeducted.toFixed(2)}</span>
                   </div>
                 )}
+                <div className="flex justify-between text-gray-700">
+                  <span>Paid Amount</span>
+                  <span className="font-medium">₹{paidAmountOnSale.toFixed(2)}</span>
+                </div>
                 <div className="flex justify-between font-semibold border-t border-gray-200 pt-2">
                   <span>Net Return Value</span>
                   <span>₹{(totalReturnGross - discountDeducted).toFixed(2)}</span>

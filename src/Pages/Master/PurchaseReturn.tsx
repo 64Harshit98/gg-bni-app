@@ -167,6 +167,13 @@ const [returnItemSearchQuery, setReturnItemSearchQuery] = useState<string>('');
     originalPurchaseItems.filter(item => selectedReturnIds.has(item.id)),
     [originalPurchaseItems, selectedReturnIds]
   );
+  const isPurchaseUnpaid = useMemo(() => {
+  if (!selectedPurchase) return true;
+  const totalPaid = Object.entries(selectedPurchase.paymentMethods || {})
+    .filter(([mode]) => mode !== 'due')
+    .reduce((sum, [, val]) => sum + Number(val || 0), 0);
+  return totalPaid <= 0;
+}, [selectedPurchase]);
   const filteredReturnItems = useMemo(() => {
     const q = returnItemSearchQuery.trim().toLowerCase();
     if (!q) return originalPurchaseItems;
@@ -257,7 +264,11 @@ const [returnItemSearchQuery, setReturnItemSearchQuery] = useState<string>('');
     };
     fetchData();
   }, [currentUser, dbOperations, purchaseId, state]);
-
+useEffect(() => {
+    if (isPurchaseUnpaid && modeOfReturn === 'Debit Note') {
+      setModeOfReturn('Exchange');
+    }
+  }, [isPurchaseUnpaid, modeOfReturn]);
   // Click Outside Handler (Modified to close both dropdowns)
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -663,7 +674,15 @@ const [returnItemSearchQuery, setReturnItemSearchQuery] = useState<string>('');
 
     const netReturnVal = returnGross + returnExclusiveTax - discountDeducted;
     const netNewItemsVal = newItemsGross + newItemsExclusiveTax;
-    const finalBalance = netReturnVal - netNewItemsVal;
+    let finalBalance = netReturnVal - netNewItemsVal;
+
+    const paidAmountOnPurchase = Object.entries(selectedPurchase?.paymentMethods || {})
+      .filter(([mode]) => mode !== 'due')
+      .reduce((sum, [, val]) => sum + Number(val || 0), 0);
+
+    finalBalance = finalBalance > 0
+      ? Math.min(finalBalance, paidAmountOnPurchase)
+      : finalBalance;
 
     return {
       totalReturnValue: netReturnVal,
@@ -1075,7 +1094,7 @@ const [returnItemSearchQuery, setReturnItemSearchQuery] = useState<string>('');
                   <label className="block font-medium text-sm mb-1">Transaction Type</label>
                   <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-2 border rounded bg-white">
                     <option>Exchange</option>
-                    <option>Debit Note</option>
+                    <option disabled={isPurchaseUnpaid}>Debit Note</option>
                     <option>Cash Refund</option>
                   </select>
                 </div>
@@ -1187,7 +1206,7 @@ const [returnItemSearchQuery, setReturnItemSearchQuery] = useState<string>('');
                 <label className="block text-sm font-semibold text-gray-600 mb-2">Transaction Type</label>
                 <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none">
                   <option>Exchange</option>
-                  <option>Debit Note</option>
+                  <option disabled={isPurchaseUnpaid}>Debit Note</option>
                   <option>Cash Refund</option>
                 </select>
               </div>

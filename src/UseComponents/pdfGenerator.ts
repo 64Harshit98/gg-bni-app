@@ -480,7 +480,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     cursorY += partyHeight;
 
     const fullTaxHeaders = isIgst
-      ? ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Subtotal', 'IGST', 'IGST Amt', 'Amount']
+      ? ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Bill Disc.','Subtotal', 'IGST', 'IGST Amt', 'Amount']
       : ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Bill Disc.', 'Subtotal', 'GST', 'GST Amt', 'Amount'];
 
     const noTaxHeaders = ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Bill Disc.', 'Amount'];

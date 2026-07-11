@@ -2108,7 +2108,10 @@ const PurchasePage: React.FC = () => {
 
         <div className="hidden md:flex w-1/4 flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
           <div className="flex-1 p-6 flex flex-col justify-end">
-            <h2 className="text-xl font-bold text-gray-800 mb-6 border-b pb-2">Purchase Summary</h2>
+            <div className="mb-6 border-b pb-2 flex items-end justify-between">
+              <h2 className="text-xl font-bold text-gray-800">Purchase Summary</h2>
+              <span className="text-xs text-indigo-500 font-semibold">{items.length} Items</span>
+            </div>
 
             <GenericBillFooter
               isExpanded={true}

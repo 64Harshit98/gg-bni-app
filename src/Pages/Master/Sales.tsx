@@ -30,6 +30,7 @@ import { getFirestoreOperations } from '../../lib/ItemsFirebase';
 import { botMasterService } from '../Additional/Whatsapp/WhatsappApi';
 import { PLAN_ALLOWED_FEATURES } from '../Settings/SalesSetting';
 import CalcDisplay from '../../Components/CalcDisplay';
+import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 
 export interface SalesItem extends OriginalSalesItem {
     isEditable: boolean;
@@ -1543,7 +1544,15 @@ const Sales: React.FC = () => {
                         createdAt: getParsedInvoiceDate(),
                         manualDiscount: completionData.discount || 0,
                         salesmanName: finalSalesman.name,
-                        items: finalizedItems
+                        items: finalizedItems,
+                        expenses: completionData.expenses || [],
+                        paymentMethods: completionData.paymentDetails,
+                        dueAmount: completionData.paymentDetails?.due || 0,
+                        shippingName: completionData.shippingName || '',
+                        shippingNumber: completionData.shippingNumber || '',
+                        shippingAddress: completionData.shippingAddress || '',
+                        shippingGST: completionData.shippingGST || '',
+                        transportDetails: completionData.transportDetails || undefined
                     };
 
                     setAvailableItems(prev => prev.map(item => {
@@ -1596,10 +1605,11 @@ const Sales: React.FC = () => {
     const preparePdfData = async (invoice: any) => {
         if (!currentUser?.companyId) return null;
         const dbOps = getFirestoreOperations(currentUser.companyId);
-        const [businessInfo, fetchedItems, billSettingsSnap] = await Promise.all([
+        const [businessInfo, fetchedItems, billSettingsSnap, companyLogoBase64] = await Promise.all([
             dbOps.getBusinessInfo(),
             dbOps.syncItems(),
-            getDoc(doc(db, 'companies', currentUser.companyId, 'settings', 'bill'))
+            getDoc(doc(db, 'companies', currentUser.companyId, 'settings', 'bill')),
+            resolveCompanyLogoBase64(currentUser.companyId)
         ]);
         const billSettings = billSettingsSnap.exists() ? billSettingsSnap.data() : {};
 
@@ -1655,13 +1665,22 @@ const Sales: React.FC = () => {
             companyAddress: businessInfo?.address || 'Your Address',
             companyContact: businessInfo?.phoneNumber || 'Your Phone',
             companyEmail: businessInfo?.email || '',
+            companyLogoBase64: companyLogoBase64 || undefined,
             signatureBase64: billSettings.signatureBase64 || '',
             companyGstin: billSettings.companyGstin || businessInfo?.gstin || '',
             msmeNumber: billSettings.msmeNumber || '',
             panNumber: billSettings.panNumber || '',
+            companyState: businessInfo?.state || '',
             billDiscount: invoice.manualDiscount || 0,
             discountDisplayFormat: billSettings?.discountDisplayFormat || 'amount',
             billTo: { name: invoice.partyName, address: invoice.partyAddress || '', phone: invoice.partyNumber || '', gstin: invoice.partyGstin || '' },
+            shipTo: {
+                name: invoice.shippingName || '',
+                address: invoice.shippingAddress || '',
+                phone: invoice.shippingNumber || '',
+                gstin: invoice.shippingGST || '',
+            },
+            transportDetails: invoice.transportDetails || undefined,
             invoice: {
                 number: invoice.invoiceNumber,
                 date: new Date(invoice.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: 'numeric', hour12: true }),
@@ -1671,6 +1690,38 @@ const Sales: React.FC = () => {
             items: populatedItems,
             terms: billSettings.posTermsAndConditions || billSettings.termsAndConditions || 'Goods once sold will not be taken back.',
             finalAmount: invoice.amount,
+            expenses: invoice.expenses || [],
+            advance: (() => {
+                const pm = invoice.paymentMethods || {};
+                const total = Object.entries(pm)
+                    .filter(([k]) => k !== 'due')
+                    .reduce((s, [, v]) => s + (Number(v) || 0), 0);
+                return total > 0 ? total : 0;
+            })(),
+            due: invoice.dueAmount || 0,
+            previousBalance: await (async () => {
+                if (!currentUser?.companyId || !invoice.partyNumber) return 0;
+                try {
+                    const { getDocs, collection, query, where } = await import('firebase/firestore');
+                    const salesRef = collection(db, 'companies', currentUser.companyId, 'sales');
+                    const snap = await getDocs(query(salesRef, where('partyNumber', '==', invoice.partyNumber)));
+                    let total = 0;
+                    snap.forEach(d => {
+                        if (d.id !== invoice.id) {
+                            total += Number(d.data().paymentMethods?.due ?? 0);
+                        }
+                    });
+                    const obRef = collection(db, 'companies', currentUser.companyId, 'openingBalances');
+                    const obSnap = await getDocs(query(obRef, where('partyNumber', '==', invoice.partyNumber)));
+                    obSnap.forEach(d => {
+                        const data = d.data();
+                        if ((data.balanceType ?? 'due') === 'due') {
+                            total += Number(data.dueAmount ?? data.amount ?? 0);
+                        }
+                    });
+                    return total;
+                } catch { return 0; }
+            })(),
             bankDetails: {
                 accountName: billSettings.accountName || businessInfo?.accountHolderName,
                 accountNumber: billSettings.accountNumber || businessInfo?.accountNumber,

@@ -888,7 +888,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                 )}
 
                                 <div className="grid grid-cols-2 gap-2 md:gap-4 relative animate-in fade-in slide-in-from-top-2">
-                                    <div className="relative">
+                                    <div className={`relative ${mode === 'purchase' ? 'order-2' : 'order-1'}`}>
                                         <input
                                             ref={numberInputRef}
                                             type="tel"
@@ -907,7 +907,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                         {requireCustomerMobile && addressType === 'billing' && <span className="absolute right-2 top-2 md:right-3 md:top-3 text-red-500 font-bold">*</span>}
                                     </div>
 
-                                    <div className="relative">
+                                    <div className={`relative ${mode === 'purchase' ? 'order-1' : 'order-2'}`}>
                                         <input
                                             ref={nameInputRef}
                                             type="text"

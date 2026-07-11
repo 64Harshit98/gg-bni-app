@@ -50,6 +50,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
   const [deleteTargetGroup, setDeleteTargetGroup] = useState<ItemGroup | null>(null);
   const [viewingGroup, setViewingGroup] = useState<ItemGroup | null>(null);
   const [allItems, setAllItems] = useState<any[]>([]);
+  const [itemSearchQuery, setItemSearchQuery] = useState<string>('');
   const [selectedItemForEdit, setSelectedItemForEdit] = useState<any | null>(null);
   const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
   const [itemPendingDelete, setItemPendingDelete] = useState<any | null>(null);
@@ -408,7 +409,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
                       <>
                         <div className="flex items-center gap-2 overflow-hidden">
                           <button
-                            onClick={() => setViewingGroup(group)}
+                            onClick={() => { setViewingGroup(group); setItemSearchQuery(''); }}
                             className={`font-medium truncate hover:underline text-left text-gray-800 ${theme.primaryHoverText}`}
                           >
                             {group.name}
@@ -437,7 +438,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-sm shadow-sm border border-gray-300">
                 <div className="flex items-center gap-2 overflow-hidden">
                   <button
-                    onClick={() => setViewingGroup({ id: 'uncategorized', name: 'Uncategorized', description: '', createdAt: 0, updatedAt: 0 })}
+                    onClick={() => { setViewingGroup({ id: 'uncategorized', name: 'Uncategorized', description: '', createdAt: 0, updatedAt: 0 }); setItemSearchQuery(''); }}
                     className={`text-gray-600 font-bold hover:underline text-left ${theme.primaryHoverText}`}
                   >
                     Uncategorized
@@ -507,8 +508,17 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
                       Empty Uncategorized
                     </button>
                   )}
-                  <button onClick={() => setViewingGroup(null)} className="text-gray-400 hover:text-gray-700 text-xl font-bold leading-none">✕</button>
+                  <button onClick={() => { setViewingGroup(null); setItemSearchQuery(''); }} className="text-gray-400 hover:text-gray-700 text-xl font-bold leading-none">✕</button>
                 </div>
+              </div>
+              <div className="mb-3">
+                <input
+                  type="text"
+                  placeholder="Search items in this group..."
+                  value={itemSearchQuery}
+                  onChange={(e) => setItemSearchQuery(e.target.value)}
+                  className={`w-full p-2 border border-gray-300 rounded-sm bg-gray-50 focus:outline-none focus:ring-2 ${theme.focusRing}`}
+                />
               </div>
 
               <div className="overflow-y-auto flex-1 space-y-2">
@@ -526,8 +536,14 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
                     );
                   }
                   return ids.includes(viewingGroup.id!);
+                }).filter(item => {
+                  const query = itemSearchQuery.trim().toLowerCase();
+                  if (!query) return true;
+                  return item.name.toLowerCase().includes(query);
                 }).length === 0 ? (
-                  <p className="text-center text-gray-400 py-8">No items in this group.</p>
+                  <p className="text-center text-gray-400 py-8">
+                    {itemSearchQuery.trim() ? 'No matching items found.' : 'No items in this group.'}
+                  </p>
                 ) : (
                   allItems.filter(item => {
                     const validGroupIds = new Set(itemGroups.map(g => g.id));
@@ -545,7 +561,21 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
                     }
                     return ids.includes(viewingGroup.id!);
                   })
-                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .filter(item => {
+                      const query = itemSearchQuery.trim().toLowerCase();
+                      if (!query) return true;
+                      return item.name.toLowerCase().includes(query);
+                    })
+                    .sort((a, b) => {
+                      const query = itemSearchQuery.trim().toLowerCase();
+                      if (query) {
+                        const aStarts = a.name.toLowerCase().startsWith(query);
+                        const bStarts = b.name.toLowerCase().startsWith(query);
+                        if (aStarts && !bStarts) return -1;
+                        if (!aStarts && bStarts) return 1;
+                      }
+                      return a.name.localeCompare(b.name);
+                    })
                     .map(item => {
                       const stock = item.stock || 0;
                       const value = stock * (item.purchasePrice || 0);

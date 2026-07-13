@@ -1225,7 +1225,7 @@ const CartPage: React.FC = () => {
                     href={whatsappLink}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="fixed bottom-24 right-4 md:bottom-6 md:right-6 z-[10000] bg-[#25D366] text-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center active:scale-95 transition-all"
+                    className="fixed bottom-24 right-4 md:bottom-6 md:right-6 z-[40] bg-[#25D366] text-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center active:scale-95 transition-all"
                     title="Chat on WhatsApp"
                 >
                     <FaWhatsapp size={26} />

@@ -32,7 +32,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
     onCategoryChange,
     categories = [],
     itemGroupMap = {},
-     onSearchChange,
+    onSearchChange,
 }) => {
     const [searchQuery, setSearchQuery] = useState<string>('');
     const [throttledQuery, setThrottledQuery] = useState<string>('');
@@ -282,7 +282,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
                                     )}
                                 </div>
                             ) : (
-                                filteredItems.map((item, index) => {
+                                filteredItems.slice(0, 50).map((item, index) => {
                                     const isSelected = index === activeIndex;
                                     const stock = item.stock || (item as any).Stock || 0;
                                     const stockColor = stock <= 0 ? 'text-red-600 bg-red-50' : stock < 10 ? 'text-orange-600 bg-orange-50' : 'text-green-700 bg-green-50';

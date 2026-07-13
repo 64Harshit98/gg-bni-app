@@ -1,3 +1,4 @@
+import { Cata_Permissions } from '../Catalogue/enum/cata_permissions.enum';
 import { Permissions, PLANS } from '../enums';
 
 /**
@@ -34,7 +35,7 @@ export interface User {
     uid: string;
     name: string;
     role: Role;
-    permissions: Permissions[];
+    permissions: (Permissions | Cata_Permissions)[];
     companyId?: string;
     ownReferralCode?: string;
     Subscription?: {

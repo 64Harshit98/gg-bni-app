@@ -13,11 +13,43 @@ import { getDefaultPurchaseSettings } from '../Pages/Settings/Purchasesetting';
 import { getDefaultSalesSettings } from '../Pages/Settings/SalesSetting';
 import { getDefaultCatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting';
 import { syncCompanyPermissions } from '../context/Permissions';
+import type { Cata_Permissions } from '../Catalogue/enum/cata_permissions.enum';
+import { getDefaultCataPermissions } from '../Catalogue/Settings/CataloguePermissionSetting';
 
 interface AuthState {
   status: 'pending' | 'authenticated' | 'unauthenticated';
   user: User | null;
 }
+
+export const ensureCataPermissionsExist = async (companyId: string, role: string): Promise<Cata_Permissions[]> => {
+  const cataDocRef = doc(db, 'companies', companyId, 'cata_permissions', role);
+  const cataSnap = await getDoc(cataDocRef);
+
+  // 1. If it exists, return the database values
+  if (cataSnap.exists()) {
+    return cataSnap.data().allowedPermissions || [];
+  }
+
+  // 2. If it DOES NOT exist, generate defaults
+  console.log(`[System] Initializing default Catalogue permissions for ${role}`);
+  const defaultPerms = getDefaultCataPermissions(role);
+
+  // 3. Save them to Firestore instantly
+  try {
+    await setDoc(cataDocRef, {
+      allowedPermissions: defaultPerms,
+      role: role,
+      companyId: companyId
+    }, { merge: true });
+
+    return defaultPerms;
+  } catch (error) {
+    console.error("Failed to auto-save default catalogue permissions", error);
+
+    // Return defaults anyway so the user's UI doesn't crash if network fails
+    return defaultPerms;
+  }
+};
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [authState, setAuthState] = useState<AuthState>({ status: 'pending', user: null });
@@ -164,8 +196,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         // --- RESOLVE PERMISSIONS ---
         let rolePermissions: Permissions[] = [];
+        let cataloguePermissions: Cata_Permissions[] = []; // 👈 1. Create a variable for catalogue perms
 
         if (uData.role) {
+          // --- FETCH CORE PERMISSIONS ---
           const permDocRef = doc(db, 'companies', companyId!, 'permissions', uData.role);
           const permSnap = await getDoc(permDocRef);
 
@@ -181,10 +215,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           }
 
           rolePermissions = await syncCompanyPermissions(companyId!, uData.role, dbPerms);
+
+          // --- FETCH CATALOGUE PERMISSIONS (THIS WAS MISSING) ---
+          const cataDocRef = doc(db, 'companies', companyId!, 'cata_permissions', uData.role);
+          const cataSnap = await getDoc(cataDocRef);
+
+          if (cataSnap.exists()) {
+            cataloguePermissions = cataSnap.data().allowedPermissions || [];
+          }
         }
 
+        // --- FILTER CORE PERMISSIONS BY PLAN ---
         const packAllowed = getPackPermissions(resolvedPlan) || [];
-        const finalPermissions = rolePermissions.filter(p => packAllowed.includes(p));
+        const finalCorePermissions = rolePermissions.filter(p => packAllowed.includes(p));
+        cataloguePermissions = await ensureCataPermissionsExist(companyId!, uData.role);
+        // --- MERGE BOTH SETS OF PERMISSIONS ---
+        const finalPermissions = [...finalCorePermissions, ...cataloguePermissions] as any[];
 
         const rawExpiry = cData.expiryDate;
         const expiryDate = rawExpiry?.toDate ? rawExpiry.toDate() : new Date(rawExpiry);
@@ -198,7 +244,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           companyId: companyId!,
           plan: resolvedPlan,
           isFirstLogin: uData.isFirstLogin === true,
-          permissions: finalPermissions,
+          permissions: finalPermissions, // 👈 2. Now includes Catalogue Permissions!
           Subscription: {
             pack: String(resolvedPlan),
             isActive: isSubscriptionActive,
@@ -217,13 +263,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     return () => unsubscribe();
   }, []);
+
+  // Expose these via your AuthContext
   const authValue = useMemo(() => ({
+    // Assert that currentUser is the User type AND has a companyId
     currentUser: authState.user as (User & { companyId: string }) | null,
-    loading: authState.status === 'pending',
     hasPermission: (perm: Permissions) => {
-      if (!authState.user || !Array.isArray(authState.user.permissions)) return false;
-      return authState.user.permissions.includes(perm);
-    }
+      // Ensure you return a boolean, not boolean | undefined
+      return !!authState.user?.permissions.includes(perm);
+    },
+    hasCataloguePermission: (perm: Cata_Permissions) => {
+      return !!authState.user?.permissions.includes(perm);
+    },
+    loading: authState.status === 'pending',
   }), [authState]);
 
   if (authState.status === 'pending') return <Loading />;

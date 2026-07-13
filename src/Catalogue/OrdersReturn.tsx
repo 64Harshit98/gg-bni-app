@@ -1647,6 +1647,7 @@ const isCreditNote =
         onPaymentComplete={saveReturnTransaction}
         initialPartyName={partyName}
         initialPartyNumber={partyNumber}
+        allowDueBilling={true}
       />
     </div>
   );

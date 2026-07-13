@@ -219,20 +219,27 @@ const CartPage: React.FC = () => {
                 finalPrice: item.salesPrice * item.quantity,
             }));
 
-            const totalAmount = itemsForFirebase.reduce(
+            const rawTotalAmount = itemsForFirebase.reduce(
                 (acc, curr) => acc + curr.finalPrice,
                 0
             );
+
+            // Round the final total
+            const roundedTotalAmount = Math.round(rawTotalAmount);
+            // Calculate the exact round off difference
+            const roundOffAmt = Number((roundedTotalAmount - rawTotalAmount).toFixed(2));
 
             await setDoc(
                 orderRef,
                 {
                     items: itemsForFirebase,
-                    totalAmount,
+                    totalAmount: roundedTotalAmount, // Save rounded amount
+                    roundOff: roundOffAmt,           // Save round off difference
                     updatedAt: serverTimestamp(),
                 },
                 { merge: true }
             );
+
         } catch (err) {
             console.error("CartPage syncToUpcoming error:", err);
         }
@@ -434,6 +441,8 @@ const CartPage: React.FC = () => {
                 const leadData = JSON.parse(localStorage.getItem("leadData") || "{}");
                 const fallbackPhone = (leadData.number || "").replace(/\D/g, "").trim();
                 // 2. WRITE: Create the final order
+                const roundOffAmt = Number((totalPay - subtotal).toFixed(2)); // Calculate round off
+
                 transaction.set(newOrderDoc, {
                     orderId: invoice,
                     invoiceNumber: invoice,
@@ -441,22 +450,18 @@ const CartPage: React.FC = () => {
                     isLead: false,
                     userName: billing.name || leadData.name || "",
                     userLoginPhone: billing.phone || fallbackPhone || "",
-                    totalAmount: totalPay,
+                    totalAmount: totalPay, // This is already Math.round(subtotal)
+                    roundOff: roundOffAmt, // <-- ADD THIS TO BALANCE THE PDF
                     totalTax: Number(totalTaxAmount.toFixed(2)),
                     baseAmount: Number(baseSubtotal.toFixed(2)),
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp(),
                     specialInstruction: specialInstruction || "",
-                    // Inside the placeOrder transaction.set(newOrderDoc, {...})
-
-                    // Inside the placeOrder transaction.set(newOrderDoc, {...})
-
                     items: cartItems.map(i => {
                         const originalUnitPrice = Number(i.salesPrice);
                         const qty = Number(i.quantity);
                         const taxRate = Number(i.tax || 0);
 
-                        // Don't bake tax into the salesPrice! Keep it pure.
                         let lineBaseAmount = originalUnitPrice * qty;
                         let lineTaxAmount = 0;
                         let lineFinalAmount = lineBaseAmount;
@@ -480,18 +485,15 @@ const CartPage: React.FC = () => {
                             name: i.name,
                             quantity: qty,
                             mrp: Number(i.mrp),
-
-                            // 👇 Keep the pure base price, just like Sales.tsx
                             salesPrice: originalUnitPrice,
                             effectiveUnitPrice: originalUnitPrice,
-
                             tax: taxRate,
                             taxRate: taxRate,
                             taxType: itemTaxTypeToSave,
-                            taxableAmount: applyExclusiveTax ? lineBaseAmount : (lineBaseAmount / (1 + (taxRate / 100))),
-                            taxAmount: applyExclusiveTax ? lineTaxAmount : (lineBaseAmount - (lineBaseAmount / (1 + (taxRate / 100)))),
-                            finalPrice: lineFinalAmount,
-
+                            // 👇 FIX: Wrap these 3 in toFixed(2) to clean up decimals in DB
+                            taxableAmount: Number((applyExclusiveTax ? lineBaseAmount : (lineBaseAmount / (1 + (taxRate / 100)))).toFixed(2)),
+                            taxAmount: Number((applyExclusiveTax ? lineTaxAmount : (lineBaseAmount - (lineBaseAmount / (1 + (taxRate / 100))))).toFixed(2)),
+                            finalPrice: Number(lineFinalAmount.toFixed(2)),
                             note: i.note,
                             image: i.imageUrl || "",
                             unit: i.unit || "pcs",

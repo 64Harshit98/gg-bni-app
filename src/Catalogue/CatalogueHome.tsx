@@ -20,6 +20,8 @@ import NotificationBell from '../Components/NotificationBell';
 import { TutorialStep } from '../Components/TutorialStep';
 import useTutorial from '../Catalogue/hooks/useTutorial';
 import { completeTutorial } from '../Catalogue/hooks/useCompleteTutorial';
+import ShowWrapper from '../context/ShowWrapper';
+import { Cata_Permissions } from '../Catalogue/enum/cata_permissions.enum';
 
 
 // ─── Shared Types ─────────────────────────────────────────────────────────────
@@ -388,24 +390,28 @@ const HomePageContent: React.FC = () => {
 
                 {/* Right: Notification bell + toggle button */}
                 <div className="w-28 flex justify-end items-center gap-2">
-                    <div className="border border-slate-300 rounded-sm bg-gray-100 shadow-sm">
-                        <NotificationBell />
-                    </div>
-                    <TutorialStep step={2} currentStep={tutorialStep} text="Toggle this to show or hide sensitive sales figures." onNext={() => next(3)} onSkip={skip}>
-                        <button
-                            onClick={() => setIsDataVisible(!isDataVisible)}
-                            className="p-2 rounded-sm border border-slate-400 hover:bg-slate-200 transition-colors"
-                            title={isDataVisible ? 'Hide Data' : 'Show Data'}
-                        >
-                            {isDataVisible ? (
-                                // Eye open — data is currently visible
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></svg>
-                            ) : (
-                                // Eye closed — data is currently hidden
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" /><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" /><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" /><line x1="2" x2="22" y1="2" y2="22" /></svg>
-                            )}
-                        </button>
-                    </TutorialStep>
+                    <ShowWrapper requiredPermission={Cata_Permissions.ViewNotification}>
+                        <div className="border border-slate-300 rounded-sm bg-gray-100 shadow-sm">
+                            <NotificationBell />
+                        </div>
+                    </ShowWrapper>
+                    <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueHidebutton}>
+                        <TutorialStep step={2} currentStep={tutorialStep} text="Toggle this to show or hide sensitive sales figures." onNext={() => next(3)} onSkip={skip}>
+                            <button
+                                onClick={() => setIsDataVisible(!isDataVisible)}
+                                className="p-2 rounded-sm border border-slate-400 hover:bg-slate-200 transition-colors"
+                                title={isDataVisible ? 'Hide Data' : 'Show Data'}
+                            >
+                                {isDataVisible ? (
+                                    // Eye open — data is currently visible
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></svg>
+                                ) : (
+                                    // Eye closed — data is currently hidden
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" /><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" /><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" /><line x1="2" x2="22" y1="2" y2="22" /></svg>
+                                )}
+                            </button>
+                        </TutorialStep>
+                    </ShowWrapper>
                 </div>
             </header>
 
@@ -413,26 +419,31 @@ const HomePageContent: React.FC = () => {
             <main ref={mainRef} className="flex-grow overflow-y-auto p-2">
 
                 {/* Refresh bar: shows when data was last fetched + manual refresh button */}
-                <div className="flex justify-center gap-2 mb-2">
-                    <p className="text-sm text-slate-500 flex items-center">
-                        Last Updated: {formattedLastUpdated}
-                    </p>
-                    <button
-                        onClick={handleRefresh}
-                        className={`p-1 rounded-full hover:bg-slate-200 text-slate-600 transition-all ${loading ? 'animate-spin' : ''}`}
-                    >
-                        {loading ? <FiLoader size={14} /> : <FiRefreshCw size={14} />}
-                    </button>
-                </div>
+                <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueFilter}>
+                    <div className="flex justify-center gap-2 mb-2">
+                        <p className="text-sm text-slate-500 flex items-center">
+                            Last Updated: {formattedLastUpdated}
+                        </p>
+                        <button
+                            onClick={handleRefresh}
+                            className={`p-1 rounded-full hover:bg-slate-200 text-slate-600 transition-all ${loading ? 'animate-spin' : ''}`}
+                        >
+                            {loading ? <FiLoader size={14} /> : <FiRefreshCw size={14} />}
+                        </button>
+                    </div>
+                </ShowWrapper>
 
                 <div className="mx-auto max-w-7xl relative">
 
                     {/* Date Filter — matches POS (mb-2 inside max-w-7xl) */}
-                    <TutorialStep step={3} currentStep={tutorialStep} text="Use these filters to select the date range for your dashboard data." onNext={() => next(4)} onSkip={skip}>
-                        <div ref={setTutorialRef(3)} className="mb-2">
-                            <FilterControls />
-                        </div>
-                    </TutorialStep>
+                    <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueFilter}>
+
+                        <TutorialStep step={3} currentStep={tutorialStep} text="Use these filters to select the date range for your dashboard data." onNext={() => next(4)} onSkip={skip}>
+                            <div ref={setTutorialRef(3)} className="mb-2">
+                                <FilterControls />
+                            </div>
+                        </TutorialStep>
+                    </ShowWrapper>
                     {/* Full-page loader shown only on the very first load */}
                     {(loading && !data && !isTutorialActive) ? (
                         <div className="flex h-64 items-center justify-center text-slate-500">
@@ -443,42 +454,46 @@ const HomePageContent: React.FC = () => {
 
                             {/* ── Row 1+2: Completed Sales + Order Journey — side by side ── */}
                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                <TutorialStep step={4} currentStep={tutorialStep} text="This shows your total completed sales for the selected period." onNext={() => next(5)} onSkip={skip}>
-                                    <div ref={setTutorialRef(4)} className="h-full [&>*]:h-full">
-                                        <CompletedSalesCard
-                                            isDataVisible={effectiveDataVisible}
-                                            totalSalesAmount={displayData?.totalSalesAmount ?? 0}
-                                            totalSalesCount={displayData?.totalSalesCount ?? 0}
-                                            loading={loading}
-                                        />
-                                    </div>
-                                </TutorialStep>
-                                <TutorialStep step={5} currentStep={tutorialStep} text="Track your order journey from upcoming to completed." onNext={() => next(6)} onSkip={skip}>
-                                    <div ref={setTutorialRef(5)} className="h-full [&>*]:h-full">
-                                        <OrderTimeline
-                                            isDataVisible={effectiveDataVisible}
-                                            orderCounts={displayData?.orderCounts ?? {}}
-                                            loading={loading}
-                                        />
-                                    </div>
-                                </TutorialStep>
+                                <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueSalesbarchart}>
+                                    <TutorialStep step={4} currentStep={tutorialStep} text="This shows your total completed sales for the selected period." onNext={() => next(5)} onSkip={skip}>
+                                        <div ref={setTutorialRef(4)} className="h-full [&>*]:h-full">
+                                            <CompletedSalesCard
+                                                isDataVisible={effectiveDataVisible}
+                                                totalSalesAmount={displayData?.totalSalesAmount ?? 0}
+                                                totalSalesCount={displayData?.totalSalesCount ?? 0}
+                                                loading={loading}
+                                            />
+                                        </div>
+                                    </TutorialStep>
+                                </ShowWrapper>
+                                <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueOrders}>
+                                    <TutorialStep step={5} currentStep={tutorialStep} text="Track your order journey from upcoming to completed." onNext={() => next(6)} onSkip={skip}>
+                                        <div ref={setTutorialRef(5)} className="h-full [&>*]:h-full">
+                                            <OrderTimeline
+                                                isDataVisible={effectiveDataVisible}
+                                                orderCounts={displayData?.orderCounts ?? {}}
+                                                loading={loading}
+                                            />
+                                        </div>
+                                    </TutorialStep>
+                                </ShowWrapper>
                             </div>
 
                             {/* ── Row 3: Three equal columns ──────────────── */}
                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-
-                                <TutorialStep step={6} currentStep={tutorialStep} text="This bar chart shows your order sales performance over the selected date range." onNext={() => next(7)} onSkip={skip}>
-                                    <div ref={setTutorialRef(6)} className="h-full [&>*]:h-full">
-                                        <OrderBarChartReport
-                                            isDataVisible={effectiveDataVisible}
-                                            chartData={displayData?.chartData ?? []}
-                                            totalSales={displayData?.totalSalesAmount ?? 0}
-                                            totalBills={displayData?.totalSalesCount ?? 0}
-                                            loading={loading}
-                                        />
-                                    </div>
-                                </TutorialStep>
-
+                                <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueSalesbarchart}>
+                                    <TutorialStep step={6} currentStep={tutorialStep} text="This bar chart shows your order sales performance over the selected date range." onNext={() => next(7)} onSkip={skip}>
+                                        <div ref={setTutorialRef(6)} className="h-full [&>*]:h-full">
+                                            <OrderBarChartReport
+                                                isDataVisible={effectiveDataVisible}
+                                                chartData={displayData?.chartData ?? []}
+                                                totalSales={displayData?.totalSalesAmount ?? 0}
+                                                totalBills={displayData?.totalSalesCount ?? 0}
+                                                loading={loading}
+                                            />
+                                        </div>
+                                    </TutorialStep>
+                                </ShowWrapper>
                                 <TutorialStep
                                     step={7}
                                     currentStep={tutorialStep}
@@ -496,14 +511,16 @@ const HomePageContent: React.FC = () => {
                                     }}
                                     onSkip={skip}
                                 >
-                                    <div ref={setTutorialRef(7)} className="h-full [&>*]:h-full">
-                                        <TopSoldItemsCard
-                                            isDataVisible={effectiveDataVisible}
-                                            topByQuantity={displayData?.topByQuantity ?? []}
-                                            topByAmount={displayData?.topByAmount ?? []}
-                                            loading={loading}
-                                        />
-                                    </div>
+                                    <ShowWrapper requiredPermission={Cata_Permissions.ViewTopSoldItems}>
+                                        <div ref={setTutorialRef(7)} className="h-full [&>*]:h-full">
+                                            <TopSoldItemsCard
+                                                isDataVisible={effectiveDataVisible}
+                                                topByQuantity={displayData?.topByQuantity ?? []}
+                                                topByAmount={displayData?.topByAmount ?? []}
+                                                loading={loading}
+                                            />
+                                        </div>
+                                    </ShowWrapper>
                                 </TutorialStep>
 
                                 {/* Coming Soon placeholder */}

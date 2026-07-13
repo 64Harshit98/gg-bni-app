@@ -16,6 +16,8 @@ import SubdomainClaimModal from '../Components/SubDomainModal';
 import SearchableItemInput from '../UseComponents/SearchIteminput';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import ShowWrapper from '../context/ShowWrapper';
+import { Cata_Permissions } from './enum/cata_permissions.enum';
 
 
 // 1. Updated normalizer: Converts ANY image format (WebP, AVIF, PNG) into a jsPDF-safe JPEG
@@ -725,22 +727,24 @@ const OrderingPage: React.FC = () => {
 
                 {/* --- GLOBAL LIVE TOGGLE (ALL CATEGORIES) --- */}
                 <div>
-                    <div>
-                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">
-                            Live Entire Catalogue
-                        </span>
+                    <ShowWrapper requiredPermission={Cata_Permissions.ViewEditButton}>
+                        <div>
+                            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">
+                                Live Entire Catalogue
+                            </span>
 
-                        <button
-                            onClick={handleToggleAllCatalogueLive}
-                            disabled={isTogglingCatalogue || items.length === 0}
-                            className={`w-11 h-4 flex items-center rounded-sm p-1 transition-all duration-300 disabled:opacity-50 ${isAllCatalogueLive ? 'bg-[#F97316]' : 'bg-gray-300'}`}
-                        >
-                            <div
-                                className={`bg-white w-3 h-3 rounded-sm shadow-md transform transition-all duration-300 ${isAllCatalogueLive ? 'translate-x-6' : 'translate-x-0'
-                                    }`}
-                            />
-                        </button>
-                    </div>
+                            <button
+                                onClick={handleToggleAllCatalogueLive}
+                                disabled={isTogglingCatalogue || items.length === 0}
+                                className={`w-11 h-4 flex items-center rounded-sm p-1 transition-all duration-300 disabled:opacity-50 ${isAllCatalogueLive ? 'bg-[#F97316]' : 'bg-gray-300'}`}
+                            >
+                                <div
+                                    className={`bg-white w-3 h-3 rounded-sm shadow-md transform transition-all duration-300 ${isAllCatalogueLive ? 'translate-x-6' : 'translate-x-0'
+                                        }`}
+                                />
+                            </button>
+                        </div>
+                    </ShowWrapper>
                 </div>
 
                 {/* --- PRODUCT GRID --- */}

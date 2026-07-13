@@ -12,6 +12,8 @@ import ShinyText from '../Components/ShinyText';
 import NotificationBell from '../Components/NotificationBell';
 import { TutorialStep } from '../Components/TutorialStep';
 import { FiCopy, FiCheck } from 'react-icons/fi';
+import ShowWrapper from '../context/ShowWrapper';
+import { Cata_Permissions } from './enum/cata_permissions.enum';
 
 interface UserProfile {
     name: string;
@@ -224,11 +226,11 @@ const Account: React.FC = () => {
                 <div className="flex-1 text-center flex flex-col items-center justify-center">
                     <h1 className="text-2xl font-bold text-slate-800">Account</h1>
                 </div>
-
-                <div className="relative border border-slate-300 rounded-sm bg-gray-100 shadow-sm">
-                    <NotificationBell />
-                </div>
-
+                <ShowWrapper requiredPermission={Cata_Permissions.ViewNotification}>
+                    <div className="relative border border-slate-300 rounded-sm bg-gray-100 shadow-sm">
+                        <NotificationBell />
+                    </div>
+                </ShowWrapper>
             </header>
 
             <div ref={profileRef} className="flex flex-col py-3 items-center">
@@ -323,40 +325,41 @@ const Account: React.FC = () => {
                         </TutorialStep>
                     </div>
                     <div className="w-full grid grid-cols-2 gap-4 justify-center mt-2 space-y-2 flex-col">
-
-                        <div ref={reportsRef}>
-                            <TutorialStep
-                                step={3}
-                                currentStep={tutorialStep}
-                                text="View detailed sales and business reports here."
-                                onNext={() => next(4)}
-                                onSkip={skip}
-                                mobileArrowAlign="left"
-                            >
-                                <Link
-                                    to={`${ROUTES.CHOME}/${ROUTES.CATALOGUE_REPORTS}`}
-                                    className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-border border-gray-200 text-gray-800 hover:shadow-lg">
-                                    <span className="text-lg font-medium">Reports</span>
-                                    <span className="text-xl text-gray-600">→</span>
-                                </Link>
-                            </TutorialStep>
-                        </div>
-                        <div ref={settingRef}>
-                            <TutorialStep
-                                step={4}
-                                currentStep={tutorialStep}
-                                text="Configure your business settings, taxes, units and more."
-                                onNext={() => next(5)}
-                                onSkip={skip}
-                            >
-                                <Link
-                                    to={`${ROUTES.CHOME}/${ROUTES.CATA_MASTERS}`}
-                                    className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-border border-gray-200 text-gray-800 hover:shadow-lg">
-                                    <span className="text-lg font-medium">Settings</span>
-                                    <span className="text-xl text-gray-600">→</span>
-                                </Link>
-                            </TutorialStep>
-                        </div>
+                        <ShowWrapper requiredPermission={Cata_Permissions.ViewReports}>
+                            <div ref={reportsRef}>
+                                <TutorialStep
+                                    step={3}
+                                    currentStep={tutorialStep}
+                                    text="View detailed sales and business reports here."
+                                    onNext={() => next(4)}
+                                    onSkip={skip}
+                                    mobileArrowAlign="left"
+                                >
+                                    <Link
+                                        to={`${ROUTES.CHOME}/${ROUTES.CATALOGUE_REPORTS}`}
+                                        className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-border border-gray-200 text-gray-800 hover:shadow-lg">
+                                        <span className="text-lg font-medium">Reports</span>
+                                        <span className="text-xl text-gray-600">→</span>
+                                    </Link>
+                                </TutorialStep>
+                            </div>
+                            <div ref={settingRef}>
+                                <TutorialStep
+                                    step={4}
+                                    currentStep={tutorialStep}
+                                    text="Configure your business settings, taxes, units and more."
+                                    onNext={() => next(5)}
+                                    onSkip={skip}
+                                >
+                                    <Link
+                                        to={`${ROUTES.CHOME}/${ROUTES.CATA_MASTERS}`}
+                                        className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-border border-gray-200 text-gray-800 hover:shadow-lg">
+                                        <span className="text-lg font-medium">Settings</span>
+                                        <span className="text-xl text-gray-600">→</span>
+                                    </Link>
+                                </TutorialStep>
+                            </div>
+                        </ShowWrapper>
                         <div ref={plansRef}>
                             <TutorialStep
                                 step={5}

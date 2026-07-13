@@ -17,7 +17,8 @@ import { syncNotifyStock } from "../../src/Catalogue/utils/syncNotifyStock";
 import SearchableItemInput from '../UseComponents/SearchIteminput';
 import { db } from '../lib/Firebase';
 import { doc, getDoc, setDoc, collection, onSnapshot } from 'firebase/firestore';
-
+import ShowWrapper from '../context/ShowWrapper';
+import { Cata_Permissions } from './enum/cata_permissions.enum';
 const StockIndicator: React.FC<{ stock: number }> = ({ stock }) => {
     let colorClass = 'text-green-600 bg-green-100';
     if (stock <= 10 && stock > 0) colorClass = 'text-yellow-600 bg-yellow-100';
@@ -1018,24 +1019,25 @@ const MyShop: React.FC = () => {
                         )}
                     </div>
                 </div>
-
-                <div>
+                <ShowWrapper requiredPermission={Cata_Permissions.ViewEditButton}>
                     <div>
-                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">
-                            Live All Items
-                        </span>
+                        <div>
+                            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">
+                                Live All Items
+                            </span>
 
-                        <button
-                            onClick={handleToggleAllLive}
-                            className={`w-11 h-4 flex items-center rounded-sm p-1 transition-all duration-300 ${isAllLive ? 'bg-[#F97316]' : 'bg-gray-300'}`}
-                        >
-                            <div
-                                className={`bg-white w-3 h-3 rounded-sm shadow-md transform transition-all duration-300 ${isAllLive ? 'translate-x-6' : 'translate-x-0'
-                                    }`}
-                            />
-                        </button>
+                            <button
+                                onClick={handleToggleAllLive}
+                                className={`w-11 h-4 flex items-center rounded-sm p-1 transition-all duration-300 ${isAllLive ? 'bg-[#F97316]' : 'bg-gray-300'}`}
+                            >
+                                <div
+                                    className={`bg-white w-3 h-3 rounded-sm shadow-md transform transition-all duration-300 ${isAllLive ? 'translate-x-6' : 'translate-x-0'
+                                        }`}
+                                />
+                            </button>
+                        </div>
                     </div>
-                </div>
+                </ShowWrapper>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1">
                     {itemsToDisplay.map((item) => {
@@ -1134,38 +1136,42 @@ const MyShop: React.FC = () => {
 
                                     <div className="mt-auto flex gap-1">
                                         {isUncategorized ? (
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleOpenEditDrawer(item);
-                                                }}
-                                                className="w-full bg-gray-200 text-[#1A3B5D] py-1.5 rounded-sm text-[12px] font-black uppercase border border-gray-100"
-                                            >
-                                                Edit
-                                            </button>
-                                        ) : (
-                                            <>
+                                            <ShowWrapper requiredPermission={Cata_Permissions.ViewEditButton}>
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         handleOpenEditDrawer(item);
                                                     }}
-                                                    className="flex-1 bg-gray-200 text-[#1A3B5D] py-1.5 rounded-sm text-[12px] font-black uppercase border border-gray-100"
+                                                    className="w-full bg-gray-200 text-[#1A3B5D] py-1.5 rounded-sm text-[12px] font-black uppercase border border-gray-100"
                                                 >
                                                     Edit
                                                 </button>
+                                            </ShowWrapper>
+                                        ) : (
+                                            <>
+                                                <ShowWrapper requiredPermission={Cata_Permissions.ViewEditButton}>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleOpenEditDrawer(item);
+                                                        }}
+                                                        className="flex-1 bg-gray-200 text-[#1A3B5D] py-1.5 rounded-sm text-[12px] font-black uppercase border border-gray-100"
+                                                    >
+                                                        Edit
+                                                    </button>
 
-                                                <QuickListedToggle
-                                                    itemId={item.id!}
-                                                    isListed={item.isListed ?? false}
-                                                    onToggle={async (itemId, newState) => {
-                                                        if (isUncategorized && newState === true) {
-                                                            setShowUncategorizedWarning(true);
-                                                            return;
-                                                        }
-                                                        await handleToggleListed(itemId, newState);
-                                                    }}
-                                                />
+                                                    <QuickListedToggle
+                                                        itemId={item.id!}
+                                                        isListed={item.isListed ?? false}
+                                                        onToggle={async (itemId, newState) => {
+                                                            if (isUncategorized && newState === true) {
+                                                                setShowUncategorizedWarning(true);
+                                                                return;
+                                                            }
+                                                            await handleToggleListed(itemId, newState);
+                                                        }}
+                                                    />
+                                                </ShowWrapper>
                                             </>
                                         )}
                                     </div>

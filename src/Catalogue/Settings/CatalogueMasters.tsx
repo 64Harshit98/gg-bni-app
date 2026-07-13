@@ -53,20 +53,14 @@ const CatalogueMasters = () => {
             </Link>
 
 
-            <div
-              className="flex justify-between items-center bg-gray-50 p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-400 cursor-not-allowed relative overflow-hidden"
+            <Link
+              to={`${ROUTES.CHOME}/${ROUTES.CATA_PERMISSION_SETTING}`}
+              className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
             >
-              <div className="flex flex-col">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">
-                  Coming Soon
-                </span>
-                <span className="text-lg font-medium">Permission Setting</span>
-              </div>
-
-              {/* Optional: Keep the arrow but make it look disabled, or remove it */}
-              <span className="text-xl text-gray-300">→</span>
-            </div>
-{currentUser?.role === ROLES.OWNER && (
+              <span className="text-lg font-medium">Permission Setting</span>
+              <span className="text-xl text-gray-500">→</span>
+            </Link>
+            {currentUser?.role === ROLES.OWNER && (
               <button
                 onClick={() => setShopHoursOpen(true)}
                 className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg w-full text-left"

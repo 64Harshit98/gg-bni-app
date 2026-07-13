@@ -1,6 +1,7 @@
 import { lazy } from 'react';
 import { ROUTES } from '../constants/routes.constants';
 import { Permissions, PLANS } from '../enums';
+import { Cata_Permissions } from '../Catalogue/enum/cata_permissions.enum';
 // --- MAIN MODULE IMPORTS ---
 const Home = lazy(() => import('../Pages/Home'));
 const Account = lazy(() => import('../Pages/Account'));
@@ -141,7 +142,7 @@ const CatalogueItemGroupWrapper = (props: any) => (
 export interface AppRoute {
     path?: string;
     component: React.ElementType;
-    permission: Permissions | null;
+    permission: Permissions | Cata_Permissions | null;
     isIndex?: boolean;
 }
 
@@ -205,38 +206,36 @@ export const AppRegistry: AppModule[] = [
         layout: 'CATALOGUE',
         requiredPlans: [PLANS.CALC_CATALOG, PLANS.CATALOGUE_PRO, PLANS.ENTERPRISE],
         routes: [
-            { path: ROUTES.CHOME, component: CHome, permission: null },
-            { path: ROUTES.CATALOGUE_ACCOUNTS, component: CatalogueAccounts, permission: null },
-            { path: ROUTES.ORDERDETAILS, component: OrderDetails, permission: null },
-            { path: ROUTES.ITEM_ADD, component: CatalogueItemAddWrapper, permission: Permissions.ManageItems },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`, component: RequestPage, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`, component: CatalogueItemGroupWrapper, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_REPORTS}`, component: CatalogueReports, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_ITEMS}`, component: CatlogueItems, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_PARTY_LEDGER}`, component: CataloguePartyLedger, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_MANAGE_ITEMS}`, component: CatlogueManageItems, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_SOLD_REPORT}`, component: CatlogueSoldReport, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_SALES}`, component: CatalogueSales, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_PNL_REPORT}`, component: CatalogueProfitLoss, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_ITEM_REPORT}`, component: CatalogueItemReport, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_CUSTOMER_REPORT}`, component: CatalogueCustomerReport, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_USER_REPORT}`, component: CatalogueUserReport, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_TAX_REPORT}`, component: CatalogueTaxReport, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATA_EDIT}`, component: CatalogueEditProfile, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATA_MASTERS}`, component: CatalogueMasters, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATA_SALE_SETTING}`, component: CatalogueSalesSettings, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATA_BILL_SETTING}`, component: CatalogueBillSetting, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATA_ITEM_SETTING}`, component: CatalogueItemSettingWrapper, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATA_USER_SETTING}`, component: CatalogueUserSetting, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATA_PERMISSION_SETTING}`, component: CataloguePermissionSetting, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.ORDER}`, component: Order, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`, component: OrdersReturnPage, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.MYSHOP}/:groupId`, component: MyShop, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`, component: CatalogueItemAddWrapper, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`, component: RequestPage, permission: null },
+            { path: ROUTES.CHOME, component: CHome, permission: Cata_Permissions.ViewCatalogueDashboard },
+            { path: ROUTES.CATALOGUE_ACCOUNTS, component: CatalogueAccounts, permission: Cata_Permissions.ViewCatalogueAccounts },
+            { path: ROUTES.ORDERDETAILS, component: OrderDetails, permission: Cata_Permissions.ViewCatalogueOrders },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`, component: RequestPage, permission: Cata_Permissions.ViewCatalogueRequests },
+            { path: `${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`, component: CatalogueItemGroupWrapper, permission: Cata_Permissions.ManageItems },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_REPORTS}`, component: CatalogueReports, permission: Cata_Permissions.ViewReports },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_ITEMS}`, component: CatlogueItems, permission: Cata_Permissions.ViewItemReport },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_PARTY_LEDGER}`, component: CataloguePartyLedger, permission: Cata_Permissions.ViewPartyLedger },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_MANAGE_ITEMS}`, component: CatlogueManageItems, permission: Cata_Permissions.ManageItems },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_SOLD_REPORT}`, component: CatlogueSoldReport, permission: Cata_Permissions.ViewItemSoldReport },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_SALES}`, component: CatalogueSales, permission: Cata_Permissions.ViewSalesReport },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_PNL_REPORT}`, component: CatalogueProfitLoss, permission: Cata_Permissions.ViewPNLReport },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_ITEM_REPORT}`, component: CatalogueItemReport, permission: Cata_Permissions.ViewItemReport },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_CUSTOMER_REPORT}`, component: CatalogueCustomerReport, permission: Cata_Permissions.ViewCustomerReport },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_USER_REPORT}`, component: CatalogueUserReport, permission: Cata_Permissions.ViewUserReport },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_TAX_REPORT}`, component: CatalogueTaxReport, permission: Cata_Permissions.ViewTaxReport },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATA_EDIT}`, component: CatalogueEditProfile, permission: Cata_Permissions.ManageEditProfile },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATA_MASTERS}`, component: CatalogueMasters, permission: Cata_Permissions.ManageMasters },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATA_SALE_SETTING}`, component: CatalogueSalesSettings, permission: Cata_Permissions.ManageSalesSettings },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATA_BILL_SETTING}`, component: CatalogueBillSetting, permission: Cata_Permissions.ManageBillSettings },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATA_ITEM_SETTING}`, component: CatalogueItemSettingWrapper, permission: Cata_Permissions.ManageItemSettings },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATA_USER_SETTING}`, component: CatalogueUserSetting, permission: Cata_Permissions.ManageUserSettings },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATA_PERMISSION_SETTING}`, component: CataloguePermissionSetting, permission: Cata_Permissions.ManagePermissions },
+            { path: `${ROUTES.CHOME}/${ROUTES.ORDER}`, component: Order, permission: Cata_Permissions.ViewShop },
+            { path: `${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`, component: OrdersReturnPage, permission: Cata_Permissions.ViewOrdersReturn },
+            { path: `${ROUTES.CHOME}/${ROUTES.MYSHOP}/:groupId`, component: MyShop, permission: Cata_Permissions.ViewShopItems },
+            { path: `${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`, component: CatalogueItemAddWrapper, permission: Cata_Permissions.ManageItems },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_SUPPORT}`, component: Catasupport, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_ADDITIONAL_SERVICES}`, component: CatalogueAdditionalServices, permission: null },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_EXPENSE_REPORT}`, component: CatalogueExpenseReport, permission: null },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_EXPENSE_REPORT}`, component: CatalogueExpenseReport, permission: Cata_Permissions.ViewExpenseReport },
 
         ],
     }

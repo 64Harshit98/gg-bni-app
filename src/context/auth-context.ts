@@ -2,13 +2,15 @@ import { createContext, useContext } from 'react';
 import type { User } from '../Role/permission';
 import { Permissions } from '../enums';
 import { getFirestoreOperations } from '../lib/ItemsFirebase'; // Corrected path
+import { Cata_Permissions } from '../Catalogue/enum/cata_permissions.enum';
 
 export type StrictContextUser = Omit<User, 'companyId'> & { companyId: string };
 
 export interface AuthContextType {
   currentUser: StrictContextUser | null;
   loading: boolean;
-  hasPermission: (permission: Permissions) => boolean;
+  hasPermission: (perm: Permissions) => boolean;
+  hasCataloguePermission: (perm: Cata_Permissions) => boolean;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(

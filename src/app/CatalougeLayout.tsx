@@ -18,6 +18,8 @@ import { db } from '../lib/Firebase';
 import { useShopHours } from '../Pages/hooks/useShopHours';
 import { ROLES } from '../enums';
 import ShopClosingReminderModal from '../Components/ShopClosingReminderModal';
+import ShowWrapper from '../context/ShowWrapper';
+import { Cata_Permissions } from '../Catalogue/enum/cata_permissions.enum';
 
 const CatalogueLayout = () => {
     const navigate = useNavigate();
@@ -117,38 +119,48 @@ const CatalogueLayout = () => {
 
     const MobileActions = () => (
         <>
-            <Button
-                variant="outline"
-                className="w-full mb-2 rounded bg-white"
-                onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ORDER}`)}
-            >
-                Edit Catalog
-            </Button>
-            <Button
-                variant="outline"
-                className="w-full mb-2 rounded bg-white"
-                onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`)}
-            >
-                Add Item
-            </Button>
-            <Button
-                variant="outline"
-                className="w-full mb-2 rounded bg-white"
-                onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`)}
-            >
-                Orders Return
-            </Button>
-            <Button
-                variant="outline"
-                className="w-full mb-2 rounded bg-white"
-                onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`)}
-            >
-                Requests
-            </Button>
-            <Button variant="outline" className="w-full mb-2 rounded bg-white"
-                onClick={() => setIsExpenseModalOpen(true)}>
-                Add Expense
-            </Button>
+            <ShowWrapper requiredPermission={Cata_Permissions.ViewShop}>
+                <Button
+                    variant="outline"
+                    className="w-full mb-2 rounded bg-white"
+                    onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ORDER}`)}
+                >
+                    Edit Catalog
+                </Button>
+            </ShowWrapper>
+            <ShowWrapper requiredPermission={Cata_Permissions.ManageItems}>
+                <Button
+                    variant="outline"
+                    className="w-full mb-2 rounded bg-white"
+                    onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`)}
+                >
+                    Add Item
+                </Button>
+            </ShowWrapper>
+            <ShowWrapper requiredPermission={Cata_Permissions.ViewOrdersReturn}>
+                <Button
+                    variant="outline"
+                    className="w-full mb-2 rounded bg-white"
+                    onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`)}
+                >
+                    Orders Return
+                </Button>
+            </ShowWrapper>
+            <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueRequests}>
+                <Button
+                    variant="outline"
+                    className="w-full mb-2 rounded bg-white"
+                    onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`)}
+                >
+                    Requests
+                </Button>
+            </ShowWrapper>
+            <ShowWrapper requiredPermission={Cata_Permissions.ViewExpenseReport}>
+                <Button variant="outline" className="w-full mb-2 rounded bg-white"
+                    onClick={() => setIsExpenseModalOpen(true)}>
+                    Add Expense
+                </Button>
+            </ShowWrapper>
         </>
     );
 
@@ -197,47 +209,55 @@ const CatalogueLayout = () => {
                             Quick Actions
                         </p>
                     </div>
-
-                    <NavLink
-                        to={`${ROUTES.CHOME}/${ROUTES.ORDER}`}
-                        end
-                        className={({ isActive }) => sidebarLinkClass(isActive)}
-                    >
-                        <span className="text-lg">+</span>
-                        <span>Edit Catalog</span>
-                    </NavLink>
-
-                    <NavLink
-                        to={`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`}
-                        end
-                        className={({ isActive }) => sidebarLinkClass(isActive)}
-                    >
-                        <span className="text-lg">+</span>
-                        <span>Add Item</span>
-                    </NavLink>
-                    <NavLink
-                        to={`${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`}
-                        end
-                        className={({ isActive }) => sidebarLinkClass(isActive)}
-                    >
-                        <span className="text-lg">+</span>
-                        <span>Requests</span>
-                    </NavLink>
-                    <NavLink
-                        to={`${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`}
-                        end
-                        className={({ isActive }) => sidebarLinkClass(isActive)}
-                    >
-                        <span className="text-lg">+</span>
-                        <span>Orders Return</span>
-                    </NavLink>
-                    <button
-                        onClick={() => setIsExpenseModalOpen(true)}
-                        className={sidebarLinkClass(false)}
-                    >
-                        <span className="text-lg">+</span>
-                        <span>Add Expense</span>
-                    </button>
+                    <ShowWrapper requiredPermission={Cata_Permissions.ViewShop}>
+                        <NavLink
+                            to={`${ROUTES.CHOME}/${ROUTES.ORDER}`}
+                            end
+                            className={({ isActive }) => sidebarLinkClass(isActive)}
+                        >
+                            <span className="text-lg">+</span>
+                            <span>Edit Catalog</span>
+                        </NavLink>
+                    </ShowWrapper>
+                    <ShowWrapper requiredPermission={Cata_Permissions.ManageItems}>
+                        <NavLink
+                            to={`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`}
+                            end
+                            className={({ isActive }) => sidebarLinkClass(isActive)}
+                        >
+                            <span className="text-lg">+</span>
+                            <span>Add Item</span>
+                        </NavLink>
+                    </ShowWrapper>
+                    <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueRequests}>
+                        <NavLink
+                            to={`${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`}
+                            end
+                            className={({ isActive }) => sidebarLinkClass(isActive)}
+                        >
+                            <span className="text-lg">+</span>
+                            <span>Requests</span>
+                        </NavLink>
+                    </ShowWrapper>
+                    <ShowWrapper requiredPermission={Cata_Permissions.ViewOrdersReturn}>
+                        <NavLink
+                            to={`${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`}
+                            end
+                            className={({ isActive }) => sidebarLinkClass(isActive)}
+                        >
+                            <span className="text-lg">+</span>
+                            <span>Orders Return</span>
+                        </NavLink>
+                    </ShowWrapper>
+                    <ShowWrapper requiredPermission={Cata_Permissions.ViewExpenseReport}>
+                        <button
+                            onClick={() => setIsExpenseModalOpen(true)}
+                            className={sidebarLinkClass(false)}
+                        >
+                            <span className="text-lg">+</span>
+                            <span>Add Expense</span>
+                        </button>
+                    </ShowWrapper>
                     <button
                         onClick={handleShare}
                         className={sidebarLinkClass(false)} // same design, no active

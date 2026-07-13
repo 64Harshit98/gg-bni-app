@@ -347,7 +347,7 @@ const BusinessInfoPage: React.FC = () => {
           </div>
         </div>
 
-        <div className={`flex-grow px-4 pb-32 ${(error || formData.businessType === "Other" || formData.businessCategory === "Other") ? 'overflow-y-auto' : 'overflow-hidden'}`}>
+        <div className="flex-grow px-4 pb-32 overflow-y-auto">
           <div className="flex justify-between items-center mb-3 mt-3">
             <h1 className="text-3xl font-bold">Business Details</h1>
             <button

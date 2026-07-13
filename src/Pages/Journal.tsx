@@ -428,7 +428,7 @@ const Journal: React.FC = () => {
   const isTutorialActive = tutorialStep > 0 && tutorialStep <= TOTAL_STEPS;
 
   useTutorial(currentUser, setTutorialStep, 'journalTutorialDone');
-// When the tutorial reaches the "invoice card" step, auto-expand a matching
+  // When the tutorial reaches the "invoice card" step, auto-expand a matching
   // sample invoice so the person actually sees the detail view, not a blank card.
   useEffect(() => {
     if (isTutorialActive && tutorialStep === 6) {
@@ -542,7 +542,7 @@ const Journal: React.FC = () => {
     };
     fetchExpiry();
   }, [currentUser?.companyId]);
- // NEW: fetch bill settings to know if triplicate printing is enabled
+  // NEW: fetch bill settings to know if triplicate printing is enabled
   useEffect(() => {
     const fetchBillSettings = async () => {
       if (!currentUser?.companyId) return;
@@ -573,7 +573,7 @@ const Journal: React.FC = () => {
   }, []);
 
   const filteredInvoices = useMemo(() => {
-     // While the tutorial is active, always show the sample invoices,
+    // While the tutorial is active, always show the sample invoices,
     // regardless of date filter / search / tab state, so every tutorial
     // step has real-looking cards to point at.
     if (isTutorialActive) {
@@ -1209,7 +1209,8 @@ const Journal: React.FC = () => {
     const docRef = doc(db, 'companies', companyId, collectionName, invoice.id);
 
     const normalizedMethod = method.toLowerCase().replace(/\s+/g, '');
-    const isCreditNote = normalizedMethod === 'credit' || normalizedMethod === 'creditnote';
+    const isCreditNote = normalizedMethod === 'credit' || normalizedMethod === 'creditnote'
+      || normalizedMethod === 'debit' || normalizedMethod === 'debitnote';
     const normalizedPhone = (invoice.partyNumber || '').replace(/\D/g, '').slice(-10);
 
     await runTransaction(db, async (transaction) => {
@@ -1861,7 +1862,7 @@ const Journal: React.FC = () => {
                 }}
                 className="w-full border border-blue-500 text-blue-600 py-2.5 rounded-sm font-bold text-sm"
               >
-               {enableTriplicate ? 'Print (Bill + 2 Duplicates)' : 'Print (Bill + Duplicate)'}
+                {enableTriplicate ? 'Print (Bill + 2 Duplicates)' : 'Print (Bill + Duplicate)'}
               </button>
               <button
                 onClick={() => setShowPrintSubMenu(false)}
@@ -2114,7 +2115,7 @@ const Journal: React.FC = () => {
             </div>
           </div>
         )}
- <TutorialStep
+        <TutorialStep
           step={6}
           currentStep={tutorialStep}
           text="Tap any invoice to see full details — items, discounts, tax, and payment breakdown."
@@ -2140,10 +2141,10 @@ const Journal: React.FC = () => {
           onSkip={skip}
           isLast
         >
-        <div
+          <div
             ref={setTutorialRef(6) as any} className="flex-grow overflow-y-auto bg-slate-100 space-y-3 pt-2 pb-24">
-          {renderContent()}
-        </div>
+            {renderContent()}
+          </div>
         </TutorialStep>
       </div>
     </div>

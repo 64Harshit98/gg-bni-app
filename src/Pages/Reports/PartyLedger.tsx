@@ -499,16 +499,16 @@ const PartyLedger: React.FC = () => {
                         });
                     }
 
-                    // ✅ Credit Note se OB due settle: customer ka creditBalance kam karo
                     const normalizedMethod = method.toLowerCase().replace(/\s+/g, '');
                     const isCreditNote = normalizedMethod === 'credit' || normalizedMethod === 'creditnote';
-                    if (isCreditNote && partyNum.length >= 3 && obBalanceType === 'due') {
+                    const isDebitNote = normalizedMethod === 'debit' || normalizedMethod === 'debitnote'; // NEW: debit note bhi cover karo
+                    if ((isCreditNote || isDebitNote) && partyNum.length >= 3 && obBalanceType === 'due') {
                         const collectionName = partyType === 'Customer' ? 'customers' : 'suppliers';
                         const balanceField = partyType === 'Customer' ? 'creditBalance' : 'debitBalance';
                         const partyRef = firestoreDoc(db, 'companies', companyId, collectionName, partyNum);
-                        transaction.update(partyRef, {
+                        transaction.set(partyRef, {
                             [balanceField]: increment(-amount),
-                        });
+                        }, { merge: true }); 
                     }
                 });
                 const paymentRecord: PaymentRecord = {
@@ -566,15 +566,27 @@ const PartyLedger: React.FC = () => {
                     due: Math.max(0, newDue), // Ensure due never goes negative
                 };
                 const normalizedMethod = method.toLowerCase().replace(/\s+/g, '');
-                if ((normalizedMethod === 'credit' || normalizedMethod === 'creditnote') && invoice.partyNumber) {
+                const isCreditNote = normalizedMethod === 'credit' || normalizedMethod === 'creditnote';
+                const isDebitNote = normalizedMethod === 'debit' || normalizedMethod === 'debitnote';
+
+                if ((isCreditNote || isDebitNote) && invoice.partyNumber) {
                     const partyNum = (invoice.partyNumber || '').replace(/\D/g, '').slice(-10);
                     if (partyNum) {
                         const { doc: fsDoc, increment: fsIncrement } = await import('firebase/firestore');
-                        const customerRef = fsDoc(db, 'companies', companyId, 'customers', partyNum);
-                        transaction.update(customerRef, {
-                            creditBalance: fsIncrement(-amount),
-                        });
-                        // ✅ Local state turant update
+
+                        if (invoice.type === 'purchase' && isDebitNote) {
+                            // ✅ NEW: supplier ka debitBalance update karo
+                            const supplierRef = fsDoc(db, 'companies', companyId, 'suppliers', partyNum);
+                            transaction.set(supplierRef, {
+                                debitBalance: fsIncrement(-amount),
+                            }, { merge: true }); // set + merge, taaki doc na hone par bhi crash na ho
+                        } else if (isCreditNote) {
+                            const customerRef = fsDoc(db, 'companies', companyId, 'customers', partyNum);
+                            transaction.set(customerRef, {
+                                creditBalance: fsIncrement(-amount),
+                            }, { merge: true });
+                        }
+
                         setAvailableCredit(prev => Math.max(0, prev - amount));
                     }
                 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo} from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import type { ItemGroup } from '../../constants/models';
 import { useDatabase } from '../../context/auth-context';
@@ -57,7 +57,18 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
   const [deleteModal, setDeleteModal] = useState<{ message: string; type: State } | null>(null);
   const [groupPendingFullDelete, setGroupPendingFullDelete] = useState<ItemGroup | null>(null);
   const isActive = (path: string) => location.pathname === path;
+const displayedItemGroups = useMemo(() => {
+    const query = newItemGroupName.trim().toLowerCase();
+    if (!query) return itemGroups;
 
+    return [...itemGroups].sort((a, b) => {
+      const aMatch = a.name.toLowerCase().includes(query);
+      const bMatch = b.name.toLowerCase().includes(query);
+      if (aMatch && !bMatch) return -1;
+      if (!aMatch && bMatch) return 1;
+      return 0; // keep original relative order otherwise
+    });
+  }, [itemGroups, newItemGroupName]);
   const toTitleCase = (str: string) => {
     return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
   };
@@ -393,7 +404,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
             <p className="text-gray-500 text-center py-8">No item groups found.</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {itemGroups.map((group) => {
+              {displayedItemGroups.map((group) => {
                 const count = group.id ? (groupCounts[group.id] || 0) : 0;
                 return (
                   <div key={group.id} className="flex items-center justify-between p-3 bg-white rounded-sm shadow-sm border">

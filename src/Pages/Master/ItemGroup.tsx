@@ -378,7 +378,7 @@ const displayedItemGroups = useMemo(() => {
           <div className="flex flex-col gap-2 mb-6">
             <input
               type="text"
-              placeholder="Create a New Group"
+              placeholder="Search or Create a New Group"
               value={newItemGroupName}
               onChange={(e) => setNewItemGroupName(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleAddItemGroup()}

@@ -2,7 +2,31 @@ import { useState, useRef } from 'react';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import Papa from 'papaparse';
 import * as pdfjsLib from 'pdfjs-dist';
-import { parseRawText, type ParsedData } from '../utils/DocumentParser';
+import { parseRawText, type ParsedData, type ParsedItem } from '../utils/DocumentParser';
+
+// Shape of one item as returned by the backend's coordinate-based band detection
+// (see buildItemsFromBands in index.js) — note it has no `id`, ParsedItem needs one.
+interface BackendScanItem {
+    name: string;
+    quantity: number;
+    unit: string;
+    purchasePrice: number;
+    discountPercentage: number;
+    totalAmount: number;
+}
+
+// Converts backend's structured items into ParsedItem[], generating the `id`
+// that React needs as a key (backend intentionally omits it).
+const backendItemsToParsedItems = (items: BackendScanItem[]): ParsedItem[] =>
+    items.map(it => ({
+        id: crypto.randomUUID(),
+        name: it.name,
+        quantity: it.quantity,
+        unit: it.unit,
+        purchasePrice: it.purchasePrice,
+        discountPercentage: it.discountPercentage,
+        totalAmount: it.totalAmount,
+    }));
 
 // Set up PDF.js worker
 // Uses unpkg to perfectly match your installed npm version. 
@@ -76,12 +100,19 @@ export const useSmartScanner = () => {
 
                     // 3. Send it to your Cloud Vision backend just like a normal photo!
                     const result = await scanSmartInvoice({ imageBase64: base64Image });
-                    const data = result.data as { success: boolean, text: string };
+                    const data = result.data as { success: boolean, text: string, items?: BackendScanItem[] };
 
                     console.log("RAW CLOUD VISION PDF OUTPUT:\n", data.text);
+                    console.log("STRUCTURED ITEMS FROM BACKEND:\n", data.items);
 
                     if (data.text) {
+                        // Always run parseRawText for amount/date/referenceNumber (and as an
+                        // items fallback) — then override items with backend's coordinate-based
+                        // result if it found any, since that's more reliable than regex guessing.
                         extractedData = parseRawText(data.text);
+                        if (data.items && data.items.length > 0) {
+                            extractedData = { ...extractedData, items: backendItemsToParsedItems(data.items) };
+                        }
                     }
                 } else {
                     throw new Error("Canvas context failed to initialize.");
@@ -95,14 +126,20 @@ export const useSmartScanner = () => {
 
                 // 2. Send it to your deployed Firebase Function
                 const result = await scanSmartInvoice({ imageBase64: base64Image });
-                const data = result.data as { success: boolean, text: string };
+                const data = result.data as { success: boolean, text: string, items?: BackendScanItem[] };
 
                 // 3. Debugging Logs (Keep your console open!)
                 console.log("RAW CLOUD VISION OUTPUT:\n", data.text);
+                console.log("STRUCTURED ITEMS FROM BACKEND:\n", data.items);
 
-                // 4. Parse the returned text using your Regex utility
+                // 4. Prefer backend's coordinate-based items; parseRawText still supplies
+                // amount/date/referenceNumber, and acts as the items fallback if backend
+                // found none (e.g. header row wasn't detected).
                 if (data.text) {
                     extractedData = parseRawText(data.text);
+                    if (data.items && data.items.length > 0) {
+                        extractedData = { ...extractedData, items: backendItemsToParsedItems(data.items) };
+                    }
                     console.log("PARSED DATA ARRAY:", extractedData);
                 }
 

@@ -35,6 +35,7 @@ interface GenericCartListProps<T extends CartItem> {
   State: typeof State;
   setModal: (modal: { message: string; type: State } | null) => void;
   onOpenEditDrawer: (item: Item) => void;
+  onItemNotFound?: (cartItem: T) => void; 
   onDeleteItem: (id: string) => void;
   onDiscountChange: (id: string, value: number | string) => void;
   onDiscount2Change: (id: string, value: number | string) => void;
@@ -119,6 +120,7 @@ export const GenericCartList = <T extends CartItem>({
   State,
   setModal,
   onOpenEditDrawer,
+  onItemNotFound,
   onDeleteItem,
   onDiscountChange,
   onDiscount2Change,
@@ -159,6 +161,7 @@ export const GenericCartList = <T extends CartItem>({
           const priceLocked = settings.lockPrice || !item.isEditable;
 
           const isZeroPrice = displayPrice !== '' && Number(displayPrice) === 0;
+          const isUnlinked = typeof item.name === 'string' && item.name.includes('(Not in DB)');
 
           const netPrice = parseFloat(displayPrice) || 0;
           const lineSubtotal = Math.round((netPrice * (item.quantity || 1)) * 100) / 100;
@@ -178,7 +181,11 @@ export const GenericCartList = <T extends CartItem>({
           return (
             <div
               key={item.id}
-              className={`rounded-sm border overflow-hidden shadow-sm ${isZeroPrice ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100'
+              className={`rounded-sm border overflow-hidden shadow-sm ${isZeroPrice
+                  ? 'bg-red-50 border-red-200'
+                  : isUnlinked
+                    ? 'bg-yellow-50 border-yellow-300'
+                    : 'bg-white border-gray-100'
                 } ${!item.isEditable ? 'opacity-75' : ''}`}
             >
 
@@ -220,9 +227,10 @@ export const GenericCartList = <T extends CartItem>({
                       <button
                         onClick={() => {
                           const originalItem = availableItems.find(a => a.id === item.productId || a.id === item.id);
-                          if (originalItem) onOpenEditDrawer(originalItem);
-                          else setModal({ message: "Original item not found.", type: State.ERROR });
-                        }}
+                        if (originalItem) onOpenEditDrawer(originalItem);
+                        else if (onItemNotFound) onItemNotFound(item);
+                        else setModal({ message: "Original item not found.", type: State.ERROR });
+                      }}
                         className="flex items-center justify-center w-[26px] h-[26px] text-gray-400 hover:text-blue-600 disabled:text-gray-200 disabled:cursor-not-allowed z-20"
                       >
                         <FiEdit size={14} />
@@ -384,6 +392,7 @@ export const GenericCartList = <T extends CartItem>({
                       onClick={() => {
                         const originalItem = availableItems.find(a => a.id === item.productId || a.id === item.id);
                         if (originalItem) onOpenEditDrawer(originalItem);
+                        else if (onItemNotFound) onItemNotFound(item);
                         else setModal({ message: "Original item not found.", type: State.ERROR });
                       }}
                       className="text-gray-400 hover:text-blue-600 flex-shrink-0 ml-0.5"

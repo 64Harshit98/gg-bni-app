@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Item, ItemGroup } from '../constants/models';
-import { useDatabase } from '../context/auth-context';
+import { useAuth ,useDatabase } from '../context/auth-context';
 import { doc, getDoc, collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { db, storage } from '../lib/Firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
@@ -83,6 +83,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
     const cameraInputRef = useRef<HTMLInputElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null); // Added ref for the standard file input
     const dbOperations = useDatabase();
+    const { currentUser} = useAuth();
     const [formData, setFormData] = useState<Partial<Item>>({});
     const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
     const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
@@ -141,12 +142,13 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
 
     useEffect(() => {
         const fetchLiveItemData = async () => {
-            if (isOpen && item && item.id && item.companyId) {
+            const resolvedCompanyId = item?.companyId || currentUser?.companyId;
+            if (isOpen && item && item.id && resolvedCompanyId) {
                 setIsFetching(true);
                 setModal(null);
 
                 try {
-                    const itemRef = doc(db, 'companies', item.companyId, 'items', item.id);
+                    const itemRef = doc(db, 'companies', resolvedCompanyId, 'items', item.id);
                     const itemSnap = await getDoc(itemRef);
 
                     let liveData: Partial<Item> = {};
@@ -203,7 +205,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                 visited.add(vid);
 
                                 try {
-                                    const vRef = doc(db, 'companies', item.companyId!, 'items', vid);
+                                    const vRef = doc(db, 'companies', resolvedCompanyId, 'items', vid);
                                     const vSnap = await getDoc(vRef);
                                     if (!vSnap.exists()) return;
 
@@ -354,7 +356,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
     };
 
     const handleSave = async () => {
-        const companyId = item?.companyId;
+        const companyId = item?.companyId || currentUser?.companyId;
 
         if (!item || !item.id || !dbOperations || !companyId) {
             setModal({ message: "Cannot save: Missing item, item ID, or company ID.", type: State.ERROR });

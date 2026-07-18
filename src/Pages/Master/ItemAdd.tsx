@@ -26,6 +26,21 @@ interface ItemAddProps {
     itemAdd: string;
     itemGroup: string;
   };
+// NEW: when used as a popup (e.g. from Purchase page for unlinked scanned items)
+  isModal?: boolean;
+  prefillData?: {
+    name?: string;
+    mrp?: number;
+    salesPrice?: number;
+    purchasePrice?: number;
+    discount?: number;
+    purchasediscount?: number;
+    tax?: number;
+    barcode?: string;
+    unit?: string;
+  };
+  onItemCreated?: (item: any) => void; // fired instead of normal reset flow when in modal mode
+  onCancel?: () => void; // close button handler for modal mode
 }
 
 const formatImageUrl = (url: string | null | undefined): string | null => {
@@ -69,7 +84,11 @@ const DRAFT_STORAGE_KEY = 'sellar_item_add_draft';
 
 const ItemAdd: React.FC<ItemAddProps> = ({
   theme = 'blue',
-  routes = { itemAdd: '/item-add', itemGroup: '/item-group' }
+  routes = { itemAdd: '/item-add', itemGroup: '/item-group' },
+  isModal = false,
+  prefillData,
+  onItemCreated,
+  onCancel,
 }) => {
   const themeStyles = {
     blue: {
@@ -168,6 +187,20 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   const successBannerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // NEW: If opened as a popup with prefill data (e.g. from Purchase Smart Scan),
+    // seed the form from that instead of the regular saved draft.
+    if (isModal && prefillData) {
+      if (prefillData.name) setItemName(prefillData.name);
+      if (prefillData.mrp) setItemMRP(String(prefillData.mrp));
+      if (prefillData.salesPrice) setItemSalesPrice(String(prefillData.salesPrice));
+      if (prefillData.purchasePrice) setItemPurchasePrice(String(prefillData.purchasePrice));
+      if (prefillData.discount) setItemDiscount(String(prefillData.discount));
+      if (prefillData.purchasediscount) setPurchaseDiscount(String(prefillData.purchasediscount));
+      if (prefillData.tax) setItemTax(String(prefillData.tax));
+      if (prefillData.barcode) setItemBarcode(prefillData.barcode);
+      if (prefillData.unit) setItemUnit(prefillData.unit);
+      return; // skip loading the regular draft in modal mode
+    }
     const draft = sessionStorage.getItem(DRAFT_STORAGE_KEY);
     if (draft) {
       try {
@@ -195,6 +228,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   }, []);
 
   useEffect(() => {
+    if (isModal) return; // NEW: don't pollute the normal Add-Item draft when used as a popup
     const draft = {
       itemName, itemMRP, itemSalesPrice, itemPurchasePrice, itemDiscount,
       PurchaseDiscount, itemTax, itemAmount, restockQuantity, selectedCategories,
@@ -530,6 +564,13 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           const currentDBSeq = counterDoc.exists() ? (counterDoc.data().currentSequence || 1000) : 1000;
           transaction.set(counterRef, { currentSequence: currentDBSeq + 1 }, { merge: true });
         });
+      }
+
+      // NEW: modal mode — hand the created item back to the caller (e.g. Purchase page) and stop here
+      if (isModal && onItemCreated) {
+        onItemCreated({ ...newItemData, id: finalBarcode });
+        setIsSaving(false);
+        return;
       }
 
       setSuccess(`Item "${itemName}" added!`);
@@ -994,19 +1035,29 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   if (pageIsLoading) return <Spinner />;
 
   const renderHeader = () => (
-    <div className="fixed top-0 left-0 right-0 z-10 p-4 bg-gray-100 border-b border-gray-300 flex flex-col md:static md:flex-row md:justify-between md:items-center md:p-3 md:bg-white md:shadow-sm">
-      <h1 className="text-2xl font-bold text-gray-800 text-center mb-4 md:mb-0 md:text-left">
+    <div className={isModal
+      ? "p-4 border-b border-gray-200 flex items-center justify-between"
+      : "fixed top-0 left-0 right-0 z-10 p-4 bg-gray-100 border-b border-gray-300 flex flex-col md:static md:flex-row md:justify-between md:items-center md:p-3 md:bg-white md:shadow-sm"
+    }>
+      <h1 className={isModal ? "text-xl font-bold text-gray-800" : "text-2xl font-bold text-gray-800 text-center mb-4 md:mb-0 md:text-left"}>
         Add Item
       </h1>
-      <div className="flex items-center justify-center gap-6">
-        <CustomButton variant={Variant.Transparent} onClick={() => navigate(routes.itemAdd)} active={isActive(routes.itemAdd)}>Add Item</CustomButton>
-        <CustomButton variant={Variant.Transparent} onClick={() => navigate(routes.itemGroup)} active={isActive(routes.itemGroup)}>Item Groups</CustomButton>
-      </div>
+      {isModal ? (
+        <button onClick={onCancel} className="text-gray-400 hover:text-gray-700 text-xl leading-none px-2">✕</button>
+      ) : (
+        <div className="flex items-center justify-center gap-6">
+          <CustomButton variant={Variant.Transparent} onClick={() => navigate(routes.itemAdd)} active={isActive(routes.itemAdd)}>Add Item</CustomButton>
+          <CustomButton variant={Variant.Transparent} onClick={() => navigate(routes.itemGroup)} active={isActive(routes.itemGroup)}>Item Groups</CustomButton>
+        </div>
+      )}
     </div>
   );
 
   return (
-    <div className="flex flex-col h-screen w-full bg-gray-100 font-poppins text-gray-800 overflow-hidden relative">
+    <div className={isModal
+      ? "flex flex-col h-full w-full bg-white font-poppins text-gray-800 overflow-hidden relative"
+      : "flex flex-col h-screen w-full bg-gray-100 font-poppins text-gray-800 overflow-hidden relative"
+    }>
       <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
@@ -1125,24 +1176,30 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       <div className="flex-1 flex flex-col md:flex-row relative min-h-0">
 
         {/* LEFT PANEL */}
-        <div className="flex-1 h-full overflow-y-auto w-full md:w-[65%] bg-gray-100 md:bg-gray-50 md:border-r border-gray-200 pt-24 pb-10 px-4 md:pt-6 md:px-6 md:pb-6">
+        <div className={isModal
+          ? "flex-1 h-full overflow-y-auto w-full px-4 py-4"
+          : "flex-1 h-full overflow-y-auto w-full md:w-[65%] bg-gray-100 md:bg-gray-50 md:border-r border-gray-200 pt-24 pb-10 px-4 md:pt-6 md:px-6 md:pb-6"
+        }>
 
           {error && <div className="mb-4 text-center p-3 bg-red-100 text-red-700 rounded-sm">{error}</div>}
 
-          <div className="md:hidden bg-white p-2 rounded-sm shadow-md mb-4 mt-4">
-            <div className="flex flex-col items-center justify-center mb-4">
-              <h2 className="text-lg font-semibold text-gray-700 mb-2">Bulk Import</h2>
-              <input type="file" ref={fileInputRef} onChange={handleFileSelected} className="hidden" accept=".xlsx, .xls, .csv" />
-              <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className={`w-full max-w-xs ${activeTheme.primaryBg} text-white py-2 px-4 rounded-sm ${activeTheme.primaryHover} disabled:bg-gray-400 flex items-center justify-center gap-2`}>
-                {isUploading ? <Spinner /> : 'Import from Excel'}
-              </button>
-              <button type="button" onClick={handleDownloadSample} disabled={isUploading} className={`w-full max-w-xs bg-white ${activeTheme.text} border ${activeTheme.border} py-2 px-4 rounded-sm mt-4 hover:bg-gray-50`}>
-                Download Sample
-              </button>
+          {/* Bulk Import (mobile) — hidden in modal mode, it doesn't apply to single-item quick-add */}
+          {!isModal && (
+            <div className="md:hidden bg-white p-2 rounded-sm shadow-md mb-4 mt-4">
+              <div className="flex flex-col items-center justify-center mb-4">
+                <h2 className="text-lg font-semibold text-gray-700 mb-2">Bulk Import</h2>
+                <input type="file" ref={fileInputRef} onChange={handleFileSelected} className="hidden" accept=".xlsx, .xls, .csv" />
+                <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className={`w-full max-w-xs ${activeTheme.primaryBg} text-white py-2 px-4 rounded-sm ${activeTheme.primaryHover} disabled:bg-gray-400 flex items-center justify-center gap-2`}>
+                  {isUploading ? <Spinner /> : 'Import from Excel'}
+                </button>
+                <button type="button" onClick={handleDownloadSample} disabled={isUploading} className={`w-full max-w-xs bg-white ${activeTheme.text} border ${activeTheme.border} py-2 px-4 rounded-sm mt-4 hover:bg-gray-50`}>
+                  Download Sample
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="bg-white p-6 rounded-sm shadow-md md:mb-0 md:rounded-sm md:shadow-sm md:border md:border-gray-200 mb-10">
+          <div className={isModal ? "" : "bg-white p-6 rounded-sm shadow-md md:mb-0 md:rounded-sm md:shadow-sm md:border md:border-gray-200 mb-10"}>
             {success && (
               <div ref={successBannerRef} className="mb-4 p-3 bg-green-100 text-green-700 rounded-sm flex items-center justify-between gap-2">
                 <span className="flex-1 text-center">{success}</span>
@@ -1409,42 +1466,62 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           </div>
         </div>
 
-        {/* RIGHT PANEL: Sticky Sidebar on Desktop */}
-        <div className="hidden md:flex w-[35%] flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
-          <div className="flex-1 p-6 flex flex-col">
-            <div className={`${activeTheme.panelBg} rounded-sm p-5 border ${activeTheme.panelBorder}`}>
-              <h2 className={`text-lg font-bold ${activeTheme.panelHeader} mb-2`}>Bulk Import</h2>
-              <p className={`text-sm ${activeTheme.panelSubText} mb-4`}>
-                Upload Excel/CSV. Missing categories created automatically. You can embed images into rows.
-              </p>
-              <div className="flex flex-col gap-3">
-                <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className={`w-full bg-white ${activeTheme.panelBtn} border py-3 px-4 rounded-sm font-semibold disabled:bg-gray-100 flex items-center justify-center gap-2 transition-colors`}>
-                  {isUploading ? <Spinner /> : 'Upload Excel File'}
-                </button>
-                <button type="button" onClick={handleDownloadSample} disabled={isUploading} className={`text-sm ${activeTheme.text} ${activeTheme.textHover} underline text-center`}>
-                  Download Sample Template
+        {/* RIGHT PANEL: Sticky Sidebar on Desktop — Bulk Import skipped entirely in modal mode */}
+        {!isModal && (
+          <div className="hidden md:flex w-[35%] flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
+            <div className="flex-1 p-6 flex flex-col">
+              <div className={`${activeTheme.panelBg} rounded-sm p-5 border ${activeTheme.panelBorder}`}>
+                <h2 className={`text-lg font-bold ${activeTheme.panelHeader} mb-2`}>Bulk Import</h2>
+                <p className={`text-sm ${activeTheme.panelSubText} mb-4`}>
+                  Upload Excel/CSV. Missing categories created automatically. You can embed images into rows.
+                </p>
+                <div className="flex flex-col gap-3">
+                  <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className={`w-full bg-white ${activeTheme.panelBtn} border py-3 px-4 rounded-sm font-semibold disabled:bg-gray-100 flex items-center justify-center gap-2 transition-colors`}>
+                    {isUploading ? <Spinner /> : 'Upload Excel File'}
+                  </button>
+                  <button type="button" onClick={handleDownloadSample} disabled={isUploading} className={`text-sm ${activeTheme.text} ${activeTheme.textHover} underline text-center`}>
+                    Download Sample Template
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-grow"></div>
+
+              <div className="border-t border-gray-100 pb-10">
+                <button onClick={handleAddItem} disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)} className={`w-full ${activeTheme.primaryBg} text-white py-4 px-6 rounded-sm text-lg font-bold ${activeTheme.primaryHover} disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg transition-all active:scale-[0.98]`}>
+                  {isSaving ? <Spinner /> : 'Add Item'}
                 </button>
               </div>
             </div>
-
-            <div className="flex-grow"></div>
-
-            <div className="border-t border-gray-100 pb-10">
-              <button onClick={handleAddItem} disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)} className={`w-full ${activeTheme.primaryBg} text-white py-4 px-6 rounded-sm text-lg font-bold ${activeTheme.primaryHover} disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg transition-all active:scale-[0.98]`}>
-                {isSaving ? <Spinner /> : 'Add Item'}
-              </button>
-            </div>
           </div>
-        </div>
+        )}
 
-        {/* --- MOBILE FIXED FOOTER --- */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-transparent z-20 flex justify-center pb-20 pointer-events-none">
-          <button onClick={handleAddItem} disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)} className={`pointer-events-auto w-48 max-w-sm ${activeTheme.primaryBg} text-white py-3 px-6 rounded-sm text-lg font-semibold ${activeTheme.primaryHover} disabled:bg-gray-400 flex items-center justify-center gap-2 shadow-xl shadow-gray-400/50`}>
-            {isSaving ? <Spinner /> : 'Add Item'}
-          </button>
-        </div>
+        {/* --- MOBILE FIXED FOOTER (non-modal only — modal uses its own inline footer below) --- */}
+        {!isModal && (
+          <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-transparent z-20 flex justify-center pb-20 pointer-events-none">
+            <button onClick={handleAddItem} disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)} className={`pointer-events-auto w-48 max-w-sm ${activeTheme.primaryBg} text-white py-3 px-6 rounded-sm text-lg font-semibold ${activeTheme.primaryHover} disabled:bg-gray-400 flex items-center justify-center gap-2 shadow-xl shadow-gray-400/50`}>
+              {isSaving ? <Spinner /> : 'Add Item'}
+            </button>
+          </div>
+        )}
 
       </div>
+
+      {/* --- MODAL FOOTER: always-visible Save/Cancel bar when used as a popup --- */}
+      {isModal && (
+        <div className="border-t border-gray-200 p-4 flex justify-end gap-3 bg-white">
+          <button onClick={onCancel} className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-sm hover:bg-gray-200">
+            Cancel
+          </button>
+          <button
+            onClick={handleAddItem}
+            disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)}
+            className={`px-6 py-2 text-sm font-bold text-white ${activeTheme.primaryBg} rounded-sm ${activeTheme.primaryHover} disabled:bg-gray-300 flex items-center justify-center gap-2`}
+          >
+            {isSaving ? <Spinner /> : 'Save & Add to Inventory'}
+          </button>
+        </div>
+      )}
     </div>
   );
 };

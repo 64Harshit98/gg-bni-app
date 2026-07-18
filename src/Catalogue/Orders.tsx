@@ -1280,7 +1280,12 @@ const OrdersPage: React.FC = () => {
                 } else {
                     console.warn(`⚠️ 3. Item [${item.name}] has NO imageUrl in both Order AND Catalog.`);
                 }
-
+                const basePriceForDiscount = mrp > 0 ? mrp : salesPrice;
+                const storedDiscount2 = Number(item.discount2 ?? 0);
+                let effectiveDiscount1 = Number(item.discount ?? 0);
+                if (basePriceForDiscount > 0 && actualPrice > 0 && storedDiscount2 === 0) {
+                    effectiveDiscount1 = ((basePriceForDiscount - actualPrice) / basePriceForDiscount) * 100;
+                }
                 return {
                     sno: index + 1,
                     name: item.name,
@@ -1291,7 +1296,7 @@ const OrdersPage: React.FC = () => {
                     price: actualPrice,
                     total: actualPrice * item.quantity,
                     imageBase64: base64Image,
-                    discount: Number(item.discount ?? 0),
+                    discount: Number(effectiveDiscount1.toFixed(2)),
                     discount2: Number(item.discount2 ?? 0),
                 };
             }));
@@ -1484,6 +1489,13 @@ const OrdersPage: React.FC = () => {
                 const salesPrice = Number(item.salesPrice || 0);
                 const actualPrice = item.effectiveUnitPrice ?? item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
                 const base64Image = item.imageUrl ? await convertImageUrlToBase64(item.imageUrl, item.name) : "";
+
+                const basePriceForDiscount = mrp > 0 ? mrp : salesPrice;
+                const storedDiscount2 = Number(item.discount2 ?? 0);
+                let effectiveDiscount1 = Number(item.discount ?? 0);
+                if (basePriceForDiscount > 0 && actualPrice > 0 && storedDiscount2 === 0) {
+                    effectiveDiscount1 = ((basePriceForDiscount - actualPrice) / basePriceForDiscount) * 100;
+                }
                 return {
                     sno: index + 1,
                     name: item.name,
@@ -1494,7 +1506,7 @@ const OrdersPage: React.FC = () => {
                     price: actualPrice,
                     total: actualPrice * item.quantity,
                     imageBase64: base64Image,
-                    discount: Number(item.discount ?? 0),
+                    discount: Number(effectiveDiscount1.toFixed(2)),
                     discount2: Number(item.discount2 ?? 0),
                 };
             }));
@@ -1661,6 +1673,13 @@ const OrdersPage: React.FC = () => {
                 const salesPrice = Number(item.salesPrice || 0);
                 const actualPrice = item.effectiveUnitPrice ?? item.customPrice ?? (salesPrice > 0 ? salesPrice : mrp);
                 const base64Image = item.imageUrl ? await convertImageUrlToBase64(item.imageUrl, item.name) : "";
+
+                const basePriceForDiscount = mrp > 0 ? mrp : salesPrice;
+                const storedDiscount2 = Number(item.discount2 ?? 0);
+                let effectiveDiscount1 = Number(item.discount ?? 0);
+                if (basePriceForDiscount > 0 && actualPrice > 0 && storedDiscount2 === 0) {
+                    effectiveDiscount1 = ((basePriceForDiscount - actualPrice) / basePriceForDiscount) * 100;
+                }
                 return {
                     sno: index + 1,
                     name: item.name,
@@ -1671,7 +1690,7 @@ const OrdersPage: React.FC = () => {
                     price: actualPrice,
                     total: actualPrice * item.quantity,
                     imageBase64: base64Image,
-                    discount: Number(item.discount ?? 0),
+                    discount: Number(effectiveDiscount1.toFixed(2)),
                     discount2: Number(item.discount2 ?? 0),
                 };
             }));

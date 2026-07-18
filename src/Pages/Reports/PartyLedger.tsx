@@ -858,22 +858,22 @@ const PartyLedger: React.FC = () => {
                                 </button>
                             </div>
                             <div className="flex flex-col items-center gap-2 mt-3">
-                                <div className="flex border border-gray-200 rounded-sm overflow-hidden text-sm w-1/2">
+                                <div className="flex border border-gray-200 rounded-sm overflow-hidden text-sm w-1/2 max-[480px]:w-full">
                                     <button
                                         onClick={() => { setPartyTypeFilter(prev => prev === 'Customer' ? 'all' : 'Customer'); setShowTransactionList(true); }}
-                                        className={`flex-1 px-3 py-1.5 transition font-medium ${partyTypeFilter === 'Customer' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+                                        className={`flex-1 px-3 max-[480px]:px-1.5 py-1.5 transition font-medium whitespace-nowrap ${partyTypeFilter === 'Customer' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
                                     >
                                         Customer
                                     </button>
                                     <button
                                         onClick={() => { setPartyTypeFilter(prev => prev === 'Supplier' ? 'all' : 'Supplier'); setShowTransactionList(true); }}
-                                        className={`flex-1 px-3 py-1.5 transition font-medium border-l border-gray-200 ${partyTypeFilter === 'Supplier' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+                                        className={`flex-1 px-3 max-[480px]:px-1.5 py-1.5 transition font-medium border-l border-gray-200 whitespace-nowrap ${partyTypeFilter === 'Supplier' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
                                     >
                                         Supplier
                                     </button>
                                     <button
                                         onClick={() => { setPartyTypeFilter(prev => prev === 'Both' ? 'all' : 'Both'); setShowTransactionList(true); }}
-                                        className={`flex-1 px-3 py-1.5 transition font-medium border-l border-gray-200 ${partyTypeFilter === 'Both' ? 'bg-blue-500 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+                                        className={`flex-1 px-3 max-[480px]:px-1.5 py-1.5 transition font-medium border-l border-gray-200 whitespace-nowrap ${partyTypeFilter === 'Both' ? 'bg-blue-500 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
                                     >
                                         Both
                                     </button>

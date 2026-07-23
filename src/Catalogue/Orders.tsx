@@ -796,7 +796,7 @@ const OrdersPage: React.FC = () => {
 
     const calculatedEditTotal = useMemo(() => {
         if (!editingOrder?.items) return 0;
-        let dynamicTax = 0;
+        let exclusiveTax = 0;
         const itemsTotal = editingOrder.items.reduce((sum, item) => {
             const qty = Number(item.quantity || 0);
             const unitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
@@ -805,21 +805,15 @@ const OrdersPage: React.FC = () => {
             const taxRate = Number(item.tax ?? item.taxRate ?? 0);
             const taxType = (item.taxType || '').toLowerCase();
 
-            if (taxRate > 0) {
-                if (taxType === 'exclusive' || taxType === 'regular') {
-                    dynamicTax += rowNet * (taxRate / 100);
-                } else if (taxType === 'inclusive') {
-                    const baseAmount = rowNet / (1 + (taxRate / 100));
-                    dynamicTax += (rowNet - baseAmount);
-                }
+            if (taxRate > 0 && (taxType === 'exclusive' || taxType === 'regular')) {
+                exclusiveTax += rowNet * (taxRate / 100);
             }
             return sum + rowNet;
         }, 0);
 
         const expensesTotal = editExpenses.reduce((sum, e) => sum + (parseFloat(e.amount.toString()) || 0), 0);
 
-        // 👇 FIX: Wrap the final output in Math.round()
-        return Math.round(Math.max(0, itemsTotal + dynamicTax + expensesTotal - editDiscount));
+        return Math.round(Math.max(0, itemsTotal + exclusiveTax + expensesTotal - editDiscount));
     }, [editingOrder?.items, editExpenses, editDiscount]);
 
     const handleNetPriceChange = (id: string, value: string) => {
@@ -1422,9 +1416,9 @@ const OrdersPage: React.FC = () => {
                 items: itemsWithBase64,
 
                 // Replace these 3 lines inside rawBillData in handlePdfAction
-                grandTotal: Math.max(0, itemsWithBase64.reduce((sum, i) => sum + i.total, 0) + (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0) + Number(Order.totalTax || 0) - Number(Order.manualDiscount || 0)),
-                paidAmount: Order.status === 'Paid' ? Math.max(0, itemsWithBase64.reduce((sum, i) => sum + i.total, 0) + (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0) + Number(Order.totalTax || 0) - Number(Order.manualDiscount || 0)) : Number(Order.paidAmount || 0),
-                advancePaid: Order.status === 'Paid' ? Math.max(0, itemsWithBase64.reduce((sum, i) => sum + i.total, 0) + (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0) + Number(Order.totalTax || 0) - Number(Order.manualDiscount || 0)) : Number(Order.paidAmount || 0),
+                grandTotal: Order.totalAmount,
+                paidAmount: Order.status === 'Paid' ? Order.totalAmount : Number(Order.paidAmount || 0),
+                advancePaid: Order.status === 'Paid' ? Order.totalAmount : Number(Order.paidAmount || 0),
                 dueAmount: Order.status === 'Paid' ? 0 : Math.max(0, Order.totalAmount - Number(Order.paidAmount || 0)),
                 previousBalance: wpPreviousBalance,
 
@@ -1553,9 +1547,9 @@ const OrdersPage: React.FC = () => {
                     date: Order.time,
                 },
                 items: itemsWithBase64,
-                grandTotal: Math.max(0, itemsWithBase64.reduce((sum, i) => sum + i.total, 0) + (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0) + Number(Order.totalTax || 0) - Number(Order.manualDiscount || 0)),
-                paidAmount: Order.status === 'Paid' ? Math.max(0, itemsWithBase64.reduce((sum, i) => sum + i.total, 0) + (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0) + Number(Order.totalTax || 0) - Number(Order.manualDiscount || 0)) : Number(Order.paidAmount || 0),
-                advancePaid: Order.status === 'Paid' ? Math.max(0, itemsWithBase64.reduce((sum, i) => sum + i.total, 0) + (Order.expenses || []).reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0) + Number(Order.totalTax || 0) - Number(Order.manualDiscount || 0)) : Number(Order.paidAmount || 0),
+                grandTotal: Order.totalAmount,
+                paidAmount: Order.status === 'Paid' ? Order.totalAmount : Number(Order.paidAmount || 0),
+                advancePaid: Order.status === 'Paid' ? Order.totalAmount : Number(Order.paidAmount || 0),
                 dueAmount: Order.status === 'Paid' ? 0 : Math.max(0, Order.totalAmount - Number(Order.paidAmount || 0)),
             };
 
@@ -1639,24 +1633,7 @@ const OrdersPage: React.FC = () => {
                 navigate(ROUTES.WHATSAPP_PLAN || '/whatsapp-plans');
                 return;
             }
-
-            const itemsSubtotal = (Order.items || []).reduce((sum, item) => {
-                const unitPrice = item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0;
-                const qty = Number(item.quantity || 0);
-                const rowNet = Number(unitPrice) * qty;
-
-                const taxRate = Number(item.tax ?? item.taxRate ?? 0);
-                const taxType = (item.taxType || '').toLowerCase();
-                const extraTax = (taxRate > 0 && (taxType === 'exclusive' || taxType === 'regular'))
-                    ? rowNet * (taxRate / 100)
-                    : 0;
-
-                return sum + rowNet + extraTax;
-            }, 0);
-            const orderExpensesTotal = (Order.expenses || []).reduce(
-                (sum, ex) => sum + (parseFloat(String(ex.amount)) || 0), 0
-            );
-            const total = Math.max(0, itemsSubtotal + orderExpensesTotal - Number(Order.manualDiscount || 0));
+            const total = Order.totalAmount;
             const paid = Number(Order.paidAmount || 0);
             const due = Math.max(0, total - paid);
 
@@ -1836,6 +1813,7 @@ const OrdersPage: React.FC = () => {
         });
 
         let dynamicTax = 0;
+        let exclusiveTax = 0;
         const itemsBaseTotal = updatedItems.reduce((sum, item) => {
             const qty = Number(item.quantity || 0);
             const unitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
@@ -1845,7 +1823,9 @@ const OrdersPage: React.FC = () => {
             const taxType = (item.taxType || '').toLowerCase();
             if (taxRate > 0) {
                 if (taxType === 'exclusive' || taxType === 'regular') {
-                    dynamicTax += rowNet * (taxRate / 100);
+                    const taxAmt = rowNet * (taxRate / 100);
+                    dynamicTax += taxAmt;
+                    exclusiveTax += taxAmt;
                 } else if (taxType === 'inclusive') {
                     const baseAmount = rowNet / (1 + (taxRate / 100));
                     dynamicTax += (rowNet - baseAmount);
@@ -1856,8 +1836,8 @@ const OrdersPage: React.FC = () => {
 
         const expensesTotal = (editingOrder.expenses || []).reduce((sum: number, e: any) => sum + (parseFloat(e.amount?.toString()) || 0), 0);
 
-        // 👇 FIX: Calculate raw, then round it
-        const rawNewTotal = Math.max(0, itemsBaseTotal + dynamicTax + expensesTotal - Number(editingOrder.manualDiscount || 0));
+        // 👇 FIX: Use exclusiveTax to calculate the new total 
+        const rawNewTotal = Math.max(0, itemsBaseTotal + exclusiveTax + expensesTotal - Number(editingOrder.manualDiscount || 0));
         const finalNewTotal = Math.round(rawNewTotal);
         const roundOffAmt = Number((finalNewTotal - rawNewTotal).toFixed(2));
 
@@ -2327,7 +2307,7 @@ const OrdersPage: React.FC = () => {
                 : Orders.find(o => o.id === editingOrder.id);
 
             const getItemsTotal = (items: any[] = [], expenses: any[] = [], discount: number = 0) => {
-                let dynamicTax = 0;
+                let exclusiveTax = 0;
                 const base = items.reduce((sum, item) => {
                     const qty = Number(item.quantity || 0);
                     const unitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
@@ -2335,20 +2315,15 @@ const OrdersPage: React.FC = () => {
 
                     const taxRate = Number(item.tax ?? item.taxRate ?? 0);
                     const taxType = (item.taxType || '').toLowerCase();
-                    if (taxRate > 0) {
-                        if (taxType === 'exclusive' || taxType === 'regular') {
-                            dynamicTax += rowNet * (taxRate / 100);
-                        } else if (taxType === 'inclusive') {
-                            const baseAmount = rowNet / (1 + (taxRate / 100));
-                            dynamicTax += (rowNet - baseAmount);
-                        }
+
+                    if (taxRate > 0 && (taxType === 'exclusive' || taxType === 'regular')) {
+                        exclusiveTax += rowNet * (taxRate / 100);
                     }
                     return sum + rowNet;
                 }, 0);
                 const exp = expenses.reduce((sum: number, e: any) => sum + (parseFloat(e.amount?.toString()) || 0), 0);
 
-                // 👇 FIX: Return the RAW unrounded total here
-                return Math.max(0, base + dynamicTax + exp - discount);
+                return Math.max(0, base + exclusiveTax + exp - discount);
             };
 
             // Calculate exact tax separately so we can save it to DB
@@ -2613,6 +2588,7 @@ const OrdersPage: React.FC = () => {
         try {
             const liveOrder = Orders.find(o => o.id === editingOrder.id);
             let dynamicTax = 0;
+            let exclusiveTax = 0;
             const baseItemsTotal = (editingOrder.items || []).reduce((sum, item) => {
                 const qty = Number(item.quantity || 0);
                 const unitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
@@ -2622,7 +2598,9 @@ const OrdersPage: React.FC = () => {
                 const taxType = (item.taxType || '').toLowerCase();
                 if (taxRate > 0) {
                     if (taxType === 'exclusive' || taxType === 'regular') {
-                        dynamicTax += rowNet * (taxRate / 100);
+                        const taxAmt = rowNet * (taxRate / 100);
+                        dynamicTax += taxAmt;
+                        exclusiveTax += taxAmt;
                     } else if (taxType === 'inclusive') {
                         const baseAmount = rowNet / (1 + (taxRate / 100));
                         dynamicTax += (rowNet - baseAmount);
@@ -2632,8 +2610,7 @@ const OrdersPage: React.FC = () => {
             }, 0);
             const expensesTotal = (editingOrder.expenses || []).reduce((sum: number, e: any) => sum + (parseFloat(e.amount?.toString()) || 0), 0);
 
-            // Add Math.round() here
-            const totalAmt = Math.round(Math.max(0, baseItemsTotal + dynamicTax + expensesTotal - Number(editingOrder.manualDiscount || 0)));
+            const totalAmt = Math.round(Math.max(0, baseItemsTotal + exclusiveTax + expensesTotal - Number(editingOrder.manualDiscount || 0)));
             const paidAmt = Number(liveOrder?.paidAmount || 0);
             const updatedPaidAmt = Math.max(0, paidAmt - pendingAdjustment.amount);
             const effectiveDue = Math.max(0, totalAmt - updatedPaidAmt);
@@ -2707,6 +2684,7 @@ const OrdersPage: React.FC = () => {
         try {
             const liveOrder = Orders.find(o => o.id === editingOrder.id);
             let dynamicTax = 0;
+            let exclusiveTax = 0;
             const baseItemsTotal = (editingOrder.items || []).reduce((sum, item) => {
                 const qty = Number(item.quantity || 0);
                 const unitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
@@ -2716,7 +2694,9 @@ const OrdersPage: React.FC = () => {
                 const taxType = (item.taxType || '').toLowerCase();
                 if (taxRate > 0) {
                     if (taxType === 'exclusive' || taxType === 'regular') {
-                        dynamicTax += rowNet * (taxRate / 100);
+                        const taxAmt = rowNet * (taxRate / 100);
+                        dynamicTax += taxAmt;
+                        exclusiveTax += taxAmt;
                     } else if (taxType === 'inclusive') {
                         const baseAmount = rowNet / (1 + (taxRate / 100));
                         dynamicTax += (rowNet - baseAmount);
@@ -2726,8 +2706,7 @@ const OrdersPage: React.FC = () => {
             }, 0);
             const expensesTotal = (editingOrder.expenses || []).reduce((sum: number, e: any) => sum + (parseFloat(e.amount?.toString()) || 0), 0);
 
-            // Add Math.round() here
-            const totalAmt = Math.round(Math.max(0, baseItemsTotal + dynamicTax + expensesTotal - Number(editingOrder.manualDiscount || 0)));
+            const totalAmt = Math.round(Math.max(0, baseItemsTotal + exclusiveTax + expensesTotal - Number(editingOrder.manualDiscount || 0)));
             const paidAmt = Number(liveOrder?.paidAmount || 0);
             const updatedPaidAmt = Math.max(0, paidAmt - pendingAdjustment.amount);
             const effectiveDue = Math.max(0, totalAmt - updatedPaidAmt);
@@ -3910,18 +3889,18 @@ const OrdersPage: React.FC = () => {
                             try {
                                 if (!currentUser?.companyId || !showPaymentModal) return;
 
-                                const orderRef = doc(
-                                    db,
-                                    'companies',
-                                    currentUser.companyId,
-                                    'Orders',
-                                    showPaymentModal.id
-                                );
-
                                 const methodKey = method ? method.toUpperCase() : 'CASH';
 
-                                // --- NEW: DEDUCT FROM CUSTOMER DB IF CREDIT NOTE USED ---
+                                // 🛑 FIX: Prevent settling if amount exceeds available credit
                                 if (methodKey === 'CREDIT NOTE' || methodKey === 'CREDIT') {
+                                    if (amount > customerCredit) {
+                                        setModal({
+                                            message: `Insufficient Credit Balance. Available: ₹${customerCredit.toFixed(2)}`,
+                                            type: State.ERROR,
+                                        });
+                                        return; // Stop the payment from processing
+                                    }
+
                                     const phone = showPaymentModal.userLoginPhone || showPaymentModal.billingDetails?.phone || '';
                                     const normalizedPhone = phone.replace(/\D/g, '').slice(-10);
 
@@ -3932,6 +3911,14 @@ const OrdersPage: React.FC = () => {
                                         });
                                     }
                                 }
+
+                                const orderRef = doc(
+                                    db,
+                                    'companies',
+                                    currentUser.companyId,
+                                    'Orders',
+                                    showPaymentModal.id
+                                );
                                 // --------------------------------------------------------
 
                                 const currentMethods = showPaymentModal.paymentMethods || {};
@@ -4306,6 +4293,7 @@ const OrdersPage: React.FC = () => {
 
                                                 // 3. Recalculate the entire order total, factoring in the new item's tax
                                                 let dynamicTax = 0;
+                                                let exclusiveTax = 0;
                                                 const itemsTotal = updatedItems.reduce((sum, item) => {
                                                     const currentQty = Number(item.quantity || 0);
                                                     const currentUnitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
@@ -4316,7 +4304,9 @@ const OrdersPage: React.FC = () => {
 
                                                     if (currentTaxRate > 0) {
                                                         if (currentTaxType === 'exclusive' || currentTaxType === 'regular') {
-                                                            dynamicTax += rowNet * (currentTaxRate / 100);
+                                                            const taxAmt = rowNet * (currentTaxRate / 100);
+                                                            dynamicTax += taxAmt;
+                                                            exclusiveTax += taxAmt;
                                                         } else if (currentTaxType === 'inclusive') {
                                                             const baseAmount = rowNet / (1 + (currentTaxRate / 100));
                                                             dynamicTax += (rowNet - baseAmount);
@@ -4327,8 +4317,7 @@ const OrdersPage: React.FC = () => {
 
                                                 const expensesTotal = (editingOrder.expenses || []).reduce((sum: number, e: any) => sum + (parseFloat(e.amount?.toString()) || 0), 0);
 
-                                                // 👇 FIX: Round the total
-                                                const rawNewTotal = Math.max(0, itemsTotal + dynamicTax + expensesTotal - Number(editingOrder.manualDiscount || 0));
+                                                const rawNewTotal = Math.max(0, itemsTotal + exclusiveTax + expensesTotal - Number(editingOrder.manualDiscount || 0));
                                                 const finalNewTotal = Math.round(rawNewTotal);
 
                                                 setEditingOrder({ ...editingOrder, items: updatedItems, totalAmount: finalNewTotal });

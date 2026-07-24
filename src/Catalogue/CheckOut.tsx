@@ -594,17 +594,8 @@ const CartPage: React.FC = () => {
             item: { ...i },
             quantity: i.quantity
         }))));
-        if (updatedCart.length === 0) {
-            // If cart is now empty, wipe the upcoming doc's items too
-            const userKey = localStorage.getItem("upcoming_user_key");
-            if (userKey && effectiveCompanyId) {
-                const orderRef = doc(db, "companies", effectiveCompanyId, "Orders", `upcoming_${userKey}`);
-                setDoc(orderRef, { items: [], totalAmount: 0, updatedAt: serverTimestamp() }, { merge: true })
-                    .catch(err => console.error("Empty cart sync error:", err));
-            }
-        } else {
-            syncToUpcoming(updatedCart);
-        }
+
+        syncToUpcoming(updatedCart);
     };
 
     useEffect(() => {

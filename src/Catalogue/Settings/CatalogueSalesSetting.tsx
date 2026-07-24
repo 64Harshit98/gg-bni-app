@@ -128,7 +128,6 @@ export const ToggleRow: React.FC<ToggleRowProps> = ({
           <label htmlFor={id} className="text-sm font-semibold text-gray-800 leading-5">{label}</label>
           <InfoTooltip text={tooltip || description} />
         </div>
-        <p className="hidden md:block text-xs text-gray-500 mt-1 leading-relaxed">{description}</p>
       </div>
     </div>
     <label htmlFor={id} className="relative inline-flex cursor-pointer items-center">
@@ -353,61 +352,6 @@ const CatalogueSalesSettings: React.FC = () => {
       <main className="flex-grow min-h-0 p-3 sm:p-4 md:p-5 bg-gray-50 w-full overflow-y-auto box-border pb-44 md:pb-24">
         <form onSubmit={handleSave} className="max-w-5xl mx-auto space-y-5">
 
-          {/* ── Inventory & Stock ─────────────────────────────────────────── */}
-          <SettingsCard title="Inventory & Stock" icon={<PackageX size={18} />}>
-            <ToggleRow
-              id="allow-negative-inventory"
-              label="Allow Negative Inventory"
-              description="Allow orders even when stock is zero."
-              checked={settings.allowNegativeInventory}
-              onChange={(checked) => handleCheckboxChange('allowNegativeInventory', checked)}
-              tooltip="Permit catalogue orders for items with no recorded stock."
-              icon={<PackageX size={18} />}
-            />
-
-            <ToggleRow
-              id="Hide Out of Stock Items"
-              label="Hide Out of Stock Items"
-              description="Hide Out of Stock Items."
-              checked={settings.hideOutOfStock ?? false}
-              onChange={(checked) => handleCheckboxChange('hideOutOfStock', checked)}
-              tooltip="Hide Out Of Stock Items from Customers."
-              icon={<EyeOff size={18} />}
-            />
-
-            <ToggleRow
-              id="enable-out-of-stock-notification"
-              label="Enable 'Notify Me' Button"
-              description="Show a 'Notify Me' button on out-of-stock products so customers can request restock alerts."
-              checked={settings.enableOutOfStockNotification ?? false}
-              onChange={(checked) => handleCheckboxChange('enableOutOfStockNotification', checked)}
-              tooltip="When enabled, customers will see a 'Notify Me' button instead of 'Add to Cart' for out-of-stock items. Their requests appear in the Pre-Order Requests page."
-              icon={<BellRing size={18} />}
-            />
-          </SettingsCard>
-
-          {/* ── Customer Access ───────────────────────────────────────────── */}
-          <SettingsCard title="Customer Access" icon={<ShieldCheck size={18} />}>
-            <ToggleRow
-              id="hide-price"
-              label="Hide Price from Customers"
-              description="Prices will not be visible on the catalogue."
-              checked={settings.hidePrice ?? false}
-              onChange={(checked) => handleCheckboxChange('hidePrice', checked)}
-              tooltip="Completely hides item prices on the customer-facing catalogue."
-              icon={<EyeOff size={18} />}
-            />
-            <ToggleRow
-              id="require-approval"
-              label="Require Customer Approval"
-              description="Customers must submit a request and be approved before they can view prices or add items to cart."
-              checked={settings.requireApproval ?? false}
-              onChange={(checked) => handleCheckboxChange('requireApproval', checked)}
-              tooltip="Enables an approval gate — customers fill a lead form and you manually approve or decline them."
-              icon={<ShieldCheck size={18} />}
-            />
-          </SettingsCard>
-
           <SettingsCard title="Pricing & Tax" icon={<Percent size={18} />}>
             <div className="space-y-3">
               <ToggleRow
@@ -419,7 +363,7 @@ const CatalogueSalesSettings: React.FC = () => {
                 tooltip="Allow discounts to be applied to individual cart items."
                 icon={<Percent size={18} />}
               />
-               <ToggleRow
+              <ToggleRow
                 id="item-discount-2"
                 label="Enable Second Discount (Disc2)"
                 description="Show a second discount field, applied on top of Disc1."
@@ -481,6 +425,63 @@ const CatalogueSalesSettings: React.FC = () => {
               )}
             </div>
           </SettingsCard>
+
+          {/* ── Inventory & Stock ─────────────────────────────────────────── */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+            <SettingsCard title="Inventory & Stock" icon={<PackageX size={18} />}>
+              <ToggleRow
+                id="allow-negative-inventory"
+                label="Allow Negative Inventory"
+                description="Allow orders even when stock is zero."
+                checked={settings.allowNegativeInventory}
+                onChange={(checked) => handleCheckboxChange('allowNegativeInventory', checked)}
+                tooltip="Permit catalogue orders for items with no recorded stock."
+                icon={<PackageX size={18} />}
+              />
+
+              <ToggleRow
+                id="Hide Out of Stock Items"
+                label="Hide Out of Stock Items"
+                description="Hide Out of Stock Items."
+                checked={settings.hideOutOfStock ?? false}
+                onChange={(checked) => handleCheckboxChange('hideOutOfStock', checked)}
+                tooltip="Hide Out Of Stock Items from Customers."
+                icon={<EyeOff size={18} />}
+              />
+
+              <ToggleRow
+                id="enable-out-of-stock-notification"
+                label="Enable 'Notify Me' Button"
+                description="Show a 'Notify Me' button on out-of-stock products so customers can request restock alerts."
+                checked={settings.enableOutOfStockNotification ?? false}
+                onChange={(checked) => handleCheckboxChange('enableOutOfStockNotification', checked)}
+                tooltip="When enabled, customers will see a 'Notify Me' button instead of 'Add to Cart' for out-of-stock items. Their requests appear in the Pre-Order Requests page."
+                icon={<BellRing size={18} />}
+              />
+            </SettingsCard>
+
+            {/* ── Customer Access ───────────────────────────────────────────── */}
+            <SettingsCard title="Customer Access" icon={<ShieldCheck size={18} />}>
+              <ToggleRow
+                id="hide-price"
+                label="Hide Price from Customers"
+                description="Prices will not be visible on the catalogue."
+                checked={settings.hidePrice ?? false}
+                onChange={(checked) => handleCheckboxChange('hidePrice', checked)}
+                tooltip="Completely hides item prices on the customer-facing catalogue."
+                icon={<EyeOff size={18} />}
+              />
+              <ToggleRow
+                id="require-approval"
+                label="Require Customer Approval"
+                description="Customers must submit a request and be approved before they can view prices or add items to cart."
+                checked={settings.requireApproval ?? false}
+                onChange={(checked) => handleCheckboxChange('requireApproval', checked)}
+                tooltip="Enables an approval gate — customers fill a lead form and you manually approve or decline them."
+                icon={<ShieldCheck size={18} />}
+              />
+            </SettingsCard>
+          </div>
 
           {/* ── Order Rules & Voucher in a 2-col grid ──────────────────────── */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">

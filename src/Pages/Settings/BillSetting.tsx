@@ -279,7 +279,7 @@ const BillSettings: React.FC = () => {
                                 </div>
                                 <div className="md:col-span-2">
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Registered Address</label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium h-[44px] flex items-center truncate">
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium min-h-[44px] flex items-center whitespace-normal break-words">
                                         {businessInfo.address}
                                     </div>
                                 </div>

@@ -164,7 +164,7 @@ const CatalogueBillSettings: React.FC = () => {
         const { name, value } = e.target;
         setSettings(prev => ({ ...prev, [name]: value }));
     };
-     // Handle boolean toggles (e.g. Triplicate switch)
+    // Handle boolean toggles (e.g. Triplicate switch)
     const handleToggle = (name: keyof BillSettingsData, value: boolean) => {
         setSettings(prev => ({ ...prev, [name]: value }));
     };
@@ -307,7 +307,7 @@ const CatalogueBillSettings: React.FC = () => {
                                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
                                         REGISTERED ADDRESS
                                     </label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium h-[44px] flex truncate items-center">
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium min-h-[44px] flex items-center whitespace-normal break-words">
                                         {businessInfo.address}
                                     </div>
                                 </div>
@@ -499,7 +499,7 @@ const CatalogueBillSettings: React.FC = () => {
                                 <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
                             </label>
                         </div>
-                    {/* NEW: Discount 1 + Discount 2 display format */}
+                        {/* NEW: Discount 1 + Discount 2 display format */}
                         <div className="mt-5 pt-5 border-t border-gray-100">
                             <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">
                                 <div className="flex items-center gap-2 mb-2">

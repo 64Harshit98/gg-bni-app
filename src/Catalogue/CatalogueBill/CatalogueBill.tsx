@@ -91,6 +91,7 @@ export interface CatalogueInvoiceData {
   extraExpenseName?: string;
   extraExpenseAmount?: number;
   discountDisplayMode?: 'amount' | 'percentage';
+  enableDiscount2?: boolean;
 }
 export const CatalogueBill = async (
   data: CatalogueInvoiceData,
@@ -393,9 +394,15 @@ export const CatalogueBill = async (
     const printTaxRate = isComposition ? "-" : `${taxRate}%`;
     const printTaxAmt = isComposition ? "-" : taxAmt.toFixed(2);
 
-    const discDisplay = data.discountDisplayMode === 'percentage'
-      ? `${disc1Pct.toFixed(2)}% + ${disc2Pct.toFixed(2)}%`
-      : `${disc1Amt.toFixed(2)} + ${disc2Amt.toFixed(2)}`;
+    const showDiscount2 = data.enableDiscount2 === true;
+
+    const discDisplay = showDiscount2
+      ? (data.discountDisplayMode === 'percentage'
+        ? `${disc1Pct.toFixed(2)}% + ${disc2Pct.toFixed(2)}%`
+        : `${disc1Amt.toFixed(2)} + ${disc2Amt.toFixed(2)}`)
+      : (data.discountDisplayMode === 'percentage'
+        ? `${disc1Pct.toFixed(2)}%`
+        : `${disc1Amt.toFixed(2)}`);
 
     if (!showTaxColumns) {
       return [
@@ -1055,5 +1062,6 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
     signatureBase64: billSettings.signatureBase64 || "",
     enableTriplicate: billSettings.enableTriplicate || false,
     discountDisplayMode: billSettings.discountDisplayFormat || invoiceData.discountDisplayFormat || 'amount',
+    enableDiscount2: salesSettings?.enableDiscount2 || false,
   };
 };

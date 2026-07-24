@@ -88,7 +88,7 @@ const SharedItemSettings: React.FC<SharedItemSettingsProps> = ({ theme = 'blue' 
     const [isSaving, setIsSaving] = useState<boolean>(false);
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
 
-    const ToggleRow: React.FC<ToggleRowProps> = ({ id, label, description, checked, onChange, tooltip }) => {
+    const ToggleRow: React.FC<ToggleRowProps> = ({ id, label, checked, onChange, tooltip }) => {
         return (
             <div className="flex items-start justify-between py-3 border-b border-gray-100 last:border-0">
                 <div className="pr-4">
@@ -99,7 +99,6 @@ const SharedItemSettings: React.FC<SharedItemSettingsProps> = ({ theme = 'blue' 
                         {/* InfoTooltip correctly placed next to the label */}
                         {tooltip && <InfoTooltip text={tooltip} />}
                     </div>
-                    {description && <p className="text-xs text-gray-500 mt-0.5">{description}</p>}
                 </div>
                 <div className="flex items-center h-5 mt-1">
                     <button

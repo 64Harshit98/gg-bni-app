@@ -76,19 +76,25 @@ const useBusinessName = (userId?: string, companyId?: string) => {
 
     return { businessName, loading };
 };
-// AFTER
+const getSampleChartData = (): ChartDataPoint[] => {
+    const sales = [4200, 5600, 3100, 6800, 4900, 7200, 4700];
+    const bills = [10, 13, 8, 16, 12, 17, 8];
+    const today = new Date();
+
+    return sales.map((amount, i) => {
+        const d = new Date(today);
+        d.setDate(d.getDate() - (sales.length - 1 - i)); // last 7 days ending today
+        return {
+            date: d.toLocaleDateString('en-CA'), // matches YYYY-MM-DD key used elsewhere
+            sales: amount,
+            bills: bills[i],
+        };
+    });
+};
 const SAMPLE_CATALOGUE_DATA: CatalogueDashboardData = {
     totalSalesAmount: 36500,
     totalSalesCount: 84,
-    chartData: [
-        { date: '2026-07-01', sales: 4200, bills: 10 },
-        { date: '2026-07-02', sales: 5600, bills: 13 },
-        { date: '2026-07-03', sales: 3100, bills: 8 },
-        { date: '2026-07-04', sales: 6800, bills: 16 },
-        { date: '2026-07-05', sales: 4900, bills: 12 },
-        { date: '2026-07-06', sales: 7200, bills: 17 },
-        { date: '2026-07-07', sales: 4700, bills: 8 },
-    ],
+    chartData: getSampleChartData(),
     topByQuantity: [
         { id: 'sample-1', name: 'Sample Item A', totalQuantity: 42, totalAmount: 8400 },
         { id: 'sample-2', name: 'Sample Item B', totalQuantity: 31, totalAmount: 6200 },
@@ -175,7 +181,11 @@ const HomePageContent: React.FC = () => {
     const [data, setData] = useState<WithCacheMeta<CatalogueDashboardData> | null>(null);
     const [loading, setLoading] = useState(true);
 
-    const displayData = isTutorialActive ? SAMPLE_CATALOGUE_DATA : data;
+    const sampleData = useMemo(
+    () => ({ ...SAMPLE_CATALOGUE_DATA, chartData: getSampleChartData() }),
+    [] 
+);
+const displayData = isTutorialActive ? sampleData : data;
     const effectiveDataVisible = isTutorialActive ? true : isDataVisible;
 
     const fetchData = useCallback(async (forceRefresh = false) => {

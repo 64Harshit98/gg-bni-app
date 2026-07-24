@@ -154,7 +154,6 @@ export const ToggleRow: React.FC<ToggleRowProps> = ({ id, label, description, ch
                     <label htmlFor={id} className="text-sm font-semibold text-gray-800 leading-5">{label}</label>
                     <InfoTooltip text={tooltip || description} />
                 </div>
-                <p className="hidden md:block text-xs text-gray-500 mt-1 leading-relaxed">{description}</p>
             </div>
         </div>
         <label htmlFor={id} className="relative inline-flex cursor-pointer items-center">

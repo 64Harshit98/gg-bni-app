@@ -1881,6 +1881,14 @@ const OrdersPage: React.FC = () => {
                 acc[status] = Orders.filter(
                     o => o.status === "Completed" || o.status === "Paid"
                 ).length;
+            } else if (status === "Upcoming") {
+                acc[status] = Orders.filter(o => {
+                    if (o.status !== "Upcoming") return false;
+                    if (o.isLead) {
+                        return (o.items?.length || 0) > 0;
+                    }
+                    return true;
+                }).length;
             } else {
                 acc[status] = Orders.filter(
                     o => o.status === status
@@ -3479,7 +3487,7 @@ const OrdersPage: React.FC = () => {
                                                 {(
                                                     <div
                                                         className={`grid ${isUpcomingStatus
-                                                            ? Order.userLoginPhone ? 'grid-cols-3' : 'grid-cols-1'
+                                                            ? Order.userLoginPhone ? 'grid-cols-4' : 'grid-cols-2'
                                                             : Order.status === "Packed"
                                                                 ? 'grid-cols-5 md:grid-cols-5'
                                                                 : Order.status === "Paid"
@@ -3495,7 +3503,7 @@ const OrdersPage: React.FC = () => {
                                                                 <a
                                                                     href={`tel:${Order.userLoginPhone.replace(/\D/g, '')}`}
                                                                     onClick={(e) => e.stopPropagation()}
-                                                                    className="py-2.5 bg-white border border-emerald-200 text-emerald-600 text-xs font-bold rounded-sm text-center"
+                                                                    className="py-2.5 bg-emerald-500 text-white text-xs font-bold rounded-sm text-center"
                                                                 >
                                                                     Call
                                                                 </a>
@@ -3505,10 +3513,45 @@ const OrdersPage: React.FC = () => {
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
                                                                     onClick={(e) => e.stopPropagation()}
-                                                                    className="py-2.5 bg-[#25D366] text-white text-xs font-bold rounded-sm text-center"
+                                                                    className="py-2.5 bg-black text-white text-xs font-bold rounded-sm text-center"
                                                                 >
                                                                     WhatsApp
                                                                 </a>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setSelectedOrderForAction(Order);
+                                                                    }}
+                                                                    disabled={pdfLoadingOrderId === Order.id}
+                                                                    className="py-2.5 bg-blue-600 text-white text-xs font-bold rounded-sm flex items-center justify-center"
+                                                                >
+                                                                    {pdfLoadingOrderId === Order.id ? <Spinner /> : "Print"}
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleDeleteOrder(Order.id);
+                                                                    }}
+                                                                    className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm cursor-pointer"
+                                                                >
+                                                                    Delete
+                                                                </button>
+                                                            </>
+                                                        )}
+                                                        {/* NEW: fallback for upcoming/lead orders that have no phone captured yet —
+    still let the seller print/download the bill */}
+                                                        {isUpcomingStatus && !Order.userLoginPhone && (
+                                                            <>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setSelectedOrderForAction(Order);
+                                                                    }}
+                                                                    disabled={pdfLoadingOrderId === Order.id}
+                                                                    className="py-2.5 bg-blue-600 text-white text-xs font-bold rounded-sm flex items-center justify-center"
+                                                                >
+                                                                    {pdfLoadingOrderId === Order.id ? <Spinner /> : "Print"}
+                                                                </button>
 
                                                                 <button
                                                                     onClick={(e) => {
@@ -3521,7 +3564,6 @@ const OrdersPage: React.FC = () => {
                                                                 </button>
                                                             </>
                                                         )}
-
                                                         {!isUpcomingStatus && (isFinalStage ? (
                                                             <>
 

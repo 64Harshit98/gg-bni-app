@@ -161,6 +161,7 @@ interface PdfData {
   companyState?: string;       // <-- ADD THIS
   billDiscount: number;
   discountDisplayFormat?: 'amount' | 'percentage';
+  enableDiscount2?: boolean;
   upiId: string;
   billTo: {
     name: string;
@@ -771,6 +772,7 @@ const Journal: React.FC = () => {
       placeOfSupply: invoice.placeOfSupply || '',
       billDiscount: invoice.manualDiscount || 0,
       discountDisplayFormat: billSettings?.discountDisplayFormat || 'amount',
+      enableDiscount2: salesSettings?.enableDiscount2 || false,
       upiId: billSettings.upiId || '',
       billTo: {
         name: invoice.partyName,

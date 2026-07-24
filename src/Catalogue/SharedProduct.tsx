@@ -330,7 +330,32 @@ const SharedProduct: React.FC = () => {
     const syncToUpcoming = async (
         updatedCart: { item: Item; quantity: number }[]
     ) => {
-        if (!effectiveCompanyId || updatedCart.length === 0) return;
+        if (!effectiveCompanyId) return;
+
+        if (updatedCart.length === 0) {
+            const userKey = localStorage.getItem("upcoming_user_key");
+            if (!userKey) return;
+            try {
+                const orderRef = doc(
+                    db,
+                    "companies",
+                    effectiveCompanyId,
+                    "Orders",
+                    `upcoming_${userKey}`
+                );
+                const snap = await getDoc(orderRef);
+                if (snap.exists()) {
+                    await setDoc(
+                        orderRef,
+                        { items: [], totalAmount: 0, updatedAt: serverTimestamp() },
+                        { merge: true }
+                    );
+                }
+            } catch (err) {
+                console.error("Sync Upcoming (empty cart) error:", err);
+            }
+            return;
+        }
 
         const leadSubmittedCheck = localStorage.getItem("leadSubmitted") === "true";
         if (approvalEnabled && !leadSubmittedCheck) return;
@@ -437,10 +462,14 @@ const SharedProduct: React.FC = () => {
         }
     };
 
+    const isInitialCartSyncRef = useRef(true);
+
     useEffect(() => {
-        if (cart.length > 0) {
-            syncToUpcoming(cart);
+        if (isInitialCartSyncRef.current) {
+            isInitialCartSyncRef.current = false;
+            return;
         }
+        syncToUpcoming(cart);
     }, [cart]);
 
     useEffect(() => {

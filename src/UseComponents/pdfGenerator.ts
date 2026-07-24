@@ -25,6 +25,7 @@ export interface InvoiceData {
   signatureBase64?: string;
   billDiscount?: number;
   discountDisplayFormat?: 'amount' | 'percentage';
+  enableDiscount2?: boolean;
   upiId?: string;
   ifscCode?: number;
 
@@ -242,9 +243,15 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       return v % 1 === 0 ? v.toFixed(0) : v.toFixed(1);
     };
 
-    const itemDiscDisplay = data.discountDisplayFormat === 'percentage'
-      ? `${fmtPct((item as any).discount1Percent)}% + ${fmtPct((item as any).discount2Percent)}%`
-      : `${disc1Amt.toFixed(2)} + ${disc2Amt.toFixed(2)}`;
+    const showDiscount2 = data.enableDiscount2 === true;
+
+    const itemDiscDisplay = showDiscount2
+      ? (data.discountDisplayFormat === 'percentage'
+        ? `${fmtPct((item as any).discount1Percent)}% + ${fmtPct((item as any).discount2Percent)}%`
+        : `${disc1Amt.toFixed(2)} + ${disc2Amt.toFixed(2)}`)
+      : (data.discountDisplayFormat === 'percentage'
+        ? `${fmtPct((item as any).discount1Percent)}%`
+        : `${disc1Amt.toFixed(2)}`);
 
     // 2. Pro-rate the global bill discount across rows
     let billDisc = sumPostDiscountAmounts > 0 ? (finalAmount / sumPostDiscountAmounts) * totalBillDiscount : 0;
@@ -480,7 +487,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     cursorY += partyHeight;
 
     const fullTaxHeaders = isIgst
-      ? ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Bill Disc.','Subtotal', 'IGST', 'IGST Amt', 'Amount']
+      ? ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Bill Disc.', 'Subtotal', 'IGST', 'IGST Amt', 'Amount']
       : ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Bill Disc.', 'Subtotal', 'GST', 'GST Amt', 'Amount'];
 
     const noTaxHeaders = ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Bill Disc.', 'Amount'];

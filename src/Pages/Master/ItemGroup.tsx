@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo} from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import type { ItemGroup } from '../../constants/models';
 import { useDatabase } from '../../context/auth-context';
@@ -57,7 +57,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
   const [deleteModal, setDeleteModal] = useState<{ message: string; type: State } | null>(null);
   const [groupPendingFullDelete, setGroupPendingFullDelete] = useState<ItemGroup | null>(null);
   const isActive = (path: string) => location.pathname === path;
-const displayedItemGroups = useMemo(() => {
+  const displayedItemGroups = useMemo(() => {
     const query = newItemGroupName.trim().toLowerCase();
     if (!query) return itemGroups;
 
@@ -495,32 +495,36 @@ const displayedItemGroups = useMemo(() => {
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
             <div className="bg-white rounded-lg shadow-lg w-[90%] max-w-lg p-6 flex flex-col max-h-[80vh]">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold text-gray-800 flex-1">
-                  {viewingGroup.name}
-                  <span className="ml-2 text-sm font-normal text-gray-500">
-                    ({groupCounts[viewingGroup.id!] || 0} items)
-                  </span>
-                </h2>
-                <div className="flex items-center gap-3">
-                  {viewingGroup.id !== 'uncategorized' && (
+              <div className="mb-4">
+                <div className="flex justify-between items-center gap-2">
+                  <h2 className="text-lg font-semibold text-gray-800 flex-1 min-w-0 truncate">
+                    {viewingGroup.name}
+                    <span className="ml-2 text-sm font-normal text-gray-500">
+                      ({groupCounts[viewingGroup.id!] || 0} items)
+                    </span>
+                  </h2>
+                  <button onClick={() => { setViewingGroup(null); setItemSearchQuery(''); }} className="text-gray-400 hover:text-gray-700 text-xl font-bold leading-none flex-shrink-0">✕</button>
+                </div>
+                {viewingGroup.id !== 'uncategorized' && (
+                  <div className="flex justify-end">
                     <button
                       onClick={() => setGroupPendingFullDelete(viewingGroup)}
-                      className="text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-3 py-1.5 rounded-md transition-colors whitespace-nowrap"
+                      className="mt-2 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1 rounded-md transition-colors inline-block w-fit"
                     >
                       Delete Category & Items
                     </button>
-                  )}
-                  {viewingGroup.id === 'uncategorized' && (groupCounts["uncategorized"] || 0) > 0 && (
+                  </div>
+                )}
+                {viewingGroup.id === 'uncategorized' && (groupCounts["uncategorized"] || 0) > 0 && (
+                  <div className="flex justify-end">
                     <button
                       onClick={() => setGroupPendingFullDelete(viewingGroup)}
-                      className="text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-3 py-1.5 rounded-md transition-colors whitespace-nowrap"
+                      className="mt-2 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1 rounded-md transition-colors inline-block w-fit"
                     >
                       Empty Uncategorized
                     </button>
-                  )}
-                  <button onClick={() => { setViewingGroup(null); setItemSearchQuery(''); }} className="text-gray-400 hover:text-gray-700 text-xl font-bold leading-none">✕</button>
-                </div>
+                  </div>
+                )}
               </div>
               <div className="mb-3">
                 <input

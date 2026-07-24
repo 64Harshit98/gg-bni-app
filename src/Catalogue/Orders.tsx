@@ -1392,7 +1392,7 @@ const OrdersPage: React.FC = () => {
                 customer: {
                     billing: {
                         name: Order.billingDetails?.name || Order.userName || "Customer",
-                        phone: Order.billingDetails?.phone || "",
+                        phone: Order.billingDetails?.phone || Order.userLoginPhone || "",
                         address: Order.billingDetails?.address || "",
                         city: Order.billingDetails?.city || "",
                         state: Order.billingDetails?.state || "",
@@ -1527,7 +1527,7 @@ const OrdersPage: React.FC = () => {
                 customer: {
                     billing: {
                         name: Order.billingDetails?.name || Order.userName || "Customer",
-                        phone: Order.billingDetails?.phone || "",
+                        phone: Order.billingDetails?.phone || Order.userLoginPhone || "",
                         address: Order.billingDetails?.address || "",
                         city: Order.billingDetails?.city || "",
                         state: Order.billingDetails?.state || "",
@@ -1690,7 +1690,7 @@ const OrdersPage: React.FC = () => {
                 customer: {
                     billing: {
                         name: Order.billingDetails?.name || Order.userName || "Customer",
-                        phone: Order.billingDetails?.phone || "",
+                        phone: Order.billingDetails?.phone || Order.userLoginPhone || "",
                         address: Order.billingDetails?.address || "",
                         city: Order.billingDetails?.city || "",
                         state: Order.billingDetails?.state || "",
@@ -1881,14 +1881,6 @@ const OrdersPage: React.FC = () => {
                 acc[status] = Orders.filter(
                     o => o.status === "Completed" || o.status === "Paid"
                 ).length;
-            } else if (status === "Upcoming") {
-                acc[status] = Orders.filter(o => {
-                    if (o.status !== "Upcoming") return false;
-                    if (o.isLead) {
-                        return (o.items?.length || 0) > 0;
-                    }
-                    return true;
-                }).length;
             } else {
                 acc[status] = Orders.filter(
                     o => o.status === status
@@ -3503,7 +3495,7 @@ const OrdersPage: React.FC = () => {
                                                                 <a
                                                                     href={`tel:${Order.userLoginPhone.replace(/\D/g, '')}`}
                                                                     onClick={(e) => e.stopPropagation()}
-                                                                    className="py-2.5 bg-emerald-500 text-white text-xs font-bold rounded-sm text-center"
+                                                                    className="min-h-[44px] py-2.5 bg-blue-600 text-white text-xs font-bold rounded-sm text-center"
                                                                 >
                                                                     Call
                                                                 </a>
@@ -3513,7 +3505,7 @@ const OrdersPage: React.FC = () => {
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
                                                                     onClick={(e) => e.stopPropagation()}
-                                                                    className="py-2.5 bg-black text-white text-xs font-bold rounded-sm text-center"
+                                                                    className="min-h-[44px] py-2.5 bg-emerald-500 text-white text-xs font-bold rounded-sm text-center"
                                                                 >
                                                                     WhatsApp
                                                                 </a>
@@ -3523,7 +3515,7 @@ const OrdersPage: React.FC = () => {
                                                                         setSelectedOrderForAction(Order);
                                                                     }}
                                                                     disabled={pdfLoadingOrderId === Order.id}
-                                                                    className="py-2.5 bg-blue-600 text-white text-xs font-bold rounded-sm flex items-center justify-center"
+                                                                    className="min-h-[44px] py-2.5 bg-black text-white text-xs font-bold rounded-sm flex items-center justify-center"
                                                                 >
                                                                     {pdfLoadingOrderId === Order.id ? <Spinner /> : "Print"}
                                                                 </button>
@@ -3532,7 +3524,7 @@ const OrdersPage: React.FC = () => {
                                                                         e.stopPropagation();
                                                                         handleDeleteOrder(Order.id);
                                                                     }}
-                                                                    className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm cursor-pointer"
+                                                                    className="min-h-[44px] py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm cursor-pointer"
                                                                 >
                                                                     Delete
                                                                 </button>

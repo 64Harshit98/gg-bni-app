@@ -514,13 +514,13 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     if (finalY > pageHeight - 80) { doc.addPage(); finalY = margin; }
     const vBoxX = endX - 25;
 
-    const addRow = (label: string, amt: number, h: number, noTopBorder: boolean = false, noBottomBorder: boolean = false) => {
+    const addRow = (label: string, amt: number, h: number, noTopBorder: boolean = false, noBottomBorder: boolean = false, bold: boolean = false) => {
       doc.line(startX, finalY, startX, finalY + h);                          // left
       doc.line(endX, finalY, endX, finalY + h);                              // right
       if (!noTopBorder) doc.line(startX, finalY, endX, finalY);              // top
       if (!noBottomBorder) doc.line(startX, finalY + h, endX, finalY + h);   // bottom
       doc.line(vBoxX, finalY, vBoxX, finalY + h);
-      doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9); doc.setFont('helvetica', bold ? 'bold' : 'normal');
       doc.text(label, vBoxX - 2, finalY + 4, { align: 'right' });
       doc.text(amt.toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + 4, { align: 'right' });
       finalY += h;
@@ -644,7 +644,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       doc.line(divX, finalY, divX, finalY + wordsH); doc.line(divX, finalY + 6, endX, finalY + 6);
       doc.setFont('helvetica', 'normal'); doc.text('Previous Balance :', divX + 2, finalY + 4.5);
       doc.text(prevBal.toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + 4.5, { align: 'right' });
-      doc.setFont('helvetica', 'bold'); doc.text('Balance Due :', divX + 2, finalY + 10);
+      doc.setFont('helvetica', 'bold'); doc.text('Total Balance Due :', divX + 2, finalY + 10);
       doc.text(totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + 10, { align: 'right' });
     }
     finalY += wordsH;
@@ -688,10 +688,11 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     doc.setTextColor(0); doc.setDrawColor(0);
 
     doc.setFont('helvetica', 'normal');
-    let mx = (pageWidth / 2) - ((doc.getTextWidth("Made with ") + doc.getTextWidth("Love") + doc.getTextWidth(" in India")) / 2);
-    doc.text("Made with ", mx, by + 10); mx += doc.getTextWidth("Made with ");
-    doc.setTextColor(255, 0, 0); doc.text("Love", mx, by + 10); mx += doc.getTextWidth("Love");
-    doc.setTextColor(0, 0, 139); doc.text(" in India", mx, by + 10); doc.setTextColor(0);
+let mx = (pageWidth / 2) - ((doc.getTextWidth("Made with ") + doc.getTextWidth("Love") + doc.getTextWidth(" in India")) / 2);
+doc.setTextColor(0, 0, 0);
+doc.text("Made with ", mx, by + 10); mx += doc.getTextWidth("Made with ");
+doc.text("Love", mx, by + 10); mx += doc.getTextWidth("Love");
+doc.text(" in India", mx, by + 10); doc.setTextColor(0);
   };
 
   // --- TRIGGER PAGE GENERATION ---

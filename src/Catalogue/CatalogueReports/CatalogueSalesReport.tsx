@@ -18,6 +18,7 @@ import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
 import { IconSearch, IconClose } from '../../constants/Icons';
 import BackButton from '../../Components/BackButton';
+import ReportDateFilter from '../../Components/ReportDateFilter';
 //import CataShowWrapper from '../../context/CataShowWrapper';
 //import { Cata_Permissions } from '../enum/cata_permissions.enum';
 
@@ -62,24 +63,6 @@ const SummaryCard: React.FC<{ title: string; value: string; note?: string }> = (
         <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">{title}</h3>
         <p className="text-2xl font-bold text-gray-900 mt-2">{value}</p>
         {note && <p className="text-xs text-gray-400 mt-1">{note}</p>}
-    </div>
-);
-
-const FilterSelect: React.FC<{
-    label?: string;
-    value: string;
-    onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
-    children: React.ReactNode;
-}> = ({ label, value, onChange, children }) => (
-    <div className="flex-1 min-w-0">
-        {label && <label className="block text-xs text-center font-medium text-gray-600 mb-1">{label}</label>}
-        <select
-            value={value}
-            onChange={onChange}
-            className="w-full p-2.5 text-sm text-center bg-gray-50 border border-gray-300 rounded-sm focus:ring-[#F97316] focus:border-[#F97316]"
-        >
-            {children}
-        </select>
     </div>
 );
 
@@ -330,6 +313,15 @@ const OrdersReport: React.FC = () => {
         let end = customEndDate ? new Date(customEndDate) : new Date();
         end.setHours(23, 59, 59, 999);
         setAppliedFilters({ start: start.getTime(), end: end.getTime() });
+    };
+
+    const handleStartDateChange = (value: string) => {
+        setCustomStartDate(value);
+        setDatePreset('custom');
+    };
+    const handleEndDateChange = (value: string) => {
+        setCustomEndDate(value);
+        setDatePreset('custom');
     };
 
     const handleSort = (key: keyof OrderRecord) => {
@@ -864,22 +856,16 @@ const OrdersReport: React.FC = () => {
                 </div>
             )}
 
-            <div className="bg-white p-2 rounded-sm shadow-md mb-2">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <FilterSelect value={datePreset} onChange={(e) => handleDatePresetChange(e.target.value)}>
-                        <option value="today">Today</option>
-                        <option value="yesterday">Yesterday</option>
-                        <option value="last7">Last 7 Days</option>
-                        <option value="last30">Last 30 Days</option>
-                        <option value="custom">Custom</option>
-                    </FilterSelect>
-                    <div className='grid grid-cols-2 sm:grid-cols-2 gap-4'>
-                        <input type="date" value={customStartDate} onChange={e => { setCustomStartDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border rounded-sm" placeholder="Start Date" />
-                        <input type="date" value={customEndDate} onChange={e => { setCustomEndDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border rounded-sm" placeholder="End Date" />
-                    </div>
-                </div>
-                <button onClick={handleApplyFilters} className="w-full mt-2 px-3 py-1 bg-[#F97316] text-white text-lg font-semibold rounded-sm shadow-sm hover:bg-[#F97316] transition">Apply</button>
-            </div>
+            <ReportDateFilter
+                datePreset={datePreset}
+                startDate={customStartDate}
+                endDate={customEndDate}
+                onPresetChange={handleDatePresetChange}
+                onStartDateChange={handleStartDateChange}
+                onEndDateChange={handleEndDateChange}
+                onApply={handleApplyFilters}
+                theme="catalogue"
+            />
 
             <div className="grid grid-cols-2 gap-2 mb-2">
                 <SummaryCard title="Total Sales" value={`₹${Math.round(summary.totalSales || 0).toLocaleString('en-IN')}`} />

@@ -1,9 +1,9 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import FilterSelect from './SalesReportComponents/FilterSelect';
 import {
     formatDate,
     formatDateForInput,
 } from './SalesReportComponents/salesReport.utils';
+import ReportDateFilter from '../../Components/ReportDateFilter';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 import { useAuth } from '../../context/auth-context';
@@ -124,6 +124,15 @@ const ItemsSoldReport: React.FC = () => {
         end.setHours(23, 59, 59, 999);
 
         setAppliedFilters({ start: start.getTime(), end: end.getTime() });
+    };
+
+    const handleStartDateChange = (value: string) => {
+        setCustomStartDate(value);
+        setDatePreset('custom');
+    };
+    const handleEndDateChange = (value: string) => {
+        setCustomEndDate(value);
+        setDatePreset('custom');
     };
 
     /* ---------- SORT ---------- */
@@ -704,48 +713,15 @@ const ItemsSoldReport: React.FC = () => {
             )}
 
             {/* FILTERS */}
-            <div className="bg-white p-2 rounded-lg shadow-md mb-2">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <FilterSelect
-                        value={datePreset}
-                        onChange={(e) => handleDatePresetChange(e.target.value)}
-                    >
-                        <option value="today">Today</option>
-                        <option value="yesterday">Yesterday</option>
-                        <option value="last7">Last 7 Days</option>
-                        <option value="last30">Last 30 Days</option>
-                        <option value="custom">Custom</option>
-                    </FilterSelect>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <input
-                            type="date"
-                            value={customStartDate}
-                            onChange={(e) => {
-                                setCustomStartDate(e.target.value);
-                                setDatePreset('custom');
-                            }}
-                            className="w-full p-2 text-sm bg-gray-50 border rounded-md"
-                        />
-                        <input
-                            type="date"
-                            value={customEndDate}
-                            onChange={(e) => {
-                                setCustomEndDate(e.target.value);
-                                setDatePreset('custom');
-                            }}
-                            className="w-full p-2 text-sm bg-gray-50 border rounded-md"
-                        />
-                    </div>
-                </div>
-
-                <button
-                    onClick={handleApplyFilters}
-                    className="w-full mt-2 px-3 py-1 bg-blue-600 text-white text-lg font-semibold rounded-lg hover:bg-blue-700"
-                >
-                    Apply
-                </button>
-            </div>
+            <ReportDateFilter
+                datePreset={datePreset}
+                startDate={customStartDate}
+                endDate={customEndDate}
+                onPresetChange={handleDatePresetChange}
+                onStartDateChange={handleStartDateChange}
+                onEndDateChange={handleEndDateChange}
+                onApply={handleApplyFilters}
+            />
 
             {/* REPORT DETAILS */}
             <ReportDetails

@@ -12,6 +12,7 @@ import autoTable from 'jspdf-autotable';
 import XLSX from 'xlsx-js-style';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import ReportDateFilter from '../../Components/ReportDateFilter';
 
 const formatDate = (ms: number) =>
     new Date(ms).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -50,27 +51,36 @@ const ExpenseReportPage: React.FC = () => {
     });
 
     const handleDatePreset = (preset: string) => {
-    setDatePreset(preset);
-    const start = new Date();
-    const end = new Date();
-    switch (preset) {
-        case 'yesterday': start.setDate(start.getDate() - 1); end.setDate(end.getDate() - 1); break;
-        case 'last7': start.setDate(start.getDate() - 6); break;
-        case 'last30': start.setDate(start.getDate() - 29); break;
-        case 'custom': return;
-    }
-    setStartDate(formatDateForInput(start));
-    setEndDate(formatDateForInput(end));
+        setDatePreset(preset);
+        const start = new Date();
+        const end = new Date();
+        switch (preset) {
+            case 'yesterday': start.setDate(start.getDate() - 1); end.setDate(end.getDate() - 1); break;
+            case 'last7': start.setDate(start.getDate() - 6); break;
+            case 'last30': start.setDate(start.getDate() - 29); break;
+            case 'custom': return;
+        }
+        setStartDate(formatDateForInput(start));
+        setEndDate(formatDateForInput(end));
 
-    // Auto-apply when selecting a preset
-    const s = new Date(start); s.setHours(0, 0, 0, 0);
-    const e = new Date(end); e.setHours(23, 59, 59, 999);
-    setAppliedFilters({ start: s.getTime(), end: e.getTime() });
-};
+        // Auto-apply when selecting a preset
+        const s = new Date(start); s.setHours(0, 0, 0, 0);
+        const e = new Date(end); e.setHours(23, 59, 59, 999);
+        setAppliedFilters({ start: s.getTime(), end: e.getTime() });
+    };
     const handleApply = () => {
         const s = new Date(startDate); s.setHours(0, 0, 0, 0);
         const e = new Date(endDate); e.setHours(23, 59, 59, 999);
         setAppliedFilters({ start: s.getTime(), end: e.getTime() });
+    };
+
+    const handleStartDateChange = (value: string) => {
+        setStartDate(value);
+        setDatePreset('custom');
+    };
+    const handleEndDateChange = (value: string) => {
+        setEndDate(value);
+        setDatePreset('custom');
     };
 
     const handleSort = (key: keyof Expense) => {
@@ -295,30 +305,15 @@ const ExpenseReportPage: React.FC = () => {
             )}
 
             {/* FILTERS */}
-            <div className="bg-white p-3 rounded-lg shadow-md mb-2 md:p-5">
-                <div className="grid grid-cols-1 gap-1">
-                    <select value={datePreset} onChange={e => handleDatePreset(e.target.value)}
-                        className="w-full text-center p-2 text-sm bg-gray-50 border rounded-md mt-1">
-                        <option value="today">Today</option>
-                        <option value="yesterday">Yesterday</option>
-                        <option value="last7">Last 7 Days</option>
-                        <option value="last30">Last 30 Days</option>
-                        <option value="custom">Custom</option>
-                    </select>
-                    <div className="grid grid-cols-2 gap-4 mt-2">
-                        <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setDatePreset('custom'); }}
-                            className="w-full p-2 text-sm bg-gray-50 border rounded-md" />
-                        <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setDatePreset('custom'); }}
-                            className="w-full p-2 text-sm bg-gray-50 border rounded-md" />
-                    </div>
-                </div>
-                <div className="flex justify-center mt-2">
-                    <button onClick={handleApply}
-                        className="w-full md:w-fit mt-2 px-10 py-2 bg-blue-600 text-white text-lg font-semibold rounded-lg hover:bg-blue-700">
-                        Apply
-                    </button>
-                </div>
-            </div>
+            <ReportDateFilter
+                datePreset={datePreset}
+                startDate={startDate}
+                endDate={endDate}
+                onPresetChange={handleDatePreset}
+                onStartDateChange={handleStartDateChange}
+                onEndDateChange={handleEndDateChange}
+                onApply={handleApply}
+            />
 
             <div className="grid grid-cols-2 gap-2 mb-2 md:mb-4 md:gap-4">
                 <CustomCard variant={CardVariant.Summary} title="Total Expenses" value={`₹${Math.round(summary.total).toLocaleString('en-IN')}`} />
@@ -346,12 +341,31 @@ const ExpenseReportPage: React.FC = () => {
                     <table className="w-full text-sm">
                         <thead>
                             <tr className="bg-gray-50 border-b">
-                                {(['date', 'title', 'description', 'amount'] as (keyof Expense)[]).map(col => (
-                                    <th key={col} onClick={() => handleSort(col)}
-                                        className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-800 select-none">
-                                        {col} {sortConfig.key === col ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
-                                    </th>
-                                ))}
+                                {(['date', 'title', 'description', 'amount'] as (keyof Expense)[]).map(col => {
+                                    const isSorted = sortConfig.key === col;
+                                    const directionIcon = sortConfig.direction === 'asc' ? '∧' : '∨';
+
+                                    return (
+                                        <th key={col} onClick={() => handleSort(col)}
+                                            className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-800 select-none">
+                                            <span className="inline-flex items-center gap-1">
+                                                {col}
+                                                <span className="w-4 inline-block">
+                                                    {isSorted ? (
+                                                        <span className="text-blue-600 text-xs font-bold">
+                                                            {directionIcon}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-gray-400 hover:text-gray-600 text-xs inline-flex flex-col leading-3 opacity-50">
+                                                            <span>∧</span>
+                                                            <span className="-mt-1">∨</span>
+                                                        </span>
+                                                    )}
+                                                </span>
+                                            </span>
+                                        </th>
+                                    );
+                                })}
                                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Action</th>
                             </tr>
                         </thead>

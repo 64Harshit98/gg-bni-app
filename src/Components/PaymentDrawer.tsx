@@ -181,7 +181,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const collectionName = isSale ? 'customers' : 'suppliers';
     const partyLabel = isSale ? 'Customer' : 'Supplier';
     const isCalculator = mode === 'calculator';
-    const isPurchaseReturnMode = mode === 'purchase' ;
+    const isPurchaseReturnMode = mode === 'purchase';
 
     // --- STATE ---
     const [partyName, setPartyName] = useState('');
@@ -1082,7 +1082,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                     value={discountPercent || ''}
                                     onChange={handleDiscountPercentChange}
                                     readOnly={isDiscountLocked}
-                                    className={`w-10 text-center text-[11px] bg-red-100 rounded-xs text-red-800 focus:outline-none pr-3 py-0.5 ${isDiscountLocked ? 'cursor-not-allowed' : 'border-b border-blue-300 font-semibold'}`}
+                                    className={`w-14 text-center text-[11px] bg-red-100 rounded-xs text-red-800 focus:outline-none pr-4 py-0.5 ${isDiscountLocked ? 'cursor-not-allowed' : 'border-b border-blue-300 font-semibold'}`}
                                 />
                                 <span className="absolute right-1 text-[10px] text-red-400 font-bold pointer-events-none">%</span>
                             </div>
@@ -1096,7 +1096,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                     value={discount || ''}
                                     onChange={handleDiscountAmountChange}
                                     readOnly={isDiscountLocked}
-                                    className={`w-12 text-center text-[11px] bg-red-100 rounded-xs text-red-800 focus:outline-none pl-3 py-0.5 ${isDiscountLocked ? 'cursor-not-allowed' : 'border-b border-blue-300 font-semibold'}`}
+                                    className={`w-20 text-center text-[11px] bg-red-100 rounded-xs text-red-800 focus:outline-none pl-4 py-0.5 ${isDiscountLocked ? 'cursor-not-allowed' : 'border-b border-blue-300 font-semibold'}`}
                                 />
                             </div>
                         </div>
@@ -1176,7 +1176,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                                 value={discountPercent || ''}
                                                 onChange={handleDiscountPercentChange}
                                                 readOnly={isDiscountLocked}
-                                                className={`w-10 text-center text-xs bg-transparent text-red-800 focus:outline-none pr-3 ${isDiscountLocked ? 'cursor-not-allowed' : 'font-semibold'}`}
+                                                className={`w-14 text-center text-xs bg-transparent text-red-800 focus:outline-none pr-4 ${isDiscountLocked ? 'cursor-not-allowed' : 'font-semibold'}`}
                                             />
                                             <span className="absolute right-1.5 text-[10px] text-red-400 font-bold pointer-events-none">%</span>
                                         </div>
@@ -1189,7 +1189,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                                 value={discount || ''}
                                                 onChange={handleDiscountAmountChange}
                                                 readOnly={isDiscountLocked}
-                                                className={`w-14 text-center text-xs bg-transparent text-red-800 focus:outline-none pl-3 ${isDiscountLocked ? 'cursor-not-allowed' : 'font-semibold'}`}
+                                                className={`w-20 text-center text-xs bg-transparent text-red-800 focus:outline-none pl-4 ${isDiscountLocked ? 'cursor-not-allowed' : 'font-semibold'}`}
                                             />
                                         </div>
                                     </div>

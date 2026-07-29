@@ -6,7 +6,7 @@ import {
   type PurchaseRecord,
 } from './PurchaseReportComponents/purchaseReports.utils';
 import { jsPDF } from 'jspdf';
-import FilterSelect from './PurchaseReportComponents/FilterSelect';
+import ReportDateFilter from '../../Components/ReportDateFilter';
 import autoTable from 'jspdf-autotable';
 import XLSX from 'xlsx-js-style';
 
@@ -86,6 +86,15 @@ const PurchaseReport: React.FC = () => {
     end.setHours(23, 59, 59, 999);
 
     setAppliedFilters({ start: start.getTime(), end: end.getTime() });
+  };
+
+  const handleStartDateChange = (value: string) => {
+    setCustomStartDate(value);
+    setDatePreset('custom');
+  };
+  const handleEndDateChange = (value: string) => {
+    setCustomEndDate(value);
+    setDatePreset('custom');
   };
 
   /* ---------- SORT ---------- */
@@ -672,48 +681,15 @@ const PurchaseReport: React.FC = () => {
       )}
 
       {/* FILTERS */}
-      <div className="bg-white p-4 rounded-lg shadow-md mb-2">
-        <div className="grid grid-cols-1 gap-3">
-          <FilterSelect
-            value={datePreset}
-            onChange={(e) => handleDatePresetChange(e.target.value)}
-          >
-            <option value="today">Today</option>
-            <option value="yesterday">Yesterday</option>
-            <option value="last7">Last 7 Days</option>
-            <option value="last30">Last 30 Days</option>
-            <option value="custom">Custom</option>
-          </FilterSelect>
-
-          <div className="grid grid-cols-2 gap-4">
-            <input
-              type="date"
-              value={customStartDate}
-              onChange={(e) => {
-                setCustomStartDate(e.target.value);
-                setDatePreset('custom');
-              }}
-              className="w-full p-2 text-sm bg-gray-50 border rounded-md"
-            />
-            <input
-              type="date"
-              value={customEndDate}
-              onChange={(e) => {
-                setCustomEndDate(e.target.value);
-                setDatePreset('custom');
-              }}
-              className="w-full p-2 text-sm bg-gray-50 border rounded-md"
-            />
-          </div>
-        </div>
-
-        <div className="flex justify-center mt-2">
-          <button onClick={handleApplyFilters}
-            className="w-full md:w-fit mt-2 px-10 py-2 bg-blue-600 text-white text-lg font-semibold rounded-sm hover:bg-blue-700" >
-            Apply
-          </button>
-        </div>
-      </div>
+      <ReportDateFilter
+        datePreset={datePreset}
+        startDate={customStartDate}
+        endDate={customEndDate}
+        onPresetChange={handleDatePresetChange}
+        onStartDateChange={handleStartDateChange}
+        onEndDateChange={handleEndDateChange}
+        onApply={handleApplyFilters}
+      />
 
       {/* SUMMARY */}
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-2">

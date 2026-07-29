@@ -7,7 +7,7 @@ import { CardVariant, State } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
 import { IconClose, IconSearch } from '../../constants/Icons';
 import { getPnlColumns } from '../../constants/TableColoumns';
-import FilterSelect from './SalesReportComponents/FilterSelect';
+import ReportDateFilter from '../../Components/ReportDateFilter';
 import { usePnlReport, usePnlStates } from './PNLReportComponents/usePnlReport';
 import { type TransactionDetail } from './PNLReportComponents/pnlReport.utils';
 import { formatDate } from './PNLReportComponents/pnlReport.utils';
@@ -137,18 +137,15 @@ const PnlReportPage: React.FC = () => {
           (sum, t) => sum + (t.profit || 0),
           0,
         ) - totalExpenses,
-        grossProfitPercentage:
-          invoiceFilteredTransactions.reduce((sum, t) => sum + t.totalAmount, 0) > 0
-            ? (invoiceFilteredTransactions.reduce(
-              (sum, t) => sum + (t.profit || 0),
-              0,
-            ) /
-              invoiceFilteredTransactions.reduce(
-                (sum, t) => sum + t.totalAmount,
-                0,
-              )) *
-            100
-            : 0,
+        grossProfitPercentage: (() => {
+          const totalSalesSum = invoiceFilteredTransactions.reduce((sum, t) => sum + t.totalAmount, 0);
+          const totalProfitSum = invoiceFilteredTransactions.reduce((sum, t) => sum + (t.profit || 0), 0) - totalExpenses;
+
+          if (totalSalesSum > 0) {
+            return (totalProfitSum / totalSalesSum) * 100;
+          }
+          return totalProfitSum < 0 ? -100 : 0;
+        })(),
       },
       filteredTransactions: invoiceFilteredTransactions,
     };
@@ -174,6 +171,18 @@ const PnlReportPage: React.FC = () => {
       start: start.toISOString(),
       end: end.toISOString(),
     });
+  };
+
+  const onDatePresetChange = (preset: string) =>
+    handleDatePresetChange(preset, setDatePreset, setStartDate, setEndDate);
+
+  const handleStartDateChange = (value: string) => {
+    setStartDate(value);
+    setDatePreset('custom');
+  };
+  const handleEndDateChange = (value: string) => {
+    setEndDate(value);
+    setDatePreset('');
   };
 
   /* ---------- PDF DOWNLOAD (UNCHANGED) ---------- */
@@ -679,55 +688,15 @@ const PnlReportPage: React.FC = () => {
       )}
 
       {/* FILTERS */}
-      <div className="bg-white p-4 rounded-lg shadow-md mb-2">
-        <div className="grid grid-cols-1 gap-1">
-          <FilterSelect
-            value={datePreset}
-            onChange={(e) =>
-              handleDatePresetChange(
-                e.target.value,
-                setDatePreset,
-                setStartDate,
-                setEndDate,
-              )
-            }
-          >
-            <option value="today">Today</option>
-            <option value="yesterday">Yesterday</option>
-            <option value="last7">Last 7 Days</option>
-            <option value="last30">Last 30 Days</option>
-            <option value="custom">Custom</option>
-          </FilterSelect>
-
-          <div className="grid grid-cols-2 gap-4 mt-2">
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => {
-                setStartDate(e.target.value);
-                setDatePreset('custom');
-              }}
-              className="w-full p-2 text-sm bg-gray-50 border rounded-md"
-            />
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => {
-                setEndDate(e.target.value);
-                setDatePreset('');
-              }}
-              className="w-full p-2 text-sm bg-gray-50 border rounded-md"
-            />
-          </div>
-        </div>
-
-        <div className="flex justify-center mt-2">
-          <button onClick={handleApplyFilters}
-            className="w-full md:w-fit mt-2 px-10 py-2 bg-blue-600 text-white text-lg font-semibold rounded-lg hover:bg-blue-700" >
-            Apply
-          </button>
-        </div>
-      </div>
+      <ReportDateFilter
+        datePreset={datePreset}
+        startDate={startDate}
+        endDate={endDate}
+        onPresetChange={onDatePresetChange}
+        onStartDateChange={handleStartDateChange}
+        onEndDateChange={handleEndDateChange}
+        onApply={handleApplyFilters}
+      />
 
       {/* SUMMARY */}
       <div className="grid grid-cols-2 md:grid-cols-6 xl:grid-cols-5 gap-2 mb-2">

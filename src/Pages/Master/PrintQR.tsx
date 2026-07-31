@@ -60,7 +60,7 @@ const LabelPreview: React.FC<{ item: Item, companyName: string }> = ({ item, com
                 {qrDataUrl && <img src={qrDataUrl} alt="QR Code Preview" className="w-24 h-24" />}
             </div>
             <div className="text-[10px] text-center">{item.barcode}</div>
-            <div className="text-xs font-bold text-center">{`MRP: ₹${item.mrp}`}</div>
+            <div className="text-xs font-bold text-center">{`MRP: ₹${item.mrp || item.salesPrice || 0}`}</div>
         </div>
     );
 };
@@ -229,7 +229,7 @@ const QRCodeGeneratorPage: React.FC = () => {
                             <div>
                                 <p class="item-barcode">${item.barcode}</p>
                                 <p class="item-name">${item.name}</p>
-                                <p class="item-mrp">MRP: ₹${item.mrp}</p>
+                                <p class="item-mrp">MRP: ₹${item.mrp || item.salesPrice || 0}</p>
                             </div>
                         </div>
                     `;
@@ -373,7 +373,7 @@ const QRCodeGeneratorPage: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[12px] font-semibold text-gray-800">₹{item.mrp}</span>
+            <span className="text-[12px] font-semibold text-gray-800">₹{item.mrp || item.salesPrice || 0}</span>
             <div className="flex items-center gap-1">
               <span className="text-[11px] text-gray-500">Qty</span>
               <div className="flex items-center border border-gray-200 rounded-sm overflow-hidden bg-gray-50 h-7">

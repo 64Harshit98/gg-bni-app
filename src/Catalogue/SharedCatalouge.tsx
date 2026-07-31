@@ -5,7 +5,7 @@ import type { ItemGroup, Item } from '../constants/models';
 import { FiPackage, FiPlus } from 'react-icons/fi';
 import { FaWhatsapp } from 'react-icons/fa';
 import { ShoppingCart, Pin } from 'lucide-react';
-import { Spinner } from '../constants/Spinner';
+import { Spinner } from '../Components/ui/spinner';
 import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName.tsx';
 import SearchBar from './SearchBar.tsx';
@@ -22,7 +22,7 @@ const CollageImage: React.FC<{ src: string; alt: string }> = ({ src, alt }) => {
 
     if (isBroken) {
         return (
-            <div className="w-full h-full flex items-center justify-center bg-gray-50">
+            <div className="w-full h-full flex items-center justify-center bg-muted">
                 <FiPackage className="h-10 w-10 text-gray-200" />
             </div>
         );
@@ -394,7 +394,7 @@ const SharedCataloguePage: React.FC = () => {
         return (
             <div className="flex flex-col items-center justify-center h-screen bg-[#E9F0F7] text-[#1A3B5D]">
                 <h2 className="text-2xl font-black mb-2">Store Not Found</h2>
-                <p className="text-gray-500 text-sm">This catalogue link is invalid or has expired.</p>
+                <p className="text-muted-foreground text-sm">This catalogue link is invalid or has expired.</p>
             </div>
         );
     }
@@ -403,7 +403,7 @@ const SharedCataloguePage: React.FC = () => {
     if (!effectiveCompanyId || isLoading || nameLoading) {
         return (
             <div className="flex items-center justify-center h-screen bg-[#E9F0F7]">
-                <Spinner /> <span className="ml-2 font-bold text-[#1A3B5D]">Loading Store...</span>
+                <Spinner size="lg" /> <span className="ml-2 font-bold text-[#1A3B5D]">Loading Store...</span>
             </div>
         );
     }
@@ -443,7 +443,7 @@ const SharedCataloguePage: React.FC = () => {
                 }}
             />
             {/* --- HEADER --- */}
-            <header className="sticky top-0 z-[100] bg-white border-b border-gray-100 shadow-sm w-full">
+            <header className="sticky top-0 z-[100] bg-card border-b border-border shadow-sm w-full">
                 <div className="max-w-7xl mx-auto px-3 py-3 relative flex items-center justify-end">
 
                     {/* Center Section - Company Name */}
@@ -545,7 +545,7 @@ const SharedCataloguePage: React.FC = () => {
                 </div>
                 <div className="max-w-7xl mx-auto px-1 flex items-center justify-between relative">
                     <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
                             Total Catalogues:
                         </span>
                         <span className="bg-[#F97316]/10 text-[#F97316] px-2.5 py-0.5 rounded-sm text-[10px] font-black">
@@ -556,23 +556,23 @@ const SharedCataloguePage: React.FC = () => {
                     <div className="relative">
                         <button
                             onClick={() => setIsSortOpen(!isSortOpen)}
-                            className="flex items-center gap-2 bg-white border border-gray-100 px-3 py-1.5 rounded-sm shadow-sm active:scale-95 transition-all cursor-pointer"
+                            className="flex items-center gap-2 bg-card border border-border px-3 py-1.5 rounded-sm shadow-sm active:scale-95 transition-all cursor-pointer"
                         >
                             <span className="text-[10px] font-black uppercase text-[#1A3B5D]">Sort: {sortOrder}</span>
                             <FiPlus className={`transition-transform duration-300 ${isSortOpen ? 'rotate-45' : ''}`} size={12} />
                         </button>
 
                         {isSortOpen && (
-                            <div className="absolute right-0 mt-2 w-32 bg-white rounded-sm shadow-xl border border-gray-50 z-[70] overflow-hidden">
+                            <div className="absolute right-0 mt-2 w-32 bg-card rounded-sm shadow-xl border border-gray-50 z-[70] overflow-hidden">
                                 <button
                                     onClick={() => { setSortOrder('A-Z'); setIsSortOpen(false); }}
-                                    className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 ${sortOrder === 'A-Z' ? 'text-[#F97316]' : 'text-[#1A3B5D]'}`}
+                                    className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-muted ${sortOrder === 'A-Z' ? 'text-[#F97316]' : 'text-[#1A3B5D]'}`}
                                 >
                                     A to Z
                                 </button>
                                 <button
                                     onClick={() => { setSortOrder('Z-A'); setIsSortOpen(false); }}
-                                    className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 border-t border-gray-50 ${sortOrder === 'Z-A' ? 'text-[#F97316]' : 'text-[#1A3B5D]'}`}
+                                    className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-muted border-t border-gray-50 ${sortOrder === 'Z-A' ? 'text-[#F97316]' : 'text-[#1A3B5D]'}`}
                                 >
                                     Z to A
                                 </button>
@@ -598,11 +598,11 @@ const SharedCataloguePage: React.FC = () => {
                                     const slug = generateSlug(group.name);
                                     navigate(subdomain ? `/${slug}` : `/${effectiveCompanyId}/${slug}`);
                                 }}
-                                className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col transition-all group cursor-pointer active:scale-95 ${pinnedIds.has(group.id!) ? 'ring-1 ring-[#F97316] shadow-lg border-[#F97316]' : 'border-gray-100'}`}
+                                className={`bg-card rounded-sm overflow-hidden shadow-sm border flex flex-col transition-all group cursor-pointer active:scale-95 ${pinnedIds.has(group.id!) ? 'ring-1 ring-[#F97316] shadow-lg border-[#F97316]' : 'border-border'}`}
                             >
                                 <div className="aspect-square bg-[#F8FAFC] relative overflow-hidden">
                                     {pinnedIds.has(group.id!) && (
-                                        <div className="absolute top-1.5 right-1.5 z-10 bg-white text-[#F97316] rounded-sm px-1 py-1 flex items-center gap-0.5 shadow-md border border-[#F97316]">
+                                        <div className="absolute top-1.5 right-1.5 z-10 bg-card text-[#F97316] rounded-sm px-1 py-1 flex items-center gap-0.5 shadow-md border border-[#F97316]">
                                             <Pin size={12} className="fill-[#F97316]" />
                                         </div>
                                     )}
@@ -628,7 +628,7 @@ const SharedCataloguePage: React.FC = () => {
                                             ))}
                                         </div>
                                     ) : (
-                                        <div className="w-full h-full flex items-center justify-center bg-gray-50">
+                                        <div className="w-full h-full flex items-center justify-center bg-muted">
                                             <FiPackage className="h-10 w-10 text-gray-200" />
                                         </div>
                                     )}
@@ -663,9 +663,9 @@ const SharedCataloguePage: React.FC = () => {
 
                 {filteredItems.length === 0 && (
                     <div className="text-center py-20">
-                        <div className="bg-white inline-block p-6 rounded-sm shadow-sm border border-gray-100">
+                        <div className="bg-card inline-block p-6 rounded-sm shadow-sm border border-border">
                             <FiPackage className="mx-auto h-12 w-12 text-gray-200 mb-4" />
-                            <p className="text-[11px] font-black uppercase text-gray-400 tracking-widest">No catalogues found</p>
+                            <p className="text-[11px] font-black uppercase text-muted-foreground tracking-widest">No catalogues found</p>
                         </div>
                     </div>
                 )}
@@ -731,7 +731,7 @@ const SharedCataloguePage: React.FC = () => {
                     onClick={() => setPersonalizationItem(null)}
                 >
                     <div
-                        className="bg-white w-full max-w-md rounded-sm shadow-2xl p-5 space-y-4"
+                        className="bg-card w-full max-w-md rounded-sm shadow-2xl p-5 space-y-4"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <div className="flex items-center justify-between">
@@ -739,18 +739,18 @@ const SharedCataloguePage: React.FC = () => {
                                 <h2 className="text-sm font-black text-[#1A3B5D] uppercase tracking-tight">
                                     Send a Query
                                 </h2>
-                                <p className="text-[10px] text-gray-400 font-semibold mt-0.5">
+                                <p className="text-[10px] text-muted-foreground font-semibold mt-0.5">
                                     Describe what you're looking for
                                 </p>
                             </div>
                             <button
                                 onClick={() => setPersonalizationItem(null)}
-                                className="text-gray-400 hover:text-gray-700 font-black text-lg leading-none"
+                                className="text-muted-foreground hover:text-foreground font-black text-lg leading-none"
                             >✕</button>
                         </div>
 
                         <div>
-                            <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 block mb-1">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block mb-1">
                                 Your Query
                             </label>
                             <textarea
@@ -758,7 +758,7 @@ const SharedCataloguePage: React.FC = () => {
                                 value={personalizationText}
                                 onChange={(e) => setPersonalizationText(e.target.value)}
                                 placeholder="e.g. I need a blue hoodie in size L with 'Rahul' printed on it..."
-                                className="w-full border border-gray-200 rounded-sm p-3 text-sm text-gray-700 outline-none focus:border-[#1A3B5D] resize-none"
+                                className="w-full border border-border rounded-sm p-3 text-sm text-foreground outline-none focus:border-[#1A3B5D] resize-none"
                             />
                         </div>
 
@@ -767,7 +767,7 @@ const SharedCataloguePage: React.FC = () => {
                             onClick={() => handlePersonalizationSubmit(personalizationItem, personalizationText)}
                             className={`w-full py-3 rounded-sm text-[12px] font-black uppercase tracking-widest transition-all ${personalizationText.trim()
                                 ? 'bg-[#F97316] text-white active:scale-95'
-                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                : 'bg-muted text-muted-foreground cursor-not-allowed'
                                 }`}
                         >
                             Submit Query

@@ -2,17 +2,27 @@ import React, { useState, useEffect, useCallback, useMemo} from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import type { ItemGroup } from '../../constants/models';
 import { useDatabase } from '../../context/auth-context';
-import { CustomButton } from '../../Components';
-import { Variant } from '../../enums';
+import { Button } from '../../Components/ui/button';
+import { Input } from '../../Components/ui/input';
+import { EmptyState } from '../../Components/ui/empty-state';
 import { Spinner } from '../../constants/Spinner';
-import { FiEdit2, FiTrash2 } from 'react-icons/fi';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
-
-// --- Icon Components ---
-const EditIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z"></path></svg>;
-const DeleteIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>;
+import {
+  Layers,
+  Search,
+  Plus,
+  Pencil,
+  Trash2,
+  Check,
+  X as XIcon,
+  FolderOpen,
+  AlertTriangle,
+  Package,
+  Tag,
+} from 'lucide-react';
+import { PageNavToggle } from './components/PageNavToggle';
 
 export interface SharedItemGroupProps {
   routes: {
@@ -35,6 +45,10 @@ export interface SharedItemGroupProps {
 }
 
 export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, theme }) => {
+  // `theme` is retained for prop-shape/backward compatibility only; the
+  // shared design system now supplies all colors, so its fields are no
+  // longer consumed here (see SharedItemGroupProps for the full shape).
+  void theme;
   const navigate = useNavigate();
   const location = useLocation();
   const dbOperations = useDatabase();
@@ -74,9 +88,9 @@ const displayedItemGroups = useMemo(() => {
   };
 
   const getStockBadgeClasses = (stock: number) => {
-    if (stock === 0) return 'bg-red-100 text-red-700';
-    if (stock < 10) return 'bg-blue-100 text-blue-700';
-    return 'bg-green-100 text-green-700';
+    if (stock === 0) return 'bg-destructive/12 text-destructive';
+    if (stock < 10) return 'bg-warning/15 text-warning-foreground dark:text-warning';
+    return 'bg-success/12 text-success';
   };
 
   const fetchAndSyncGroups = useCallback(async () => {
@@ -357,87 +371,149 @@ const displayedItemGroups = useMemo(() => {
   };
 
   const renderHeader = () => (
-    <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-gray-100 md:bg-white border-b border-gray-300 shadow-sm flex-shrink-0 p-2 md:px-4 md:py-3 mb-2 md:mb-0">
-      <h1 className="text-2xl font-bold text-gray-800 text-center md:text-left mb-2 md:mb-0">Item Groups</h1>
-      <div className="flex items-center justify-center gap-6">
-        <CustomButton variant={Variant.Transparent} onClick={() => navigate(routes.addItem)} active={isActive(routes.addItem)}>Add Item</CustomButton>
-        <CustomButton variant={Variant.Transparent} onClick={() => navigate(routes.itemGroups)} active={isActive(routes.itemGroups)}>Item Groups</CustomButton>
+    <header className="glass mx-3 mt-3 flex flex-shrink-0 flex-col gap-3 rounded-2xl p-3 shadow-sm md:flex-row md:items-center md:justify-between">
+      <div className="flex items-center gap-3">
+        <div className="rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.6_0.22_330)] p-[3px] shadow-sm shadow-primary/20">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-[13px] bg-gradient-brand text-white">
+            <Layers className="size-4" />
+          </span>
+        </div>
+        <div>
+          <h1 className="text-lg font-bold tracking-tight text-foreground md:text-xl">
+            Item <span className="text-gradient">Groups</span>
+          </h1>
+          <p className="text-xs text-muted-foreground">Organize your catalogue into categories</p>
+        </div>
       </div>
-    </div>
+      <div className="flex items-center justify-center gap-2">
+        <PageNavToggle
+          items={[
+            { key: 'add', label: 'Add Item', icon: <Tag className="size-3.5" />, path: routes.addItem },
+            { key: 'groups', label: 'Item Groups', icon: <Layers className="size-3.5" />, path: routes.itemGroups },
+          ]}
+          isActive={isActive}
+          onSelect={(path) => navigate(path)}
+        />
+      </div>
+    </header>
   );
 
   return (
-    <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden">
+    <div className="aurora flex h-full w-full flex-col overflow-hidden bg-muted">
       {renderHeader()}
 
-      <main className="flex-grow p-4 sm:p-6 w-full overflow-y-auto">
-        {error && <div className="mb-4 p-3 bg-red-100 text-red-800 rounded-sm text-sm font-semibold"><p>{error}</p></div>}
-        {successMessage && <div className="mb-4 p-3 bg-green-100 text-green-800 rounded-sm text-sm font-semibold"><p>{successMessage}</p></div>}
+      <main className="w-full flex-grow overflow-y-auto p-4 sm:p-6">
+        {error && (
+          <div className="mb-4 flex items-center gap-2 rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
+            <AlertTriangle className="size-4 shrink-0" />
+            <p>{error}</p>
+          </div>
+        )}
+        {successMessage && (
+          <div className="mb-4 flex items-center gap-2 rounded-xl border border-success/20 bg-success/10 px-4 py-3 text-sm font-medium text-success">
+            <Check className="size-4 shrink-0" />
+            <p>{successMessage}</p>
+          </div>
+        )}
 
-        <div className="p-4 sm:p-6 bg-white rounded-sm shadow-md">
-          <div className="flex flex-col gap-2 mb-6">
-            <input
-              type="text"
-              placeholder="Search or Create a New Group"
-              value={newItemGroupName}
-              onChange={(e) => setNewItemGroupName(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleAddItemGroup()}
-              className={`w-full p-3 border border-gray-300 rounded-sm bg-gray-50 focus:outline-none focus:ring-2 ${theme.focusRing}`}
-            />
-            <button
+        <div className="rounded-2xl border border-border bg-card p-4 shadow-xs sm:p-6">
+          <div className="mb-6 flex flex-col gap-2 sm:flex-row">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Search or create a new group"
+                value={newItemGroupName}
+                onChange={(e) => setNewItemGroupName(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleAddItemGroup()}
+                className="h-11 pl-9"
+              />
+            </div>
+            <Button
               onClick={handleAddItemGroup}
               disabled={loading}
-              className={`self-center md:self-stretch text-white py-3 px-6 rounded-sm font-semibold shadow-sm transition ${theme.primaryBg} ${theme.primaryHoverBg} ${theme.primaryDisabledBg} disabled:cursor-not-allowed`}
+              className="h-11 gap-1.5 bg-gradient-brand text-white shadow-md shadow-primary/20 hover:opacity-90 sm:w-auto"
             >
-              Add New Group
-            </button>
+              <Plus className="size-4" />
+              Add Group
+            </Button>
           </div>
 
-          <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">Official Item Groups</h2>
+          <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-muted-foreground">Official Item Groups</h2>
 
           {loading ? (
-            <div className="flex justify-center items-center py-8">
+            <div className="flex items-center justify-center gap-2 py-10">
               <Spinner />
-              <p className="text-gray-500 ml-2">Syncing and Loading Groups...</p>
+              <p className="text-muted-foreground">Syncing and loading groups...</p>
             </div>
           ) : itemGroups.length === 0 && (groupCounts["uncategorized"] || 0) === 0 ? (
-            <p className="text-gray-500 text-center py-8">No item groups found.</p>
+            <EmptyState
+              icon={<FolderOpen />}
+              title="No item groups yet"
+              description="Create your first group above to start organizing your catalogue."
+            />
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {displayedItemGroups.map((group) => {
                 const count = group.id ? (groupCounts[group.id] || 0) : 0;
                 return (
-                  <div key={group.id} className="flex items-center justify-between p-3 bg-white rounded-sm shadow-sm border">
+                  <div
+                    key={group.id}
+                    className="group flex items-center justify-between gap-2 rounded-2xl border border-border bg-card p-3 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-lg"
+                  >
                     {editingGroupId === group.id ? (
-                      <div className="flex flex-col w-full gap-2">
-                        <input type="text" value={editingGroupName} onChange={(e) => setEditingGroupName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSaveEdit(group)} autoFocus className={`w-full p-2 border rounded-md ${theme.primaryBorder}`} />
+                      <div className="flex w-full flex-col gap-2">
+                        <Input
+                          type="text"
+                          value={editingGroupName}
+                          onChange={(e) => setEditingGroupName(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && handleSaveEdit(group)}
+                          autoFocus
+                        />
                         <div className="flex justify-end gap-2">
-                          <button onClick={() => handleSaveEdit(group)} className="bg-green-600 text-white py-1 px-3 rounded-md text-sm font-semibold">Save</button>
-                          <button onClick={handleCancelEdit} className="bg-gray-500 text-white py-1 px-3 rounded-md text-sm font-semibold">Cancel</button>
+                          <Button size="sm" variant="ghost" onClick={handleCancelEdit} className="gap-1">
+                            <XIcon className="size-3.5" />
+                            Cancel
+                          </Button>
+                          <Button size="sm" onClick={() => handleSaveEdit(group)} className="gap-1 bg-gradient-brand text-white hover:opacity-90">
+                            <Check className="size-3.5" />
+                            Save
+                          </Button>
                         </div>
                       </div>
                     ) : (
                       <>
-                        <div className="flex items-center gap-2 overflow-hidden">
-                          <button
-                            onClick={() => { setViewingGroup(group); setItemSearchQuery(''); }}
-                            className={`font-medium truncate hover:underline text-left text-gray-800 ${theme.primaryHoverText}`}
-                          >
-                            {group.name}
-                          </button>
-                          <span className={`text-sm px-2 py-0.5 rounded-sm font-medium ${count > 0 ? theme.primaryText : 'text-gray-500'}`}>
-                            {count} {count === 1 ? 'item' : 'items'}
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-info/20 text-primary shadow-inner">
+                            <Layers className="size-4" />
                           </span>
+                          <div className="flex min-w-0 flex-col">
+                            <button
+                              onClick={() => { setViewingGroup(group); setItemSearchQuery(''); }}
+                              className="truncate text-left text-sm font-semibold text-foreground hover:underline"
+                            >
+                              {group.name}
+                            </button>
+                            <span className="text-xs font-medium text-muted-foreground">
+                              {count} {count === 1 ? 'item' : 'items'}
+                            </span>
+                          </div>
                         </div>
                         {group.name.toLowerCase().trim() !== "uncategorized" && (
-                          <div className="flex gap-2 flex-shrink-0">
-                            <button onClick={() => handleEditClick(group)} className={`text-gray-500 ${theme.primaryHoverText}`} aria-label={`Edit ${group.name}`}><EditIcon /></button>
+                          <div className="flex shrink-0 gap-1 opacity-80 transition-opacity group-hover:opacity-100">
+                            <button
+                              onClick={() => handleEditClick(group)}
+                              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                              aria-label={`Edit ${group.name}`}
+                            >
+                              <Pencil className="size-4" />
+                            </button>
                             <button
                               onClick={() => setDeleteTargetGroup(group)}
-                              className="transition-colors p-1 rounded text-gray-500 hover:text-red-600"
+                              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                               aria-label={`Delete ${group.name}`}
                             >
-                              <DeleteIcon />
+                              <Trash2 className="size-4" />
                             </button>
                           </div>
                         )}
@@ -446,17 +522,22 @@ const displayedItemGroups = useMemo(() => {
                   </div>
                 )
               })}
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-sm shadow-sm border border-gray-300">
-                <div className="flex items-center gap-2 overflow-hidden">
-                  <button
-                    onClick={() => { setViewingGroup({ id: 'uncategorized', name: 'Uncategorized', description: '', createdAt: 0, updatedAt: 0 }); setItemSearchQuery(''); }}
-                    className={`text-gray-600 font-bold hover:underline text-left ${theme.primaryHoverText}`}
-                  >
-                    Uncategorized
-                  </button>
-                  <span className={`text-sm px-2 py-0.5 rounded-sm font-medium ${theme.primaryText}`}>
-                    {groupCounts["uncategorized"] || 0} items
+              <div className="flex items-center justify-between gap-2 rounded-2xl border border-dashed border-border bg-muted p-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-muted-foreground/10 text-muted-foreground">
+                    <Package className="size-4" />
                   </span>
+                  <div className="flex min-w-0 flex-col">
+                    <button
+                      onClick={() => { setViewingGroup({ id: 'uncategorized', name: 'Uncategorized', description: '', createdAt: 0, updatedAt: 0 }); setItemSearchQuery(''); }}
+                      className="truncate text-left text-sm font-semibold text-muted-foreground hover:underline"
+                    >
+                      Uncategorized
+                    </button>
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {groupCounts["uncategorized"] || 0} items
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -466,25 +547,30 @@ const displayedItemGroups = useMemo(() => {
 
       {/* Modals & Drawers */}
       {deleteTargetGroup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-lg shadow-lg w-[90%] max-w-md p-6">
-            <h2 className="text-lg font-semibold text-gray-800 mb-2">Delete "{deleteTargetGroup.name}"?</h2>
-            <p className="text-sm text-gray-600 mb-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl">
+            <div className="mb-4 flex items-center gap-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-destructive/12 text-destructive">
+                <AlertTriangle className="size-5" />
+              </span>
+              <h2 className="text-lg font-semibold text-foreground">Delete &quot;{deleteTargetGroup.name}&quot;?</h2>
+            </div>
+            <p className="mb-6 text-sm text-muted-foreground">
               {deleteTargetGroup.id && groupCounts[deleteTargetGroup.id] > 0
                 ? `All ${groupCounts[deleteTargetGroup.id]} item(s) will be moved to "Uncategorized".`
                 : "This group has no items."}
             </p>
             <div className="flex justify-end gap-3">
-              <button onClick={() => setDeleteTargetGroup(null)} className="px-4 py-2 text-sm rounded-md bg-gray-200 hover:bg-gray-300">Cancel</button>
-              <button
+              <Button variant="ghost" onClick={() => setDeleteTargetGroup(null)}>Cancel</Button>
+              <Button
+                variant="destructive"
                 onClick={async () => {
                   await handleDeleteItemGroup(deleteTargetGroup);
                   setDeleteTargetGroup(null);
                 }}
-                className={`px-4 py-2 text-sm rounded-md text-white ${theme.deleteButtonBg} ${theme.deleteButtonHoverBg}`}
               >
                 Delete
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -493,46 +579,58 @@ const displayedItemGroups = useMemo(() => {
       {viewingGroup && (() => {
         const validGroupIds = new Set(itemGroups.map(g => g.id));
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-            <div className="bg-white rounded-lg shadow-lg w-[90%] max-w-lg p-6 flex flex-col max-h-[80vh]">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold text-gray-800 flex-1">
-                  {viewingGroup.name}
-                  <span className="ml-2 text-sm font-normal text-gray-500">
-                    ({groupCounts[viewingGroup.id!] || 0} items)
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+            <div className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl border border-border bg-card p-6 shadow-2xl">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-info/20 text-primary shadow-inner">
+                    <Layers className="size-4" />
                   </span>
-                </h2>
-                <div className="flex items-center gap-3">
+                  <h2 className="min-w-0 truncate text-lg font-semibold text-foreground">
+                    {viewingGroup.name}
+                    <span className="ml-2 text-sm font-normal text-muted-foreground">
+                      ({groupCounts[viewingGroup.id!] || 0} items)
+                    </span>
+                  </h2>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
                   {viewingGroup.id !== 'uncategorized' && (
                     <button
                       onClick={() => setGroupPendingFullDelete(viewingGroup)}
-                      className="text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-3 py-1.5 rounded-md transition-colors whitespace-nowrap"
+                      className="whitespace-nowrap rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive transition-colors hover:bg-destructive/15"
                     >
-                      Delete Category & Items
+                      Delete Category &amp; Items
                     </button>
                   )}
                   {viewingGroup.id === 'uncategorized' && (groupCounts["uncategorized"] || 0) > 0 && (
                     <button
                       onClick={() => setGroupPendingFullDelete(viewingGroup)}
-                      className="text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-3 py-1.5 rounded-md transition-colors whitespace-nowrap"
+                      className="whitespace-nowrap rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive transition-colors hover:bg-destructive/15"
                     >
                       Empty Uncategorized
                     </button>
                   )}
-                  <button onClick={() => { setViewingGroup(null); setItemSearchQuery(''); }} className="text-gray-400 hover:text-gray-700 text-xl font-bold leading-none">✕</button>
+                  <button
+                    onClick={() => { setViewingGroup(null); setItemSearchQuery(''); }}
+                    className="rounded-lg p-1.5 leading-none text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    aria-label="Close"
+                  >
+                    <XIcon className="size-4" />
+                  </button>
                 </div>
               </div>
-              <div className="mb-3">
-                <input
+              <div className="relative mb-3">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
                   type="text"
                   placeholder="Search items in this group..."
                   value={itemSearchQuery}
                   onChange={(e) => setItemSearchQuery(e.target.value)}
-                  className={`w-full p-2 border border-gray-300 rounded-sm bg-gray-50 focus:outline-none focus:ring-2 ${theme.focusRing}`}
+                  className="pl-9"
                 />
               </div>
 
-              <div className="overflow-y-auto flex-1 space-y-2">
+              <div className="flex-1 space-y-2 overflow-y-auto">
                 {allItems.filter(item => {
                   const ids: string[] = [
                     ...(Array.isArray(item.itemGroupIds) ? item.itemGroupIds : []),
@@ -552,9 +650,11 @@ const displayedItemGroups = useMemo(() => {
                   if (!query) return true;
                   return item.name.toLowerCase().includes(query);
                 }).length === 0 ? (
-                  <p className="text-center text-gray-400 py-8">
-                    {itemSearchQuery.trim() ? 'No matching items found.' : 'No items in this group.'}
-                  </p>
+                  <EmptyState
+                    icon={<Package />}
+                    title={itemSearchQuery.trim() ? 'No matching items found' : 'No items in this group'}
+                    className="border-none py-8"
+                  />
                 ) : (
                   allItems.filter(item => {
                     const validGroupIds = new Set(itemGroups.map(g => g.id));
@@ -591,25 +691,33 @@ const displayedItemGroups = useMemo(() => {
                       const stock = item.stock || 0;
                       const value = stock * (item.purchasePrice || 0);
                       return (
-                        <div key={item.id} className="bg-white rounded-lg shadow-sm px-3 py-3 space-y-2 border">
+                        <div key={item.id} className="space-y-2 rounded-xl border border-border bg-card px-3 py-3 shadow-xs transition-colors hover:border-primary/30">
                           <div className="flex items-center gap-3">
-                            <button onClick={() => openEditDrawer(item)} className={`${theme.editIconText} ${theme.editIconHoverText}`}>
-                              <FiEdit2 size={18} />
+                            <button
+                              onClick={() => openEditDrawer(item)}
+                              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                              aria-label={`Edit ${item.name}`}
+                            >
+                              <Pencil className="size-4" />
                             </button>
-                            <div className="flex items-center gap-2 flex-1 min-w-0">
-                              <span className="font-semibold text-gray-800 truncate">{item.name}</span>
-                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-md whitespace-nowrap ${getStockBadgeClasses(stock)}`}>
+                            <div className="flex min-w-0 flex-1 items-center gap-2">
+                              <span className="truncate font-semibold text-foreground">{item.name}</span>
+                              <span className={`whitespace-nowrap rounded-md px-2 py-0.5 text-xs font-semibold ${getStockBadgeClasses(stock)}`}>
                                 {stock === 0 ? 'Out of stock' : `${stock} in stock`}
                               </span>
                             </div>
-                            <button onClick={() => setItemPendingDelete(item)} className="text-red-600 hover:text-red-800">
-                              <FiTrash2 size={18} />
+                            <button
+                              onClick={() => setItemPendingDelete(item)}
+                              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                              aria-label={`Delete ${item.name}`}
+                            >
+                              <Trash2 className="size-4" />
                             </button>
                           </div>
-                          <div className="flex items-center justify-between text-sm text-gray-600">
-                            <div><span className="font-medium text-gray-700">MRP:</span> ₹{item.mrp ?? 0}</div>
-                            <div><span className="font-medium text-gray-700">Purchase:</span> ₹{item.purchasePrice ?? 0}</div>
-                            <div><span className="font-medium text-gray-700">Value:</span> ₹{value}</div>
+                          <div className="flex items-center justify-between text-sm text-muted-foreground">
+                            <div><span className="font-medium text-foreground">MRP:</span> ₹{item.mrp ?? 0}</div>
+                            <div><span className="font-medium text-foreground">Purchase:</span> ₹{item.purchasePrice ?? 0}</div>
+                            <div><span className="font-medium text-foreground">Value:</span> ₹{value}</div>
                           </div>
                         </div>
                       );

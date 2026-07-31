@@ -62,16 +62,16 @@ const CatalogueAdditionalServices: React.FC = () => {
     };
 
     return (
-        <div className="flex h-screen w-full flex-col overflow-hidden bg-gray-100">
+        <div className="flex h-screen w-full flex-col overflow-hidden bg-muted">
             {/* Header */}
-            <div className="z-30 bg-white border-b border-gray-100 pb-6 pt-6 px-6 shadow-sm flex-none">
+            <div className="z-30 bg-card border-b border-border pb-6 pt-6 px-6 shadow-sm flex-none">
                 <div className="flex items-start gap-4">
                     <BackButton />
                     <div className="flex flex-col">
-                        <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
+                        <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
                             Add Ons
                         </h1>
-                        <p className="text-sm text-gray-500 mt-1">
+                        <p className="text-sm text-muted-foreground mt-1">
                             Extend your Catalogue with powerful integrations
                         </p>
                     </div>
@@ -79,7 +79,7 @@ const CatalogueAdditionalServices: React.FC = () => {
             </div>
 
             {/* List */}
-            <div className="flex-1 overflow-y-auto bg-slate-100 space-y-3 pt-4 pb-24 px-2">
+            <div className="flex-1 overflow-y-auto bg-muted space-y-3 pt-4 pb-24 px-2">
                 <CustomCard
                     onClick={() => {
                         if (!isChecking) handleWhatsappClick();
@@ -89,11 +89,11 @@ const CatalogueAdditionalServices: React.FC = () => {
                     <div className="flex items-center justify-between py-2">
                         <div className="flex-1 pr-4">
                             <div className="flex items-center gap-2 mb-1">
-                                <h3 className="text-lg font-semibold text-slate-800">
+                                <h3 className="text-lg font-semibold text-foreground">
                                     WhatsApp Integration
                                 </h3>
                             </div>
-                            <p className="text-sm text-slate-500">
+                            <p className="text-sm text-muted-foreground">
                                 {isChecking
                                     ? 'Checking connection status...'
                                     : 'Connect your Catalogue to WhatsApp for seamless communication.'}
@@ -102,7 +102,7 @@ const CatalogueAdditionalServices: React.FC = () => {
 
                         <div className="flex items-center">
                             <button
-                                className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-50 text-slate-400"
+                                className="w-10 h-10 flex items-center justify-center rounded-full bg-muted text-muted-foreground"
                                 disabled={isChecking}
                             >
                                 {isChecking ? (
@@ -121,18 +121,18 @@ const CatalogueAdditionalServices: React.FC = () => {
                     <div className="flex items-center justify-between py-2">
                         <div className="flex-1 pr-4">
                             <div className="flex items-center gap-2 mb-1 min-w-0">
-                                <h3 className="text-lg font-semibold text-slate-800 whitespace-nowrap">
+                                <h3 className="text-lg font-semibold text-foreground whitespace-nowrap">
                                     Inventory Management
                                 </h3>
                             </div>
-                            <p className="text-sm text-slate-500">
+                            <p className="text-sm text-muted-foreground">
                                 Track stock levels, manage items, and adjust pricing.
                             </p>
                         </div>
 
                         <div className="flex items-center">
                             <button
-                                className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-50 text-slate-400"
+                                className="w-10 h-10 flex items-center justify-center rounded-full bg-muted text-muted-foreground"
                                 disabled
 
                             >
@@ -148,18 +148,18 @@ const CatalogueAdditionalServices: React.FC = () => {
                     <div className="flex items-center justify-between py-2">
                         <div className="flex-1 pr-4">
                             <div className="flex items-center gap-2 mb-1">
-                                <h3 className="text-lg font-semibold text-slate-800">
+                                <h3 className="text-lg font-semibold text-foreground">
                                     Label Design
                                 </h3>
                             </div>
-                            <p className="text-sm text-slate-500">
+                            <p className="text-sm text-muted-foreground">
                                 Custom label design for your products. ₹1,100 per design.
                             </p>
                         </div>
 
                         <div className="flex items-center">
                             <button
-                                className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-50 text-slate-400"
+                                className="w-10 h-10 flex items-center justify-center rounded-full bg-muted text-muted-foreground"
                                 disabled
 
                             >
@@ -176,18 +176,18 @@ const CatalogueAdditionalServices: React.FC = () => {
                     <div className="flex items-center justify-between py-2">
                         <div className="flex-1 pr-4">
                             <div className="flex items-center gap-2 mb-1">
-                                <h3 className="text-lg font-semibold text-slate-800">
+                                <h3 className="text-lg font-semibold text-foreground">
                                     Bill Design
                                 </h3>
                             </div>
-                            <p className="text-sm text-slate-500">
+                            <p className="text-sm text-muted-foreground">
                                 Custom bill design for your business. ₹1,100 per design.
                             </p>
                         </div>
 
                         <div className="flex items-center">
                             <button
-                                className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-50 text-slate-400"
+                                className="w-10 h-10 flex items-center justify-center rounded-full bg-muted text-muted-foreground"
                                 disabled
 
                             >
@@ -200,18 +200,18 @@ const CatalogueAdditionalServices: React.FC = () => {
 
             {isContactModalOpen && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-2xl max-w-md w-full p-6">
-                        <h3 className="text-lg font-bold text-gray-900 mb-4">
+                    <div className="bg-card rounded-lg shadow-2xl max-w-md w-full p-6">
+                        <h3 className="text-lg font-bold text-foreground mb-4">
                             Service Unavailable
                         </h3>
 
-                        <p className="text-gray-700 mb-4">
+                        <p className="text-foreground mb-4">
                             To access <span className="font-semibold">{selectedPlan}</span>,
                             please contact our admin:
                         </p>
 
-                        <div className="bg-gray-50 rounded-md p-4 mb-6 text-center">
-                            <p className="text-sm text-gray-600 mb-2">Call us at:</p>
+                        <div className="bg-muted rounded-md p-4 mb-6 text-center">
+                            <p className="text-sm text-muted-foreground mb-2">Call us at:</p>
 
                             <a
                                 href="tel:9818815838"

@@ -1,19 +1,40 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import useItemReport from '../Reports/ItemReportComponents/useItemReport';
 
 import FilterSelect from '../Reports/ItemReportComponents/FilterSelect';
-import { Spinner } from '../../constants/Spinner';
+import { Spinner } from '../../Components/ui/spinner';
+import { Button } from '../../Components/ui/button';
+import { Input } from '../../Components/ui/input';
+import { EmptyState } from '../../Components/ui/empty-state';
+import { ConfirmDialog } from '../../Components/ui/confirm-dialog';
+import { Pagination } from '../../Components/ui/pagination';
+import { usePagination } from '../../hooks/usePagination';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../Components/ui/table';
 import BackButton from '../../Components/BackButton';
-import { IconClose, IconSearch } from '../../constants/Icons';
-import { FiEdit2, FiTrash2 } from 'react-icons/fi';
+import {
+  Boxes,
+  Search,
+  X,
+  Pencil,
+  Trash2,
+  PackageX,
+  CheckCircle2,
+  AlertTriangle,
+} from 'lucide-react';
 
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
-import { Modal } from '../../constants/Modal';
-import { State } from '../../enums';
 
 import type { Item } from '../../constants/models';
 
 const UNASSIGNED_GROUP_NAME = 'Uncategorized';
+const PAGE_SIZE = 20;
 
 type SortOption =
   | 'NAME_ASC'
@@ -24,6 +45,12 @@ type SortOption =
   | 'PURCHASE_DESC'
   | 'VALUE_ASC'
   | 'VALUE_DESC';
+
+const getStockBadgeClasses = (stock: number) => {
+  if (stock === 0) return 'bg-destructive/12 text-destructive';
+  if (stock < 10) return 'bg-warning/15 text-warning-foreground dark:text-warning';
+  return 'bg-success/12 text-success';
+};
 
 const ManageItems: React.FC = () => {
 
@@ -50,9 +77,8 @@ const ManageItems: React.FC = () => {
   const [isConfirmingDeleteAll, setIsConfirmingDeleteAll] = useState(false);
   const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
   const [itemPendingDelete, setItemPendingDelete] = useState<Item | null>(null);
-  const [modal, setModal] = useState<{ message: string; type: State } | null>(
-    null,
-  );
+  const [isDeletingItem, setIsDeletingItem] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const [sortOption, setSortOption] = useState<SortOption>('NAME_ASC');
   const [showSearch, setShowSearch] = useState(false);
@@ -113,8 +139,25 @@ const ManageItems: React.FC = () => {
     return result;
   }, [items, itemGroups, appliedItemGroupId, sortOption, searchQuery]);
 
+  const { currentPage, totalPages, goToPage, pageItems } = usePagination<Item>({
+    totalItems: filteredItems.length,
+    pageSize: PAGE_SIZE,
+  });
+
+  useEffect(() => {
+    goToPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appliedItemGroupId, sortOption, searchQuery]);
+
+  const visibleItems = pageItems(filteredItems);
+
   const applyFilters = () => {
     setAppliedItemGroupId(itemGroupId);
+  };
+
+  const showFeedback = (type: 'success' | 'error', message: string) => {
+    setFeedback({ type, message });
+    setTimeout(() => setFeedback(null), 2500);
   };
 
   /* -------------------- HANDLERS -------------------- */
@@ -130,216 +173,233 @@ const ManageItems: React.FC = () => {
 
   const confirmDelete = async () => {
     if (!itemPendingDelete || !itemPendingDelete.id) return;
+    setIsDeletingItem(true);
     try {
       await deleteItem(itemPendingDelete.id);
-      setModal({ message: 'Item deleted successfully', type: State.SUCCESS });
+      showFeedback('success', 'Item deleted successfully');
     } catch {
-      setModal({ message: 'Failed to delete item', type: State.ERROR });
+      showFeedback('error', 'Failed to delete item');
     } finally {
+      setIsDeletingItem(false);
       setItemPendingDelete(null);
-      setTimeout(() => setModal(null), 1500);
     }
   };
 
-  const getStockBadgeClasses = (stock: number) => {
-    if (stock === 0) return 'bg-red-100 text-red-700';
-    if (stock < 10) return 'bg-blue-100 text-blue-700';
-    return 'bg-green-100 text-green-700';
-  };
-
-  if (isLoading) return <Spinner />;
+  if (isLoading) {
+    return (
+      <div className="flex h-full w-full items-center justify-center gap-2">
+        <Spinner />
+        <p className="text-muted-foreground">Loading items...</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden">
-      {/* -------- INFO / SUCCESS MODAL -------- */}
-      {modal && (
-        <Modal
-          message={modal.message}
-          type={modal.type}
-          onClose={() => setModal(null)}
-        />
-      )}
-
+    <div className="aurora flex h-full w-full flex-col overflow-hidden bg-muted">
       {/* -------------------- HEADER -------------------- */}
-      <div className="flex items-center justify-between bg-white border-b px-4 py-3 shadow-sm">
-        <BackButton />
-        <h1 className="text-xl font-bold text-gray-800 text-center flex-1">
-          Manage Items
-        </h1>
-        <button onClick={() => setShowSearch(true)} className="p-2">
-          <IconSearch />
+      <header className="glass mx-3 mt-3 flex flex-shrink-0 flex-col gap-3 rounded-2xl p-3 shadow-sm md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-3">
+          <BackButton />
+          <div className="rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.6_0.22_330)] p-[3px] shadow-sm shadow-primary/20">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-[13px] bg-gradient-brand text-white">
+              <Boxes className="size-4" />
+            </span>
+          </div>
+          <div>
+            <h1 className="text-lg font-bold tracking-tight text-foreground md:text-xl">
+              Manage <span className="text-gradient">Items</span>
+            </h1>
+            <p className="text-xs text-muted-foreground">View, filter and clean up your inventory</p>
+          </div>
+        </div>
+        <button
+          onClick={() => setShowSearch((prev) => !prev)}
+          className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          aria-label="Toggle search"
+        >
+          {showSearch ? <X className="size-4" /> : <Search className="size-4" />}
         </button>
-      </div>
+      </header>
 
       {showSearch && (
-        <div className="flex justify-center px-3 py-2 bg-white border-b">
-          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-blue-700">
-            <input
+        <div className="mx-3 mt-3 flex justify-center">
+          <div className="relative w-full max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
               type="text"
-              placeholder="Search by Item Name..."
-              className="flex-1 text-base font-light p-2 outline-none bg-transparent text-center"
+              placeholder="Search by item name..."
+              className="pl-9"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               autoFocus
             />
-            <button
-              onClick={() => {
-                setSearchQuery('');
-                setShowSearch(false);
-              }}
-              className="p-1 text-gray-500 hover:text-black"
-            >
-              <IconClose />
-            </button>
           </div>
         </div>
       )}
 
-      {/* -------------------- FILTERS -------------------- */}
-      <div className="bg-white p-3 border-b flex flex-col gap-4">
-        <h2 className="text-sm font-semibold text-gray-700 mb-0 text-center">
-          FILTERS
-        </h2>
-
-        {/* --- Top Row: Dropdown & Apply --- */}
-        <div className="flex flex-wrap gap-3 items-end">
-          <FilterSelect
-            label="Item Group"
-            value={itemGroupId}
-            onChange={(e) => setItemGroupId(e.target.value)}
+      <main className="w-full flex-grow overflow-y-auto p-3 sm:p-4">
+        {feedback && (
+          <div
+            className={`mb-3 flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium ${feedback.type === 'success'
+              ? 'border-success/20 bg-success/10 text-success'
+              : 'border-destructive/20 bg-destructive/10 text-destructive'
+              }`}
           >
-            <option value="">All Groups</option>
-            {itemGroups.map((group) => (
-              <option key={group.id} value={group.id}>
-                {group.name}
-              </option>
-            ))}
-            <option value={UNASSIGNED_GROUP_NAME}>Uncategorized</option>
-          </FilterSelect>
+            {feedback.type === 'success' ? (
+              <CheckCircle2 className="size-4 shrink-0" />
+            ) : (
+              <AlertTriangle className="size-4 shrink-0" />
+            )}
+            <p>{feedback.message}</p>
+          </div>
+        )}
 
-          <button
-            onClick={applyFilters}
-            className="px-5 py-2 bg-blue-600 text-white rounded-md font-semibold hover:bg-blue-700 transition"
-          >
-            Apply
-          </button>
-        </div>
+        {/* -------------------- FILTERS -------------------- */}
+        <div className="mb-3 rounded-2xl border border-border bg-card p-4 shadow-xs">
+          <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">Filters</h2>
 
-        {/* --- Bottom Row: Delete Buttons --- */}
-        <div className="flex flex-wrap gap-3 items-center">
-          {appliedItemGroupId && appliedItemGroupId !== UNASSIGNED_GROUP_NAME && (
-            <button
-              onClick={() => setIsConfirmingDeleteCategory(true)}
-              className="px-4 py-2 bg-red-100 text-red-700 rounded-md font-semibold hover:bg-red-200 transition text-sm"
+          <div className="flex flex-wrap items-end gap-3">
+            <FilterSelect
+              label="Item Group"
+              value={itemGroupId}
+              onChange={(e) => setItemGroupId(e.target.value)}
             >
-              Delete Category
-            </button>
-          )}
+              <option value="">All Groups</option>
+              {itemGroups.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
+                </option>
+              ))}
+              <option value={UNASSIGNED_GROUP_NAME}>Uncategorized</option>
+            </FilterSelect>
 
-          <button
-            onClick={() => setIsConfirmingDeleteAll(true)}
-            className="px-4 py-2 bg-red-600 text-white rounded-md font-semibold hover:bg-red-700 transition text-sm ml-auto"
-          >
-            Delete Inventory
-          </button>
-        </div>
-      </div>
-      {/* -------------------- LIST TOGGLE + SORT -------------------- */}
-      <div className="bg-white p-3 flex flex-wrap gap-2 justify-between items-center border-b">
-        <h2 className="font-semibold text-gray-700">Item List</h2>
+            <Button onClick={applyFilters} className="bg-gradient-brand text-white shadow-md shadow-primary/20 hover:opacity-90">
+              Apply
+            </Button>
+          </div>
 
-        <div className="flex gap-2 items-center">
-          <select
-            value={sortOption}
-            onChange={(e) => setSortOption(e.target.value as SortOption)}
-            className="px-3 py-1.5 rounded-md bg-slate-200 text-sm font-medium focus:outline-none"
-          >
-            <option value="NAME_ASC">Name (A → Z)</option>
-            <option value="NAME_DESC">Name (Z → A)</option>
-            <option value="MRP_ASC">MRP (Low → High)</option>
-            <option value="MRP_DESC">MRP (High → Low)</option>
-            <option value="PURCHASE_ASC">Purchase (Low → High)</option>
-            <option value="PURCHASE_DESC">Purchase (High → Low)</option>
-            <option value="VALUE_ASC">Value (Low → High)</option>
-            <option value="VALUE_DESC">Value (High → Low)</option>
-          </select>
-
-          <button
-            onClick={() => setIsListVisible(!isListVisible)}
-            className="px-4 py-1.5 bg-slate-200 rounded-md font-medium hover:bg-slate-300 transition"
-          >
-            {isListVisible ? 'Hide List' : 'Show List'}
-          </button>
-        </div>
-      </div>
-
-      {/* -------------------- ITEM LIST -------------------- */}
-      {isListVisible && (
-        <div className="flex-1 overflow-y-auto p-2 space-y-2">
-          {filteredItems.length === 0 && (
-            <p className="text-center text-gray-500 py-8">No items found.</p>
-          )}
-
-          {filteredItems.map((item) => {
-            const value = (item.stock || 0) * (item.purchasePrice || 0);
-            const stock = item.stock || 0;
-
-            return (
-              <div
-                key={item.id}
-                className="bg-white rounded-lg shadow-sm px-3 py-3 space-y-2"
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            {appliedItemGroupId && appliedItemGroupId !== UNASSIGNED_GROUP_NAME && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsConfirmingDeleteCategory(true)}
+                className="gap-1.5 border-destructive/20 bg-destructive/10 text-destructive hover:bg-destructive/15"
               >
-                {/* ROW 1 */}
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => openEditDrawer(item)}
-                    className="text-blue-600 hover:text-blue-800"
-                  >
-                    <FiEdit2 size={18} />
-                  </button>
+                <Trash2 className="size-3.5" />
+                Delete Category
+              </Button>
+            )}
 
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <span className="font-semibold text-gray-800 truncate">
-                      {item.name}
-                    </span>
-
-                    <span
-                      className={`text-xs font-semibold px-2 py-0.5 rounded-md whitespace-nowrap ${getStockBadgeClasses(
-                        stock,
-                      )}`}
-                    >
-                      {stock === 0 ? 'Out of stock' : `${stock} in stock`}
-                    </span>
-                  </div>
-
-                  <button
-                    onClick={() => setItemPendingDelete(item)}
-                    className="text-red-600 hover:text-red-800"
-                  >
-                    <FiTrash2 size={18} />
-                  </button>
-                </div>
-
-                {/* ROW 2 */}
-                <div className="flex flex-wrap gap-8 text-sm text-gray-600">
-                  <div>
-                    <span className="font-medium text-gray-700">MRP:</span> ₹
-                    {item.mrp ?? 0}
-                  </div>
-                  <div>
-                    <span className="font-medium text-gray-700">Purchase:</span>{' '}
-                    ₹{item.purchasePrice ?? 0}
-                  </div>
-                  <div>
-                    <span className="font-medium text-gray-700">Value:</span> ₹
-                    {value}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setIsConfirmingDeleteAll(true)}
+              className="ml-auto gap-1.5"
+            >
+              <Trash2 className="size-3.5" />
+              Delete Inventory
+            </Button>
+          </div>
         </div>
-      )}
+
+        {/* -------------------- LIST TOGGLE + SORT -------------------- */}
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-border bg-card p-3 shadow-xs">
+          <h2 className="text-sm font-semibold text-foreground">
+            Item List <span className="text-xs font-normal text-muted-foreground">({filteredItems.length})</span>
+          </h2>
+
+          <div className="flex items-center gap-2">
+            <select
+              value={sortOption}
+              onChange={(e) => setSortOption(e.target.value as SortOption)}
+              className="rounded-lg border border-border bg-muted px-3 py-1.5 text-sm font-medium text-foreground focus:outline-none"
+            >
+              <option value="NAME_ASC">Name (A → Z)</option>
+              <option value="NAME_DESC">Name (Z → A)</option>
+              <option value="MRP_ASC">MRP (Low → High)</option>
+              <option value="MRP_DESC">MRP (High → Low)</option>
+              <option value="PURCHASE_ASC">Purchase (Low → High)</option>
+              <option value="PURCHASE_DESC">Purchase (High → Low)</option>
+              <option value="VALUE_ASC">Value (Low → High)</option>
+              <option value="VALUE_DESC">Value (High → Low)</option>
+            </select>
+
+            <Button variant="secondary" size="sm" onClick={() => setIsListVisible(!isListVisible)}>
+              {isListVisible ? 'Hide List' : 'Show List'}
+            </Button>
+          </div>
+        </div>
+
+        {/* -------------------- ITEM LIST -------------------- */}
+        {isListVisible && (
+          filteredItems.length === 0 ? (
+            <EmptyState icon={<PackageX />} title="No items found" description="Try adjusting your filters or search query." />
+          ) : (
+            <div className="flex flex-col gap-3">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Item</TableHead>
+                    <TableHead>Stock</TableHead>
+                    <TableHead>MRP</TableHead>
+                    <TableHead>Purchase</TableHead>
+                    <TableHead>Value</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {visibleItems.map((item) => {
+                    const stock = item.stock || 0;
+                    const value = stock * (item.purchasePrice || 0);
+                    return (
+                      <TableRow key={item.id}>
+                        <TableCell className="whitespace-normal font-medium text-foreground">{item.name}</TableCell>
+                        <TableCell>
+                          <span className={`whitespace-nowrap rounded-md px-2 py-0.5 text-xs font-semibold ${getStockBadgeClasses(stock)}`}>
+                            {stock === 0 ? 'Out of stock' : `${stock} in stock`}
+                          </span>
+                        </TableCell>
+                        <TableCell>₹{item.mrp ?? 0}</TableCell>
+                        <TableCell>₹{item.purchasePrice ?? 0}</TableCell>
+                        <TableCell>₹{value}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => openEditDrawer(item)}
+                              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                              aria-label={`Edit ${item.name}`}
+                            >
+                              <Pencil className="size-4" />
+                            </button>
+                            <button
+                              onClick={() => setItemPendingDelete(item)}
+                              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                              aria-label={`Delete ${item.name}`}
+                            >
+                              <Trash2 className="size-4" />
+                            </button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+
+              {totalPages > 1 && (
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={goToPage}
+                  totalItems={filteredItems.length}
+                  pageSize={PAGE_SIZE}
+                />
+              )}
+            </div>
+          )
+        )}
+      </main>
 
       {/* -------------------- EDIT DRAWER -------------------- */}
       <ItemEditDrawer
@@ -349,41 +409,43 @@ const ManageItems: React.FC = () => {
         onSaveSuccess={() => { }}
       />
 
-      {/* -------------------- DELETE CONFIRM MODAL -------------------- */}
-      {itemPendingDelete && (
-        <Modal
-          type={State.WARNING}
-          message={`Are you sure you want to delete "${itemPendingDelete.name}"?`}
-          onClose={() => setItemPendingDelete(null)}
-          onConfirm={confirmDelete}
-          showConfirmButton={true}
-        />
-      )}
-      {isConfirmingDeleteCategory && (
-        <Modal
-          type={State.WARNING}
-          message="Are you sure you want to delete ALL items in this category? This cannot be undone."
-          onClose={() => setIsConfirmingDeleteCategory(false)}
-          onConfirm={() => {
-            deleteItemsByCategory(appliedItemGroupId);
-            setIsConfirmingDeleteCategory(false);
-          }}
-          showConfirmButton={true}
-        />
-      )}
+      {/* -------------------- DELETE CONFIRM DIALOGS -------------------- */}
+      <ConfirmDialog
+        open={itemPendingDelete !== null}
+        onOpenChange={(open) => { if (!open) setItemPendingDelete(null); }}
+        title={`Delete "${itemPendingDelete?.name}"?`}
+        description="Are you sure you want to delete this item? This cannot be undone."
+        confirmLabel="Delete"
+        variant="destructive"
+        loading={isDeletingItem}
+        onConfirm={confirmDelete}
+      />
 
-      {isConfirmingDeleteAll && (
-        <Modal
-          type={State.WARNING}
-          message="DANGER: Are you sure you want to delete your ENTIRE inventory? This cannot be undone."
-          onClose={() => setIsConfirmingDeleteAll(false)}
-          onConfirm={() => {
-            deleteAllItems();
-            setIsConfirmingDeleteAll(false);
-          }}
-          showConfirmButton={true}
-        />
-      )}
+      <ConfirmDialog
+        open={isConfirmingDeleteCategory}
+        onOpenChange={setIsConfirmingDeleteCategory}
+        title="Delete category?"
+        description="Are you sure you want to delete ALL items in this category? This cannot be undone."
+        confirmLabel="Delete Category"
+        variant="destructive"
+        onConfirm={() => {
+          deleteItemsByCategory(appliedItemGroupId);
+          setIsConfirmingDeleteCategory(false);
+        }}
+      />
+
+      <ConfirmDialog
+        open={isConfirmingDeleteAll}
+        onOpenChange={setIsConfirmingDeleteAll}
+        title="Delete entire inventory?"
+        description="DANGER: Are you sure you want to delete your ENTIRE inventory? This cannot be undone."
+        confirmLabel="Delete Everything"
+        variant="destructive"
+        onConfirm={() => {
+          deleteAllItems();
+          setIsConfirmingDeleteAll(false);
+        }}
+      />
     </div>
   );
 };

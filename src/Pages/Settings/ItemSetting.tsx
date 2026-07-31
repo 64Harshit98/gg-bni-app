@@ -1,86 +1,38 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../../lib/Firebase';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
-import { Spinner } from '../../constants/Spinner';
+import { Spinner as ModernSpinner } from '../../Components/ui/spinner';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
 import { useAuth } from '../../context/auth-context';
 import { ResetSettingsButton } from '../../Components/ResetSettingsButton';
+import { Button } from '../../Components/ui/button';
 import BackButton from '../../Components/BackButton';
-import { InfoTooltip } from '../../Components/InfoToolTip'; // Re-added InfoTooltip
+import { PackageSearch, Tags, Boxes, Barcode } from 'lucide-react';
+import {
+    fetchItemSettings,
+    saveItemSettings,
+    getDefaultItemSettings,
+    type ItemSettings,
+} from '../../services/settings/itemSetting.service';
+import { SettingsSectionCard } from './components/SettingsSectionCard';
+import { SettingsToggleRow } from './components/SettingsToggleRow';
 
-// --- Shared Interfaces ---
-export interface ItemSettings {
-    companyId?: string;
-    settingType: 'item';
-    // Categorization & Media
-    requireCategory: boolean;
-    requireImage: boolean;
-    requireHsnCode: boolean;
-    // Pricing & Tax
-    requirePurchasePrice: boolean;
-    requireSaleDiscount: boolean;
-    requirePurchaseDiscount: boolean;
-    requireDiscount: boolean;
-    requireTax: boolean;
-    // Inventory & Measurement
-    requireStock: boolean;
-    requireRestockQuantity: boolean;
-    requireMoq: boolean;
-    requireUnit: boolean;
-    // Barcode
-    requireBarcode: boolean;
-    autoGenerateBarcode: boolean;
-}
-
-export const getDefaultItemSettings = (companyId: string): ItemSettings => ({
-    companyId: companyId,
-    settingType: 'item',
-    requireCategory: false,
-    requireImage: false,
-    requireHsnCode: false,
-    requirePurchasePrice: false,
-    requireSaleDiscount: false,
-    requirePurchaseDiscount: false,
-    requireDiscount: false,
-    requireTax: false,
-    requireStock: false,
-    requireRestockQuantity: false,
-    requireMoq: false,
-    requireUnit: false,
-    requireBarcode: false,
-    autoGenerateBarcode: true,
-});
-
-// --- Embedded ToggleRow Component ---
-interface ToggleRowProps {
-    id: string;
-    label: string;
-    description?: string;
-    checked: boolean;
-    onChange: (checked: boolean) => void;
-    tooltip?: string;
-}
-
+// Re-exported so existing consumers (AuthContext, SettingsContext, ItemAdd)
+// that import these from this module path keep working unchanged.
+export { getDefaultItemSettings };
+export type { ItemSettings };
 
 // --- Main Settings Component ---
+// `theme` is retained for prop-shape/backward compatibility only — this
+// component is mounted from both the POS (`theme="blue"`) and Catalogue
+// (`theme="orange"`) routes via wrapper components in AppRegistry.tsx. The
+// shared design system now supplies all colors, so the value is no longer
+// consumed here (same pattern as `Pages/Master/ItemGroup.tsx`).
 interface SharedItemSettingsProps {
     theme?: 'blue' | 'orange';
 }
 
-const SharedItemSettings: React.FC<SharedItemSettingsProps> = ({ theme = 'blue' }) => {
-    const themeStyles = {
-        blue: {
-            primaryBg: 'bg-blue-600',
-            primaryHover: 'hover:bg-blue-700',
-        },
-        orange: {
-            primaryBg: 'bg-orange-500',
-            primaryHover: 'hover:bg-orange-600',
-        }
-    };
-
-    const activeTheme = themeStyles[theme];
+const SharedItemSettings: React.FC<SharedItemSettingsProps> = ({ theme }) => {
+    void theme;
     const { currentUser } = useAuth();
 
     const [settings, setSettings] = useState<ItemSettings | null>(null);
@@ -88,62 +40,17 @@ const SharedItemSettings: React.FC<SharedItemSettingsProps> = ({ theme = 'blue' 
     const [isSaving, setIsSaving] = useState<boolean>(false);
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
 
-    const ToggleRow: React.FC<ToggleRowProps> = ({ id, label, description, checked, onChange, tooltip }) => {
-        return (
-            <div className="flex items-start justify-between py-3 border-b border-gray-100 last:border-0">
-                <div className="pr-4">
-                    <div className="flex items-center gap-1.5">
-                        <label htmlFor={id} className="text-sm font-medium text-gray-700 cursor-pointer">
-                            {label}
-                        </label>
-                        {/* InfoTooltip correctly placed next to the label */}
-                        {tooltip && <InfoTooltip text={tooltip} />}
-                    </div>
-                    {description && <p className="text-xs text-gray-500 mt-0.5">{description}</p>}
-                </div>
-                <div className="flex items-center h-5 mt-1">
-                    <button
-                        type="button"
-                        id={id}
-                        role="switch"
-                        aria-checked={checked}
-                        onClick={() => onChange(!checked)}
-                        className={`${checked ? `${activeTheme.primaryBg}` : 'bg-gray-200'
-                            } relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-${activeTheme.primaryBg} focus:ring-offset-2`}
-                    >
-                        <span
-                            aria-hidden="true"
-                            className={`${checked ? 'translate-x-4' : 'translate-x-0'
-                                } pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
-                        />
-                    </button>
-                </div>
-            </div>
-        );
-    };
-
     useEffect(() => {
         if (!currentUser?.companyId) {
             setIsLoading(true);
             return;
         }
 
-        const fetchOrCreateSettings = async () => {
+        const loadSettings = async () => {
             setIsLoading(true);
-            const companyId = currentUser.companyId!;
-            const settingsDocRef = doc(db, 'companies', companyId, 'settings', 'item-settings');
-
             try {
-                const docSnap = await getDoc(settingsDocRef);
-
-                if (docSnap.exists()) {
-                    const existingData = docSnap.data() as Partial<ItemSettings>;
-                    setSettings({ ...getDefaultItemSettings(companyId), ...existingData });
-                } else {
-                    const defaultSettings = getDefaultItemSettings(companyId);
-                    await setDoc(settingsDocRef, defaultSettings);
-                    setSettings(defaultSettings);
-                }
+                const loaded = await fetchItemSettings(currentUser.companyId!);
+                setSettings(loaded);
             } catch (err) {
                 console.error('Failed to load item settings:', err);
                 setModal({ message: 'Failed to load settings.', type: State.ERROR });
@@ -152,7 +59,7 @@ const SharedItemSettings: React.FC<SharedItemSettingsProps> = ({ theme = 'blue' 
             }
         };
 
-        fetchOrCreateSettings();
+        loadSettings();
     }, [currentUser?.companyId]);
 
     const handleSave = async (e?: React.FormEvent) => {
@@ -165,10 +72,7 @@ const SharedItemSettings: React.FC<SharedItemSettingsProps> = ({ theme = 'blue' 
 
         setIsSaving(true);
         try {
-            const companyId = currentUser.companyId;
-            const settingsDocRef = doc(db, 'companies', companyId, 'settings', 'item-settings');
-
-            await updateDoc(settingsDocRef, settings as unknown as { [x: string]: any });
+            await saveItemSettings(currentUser.companyId, settings);
             setModal({ message: 'Item settings saved successfully!', type: State.SUCCESS });
         } catch (err) {
             console.error('Failed to save settings:', err);
@@ -186,32 +90,37 @@ const SharedItemSettings: React.FC<SharedItemSettingsProps> = ({ theme = 'blue' 
 
     if (isLoading || !settings) {
         return (
-            <div className="flex flex-col min-h-screen items-center justify-center">
-                <Spinner />
-                <p className="mt-4 text-gray-600">Loading Item Settings...</p>
+            <div className="flex min-h-screen flex-col items-center justify-center bg-background">
+                <ModernSpinner size="xl" className="text-primary" />
+                <p className="mt-4 text-muted-foreground">Loading item settings...</p>
             </div>
         );
     }
 
     return (
-        <div className="flex flex-col min-h-screen bg-gray-100 w-full relative">
+        <div className="aurora relative flex min-h-screen w-full flex-col bg-background">
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
-            <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
+            <header className="glass sticky top-0 z-30 flex items-center gap-3 p-3">
                 <BackButton />
-                <h1 className="text-lg font-semibold text-gray-800">Item Settings</h1>
-                <div className="w-6"></div>
-            </div>
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-brand text-white shadow-sm shadow-primary/20">
+                    <PackageSearch className="size-4" />
+                </span>
+                <div>
+                    <h1 className="text-lg font-bold tracking-tight text-foreground md:text-xl">
+                        Item <span className="text-gradient">Settings</span>
+                    </h1>
+                    <p className="text-xs text-muted-foreground">Choose which fields are required when adding items</p>
+                </div>
+            </header>
 
-            <main className="flex-grow min-h-0 p-3 sm:p-4 md:p-5 bg-gray-50 w-full overflow-y-auto box-border pb-44 md:pb-24">
-                <form onSubmit={handleSave} className="max-w-3xl mx-auto space-y-4 md:space-y-6">
-
-                    {/* Header & Reset Button */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white rounded-sm border border-gray-200 shadow-sm p-4 md:p-6 gap-4">
+            <main className="w-full flex-grow overflow-y-auto p-3 pb-32 sm:p-4 md:p-5 md:pb-24">
+                <form onSubmit={handleSave} className="mx-auto max-w-3xl space-y-4 md:space-y-6">
+                    <div className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-4 shadow-xs sm:flex-row sm:items-center sm:justify-between md:p-6">
                         <div>
-                            <h2 className="text-base md:text-lg font-semibold text-gray-800">Mandatory Fields</h2>
-                            <span className="text-xs text-red-500 font-medium">* Item name and MRP (or Sale Price) are always mandatory.</span>
-                            <br /><p className="text-sm text-gray-500 mt-1">
+                            <h2 className="text-base font-semibold text-foreground md:text-lg">Mandatory Fields</h2>
+                            <span className="text-xs font-medium text-destructive">* Item name and MRP (or Sale Price) are always mandatory.</span>
+                            <p className="mt-1 text-sm text-muted-foreground">
                                 Select which optional fields must be filled out when manually adding a single item.
                             </p>
                         </div>
@@ -221,141 +130,134 @@ const SharedItemSettings: React.FC<SharedItemSettingsProps> = ({ theme = 'blue' 
                         />
                     </div>
 
-                    {/* Categorization & Media */}
-                    <section className="bg-white rounded-sm border border-gray-200 shadow-sm p-4 md:p-6 space-y-1">
-                        <h3 className="text-md font-semibold text-gray-800 mb-2 border-b pb-2">Classification & Media</h3>
-                        <ToggleRow
+                    <SettingsSectionCard icon={<Tags className="size-4" />} title="Classification & Media" contentClassName="space-y-2">
+                        <SettingsToggleRow
                             id="req-category"
                             label="Require Category"
                             description="Category must be selected when adding an item."
                             tooltip="Group this item belongs to (e.g., Electronics)."
                             checked={settings.requireCategory}
-                            onChange={(checked: boolean) => handleCheckboxChange('requireCategory', checked)}
+                            onChange={(checked) => handleCheckboxChange('requireCategory', checked)}
                         />
-                        <ToggleRow
+                        <SettingsToggleRow
                             id="req-hsn"
                             label="Require HSN Code"
                             description="HSN/SAC code must be provided when adding an item."
                             tooltip="Harmonized System Nomenclature code for taxation."
                             checked={settings.requireHsnCode}
-                            onChange={(checked: boolean) => handleCheckboxChange('requireHsnCode', checked)}
+                            onChange={(checked) => handleCheckboxChange('requireHsnCode', checked)}
                         />
-                        <ToggleRow
+                        <SettingsToggleRow
                             id="req-image"
                             label="Require Image"
                             description="An image file or URL must be provided when adding an item."
                             tooltip="The visual representation of the product."
                             checked={settings.requireImage}
-                            onChange={(checked: boolean) => handleCheckboxChange('requireImage', checked)}
+                            onChange={(checked) => handleCheckboxChange('requireImage', checked)}
                         />
-                    </section>
+                    </SettingsSectionCard>
 
-                    {/* Pricing & Tax */}
-                    <section className="bg-white rounded-sm border border-gray-200 shadow-sm p-4 md:p-6 space-y-1">
-                        <h3 className="text-md font-semibold text-gray-800 mb-2 border-b pb-2">Pricing & Taxes</h3>
-                        <ToggleRow
+                    <SettingsSectionCard icon={<Tags className="size-4" />} title="Pricing & Taxes" contentClassName="space-y-2">
+                        <SettingsToggleRow
                             id="req-purchasePrice"
                             label="Require Purchase Price"
                             description="Purchase price must be filled when adding an item."
                             tooltip="The price you paid to acquire this item."
                             checked={settings.requirePurchasePrice}
-                            onChange={(checked: boolean) => handleCheckboxChange('requirePurchasePrice', checked)}
+                            onChange={(checked) => handleCheckboxChange('requirePurchasePrice', checked)}
                         />
-                        <ToggleRow
+                        <SettingsToggleRow
                             id="req-sale-discount"
                             label="Require Sale Discount (%)"
                             description="Sale discount percentage must be filled when adding an item."
                             tooltip="Default discount percentage given to customers."
                             checked={settings.requireSaleDiscount}
-                            onChange={(checked: boolean) => handleCheckboxChange('requireSaleDiscount', checked)}
+                            onChange={(checked) => handleCheckboxChange('requireSaleDiscount', checked)}
                         />
-                        <ToggleRow
+                        <SettingsToggleRow
                             id="req-purchase-discount"
                             label="Require Purchase Discount (%)"
                             description="Purchase discount percentage must be filled when adding an item."
                             tooltip="Discount percentage received from the supplier."
                             checked={settings.requirePurchaseDiscount}
-                            onChange={(checked: boolean) => handleCheckboxChange('requirePurchaseDiscount', checked)}
+                            onChange={(checked) => handleCheckboxChange('requirePurchaseDiscount', checked)}
                         />
-                        <ToggleRow
+                        <SettingsToggleRow
                             id="req-tax"
                             label="Require Tax (%)"
                             description="Tax percentage must be filled when adding an item."
                             tooltip="Applicable tax percentage for this item."
                             checked={settings.requireTax}
-                            onChange={(checked: boolean) => handleCheckboxChange('requireTax', checked)}
+                            onChange={(checked) => handleCheckboxChange('requireTax', checked)}
                         />
-                    </section>
+                    </SettingsSectionCard>
 
-                    {/* Inventory & Units */}
-                    <section className="bg-white rounded-sm border border-gray-200 shadow-sm p-4 md:p-6 space-y-1">
-                        <h3 className="text-md font-semibold text-gray-800 mb-2 border-b pb-2">Inventory & Measurement</h3>
-                        <ToggleRow
+                    <SettingsSectionCard icon={<Boxes className="size-4" />} title="Inventory & Measurement" contentClassName="space-y-2">
+                        <SettingsToggleRow
                             id="req-stock"
                             label="Require Opening Stock"
                             description="Initial stock quantity must be entered when adding an item."
                             tooltip="Current available quantity in your inventory."
                             checked={settings.requireStock}
-                            onChange={(checked: boolean) => handleCheckboxChange('requireStock', checked)}
+                            onChange={(checked) => handleCheckboxChange('requireStock', checked)}
                         />
-                        <ToggleRow
+                        <SettingsToggleRow
                             id="req-restock"
                             label="Require Restock Level"
                             description="Restock alert quantity must be set when adding an item."
                             tooltip="Minimum stock level to trigger a reorder alert."
                             checked={settings.requireRestockQuantity}
-                            onChange={(checked: boolean) => handleCheckboxChange('requireRestockQuantity', checked)}
+                            onChange={(checked) => handleCheckboxChange('requireRestockQuantity', checked)}
                         />
-                        <ToggleRow
+                        <SettingsToggleRow
                             id="req-moq"
                             label="Require MOQ"
                             description="Minimum Order Quantity must be specified when adding an item."
                             tooltip="Minimum Item Quantity to be ordered."
                             checked={settings.requireMoq}
-                            onChange={(checked: boolean) => handleCheckboxChange('requireMoq', checked)}
+                            onChange={(checked) => handleCheckboxChange('requireMoq', checked)}
                         />
-                        <ToggleRow
+                        <SettingsToggleRow
                             id="req-unit"
                             label="Require Unit"
                             description="Unit of measurement (e.g., pcs, box) must be selected."
                             tooltip="Measurement unit (e.g., pieces, box, kg)."
                             checked={settings.requireUnit}
-                            onChange={(checked: boolean) => handleCheckboxChange('requireUnit', checked)}
+                            onChange={(checked) => handleCheckboxChange('requireUnit', checked)}
                         />
-                    </section>
+                    </SettingsSectionCard>
 
-                    {/* Barcode Automation */}
-                    <section className="bg-white rounded-sm border border-gray-200 shadow-sm p-4 md:p-6 space-y-1">
-                        <h3 className="text-md font-semibold text-gray-800 mb-2 border-b pb-2">Barcode Handling</h3>
-                        <ToggleRow
+                    <SettingsSectionCard icon={<Barcode className="size-4" />} title="Barcode Handling" contentClassName="space-y-2">
+                        <SettingsToggleRow
                             id="req-barcode"
                             label="Require Manual Barcode Input"
                             description="Barcode must be manually scanned or typed when adding an item."
                             tooltip="Unique identifier for scanning the product."
                             checked={settings.requireBarcode}
-                            onChange={(checked: boolean) => handleCheckboxChange('requireBarcode', checked)}
+                            onChange={(checked) => handleCheckboxChange('requireBarcode', checked)}
                         />
-                        <ToggleRow
+                        <SettingsToggleRow
                             id="auto-barcode"
                             label="Automatically Generate Barcode"
                             description="A unique barcode will be generated if the barcode field is left blank."
                             checked={settings.autoGenerateBarcode}
-                            onChange={(checked: boolean) => handleCheckboxChange('autoGenerateBarcode', checked)}
+                            onChange={(checked) => handleCheckboxChange('autoGenerateBarcode', checked)}
                         />
-                    </section>
-
+                    </SettingsSectionCard>
                 </form>
             </main>
 
-            <div className="fixed inset-x-0 bottom-16 md:bottom-0 z-40 bg-transparent px-4 pb-2 md:p-4 pointer-events-none">
-                <div className="max-w-2xl mx-auto flex justify-center gap-4 pointer-events-auto">
-                    <button
+            <div className="fixed inset-x-0 bottom-16 z-40 bg-transparent px-4 pb-2 md:bottom-0 md:p-4">
+                <div className="mx-auto flex max-w-2xl justify-center gap-4">
+                    <Button
                         onClick={handleSave}
                         disabled={isSaving || isLoading}
-                        className={`w-auto min-w-[150px] flex items-center justify-center ${activeTheme.primaryBg} text-white font-bold py-3 px-6 rounded-sm ${activeTheme.primaryHover} transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed shadow-lg`}
+                        size="lg"
+                        className="min-w-[160px] gap-2 bg-gradient-brand text-white shadow-lg shadow-primary/20 hover:opacity-90"
                     >
-                        {isSaving ? <Spinner /> : 'Save Settings'}
-                    </button>
+                        {isSaving && <ModernSpinner size="sm" />}
+                        {isSaving ? 'Saving...' : 'Save Settings'}
+                    </Button>
                 </div>
             </div>
         </div>

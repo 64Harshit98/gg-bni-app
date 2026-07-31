@@ -79,9 +79,9 @@ return (
         </div>
       </div>
 
-      <div className="w-full bg-white p-6 py-8 shadow-t-lg rounded-t-2xl flex-shrink-0 z-20 mt-[-50px]">
+      <div className="w-full bg-card p-6 py-8 shadow-t-lg rounded-t-2xl flex-shrink-0 z-20 mt-[-50px]">
         <div className="w-full max-w-sm mx-auto">
-          <h2 className="text-xl font-bold text-gray-800 text-center mb-6">Reset Password</h2>
+          <h2 className="text-xl font-bold text-foreground text-center mb-6">Reset Password</h2>
 
           {success ? (
             <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center space-y-4">
@@ -106,7 +106,7 @@ return (
                 <FiAlertCircle size={24} />
               </div>
               <p className="text-red-700 font-medium">Invalid Reset Link</p>
-              <p className="text-gray-500 text-sm mt-2">The link is missing the required code.</p>
+              <p className="text-muted-foreground text-sm mt-2">The link is missing the required code.</p>
               <Link to={ROUTES.FORGOT_PASSWORD} className="text-blue-600 hover:underline text-sm mt-4 block">
                 Request a new link
               </Link>
@@ -114,7 +114,7 @@ return (
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="relative">
-                <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
                 <FloatingLabelInput
                   id="new-password"
                   type={showPassword ? 'text' : 'password'}
@@ -123,19 +123,19 @@ return (
                   onChange={(e) => setNewPassword(e.target.value)}
                   required
                   disabled={loading}
-                  className="pl-10 pr-10 h-14 border border-gray-300 rounded-lg text-lg"
+                  className="pl-10 pr-10 h-14 border border-border rounded-lg text-lg"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
                 >
                   {showPassword ? <FiEye size={20} /> : <FiEyeOff size={20} />}
                 </button>
               </div>
 
               <div className="relative">
-                <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
                 <FloatingLabelInput
                   id="confirm-password"
                   type={showPassword ? 'text' : 'password'}
@@ -144,7 +144,7 @@ return (
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
                   disabled={loading}
-                  className="pl-10 pr-10 h-14 border border-gray-300 rounded-lg text-lg"
+                  className="pl-10 pr-10 h-14 border border-border rounded-lg text-lg"
                 />
               </div>
 
@@ -170,7 +170,7 @@ return (
               <div className="text-center pt-2">
                 <Link
                   to={ROUTES.LANDING}
-                  className="text-sm font-medium text-gray-600"
+                  className="text-sm font-medium text-muted-foreground"
                 >
                   Cancel
                 </Link>
@@ -182,8 +182,8 @@ return (
     </div>
 
     {/* ================= DESKTOP VIEW ================= */}
-    <div className="hidden lg:flex h-screen w-screen items-center justify-center bg-white">
-      <div className="flex w-full h-full overflow-hidden bg-white">
+    <div className="hidden lg:flex h-screen w-screen items-center justify-center bg-card">
+      <div className="flex w-full h-full overflow-hidden bg-card">
 
         {/* LEFT IMAGE */}
         <div className="w-1/2 relative">
@@ -194,7 +194,7 @@ return (
         </div>
 
         {/* RIGHT FORM */}
-        <div className="w-1/2 flex items-center justify-center bg-white">
+        <div className="w-1/2 flex items-center justify-center bg-card">
           <div className="w-full max-w-md px-6">
 
             <h1 className="text-4xl font-bold mb-6 text-left">Reset Password</h1>
@@ -222,8 +222,8 @@ return (
             ) : (
               <form onSubmit={handleSubmit} className="space-y-6">
 
-                <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
-                  <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" />
+                <div className="relative [&_label]:!left-[3rem] [&_label]:bg-card">
+                  <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10" />
                   <FloatingLabelInput
                     id="new-password"
                     type={showPassword ? 'text' : 'password'}
@@ -232,19 +232,19 @@ return (
                     onChange={(e) => setNewPassword(e.target.value)}
                     required
                     disabled={loading}
-                    className="pl-12 py-3 pr-10 bg-white border border-gray-300"
+                    className="pl-12 py-3 pr-10 bg-card border border-border"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
                   >
                     {showPassword ? <FiEye size={20} /> : <FiEyeOff size={20} />}
                   </button>
                 </div>
 
-                <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
-                  <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" />
+                <div className="relative [&_label]:!left-[3rem] [&_label]:bg-card">
+                  <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10" />
                   <FloatingLabelInput
                     id="confirm-password"
                     type={showPassword ? 'text' : 'password'}
@@ -253,7 +253,7 @@ return (
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     required
                     disabled={loading}
-                    className="pl-12 py-3 pr-10 bg-white border border-gray-300"
+                    className="pl-12 py-3 pr-10 bg-card border border-border"
                   />
                 </div>
 
@@ -271,7 +271,7 @@ return (
                 </CustomButton>
 
                 <div className="text-center">
-                  <Link to={ROUTES.LANDING} className="text-sm text-gray-600">
+                  <Link to={ROUTES.LANDING} className="text-sm text-muted-foreground">
                     Cancel
                   </Link>
                 </div>

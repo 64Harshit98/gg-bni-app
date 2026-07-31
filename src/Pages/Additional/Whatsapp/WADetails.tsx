@@ -8,6 +8,7 @@ import { ROUTES } from '../../../constants/routes.constants';
 import { Stepper } from '../../../Components/Stepper';
 import { botMasterService } from './WhatsappApi';
 import BackButton from '../../../Components/BackButton';
+import { Spinner } from '../../../Components/ui/spinner';
 
 // --- Types ---
 interface ProfileData {
@@ -200,11 +201,16 @@ const WhatsAppDetailsPage: React.FC = () => {
 
     const isLoading = authLoading || dataLoading;
 
-    if (isLoading) return <div className="min-h-screen flex items-center justify-center text-gray-500">Loading details...</div>;
+    if (isLoading) return (
+        <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-muted-foreground">
+            <Spinner size="xl" />
+            <p className="text-sm font-medium">Loading details...</p>
+        </div>
+    );
     if (!currentUser) return <div className="min-h-screen flex items-center justify-center text-red-500">Please log in.</div>;
 
     return (
-        <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 font-sans">
+        <div className="min-h-screen bg-muted py-12 px-4 sm:px-6 lg:px-8 font-sans">
 
             {/* --- Stepper Header --- */}
             <div className="sticky top-0 z-50 w-full backdrop-blur-sm transition-all duration-300">
@@ -218,7 +224,7 @@ const WhatsAppDetailsPage: React.FC = () => {
                         completedClassName="bg-emerald-100 text-emerald-600"
                         connectorClassName="bg-emerald-600"
                     />
-                    <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-2 px-1">
+                    <div className="flex justify-between text-[10px] font-bold text-muted-foreground uppercase tracking-wider mt-2 px-1">
                         <span className="cursor-pointer hover:text-emerald-600" onClick={() => handleGlobalStepClick(1)}>Select Plan</span>
                         <span className="text-emerald-600">Details</span>
                         <span className="cursor-pointer hover:text-emerald-600 text-center">Verification</span>
@@ -231,10 +237,10 @@ const WhatsAppDetailsPage: React.FC = () => {
 
                     {/* Left Column: User Details Form */}
                     <div className="md:col-span-2 space-y-6">
-                        <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-200">
+                        <div className="bg-card p-8 rounded-xl shadow-sm border border-border">
                             <div className="mb-6">
-                                <h1 className="text-2xl font-bold text-gray-800">Account Details</h1>
-                                <p className="text-gray-500 text-sm mt-1">
+                                <h1 className="text-2xl font-bold text-foreground">Account Details</h1>
+                                <p className="text-muted-foreground text-sm mt-1">
                                     We need these details to create your dedicated WhatsApp API account.
                                 </p>
                             </div>
@@ -243,46 +249,46 @@ const WhatsAppDetailsPage: React.FC = () => {
 
                                 {/* Full Name */}
                                 <div>
-                                    <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Full Name</label>
+                                    <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Full Name</label>
                                     <input
                                         type="text"
                                         name="name"
                                         value={formData.name || ''}
                                         onChange={handleChange}
-                                        className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                                        className="w-full p-3 bg-muted border border-border rounded-lg text-foreground font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                                         placeholder="Enter your name"
                                     />
                                 </div>
 
                                 {/* Email (Read-Only) */}
                                 <div>
-                                    <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Email Address (Read-Only)</label>
-                                    <div className="p-3 bg-gray-100 rounded-lg text-gray-500 font-medium cursor-not-allowed">
+                                    <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Email Address (Read-Only)</label>
+                                    <div className="p-3 bg-muted rounded-lg text-muted-foreground font-medium cursor-not-allowed">
                                         {formData.email}
                                     </div>
                                 </div>
 
                                 {/* Address Fields */}
                                 <div className="space-y-3">
-                                    <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider">Registered Address</label>
-                                    <input type="text" name="streetAddress" value={formData.streetAddress || ''} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Street Address" />
+                                    <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider">Registered Address</label>
+                                    <input type="text" name="streetAddress" value={formData.streetAddress || ''} onChange={handleChange} className="w-full p-3 bg-muted border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Street Address" />
                                     <div className="flex space-x-2">
-                                        <input type="text" name="city" value={formData.city || ''} onChange={handleChange} className="w-1/2 p-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="City" />
-                                        <input type="text" name="state" value={formData.state || ''} onChange={handleChange} className="w-1/2 p-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="State" />
+                                        <input type="text" name="city" value={formData.city || ''} onChange={handleChange} className="w-1/2 p-3 bg-muted border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="City" />
+                                        <input type="text" name="state" value={formData.state || ''} onChange={handleChange} className="w-1/2 p-3 bg-muted border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="State" />
                                     </div>
-                                    <input type="text" name="postalCode" value={formData.postalCode || ''} onChange={handleChange} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Postal Code" />
+                                    <input type="text" name="postalCode" value={formData.postalCode || ''} onChange={handleChange} className="w-full p-3 bg-muted border border-border rounded-lg text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Postal Code" />
                                 </div>
 
                                 {/* --- Account Security Section --- */}
-                                <div className="mt-8 pt-6 border-t border-gray-100">
-                                    <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wide mb-4">WhatsApp Configuration</h3>
+                                <div className="mt-8 pt-6 border-t border-border">
+                                    <h3 className="text-sm font-bold text-foreground uppercase tracking-wide mb-4">WhatsApp Configuration</h3>
 
                                     {/* Phone Number */}
                                     <div className="mb-4">
-                                        <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">WhatsApp Number</label>
+                                        <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">WhatsApp Number</label>
                                         <div className="flex">
                                             {/* Static +91 Box */}
-                                            <span className="inline-flex items-center px-4 bg-gray-200 border border-r-0 border-gray-200 rounded-l-lg text-gray-700 font-bold">
+                                            <span className="inline-flex items-center px-4 bg-muted border border-r-0 border-border rounded-l-lg text-foreground font-bold">
                                                 +91
                                             </span>
                                             <input
@@ -302,12 +308,12 @@ const WhatsAppDetailsPage: React.FC = () => {
                                                         }
                                                     } as any);
                                                 }}
-                                                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-r-lg text-gray-800 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                                                className="w-full p-3 bg-muted border border-border rounded-r-lg text-foreground font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                                                 placeholder="9876543210"
                                                 maxLength={10} // Stops them from typing more than 10 digits
                                             />
                                         </div>
-                                        <p className="text-xs text-gray-400 mt-1">
+                                        <p className="text-xs text-muted-foreground mt-1">
                                             Enter your 10-digit number. The country code is added automatically.
                                         </p>
                                     </div>
@@ -318,37 +324,37 @@ const WhatsAppDetailsPage: React.FC = () => {
 
                     {/* Right Column: Order Summary */}
                     <div className="md:col-span-1">
-                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 sticky top-24">
-                            <h2 className="text-lg font-bold text-gray-800 mb-4">Order Summary</h2>
+                        <div className="bg-card p-6 rounded-xl shadow-sm border border-border sticky top-24">
+                            <h2 className="text-lg font-bold text-foreground mb-4">Order Summary</h2>
 
                             {selectedPlan ? (
                                 <div className="space-y-4">
-                                    <div className="pb-4 border-b border-gray-100">
-                                        <p className="text-sm text-gray-500">Selected Plan</p>
+                                    <div className="pb-4 border-b border-border">
+                                        <p className="text-sm text-muted-foreground">Selected Plan</p>
                                         <div className="flex justify-between items-baseline mt-1">
                                             <h3 className="text-xl font-bold text-green-600">{selectedPlan.name}</h3>
-                                            <span className="text-sm font-medium text-gray-900">{selectedPlan.duration}</span>
+                                            <span className="text-sm font-medium text-foreground">{selectedPlan.duration}</span>
                                         </div>
                                     </div>
 
                                     <div className="py-2">
                                         <div className="flex justify-between items-center mb-2">
-                                            <span className="text-gray-600">Subtotal</span>
+                                            <span className="text-muted-foreground">Subtotal</span>
                                             <span className="font-medium">₹{selectedPlan.price.toLocaleString()}</span>
                                         </div>
                                         <div className="flex justify-between items-center mb-2">
-                                            <span className="text-gray-600">Taxes</span>
+                                            <span className="text-muted-foreground">Taxes</span>
                                             <span className="text-green-600 text-xs">Inclusive</span>
                                         </div>
-                                        <div className="flex justify-between items-center pt-3 border-t border-gray-100">
-                                            <span className="font-bold text-gray-900">Total</span>
-                                            <span className="font-bold text-xl text-gray-900">₹{selectedPlan.price.toLocaleString()}</span>
+                                        <div className="flex justify-between items-center pt-3 border-t border-border">
+                                            <span className="font-bold text-foreground">Total</span>
+                                            <span className="font-bold text-xl text-foreground">₹{selectedPlan.price.toLocaleString()}</span>
                                         </div>
                                     </div>
                                 </div>
                             ) : (
-                                <div className="text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                                    <p className="text-gray-500 text-sm">No plan selected</p>
+                                <div className="text-center py-6 bg-muted rounded-lg border border-dashed border-border">
+                                    <p className="text-muted-foreground text-sm">No plan selected</p>
                                     <button onClick={() => navigate(-1)} className="text-blue-600 text-sm font-medium mt-2 hover:underline">Go back to plans</button>
                                 </div>
                             )}
@@ -360,7 +366,7 @@ const WhatsAppDetailsPage: React.FC = () => {
                                     className={`w-full font-semibold py-3 px-4 rounded-lg transition-all shadow-md flex items-center justify-center
                                     ${formData.phoneNumber
                                             ? 'bg-blue-600 hover:bg-blue-700 text-white hover:shadow-lg transform hover:-translate-y-0.5'
-                                            : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                            : 'bg-gray-300 text-muted-foreground cursor-not-allowed'
                                         }`}
                                 >
                                     {isSaving ? (
@@ -375,7 +381,7 @@ const WhatsAppDetailsPage: React.FC = () => {
                                         'Create Account & Proceed \u2192'
                                     )}
                                 </button>
-                                <p className="text-xs text-center text-gray-400 mt-3">
+                                <p className="text-xs text-center text-muted-foreground mt-3">
                                     By proceeding, you agree to our Terms of Service.
                                 </p>
                             </div>

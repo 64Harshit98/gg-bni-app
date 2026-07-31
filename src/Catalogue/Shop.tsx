@@ -3,9 +3,26 @@ import { useAuth, useDatabase } from '../context/auth-context';
 import type { Item, ItemGroup } from '../constants/models';
 import { Modal } from '../constants/Modal';
 import { State } from '../enums';
-import { FiX, FiPackage, FiPlus } from 'react-icons/fi';
-import { Trash2, X, Send, Pin, Download, Loader2 } from 'lucide-react';
+import {
+    Trash2,
+    X,
+    Send,
+    Pin,
+    Download,
+    Loader2,
+    Package,
+    ChevronDown,
+    ArrowUpDown,
+    Store,
+    Link2,
+    FolderOpen,
+    Check,
+} from 'lucide-react';
 import { Spinner } from '../constants/Spinner';
+import { Button } from '../Components/ui/button';
+import { Badge } from '../Components/ui/badge';
+import { EmptyState } from '../Components/ui/empty-state';
+import { cn } from '../lib/utils';
 import { db } from '../lib/Firebase';
 import { addDoc, collection, serverTimestamp, doc, getDoc, setDoc } from 'firebase/firestore';
 import { OrderInvoiceNumber } from '../UseComponents/InvoiceCounter';
@@ -610,10 +627,16 @@ const OrderingPage: React.FC = () => {
         }
     };
 
-    if (pageIsLoading) return <div className="flex items-center justify-center h-screen bg-[#E9F0F7]"><Spinner /></div>;
+    if (pageIsLoading) {
+        return (
+            <div className="flex h-screen items-center justify-center bg-muted">
+                <Spinner className="text-primary" />
+            </div>
+        );
+    }
 
     return (
-        <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative">
+        <div className="aurora relative flex min-h-screen w-full flex-col bg-muted">
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
             {/* --- UPDATED ONBOARDING MODAL --- */}
@@ -625,47 +648,51 @@ const OrderingPage: React.FC = () => {
                 />
             )}
 
-            <header className="sticky top-0 z-[100] bg-white border-b border-gray-100 shadow-sm w-full">
-                <div className="max-w-7xl mx-auto px-4 py-4 relative flex items-center justify-between h-16">
-
-                    {/* Left Spacer (matches width of right button to help balance if you ever switch from absolute positioning) */}
-                    <div className="w-[88px] hidden sm:block"></div>
-
-                    {/* Company Name - Now perfectly centered on all devices */}
-                    <h1 className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-sm sm:text-lg md:text-lg font-black text-[#1A3B5D] uppercase tracking-tighter text-center leading-tight whitespace-nowrap truncate max-w-[55%] sm:max-w-[70%]">
-                        {companyName}
-                    </h1>
-
-                    {/* Store Link Button */}
-                    <button
-                        onClick={() => setIsSubdomainModalOpen(true)}
-                        className="bg-blue-50 text-blue-600 px-3 py-2 rounded-sm text-[10px] font-black uppercase tracking-wider border border-blue-100 hover:bg-blue-100 transition-colors z-10 shrink-0 ml-auto"
-                    >
-                        Store Link
-                    </button>
+            <header className="glass sticky top-0 z-[100] mx-3 mt-3 flex flex-shrink-0 items-center justify-between gap-3 rounded-2xl p-3 shadow-sm">
+                <div className="flex min-w-0 items-center gap-3">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-brand text-white shadow-md shadow-primary/25">
+                        <Store className="size-5" />
+                    </span>
+                    <div className="min-w-0">
+                        <h1 className="truncate text-sm font-bold tracking-tight text-foreground sm:text-lg">
+                            {companyName}
+                        </h1>
+                        <p className="hidden text-xs text-muted-foreground sm:block">Catalogue categories &amp; storefront</p>
+                    </div>
                 </div>
+
+                {/* Store Link Button */}
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsSubdomainModalOpen(true)}
+                    className="shrink-0 gap-1.5"
+                >
+                    <Link2 className="size-3.5" />
+                    <span className="hidden sm:inline">Store Link</span>
+                </Button>
             </header>
-            <main className="p-4 space-y-4 flex-1 max-w-7xl mx-auto w-full pb-20">
-                <div className='relative flex items-center justify-center w-full py-2'>
-                    <h1 className="text-sm md:text-xl font-extrabold text-[#F97316] uppercase tracking-tighter">
-                        Categories
+            <main className="mx-auto w-full max-w-7xl flex-1 space-y-4 p-3 pb-20 sm:p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h1 className="text-lg font-bold tracking-tight text-foreground sm:text-xl">
+                        <span className="text-gradient">Categories</span>
                     </h1>
-                    <button
+                    <Button
+                        variant="outline"
+                        size="sm"
                         onClick={handleDownloadFullCatalogPDF}
                         disabled={items.length === 0 || isGeneratingPDF}
-                        className="absolute right-0 flex items-center gap-1.5 bg-white border border-gray-100 px-3 py-1.5 rounded-sm shadow-sm active:scale-95 transition-all text-[#1A3B5D] hover:text-[#F97316] disabled:opacity-50"
+                        className="gap-1.5"
                         title="Download Master PDF"
                     >
-                        {isGeneratingPDF ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-                        <span className="text-[10px] font-black uppercase hidden sm:inline">
-                            {isGeneratingPDF ? 'Generating...' : 'PDF'}
-                        </span>
-                    </button>
+                        {isGeneratingPDF ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+                        <span className="hidden sm:inline">{isGeneratingPDF ? 'Generating...' : 'Download PDF'}</span>
+                    </Button>
                 </div>
 
                 {/* --- STICKY SEARCH BAR --- */}
-                <div className="sticky top-[68px] z-50 flex justify-center">
-                    <div className="relative group max-w-md mx-auto w-full">
+                <div className="sticky top-[76px] z-50 flex justify-center">
+                    <div className="group relative mx-auto w-full max-w-md">
                         <SearchableItemInput
                             items={items}
                             placeholder="Search products..."
@@ -686,39 +713,49 @@ const OrderingPage: React.FC = () => {
                         />
                     </div>
                 </div>
+
                 {/* --- CATALOGUE COUNT & FILTER --- */}
-                <div className="max-w-7xl mx-auto px-1 flex items-center justify-between relative">
+                <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">
-                            Total Catalogues:
+                        <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                            Total Categories
                         </span>
-                        <span className="bg-[#F97316]/10 text-[#F97316] px-2.5 py-0.5 rounded-sm text-[10px] font-black">
-                            {filteredItems.length}
-                        </span>
+                        <Badge variant="info">{filteredItems.length}</Badge>
                     </div>
 
                     <div className="relative">
-                        <button
+                        <Button
+                            variant="outline"
+                            size="sm"
                             onClick={() => setIsSortOpen(!isSortOpen)}
-                            className="flex items-center gap-2 bg-white border border-gray-100 px-3 py-1.5 rounded-sm shadow-sm active:scale-95 transition-all"
+                            className="gap-1.5"
                         >
-                            <span className="text-[10px] font-black uppercase text-[#1A3B5D]">Sort: {sortOrder}</span>
-                            <FiPlus className={`transition-transform duration-300 ${isSortOpen ? 'rotate-45' : ''}`} size={12} />
-                        </button>
+                            <ArrowUpDown className="size-3.5" />
+                            {sortOrder}
+                            <ChevronDown className={cn('size-3.5 transition-transform duration-200', isSortOpen && 'rotate-180')} />
+                        </Button>
 
                         {isSortOpen && (
-                            <div className="absolute right-0 mt-2 w-32 bg-white rounded-sm shadow-xl border border-gray-50 z-[70] overflow-hidden">
+                            <div className="glass absolute right-0 z-[70] mt-2 w-32 overflow-hidden rounded-xl shadow-lg">
                                 <button
                                     onClick={() => { setSortOrder('A-Z'); setIsSortOpen(false); }}
-                                    className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 ${sortOrder === 'A-Z' ? 'text-[#F97316]' : 'text-[#1A3B5D]'}`}
+                                    className={cn(
+                                        'flex w-full items-center justify-between px-4 py-2.5 text-left text-sm font-medium text-foreground transition-colors hover:bg-accent',
+                                        sortOrder === 'A-Z' && 'text-primary',
+                                    )}
                                 >
                                     A to Z
+                                    {sortOrder === 'A-Z' && <Check className="size-3.5" />}
                                 </button>
                                 <button
                                     onClick={() => { setSortOrder('Z-A'); setIsSortOpen(false); }}
-                                    className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 border-t border-gray-50 ${sortOrder === 'Z-A' ? 'text-[#F97316]' : 'text-[#1A3B5D]'}`}
+                                    className={cn(
+                                        'flex w-full items-center justify-between border-t border-border px-4 py-2.5 text-left text-sm font-medium text-foreground transition-colors hover:bg-accent',
+                                        sortOrder === 'Z-A' && 'text-primary',
+                                    )}
                                 >
                                     Z to A
+                                    {sortOrder === 'Z-A' && <Check className="size-3.5" />}
                                 </button>
                             </div>
                         )}
@@ -726,29 +763,40 @@ const OrderingPage: React.FC = () => {
                 </div>
 
                 {/* --- GLOBAL LIVE TOGGLE (ALL CATEGORIES) --- */}
-                <div>
-                    <ShowWrapper requiredPermission={Cata_Permissions.ViewEditButton}>
+                <ShowWrapper requiredPermission={Cata_Permissions.ViewEditButton}>
+                    <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card px-4 py-3 shadow-xs">
                         <div>
-                            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">
-                                Live Entire Catalogue
-                            </span>
-
-                            <button
-                                onClick={handleToggleAllCatalogueLive}
-                                disabled={isTogglingCatalogue || items.length === 0}
-                                className={`w-11 h-4 flex items-center rounded-sm p-1 transition-all duration-300 disabled:opacity-50 ${isAllCatalogueLive ? 'bg-[#F97316]' : 'bg-gray-300'}`}
-                            >
-                                <div
-                                    className={`bg-white w-3 h-3 rounded-sm shadow-md transform transition-all duration-300 ${isAllCatalogueLive ? 'translate-x-6' : 'translate-x-0'
-                                        }`}
-                                />
-                            </button>
+                            <p className="text-sm font-semibold text-foreground">Live Entire Catalogue</p>
+                            <p className="text-xs text-muted-foreground">Toggle visibility for every category at once</p>
                         </div>
-                    </ShowWrapper>
-                </div>
+
+                        <button
+                            onClick={handleToggleAllCatalogueLive}
+                            disabled={isTogglingCatalogue || items.length === 0}
+                            className={cn(
+                                'flex h-6 w-11 shrink-0 items-center rounded-full p-1 transition-all duration-300 disabled:opacity-50',
+                                isAllCatalogueLive ? 'bg-gradient-brand' : 'bg-muted',
+                            )}
+                        >
+                            <div
+                                className={cn(
+                                    'size-4 rounded-full bg-white shadow-md transition-transform duration-300',
+                                    isAllCatalogueLive ? 'translate-x-5' : 'translate-x-0',
+                                )}
+                            />
+                        </button>
+                    </div>
+                </ShowWrapper>
 
                 {/* --- PRODUCT GRID --- */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1">
+                {filteredItems.length === 0 ? (
+                    <EmptyState
+                        icon={<FolderOpen />}
+                        title="No categories found"
+                        description={searchQuery ? 'No categories match your search.' : 'Create a category from your item groups to see it here.'}
+                    />
+                ) : (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
                     {filteredItems.map(group => {
                         const validGroupIds = new Set(itemGroups.map(g => g.id));
                         const isVirtual = group.id === 'uncategorized';
@@ -763,32 +811,38 @@ const OrderingPage: React.FC = () => {
                             return allIds.includes(group.id!);
                         }).length;
                         const collageImages = getGroupImages(group.id!);
+                        const isPinned = pinnedIds.has(group.id!);
 
                         return (
                             <div
                                 id={group.id}
                                 key={group.id}
                                 onClick={() => navigate(`/catalogue-home/my-shop/${group.id}`)}
-                                className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col transition-all group cursor-pointer active:scale-95 ${highlightedId === group.id ? 'ring-1 ring-[#F97316] shadow-lg scale-[1.02]' : pinnedIds.has(group.id!) ? 'ring-1 ring-[#F97316] shadow-lg border-[#F97316]' : 'border-gray-100'
-                                    } ${isVirtual ? 'border-dashed border-gray-300' : ''}`}
+                                className={cn(
+                                    'group flex cursor-pointer flex-col overflow-hidden rounded-2xl border bg-card shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.98]',
+                                    highlightedId === group.id
+                                        ? 'border-primary ring-1 ring-primary shadow-lg scale-[1.02]'
+                                        : isPinned
+                                            ? 'border-primary/40 ring-1 ring-primary/40 shadow-lg'
+                                            : 'border-border hover:border-primary/40',
+                                    isVirtual && 'border-dashed',
+                                )}
                             >
                                 {/* --- IMAGE SECTION WITH TOP BADGE --- */}
-                                <div className="aspect-square bg-[#F8FAFC] relative overflow-hidden">
-                                    {pinnedIds.has(group.id!) && (
-                                        <div className="absolute top-1.5 right-1.5 z-10 bg-white text-[#F97316] rounded-sm px-1 py-1 flex items-center gap-0.5 shadow-md border border-[#F97316]">
-                                            <Pin size={12} className="fill-[#F97316]" />
+                                <div className="relative aspect-square overflow-hidden bg-muted">
+                                    {isPinned && (
+                                        <div className="absolute right-1.5 top-1.5 z-10 flex items-center gap-0.5 rounded-full border border-primary/30 bg-card p-1 text-primary shadow-md">
+                                            <Pin className="size-3 fill-primary" />
                                         </div>
                                     )}
                                     {collageImages.length > 0 ? (
                                         <div
-                                            className={`w-full h-full gap-[2px] p-[2px] ${collageImages.length === 1
-                                                ? 'grid grid-cols-1 grid-rows-1'
-                                                : collageImages.length === 2
-                                                    ? 'grid grid-cols-2 grid-rows-1'
-                                                    : collageImages.length === 3
-                                                        ? 'grid grid-cols-2 grid-rows-2'
-                                                        : 'grid grid-cols-2 grid-rows-2'
-                                                }`}
+                                            className={cn(
+                                                'grid h-full w-full gap-[2px] p-[2px]',
+                                                collageImages.length === 1
+                                                    ? 'grid-cols-1 grid-rows-1'
+                                                    : 'grid-cols-2 grid-rows-2',
+                                            )}
                                         >
                                             {collageImages.map((img, index) => {
                                                 const isThreeImagesLayout = collageImages.length === 3;
@@ -797,29 +851,29 @@ const OrderingPage: React.FC = () => {
                                                 return (
                                                     <div
                                                         key={index}
-                                                        className={`w-full h-full overflow-hidden rounded-[2px] ${isThreeImagesLayout && isLastImage
-                                                            ? 'col-span-2'
-                                                            : ''
-                                                            }`}
+                                                        className={cn(
+                                                            'h-full w-full overflow-hidden rounded-[3px]',
+                                                            isThreeImagesLayout && isLastImage && 'col-span-2',
+                                                        )}
                                                     >
                                                         <img
                                                             src={img}
                                                             alt={`product-${index}`}
-                                                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                                                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
                                                         />
                                                     </div>
                                                 );
                                             })}
                                         </div>
                                     ) : (
-                                        <div className="w-full h-full flex items-center justify-center">
-                                            <FiPackage className="h-10 w-10 text-gray-200" />
+                                        <div className="flex h-full w-full items-center justify-center">
+                                            <Package className="size-10 text-muted-foreground/40" />
                                         </div>
                                     )}
                                 </div>
 
                                 {/* --- CONTENT SECTION --- */}
-                                <div className="p-3 flex flex-col flex-1">
+                                <div className="flex flex-1 flex-col p-3">
                                     {editingId === group.id ? (
                                         <div className="space-y-2 py-1" onClick={(e) => e.stopPropagation()}>
                                             <input
@@ -827,12 +881,12 @@ const OrderingPage: React.FC = () => {
                                                 type="text"
                                                 value={tempName}
                                                 onChange={(e) => setTempName(e.target.value)}
-                                                className="w-full bg-gray-50 border border-gray-100 rounded-sm py-1 px-2 text-[14px] font-bold outline-none focus:ring-1 focus:ring-[#F97316]"
+                                                className="w-full rounded-lg border border-border bg-muted px-2 py-1 text-sm font-semibold text-foreground outline-none focus:ring-2 focus:ring-primary/40"
                                             />
                                             <div className="flex gap-1">
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleSaveEdit(group.id!); }}
-                                                    className="flex-1 bg-[#F97316] text-white py-1.5 rounded-sm text-[12px] font-black uppercase hover:bg-[#ea580c] transition-colors"
+                                                    className="flex-1 rounded-lg bg-gradient-brand py-1.5 text-xs font-bold uppercase tracking-wide text-white transition-opacity hover:opacity-90"
                                                 >
                                                     Save
                                                 </button>
@@ -864,39 +918,41 @@ const OrderingPage: React.FC = () => {
                                                             }
                                                         }
                                                     }}
-                                                    className="p-3 bg-red-100 text-red-700 rounded-sm hover:bg-red-200 transition-colors"
+                                                    className="rounded-lg bg-destructive/10 p-3 text-destructive transition-colors hover:bg-destructive/20"
                                                 >
-                                                    <Trash2 size={12} />
+                                                    <Trash2 className="size-3" />
                                                 </button>
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); setEditingId(null); }}
-                                                    className="p-3 bg-gray-200 text-gray-500 rounded-sm hover:bg-gray-300 transition-colors"
+                                                    className="rounded-lg bg-muted p-3 text-muted-foreground transition-colors hover:bg-accent"
                                                 >
-                                                    <X size={12} />
+                                                    <X className="size-3" />
                                                 </button>
                                             </div>
                                         </div>
                                     ) : (
                                         <>
-                                            <div className="flex items-center justify-between mb-1.5">
-                                                <h3 className="text-[14px] font-bold text-[#1A3B5D] uppercase leading-tight break-words overflow-hidden max-h-[2.5em]">
+                                            <div className="mb-1.5 flex items-center justify-between gap-1">
+                                                <h3 className="max-h-[2.5em] overflow-hidden break-words text-sm font-bold leading-tight text-foreground">
                                                     {isVirtual
-                                                        ? <i className="text-gray-500">{group.name}</i>
+                                                        ? <i className="text-muted-foreground">{group.name}</i>
                                                         : group.name
                                                     }
                                                 </h3>
-                                                <div className="flex items-center gap-1 shrink-0">
+                                                <div className="flex shrink-0 items-center gap-1">
                                                     {/* Pin button — always visible for all non-virtual groups */}
                                                     {!isVirtual && (
                                                         <button
                                                             onClick={(e) => handleTogglePin(e, group.id!)}
-                                                            className={`p-1.5 rounded-sm transition-all ${pinnedIds.has(group.id!)
-                                                                ? 'bg-[#F97316]/10 text-[#F97316]'
-                                                                : 'bg-gray-100 text-gray-400 hover:bg-[#F97316] hover:text-white'
-                                                                }`}
-                                                            title={pinnedIds.has(group.id!) ? 'Unpin' : 'Pin to top'}
+                                                            className={cn(
+                                                                'rounded-lg p-1.5 transition-all',
+                                                                isPinned
+                                                                    ? 'bg-primary/10 text-primary'
+                                                                    : 'bg-muted text-muted-foreground hover:bg-primary hover:text-white',
+                                                            )}
+                                                            title={isPinned ? 'Unpin' : 'Pin to top'}
                                                         >
-                                                            <Pin size={12} className={pinnedIds.has(group.id!) ? 'fill-[#F97316]' : ''} />
+                                                            <Pin className={cn('size-3', isPinned && 'fill-primary')} />
                                                         </button>
                                                     )}
 
@@ -907,38 +963,36 @@ const OrderingPage: React.FC = () => {
                                                                 e.stopPropagation();
                                                                 handleShareCategory(group);
                                                             }}
-                                                            className="p-1.5 rounded-sm bg-[#F97316]/10 text-[#F97316] hover:bg-[#F97316] hover:text-white transition-all"
+                                                            className="rounded-lg bg-primary/10 p-1.5 text-primary transition-all hover:bg-primary hover:text-white"
                                                             title="Share Category"
                                                         >
-                                                            <Send size={14} />
+                                                            <Send className="size-3.5" />
                                                         </button>
                                                     )}
                                                 </div>
                                             </div>
 
                                             {/* Centered Item Count Badge UI */}
-                                            <div className="flex items-center justify-center gap-1.5 bg-blue-50 px-2 py-0.5 rounded-sm border border-blue-100 w-fit mx-auto mb-2">
-                                                <span className="text-[12px] font-black text-[#F97316] leading-none">
-                                                    {itemCount}
-                                                </span>
-                                                <span className="text-[10px] font-black uppercase tracking-widest text-[#1A3B5D]/60 leading-none">
-                                                    Items
-                                                </span>
+                                            <div className="mx-auto mb-2">
+                                                <Badge variant="info">
+                                                    {itemCount} {itemCount === 1 ? 'item' : 'items'}
+                                                </Badge>
                                             </div>
 
                                             {/* Actions Logic */}
                                             {!isVirtual ? (
-                                                <div
-                                                    className="mt-auto w-full py-1.5 rounded-sm text-[12px] font-black uppercase text-center tracking-wider transition-all bg-[#F97316] text-white hover:bg-[#ea580c]"
+                                                <Button
+                                                    size="sm"
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         handleEdit(group);
                                                     }}
+                                                    className="mt-auto w-full gap-1 bg-gradient-brand text-white hover:opacity-90"
                                                 >
                                                     Edit Group
-                                                </div>
+                                                </Button>
                                             ) : (
-                                                <div className="mt-auto w-full py-1.5 rounded-sm text-[12px] font-black uppercase text-center tracking-wider bg-gray-100 text-gray-400 cursor-not-allowed">
+                                                <div className="mt-auto w-full cursor-not-allowed rounded-lg bg-muted py-1.5 text-center text-xs font-bold uppercase tracking-wide text-muted-foreground">
                                                     Default
                                                 </div>
                                             )}
@@ -949,51 +1003,53 @@ const OrderingPage: React.FC = () => {
                         );
                     })}
                 </div>
+                )}
             </main>
 
             {showCatalogueConfirmPopup && (
-                <div className="fixed inset-0 z-[200] flex items-center justify-center">
+                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
                     <div
-                        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+                        className="absolute inset-0"
                         onClick={() => setShowCatalogueConfirmPopup(false)}
                     />
-                    <div className="relative bg-white w-[90%] max-w-sm rounded-lg shadow-xl p-5 z-10 animate-in fade-in zoom-in duration-200">
-                        <h2 className="text-sm font-black text-[#1A3B5D] uppercase mb-2">
+                    <div className="relative z-10 w-full max-w-sm animate-in zoom-in fade-in rounded-2xl border border-border bg-card p-5 shadow-2xl duration-200">
+                        <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-foreground">
                             Confirmation
                         </h2>
-                        <p className="text-lg font-bold text-gray-600 mb-4">
+                        <p className="mb-4 text-sm font-medium text-muted-foreground">
                             Do you want to make the ENTIRE catalogue {pendingCatalogueLiveState ? "LIVE" : "UNLIVE"}? This affects all categories.
                         </p>
                         <div className="flex gap-2">
-                            <button
+                            <Button
                                 onClick={confirmToggleAllCatalogueLive}
-                                className="flex-1 bg-green-500 text-white py-2 rounded-sm text-xs font-black uppercase"
+                                className="flex-1 bg-gradient-brand text-white hover:opacity-90"
                             >
                                 Yes
-                            </button>
-                            <button
+                            </Button>
+                            <Button
+                                variant="ghost"
                                 onClick={() => setShowCatalogueConfirmPopup(false)}
-                                className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-sm text-xs font-black uppercase"
+                                className="flex-1"
                             >
                                 No
-                            </button>
+                            </Button>
                         </div>
                     </div>
                 </div>
             )}
 
             {isCustomerModalOpen && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-[#1A3B5D]/60 backdrop-blur-md p-4">
-                    <div className="bg-white rounded-sm p-8 w-full max-w-sm shadow-2xl text-center relative">
-                        <button onClick={() => setIsCustomerModalOpen(false)} className="absolute top-6 right-6 text-gray-400"><FiX size={20} /></button>
-                        <h3 className="text-sm font-black text-[#1A3B5D] uppercase mb-6">Customer Details</h3>
+                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 p-4 backdrop-blur-md">
+                    <div className="relative w-full max-w-sm rounded-2xl border border-border bg-card p-8 text-center shadow-2xl">
+                        <button onClick={() => setIsCustomerModalOpen(false)} className="absolute right-6 top-6 text-muted-foreground transition-colors hover:text-foreground"><X className="size-5" /></button>
+                        <h3 className="mb-6 text-sm font-bold uppercase tracking-wide text-foreground">Customer Details</h3>
                         <div className="space-y-4">
-                            <input type="text" placeholder="Customer Name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="w-full bg-gray-50 border-none rounded-sm p-4 text-xs font-bold outline-none focus:ring-2 focus:ring-[#F97316]/20" />
-                            <input type="tel" placeholder="Phone Number" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className="w-full bg-gray-50 border-none rounded-sm p-4 text-xs font-bold outline-none focus:ring-2 focus:ring-[#F97316]/20" />
+                            <input type="text" placeholder="Customer Name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="w-full rounded-xl border border-border bg-muted p-4 text-sm font-medium text-foreground outline-none focus:ring-2 focus:ring-primary/30" />
+                            <input type="tel" placeholder="Phone Number" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className="w-full rounded-xl border border-border bg-muted p-4 text-sm font-medium text-foreground outline-none focus:ring-2 focus:ring-primary/30" />
                         </div>
-                        <button disabled={isPlacingOrder} onClick={handleConfirmAndSaveOrder} className="w-full mt-6 bg-[#F97316] text-white py-4 rounded-sm font-black text-[10px] uppercase shadow-lg tracking-widest active:scale-95 disabled:opacity-50 transition-all">
+                        <Button disabled={isPlacingOrder} onClick={handleConfirmAndSaveOrder} className="mt-6 w-full gap-1.5 bg-gradient-brand text-white shadow-lg hover:opacity-90">
                             {isPlacingOrder ? 'Placing Order...' : 'Confirm Order'}
-                        </button>
+                        </Button>
                     </div>
                 </div>
             )}

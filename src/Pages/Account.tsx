@@ -14,7 +14,25 @@ import NotificationBell from '../Components/NotificationBell';
 //import { useMemo } from 'react';
 import BusinessCard from '../Catalogue/BusinessCards/BusinessCard';
 import { TutorialStep } from '../Components/TutorialStep';
-import { FiCopy, FiCheck } from 'react-icons/fi';
+import { Avatar, AvatarImage, AvatarFallback } from '../Components/ui/avatar';
+import { Button } from '../Components/ui/button';
+import { Spinner } from '../Components/ui/spinner';
+import {
+  Pencil,
+  Copy,
+  Check,
+  ChevronRight,
+  BarChart3,
+  Settings,
+  CreditCard,
+  LifeBuoy,
+  Sparkles,
+  LogOut,
+  User,
+  Gift,
+  Calendar,
+} from 'lucide-react';
+import { cn } from '../lib/utils';
 
 interface UserProfile {
   name: string;
@@ -23,6 +41,55 @@ interface UserProfile {
 }
 
 const TOTAL_STEPS = 7;
+
+const FeatureTile: React.FC<{
+  to: string;
+  icon: React.ReactNode;
+  label: string;
+  description: string;
+  featured?: boolean;
+  badgeClass?: string;
+  className?: string;
+}> = ({ to, icon, label, description, featured = false, badgeClass, className }) => (
+  <Link
+    to={to}
+    className={cn(
+      'group relative flex h-full flex-col justify-between overflow-hidden rounded-2xl border p-5 transition-all hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+      featured
+        ? 'glow-primary border-0 bg-gradient-to-br from-primary via-primary to-[oklch(0.5_0.24_320)] text-primary-foreground'
+        : 'border-border bg-card hover:border-primary/40 hover:shadow-lg',
+      className,
+    )}
+  >
+    {featured && (
+      <div className="pointer-events-none absolute -right-10 -top-10 size-36 rounded-full bg-white/15 blur-2xl" />
+    )}
+    <span
+      className={cn(
+        'relative flex size-10 items-center justify-center rounded-xl [&>svg]:size-5',
+        featured
+          ? 'bg-white/20 text-white'
+          : badgeClass ?? 'bg-gradient-to-br from-primary/20 to-fuchsia-500/20 text-primary shadow-inner',
+      )}
+    >
+      {icon}
+    </span>
+    <div className="relative mt-6">
+      <div className="flex items-center justify-between gap-2">
+        <p className={cn('text-sm font-semibold', featured ? 'text-white' : 'text-foreground')}>{label}</p>
+        <ChevronRight
+          className={cn(
+            'size-4 shrink-0 transition-transform group-hover:translate-x-0.5',
+            featured ? 'text-white/80' : 'text-muted-foreground group-hover:text-foreground',
+          )}
+        />
+      </div>
+      <p className={cn('mt-0.5 text-xs', featured ? 'text-white/75' : 'text-muted-foreground')}>
+        {description}
+      </p>
+    </div>
+  </Link>
+);
 
 const Account: React.FC = () => {
   const navigate = useNavigate();
@@ -186,15 +253,16 @@ const Account: React.FC = () => {
 
   if (loadingAuth || loadingProfile) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 text-slate-500">
-        <p>Loading profile data...</p>
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-muted text-muted-foreground">
+        <Spinner size="lg" />
+        <p className="text-sm">Loading your account…</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 text-red-500">
+      <div className="flex min-h-screen flex-col items-center justify-center bg-muted p-6 text-center text-destructive">
         <p>{error}</p>
       </div>
     );
@@ -202,106 +270,140 @@ const Account: React.FC = () => {
 
   if (!profileData) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 text-red-500">
+      <div className="flex min-h-screen flex-col items-center justify-center bg-muted p-6 text-center text-muted-foreground">
         <p>No profile data available.</p>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-gray-100">
+    <div className="aurora flex min-h-screen flex-col bg-muted">
       {showBadge && (
-        <div className={`w-full text-center py-2 text-sm font-bold text-white shadow-sm transition-colors duration-300 ${isUrgent ? 'bg-red-300' : 'bg-amber-200'}`}>
+        <div
+          className={`w-full py-2 text-center text-sm font-bold shadow-sm transition-colors duration-300 ${isUrgent ? 'bg-destructive text-destructive-foreground' : 'bg-warning text-warning-foreground'}`}
+        >
           <ShinyText
             text={`Subscription expires in ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}.`}
-            speed={4} delay={0} color="#030303" shineColor="#faf5f5" spread={100} direction="left" yoyo={false} pauseOnHover={false} disabled={false}
+            speed={4}
+            delay={0}
+            color="#030303"
+            shineColor="#faf5f5"
+            spread={100}
+            direction="left"
+            yoyo={false}
+            pauseOnHover={false}
+            disabled={false}
           />
-          <Link to="/subscription" className="text-black ml-2 underline hover:text-gray-100">Renew Now</Link>
+          <Link to="/subscription" className="ml-2 underline underline-offset-2 hover:opacity-80">
+            Renew Now
+          </Link>
         </div>
       )}
 
-      <div className="bg-gray-100 p-2 border-b border-gray-300 mb-4 flex items-center justify-between">
-        <div className="w-10" />
-
-        <h1 className="text-2xl font-bold text-center text-slate-800">Account</h1>
-
-        {/* Notification Bell */}
+      <header className="glass sticky top-0 z-10 flex items-center justify-between border-b border-border px-4 py-3">
+        <div className="w-9" />
+        <h1 className="text-lg font-semibold text-foreground">Account</h1>
         <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-          <div className="relative border border-slate-300 rounded-sm bg-gray-100 shadow-sm">
+          <div className="flex size-9 items-center justify-center rounded-lg border border-border bg-card shadow-xs">
             <NotificationBell />
           </div>
         </ShowWrapper>
-      </div>
+      </header>
 
-      {/* Step 1 — Profile photo + edit */}
-      <div ref={profileRef} className="flex flex-col items-center py-3 pb-4">
-        <TutorialStep
-          step={1}
-          currentStep={tutorialStep}
-          text="This is your profile. Tap the pencil icon to update your photo and name."
-          onNext={() => next(2)}
-          onSkip={skip}
-        >
-          <div className="relative mb-2">
-            {profileData.profilePicture ? (
-              <img
-                className="w-32 h-32 rounded-full object-cover border border-white shadow-lg bg-white"
-                src={profileData.profilePicture}
-                alt="Profile"
-              />
-            ) : (
-              <div className="w-32 h-32 rounded-full border border-white shadow-lg bg-gray-200 flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-16 h-16 text-gray-400">
-                  <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clipRule="evenodd" />
-                </svg>
-              </div>
-            )}
-            <div className="absolute top-0 left-0 right-0 bottom-0 border-2 border-green-500 rounded-full animate-pulse"></div>
-            <button
-              onClick={handleEditProfile}
-              className="absolute -top-1 -right-1 bg-white p-1.5 rounded-full shadow-lg hover:bg-gray-200 transition focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-center"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-gray-700">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-              </svg>
-            </button>
+      <div className="mx-auto w-full max-w-none px-4 pb-16 md:px-8 animate-in fade-in-0 slide-in-from-bottom-2 duration-500">
+        {/* ── Hero cover card ── */}
+        <div ref={profileRef} className="relative mt-3 overflow-hidden rounded-3xl border border-border bg-card shadow-lg ring-1 ring-primary/10">
+          <div className="relative h-28 bg-gradient-to-br from-primary via-primary to-[oklch(0.5_0.24_320)]">
+            <div className="pointer-events-none absolute -right-8 -top-8 size-40 rounded-full bg-white/15 blur-2xl" />
+            <div className="pointer-events-none absolute -bottom-12 left-12 size-40 rounded-full bg-white/10 blur-3xl" />
           </div>
-        </TutorialStep>
 
-        <h2 className="text-2xl font-semibold text-slate-900">{profileData.name}</h2>
-        <p className="text-base text-gray-500">{profileData.email}</p>
-
-        {/* Referral Code Block from File 1 */}
-        <div className="mt-3 h-10 flex items-center justify-center">
-          {companyReferralCode ? (
-            <div className="flex items-center bg-white border border-gray-300 rounded-sm px-3 py-1.5 shadow-sm">
-              <span className="text-sm text-gray-500 mr-2">Ref Code:</span>
-              <span className="font-mono font-bold tracking-wider text-gray-800">{companyReferralCode}</span>
-              <button
-                onClick={handleCopy}
-                className="ml-3 text-gray-500 hover:text-black transition"
-                title="Copy Referral Code"
+          <div className="px-6 pb-6">
+            <div className="-mt-14 flex items-end justify-between">
+              <TutorialStep
+                step={1}
+                currentStep={tutorialStep}
+                text="This is your profile. Tap the pencil icon to update your photo and name."
+                onNext={() => next(2)}
+                onSkip={skip}
               >
-                {copied ? <FiCheck className="text-green-500" size={18} /> : <FiCopy size={16} />}
-              </button>
+                <div className="relative">
+                  <div className="glow-primary rounded-full bg-gradient-to-br from-primary to-[oklch(0.6_0.22_330)] p-[3px]">
+                    <Avatar className="size-24 border-4 border-card">
+                      <AvatarImage src={profileData.profilePicture} alt={profileData.name} />
+                      <AvatarFallback className="bg-muted text-muted-foreground">
+                        <User className="size-12" />
+                      </AvatarFallback>
+                    </Avatar>
+                  </div>
+                  <button
+                    onClick={handleEditProfile}
+                    aria-label="Edit profile"
+                    className="absolute bottom-1 -right-1 flex size-9 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-md transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <Pencil className="size-4" />
+                  </button>
+                </div>
+              </TutorialStep>
+
+              <Button variant="outline" size="sm" onClick={handleEditProfile} className="mb-1">
+                <Pencil className="size-3.5" />
+                Edit
+              </Button>
             </div>
-          ) : (
-            <button
-              onClick={handleGenerateCode}
-              disabled={isGenerating}
-              className="text-sm text-blue-600 hover:underline disabled:text-gray-400"
-            >
-              {isGenerating ? 'Generating...' : 'Generate Referral Code'}
-            </button>
-          )}
+
+            <div className="mt-3">
+              <h2 className="text-gradient text-xl font-bold tracking-tight">{profileData.name}</h2>
+              <p className="text-sm text-muted-foreground">{profileData.email}</p>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              {companyReferralCode ? (
+                <div className="flex items-center gap-2 rounded-full border border-border bg-muted/60 px-3 py-1.5">
+                  <Gift className="size-3.5 text-primary" />
+                  <span className="text-xs text-muted-foreground">Ref</span>
+                  <span className="font-mono text-sm font-semibold tracking-wider text-foreground">
+                    {companyReferralCode}
+                  </span>
+                  <button
+                    onClick={handleCopy}
+                    className="text-muted-foreground transition hover:text-foreground"
+                    title="Copy referral code"
+                    aria-label="Copy referral code"
+                  >
+                    {copied ? <Check className="size-4 text-success" /> : <Copy className="size-4" />}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={handleGenerateCode}
+                  disabled={isGenerating}
+                  className="flex items-center gap-1.5 rounded-full border border-dashed border-border px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-primary/5 disabled:text-muted-foreground"
+                >
+                  <Gift className="size-3.5" />
+                  {isGenerating ? 'Generating…' : 'Generate referral code'}
+                </button>
+              )}
+              {daysRemaining !== null && (
+                <div
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium',
+                    isUrgent ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary',
+                  )}
+                >
+                  <Calendar className="size-3.5" />
+                  {daysRemaining} day{daysRemaining === 1 ? '' : 's'} left
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
 
-      <div className="flex-1 bg-gray-100 p-2">
-        <div className="w-full">
-          <h2 className="text-xl font-semibold text-slate-800 mb-4">Share your Business Card</h2>
-
-          {/* Step 2 — Business Card */}
+        {/* ── Business card ── */}
+        <section className="mt-6">
+          <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Share your business card
+          </h2>
           <div ref={businessCardRef}>
             <TutorialStep
               step={2}
@@ -313,11 +415,16 @@ const Account: React.FC = () => {
               <BusinessCard />
             </TutorialStep>
           </div>
+        </section>
 
-          <div className="w-full grid grid-cols-2 gap-4 justify-center mt-2 space-y-2 flex-col">
+        {/* ── Manage (bento) ── */}
+        <section className="mt-6">
+          <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Manage
+          </h2>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
             <ShowWrapper requiredPermission={Permissions.ViewReports}>
-              {/* Step 3 — Reports */}
-              <div ref={reportsRef}>
+              <div ref={reportsRef} className="col-span-2">
                 <TutorialStep
                   step={3}
                   currentStep={tutorialStep}
@@ -326,14 +433,15 @@ const Account: React.FC = () => {
                   onSkip={skip}
                   mobileArrowAlign="left"
                 >
-                  <Link to={ROUTES.REPORTS} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-2 border border-gray-200 text-gray-800 hover:shadow-lg">
-                    <span className="text-lg font-medium">Reports</span>
-                    <span className="text-xl text-gray-600">→</span>
-                  </Link>
+                  <FeatureTile
+                    featured
+                    to={ROUTES.REPORTS}
+                    icon={<BarChart3 />}
+                    label="Reports"
+                    description="Dive into sales, tax, P&L and party ledgers"
+                  />
                 </TutorialStep>
               </div>
-
-              {/* Step 4 — Settings */}
               <div ref={settingRef}>
                 <TutorialStep
                   step={4}
@@ -342,15 +450,11 @@ const Account: React.FC = () => {
                   onNext={() => next(5)}
                   onSkip={skip}
                 >
-                  <Link to={ROUTES.MASTERS} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-2 border border-gray-200 text-gray-800 hover:shadow-lg">
-                    <span className="text-lg font-medium">Setting</span>
-                    <span className="text-xl text-gray-600">→</span>
-                  </Link>
+                  <FeatureTile to={ROUTES.MASTERS} icon={<Settings />} label="Settings" description="Taxes, units & preferences" badgeClass="bg-gradient-to-br from-sky-500/25 to-cyan-500/25 text-sky-600 shadow-inner dark:text-sky-400" />
                 </TutorialStep>
               </div>
             </ShowWrapper>
 
-            {/* Step 5 — Plans */}
             <div ref={plansRef}>
               <TutorialStep
                 step={5}
@@ -360,14 +464,10 @@ const Account: React.FC = () => {
                 onSkip={skip}
                 mobileArrowAlign="left"
               >
-                <Link to={ROUTES.SUBSCRIPTION_PAGE} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-2 border border-gray-200 text-gray-800 hover:shadow-lg">
-                  <span className="text-lg font-medium">Plans</span>
-                  <span className="text-xl text-gray-600">→</span>
-                </Link>
+                <FeatureTile to={ROUTES.SUBSCRIPTION_PAGE} icon={<CreditCard />} label="Plans" description="Manage your subscription" badgeClass="bg-gradient-to-br from-violet-500/25 to-fuchsia-500/25 text-violet-600 shadow-inner dark:text-violet-400" />
               </TutorialStep>
             </div>
 
-            {/* Step 6 — Support */}
             <div ref={supportRef}>
               <TutorialStep
                 step={6}
@@ -376,44 +476,40 @@ const Account: React.FC = () => {
                 onNext={() => next(7)}
                 onSkip={skip}
               >
-                <Link to={ROUTES.SUPPORT_PAGE} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-2 border border-gray-200 text-gray-800 hover:shadow-lg">
-                  <span className="text-lg font-medium">Support</span>
-                  <span className="text-xl text-gray-600">→</span>
-                </Link>
+                <FeatureTile to={ROUTES.SUPPORT_PAGE} icon={<LifeBuoy />} label="Support" description="Get help from our team" badgeClass="bg-gradient-to-br from-emerald-500/25 to-teal-500/25 text-emerald-600 shadow-inner dark:text-emerald-400" />
               </TutorialStep>
             </div>
-          </div>
 
-          {/* Step 7 — Add Ons */}
-          <div ref={addOnsRef} className="mt-4 mb-6 flex justify-center">
-            {/* Preserved ViewAddons permission from File 1 instead of ViewReports from File 2 */}
             <ShowWrapper requiredPermission={Permissions.ViewAddons}>
-              <TutorialStep
-                step={7}
-                currentStep={tutorialStep}
-                text="Unlock extra features for your business with Add Ons."
-                onNext={() => completeTutorial(currentUser, 'accountTutorialDone', setTutorialStep)}
-                onSkip={skip}
-                isLast
-              >
-                <Link to={ROUTES.ADDITIONAL_FEATURES} className="rounded-sm bg-white py-3 px-8 font-semibold shadow-md mb-2 border border-gray-200 text-gray-800 hover:shadow-lg">
-                  <span className="text-lg font-medium">Add Ons</span>
-                  <span className="text-xl text-gray-600">→</span>
-                </Link>
-              </TutorialStep>
+              <div ref={addOnsRef}>
+                <TutorialStep
+                  step={7}
+                  currentStep={tutorialStep}
+                  text="Unlock extra features for your business with Add Ons."
+                  onNext={() => completeTutorial(currentUser, 'accountTutorialDone', setTutorialStep)}
+                  onSkip={skip}
+                  isLast
+                >
+                  <FeatureTile to={ROUTES.ADDITIONAL_FEATURES} icon={<Sparkles />} label="Add-ons" description="Unlock extra features" badgeClass="bg-gradient-to-br from-amber-500/25 to-orange-500/25 text-amber-600 shadow-inner dark:text-amber-400" />
+                </TutorialStep>
+              </div>
             </ShowWrapper>
           </div>
+        </section>
 
-          {/* Logout Section */}
-          <div ref={logoutRef} className="mt-2 flex justify-center">
-            <button onClick={handleLogout} className="rounded-sm bg-red-500 py-3 px-8 font-semibold text-white transition hover:bg-red-600">
-              Logout
-            </button>
-          </div>
-
+        {/* ── Logout ── */}
+        <div ref={logoutRef} className="mt-8 flex justify-center">
+          <Button
+            variant="outline"
+            onClick={handleLogout}
+            className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          >
+            <LogOut className="size-4" />
+            Logout
+          </Button>
         </div>
       </div>
-    </div >
+    </div>
   );
 };
 

@@ -2573,9 +2573,9 @@ const OrdersPage: React.FC = () => {
     // {
     //     isGeneratingPdf && (
     //         <div className="fixed inset-0 z-[5000] bg-black/40 flex items-center justify-center">
-    //             <div className="bg-white px-6 py-4 rounded-sm shadow-lg flex items-center gap-3">
+    //             <div className="bg-card px-6 py-4 rounded-sm shadow-lg flex items-center gap-3">
     //                 <Spinner />
-    //                 <span className="text-sm font-bold text-slate-700">
+    //                 <span className="text-sm font-bold text-foreground">
     //                     Generating PDF...
     //                 </span>
     //             </div>
@@ -2758,17 +2758,17 @@ const OrdersPage: React.FC = () => {
     };
 
     return (
-        <div className="flex min-h-screen w-full flex-col bg-gray-100 mb-10">
+        <div className="flex min-h-screen w-full flex-col bg-muted mb-10">
             {showBadge && (
                 <div className={`w-full text-center py-2 text-sm font-bold text-white shadow-sm ${isUrgent ? 'bg-red-300' : 'bg-amber-200'}`}>
                     <ShinyText text={`Subscription expires in ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}.`} speed={4} delay={0} color="#030303" shineColor="#faf5f5" spread={100} direction="left" yoyo={false} pauseOnHover={false} disabled={false} />
-                    <Link to="/subscription" className="text-black ml-2 underline hover:text-gray-100">Renew Now</Link>
+                    <Link to="/subscription" className="text-foreground ml-2 underline hover:text-gray-100">Renew Now</Link>
                 </div>
             )}
             {modal && <Modal message={modal.message} type={modal.type} onClose={() => setModal(null)} />}
 
             {/* --- 5. UPDATED HEADER (No Toggle) --- */}
-            <div className="bg-white shadow-sm sticky top-0 z-[100] px-4 py-2">
+            <div className="bg-card shadow-sm sticky top-0 z-[100] px-4 py-2">
                 {/* Main Header Row */}
                 <div className="flex items-center justify-between">
                     {/* Left: Search Icon - Changed w-10 to w-24 and added flex justify-start */}
@@ -2780,7 +2780,7 @@ const OrdersPage: React.FC = () => {
                             onNext={() => next(2)}
                             onSkip={skip}
                         >
-                            <button onClick={() => setShowSearch(!showSearch)} className="text-slate-500">
+                            <button onClick={() => setShowSearch(!showSearch)} className="text-muted-foreground">
                                 {showSearch ? <FiX className="w-6 h-6" /> : <FiSearch className="w-6 h-6" />}
                             </button>
                         </TutorialStep>
@@ -2792,13 +2792,13 @@ const OrdersPage: React.FC = () => {
                             <input
                                 type="text"
                                 placeholder="Search..."
-                                className="w-full max-w-[200px] text-center text-sm font-light p-1 border-b border-slate-300 focus:border-slate-800 outline-none transition-colors bg-transparent"
+                                className="w-full max-w-[200px] text-center text-sm font-light p-1 border-b border-border focus:border-slate-800 outline-none transition-colors bg-transparent"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 autoFocus
                             />
                         ) : (
-                            <h1 className="text-2xl font-bold text-slate-800">Orders</h1>
+                            <h1 className="text-2xl font-bold text-foreground">Orders</h1>
                         )}
 
                         {/* Date Filter - Just below Header */}
@@ -2810,7 +2810,7 @@ const OrdersPage: React.FC = () => {
                             onSkip={skip}
                         >
                             <div className="mt-0.5">
-                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">
                                     {getDateDisplay}
                                 </span>
                             </div>
@@ -2820,7 +2820,7 @@ const OrdersPage: React.FC = () => {
                     {/* Right: Notification Bell + Filter Icon */}
                     <div className="w-24 flex justify-end items-center gap-2">
                         <ShowWrapper requiredPermission={Cata_Permissions.ViewNotification}>
-                            <div className="border border-slate-300 rounded-sm bg-gray-100 shadow-sm flex items-center justify-center">
+                            <div className="border border-border rounded-sm bg-muted shadow-sm flex items-center justify-center">
                                 <NotificationBell />
                             </div>
                         </ShowWrapper>
@@ -2833,17 +2833,17 @@ const OrdersPage: React.FC = () => {
                                 onNext={() => next(4)}
                                 onSkip={skip}
                             >
-                                <button onClick={() => setIsFilterOpen(!isFilterOpen)} className="text-slate-500 hover:text-slate-800 cursor-pointer">
+                                <button onClick={() => setIsFilterOpen(!isFilterOpen)} className="text-muted-foreground hover:text-foreground cursor-pointer">
                                     <IconFilter />
                                 </button>
                             </TutorialStep>
 
                             {isFilterOpen && (
-                                <div className="absolute top-full right-0 mt-3 w-64 bg-white rounded-sm shadow-lg z-[1000] border p-3">
+                                <div className="absolute top-full right-0 mt-3 w-64 bg-card rounded-sm shadow-lg z-[1000] border p-3">
                                     <ul className="py-1 border-b mb-2">
                                         {dateFilters.map((filter) => (
                                             <li key={filter.value}>
-                                                <button onClick={() => handleDateFilterSelect(filter.value)} className={`w-full text-left px-4 py-2 text-sm ${activeDateFilter === filter.value ? 'bg-orange-50 text-orange-600 font-bold' : 'text-slate-700'} hover:bg-slate-50`}>{filter.label}</button>
+                                                <button onClick={() => handleDateFilterSelect(filter.value)} className={`w-full text-left px-4 py-2 text-sm ${activeDateFilter === filter.value ? 'bg-orange-50 text-orange-600 font-bold' : 'text-foreground'} hover:bg-muted`}>{filter.label}</button>
                                             </li>
                                         ))}
                                     </ul>
@@ -2863,17 +2863,17 @@ const OrdersPage: React.FC = () => {
             </div>
 
             {/* --- 6. UPDATED STEPPER SECTION --- */}
-            <div className={`bg-white shadow-sm sticky z-[50] border-b top-[72px]`}>
+            <div className={`bg-card shadow-sm sticky z-[50] border-b top-[72px]`}>
 
                 {/* Request Page */}
                 <div
                     onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`)}
-                    className="mx-3 mt-2 mb-2 rounded-sm cursor-pointer bg-white border border-slate-200 px-3 py-2 flex items-center justify-between shadow-sm hover:bg-slate-50 active:scale-[0.99] transition-all">
+                    className="mx-3 mt-2 mb-2 rounded-sm cursor-pointer bg-card border border-border px-3 py-2 flex items-center justify-between shadow-sm hover:bg-muted active:scale-[0.99] transition-all">
                     <div className="flex flex-col">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                             Customer Requests
                         </span>
-                        <span className="text-xs font-black text-slate-800">
+                        <span className="text-xs font-black text-foreground">
                             View All Requests →
                         </span>
                     </div>
@@ -2894,7 +2894,7 @@ const OrdersPage: React.FC = () => {
                     onNext={() => next(5)}
                     onSkip={skip}
                 >
-                    <div ref={setTutorialRef(4) as any} className="flex items-center w-full px-2 md:px-10 pt-9 pb-9 bg-white">
+                    <div ref={setTutorialRef(4) as any} className="flex items-center w-full px-2 md:px-10 pt-9 pb-9 bg-card">
                         {OrderStatuses.map((status, index) => {
                             const activeIndex = OrderStatuses.indexOf(activeStatusTab);
                             const isCompleted = index < activeIndex;
@@ -2909,7 +2909,7 @@ const OrdersPage: React.FC = () => {
                                     >
                                         <span
                                             className={`absolute ${index % 2 === 0 ? 'bottom-full mb-2' : 'top-full mt-2'
-                                                } text-center text-[8px] sm:text-[10px] md:text-[11px] uppercase tracking-tighter ${isActive ? 'text-[#F97316] font-black' : 'text-gray-400 font-bold'} whitespace-nowrap`}
+                                                } text-center text-[8px] sm:text-[10px] md:text-[11px] uppercase tracking-tighter ${isActive ? 'text-[#F97316] font-black' : 'text-muted-foreground font-bold'} whitespace-nowrap`}
                                         >
                                             {status}
                                         </span>
@@ -2918,7 +2918,7 @@ const OrdersPage: React.FC = () => {
                                                 ? "bg-orange-500 text-white"
                                                 : isCompleted || isActive
                                                     ? "bg-orange-500 text-white"
-                                                    : "bg-gray-200 text-gray-500"
+                                                    : "bg-muted text-muted-foreground"
                                                 } ${isActive ? "scale-110 shadow-md ring-2 ring-orange-100" : ""}`}
                                         >
 
@@ -2936,7 +2936,7 @@ const OrdersPage: React.FC = () => {
 
                                     {index < OrderStatuses.length - 1 && (
                                         <div
-                                            className={`flex-auto h-0.5 md:h-1.5 transition-colors duration-500 ${index < activeIndex ? 'bg-[#F97316]' : 'bg-gray-200'
+                                            className={`flex-auto h-0.5 md:h-1.5 transition-colors duration-500 ${index < activeIndex ? 'bg-[#F97316]' : 'bg-muted'
                                                 }`}
                                         />
                                     )}
@@ -2947,14 +2947,14 @@ const OrdersPage: React.FC = () => {
                 </TutorialStep>
             </div>
             {activeStatusTab === 'Completed' && (
-                <div className="sticky top-[248px] z-[90] flex p-1 bg-white mx-4 mt-2 rounded-sm shadow-sm border border-slate-200 max-w-md md:mx-auto w-[92%]">
+                <div className="sticky top-[248px] z-[90] flex p-1 bg-card mx-4 mt-2 rounded-sm shadow-sm border border-border max-w-md md:mx-auto w-[92%]">
                     {['unpaid', 'paid'].map((f) => (
                         <button
                             key={f}
                             onClick={() => setPaymentFilter(f as any)}
                             className={`flex-1 py-2 text-[10px] font-black uppercase rounded-sm transition-all ${paymentFilter === f
                                 ? 'bg-slate-800 text-white shadow-sm'
-                                : 'text-slate-500'
+                                : 'text-muted-foreground'
                                 }`}
                         >
                             {f}
@@ -2965,7 +2965,7 @@ const OrdersPage: React.FC = () => {
 
             {/* --- 7. ORDERS LIST --- */}
 
-            <div ref={setTutorialRef(5) as any} className="flex-grow overflow-y-hidden bg-slate-100 space-y-2 p-1 md:p-4">
+            <div ref={setTutorialRef(5) as any} className="flex-grow overflow-y-hidden bg-muted space-y-2 p-1 md:p-4">
                 {dataLoading ? (
                     <div className="flex justify-center py-10"><Spinner /></div>
                 ) : error ? (
@@ -3023,7 +3023,7 @@ const OrdersPage: React.FC = () => {
                                     exit={{ opacity: 0, y: -20 }}
                                     transition={{ duration: 0.25 }}
                                 >
-                                    <CustomCard key={Order.id} onClick={() => handleOrderClick(Order.id)} className="p-4 mb-3 bg-white shadow-sm border border-gray-100 rounded-sm cursor-pointer relative">
+                                    <CustomCard key={Order.id} onClick={() => handleOrderClick(Order.id)} className="p-4 mb-3 bg-card shadow-sm border border-border rounded-sm cursor-pointer relative">
                                         {/* 🔁 RETURN METHOD BADGE - TOP LEFT */}
                                         {returnMethods.length > 0 && (
                                             <div className="absolute -top-0.5 left-0 flex flex-wrap gap-1 p-1">
@@ -3075,7 +3075,7 @@ const OrdersPage: React.FC = () => {
                                                     setEditDiscountPercent(itemsBase > 0 ? parseFloat(((savedDiscount / itemsBase) * 100).toFixed(2)) : 0);
                                                     setShowBillDiscountFields(savedDiscount > 0);
                                                 }}
-                                                className="absolute top-5 left-2 p-2 bg-white/90 backdrop-blur-sm text-slate-500 rounded-sm transition-all duration-300 z-20 group"
+                                                className="absolute top-5 left-2 p-2 bg-card/90 backdrop-blur-sm text-muted-foreground rounded-sm transition-all duration-300 z-20 group"
                                             >
                                                 <div className="flex items-center cursor-pointer">
                                                     <IconEdit className='h-3 w-3' />
@@ -3118,25 +3118,25 @@ const OrdersPage: React.FC = () => {
                                         <div className="flex justify-between items-start pl-6 mt-1">
                                             <div>
                                                 {!isUpcomingStatus && (
-                                                    <h3 className="text-base font-bold text-slate-800">
+                                                    <h3 className="text-base font-bold text-foreground">
                                                         {Order.orderId}
                                                     </h3>
                                                 )}
-                                                <p className="text-black text-sm font-medium">
+                                                <p className="text-foreground text-sm font-medium">
                                                     {Order.userName}
                                                     {Order.status === "Upcoming" && Order.userLoginPhone && (
-                                                        <span className="ml-2 text-[10px] text-black font-semibold border p-1 bg-gray-100">
+                                                        <span className="ml-2 text-[10px] text-foreground font-semibold border p-1 bg-muted">
                                                             {Order.userLoginPhone}
                                                         </span>
                                                     )}
                                                 </p>
-                                                <p className="text-[10px] text-gray-600 mt-1">{Order.time}</p>
+                                                <p className="text-[10px] text-muted-foreground mt-1">{Order.time}</p>
                                             </div>
                                             <div className="text-right flex flex-col items-end">
                                                 <div className="flex items-center gap-2">
-                                                    <p className="text-lg font-bold text-black">₹{formatAmount(total)}
+                                                    <p className="text-lg font-bold text-foreground">₹{formatAmount(total)}
                                                     </p>
-                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}><path d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={`w-4 h-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`}><path d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
                                                 </div>
                                                 <p className="text-[10px] font-boldpx-2 py-0.5 mt-1 mr-6">Items: {Order.items?.length || 0}</p>
                                             </div>
@@ -3149,28 +3149,28 @@ const OrdersPage: React.FC = () => {
                                                     <div className="grid grid-cols-2 gap-4 mb-1 pb-4">
                                                         <div className="space-y-1">
                                                             <p className="text-[8px] font-black text-[#F97316] uppercase">Billing Address</p>
-                                                            <p className="text-[11px] font-bold text-slate-800">{Order.billingDetails?.name}</p>
-                                                            <p className="text-[10px] text-gray-500 leading-tight">{Order.billingDetails?.address}</p>
+                                                            <p className="text-[11px] font-bold text-foreground">{Order.billingDetails?.name}</p>
+                                                            <p className="text-[10px] text-muted-foreground leading-tight">{Order.billingDetails?.address}</p>
                                                             {(Order.billingDetails?.city || Order.billingDetails?.state) && (
-                                                                <p className="text-[10px] text-gray-500 leading-tight">
+                                                                <p className="text-[10px] text-muted-foreground leading-tight">
                                                                     {[Order.billingDetails?.city, Order.billingDetails?.state].filter(Boolean).join(', ')}
                                                                 </p>
                                                             )}
-                                                            <p className="text-[10px] text-gray-500">{Order.billingDetails?.phone}</p>
+                                                            <p className="text-[10px] text-muted-foreground">{Order.billingDetails?.phone}</p>
                                                         </div>
                                                         <div className="space-y-1 border-l pl-4">
                                                             <p className="text-[8px] font-black text-blue-500 uppercase">Shipping Address</p>
-                                                            <p className="text-[11px] font-bold text-slate-800">{Order.shippingDetails?.name || Order.billingDetails?.name}</p>
-                                                            <p className="text-[10px] text-gray-500 leading-tight">{Order.shippingDetails?.address || Order.billingDetails?.address}</p>
+                                                            <p className="text-[11px] font-bold text-foreground">{Order.shippingDetails?.name || Order.billingDetails?.name}</p>
+                                                            <p className="text-[10px] text-muted-foreground leading-tight">{Order.shippingDetails?.address || Order.billingDetails?.address}</p>
                                                             {(Order.shippingDetails?.city || Order.shippingDetails?.state || Order.billingDetails?.city || Order.billingDetails?.state) && (
-                                                                <p className="text-[10px] text-gray-500 leading-tight">
+                                                                <p className="text-[10px] text-muted-foreground leading-tight">
                                                                     {[
                                                                         Order.shippingDetails?.city || Order.billingDetails?.city,
                                                                         Order.shippingDetails?.state || Order.billingDetails?.state
                                                                     ].filter(Boolean).join(', ')}
                                                                 </p>
                                                             )}
-                                                            <p className="text-[10px] text-gray-500">{Order.shippingDetails?.phone}</p>
+                                                            <p className="text-[10px] text-muted-foreground">{Order.shippingDetails?.phone}</p>
                                                         </div>
                                                     </div>
 
@@ -3178,13 +3178,13 @@ const OrdersPage: React.FC = () => {
                                                 {/* Items Section */}
                                                 <div>
                                                     {isExpanded && Order.specialInstruction && (
-                                                        <div className="mb-1 bg-gray-50 border border-gray-200 rounded-sm p-2">
+                                                        <div className="mb-1 bg-muted border border-border rounded-sm p-2">
 
-                                                            <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest mb-1">
+                                                            <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest mb-1">
                                                                 Special Instructions
                                                             </p>
 
-                                                            <p className="text-[11px] text-gray-700 font-medium leading-snug break-words">
+                                                            <p className="text-[11px] text-foreground font-medium leading-snug break-words">
                                                                 {Order.specialInstruction}
                                                             </p>
 
@@ -3227,25 +3227,25 @@ const OrdersPage: React.FC = () => {
                                                                         <div className="flex-1">
                                                                             <p className="text-[11px] font-extrabold leading-tight mb-1" style={{ color: '#1e293b' }}>
                                                                                 {item.name}
-                                                                                <span className="ml-1 text-[9px] font-semibold text-gray-500">
+                                                                                <span className="ml-1 text-[9px] font-semibold text-muted-foreground">
                                                                                     {item.unit || "pcs"}
                                                                                 </span>
                                                                             </p>
                                                                             {item.note && (
                                                                                 <p className="text-[9px] leading-tight flex items-baseline gap-1.5 mt-1 opacity-80">
                                                                                     <span className="font-black uppercase tracking-widest font-xs">Note:</span>
-                                                                                    <span className="font-xs italic text-slate-600">{item.note}</span>
+                                                                                    <span className="font-xs italic text-muted-foreground">{item.note}</span>
                                                                                 </p>
                                                                             )}
-                                                                            <p className="text-[10px] text-gray-400">
+                                                                            <p className="text-[10px] text-muted-foreground">
                                                                                 ₹{formatAmount(unitPrice)} per {item.unit || "pcs"}
                                                                             </p>
                                                                         </div>
                                                                         <div className="text-right ml-4">
-                                                                            <p className="text-[13px] font-black text-slate-900">
+                                                                            <p className="text-[13px] font-black text-foreground">
                                                                                 ₹{formatAmount(unitPrice * remainingQty)}
                                                                             </p>
-                                                                            <p className="text-[9px] font-bold text-slate-500 bg-white">
+                                                                            <p className="text-[9px] font-bold text-muted-foreground bg-card">
                                                                                 Qty: {remainingQty}
                                                                             </p>
                                                                         </div>
@@ -3260,7 +3260,7 @@ const OrdersPage: React.FC = () => {
                                                                                 <p className="text-[11px] font-extrabold leading-tight mb-1"
                                                                                     style={{ textDecoration: 'line-through', color: '#94a3b8' }}>
                                                                                     {item.name}
-                                                                                    <span className="ml-1 text-[9px] font-semibold text-gray-400">
+                                                                                    <span className="ml-1 text-[9px] font-semibold text-muted-foreground">
                                                                                         {item.unit || "pcs"}
                                                                                     </span>
                                                                                 </p>
@@ -3276,7 +3276,7 @@ const OrdersPage: React.FC = () => {
                                                                                         </span>
                                                                                     )}
                                                                                     {entry.returnedAt && (
-                                                                                        <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wide">
+                                                                                        <span className="text-[7px] font-bold text-muted-foreground uppercase tracking-wide">
                                                                                             {new Date(
                                                                                                 entry.returnedAt?.toDate
                                                                                                     ? entry.returnedAt.toDate()
@@ -3292,7 +3292,7 @@ const OrdersPage: React.FC = () => {
                                                                                 <p className="text-[13px] font-black" style={{ color: '#94a3b8', textDecoration: 'line-through' }}>
                                                                                     ₹{formatAmount(entry.unitPrice * entry.qty)}
                                                                                 </p>
-                                                                                <p className="text-[9px] font-bold text-slate-400">
+                                                                                <p className="text-[9px] font-bold text-muted-foreground">
                                                                                     Qty: {entry.qty}
                                                                                 </p>
                                                                             </div>
@@ -3315,7 +3315,7 @@ const OrdersPage: React.FC = () => {
                                                                         <p className="text-[11px] font-extrabold leading-tight mb-1"
                                                                             style={{ textDecoration: 'line-through', color: '#94a3b8' }}>
                                                                             {r.name}
-                                                                            <span className="ml-1 text-[9px] font-semibold text-gray-400">
+                                                                            <span className="ml-1 text-[9px] font-semibold text-muted-foreground">
                                                                                 {r.unit || "pcs"}
                                                                             </span>
                                                                         </p>
@@ -3341,7 +3341,7 @@ const OrdersPage: React.FC = () => {
                                                                                             </span>
                                                                                         )}
                                                                                         {matchedHistory?.returnedAt && (
-                                                                                            <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wide">
+                                                                                            <span className="text-[7px] font-bold text-muted-foreground uppercase tracking-wide">
                                                                                                 {new Date(
                                                                                                     (matchedHistory.returnedAt as any)?.toDate
                                                                                                         ? (matchedHistory.returnedAt as any).toDate()
@@ -3358,7 +3358,7 @@ const OrdersPage: React.FC = () => {
                                                                         {r.note && (
                                                                             <p className="text-[9px] leading-tight flex items-baseline gap-1.5 mt-1 opacity-80">
                                                                                 <span className="font-black uppercase tracking-widest">Note:</span>
-                                                                                <span className="italic text-slate-400">{r.note}</span>
+                                                                                <span className="italic text-muted-foreground">{r.note}</span>
                                                                             </p>
                                                                         )}
 
@@ -3367,7 +3367,7 @@ const OrdersPage: React.FC = () => {
                                                                         <p className="text-[13px] font-black" style={{ color: '#94a3b8', textDecoration: 'line-through' }}>
                                                                             ₹{formatAmount((r.effectiveUnitPrice ?? r.customPrice ?? r.salesPrice ?? r.mrp ?? 0)
                                                                                 * r.quantity)}                                                                        </p>
-                                                                        <p className="text-[9px] font-bold text-slate-400">Qty: {r.quantity}</p>
+                                                                        <p className="text-[9px] font-bold text-muted-foreground">Qty: {r.quantity}</p>
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -3392,7 +3392,7 @@ const OrdersPage: React.FC = () => {
                                                             )}
                                                             {Number(Order.totalTax || 0) > 0 && (
                                                                 <div className="px-2 pt-0.5 flex justify-between items-center border-t">
-                                                                    <span className="text-[8px] font-bold text-slate-500 uppercase tracking-wide">
+                                                                    <span className="text-[8px] font-bold text-muted-foreground uppercase tracking-wide">
                                                                         Tax
                                                                     </span>
                                                                     <span className="text-[9px] font-black text-orange-500">
@@ -3447,12 +3447,12 @@ const OrdersPage: React.FC = () => {
                                                             </div>
 
                                                             <div className='flex gap-3 items-center'>
-                                                                <div className="text-right border-r border-slate-200 pr-3">
+                                                                <div className="text-right border-r border-border pr-3">
                                                                     <p className="text-[7px] font-bold text-green-600 uppercase tracking-tighter leading-none mb-0.5">Paid</p>
                                                                     <p className="text-[11px] font-black text-green-700 leading-none">₹{paid.toFixed(2)}</p>
                                                                 </div>
 
-                                                                <div className="text-right border-r border-slate-200 pr-3">
+                                                                <div className="text-right border-r border-border pr-3">
                                                                     <p className="text-[7px] font-bold text-blue-600 uppercase tracking-tighter leading-none mb-0.5">C.Note</p>
                                                                     <p className="text-[11px] font-black text-blue-700 leading-none">
                                                                         ₹{Number(Order.creditNoteAmount || 0).toFixed(2)}
@@ -3460,7 +3460,7 @@ const OrdersPage: React.FC = () => {
                                                                 </div>
 
                                                                 {Number(Order.refundAmount || 0) > 0 && (
-                                                                    <div className="text-right border-r border-slate-200 pr-3">
+                                                                    <div className="text-right border-r border-border pr-3">
                                                                         <p className="text-[7px] font-bold text-red-600  uppercase tracking-tighter leading-none mb-0.5">Refund</p>
                                                                         <p className="text-[11px] font-black text-red-600 leading-none">
                                                                             ₹{Number(Order.refundAmount || 0).toFixed(2)}
@@ -3495,7 +3495,7 @@ const OrdersPage: React.FC = () => {
                                                                 <a
                                                                     href={`tel:${Order.userLoginPhone.replace(/\D/g, '')}`}
                                                                     onClick={(e) => e.stopPropagation()}
-                                                                    className="py-2.5 bg-white border border-emerald-200 text-emerald-600 text-xs font-bold rounded-sm text-center"
+                                                                    className="py-2.5 bg-card border border-emerald-200 text-emerald-600 text-xs font-bold rounded-sm text-center"
                                                                 >
                                                                     Call
                                                                 </a>
@@ -3596,7 +3596,7 @@ const OrdersPage: React.FC = () => {
                                                                             e.stopPropagation();
                                                                             handlePreviousStatus(Order.id, Order.status);
                                                                         }}
-                                                                        className="w-full py-2.5 bg-gray-200 text-black text-sm font-bold rounded-sm flex items-center justify-center flex-col">
+                                                                        className="w-full py-2.5 bg-muted text-foreground text-sm font-bold rounded-sm flex items-center justify-center flex-col">
                                                                         ←
                                                                         <span className='text-[10px]'>back</span>
                                                                     </button>
@@ -3685,7 +3685,7 @@ const OrdersPage: React.FC = () => {
                         })}
                     </AnimatePresence>
                 ) : (
-                    <p className="p-8 text-center text-slate-500">
+                    <p className="p-8 text-center text-muted-foreground">
                         {isTutorialActive
                             ? 'Sample orders will appear here once you switch to a matching status.'
                             : 'No Orders found.'}
@@ -3696,15 +3696,15 @@ const OrdersPage: React.FC = () => {
             {/* Modals (SelectedAction, QR, Payment, Editing) Same as provided */}
             {selectedOrderForAction && (
                 <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4" onClick={() => { setSelectedOrderForAction(null); setShowPrintSubMenu(false); }}>
-                    <div className="bg-white rounded-sm p-6 w-full max-w-sm shadow-xl" onClick={e => e.stopPropagation()}>
-                        <div className="flex mb-4 bg-slate-100 rounded-sm p-1">
+                    <div className="bg-card rounded-sm p-6 w-full max-w-sm shadow-xl" onClick={e => e.stopPropagation()}>
+                        <div className="flex mb-4 bg-muted rounded-sm p-1">
                             {['bill', 'estimate'].map((type) => (
                                 <button
                                     key={type}
                                     onClick={() => setBillType(type as any)}
                                     className={`flex-1 py-2 text-xs font-bold uppercase rounded-sm transition-all ${billType === type
-                                        ? 'bg-white text-[#F97316] shadow-sm'
-                                        : 'text-slate-500'
+                                        ? 'bg-card text-[#F97316] shadow-sm'
+                                        : 'text-muted-foreground'
                                         }`}
                                 >
                                     {type}
@@ -3769,10 +3769,10 @@ const OrdersPage: React.FC = () => {
                     onClick={() => setShowPrintSubMenu(false)}
                 >
                     <div
-                        className="bg-white rounded-sm p-6 w-full max-w-xs shadow-xl"
+                        className="bg-card rounded-sm p-6 w-full max-w-xs shadow-xl"
                         onClick={e => e.stopPropagation()}
                     >
-                        <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest mb-4 text-center">
+                        <h3 className="text-sm font-black text-foreground uppercase tracking-widest mb-4 text-center">
                             Print Options
                         </h3>
                         <div className="flex flex-col gap-3">
@@ -3808,7 +3808,7 @@ const OrdersPage: React.FC = () => {
                             </button>
                             <button
                                 onClick={() => setShowPrintSubMenu(false)}
-                                className="w-full text-[11px] font-bold text-slate-400 hover:text-slate-700 mt-1"
+                                className="w-full text-[11px] font-bold text-muted-foreground hover:text-foreground mt-1"
                             >
                                 Cancel
                             </button>
@@ -3818,20 +3818,20 @@ const OrdersPage: React.FC = () => {
             )}
             {showQrModal && (
                 <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm flex flex-col items-center animate-in fade-in zoom-in duration-300 relative">
-                        <button onClick={() => setShowQrModal(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+                    <div className="bg-card rounded-xl shadow-2xl p-6 w-full max-w-sm flex flex-col items-center animate-in fade-in zoom-in duration-300 relative">
+                        <button onClick={() => setShowQrModal(null)} className="absolute top-4 right-4 text-muted-foreground hover:text-muted-foreground">
                             <FiX size={24} />
                         </button>
-                        <h3 className="text-xl font-bold text-gray-800 mb-1">Download Bill</h3>
-                        <p className="text-sm text-gray-500 mb-4">Invoice #{showQrModal.orderId}</p>
-                        <div className="bg-white p-2 border-2 border-gray-100 rounded-lg shadow-inner mb-4">
+                        <h3 className="text-xl font-bold text-foreground mb-1">Download Bill</h3>
+                        <p className="text-sm text-muted-foreground mb-4">Invoice #{showQrModal.orderId}</p>
+                        <div className="bg-card p-2 border-2 border-border rounded-lg shadow-inner mb-4">
                             <QRCode
                                 value={`${window.location.origin}/download-bill/${currentUser?.companyId}/${showQrModal.id}`}
                                 size={200}
                                 viewBox={`0 0 256 256`}
                             />
                         </div>
-                        <p className="text-center text-sm text-gray-600 mb-4">Scan to download PDF</p>
+                        <p className="text-center text-sm text-muted-foreground mb-4">Scan to download PDF</p>
                         <button
                             onClick={() => setShowQrModal(null)}
                             className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
@@ -3987,7 +3987,7 @@ const OrdersPage: React.FC = () => {
             {showTransportModal && (
                 <div className="fixed inset-0 z-[2500] flex items-center justify-center p-4" onClick={() => setShowTransportModal(false)}>
                     <div className="absolute inset-0 bg-black/50" />
-                    <div className="relative w-full max-w-md bg-white rounded-sm shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                    <div className="relative w-full max-w-md bg-card rounded-sm shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
                         <div className="bg-orange-500 px-4 py-2.5 flex items-center justify-between">
                             <h3 className="text-white font-semibold text-sm">Transport Details</h3>
                             <button onClick={() => setShowTransportModal(false)} className="text-white hover:text-orange-100">
@@ -3997,28 +3997,28 @@ const OrdersPage: React.FC = () => {
                         <div className="p-4 space-y-3">
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="col-span-2">
-                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Transport Name</label>
-                                    <input type="text" value={transportName} onChange={(e) => setTransportName(e.target.value)} placeholder="e.g. DP World Express Logistic" className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-orange-500 outline-none" />
+                                    <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">Transport Name</label>
+                                    <input type="text" value={transportName} onChange={(e) => setTransportName(e.target.value)} placeholder="e.g. DP World Express Logistic" className="w-full p-2 text-sm rounded-sm border border-border bg-muted focus:border-orange-500 outline-none" />
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">GR/RR No.</label>
-                                    <input type="text" value={grRrNo} onChange={(e) => setGrRrNo(e.target.value)} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-orange-500 outline-none" />
+                                    <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">GR/RR No.</label>
+                                    <input type="text" value={grRrNo} onChange={(e) => setGrRrNo(e.target.value)} className="w-full p-2 text-sm rounded-sm border border-border bg-muted focus:border-orange-500 outline-none" />
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">GR/RR Date</label>
-                                    <input type="date" value={grRrDate} onChange={(e) => setGrRrDate(e.target.value)} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-orange-500 outline-none" />
+                                    <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">GR/RR Date</label>
+                                    <input type="date" value={grRrDate} onChange={(e) => setGrRrDate(e.target.value)} className="w-full p-2 text-sm rounded-sm border border-border bg-muted focus:border-orange-500 outline-none" />
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Vehicle No.</label>
-                                    <input type="text" value={vehicleNo} onChange={(e) => setVehicleNo(e.target.value)} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-orange-500 outline-none" />
+                                    <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">Vehicle No.</label>
+                                    <input type="text" value={vehicleNo} onChange={(e) => setVehicleNo(e.target.value)} className="w-full p-2 text-sm rounded-sm border border-border bg-muted focus:border-orange-500 outline-none" />
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">PIN Code</label>
-                                    <input type="text" maxLength={6} value={pinCode} onChange={(e) => setPinCode(e.target.value.replace(/\D/g, '').slice(0, 6))} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-orange-500 outline-none" />
+                                    <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">PIN Code</label>
+                                    <input type="text" maxLength={6} value={pinCode} onChange={(e) => setPinCode(e.target.value.replace(/\D/g, '').slice(0, 6))} className="w-full p-2 text-sm rounded-sm border border-border bg-muted focus:border-orange-500 outline-none" />
                                 </div>
                                 <div className="col-span-2">
-                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Station / From Place</label>
-                                    <input type="text" value={stationFrom} onChange={(e) => setStationFrom(e.target.value)} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-orange-500 outline-none" />
+                                    <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">Station / From Place</label>
+                                    <input type="text" value={stationFrom} onChange={(e) => setStationFrom(e.target.value)} className="w-full p-2 text-sm rounded-sm border border-border bg-muted focus:border-orange-500 outline-none" />
                                 </div>
                             </div>
                             <div className="flex gap-2 pt-2">
@@ -4043,27 +4043,27 @@ const OrdersPage: React.FC = () => {
             )}
             {editingOrder && (
                 <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-1 md:p-3">
-                    <div className="bg-white rounded-sm w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+                    <div className="bg-card rounded-sm w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
                         {/* Header */}
-                        <div className="px-5 py-3 border-b flex justify-between items-center bg-slate-50">
+                        <div className="px-5 py-3 border-b flex justify-between items-center bg-muted">
                             <div className="flex items-center gap-4">
                                 <div>
-                                    <h3 className="text-sm font-bold text-slate-800 leading-tight">Edit Order</h3>
+                                    <h3 className="text-sm font-bold text-foreground leading-tight">Edit Order</h3>
                                     <p className="text-[10px] text-orange-600 font-bold uppercase tracking-tighter">{editingOrder.orderId}</p>
                                 </div>
 
                                 {/* Divider aur Total Amount */}
                                 <div className="h-8 w-[1px] bg-gray-500 mx-2"></div>
                                 <div className="flex flex-col gap-1">
-                                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest leading-none">Total Amount</span>
-                                    <span className="text-md font-black text-slate-900 leading-none">₹{formatAmount(calculatedEditTotal)}  </span>
+                                    <span className="text-[8px] font-bold text-muted-foreground uppercase tracking-widest leading-none">Total Amount</span>
+                                    <span className="text-md font-black text-foreground leading-none">₹{formatAmount(calculatedEditTotal)}  </span>
                                 </div>
                             </div>
 
                             {/* Close Button */}
                             <button
                                 onClick={() => setEditingOrder(null)}
-                                className="p-1.5 hover:bg-gray-200 rounded-sm transition-colors"
+                                className="p-1.5 hover:bg-muted rounded-sm transition-colors"
                             >
                                 <FiX size={20} />
                             </button>
@@ -4074,16 +4074,16 @@ const OrdersPage: React.FC = () => {
                                 {/* LEFT SIDE: ADDRESSES */}
                                 <div className="space-y-4">
                                     <div className="flex justify-between items-center">
-                                        <div className="flex sm:hidden p-1 bg-slate-100 rounded-sm mb-2 flex-1">
+                                        <div className="flex sm:hidden p-1 bg-muted rounded-sm mb-2 flex-1">
                                             <button
                                                 onClick={() => setActiveTab('billing')}
-                                                className={`flex-1 py-2 text-xs font-bold rounded-sm transition-all ${activeTab === 'billing' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500'}`}
+                                                className={`flex-1 py-2 text-xs font-bold rounded-sm transition-all ${activeTab === 'billing' ? 'bg-card text-orange-600 shadow-sm' : 'text-muted-foreground'}`}
                                             >
                                                 Billing
                                             </button>
                                             <button
                                                 onClick={() => setActiveTab('shipping')}
-                                                className={`flex-1 py-2 text-xs font-bold rounded-sm transition-all ${activeTab === 'shipping' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
+                                                className={`flex-1 py-2 text-xs font-bold rounded-sm transition-all ${activeTab === 'shipping' ? 'bg-card text-blue-600 shadow-sm' : 'text-muted-foreground'}`}
                                             >
                                                 Shipping
                                             </button>
@@ -4092,7 +4092,7 @@ const OrdersPage: React.FC = () => {
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         {/* Billing Address Section */}
-                                        <div className={`p-4 rounded-sm border border-slate-200 bg-orange-50/30 space-y-3 ${activeTab === 'billing' ? 'block' : 'hidden sm:block'}`}>
+                                        <div className={`p-4 rounded-sm border border-border bg-orange-50/30 space-y-3 ${activeTab === 'billing' ? 'block' : 'hidden sm:block'}`}>
                                             <div className="flex justify-between items-center">
                                                 <h4 className="text-[11px] font-black text-orange-600 uppercase tracking-widest flex items-center gap-2">
                                                     <span className="w-1.5 h-1.5 bg-orange-600 rounded-sm"></span> Billing Address
@@ -4112,7 +4112,7 @@ const OrdersPage: React.FC = () => {
                                                             }
                                                         }}
                                                     />
-                                                    <span className="text-[9px] font-bold text-slate-500 uppercase">Same for Shipping</span>
+                                                    <span className="text-[9px] font-bold text-muted-foreground uppercase">Same for Shipping</span>
                                                 </label>
                                             </div>
 
@@ -4121,7 +4121,7 @@ const OrdersPage: React.FC = () => {
                                                 <input
                                                     type="text"
                                                     placeholder="Name"
-                                                    className="p-2 border border-slate-300 rounded-sm text-xs outline-none focus:border-orange-400"
+                                                    className="p-2 border border-border rounded-sm text-xs outline-none focus:border-orange-400"
                                                     value={editingOrder.billingDetails?.name || ''}
                                                     onChange={(e) => {
                                                         const val = e.target.value;
@@ -4138,7 +4138,7 @@ const OrdersPage: React.FC = () => {
                                                 <input
                                                     type="text"
                                                     placeholder="Phone"
-                                                    className="p-2 border border-slate-300 rounded-sm text-xs outline-none focus:border-orange-400"
+                                                    className="p-2 border border-border rounded-sm text-xs outline-none focus:border-orange-400"
                                                     value={editingOrder.billingDetails?.phone || ''}
                                                     onChange={(e) => {
                                                         const val = e.target.value.replace(/\D/g, '').slice(0, 10);
@@ -4155,7 +4155,7 @@ const OrdersPage: React.FC = () => {
                                                 {/* ADDRESS FIELD */}
                                                 <textarea
                                                     placeholder="Address"
-                                                    className="col-span-2 p-2 border border-slate-300 rounded-sm text-xs h-16 resize-none outline-none focus:border-orange-400"
+                                                    className="col-span-2 p-2 border border-border rounded-sm text-xs h-16 resize-none outline-none focus:border-orange-400"
                                                     value={editingOrder.billingDetails?.address || ''}
                                                     onChange={(e) => {
                                                         const val = e.target.value;
@@ -4171,7 +4171,7 @@ const OrdersPage: React.FC = () => {
                                         </div>
 
                                         {/* Shipping Address Section */}
-                                        <div className={`p-4 rounded-sm border border-slate-200 bg-blue-50/30 space-y-3 ${activeTab === 'shipping' ? 'block' : 'hidden sm:block'}`}>
+                                        <div className={`p-4 rounded-sm border border-border bg-blue-50/30 space-y-3 ${activeTab === 'shipping' ? 'block' : 'hidden sm:block'}`}>
                                             <h4 className="text-[11px] font-black text-blue-600 uppercase tracking-widest flex items-center gap-2">
                                                 <span className="w-1.5 h-1.5 bg-blue-600 rounded-sm"></span> Shipping Address
                                             </h4>
@@ -4179,7 +4179,7 @@ const OrdersPage: React.FC = () => {
                                                 <input
                                                     type="text"
                                                     placeholder="Name"
-                                                    className="p-2 border border-slate-300 rounded-sm text-xs outline-none focus:border-blue-400"
+                                                    className="p-2 border border-border rounded-sm text-xs outline-none focus:border-blue-400"
                                                     value={editingOrder.shippingDetails?.name || ''}
                                                     onChange={(e) => setEditingOrder({
                                                         ...editingOrder,
@@ -4190,7 +4190,7 @@ const OrdersPage: React.FC = () => {
                                                 <input
                                                     type="text"
                                                     placeholder="Phone"
-                                                    className="p-2 border border-slate-300 rounded-sm text-xs outline-none focus:border-blue-400"
+                                                    className="p-2 border border-border rounded-sm text-xs outline-none focus:border-blue-400"
                                                     value={editingOrder.shippingDetails?.phone || ''}
                                                     onChange={(e) => {
                                                         const val = e.target.value.replace(/\D/g, '').slice(0, 10);
@@ -4203,7 +4203,7 @@ const OrdersPage: React.FC = () => {
 
                                                 <textarea
                                                     placeholder="Address"
-                                                    className="col-span-2 p-2 border border-slate-300 rounded-sm text-xs h-16 resize-none outline-none focus:border-blue-400"
+                                                    className="col-span-2 p-2 border border-border rounded-sm text-xs h-16 resize-none outline-none focus:border-blue-400"
                                                     value={editingOrder.shippingDetails?.address || ''}
                                                     onChange={(e) => setEditingOrder({
                                                         ...editingOrder,
@@ -4218,7 +4218,7 @@ const OrdersPage: React.FC = () => {
                                 {/* RIGHT SIDE: ITEMS & TOTAL */}
                                 <div className="flex flex-col w-full space-y-2">
                                     {/* ADD NEW ITEM SEARCH BOX */}
-                                    <div className="p-2 border-t border-slate-200">
+                                    <div className="p-2 border-t border-border">
                                         <p className="text-[9px] font-black text-[#F97316] uppercase tracking-widest mb-2">Add New Item</p>
                                         <SearchableItemInput
                                             items={availableItems}
@@ -4328,7 +4328,7 @@ const OrdersPage: React.FC = () => {
                                     </div>
 
                                     <div className="h-fit self-start w-full flex flex-col">
-                                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 mt-2">
+                                        <h4 className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-2 mt-2">
                                             Items ({editingOrder.items?.length})
                                         </h4>
 
@@ -4379,7 +4379,7 @@ const OrdersPage: React.FC = () => {
                             </div>
                         </div>
                         {/* Expenses & Discount Section */}
-                        <div className="px-4 py-2 bg-white border-t space-y-3">
+                        <div className="px-4 py-2 bg-card border-t space-y-3">
                             {/* Combined action row */}
                             <div className="flex items-center gap-2 flex-wrap">
                                 <button
@@ -4413,7 +4413,7 @@ const OrdersPage: React.FC = () => {
                                                 placeholder="Expense name (e.g. Freight)"
                                                 value={expense.name}
                                                 onChange={(e) => setEditExpenses(prev => prev.map(ex => ex.id === expense.id ? { ...ex, name: e.target.value } : ex))}
-                                                className="flex-1 p-2 text-xs rounded-sm border border-orange-200 bg-white outline-none focus:border-orange-400"
+                                                className="flex-1 p-2 text-xs rounded-sm border border-orange-200 bg-card outline-none focus:border-orange-400"
                                             />
                                             <input
                                                 type="number"
@@ -4423,7 +4423,7 @@ const OrdersPage: React.FC = () => {
                                                     const val = parseFloat(e.target.value) || '';
                                                     setEditExpenses(prev => prev.map(ex => ex.id === expense.id ? { ...ex, amount: val } : ex));
                                                 }}
-                                                className="w-24 p-2 text-xs rounded-sm border border-orange-200 bg-white outline-none focus:border-orange-400"
+                                                className="w-24 p-2 text-xs rounded-sm border border-orange-200 bg-card outline-none focus:border-orange-400"
                                             />
                                             <button
                                                 onClick={() => setEditExpenses(prev => prev.filter(ex => ex.id !== expense.id))}
@@ -4459,7 +4459,7 @@ const OrdersPage: React.FC = () => {
                                                     }, 0);
                                                     setEditDiscount(parseFloat(((pct / 100) * base).toFixed(2)));
                                                 }}
-                                                className="w-16 text-center bg-white border border-red-200 rounded-sm text-red-700 text-xs p-1.5 outline-none focus:border-red-400 pr-4"
+                                                className="w-16 text-center bg-card border border-red-200 rounded-sm text-red-700 text-xs p-1.5 outline-none focus:border-red-400 pr-4"
                                             />
                                             <span className="absolute right-1 text-[10px] text-red-400 font-bold pointer-events-none">%</span>
                                         </div>
@@ -4481,7 +4481,7 @@ const OrdersPage: React.FC = () => {
                                                     }, 0);
                                                     setEditDiscountPercent(base > 0 ? parseFloat(((amt / base) * 100).toFixed(2)) : 0);
                                                 }}
-                                                className="w-20 text-center bg-white border border-red-200 rounded-sm text-red-700 text-xs p-1.5 outline-none focus:border-red-400 pl-4"
+                                                className="w-20 text-center bg-card border border-red-200 rounded-sm text-red-700 text-xs p-1.5 outline-none focus:border-red-400 pl-4"
                                             />
                                         </div>
                                     </div>
@@ -4489,20 +4489,20 @@ const OrdersPage: React.FC = () => {
                             )}
 
                             {/* Live total preview */}
-                            <div className="flex justify-between items-center pt-1 border-t border-slate-100">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Final Total</span>
-                                <span className="text-base font-black text-slate-800">₹{formatAmount(calculatedEditTotal)}</span>
+                            <div className="flex justify-between items-center pt-1 border-t border-border">
+                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Final Total</span>
+                                <span className="text-base font-black text-foreground">₹{formatAmount(calculatedEditTotal)}</span>
                             </div>
                         </div>
                         {/* Footer Buttons */}
-                        <div className="px-6 py-4 bg-slate-50 border-t flex gap-3">
+                        <div className="px-6 py-4 bg-muted border-t flex gap-3">
                             <button
                                 onClick={() => {
                                     setEditingOrder(null);
                                     setCartSearchQuery('');
                                     setTransportName(''); setGrRrNo(''); setGrRrDate(''); setVehicleNo(''); setStationFrom(''); setPinCode('');
                                 }}
-                                className="flex-1 py-2.5 bg-gray-400 text-black text-sm font-bold hover:bg-slate-300 rounded-sm transition-colors"
+                                className="flex-1 py-2.5 bg-gray-400 text-foreground text-sm font-bold hover:bg-slate-300 rounded-sm transition-colors"
                             >
                                 Discard
                             </button>
@@ -4518,16 +4518,16 @@ const OrdersPage: React.FC = () => {
             )}
             {selectedOrderForConfirm && (
                 <div className="fixed inset-0 z-[4000] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                    <div className="bg-white w-[340px] rounded-sm shadow-xl border border-slate-200 p-5">
-                        <p className="text-center text-sm font-semibold text-slate-700 mb-1">
+                    <div className="bg-card w-[340px] rounded-sm shadow-xl border border-border p-5">
+                        <p className="text-center text-sm font-semibold text-foreground mb-1">
                             Move order to <span className="text-orange-600">Completed</span>?
                         </p>
-                        <p className="text-center text-[11px] text-slate-400 mb-5">
+                        <p className="text-center text-[11px] text-muted-foreground mb-5">
                             This action cannot be undone.
                         </p>
                         <div className="flex gap-3">
                             <button
-                                className="flex-1 py-2.5 bg-slate-200 text-slate-800 text-xs font-black rounded-sm hover:bg-slate-300 transition"
+                                className="flex-1 py-2.5 bg-muted text-foreground text-xs font-black rounded-sm hover:bg-slate-300 transition"
                                 onClick={() => setSelectedOrderForConfirm(null)}
                             >
                                 Cancel
@@ -4549,18 +4549,18 @@ const OrdersPage: React.FC = () => {
             {/* Delete Confirm Modal */}
             {showDeleteConfirmModal && pendingDeleteOrderId && (
                 <div className="fixed inset-0 z-[4000] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                    <div className="bg-white w-[360px] rounded-sm shadow-xl border border-slate-200 p-5">
-                        <p className="text-center text-[11px] font-black uppercase tracking-widest text-slate-500 mb-2">
+                    <div className="bg-card w-[360px] rounded-sm shadow-xl border border-border p-5">
+                        <p className="text-center text-[11px] font-black uppercase tracking-widest text-muted-foreground mb-2">
                             Delete Order
                         </p>
-                        <p className="text-center text-sm text-slate-600 mb-5 leading-snug">
+                        <p className="text-center text-sm text-muted-foreground mb-5 leading-snug">
                             {pendingDeleteWarning || (
                                 <>Are you sure you want to <span className="text-red-600 font-bold">delete this order</span>? This action cannot be undone.</>
                             )}
                         </p>
                         <div className="flex gap-3">
                             <button
-                                className="flex-1 py-2.5 bg-slate-200 text-slate-800 text-xs font-black rounded-sm hover:bg-slate-300 transition"
+                                className="flex-1 py-2.5 bg-muted text-foreground text-xs font-black rounded-sm hover:bg-slate-300 transition"
                                 onClick={() => {
                                     setShowDeleteConfirmModal(false);
                                     setPendingDeleteOrderId(null);
@@ -4589,16 +4589,16 @@ const OrdersPage: React.FC = () => {
             {/* Zero Amount Modal */}
             {showZeroAmountModal && pendingZeroOrderId && (
                 <div className="fixed inset-0 z-[4000] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                    <div className="bg-white w-[360px] rounded-sm shadow-xl border border-slate-200 p-5">
-                        <p className="text-center text-[11px] font-black uppercase tracking-widest text-slate-500 mb-2">
+                    <div className="bg-card w-[360px] rounded-sm shadow-xl border border-border p-5">
+                        <p className="text-center text-[11px] font-black uppercase tracking-widest text-muted-foreground mb-2">
                             Order Amount is ₹0
                         </p>
-                        <p className="text-center text-sm text-slate-600 mb-5 leading-snug">
+                        <p className="text-center text-sm text-muted-foreground mb-5 leading-snug">
                             All items have been removed. Do you want to <span className="text-red-600 font-bold">delete this order</span> entirely?
                         </p>
                         <div className="flex gap-3">
                             <button
-                                className="flex-1 py-2.5 bg-slate-200 text-slate-800 text-xs font-black rounded-sm hover:bg-slate-300 transition"
+                                className="flex-1 py-2.5 bg-muted text-foreground text-xs font-black rounded-sm hover:bg-slate-300 transition"
                                 onClick={() => {
                                     setShowZeroAmountModal(false);
                                     setPendingZeroOrderId(null);
@@ -4625,9 +4625,9 @@ const OrdersPage: React.FC = () => {
             {/* Adjustment Popup */}
             {showAdjustmentPopup && pendingAdjustment && (
                 <div className="fixed inset-0 z-[4000] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                    <div className="bg-white w-[360px] rounded-sm shadow-xl border border-slate-200 p-5">
+                    <div className="bg-card w-[360px] rounded-sm shadow-xl border border-border p-5">
 
-                        <p className="text-center text-[11px] font-black uppercase tracking-widest text-slate-500">
+                        <p className="text-center text-[11px] font-black uppercase tracking-widest text-muted-foreground">
                             Amount Reduced
                         </p>
 
@@ -4652,7 +4652,7 @@ const OrdersPage: React.FC = () => {
                         </div>
 
                         <button
-                            className="mt-4 w-full text-[10px] font-bold text-slate-400 hover:text-slate-700"
+                            className="mt-4 w-full text-[10px] font-bold text-muted-foreground hover:text-foreground"
                             onClick={() => {
                                 setShowAdjustmentPopup(false);
                                 setPendingAdjustment(null);

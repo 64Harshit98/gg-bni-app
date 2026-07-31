@@ -1,26 +1,46 @@
 import React, { useMemo, useState } from 'react';
+import {
+  Download,
+  Eye,
+  EyeOff,
+  Package,
+  Search,
+  X,
+} from 'lucide-react';
 import useItemReport from './ItemReportComponents/useItemReport';
 import type { Item } from '../../constants/models';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import XLSX from 'xlsx-js-style';
-import { Spinner } from '../../constants/Spinner';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
-import { CustomTable } from '../../Components/CustomTable';
 import BackButton from '../../Components/BackButton';
-import { IconClose, IconSearch } from '../../constants/Icons';
 import { getItemColumns } from '../../constants/TableColoumns';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import FilterSelect from './ItemReportComponents/FilterSelect';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import { useAuth } from '../../context/auth-context'
+import { Button } from '../../Components/ui/button';
+import { Input } from '../../Components/ui/input';
+import { Spinner } from '../../Components/ui/spinner';
+import { EmptyState } from '../../Components/ui/empty-state';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../Components/ui/table';
+import { Pagination } from '../../Components/ui/pagination';
+import { usePagination } from '../../hooks/usePagination';
 
 // Import your Modal and State
 import { Modal } from '../../constants/Modal'; // Adjust path to where you saved the Modal code
 import { State } from '../../enums';
 
 const UNASSIGNED_GROUP_NAME = 'Uncategorized';
+const ITEMS_PAGE_SIZE = 25;
 // --- Helper Component ---
 
 const ItemReport: React.FC = () => {
@@ -638,10 +658,25 @@ const ItemReport: React.FC = () => {
 
   const tableColumns = useMemo(() => getItemColumns(itemGroups), [itemGroups]);
 
-  if (isLoading) return <Spinner />;
+  const {
+    currentPage,
+    totalPages,
+    pageItems,
+    goToPage,
+  } = usePagination<Item>({ totalItems: filteredItems.length, pageSize: ITEMS_PAGE_SIZE });
+
+  const paginatedItems = useMemo(() => pageItems(filteredItems), [pageItems, filteredItems]);
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-2 mb-12">
+    <div className="aurora min-h-screen bg-background pb-16">
       {/* 1. Generic Modal for Success/Error/Info */}
       {feedbackModal.isOpen && (
         <Modal
@@ -662,139 +697,202 @@ const ItemReport: React.FC = () => {
         onDownloadExcel={downloadAsExcel}
       />
 
-      <div className="flex items-center justify-between pb-3 border-b mb-2">
+      <header className="glass sticky top-0 z-10 flex items-center gap-3 border-b border-border px-4 py-3">
         <BackButton />
-        <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
-          Item Report
-        </h1>
-        <button onClick={() => setShowSearch(true)} className="p-2">
-          <IconSearch />
+        <div className="flex-1">
+          <h1 className="text-lg font-bold tracking-tight text-foreground">
+            Item <span className="text-gradient">Report</span>
+          </h1>
+          <p className="text-xs text-muted-foreground">Pricing, margins &amp; stock across your catalogue</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowSearch((prev) => !prev)}
+          aria-label="Search items"
+          className="flex size-9 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground shadow-xs transition hover:text-foreground"
+        >
+          <Search className="size-4" />
         </button>
-      </div>
+      </header>
 
-      {showSearch && (
-        <div className="flex justify-center mb-2 px-2">
-          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-blue-700">
-            <input
-              type="text"
-              placeholder="Search by Name..."
-              className="flex-1 text-base font-light p-2 outline-none bg-transparent text-center"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              autoFocus
-            />
-            <button
-              onClick={() => {
-                setSearchQuery('');
-                setShowSearch(false);
-              }}
-              className="p-1 text-gray-500 hover:text-black"
+      <div className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8 animate-in fade-in-0 slide-in-from-bottom-2 duration-500">
+        {showSearch && (
+          <div className="mb-4 flex justify-center">
+            <div className="relative w-full max-w-md">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Search by name..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                autoFocus
+                className="pl-9 pr-9"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setShowSearch(false);
+                }}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground transition hover:text-foreground"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="mb-4 rounded-2xl border border-border bg-card p-4 shadow-xs">
+          <h2 className="mb-3 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Filters
+          </h2>
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center">
+            <FilterSelect
+              label="Item Group"
+              value={itemGroupId}
+              onChange={(e) => setItemGroupId(e.target.value)}
             >
-              <IconClose />
-            </button>
+              <option value="">All Groups</option>
+              {itemGroups.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
+                </option>
+              ))}
+              <option value={UNASSIGNED_GROUP_NAME}>Uncategorized</option>
+            </FilterSelect>
+            <Button onClick={handleApplyFilters} className="sm:w-28">
+              Apply
+            </Button>
           </div>
         </div>
-      )}
 
-      <div className="bg-white p-2 rounded-lg mb-2">
-        <h2 className="text-center text-sm font-semibold text-gray-700 uppercase tracking-wider mb-2">
-          FILTERS
-        </h2>
-        <div className="flex w-full gap-2 items-end sm:items-center">
-          <FilterSelect
-            label="Item Group"
-            value={itemGroupId}
-            onChange={(e) => setItemGroupId(e.target.value)}
-          >
-            <option value="">All Groups</option>
-            {itemGroups.map((group) => (
-              <option key={group.id} value={group.id}>
-                {group.name}
-              </option>
-            ))}
-            <option value={UNASSIGNED_GROUP_NAME}>Uncategorized</option>
-          </FilterSelect>
-          <button
-            onClick={handleApplyFilters}
-            className="w-[28%] py-2 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 transition self-end sm:self-auto"
-          >
-            Apply
-          </button>
+        <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3">
+          <CustomCard
+            variant={CardVariant.Summary}
+            title="Total Items"
+            value={Math.round(summary.totalItems).toString()}
+          />
+          <CustomCard
+            variant={CardVariant.Summary}
+            title="Average MRP"
+            value={`₹${Math.round(summary.averageMrp).toLocaleString('en-IN')}`}
+          />
+          <CustomCard
+            variant={CardVariant.Summary}
+            title="Avg. Cost Price"
+            value={`₹${Math.round(summary.averagePurchasePrice).toLocaleString('en-IN')}`}
+          />
+          <CustomCard
+            variant={CardVariant.Summary}
+            title="Avg. Sale Price"
+            value={`₹${Math.round(summary.averageSalePrice).toLocaleString('en-IN')}`}
+          />
+          <CustomCard
+            variant={CardVariant.Summary}
+            title="Avg. Margin"
+            value={`₹${Math.round(summary.averageProfitMargin).toLocaleString('en-IN')}`}
+          />
+          <CustomCard
+            variant={CardVariant.Summary}
+            title="Avg. Margin %"
+            value={`${Math.round(summary.averageMarginPercentage).toFixed(0)} %`}
+          />
         </div>
-      </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-2">
-        <CustomCard
-          variant={CardVariant.Summary}
-          title="Total Items"
-          value={Math.round(summary.totalItems).toString()}
-        />
-        <CustomCard
-          variant={CardVariant.Summary}
-          title="Average MRP"
-          value={`₹${Math.round(summary.averageMrp).toLocaleString('en-IN')}`}
-        />
-        <CustomCard
-          variant={CardVariant.Summary}
-          title="Avg. Cost Price"
-          value={`₹${Math.round(summary.averagePurchasePrice).toLocaleString('en-IN')}`}
-        />
-        <CustomCard
-          variant={CardVariant.Summary}
-          title="Avg. Sale Price"
-          value={`₹${Math.round(summary.averageSalePrice).toLocaleString('en-IN')}`}
-        />
-        <CustomCard
-          variant={CardVariant.Summary}
-          title="Avg. Margin"
-          value={`₹${Math.round(summary.averageProfitMargin).toLocaleString('en-IN')}`}
-        />
-        <CustomCard
-          variant={CardVariant.Summary}
-          title="Avg. Margin %"
-          value={`${Math.round(summary.averageMarginPercentage).toFixed(0)} %`}
-        />
-      </div>
+        <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 shadow-xs md:flex-row md:items-center md:justify-between">
+          <h2 className="text-center text-lg font-semibold text-foreground md:text-left">Report Details</h2>
+          <div className="flex items-stretch gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setIsListVisible(!isListVisible)}
+              className="flex-1 md:flex-none"
+            >
+              {isListVisible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              {isListVisible ? 'Hide List' : 'Show List'}
+            </Button>
 
-      <div className="bg-white p-4 rounded-lg shadow-md flex flex-col md:flex-row md:justify-between md:items-center gap-3">
-        <h2 className="text-lg font-semibold text-gray-700 text-center md:text-left">Report Details</h2>
-        <div className="flex items-stretch gap-3">
-          <button
-            onClick={() => setIsListVisible(!isListVisible)}
-            className="flex-1 md:flex-none px-4 py-2 min-h-[44px] bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition"
-          >
-            {isListVisible ? 'Hide List' : 'Show List'}
-          </button>
-
-          {/* Single Download Button triggers the Choice Modal */}
-          <button
-            onClick={() => {
-              if (filteredItems.length === 0) {
-                setFeedbackModal({
-                  isOpen: true,
-                  type: State.INFO,
-                  message: 'No items available to download.',
-                });
-              } else {
-                setIsDownloadModalOpen(true);
-              }
-            }}
-            className="flex-1 md:flex-none px-4 py-2 min-h-[44px] bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 disabled:opacity-50"
-          >
-            Download Report
-          </button>
+            {/* Single Download Button triggers the Choice Modal */}
+            <Button
+              type="button"
+              onClick={() => {
+                if (filteredItems.length === 0) {
+                  setFeedbackModal({
+                    isOpen: true,
+                    type: State.INFO,
+                    message: 'No items available to download.',
+                  });
+                } else {
+                  setIsDownloadModalOpen(true);
+                }
+              }}
+              className="flex-1 md:flex-none"
+            >
+              <Download className="size-4" />
+              Download Report
+            </Button>
+          </div>
         </div>
-      </div>
 
-      {isListVisible && (
-        <CustomTable<Item>
-          data={filteredItems}
-          columns={tableColumns}
-          keyExtractor={(item) => item.id || Math.random()}
-          sortConfig={sortConfig}
-          onSort={handleSort}
-        />
-      )}
+        {isListVisible && (
+          filteredItems.length === 0 ? (
+            <EmptyState
+              icon={<Package />}
+              title="No items found"
+              description="Try adjusting your search or item group filter."
+            />
+          ) : (
+            <div className="flex flex-col gap-3">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    {tableColumns.map((col) => (
+                      <TableHead key={col.header} className={col.className}>
+                        {col.sortKey ? (
+                          <button
+                            type="button"
+                            onClick={() => handleSort(col.sortKey as keyof Item)}
+                            className="inline-flex items-center gap-1 transition hover:text-foreground"
+                          >
+                            {col.header}
+                            {sortConfig.key === col.sortKey && (
+                              <span className="text-primary">{sortConfig.direction === 'asc' ? '▲' : '▼'}</span>
+                            )}
+                          </button>
+                        ) : (
+                          col.header
+                        )}
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedItems.map((item) => (
+                    <TableRow key={item.id ?? item.name}>
+                      {tableColumns.map((col) => (
+                        <TableCell key={col.header} className={col.className}>
+                          {typeof col.accessor === 'function' ? col.accessor(item) : String(item[col.accessor as keyof Item] ?? '-')}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {totalPages > 1 && (
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={goToPage}
+                  totalItems={filteredItems.length}
+                  pageSize={ITEMS_PAGE_SIZE}
+                />
+              )}
+            </div>
+          )
+        )}
+      </div>
     </div>
   );
 };

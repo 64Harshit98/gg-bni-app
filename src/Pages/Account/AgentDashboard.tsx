@@ -75,27 +75,27 @@ const SettlePayoutModal: React.FC<{
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-            <div className="bg-white rounded-sm shadow-xl w-full max-w-sm p-6 border border-gray-200">
+            <div className="bg-card rounded-sm shadow-xl w-full max-w-sm p-6 border border-border">
                 <div className="flex justify-between items-center mb-5">
-                    <h2 className="text-lg font-bold text-gray-900">Settle Payout</h2>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-700 p-1 rounded-sm transition-colors">
+                    <h2 className="text-lg font-bold text-foreground">Settle Payout</h2>
+                    <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1 rounded-sm transition-colors">
                         <IconClose width={18} height={18} />
                     </button>
                 </div>
 
-                <div className="mb-5 bg-gray-50 p-3 rounded-sm border border-gray-100 text-sm">
+                <div className="mb-5 bg-muted p-3 rounded-sm border border-border text-sm">
                     <div className="flex justify-between mb-1">
-                        <span className="text-gray-500 font-medium">Agent:</span>
-                        <span className="font-bold text-gray-900">{request.agentName}</span>
+                        <span className="text-muted-foreground font-medium">Agent:</span>
+                        <span className="font-bold text-foreground">{request.agentName}</span>
                     </div>
                     <div className="flex justify-between">
-                        <span className="text-gray-500 font-medium">Requested:</span>
-                        <span className="font-bold text-gray-900">₹{request.amount.toFixed(2)}</span>
+                        <span className="text-muted-foreground font-medium">Requested:</span>
+                        <span className="font-bold text-foreground">₹{request.amount.toFixed(2)}</span>
                     </div>
                 </div>
 
                 <div className="mb-6">
-                    <label className="block text-xs font-bold text-gray-600 uppercase mb-2">
+                    <label className="block text-xs font-bold text-muted-foreground uppercase mb-2">
                         Settlement Amount (₹)
                     </label>
                     <input
@@ -105,7 +105,7 @@ const SettlePayoutModal: React.FC<{
                         max={request.amount}
                         min={1}
                         placeholder="Enter amount"
-                        className="w-full px-3 py-2.5 border border-gray-300 rounded-sm focus:outline-none focus:ring-2 focus:ring-black text-sm font-semibold text-gray-900 transition-shadow"
+                        className="w-full px-3 py-2.5 border border-border rounded-sm focus:outline-none focus:ring-2 focus:ring-black text-sm font-semibold text-foreground transition-shadow"
                     />
                 </div>
 
@@ -113,7 +113,7 @@ const SettlePayoutModal: React.FC<{
                     <button
                         onClick={onClose}
                         disabled={isSubmitting}
-                        className="flex-1 px-4 py-2 bg-white border border-gray-300 rounded-sm text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                        className="flex-1 px-4 py-2 bg-card border border-border rounded-sm text-sm font-bold text-foreground hover:bg-muted transition-colors disabled:opacity-50"
                     >
                         Cancel
                     </button>
@@ -158,27 +158,27 @@ const EditCreditsModal: React.FC<{
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-            <div className="bg-white rounded-sm shadow-xl w-full max-w-sm p-6 border border-gray-200">
+            <div className="bg-card rounded-sm shadow-xl w-full max-w-sm p-6 border border-border">
                 <div className="flex justify-between items-center mb-5">
-                    <h2 className="text-lg font-bold text-gray-900">Edit Credits</h2>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-700 p-1 rounded-sm transition-colors">
+                    <h2 className="text-lg font-bold text-foreground">Edit Credits</h2>
+                    <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1 rounded-sm transition-colors">
                         <IconClose width={18} height={18} />
                     </button>
                 </div>
 
-                <div className="mb-5 bg-gray-50 p-3 rounded-sm border border-gray-100 text-sm">
+                <div className="mb-5 bg-muted p-3 rounded-sm border border-border text-sm">
                     <div className="flex justify-between mb-1">
-                        <span className="text-gray-500 font-medium">Business:</span>
-                        <span className="font-bold text-gray-900">{company.name}</span>
+                        <span className="text-muted-foreground font-medium">Business:</span>
+                        <span className="font-bold text-foreground">{company.name}</span>
                     </div>
                     <div className="flex justify-between">
-                        <span className="text-gray-500 font-medium">Current Credits:</span>
+                        <span className="text-muted-foreground font-medium">Current Credits:</span>
                         <span className="font-bold text-purple-700">{company.referralCredits}</span>
                     </div>
                 </div>
 
                 <div className="mb-6">
-                    <label className="block text-xs font-bold text-gray-600 uppercase mb-2">
+                    <label className="block text-xs font-bold text-muted-foreground uppercase mb-2">
                         New Credit Balance
                     </label>
                     <input
@@ -187,7 +187,7 @@ const EditCreditsModal: React.FC<{
                         onChange={(e) => setCredits(e.target.value)}
                         min={0}
                         placeholder="Enter total credits"
-                        className="w-full px-3 py-2.5 border border-gray-300 rounded-sm focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm font-semibold text-gray-900 transition-shadow"
+                        className="w-full px-3 py-2.5 border border-border rounded-sm focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm font-semibold text-foreground transition-shadow"
                     />
                 </div>
 
@@ -195,7 +195,7 @@ const EditCreditsModal: React.FC<{
                     <button
                         onClick={onClose}
                         disabled={isSubmitting}
-                        className="flex-1 px-4 py-2 bg-white border border-gray-300 rounded-sm text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                        className="flex-1 px-4 py-2 bg-card border border-border rounded-sm text-sm font-bold text-foreground hover:bg-muted transition-colors disabled:opacity-50"
                     >
                         Cancel
                     </button>
@@ -228,7 +228,7 @@ const ActionCell: React.FC<{
                 onChange={(e) => setMonths(Number(e.target.value))}
                 className={`border rounded-sm text-xs font-bold px-2 py-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition-colors ${company.referralCredits >= months
                     ? 'border-purple-300 text-purple-700 bg-purple-50'
-                    : 'border-gray-300 text-gray-700 bg-white'
+                    : 'border-border text-foreground bg-card'
                     }`}
             >
                 <option value={1}>1 M</option>
@@ -239,7 +239,7 @@ const ActionCell: React.FC<{
                 onClick={() => onAdd(company.id, company.expiryDate, company.referralCredits, company.name, months)}
                 className={`px-3 py-2 rounded-sm text-xs font-bold transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap ${company.referralCredits > 0
                     ? 'bg-purple-600 text-white hover:bg-purple-700 shadow-sm'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200'
+                    : 'bg-muted text-foreground hover:bg-muted border border-border'
                     }`}
             >
                 <FiCalendar size={14} /> Add
@@ -521,83 +521,83 @@ const SuperAdminDashboard: React.FC = () => {
         return <div className="min-h-screen flex items-center justify-center text-red-600 font-bold text-xl">Access Denied. Master Admin Only.</div>;
     }
 
-    if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Spinner /></div>;
+    if (loading) return <div className="min-h-screen flex items-center justify-center bg-muted"><Spinner /></div>;
 
     const pendingPayouts = payoutRequests.filter(r => r.status === 'pending');
     const totalPendingAmount = pendingPayouts.reduce((sum, r) => sum + r.amount, 0);
     const usersWithCredits = companies.filter(c => c.referralCredits > 0).length;
 
     return (
-        <div className="min-h-screen bg-gray-100 p-4 md:p-8">
+        <div className="min-h-screen bg-muted p-4 md:p-8">
             <div className="max-w-7xl mx-auto space-y-6">
 
                 {/* Header Stats */}
                 <div className="flex items-center justify-between pb-3 border-b mb-2">
                     <div>
-                        <h1 className="text-3xl font-bold text-gray-900">Super Admin Console</h1>
-                        <p className="text-gray-500 mt-1">Manage partners, payouts, and user subscriptions globally.</p>
+                        <h1 className="text-3xl font-bold text-foreground">Super Admin Console</h1>
+                        <p className="text-muted-foreground mt-1">Manage partners, payouts, and user subscriptions globally.</p>
                     </div>
-                    <button onClick={() => navigate(-1)} className="p-2 rounded-sm hover:bg-gray-200 transition-colors">
+                    <button onClick={() => navigate(-1)} className="p-2 rounded-sm hover:bg-muted transition-colors">
                         <IconClose width={20} height={20} />
                     </button>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                    <div className="bg-white p-6 rounded-sm shadow-sm border border-gray-200">
+                    <div className="bg-card p-6 rounded-sm shadow-sm border border-border">
                         <div className="flex items-center gap-4">
                             <div className="p-3 bg-blue-50 text-blue-600 rounded-sm"><FiUsers size={24} /></div>
                             <div>
-                                <p className="text-sm text-gray-500 font-medium">Total Partners</p>
-                                <p className="text-2xl font-bold text-gray-900">{agents.length}</p>
+                                <p className="text-sm text-muted-foreground font-medium">Total Partners</p>
+                                <p className="text-2xl font-bold text-foreground">{agents.length}</p>
                             </div>
                         </div>
                     </div>
-                    <div className="bg-white p-6 rounded-sm shadow-sm border border-gray-200">
+                    <div className="bg-card p-6 rounded-sm shadow-sm border border-border">
                         <div className="flex items-center gap-4">
                             <div className="p-3 bg-indigo-50 text-indigo-600 rounded-sm"><FiCheckCircle size={24} /></div>
                             <div>
-                                <p className="text-sm text-gray-500 font-medium">Total Users</p>
-                                <p className="text-2xl font-bold text-gray-900">{companies.length}</p>
+                                <p className="text-sm text-muted-foreground font-medium">Total Users</p>
+                                <p className="text-2xl font-bold text-foreground">{companies.length}</p>
                             </div>
                         </div>
                     </div>
-                    <div className="bg-white p-6 rounded-sm shadow-sm border border-gray-200">
+                    <div className="bg-card p-6 rounded-sm shadow-sm border border-border">
                         <div className="flex items-center gap-4">
                             <div className="p-3 bg-orange-50 text-orange-600 rounded-sm"><LuIndianRupee size={24} /></div>
                             <div>
-                                <p className="text-sm text-gray-500 font-medium">Pending Payouts</p>
-                                <p className="text-2xl font-bold text-gray-900">₹{totalPendingAmount.toFixed(2)}</p>
+                                <p className="text-sm text-muted-foreground font-medium">Pending Payouts</p>
+                                <p className="text-2xl font-bold text-foreground">₹{totalPendingAmount.toFixed(2)}</p>
                             </div>
                         </div>
                     </div>
-                    <div className="bg-white p-6 rounded-sm shadow-sm border border-gray-200">
+                    <div className="bg-card p-6 rounded-sm shadow-sm border border-border">
                         <div className="flex items-center gap-4">
                             <div className="p-3 bg-emerald-50 text-emerald-600 rounded-sm"><FiGift size={24} /></div>
                             <div>
-                                <p className="text-sm text-gray-500 font-medium">Unclaimed Credits</p>
-                                <p className="text-2xl font-bold text-gray-900">{usersWithCredits} Users</p>
+                                <p className="text-sm text-muted-foreground font-medium">Unclaimed Credits</p>
+                                <p className="text-2xl font-bold text-foreground">{usersWithCredits} Users</p>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 {/* Tabs */}
-                <div className="flex border-b border-gray-200 mb-6 overflow-x-auto">
+                <div className="flex border-b border-border mb-6 overflow-x-auto">
                     <button
                         onClick={() => setActiveTab('users')}
-                        className={`py-3 px-6 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === 'users' ? 'border-black text-black' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                        className={`py-3 px-6 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === 'users' ? 'border-black text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
                     >
                         Users Referrals
                     </button>
                     <button
                         onClick={() => setActiveTab('agents')}
-                        className={`py-3 px-6 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === 'agents' ? 'border-black text-black' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                        className={`py-3 px-6 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === 'agents' ? 'border-black text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
                     >
                         Partner Management
                     </button>
                     <button
                         onClick={() => setActiveTab('payouts')}
-                        className={`py-3 px-6 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${activeTab === 'payouts' ? 'border-black text-black' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                        className={`py-3 px-6 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${activeTab === 'payouts' ? 'border-black text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
                     >
                         Payout Requests {pendingPayouts.length > 0 && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full">{pendingPayouts.length}</span>}
                     </button>
@@ -606,10 +606,10 @@ const SuperAdminDashboard: React.FC = () => {
                 {/* TAB CONTENT: USERS (COMPANIES) */}
                 {activeTab === 'users' && (
                     <div className="space-y-6">
-                        <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden">
+                        <div className="bg-card rounded-sm shadow-sm border border-border overflow-hidden">
                             <div className="overflow-x-auto">
-                                <table className="w-full text-sm text-left text-gray-600">
-                                    <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
+                                <table className="w-full text-sm text-left text-muted-foreground">
+                                    <thead className="text-xs text-foreground uppercase bg-muted border-b border-border">
                                         <tr>
                                             <th className="px-6 py-4">Business Name</th>
                                             <th className="px-6 py-4">Sign Up Date</th>
@@ -622,12 +622,12 @@ const SuperAdminDashboard: React.FC = () => {
                                         {companies.map(company => {
                                             const isExpired = company.expiryDate < new Date();
                                             return (
-                                                <tr key={company.id} className="border-b border-gray-100 hover:bg-gray-50">
+                                                <tr key={company.id} className="border-b border-border hover:bg-muted">
                                                     <td className="px-6 py-4">
-                                                        <p className="font-bold text-gray-900">{company.name}</p>
-                                                        <p className="text-xs text-gray-500">{company.ownerPhoneNumber}</p>
+                                                        <p className="font-bold text-foreground">{company.name}</p>
+                                                        <p className="text-xs text-muted-foreground">{company.ownerPhoneNumber}</p>
                                                     </td>
-                                                    <td className="px-6 py-4 font-medium text-gray-500">
+                                                    <td className="px-6 py-4 font-medium text-muted-foreground">
                                                         {company.createdAt.toLocaleDateString('en-IN')}
                                                     </td>
                                                     <td className="px-6 py-4">
@@ -642,7 +642,7 @@ const SuperAdminDashboard: React.FC = () => {
                                                                     <FiGift /> {company.referralCredits} Months
                                                                 </span>
                                                             ) : (
-                                                                <span className="text-gray-400 font-medium">0</span>
+                                                                <span className="text-muted-foreground font-medium">0</span>
                                                             )}
 
                                                             {/* EDIT CREDITS BUTTON */}
@@ -651,7 +651,7 @@ const SuperAdminDashboard: React.FC = () => {
                                                                     setSelectedCompanyForCredits(company);
                                                                     setIsEditCreditsModalOpen(true);
                                                                 }}
-                                                                className="text-gray-400 hover:text-purple-600 transition-colors p-1"
+                                                                className="text-muted-foreground hover:text-purple-600 transition-colors p-1"
                                                                 title="Edit Credits"
                                                             >
                                                                 <FiEdit2 size={15} />
@@ -669,15 +669,15 @@ const SuperAdminDashboard: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden">
-                            <div className="p-5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-                                <h3 className="text-base font-bold text-gray-800 flex items-center gap-2">
-                                    <FiList className="text-gray-600" /> Credit History & Referrals
+                        <div className="bg-card rounded-sm shadow-sm border border-border overflow-hidden">
+                            <div className="p-5 border-b border-border bg-muted flex justify-between items-center">
+                                <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                                    <FiList className="text-muted-foreground" /> Credit History & Referrals
                                 </h3>
                             </div>
                             <div className="overflow-x-auto">
-                                <table className="w-full text-sm text-left text-gray-500">
-                                    <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
+                                <table className="w-full text-sm text-left text-muted-foreground">
+                                    <thead className="text-xs text-foreground uppercase bg-muted border-b border-border">
                                         <tr>
                                             <th className="px-6 py-4">Date</th>
                                             <th className="px-6 py-4">Existing User</th>
@@ -687,19 +687,19 @@ const SuperAdminDashboard: React.FC = () => {
                                     </thead>
                                     <tbody>
                                         {creditLedger.length === 0 ? (
-                                            <tr><td colSpan={4} className="p-8 text-center text-gray-500">No referral history yet.</td></tr>
+                                            <tr><td colSpan={4} className="p-8 text-center text-muted-foreground">No referral history yet.</td></tr>
                                         ) : (
                                             creditLedger.map(record => (
-                                                <tr key={record.id} className="border-b border-gray-100 hover:bg-gray-50">
-                                                    <td className="px-6 py-4 font-medium text-gray-500">
+                                                <tr key={record.id} className="border-b border-border hover:bg-muted">
+                                                    <td className="px-6 py-4 font-medium text-muted-foreground">
                                                         {record.date.toLocaleDateString('en-IN')}
                                                     </td>
-                                                    <td className="px-6 py-4 font-bold text-gray-900">
+                                                    <td className="px-6 py-4 font-bold text-foreground">
                                                         {record.referrerName}
                                                     </td>
                                                     <td className="px-6 py-4">
                                                         {record.type === 'Earned' ? (
-                                                            <span>Referred <strong className="text-gray-800">{record.referredCompanyName}</strong></span>
+                                                            <span>Referred <strong className="text-foreground">{record.referredCompanyName}</strong></span>
                                                         ) : (
                                                             <span className="text-purple-600 font-medium">{record.referredCompanyName}</span>
                                                         )}
@@ -723,10 +723,10 @@ const SuperAdminDashboard: React.FC = () => {
 
                 {/* TAB CONTENT: AGENTS */}
                 {activeTab === 'agents' && (
-                    <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden">
+                    <div className="bg-card rounded-sm shadow-sm border border-border overflow-hidden">
                         <div className="overflow-x-auto">
-                            <table className="w-full text-sm text-left text-gray-600">
-                                <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
+                            <table className="w-full text-sm text-left text-muted-foreground">
+                                <thead className="text-xs text-foreground uppercase bg-muted border-b border-border">
                                     <tr>
                                         <th className="px-6 py-4">Partner Name</th>
                                         <th className="px-6 py-4">Role & Code</th>
@@ -737,22 +737,22 @@ const SuperAdminDashboard: React.FC = () => {
                                 </thead>
                                 <tbody>
                                     {agents.map(agent => (
-                                        <tr key={agent.id} className="border-b border-gray-100 hover:bg-gray-50">
+                                        <tr key={agent.id} className="border-b border-border hover:bg-muted">
                                             <td className="px-6 py-4">
-                                                <p className="font-bold text-gray-900">{agent.name}</p>
-                                                <p className="text-xs text-gray-500">{agent.phoneNumber}</p>
+                                                <p className="font-bold text-foreground">{agent.name}</p>
+                                                <p className="text-xs text-muted-foreground">{agent.phoneNumber}</p>
                                             </td>
                                             <td className="px-6 py-4">
                                                 <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded-sm text-xs font-bold uppercase tracking-wider block w-max mb-1">
                                                     {agent.role}
                                                 </span>
-                                                <span className="font-mono text-xs font-bold text-gray-500">{agent.ownReferralCode}</span>
+                                                <span className="font-mono text-xs font-bold text-muted-foreground">{agent.ownReferralCode}</span>
                                             </td>
                                             <td className="px-6 py-4">
                                                 <select
                                                     value={agent.tier}
                                                     onChange={(e) => handleTierChange(agent.id, e.target.value)}
-                                                    className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-sm focus:ring-black focus:border-black block w-full p-2.5 font-semibold cursor-pointer"
+                                                    className="bg-muted border border-border text-foreground text-sm rounded-sm focus:ring-black focus:border-black block w-full p-2.5 font-semibold cursor-pointer"
                                                 >
                                                     <option value="Bronze">Bronze</option>
                                                     <option value="Silver">Silver</option>
@@ -760,11 +760,11 @@ const SuperAdminDashboard: React.FC = () => {
                                                     <option value="Platinum">Platinum</option>
                                                 </select>
                                             </td>
-                                            <td className="px-6 py-4 text-right font-bold text-gray-700">
+                                            <td className="px-6 py-4 text-right font-bold text-foreground">
                                                 ₹{agent.totalEarned.toFixed(2)}
                                             </td>
                                             <td className="px-6 py-4 text-right">
-                                                <span className={`font-bold ${agent.unpaidBalance > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
+                                                <span className={`font-bold ${agent.unpaidBalance > 0 ? 'text-orange-600' : 'text-muted-foreground'}`}>
                                                     ₹{agent.unpaidBalance.toFixed(2)}
                                                 </span>
                                             </td>
@@ -778,10 +778,10 @@ const SuperAdminDashboard: React.FC = () => {
 
                 {/* TAB CONTENT: PAYOUTS */}
                 {activeTab === 'payouts' && (
-                    <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden">
+                    <div className="bg-card rounded-sm shadow-sm border border-border overflow-hidden">
                         <div className="overflow-x-auto">
-                            <table className="w-full text-sm text-left text-gray-600">
-                                <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-200">
+                            <table className="w-full text-sm text-left text-muted-foreground">
+                                <thead className="text-xs text-foreground uppercase bg-muted border-b border-border">
                                     <tr>
                                         <th className="px-6 py-4">Request Date</th>
                                         <th className="px-6 py-4">Agent Name</th>
@@ -792,23 +792,23 @@ const SuperAdminDashboard: React.FC = () => {
                                 </thead>
                                 <tbody>
                                     {payoutRequests.length === 0 ? (
-                                        <tr><td colSpan={5} className="p-8 text-center text-gray-500">No payout requests found.</td></tr>
+                                        <tr><td colSpan={5} className="p-8 text-center text-muted-foreground">No payout requests found.</td></tr>
                                     ) : (
                                         payoutRequests.map(req => {
                                             return (
-                                                <tr key={req.id} className="border-b border-gray-100 hover:bg-gray-50">
+                                                <tr key={req.id} className="border-b border-border hover:bg-muted">
                                                     <td className="px-6 py-4">
-                                                        <p className="text-sm font-medium text-gray-800">{req.date.toLocaleDateString('en-IN')}</p>
+                                                        <p className="text-sm font-medium text-foreground">{req.date.toLocaleDateString('en-IN')}</p>
                                                     </td>
                                                     <td className="px-6 py-4">
-                                                        <p className="font-bold text-gray-900">{req.agentName}</p>
+                                                        <p className="font-bold text-foreground">{req.agentName}</p>
                                                     </td>
                                                     <td className="px-6 py-4">
                                                         <span className="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-sm text-xs font-bold tracking-wide">
                                                             UPI: {req.upiId}
                                                         </span>
                                                     </td>
-                                                    <td className="px-6 py-4 text-right font-bold text-gray-900 text-lg">
+                                                    <td className="px-6 py-4 text-right font-bold text-foreground text-lg">
                                                         ₹{req.amount.toFixed(2)}
                                                     </td>
                                                     <td className="px-6 py-4 text-center">

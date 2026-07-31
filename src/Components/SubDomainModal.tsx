@@ -166,9 +166,9 @@ export default function SubdomainClaimModal({ companyId, forceOpen, onClose }: S
 
     return (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-sm shadow-2xl max-w-md w-full p-6 md:p-8 animate-in zoom-in duration-300 relative">
+            <div className="bg-card rounded-sm shadow-2xl max-w-md w-full p-6 md:p-8 animate-in zoom-in duration-300 relative">
 
-                <button onClick={closeModal} className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 transition-colors p-1">
+                <button onClick={closeModal} className="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors p-1">
                     <X size={20} />
                 </button>
 
@@ -179,12 +179,12 @@ export default function SubdomainClaimModal({ companyId, forceOpen, onClose }: S
                     <h2 className="text-2xl font-black text-[#1A3B5D] uppercase tracking-tight">
                         {existingSubdomain ? 'Update Store Link' : 'Claim Store Link'}
                     </h2>
-                    <p className="text-sm text-gray-500 mt-2">
+                    <p className="text-sm text-muted-foreground mt-2">
                         This is the unique URL you will share with your customers.
                     </p>
                     {existingSubdomain && (
-                        <div className="flex items-center justify-between bg-gray-100 border border-gray-200 rounded-sm px-3 py-2 mb-4">
-                            <span className="text-xs font-bold text-gray-600 truncate">
+                        <div className="flex items-center justify-between bg-muted border border-border rounded-sm px-3 py-2 mb-4">
+                            <span className="text-xs font-bold text-muted-foreground truncate">
                                 https://{existingSubdomain}.sellar.in
                             </span>
                             <button
@@ -193,7 +193,7 @@ export default function SubdomainClaimModal({ companyId, forceOpen, onClose }: S
                                     setCopied(true);
                                     setTimeout(() => setCopied(false), 2000);
                                 }}
-                                className="ml-2 p-1 text-gray-500 hover:text-gray-800"
+                                className="ml-2 p-1 text-muted-foreground hover:text-foreground"
                             >
                                 {copied ? (
                                     <Check size={16} className="text-green-600" />
@@ -206,7 +206,7 @@ export default function SubdomainClaimModal({ companyId, forceOpen, onClose }: S
                 </div>
 
                 <div className="mb-6">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block ml-1">
+                    <label className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-2 block ml-1">
                         Choose a Name
                     </label>
 
@@ -220,12 +220,12 @@ export default function SubdomainClaimModal({ companyId, forceOpen, onClose }: S
                             onChange={(e) => setPrefix(e.target.value)}
                             placeholder="my-brand"
                             // min-w-0 is the critical fix here!
-                            className="flex-1 min-w-0 p-2.5 sm:p-3 bg-white border border-gray-200 rounded-sm text-[13px] sm:text-sm font-bold text-[#1A3B5D] outline-none focus:border-[#F97316] focus:ring-1 focus:ring-[#F97316] transition-all text-right shadow-sm"
+                            className="flex-1 min-w-0 p-2.5 sm:p-3 bg-card border border-border rounded-sm text-[13px] sm:text-sm font-bold text-[#1A3B5D] outline-none focus:border-[#F97316] focus:ring-1 focus:ring-[#F97316] transition-all text-right shadow-sm"
                             autoFocus
                         />
 
                         {/* 2. The Separator */}
-                        <span className="text-gray-400 font-bold text-base sm:text-lg select-none shrink-0">
+                        <span className="text-muted-foreground font-bold text-base sm:text-lg select-none shrink-0">
                             -
                         </span>
 
@@ -234,12 +234,12 @@ export default function SubdomainClaimModal({ companyId, forceOpen, onClose }: S
                             <select
                                 value={suffix}
                                 onChange={(e) => setSuffix(e.target.value)}
-                                className="appearance-none w-full bg-white border border-gray-200 rounded-sm py-2.5 sm:py-3 pl-2 sm:pl-3 pr-7 sm:pr-8 text-[13px] sm:text-sm font-bold text-[#1A3B5D] outline-none focus:border-[#F97316] focus:ring-1 focus:ring-[#F97316] transition-all cursor-pointer shadow-sm"
+                                className="appearance-none w-full bg-card border border-border rounded-sm py-2.5 sm:py-3 pl-2 sm:pl-3 pr-7 sm:pr-8 text-[13px] sm:text-sm font-bold text-[#1A3B5D] outline-none focus:border-[#F97316] focus:ring-1 focus:ring-[#F97316] transition-all cursor-pointer shadow-sm"
                             >
                                 <option value="shop">shop</option>
                                 <option value="catalog">catalog</option>
                             </select>
-                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-1.5 sm:px-2 text-gray-400">
+                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-1.5 sm:px-2 text-muted-foreground">
                                 <svg className="fill-current h-3 w-3 sm:h-4 sm:w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
                                     <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
                                 </svg>
@@ -247,7 +247,7 @@ export default function SubdomainClaimModal({ companyId, forceOpen, onClose }: S
                         </div>
 
                         {/* 4. Base Domain */}
-                        <div className="bg-gray-100 px-2 sm:px-3 py-2.5 sm:py-3 border border-gray-200 rounded-sm text-gray-500 font-bold text-[13px] sm:text-sm select-none shadow-sm shrink-0">
+                        <div className="bg-muted px-2 sm:px-3 py-2.5 sm:py-3 border border-border rounded-sm text-muted-foreground font-bold text-[13px] sm:text-sm select-none shadow-sm shrink-0">
                             .sellar.in
                         </div>
 
@@ -261,7 +261,7 @@ export default function SubdomainClaimModal({ companyId, forceOpen, onClose }: S
                             <span className="text-blue-500 flex items-center gap-1"><Loader2 size={14} className="animate-spin" /> Checking availability...</span>
                         )}
                         {!isChecking && availability === 'available' && subdomain === existingSubdomain && (
-                            <span className="text-gray-500 flex items-center gap-1">This is your current link</span>
+                            <span className="text-muted-foreground flex items-center gap-1">This is your current link</span>
                         )}
                         {!isChecking && availability === 'available' && subdomain !== existingSubdomain && (
                             <span className="text-green-600 flex items-center gap-1"><CheckCircle size={14} /> Available to claim!</span>
@@ -277,7 +277,7 @@ export default function SubdomainClaimModal({ companyId, forceOpen, onClose }: S
                     disabled={availability !== 'available' || isSaving || subdomain === existingSubdomain}
                     className={`w-full py-3.5 rounded-sm font-black text-[12px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${availability === 'available' && !isSaving && subdomain !== existingSubdomain
                         ? 'bg-[#F97316] text-white shadow-lg active:scale-95'
-                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                        : 'bg-muted text-muted-foreground cursor-not-allowed'
                         }`}
                 >
                     {isSaving ? <Loader2 size={16} className="animate-spin" /> : null}

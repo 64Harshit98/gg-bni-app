@@ -101,7 +101,7 @@ const FloatingInput = ({
       }}
       readOnly={locked}
       autoComplete="off"
-      className={`focus:outline-none bg-transparent ${locked ? 'text-gray-400' : ''} ${className || ''}`}
+      className={`focus:outline-none bg-transparent ${locked ? 'text-muted-foreground' : ''} ${className || ''}`}
       {...props}
     />
   );
@@ -136,7 +136,7 @@ export const GenericCartList = <T extends CartItem>({
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-1 sm:space-y-4 pb-20 px-1 pt-1 sm:pt-4">
       {items.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-40 text-gray-400">
+        <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
           <p>Cart is empty</p>
         </div>
       ) : (
@@ -178,7 +178,7 @@ export const GenericCartList = <T extends CartItem>({
           return (
             <div
               key={item.id}
-              className={`rounded-sm border overflow-hidden shadow-sm ${isZeroPrice ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100'
+              className={`rounded-sm border overflow-hidden shadow-sm ${isZeroPrice ? 'bg-red-50 border-red-200' : 'bg-card border-border'
                 } ${!item.isEditable ? 'opacity-75' : ''}`}
             >
 
@@ -194,25 +194,25 @@ export const GenericCartList = <T extends CartItem>({
                     <button
                       onClick={() => onDeleteItem(item.id)}
                       disabled={!item.isEditable}
-                      className=" flex items-center justify-center w-[26px] h-[26px] text-gray-400 hover:text-red-500 disabled:text-gray-200 disabled:cursor-not-allowed z-20"
+                      className=" flex items-center justify-center w-[26px] h-[26px] text-muted-foreground hover:text-red-500 disabled:text-gray-200 disabled:cursor-not-allowed z-20"
                     >
                       <FiTrash2 size={14} />
                     </button>
 
 
-                    <h3 className="font-semibold text-gray-800 text-sm" title={item.name}>
+                    <h3 className="font-semibold text-foreground text-sm" title={item.name}>
                       {item.name.slice(0, 30) || 'Unnamed Item'}
                     </h3>
                     {item.unit ? (
-                      <span className="text-[11px] text-gray-400 flex-shrink-0">{item.unit}</span>
+                      <span className="text-[11px] text-muted-foreground flex-shrink-0">{item.unit}</span>
                     ) : null}
                   </div>
 
 
                   <div className="flex items-center gap-1 flex-shrink-0 ml-3">
                     <div className="flex flex-col items-end gap-0.5">
-                      <span className="text-[10px] text-gray-500 leading-none">Subtotal</span>
-                      <span className="text-xs text-gray-500 leading-none">
+                      <span className="text-[10px] text-muted-foreground leading-none">Subtotal</span>
+                      <span className="text-xs text-muted-foreground leading-none">
                         ₹{lineSubtotal.toLocaleString('en-IN')}
                       </span>
                     </div>
@@ -223,7 +223,7 @@ export const GenericCartList = <T extends CartItem>({
                           if (originalItem) onOpenEditDrawer(originalItem);
                           else setModal({ message: "Original item not found.", type: State.ERROR });
                         }}
-                        className="flex items-center justify-center w-[26px] h-[26px] text-gray-400 hover:text-blue-600 disabled:text-gray-200 disabled:cursor-not-allowed z-20"
+                        className="flex items-center justify-center w-[26px] h-[26px] text-muted-foreground hover:text-blue-600 disabled:text-gray-200 disabled:cursor-not-allowed z-20"
                       >
                         <FiEdit size={14} />
                       </button>
@@ -232,12 +232,12 @@ export const GenericCartList = <T extends CartItem>({
                 </div>
 
                 {/* Row 2: MRP | Disc% | Net Price | Qty */}
-                <div className="border-t border-gray-100 px-2 py-2 flex items-center gap-1 flex-nowrap overflow-x-auto">
+                <div className="border-t border-border px-2 py-2 flex items-center gap-1 flex-nowrap overflow-x-auto">
 
                   {!settings.hideMrp && (
                     <div className="flex flex-col items-center flex-shrink-0 min-w-[34px]">
-                      <span className="text-[9px] text-gray-500 leading-none mb-0.5">{priceLabel}</span>
-                      <span className="text-[9px] text-gray-500 leading-none">₹{currentBasePrice.toFixed()}</span>
+                      <span className="text-[9px] text-muted-foreground leading-none mb-0.5">{priceLabel}</span>
+                      <span className="text-[9px] text-muted-foreground leading-none">₹{currentBasePrice.toFixed()}</span>
                     </div>
                   )}
 
@@ -251,7 +251,7 @@ export const GenericCartList = <T extends CartItem>({
                       onTouchEnd={onDiscountPressEnd}
                       onClick={onDiscountClick}
                     >
-                      <label className="absolute -top-1 left-2 bg-white px-1 text-[10px] text-gray-500 leading-none z-10">Disc%</label>
+                      <label className="absolute -top-1 left-2 bg-card px-1 text-[10px] text-muted-foreground leading-none z-10">Disc%</label>
                       <FloatingInput
                         value={item.discount !== undefined ? String(item.discount) : ''}
                         onChange={handleDiscountChange}
@@ -262,14 +262,14 @@ export const GenericCartList = <T extends CartItem>({
                         }}
                         locked={discountLocked}
                         placeholder="0"
-                        className={`w-full px-1 py-1 text-center text-sm border border-slate-300 rounded h-9 ${discountLocked ? 'bg-gray-50 cursor-not-allowed' : 'focus:border-blue-500'
+                        className={`w-full px-1 py-1 text-center text-sm border border-border rounded h-9 ${discountLocked ? 'bg-muted cursor-not-allowed' : 'focus:border-blue-500'
                           }`}
                       />
                     </div>
                   )}
                   {settings.enableItemWiseDiscount && settings.enableDiscount2 && (
                     <div className="relative w-13 flex-shrink-0">
-                      <label className="absolute -top-1 left-2 bg-white px-1 text-[10px] text-gray-500 leading-none z-10">Disc2%</label>
+                      <label className="absolute -top-1 left-2 bg-card px-1 text-[10px] text-muted-foreground leading-none z-10">Disc2%</label>
                       <FloatingInput
                         value={item.discount2 !== undefined ? String(item.discount2) : ''}
                         onChange={(val) => onDiscount2Change(item.id, val)}
@@ -280,7 +280,7 @@ export const GenericCartList = <T extends CartItem>({
                         }}
                         locked={discountLocked}
                         placeholder="0"
-                        className={`w-full px-1 py-1 text-center text-sm border border-slate-300 rounded h-9 ${discountLocked ? 'bg-gray-50 cursor-not-allowed' : 'focus:border-blue-500'
+                        className={`w-full px-1 py-1 text-center text-sm border border-border rounded h-9 ${discountLocked ? 'bg-muted cursor-not-allowed' : 'focus:border-blue-500'
                           }`}
                       />
                     </div>
@@ -294,9 +294,9 @@ export const GenericCartList = <T extends CartItem>({
                     onTouchEnd={onPricePressEnd}
                     onClick={onPriceClick}
                   >
-                    <label className="absolute -top-1 left-3.5 bg-white px-1 text-[10px] text-gray-500 leading-none z-10">Net Price</label>
-                    <div className={`flex items-center border border-slate-300 rounded px-2 h-9 ${priceLocked ? 'bg-gray-50' : ''}`}>
-                      <span className="text-xs text-gray-500 mr-1">₹</span>
+                    <label className="absolute -top-1 left-3.5 bg-card px-1 text-[10px] text-muted-foreground leading-none z-10">Net Price</label>
+                    <div className={`flex items-center border border-border rounded px-2 h-9 ${priceLocked ? 'bg-muted' : ''}`}>
+                      <span className="text-xs text-muted-foreground mr-1">₹</span>
                       <FloatingInput
                         value={displayPrice}
                         onChange={(val) => onCustomPriceChange(item.id, val)}
@@ -312,7 +312,7 @@ export const GenericCartList = <T extends CartItem>({
                     </div>
                   </div>
 
-                  <div className=" flex items-center border border-slate-300 rounded h-9 w-22 flex-shrink-0">
+                  <div className=" flex items-center border border-border rounded h-9 w-22 flex-shrink-0">
                     <button
                       onClick={() => {
                         const step = 1;
@@ -322,7 +322,7 @@ export const GenericCartList = <T extends CartItem>({
                         onQuantityChange(item.id, Math.max(moq, nextQty));
                       }}
                       disabled={item.quantity <= (Number(item.moq) || 1) || !item.isEditable}
-                      className="px-2 text-gray-600 hover:bg-gray-100 disabled:text-gray-300 disabled:cursor-not-allowed text-lg leading-none flex items-center justify-center h-full w-8 border-r border-slate-300"
+                      className="px-2 text-muted-foreground hover:bg-muted disabled:text-gray-300 disabled:cursor-not-allowed text-lg leading-none flex items-center justify-center h-full w-8 border-r border-border"
                     >−</button>
                     <div className="flex-1 h-full flex items-center justify-center">
                       <FloatingInput
@@ -347,7 +347,7 @@ export const GenericCartList = <T extends CartItem>({
                         onQuantityChange(item.id, (item.quantity || step) + step);
                       }}
                       disabled={!item.isEditable}
-                      className="px-2 text-gray-600 hover:bg-gray-100 disabled:text-gray-300 disabled:cursor-not-allowed text-lg leading-none flex items-center justify-center h-full w-8 border-l border-slate-300"
+                      className="px-2 text-muted-foreground hover:bg-muted disabled:text-gray-300 disabled:cursor-not-allowed text-lg leading-none flex items-center justify-center h-full w-8 border-l border-border"
                     >+</button>
                   </div>
 
@@ -358,7 +358,7 @@ export const GenericCartList = <T extends CartItem>({
                   DESKTOP  (md and above)
                   Single row: trash | name+edit | MRP | Disc% | Net Price | Subtotal | Qty
               ════════════════════════════════════════ */}
-              <div className="hidden sm:flex items-center gap-2 px-3 py-2.5 bg-white">
+              <div className="hidden sm:flex items-center gap-2 px-3 py-2.5 bg-card">
 
 
 
@@ -366,18 +366,18 @@ export const GenericCartList = <T extends CartItem>({
                 <button
                   onClick={() => onDeleteItem(item.id)}
                   disabled={!item.isEditable}
-                  className="flex items-center justify-center w-[28px] h-[28px] text-gray-400  hover:text-red-500 disabled:text-gray-200 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                  className="flex items-center justify-center w-[28px] h-[28px] text-muted-foreground  hover:text-red-500 disabled:text-gray-200 disabled:cursor-not-allowed transition-colors flex-shrink-0"
                 >
                   <FiTrash2 size={16} />
                 </button>
 
                 {/* Name + unit + edit */}
                 <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                  <span className="text-sm font-medium text-gray-800 truncate">
+                  <span className="text-sm font-medium text-foreground truncate">
                     {item.name || 'Unnamed Item'}
                   </span>
                   {item.unit && (
-                    <span className="text-[11px] text-gray-400 flex-shrink-0">{item.unit}</span>
+                    <span className="text-[11px] text-muted-foreground flex-shrink-0">{item.unit}</span>
                   )}
                   <ShowWrapper requiredPermission={Permissions.ViewTransactions}>
                     <button
@@ -386,7 +386,7 @@ export const GenericCartList = <T extends CartItem>({
                         if (originalItem) onOpenEditDrawer(originalItem);
                         else setModal({ message: "Original item not found.", type: State.ERROR });
                       }}
-                      className="text-gray-400 hover:text-blue-600 flex-shrink-0 ml-0.5"
+                      className="text-muted-foreground hover:text-blue-600 flex-shrink-0 ml-0.5"
                     >
                       <FiEdit size={16} />
                     </button>
@@ -397,8 +397,8 @@ export const GenericCartList = <T extends CartItem>({
                 {/* MRP — label above amount */}
                 {!settings.hideMrp && (
                   <div className="flex flex-col items-center flex-shrink-0 min-w-[36px]">
-                    <span className="text-[10px] text-gray-500 leading-none mb-0.5">{priceLabel}</span>
-                    <span className="text-xs text-gray-500 leading-none">₹{currentBasePrice.toFixed()}</span>
+                    <span className="text-[10px] text-muted-foreground leading-none mb-0.5">{priceLabel}</span>
+                    <span className="text-xs text-muted-foreground leading-none">₹{currentBasePrice.toFixed()}</span>
                   </div>
                 )}
 
@@ -413,7 +413,7 @@ export const GenericCartList = <T extends CartItem>({
                     onTouchEnd={onDiscountPressEnd}
                     onClick={onDiscountClick}
                   >
-                    <label className="absolute -top-1 left-2 bg-white px-1 text-[10px] text-gray-500 leading-none z-10">Disc%</label>
+                    <label className="absolute -top-1 left-2 bg-card px-1 text-[10px] text-muted-foreground leading-none z-10">Disc%</label>
                     <FloatingInput
                       value={item.discount !== undefined ? String(item.discount) : ''}
                       onChange={(val) => onDiscountChange(item.id, val)}
@@ -424,7 +424,7 @@ export const GenericCartList = <T extends CartItem>({
                       }}
                       locked={discountLocked}
                       placeholder="0"
-                      className={`w-full px-1 py-1 text-center text-sm border border-slate-300 rounded h-9 ${discountLocked ? 'bg-gray-50 cursor-not-allowed' : 'focus:border-blue-500'
+                      className={`w-full px-1 py-1 text-center text-sm border border-border rounded h-9 ${discountLocked ? 'bg-muted cursor-not-allowed' : 'focus:border-blue-500'
                         }`}
                     />
                   </div>
@@ -432,7 +432,7 @@ export const GenericCartList = <T extends CartItem>({
                 {/* Disc2% — floating label box */}
                 {settings.enableItemWiseDiscount && settings.enableDiscount2 && (
                   <div className="relative w-14 flex-shrink-0">
-                    <label className="absolute -top-1 left-2 bg-white px-1 text-[10px] text-gray-500 leading-none z-10">Disc2%</label>
+                    <label className="absolute -top-1 left-2 bg-card px-1 text-[10px] text-muted-foreground leading-none z-10">Disc2%</label>
                     <FloatingInput
                       value={item.discount2 !== undefined ? String(item.discount2) : ''}
                       onChange={(val) => onDiscount2Change(item.id, val)}
@@ -443,7 +443,7 @@ export const GenericCartList = <T extends CartItem>({
                       }}
                       locked={discountLocked}
                       placeholder="0"
-                      className={`w-full px-1 py-1 text-center text-sm border border-slate-300 rounded h-9 ${discountLocked ? 'bg-gray-50 cursor-not-allowed' : 'focus:border-blue-500'
+                      className={`w-full px-1 py-1 text-center text-sm border border-border rounded h-9 ${discountLocked ? 'bg-muted cursor-not-allowed' : 'focus:border-blue-500'
                         }`}
                     />
                   </div>
@@ -458,9 +458,9 @@ export const GenericCartList = <T extends CartItem>({
                   onTouchEnd={onPricePressEnd}
                   onClick={onPriceClick}
                 >
-                  <label className="absolute -top-1 left-3.5 bg-white px-1 text-[10px] text-gray-500 leading-none z-10">Net Price</label>
-                  <div className={`flex items-center border border-slate-300 rounded px-2 h-9 ${priceLocked ? 'bg-gray-50' : ''}`}>
-                    <span className="text-xs text-gray-500 mr-1">₹</span>
+                  <label className="absolute -top-1 left-3.5 bg-card px-1 text-[10px] text-muted-foreground leading-none z-10">Net Price</label>
+                  <div className={`flex items-center border border-border rounded px-2 h-9 ${priceLocked ? 'bg-muted' : ''}`}>
+                    <span className="text-xs text-muted-foreground mr-1">₹</span>
                     <FloatingInput
                       value={displayPrice}
                       onChange={(val) => onCustomPriceChange(item.id, val)}
@@ -477,7 +477,7 @@ export const GenericCartList = <T extends CartItem>({
                 </div>
 
                 {/* Qty selector */}
-                <div className="flex items-center border border-slate-300 rounded h-9 w-24 flex-shrink-0">
+                <div className="flex items-center border border-border rounded h-9 w-24 flex-shrink-0">
                   <button
                     onClick={() => {
                       const step = 1;
@@ -488,7 +488,7 @@ export const GenericCartList = <T extends CartItem>({
                       onQuantityChange(item.id, Math.max(moq, nextQty));
                     }}
                     disabled={item.quantity <= (Number(item.moq) || 1) || !item.isEditable}
-                    className="px-2 text-gray-600 hover:bg-gray-100 disabled:text-gray-300 disabled:cursor-not-allowed text-lg leading-none flex items-center justify-center h-full w-8 border-r border-slate-300"
+                    className="px-2 text-muted-foreground hover:bg-muted disabled:text-gray-300 disabled:cursor-not-allowed text-lg leading-none flex items-center justify-center h-full w-8 border-r border-border"
                   >−</button>
                   <div className="flex-1 h-full flex items-center justify-center">
                     <FloatingInput
@@ -513,13 +513,13 @@ export const GenericCartList = <T extends CartItem>({
                       onQuantityChange(item.id, (item.quantity || step) + step);
                     }}
                     disabled={!item.isEditable}
-                    className="px-2 text-gray-600 hover:bg-gray-100 disabled:text-gray-300 disabled:cursor-not-allowed text-lg leading-none flex items-center justify-center h-full w-8 border-l border-slate-300"
+                    className="px-2 text-muted-foreground hover:bg-muted disabled:text-gray-300 disabled:cursor-not-allowed text-lg leading-none flex items-center justify-center h-full w-8 border-l border-border"
                   >+</button>
                 </div>
                 {/* Subtotal — label above amount, after Net Price */}
                 <div className="flex flex-col items-center flex-shrink-0 min-w-[64px]">
-                  <span className="text-[10px] text-gray-500 leading-none mb-0.5">Subtotal</span>
-                  <span className="text-xs text-gray-500 leading-none">
+                  <span className="text-[10px] text-muted-foreground leading-none mb-0.5">Subtotal</span>
+                  <span className="text-xs text-muted-foreground leading-none">
                     ₹{lineSubtotal.toLocaleString('en-IN')}
                   </span>
                 </div>

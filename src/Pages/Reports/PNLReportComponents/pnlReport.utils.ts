@@ -11,6 +11,8 @@ export interface Transaction {
 export interface TransactionDetail extends Transaction {
   type: 'Revenue' | 'Cost';
   profit?: number;
+  /** True when costOfGoodsSold is 0 but the sale has a non-zero total — a likely data-entry gap. */
+  isWarning?: boolean;
 }
 
 export interface Item {

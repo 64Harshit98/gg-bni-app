@@ -49,14 +49,14 @@ const BulkQuotePopup: React.FC<BulkQuotePopupProps> = ({ item, companyId, onClos
 
     return (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="bg-white w-full max-w-sm rounded-sm shadow-2xl border-t-4 border-[#F97316] overflow-hidden">
+            <div className="bg-card w-full max-w-sm rounded-sm shadow-2xl border-t-4 border-[#F97316] overflow-hidden">
 
                 {/* Header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-border">
                     <h2 className="text-xs font-black uppercase tracking-widest text-[#1A3B5D]">
                         Bulk Quote Request
                     </h2>
-                    <button onClick={onClose} className="text-gray-400 hover:text-red-500 transition-colors">
+                    <button onClick={onClose} className="text-muted-foreground hover:text-red-500 transition-colors">
                         <X size={20} />
                     </button>
                 </div>
@@ -67,16 +67,16 @@ const BulkQuotePopup: React.FC<BulkQuotePopupProps> = ({ item, companyId, onClos
                             <CheckCircle size={32} strokeWidth={3} />
                         </div>
                         <h3 className="text-lg font-black text-[#1A3B5D] uppercase">Request Sent!</h3>
-                        <p className="text-gray-500 text-xs mt-1">We'll get back to you with the best price.</p>
+                        <p className="text-muted-foreground text-xs mt-1">We'll get back to you with the best price.</p>
                     </div>
                 ) : (
                     <div className="p-4 space-y-4">
 
                         {/* Item Info Row — matches whiteboard layout */}
-                        <div className="flex gap-3 bg-gray-50 border border-gray-100 rounded-sm p-3">
+                        <div className="flex gap-3 bg-muted border border-border rounded-sm p-3">
 
                             {/* Image (left) */}
-                            <div className="w-20 h-20 shrink-0 bg-white border border-gray-200 rounded-sm flex items-center justify-center overflow-hidden">
+                            <div className="w-20 h-20 shrink-0 bg-card border border-border rounded-sm flex items-center justify-center overflow-hidden">
                                 {item.imageUrl ? (
                                     <img src={item.imageUrl} alt={item.name} className="w-full h-full object-contain" />
                                 ) : (
@@ -90,7 +90,7 @@ const BulkQuotePopup: React.FC<BulkQuotePopupProps> = ({ item, companyId, onClos
                                     {item.name}
                                 </p>
                                 <div>
-                                    <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">
+                                    <label className="block text-[9px] font-black text-muted-foreground uppercase tracking-widest mb-1">
                                         Quantity
                                     </label>
                                     <input
@@ -98,7 +98,7 @@ const BulkQuotePopup: React.FC<BulkQuotePopupProps> = ({ item, companyId, onClos
                                         value={quantity}
                                         onChange={(e) => setQuantity(e.target.value)}
                                         placeholder="e.g. 50 pcs / 5 dozen"
-                                        className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded-sm bg-white focus:border-[#F97316] outline-none"
+                                        className="w-full px-2 py-1.5 text-xs border border-border rounded-sm bg-card focus:border-[#F97316] outline-none"
                                     />
                                 </div>
                             </div>
@@ -106,7 +106,7 @@ const BulkQuotePopup: React.FC<BulkQuotePopupProps> = ({ item, companyId, onClos
 
                         {/* Note field (full width below — matches whiteboard) */}
                         <div>
-                            <label className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">
+                            <label className="block text-[9px] font-black text-muted-foreground uppercase tracking-widest mb-1">
                                 Note / Requirements
                             </label>
                             <textarea
@@ -114,7 +114,7 @@ const BulkQuotePopup: React.FC<BulkQuotePopupProps> = ({ item, companyId, onClos
                                 onChange={(e) => setNote(e.target.value)}
                                 rows={3}
                                 placeholder="Describe your requirements, preferred delivery, etc."
-                                className="w-full px-3 py-2 text-xs border border-gray-200 rounded-sm bg-gray-50 focus:border-[#F97316] outline-none resize-none"
+                                className="w-full px-3 py-2 text-xs border border-border rounded-sm bg-muted focus:border-[#F97316] outline-none resize-none"
                             />
                         </div>
 

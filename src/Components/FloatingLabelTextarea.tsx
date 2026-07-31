@@ -18,7 +18,7 @@ export const FloatingLabelTextarea = React.forwardRef<
     <div className="relative">
       {icon && (
         // Icon is pinned to the top, aligned with the un-floated label
-        <div className="absolute left-3 top-4 text-gray-400 z-10">
+        <div className="absolute left-3 top-4 text-muted-foreground z-10">
           {icon}
         </div>
       )}
@@ -41,9 +41,9 @@ export const FloatingLabelTextarea = React.forwardRef<
         htmlFor={inputId}
         className={cn(
           // Copied directly from your FloatingLabelInput, but with icon logic
-          'absolute pointer-events-none bg-gray-100 px-1 transition-all',
+          'absolute pointer-events-none bg-muted px-1 transition-all',
           icon ? 'left-9' : 'left-3', // Adjust label based on icon
-          '-top-2.5 text-sm text-gray-600', // Floated state
+          '-top-2.5 text-sm text-muted-foreground', // Floated state
           'peer-placeholder-shown:top-4 peer-placeholder-shown:text-base', // Un-floated state
           'peer-focus:-top-2.5 peer-focus:text-sm peer-focus:text-blue-600', // Focus state
         )}

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useAuth } from '../../context/auth-context';
-import { useExpenses, type Expense } from '../../Pages/Reports/ExpenseReport/useExpense';
+import { useExpenses, type Expense } from '@/features/expenses';
 import { ExpenseModal } from '../../Components/ExpenseModal';
 import BackButton from '../../Components/BackButton';
 import { CustomCard } from '../../Components/CustomCard';
@@ -12,6 +12,7 @@ import autoTable from 'jspdf-autotable';
 import XLSX from 'xlsx-js-style';
 import DownloadChoiceModal from '../../Pages/Reports/ItemReportComponents/DownloadChoiceModal';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import { Spinner } from '../../Components/ui/spinner';
 //import type ExpenseReportPage from '../../Pages/Reports/ExpenseReport';
 
 const formatDate = (ms: number) =>
@@ -247,11 +248,16 @@ const CatalogueExpenseReportPage: React.FC = () => {
         }
     };
 
-    if (loading) return <div className="p-4 text-center">Loading...</div>;
+    if (loading) return (
+        <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-muted-foreground">
+            <Spinner size="xl" />
+            <p className="text-sm font-medium">Loading...</p>
+        </div>
+    );
     if (error) return <div className="p-4 text-center text-red-500 text-sm">Failed to load expenses: {error}</div>;
 
     return (
-        <div className="min-h-screen bg-gray-100 p-2 pb-16 md:p-6">
+        <div className="min-h-screen bg-muted p-2 pb-16 md:p-6">
             {feedbackModal.isOpen && (
                 <Modal type={feedbackModal.type} message={feedbackModal.message}
                     onClose={() => setFeedbackModal(p => ({ ...p, isOpen: false }))} showConfirmButton={false} />
@@ -277,7 +283,7 @@ const CatalogueExpenseReportPage: React.FC = () => {
             {/* HEADER */}
             <div className="flex items-center justify-between pb-3 border-b mb-2 md:mb-4">
                 <BackButton />
-                <h1 className="flex-1 text-xl text-center font-bold text-gray-800 md:text-2xl">Expense Report</h1>
+                <h1 className="flex-1 text-xl text-center font-bold text-foreground md:text-2xl">Expense Report</h1>
                 <div className="flex items-center gap-1">
                     <button
                         onClick={() => setIsAddOpen(true)}
@@ -292,11 +298,11 @@ const CatalogueExpenseReportPage: React.FC = () => {
 
             {showSearch && (
                 <div className="flex justify-center mb-2 px-2">
-                    <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-[#F97316]">
+                    <div className="flex items-center w-full max-w-md border-b-2 border-border focus-within:border-[#F97316]">
                         <input type="text" placeholder="Search by description..." autoFocus
                             className="flex-1 text-base font-light p-2 outline-none bg-transparent text-center"
                             value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
-                        <button onClick={() => { setSearchQuery(''); setShowSearch(false); }} className="p-1 text-gray-500 hover:text-black">
+                        <button onClick={() => { setSearchQuery(''); setShowSearch(false); }} className="p-1 text-muted-foreground hover:text-foreground">
                             <IconClose />
                         </button>
                     </div>
@@ -304,10 +310,10 @@ const CatalogueExpenseReportPage: React.FC = () => {
             )}
 
             {/* FILTERS */}
-            <div className="bg-white p-3 rounded-lg shadow-md mb-2 md:p-5">
+            <div className="bg-card p-3 rounded-lg shadow-md mb-2 md:p-5">
                 <div className="grid grid-cols-1 gap-1">
                     <select value={datePreset} onChange={e => handleDatePreset(e.target.value)}
-                        className="w-full text-center p-2 text-sm bg-gray-50 border rounded-md mt-1">
+                        className="w-full text-center p-2 text-sm bg-muted border rounded-md mt-1">
                         <option value="today">Today</option>
                         <option value="yesterday">Yesterday</option>
                         <option value="last7">Last 7 Days</option>
@@ -316,9 +322,9 @@ const CatalogueExpenseReportPage: React.FC = () => {
                     </select>
                     <div className="grid grid-cols-2 gap-4 mt-2">
                         <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setDatePreset('custom'); }}
-                            className="w-full p-2 text-sm bg-gray-50 border rounded-md" />
+                            className="w-full p-2 text-sm bg-muted border rounded-md" />
                         <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setDatePreset('custom'); }}
-                            className="w-full p-2 text-sm bg-gray-50 border rounded-md" />
+                            className="w-full p-2 text-sm bg-muted border rounded-md" />
                     </div>
                 </div>
                 <div className="flex justify-center mt-2">
@@ -335,11 +341,11 @@ const CatalogueExpenseReportPage: React.FC = () => {
             </div>
 
             {/* REPORT DETAILS BAR */}
-            <div className="bg-white p-4 rounded-lg shadow-md flex flex-col md:flex-row md:justify-between md:items-center gap-3 mb-2">
-                <h2 className="text-lg font-semibold text-gray-700 text-center md:text-left w-full md:w-auto">Report Details</h2>
+            <div className="bg-card p-4 rounded-lg shadow-md flex flex-col md:flex-row md:justify-between md:items-center gap-3 mb-2">
+                <h2 className="text-lg font-semibold text-foreground text-center md:text-left w-full md:w-auto">Report Details</h2>
                 <div className="flex justify-between w-full md:w-auto md:justify-end md:gap-3">
                     <button onClick={() => setIsListVisible(v => !v)}
-                        className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition text-sm">
+                        className="px-4 py-2 bg-muted text-foreground font-semibold rounded-md hover:bg-slate-300 transition text-sm">
                         {isListVisible ? 'Hide List' : 'Show List'}
                     </button>
                     <button onClick={() => { filtered.length === 0 ? setFeedbackModal({ isOpen: true, type: State.INFO, message: 'No data to download.' }) : setIsDownloadModalOpen(true); }}
@@ -351,28 +357,28 @@ const CatalogueExpenseReportPage: React.FC = () => {
 
             {/* TABLE */}
             {isListVisible && (
-                <div className="bg-white rounded-lg shadow-md overflow-x-auto">
+                <div className="bg-card rounded-lg shadow-md overflow-x-auto">
                     <table className="w-full text-sm">
                         <thead>
-                            <tr className="bg-gray-50 border-b">
+                            <tr className="bg-muted border-b">
                                 {(['date', 'title', 'description', 'amount'] as (keyof Expense)[]).map(col => (
                                     <th key={col} onClick={() => handleSort(col)}
-                                        className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-800 select-none">
+                                        className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider cursor-pointer hover:text-foreground select-none">
                                         {col} {sortConfig.key === col ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
                                     </th>
                                 ))}
-                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Action</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase">Action</th>
                             </tr>
                         </thead>
                         <tbody>
                             {filtered.length === 0 ? (
-                                <tr><td colSpan={5} className="text-center py-10 text-gray-400">No expenses found for selected period.</td></tr>
+                                <tr><td colSpan={5} className="text-center py-10 text-muted-foreground">No expenses found for selected period.</td></tr>
                             ) : filtered.map((exp, i) => (
-                                <tr key={exp.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                                    <td className="px-4 py-3 text-gray-700">{formatDate(exp.date)}</td>
-                                    <td className="px-4 py-3 text-gray-700">{exp.title}</td>
-                                    <td className="px-4 py-3 text-gray-700">{exp.description}</td>
-                                    <td className="px-4 py-3 font-semibold text-gray-800">₹{exp.amount.toLocaleString('en-IN')}</td>
+                                <tr key={exp.id} className={i % 2 === 0 ? 'bg-card' : 'bg-muted'}>
+                                    <td className="px-4 py-3 text-foreground">{formatDate(exp.date)}</td>
+                                    <td className="px-4 py-3 text-foreground">{exp.title}</td>
+                                    <td className="px-4 py-3 text-foreground">{exp.description}</td>
+                                    <td className="px-4 py-3 font-semibold text-foreground">₹{exp.amount.toLocaleString('en-IN')}</td>
                                     <td className="px-4 py-3">
                                         <button onClick={() => setDeleteConfirm(exp.id)} className="text-red-400 hover:text-red-600 text-xs font-medium">Delete</button>
                                     </td>

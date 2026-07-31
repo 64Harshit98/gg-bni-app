@@ -73,7 +73,7 @@ const WhatsAppSubscriptionPage: React.FC = () => {
         // Step 3 is current page, do nothing
     };
     return (
-        <div className="min-h-screen bg-gray-100 font-sans">
+        <div className="min-h-screen bg-muted font-sans">
 
             {/* --- SECTION 1: HEADER (Scrolls Away) --- */}
             <div className="pt-4 pb-6 px-4 text-center max-w-2xl mx-auto relative">
@@ -87,7 +87,7 @@ const WhatsAppSubscriptionPage: React.FC = () => {
                     </h2>
                 </div>
 
-                <p className="mt-4 text-3xl leading-8 font-extrabold tracking-tight text-gray-900 sm:text-4xl">
+                <p className="mt-4 text-3xl leading-8 font-extrabold tracking-tight text-foreground sm:text-4xl">
                     Choose Your Message Plan
                 </p>
             </div>
@@ -101,7 +101,7 @@ const WhatsAppSubscriptionPage: React.FC = () => {
                         completedClassName="bg-emerald-100 text-emerald-600"
                         connectorClassName="bg-emerald-600"
                     />
-                    <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-2 px-1">
+                    <div className="flex justify-between text-[10px] font-bold text-muted-foreground uppercase tracking-wider mt-2 px-1">
                         <span className="text-emerald-600">Select Plan</span>
                         <span className="cursor-pointer hover:text-emerald-600 text-center">Details</span>
                         <span className="cursor-pointer hover:text-emerald-600 text-center">Verification</span>
@@ -113,7 +113,7 @@ const WhatsAppSubscriptionPage: React.FC = () => {
             <div className="max-w-2xl mx-auto px-4 pb-12 pt-8 space-y-8">
 
                 {/* Description Text */}
-                <p className="text-center text-xl text-gray-500">
+                <p className="text-center text-xl text-muted-foreground">
                     Connect with your customers directly on WhatsApp. Select a package that suits your volume.
                 </p>
 
@@ -125,9 +125,9 @@ const WhatsAppSubscriptionPage: React.FC = () => {
                     return (
                         <div
                             key={plan.id}
-                            className={`relative bg-white rounded-xs border transition-all duration-300 ${isExpanded
+                            className={`relative bg-card rounded-xs border transition-all duration-300 ${isExpanded
                                 ? 'border-emerald-500 ring-1 ring-emerald-500 shadow-lg'
-                                : 'border-gray-200 hover:border-gray-300 shadow-sm'
+                                : 'border-border hover:border-border shadow-sm'
                                 }`}
                         >
                             {/* Floating Badge */}
@@ -140,7 +140,7 @@ const WhatsAppSubscriptionPage: React.FC = () => {
                                             // Highlight if it's the "Popular" tag OR if the card is currently expanded
                                             (isPopular || isExpanded)
                                                 ? 'bg-emerald-500 text-white border-emerald-600'
-                                                : 'bg-white text-gray-500 border-gray-200'
+                                                : 'bg-card text-muted-foreground border-border'
                                             }`}
                                     >
                                         {tag}
@@ -155,7 +155,7 @@ const WhatsAppSubscriptionPage: React.FC = () => {
                             >
                                 {/* Left Side: Titles */}
                                 <div>
-                                    <h3 className="text-lg font-bold text-gray-900">{plan.subtitle}</h3>
+                                    <h3 className="text-lg font-bold text-foreground">{plan.subtitle}</h3>
                                     <p className="text-emerald-600 text-sm font-medium mt-1">{plan.name}</p>
                                 </div>
 
@@ -163,16 +163,16 @@ const WhatsAppSubscriptionPage: React.FC = () => {
                                 <div className="flex items-center gap-4">
                                     {/* Price & Duration Column */}
                                     <div className="text-right">
-                                        <div className="text-2xl font-bold text-gray-900 leading-none">
+                                        <div className="text-2xl font-bold text-foreground leading-none">
                                             ₹{plan.price.toLocaleString()}
                                         </div>
-                                        <div className="text-gray-400 text-xs mt-1 font-medium">
+                                        <div className="text-muted-foreground text-xs mt-1 font-medium">
                                             per {plan.duration.toLowerCase()}
                                         </div>
                                     </div>
 
                                     {/* Chevron Icon */}
-                                    <div className={`transition-transform duration-300 text-gray-400 ${isExpanded ? 'rotate-180' : ''}`}>
+                                    <div className={`transition-transform duration-300 text-muted-foreground ${isExpanded ? 'rotate-180' : ''}`}>
                                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                             <path d="M6 9l6 6 6-6" />
                                         </svg>
@@ -181,13 +181,13 @@ const WhatsAppSubscriptionPage: React.FC = () => {
                             </div>
 
                             {/* Dropdown Details */}
-                            <div className={`transition-all duration-300 ease-in-out bg-gray-50/50 overflow-hidden ${isExpanded ? 'max-h-[500px] opacity-100 border-t border-gray-100' : 'max-h-0 opacity-0'}`}>
+                            <div className={`transition-all duration-300 ease-in-out bg-muted/50 overflow-hidden ${isExpanded ? 'max-h-[500px] opacity-100 border-t border-border' : 'max-h-0 opacity-0'}`}>
                                 <div className="p-6">
                                     <div className="mb-6">
-                                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">What's included</h4>
+                                        <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-4">What's included</h4>
                                         <ul className="grid grid-cols-1 gap-y-3">
                                             {plan.features.map((feature, idx) => (
-                                                <li key={idx} className="flex items-center text-sm text-gray-600">
+                                                <li key={idx} className="flex items-center text-sm text-muted-foreground">
                                                     <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center mr-3 flex-shrink-0">
                                                         <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />

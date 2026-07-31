@@ -1,54 +1,33 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { db } from '../../lib/Firebase';
-import {
-  collection,
-  query,
-  getDocs,
-  doc,
-  getDoc,
-  type DocumentData,
-  orderBy,
-  limit,
-  type DocumentSnapshot,
-  writeBatch,
-  increment as firebaseIncrement,
-  arrayUnion,
-  serverTimestamp,
-  where,
-} from 'firebase/firestore';
 import { useAuth, useDatabase } from '../../context/auth-context';
 import { ROUTES } from '../../constants/routes.constants';
-import type { Item, PurchaseItem as OriginalPurchaseItem } from '../../constants/models';
+import type { Item } from '../../constants/models';
 import { Modal } from '../../constants/Modal';
-import { State, Variant } from '../../enums';
-import { CustomButton } from '../../Components';
-import SearchableItemInput from '../../UseComponents/SearchIteminput';
+import { State } from '../../enums';
+import { Button } from '../../Components/ui/button';
 import PaymentDrawer, { type PaymentCompletionData } from '../../Components/PaymentDrawer';
 import BarcodeScanner from '../../UseComponents/BarcodeScanner';
-import { ReturnListItem } from '../../Components/ReturnListItem';
-import { IconScanCircle } from '../../constants/Icons';
-import { GenericCartList, type CartItem } from '../../Components/CartItem';
+import type { CartItem } from '../../Components/CartItem';
 import { usePurchaseSettings } from '../../context/SettingsContext';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
+import { Spinner } from '../../Components/ui/spinner';
+import { formatCurrency } from '../../utils/formatters';
+import {
+  fetchPurchaseReturnInitialData,
+  saveReturnTransaction as saveReturnTransactionApi,
+  type PurchaseData,
+  type Party,
+} from '../../services/purchase/purchaseReturn.service';
+import { PurchaseReturnHeader } from './components/PurchaseReturnHeader';
+import { PurchaseReturnVendorSection } from './components/PurchaseReturnVendorSection';
+import { PurchaseReturnItemsPanel } from './components/PurchaseReturnItemsPanel';
+import { PurchaseReturnExchangePanel } from './components/PurchaseReturnExchangePanel';
+import { PurchaseReturnSummaryCard } from './components/PurchaseReturnSummaryCard';
 
-interface PurchaseData {
-  id: string;
-  invoiceNumber: string;
-  partyName: string;
-  partyNumber?: string;
-  partyAddress?: string;
-  taxType?: 'inclusive' | 'exclusive' | 'exempt';
-  partyGstin?: string;
-  items: OriginalPurchaseItem[];
-  totalAmount: number;
-  manualDiscount?: number;
-  createdAt: any;
-  isReturned?: boolean;
-  paymentMethods?: { [key: string]: number };
-}
+export type { PurchaseData };
 
-interface TransactionItem {
+export interface TransactionItem {
   id: string;
   originalItemId: string;
   name: string;
@@ -65,7 +44,7 @@ interface TransactionItem {
   unitMultiplier?: number;
 }
 
-interface ReturnCartItem extends CartItem {
+export interface ReturnCartItem extends CartItem {
   originalItemId: string;
   unitPrice: number;
   amount: number;
@@ -75,14 +54,6 @@ interface ReturnCartItem extends CartItem {
   barcode?: string;
   unit?: string;
   stock?: number;
-}
-
-// Unified Party Interface (Customers DB)
-interface Party {
-  id?: string;
-  name: string;
-  number: string;
-  [key: string]: any;
 }
 
 const PurchaseReturnPage: React.FC = () => {
@@ -119,7 +90,7 @@ const PurchaseReturnPage: React.FC = () => {
   const [isPartyDropdownOpen, setIsPartyDropdownOpen] = useState<boolean>(false);
   const partyDropdownRef = useRef<HTMLDivElement>(null);
 
-  // 2. Party Name Dropdown (NEW)
+  // 2. Party Name Dropdown
   const [isNameDropdownOpen, setIsNameDropdownOpen] = useState<boolean>(false);
   const nameDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -132,7 +103,7 @@ const PurchaseReturnPage: React.FC = () => {
   const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
   const [isItemDrawerOpen, setIsItemDrawerOpen] = useState(false);
   const [newItemsSearchQuery, setNewItemsSearchQuery] = useState<string>('');
-const [returnItemSearchQuery, setReturnItemSearchQuery] = useState<string>('');
+  const [returnItemSearchQuery, setReturnItemSearchQuery] = useState<string>('');
 
   const handleOpenEditDrawer = (item: Item) => {
     // We must find the actual inventory item using the originalItemId
@@ -168,12 +139,12 @@ const [returnItemSearchQuery, setReturnItemSearchQuery] = useState<string>('');
     [originalPurchaseItems, selectedReturnIds]
   );
   const isPurchaseUnpaid = useMemo(() => {
-  if (!selectedPurchase) return true;
-  const totalPaid = Object.entries(selectedPurchase.paymentMethods || {})
-    .filter(([mode]) => mode !== 'due')
-    .reduce((sum, [, val]) => sum + Number(val || 0), 0);
-  return totalPaid <= 0;
-}, [selectedPurchase]);
+    if (!selectedPurchase) return true;
+    const totalPaid = Object.entries(selectedPurchase.paymentMethods || {})
+      .filter(([mode]) => mode !== 'due')
+      .reduce((sum, [, val]) => sum + Number(val || 0), 0);
+    return totalPaid <= 0;
+  }, [selectedPurchase]);
   const filteredReturnItems = useMemo(() => {
     const q = returnItemSearchQuery.trim().toLowerCase();
     if (!q) return originalPurchaseItems;
@@ -209,40 +180,26 @@ const [returnItemSearchQuery, setReturnItemSearchQuery] = useState<string>('');
       setIsLoading(true);
       setError(null);
       try {
-        const purchasesQuery = query(
-          collection(db, 'companies', currentUser.companyId, 'purchases'),
-          orderBy('createdAt', 'desc'),
-          limit(50)
+        const {
+          recentPurchases,
+          availableItems: allItems,
+          availableParties: partiesData,
+          specificPurchase,
+        } = await fetchPurchaseReturnInitialData(
+          currentUser.companyId,
+          () => dbOperations.syncItems(),
+          purchaseId,
+          !!state?.invoiceData,
         );
-
-        const partiesQuery = query(collection(db, 'companies', currentUser.companyId, 'suppliers'), limit(100));
-
-        let specificPurchasePromise: Promise<DocumentSnapshot<DocumentData, DocumentData> | null> = Promise.resolve(null);
-
-        if (purchaseId && !state?.invoiceData) {
-          const specificRef = doc(db, 'companies', currentUser.companyId, 'purchases', purchaseId);
-          specificPurchasePromise = getDoc(specificRef);
-        }
-
-        const [purchasesSnapshot, allItems, partiesSnap, specificPurchaseSnap] = await Promise.all([
-          getDocs(purchasesQuery),
-          dbOperations.syncItems(),
-          getDocs(partiesQuery),
-          specificPurchasePromise
-        ]);
-
-        const recentPurchases: PurchaseData[] = purchasesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PurchaseData));
-        const partiesData = partiesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Party));
 
         if (state?.invoiceData) {
           handleSelectPurchase(state.invoiceData);
         }
-        else if (specificPurchaseSnap && specificPurchaseSnap.exists()) {
-          const specificData = { id: specificPurchaseSnap.id, ...specificPurchaseSnap.data() } as PurchaseData;
-          if (!recentPurchases.find(p => p.id === specificData.id)) {
-            recentPurchases.unshift(specificData);
+        else if (specificPurchase) {
+          if (!recentPurchases.find(p => p.id === specificPurchase.id)) {
+            recentPurchases.unshift(specificPurchase);
           }
-          handleSelectPurchase(specificData);
+          handleSelectPurchase(specificPurchase);
         }
         else if (purchaseId) {
           const preselected = recentPurchases.find(p => p.id === purchaseId);
@@ -264,7 +221,7 @@ const [returnItemSearchQuery, setReturnItemSearchQuery] = useState<string>('');
     };
     fetchData();
   }, [currentUser, dbOperations, purchaseId, state]);
-useEffect(() => {
+  useEffect(() => {
     if (isPurchaseUnpaid && modeOfReturn === 'Debit Note') {
       setModeOfReturn('Exchange');
     }
@@ -309,7 +266,7 @@ useEffect(() => {
     });
   }, [availableParties, supplierNumber]);
 
-  // NEW: Filter based on NAME input
+  // Filter based on NAME input
   const filteredPartiesByName = useMemo(() => {
     if (!supplierName) return [];
     const searchParam = String(supplierName).trim().toLowerCase();
@@ -330,6 +287,12 @@ useEffect(() => {
     setIsNameDropdownOpen(false);
   };
 
+  const handleSupplierNumberInputChange = (rawValue: string) => {
+    const val = rawValue.replace(/\D/g, '').slice(0, 10);
+    setSupplierNumber(val);
+    setSupplierName('');
+  };
+
   const handleSelectPurchase = (purchase: PurchaseData) => {
     setSelectedPurchase(purchase);
     setSupplierName(purchase.partyName);
@@ -337,7 +300,7 @@ useEffect(() => {
     setSupplierAddress(purchase.partyAddress || '');
     setSupplierGstin(purchase.partyGstin || '');
 
-    // 👇 STRICTLY INHERIT FROM THE ORIGINAL BILL
+    // STRICTLY INHERIT FROM THE ORIGINAL BILL
     if (purchase.taxType) {
       setActiveTaxMode((purchase.taxType === 'exempt' ? 'none' : purchase.taxType) as any);
     } else {
@@ -565,24 +528,6 @@ useEffect(() => {
     }));
   };
 
-  // Helper to find Doc Ref by Barcode
-  const getItemDocRef = async (barcode: string | undefined, fallbackId: string) => {
-    const companyId = currentUser!.companyId;
-    if (!barcode) return doc(db, 'companies', companyId, 'items', fallbackId);
-
-    const barcodeAsIdRef = doc(db, 'companies', companyId, 'items', barcode);
-    const barcodeAsIdSnap = await getDoc(barcodeAsIdRef);
-    if (barcodeAsIdSnap.exists()) return barcodeAsIdRef;
-
-    const q = query(collection(db, 'companies', companyId, 'items'), where('barcode', '==', barcode));
-    const querySnap = await getDocs(q);
-
-    if (!querySnap.empty) {
-      return querySnap.docs[0].ref;
-    }
-    return doc(db, 'companies', companyId, 'items', fallbackId);
-  };
-
   const handleBarcodeScanned = (decodedText: string) => {
     const currentPurpose = scannerPurpose;
     setScannerPurpose(null);
@@ -605,7 +550,6 @@ useEffect(() => {
     }
   };
 
-  // --- UI CALCULATIONS (With Discount) ---
   // --- UI CALCULATIONS (With Discount, Tax, and MRP) ---
   const { totalReturnValue, totalNewItemsValue, finalBalance, discountDeducted, totalTax, totalMrp } = useMemo(() => {
     let returnGross = 0;
@@ -702,7 +646,7 @@ useEffect(() => {
     const finalSupplierName = (completionData?.partyName || supplierName || selectedPurchase.partyName || '').trim();
     const finalSupplierNumber = (completionData?.partyNumber || supplierNumber || selectedPurchase.partyNumber || '').trim();
 
-    // --- UPDATED CHECK: Validates both Name and Number for Debit Notes ---
+    // --- Validates both Name and Number for Debit Notes ---
     const isCreatingDebitNote = modeOfReturn === 'Debit Note' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Debit Note' && finalBalance > 0);
 
     if (isCreatingDebitNote && (!finalSupplierName || !finalSupplierNumber)) {
@@ -714,149 +658,27 @@ useEffect(() => {
     const companyId = currentUser.companyId;
 
     try {
-      const batch = writeBatch(db);
-      const purchaseRef = doc(db, 'companies', companyId, 'purchases', selectedPurchase.id);
-
-      const originalItemsMap = new Map(selectedPurchase.items.map(item => [item.id, { ...item }]));
-
-      for (const returnItem of itemsToReturn) {
-        const originalItem = originalItemsMap.get(returnItem.originalItemId);
-        if (originalItem) {
-          originalItem.quantity -= returnItem.quantity;
-          if (originalItem.quantity <= 0) originalItemsMap.delete(returnItem.originalItemId);
-        }
-        const itemDocRef = await getItemDocRef(returnItem.barcode, returnItem.originalItemId);
-        batch.update(itemDocRef, { stock: firebaseIncrement(-returnItem.quantity), updatedAt: serverTimestamp() });
-      }
-
-      for (const newItem of newItemsReceived) {
-        const originalItem = originalItemsMap.get(newItem.originalItemId);
-        if (originalItem) {
-          originalItem.quantity += newItem.quantity;
-        } else {
-          const itemMaster = availableItems.find(i => i.id === newItem.originalItemId);
-          const itemTaxRate = (itemMaster?.tax !== undefined) ? Number(itemMaster.tax) : 0;
-
-          const lineTotal = newItem.unitPrice * newItem.quantity;
-          let lineBase = lineTotal;
-          let lineTax = 0;
-
-          if (activeTaxMode === 'inclusive' && itemTaxRate > 0) {
-            lineBase = lineTotal / (1 + (itemTaxRate / 100));
-            lineTax = lineTotal - lineBase;
-          } else if (activeTaxMode === 'exclusive' && itemTaxRate > 0) {
-            lineTax = lineTotal * (itemTaxRate / 100);
-          }
-          originalItemsMap.set(newItem.originalItemId, {
-            id: newItem.originalItemId,
-            name: newItem.name,
-            quantity: newItem.quantity,
-            purchasePrice: newItem.unitPrice,
-            mrp: newItem.mrp || 0,
-            tax: newItem.tax || 0,
-            taxRate: itemTaxRate,
-            taxType: activeTaxMode,
-            taxableAmount: lineBase,
-            taxAmount: lineTax,
-            finalPrice: activeTaxMode === 'exclusive' ? lineBase + lineTax : lineTotal,
-            hsnSac: newItem.hsnSac || '',
-            barcode: newItem.barcode || '',
-            unit: newItem.unit || '',
-            unitMultiplier: newItem.unitMultiplier || 1
-          } as any);
-        }
-        const itemDocRef = await getItemDocRef(newItem.barcode, newItem.originalItemId);
-        batch.update(itemDocRef, { stock: firebaseIncrement(newItem.quantity), updatedAt: serverTimestamp() });
-      }
-
-      const newItemsList = Array.from(originalItemsMap.values());
-      const newGrossTotal = newItemsList.reduce((sum, item) => sum + (item.quantity * (item.purchasePrice || 0)), 0);
-      const currentTransactionBillDiscount = Number(completionData?.discount || 0);
-      const originalManualDiscount = Number(selectedPurchase.manualDiscount) || 0;
-      const newManualDiscount = Math.max(0, originalManualDiscount - discountDeducted) + currentTransactionBillDiscount;
-      const newTotalAmount = newGrossTotal - newManualDiscount;
-      let updatedPaymentMethods: any = { ...(selectedPurchase.paymentMethods || {}) };
-
-      if (completionData?.paymentDetails) {
-        Object.entries(completionData.paymentDetails).forEach(([mode, amount]) => {
-          if (mode !== 'due') {
-            updatedPaymentMethods[mode] = (updatedPaymentMethods[mode] || 0) + Number(amount);
-          }
-        });
-      }
-
-      const totalPaidSoFar = Object.entries(updatedPaymentMethods)
-        .filter(([k]) => k !== 'due')
-        .reduce((sum, [_, val]) => sum + Number(val), 0);
-
-      updatedPaymentMethods.due = Math.max(0, newTotalAmount - totalPaidSoFar);
-
-      const actualReturnMode = modeOfReturn === 'Exchange' && finalBalance > 0
-        ? `Exchange & ${exchangeBalanceAction}`
-        : modeOfReturn;
-
-      const returnHistoryRecord = {
-        id: crypto.randomUUID(),
-        returnedAt: new Date(),
-        returnedItems: itemsToReturn.map(({ id, ...item }) => item),
-        newItemsReceived: newItemsReceived.map(({ id, ...item }) => item),
-        finalBalance,
+      await saveReturnTransactionApi({
+        companyId,
+        selectedPurchase,
+        itemsToReturn,
+        newItemsReceived,
+        availableItems,
+        activeTaxMode,
         discountDeducted,
-        modeOfReturn: actualReturnMode,
-        returnType: actualReturnMode,
-        paymentDetails: completionData?.paymentDetails || null,
-        invoiceNumber: selectedPurchase.invoiceNumber,
-        partyName: finalSupplierName,
-        partyNumber: finalSupplierNumber,
-        billDiscount: currentTransactionBillDiscount
-      };
+        finalBalance,
+        modeOfReturn,
+        exchangeBalanceAction,
+        finalSupplierName,
+        finalSupplierNumber,
+        supplierAddress,
+        supplierGstin,
+        completionDiscount: completionData?.discount || 0,
+        completionPaymentDetails: completionData?.paymentDetails ?? null,
+        completionPartyAddress: completionData?.partyAddress,
+        completionPartyGST: completionData?.partyGST,
+      });
 
-      const updateData: any = {
-        partyName: finalSupplierName,
-        partyNumber: finalSupplierNumber,
-        items: newItemsList,
-        totalAmount: newTotalAmount,
-        manualDiscount: newManualDiscount,
-        returnHistory: arrayUnion(returnHistoryRecord),
-        returnedItemsSnapshot: arrayUnion(...itemsToReturn.map(i => ({
-          id: i.originalItemId,
-          name: i.name,
-          quantity: i.quantity,
-          finalPrice: i.amount,
-          mrp: i.mrp,
-        }))),
-        paymentMethods: updatedPaymentMethods,
-        isReturned: true,
-        lastUpdated: serverTimestamp()
-      };
-
-      batch.update(purchaseRef, updateData);
-
-      if (finalSupplierNumber.length >= 3) {
-        const supplierRef = doc(db, 'companies', companyId, 'suppliers', finalSupplierNumber);
-        const supplierUpdateData: any = {
-          name: finalSupplierName,
-          number: finalSupplierNumber,
-          address: completionData?.partyAddress || supplierAddress || selectedPurchase.partyAddress || '',
-          gstin: completionData?.partyGST || supplierGstin || selectedPurchase.partyGstin || '',
-          companyId: companyId,
-          lastUpdatedAt: serverTimestamp()
-        };
-
-        const shouldAddDebit = finalBalance > 0 &&
-          (modeOfReturn === 'Debit Note' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Debit Note'));
-
-        if (shouldAddDebit) {
-          const netDebitToAdd = finalBalance - (completionData?.discount || 0);
-          if (netDebitToAdd > 0) {
-            supplierUpdateData.debitBalance = firebaseIncrement(netDebitToAdd);
-          }
-        }
-
-        batch.set(supplierRef, supplierUpdateData, { merge: true });
-      }
-
-      await batch.commit();
       setModal({ type: State.SUCCESS, message: 'Purchase Return processed successfully!' });
       setTimeout(() => navigate(ROUTES.JOURNAL), 1500);
     } catch (error: any) {
@@ -872,7 +694,7 @@ useEffect(() => {
     }
   };
 
-  // --- FIX 3: STRICT QUANTITY CHECK ---
+  // --- STRICT QUANTITY CHECK ---
   const handleProcessReturn = () => {
     if (!currentUser || !selectedPurchase) return;
 
@@ -920,267 +742,106 @@ useEffect(() => {
     return 'Debit Note';
   };
 
-  if (isLoading) return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
-
-  const renderHeader = () => (
-    <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-gray-100 md:bg-white border-b border-gray-300 shadow-sm flex-shrink-0 p-2 md:px-4 md:py-3 mb-2 md:mb-0">
-      <h1 className="text-2xl font-bold text-gray-800 text-center md:text-left mb-2 md:mb-0">
-        Purchase Return
-      </h1>
+  if (isLoading) return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-muted-foreground">
+      <Spinner size="xl" />
+      <p className="text-sm font-medium">Loading...</p>
     </div>
   );
 
   return (
-    <div className="flex flex-col h-screen w-full bg-gray-100 overflow-hidden">
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-muted">
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
       <BarcodeScanner isOpen={scannerPurpose !== null} onClose={() => setScannerPurpose(null)} onScanSuccess={handleBarcodeScanned} />
 
-      {/* HEADER */}
-      {renderHeader()}
+      <PurchaseReturnHeader />
 
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+      <div className="relative flex flex-1 flex-col overflow-hidden md:flex-row">
 
-        <div className="flex-1 w-full md:w-[65%] bg-gray-100 md:bg-white md:border-r border-gray-200 overflow-y-auto p-1 md:p-2 pb-24 md:pb-6 relative">
+        <div className="relative w-full flex-1 overflow-y-auto p-1 pb-24 md:w-[65%] md:border-r md:border-border md:p-2 md:pb-6">
 
-          {/* Search */}
-          <div className="bg-white p-2 rounded-sm shadow-md mb-4 border border-gray-200">
-            <div className="relative" ref={dropdownRef}>
-              <label htmlFor="search-purchase" className="block text-sm font-medium mb-1 text-gray-700">Search Original Purchase</label>
-              <div className="flex gap-2">
-                <input
-                  type="text" id="search-purchase" value={searchQuery}
-                  onChange={(e) => { setSearchQuery(e.target.value); setIsDropdownOpen(true); }}
-                  onFocus={() => setIsDropdownOpen(true)}
-                  placeholder={selectedPurchase ? `${selectedPurchase.partyName} (${selectedPurchase.invoiceNumber})` : "Supplier or Invoice..."}
-                  className="flex-grow p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" autoComplete="off" readOnly={!!selectedPurchase}
-                />
-                {selectedPurchase && (
-                  <button onClick={handleClear} className="py-2 px-3 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300">
-                    Clear
-                  </button>
-                )}
-              </div>
-              {isDropdownOpen && !selectedPurchase && (
-                <div className="absolute top-full w-full z-20 mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
-                  {filteredList.map(item => (
-                    <div key={item.id} className="p-3 cursor-pointer hover:bg-gray-100 border-b border-gray-50 last:border-0" onClick={() => handleSelectPurchase(item)}>
-                      <p className="font-semibold text-sm">{item.partyName} <span className="text-gray-500 font-normal">({item.invoiceNumber})</span></p>
-                      <p className="text-xs text-gray-500">Amount: ₹{item.totalAmount.toFixed(2)}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+          <PurchaseReturnVendorSection
+            searchQuery={searchQuery}
+            onSearchQueryChange={setSearchQuery}
+            isDropdownOpen={isDropdownOpen}
+            onDropdownOpenChange={setIsDropdownOpen}
+            dropdownRef={dropdownRef}
+            filteredList={filteredList}
+            selectedPurchase={selectedPurchase}
+            onSelectPurchase={handleSelectPurchase}
+            onClear={handleClear}
+            returnDate={returnDate}
+            onReturnDateChange={setReturnDate}
+            supplierName={supplierName}
+            onSupplierNameChange={setSupplierName}
+            isNameDropdownOpen={isNameDropdownOpen}
+            onNameDropdownOpenChange={setIsNameDropdownOpen}
+            nameDropdownRef={nameDropdownRef}
+            filteredPartiesByName={filteredPartiesByName}
+            supplierNumber={supplierNumber}
+            onSupplierNumberChange={handleSupplierNumberInputChange}
+            isPartyDropdownOpen={isPartyDropdownOpen}
+            onPartyDropdownOpenChange={setIsPartyDropdownOpen}
+            partyDropdownRef={partyDropdownRef}
+            filteredPartiesByNumber={filteredPartiesByNumber}
+            onSelectParty={handleSelectParty}
+          />
 
           {selectedPurchase && (
             <>
-              {/* Purchase Details */}
-              <div className="bg-white p-2 rounded-sm shadow-md mb-4 border border-gray-200">
-                <div className="space-y-3 mb-4">
-                  <div className='grid grid-cols-2 gap-4'>
-                    <div><label className="block text-xs font-bold text-gray-500 uppercase">Date</label><input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm" /></div>
+              <PurchaseReturnItemsPanel
+                searchQuery={returnItemSearchQuery}
+                onSearchQueryChange={setReturnItemSearchQuery}
+                onScanItem={() => setScannerPurpose('item')}
+                originalPurchaseItemsCount={originalPurchaseItems.length}
+                filteredReturnItems={filteredReturnItems}
+                selectedReturnIds={selectedReturnIds}
+                onToggleReturnItem={handleToggleReturnItem}
+                onQuantityChange={(id, val) => handleItemChange(setOriginalPurchaseItems, id, 'quantity', val)}
+              />
 
-                    {/* --- PARTY NAME DROPDOWN (NEW) --- */}
-                    <div className="relative" ref={nameDropdownRef}>
-                      <label className="block text-xs font-bold text-gray-500 uppercase">Party Name</label>
-                      <input
-                        type="text"
-                        value={supplierName}
-                        onChange={(e) => {
-                          setSupplierName(e.target.value);
-                          setIsNameDropdownOpen(true);
-                        }}
-                        onFocus={() => setIsNameDropdownOpen(true)}
-                        className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm"
-                        autoComplete="off"
-                        placeholder="Search by name..."
-                      />
-                      {isNameDropdownOpen && filteredPartiesByName.length > 0 && (
-                        <div className="absolute top-full left-0 w-full z-20 mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
-                          {filteredPartiesByName.map((party) => (
-                            <div
-                              key={party.id}
-                              className="p-2 cursor-pointer hover:bg-gray-100 border-b last:border-0"
-                              onClick={() => handleSelectParty(party)}
-                            >
-                              <p className="font-semibold text-sm text-gray-800">{party.name}</p>
-                              <p className="text-xs text-gray-500">{party.number}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                  </div>
-
-                  {/* --- PARTY NUMBER DROPDOWN --- */}
-                  <div className="relative" ref={partyDropdownRef}>
-                    <label className="block text-xs font-bold text-gray-500 uppercase">Party Number</label>
-                    <input
-                      type="text"
-                      value={supplierNumber}
-                      maxLength={10}
-                      onChange={(e) => {
-                        const val = e.target.value.replace(/\D/g, '').slice(0, 10);
-                        setSupplierNumber(val);
-                        setSupplierName('');
-                        setIsPartyDropdownOpen(true);
-                      }}
-                      onFocus={() => setIsPartyDropdownOpen(true)}
-                      className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm"
-                      autoComplete="off"
-                      placeholder="Search party by number or name..."
-                    />
-                    {isPartyDropdownOpen && filteredPartiesByNumber.length > 0 && (
-                      <div className="absolute top-full left-0 w-full z-20 mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
-                        {filteredPartiesByNumber.map((party) => (
-                          <div
-                            key={party.id}
-                            className="p-2 cursor-pointer hover:bg-gray-100 border-b last:border-0"
-                            onClick={() => handleSelectParty(party)}
-                          >
-                            <p className="font-semibold text-sm text-gray-800">{party.name}</p>
-                            <p className="text-xs text-gray-500">{party.number}</p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                </div>
-
-                <h3 className="text-sm font-bold text-gray-700 mb-2 border-b pb-1">Select Return Items</h3>
-                <div className="flex items-end gap-1 mb-3">
-                  <div className="flex-grow">
-                    <input
-                      type="text"
-                      value={returnItemSearchQuery}
-                      onChange={(e) => setReturnItemSearchQuery(e.target.value)}
-                      placeholder="Search items in this return..."
-                      className="w-full p-2 border rounded-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                      autoComplete="off"
-                    />
-                  </div>
-                  <button onClick={() => setScannerPurpose('item')} className="p-2.5 bg-gray-800 text-white rounded-sm flex items-center justify-center">
-                        <IconScanCircle width={24} height={24} />
-                      </button>
-                </div>
-
-                {originalPurchaseItems.length === 0 && (
-                  <p className="text-sm text-gray-500 mb-2">
-                    No returnable items found for this purchase.
-                  </p>
-                )}
-
-                <div className="flex flex-col gap-2">
-                  {filteredReturnItems.map((item) => (
-                    <ReturnListItem
-                      key={item.id}
-                      item={item}
-                      isSelected={selectedReturnIds.has(item.id)}
-                      onToggle={handleToggleReturnItem}
-                      onQuantityChange={(id, val) => handleItemChange(setOriginalPurchaseItems, id, 'quantity', val)}
-                      showMrp={false}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              {/* Exchange / New Items (Input + List) */}
-              <div className="bg-white p-2 rounded-sm shadow-md mb-5 md:mb-0 border border-gray-200">
-                {/* Mobile View: Mode Select Here */}
-                <div className="md:hidden mb-2">
-                  <label className="block font-medium text-sm mb-1">Transaction Type</label>
-                  <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-2 border rounded bg-white">
-                    <option>Exchange</option>
-                    <option disabled={isPurchaseUnpaid}>Debit Note</option>
-                    <option>Cash Refund</option>
-                  </select>
-                </div>
-
-                {modeOfReturn === 'Exchange' && (
-                  <div className="mt-2">
-                    <div className="flex items-end gap-2 mb-2">
-                      <div className="flex-grow">
-                        <SearchableItemInput
-                          label="Add New Item Received"
-                          placeholder="Search inventory..."
-                          items={availableItems}
-                          onItemSelected={handleNewItemSelected}
-                          isLoading={isLoading}
-                          error={error}
-                          onSearchChange={setNewItemsSearchQuery}
-                        />
-                      </div>
-                      <button onClick={() => setScannerPurpose('item')} className="p-2.5 bg-gray-800 text-white rounded-sm flex items-center justify-center">
-                        <IconScanCircle width={24} height={24} />
-                      </button>
-                    </div>
-
-                    {newItemsReceived.length > 0 && (
-                      <div className="border rounded-md overflow-hidden">
-                        <div className="bg-gray-50 px-3 py-2 border-b text-xs font-bold text-gray-500 uppercase">Received Items</div>
-                        <div className="max-h-60 overflow-y-auto bg-gray-50">
-                          <GenericCartList<ReturnCartItem>
-                            items={displayedNewItemsReceived}
-                            availableItems={availableItems}
-                            basePriceKey="mrp"
-                            priceLabel="MRP"
-                            settings={{
-                              enableRounding: false,
-                              roundingInterval: 1,
-                              enableItemWiseDiscount: true, // Enable discount editing
-                              enableDiscount2: false,         // Disable Discount 2
-                              lockDiscount: false,          // Unlock Discount
-                              lockPrice: false              // Unlock Price
-                            }}
-                            applyRounding={(v) => v}
-                            State={State}
-                            setModal={setModal}
-                            onOpenEditDrawer={handleOpenEditDrawer}
-                            onDeleteItem={handleRemoveNewItem}
-                            onDiscountChange={handleNewItemDiscountChange}
-                            onDiscount2Change={() => { }}
-                            onCustomPriceChange={handleNewItemPriceChange}
-                            onCustomPriceBlur={handleNewItemPriceBlur}
-                            onQuantityChange={handleNewItemQuantity}
-                            onDiscountPressStart={() => { }}
-                            onDiscountPressEnd={() => { }}
-                            onDiscountClick={() => { }}
-                            onPricePressStart={() => { }}
-                            onPricePressEnd={() => { }}
-                            onPriceClick={() => { }}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              <PurchaseReturnExchangePanel
+                modeOfReturn={modeOfReturn}
+                onModeOfReturnChange={setModeOfReturn}
+                isPurchaseUnpaid={isPurchaseUnpaid}
+                availableItems={availableItems}
+                onNewItemSelected={handleNewItemSelected}
+                isLoading={isLoading}
+                error={error}
+                onNewItemSearchChange={setNewItemsSearchQuery}
+                onScanItem={() => setScannerPurpose('item')}
+                displayedNewItemsReceived={displayedNewItemsReceived}
+                setModal={setModal}
+                onOpenEditDrawer={handleOpenEditDrawer}
+                onRemoveNewItem={handleRemoveNewItem}
+                onDiscountChange={handleNewItemDiscountChange}
+                onCustomPriceChange={handleNewItemPriceChange}
+                onCustomPriceBlur={handleNewItemPriceBlur}
+                onQuantityChange={handleNewItemQuantity}
+              />
 
               {/* Mobile Only: Inline Summary */}
-              <div className="md:hidden bg-white p-2 rounded-sm shadow-md mt-2">
-                <div className="flex justify-between items-center text-sm text-red-700">
-                  <p>Return Value</p><p className="font-medium">₹{totalReturnValue.toFixed(2)}</p>
+              <div className="mt-2 rounded-xl border border-border bg-card p-2 shadow-sm md:hidden">
+                <div className="flex items-center justify-between text-sm text-destructive">
+                  <p>Return Value</p><p className="font-medium">{formatCurrency(totalReturnValue)}</p>
                 </div>
                 {discountDeducted > 0 && (
-                  <div className="flex justify-between items-center text-xs text-orange-600 mt-1">
-                    <p>Less Bill Discount</p><p>- ₹{discountDeducted.toFixed(2)}</p>
+                  <div className="mt-1 flex items-center justify-between text-xs text-warning">
+                    <p>Less Bill Discount</p><p>- {formatCurrency(discountDeducted)}</p>
                   </div>
                 )}
                 {modeOfReturn === 'Exchange' && (
-                  <div className="flex justify-between items-center text-sm text-green-700 mt-1">
-                    <p>New Items Value</p><p className="font-medium">₹{totalNewItemsValue.toFixed(2)}</p>
+                  <div className="mt-1 flex items-center justify-between text-sm text-success">
+                    <p>New Items Value</p><p className="font-medium">{formatCurrency(totalNewItemsValue)}</p>
                   </div>
                 )}
-                <div className="border-t border-gray-200 my-2"></div>
-                <div className={`flex justify-between items-center text-lg font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-orange-600'}`}>
+                <div className="my-2 border-t border-border"></div>
+                <div className={`flex items-center justify-between text-lg font-bold ${finalBalance >= 0 ? 'text-success' : 'text-warning'}`}>
                   {modeOfReturn === 'Exchange' && finalBalance > 0 ? (
                     <select
                       value={exchangeBalanceAction}
                       onChange={(e) => setExchangeBalanceAction(e.target.value as any)}
-                      className="bg-transparent border-b-2 border-gray-200 hover:border-gray-400 focus:border-blue-500 outline-none cursor-pointer py-1 pr-2 text-gray-700 transition-colors"
+                      className="cursor-pointer border-b-2 border-border bg-transparent py-1 pr-2 text-foreground outline-none transition-colors hover:border-muted-foreground focus:border-primary"
                     >
                       <option value="Debit Note">Debit Note</option>
                       <option value="Cash Refund">Cash Refund</option>
@@ -1188,7 +849,7 @@ useEffect(() => {
                   ) : (
                     <p>{getBalanceLabel()}</p>
                   )}
-                  <p>₹{Math.abs(finalBalance).toFixed(2)}</p>
+                  <p>{formatCurrency(Math.abs(finalBalance))}</p>
                 </div>
               </div>
             </>
@@ -1196,80 +857,28 @@ useEffect(() => {
         </div>
 
         {/* --- RIGHT PANEL (Desktop Only: 35%) --- */}
-        <div className="hidden md:flex w-[35%] flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10 p-6">
-          {selectedPurchase ? (
-            <div className="flex flex-col h-full">
-              <h2 className="text-xl font-bold text-gray-800 mb-6 border-b pb-2">Return Summary</h2>
-
-              {/* Transaction Type */}
-              <div className="mb-6">
-                <label className="block text-sm font-semibold text-gray-600 mb-2">Transaction Type</label>
-                <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none">
-                  <option>Exchange</option>
-                  <option disabled={isPurchaseUnpaid}>Debit Note</option>
-                  <option>Cash Refund</option>
-                </select>
-              </div>
-
-              {/* Financials */}
-              <div className="space-y-4 text-sm text-gray-700 bg-gray-50 p-2 rounded-xl border border-gray-100 flex-grow">
-                <div className="flex justify-between">
-                  <span>Gross Return Value</span>
-                  <span className="font-medium">₹{totalReturnValue.toFixed(2)}</span>
-                </div>
-                {discountDeducted > 0 && (
-                  <div className="flex justify-between text-orange-600">
-                    <span>Less: Proportional Discount</span>
-                    <span>- ₹{discountDeducted.toFixed(2)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between font-semibold border-t border-gray-200 pt-2">
-                  <span>Net Return Value</span>
-                  <span className="text-red-600">₹{(totalReturnValue - discountDeducted).toFixed(2)}</span>
-                </div>
-
-                {modeOfReturn === 'Exchange' && (
-                  <div className="flex justify-between text-green-600 mt-2">
-                    <span>New Items Value</span>
-                    <span>- ₹{totalNewItemsValue.toFixed(2)}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Final Total */}
-              <div className="mt-auto pt-4 border-t border-gray-100">
-                <div className="flex justify-between items-end mb-4">
-                  {modeOfReturn === 'Exchange' && finalBalance > 0 ? (
-                    <select
-                      value={exchangeBalanceAction}
-                      onChange={(e) => setExchangeBalanceAction(e.target.value as any)}
-                      className="text-gray-500 font-medium bg-transparent border-b-2 border-gray-200 hover:border-gray-400 focus:border-blue-500 outline-none cursor-pointer pb-1 pr-2 transition-colors"
-                    >
-                      <option value="Debit Note">Debit Note</option>
-                      <option value="Cash Refund">Cash Refund</option>
-                    </select>
-                  ) : (
-                    <span className="text-gray-500 font-medium">{getBalanceLabel()}</span>
-                  )}
-                  <span className={`text-3xl font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-orange-600'}`}>
-                    ₹{Math.abs(finalBalance).toFixed(2)}
-                  </span>
-                </div>
-                <button onClick={handleProcessReturn} className="w-full bg-blue-600 text-white py-4 px-4 rounded-xl shadow-lg shadow-blue-200 transition-all active:scale-[0.98] text-lg font-bold hover:bg-blue-700">
-                  Process Transaction
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full text-gray-400">
-              <p>Select a purchase to begin return</p>
-            </div>
-          )}
-        </div>
+        <PurchaseReturnSummaryCard
+          hasSelectedPurchase={!!selectedPurchase}
+          modeOfReturn={modeOfReturn}
+          onModeOfReturnChange={setModeOfReturn}
+          isPurchaseUnpaid={isPurchaseUnpaid}
+          totalReturnValue={totalReturnValue}
+          discountDeducted={discountDeducted}
+          totalNewItemsValue={totalNewItemsValue}
+          finalBalance={finalBalance}
+          exchangeBalanceAction={exchangeBalanceAction}
+          onExchangeBalanceActionChange={setExchangeBalanceAction}
+          balanceLabel={getBalanceLabel()}
+          onProcessReturn={handleProcessReturn}
+        />
 
         {/* --- MOBILE FOOTER (Sticky) --- */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 p-2 bg-transparent flex justify-center pb-18">
-          {selectedPurchase && (<CustomButton onClick={handleProcessReturn} variant={Variant.Payment} className="w-full py-3 text-lg font-semibold shadow-md">Process Transaction</CustomButton>)}
+        <div className="fixed bottom-0 left-0 right-0 flex justify-center bg-transparent p-2 pb-18 md:hidden">
+          {selectedPurchase && (
+            <Button onClick={handleProcessReturn} className="w-full py-3 text-lg font-semibold shadow-md">
+              Process Transaction
+            </Button>
+          )}
         </div>
 
       </div>
@@ -1281,7 +890,6 @@ useEffect(() => {
         subtotal={Math.abs(finalBalance)}
         billTotal={Math.abs(finalBalance)}
 
-        // 👇 ADD THESE 5 LINES:
         totalTax={totalTax}
         taxMode={activeTaxMode}
         onTaxModeChange={setActiveTaxMode}

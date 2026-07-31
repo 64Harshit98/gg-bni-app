@@ -7,19 +7,23 @@ import {
 } from './PurchaseReportComponents/purchaseReports.utils';
 import { jsPDF } from 'jspdf';
 import FilterSelect from './PurchaseReportComponents/FilterSelect';
+import PurchaseReportDetails from './PurchaseReportComponents/PurchaseReportDetails';
 import autoTable from 'jspdf-autotable';
 import XLSX from 'xlsx-js-style';
+import { Package, Receipt, ScrollText, Search, ShoppingBag, TrendingUp, X } from 'lucide-react';
 
-import { CustomCard } from '../../Components/CustomCard';
-import { CardVariant, State } from '../../enums';
-import { CustomTable } from '../../Components/CustomTable';
+import { Spinner } from '../../Components/ui/spinner';
+import { Button } from '../../Components/ui/button';
+import { Input } from '../../Components/ui/input';
+import { StatCard } from '../../Components/ui/stat-card';
+import { State } from '../../enums';
 import BackButton from '../../Components/BackButton';
-import { IconClose, IconSearch } from '../../constants/Icons';
 import { getPurchaseColumns } from '../../constants/TableColoumns';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
 import { useAuth } from '../../context/auth-context';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import { formatCurrency, formatNumber } from '../../utils/formatters';
 
 const PurchaseReport: React.FC = () => {
   const { currentUser } = useAuth();
@@ -615,11 +619,24 @@ const PurchaseReport: React.FC = () => {
 
   /* ---------- LOAD STATES ---------- */
   if (isLoading || authLoading)
-    return <div className="p-4 text-center">Loading...</div>;
-  if (error) return <div className="p-4 text-center text-red-500">{error}</div>;
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-muted p-10 text-muted-foreground">
+        <Spinner size="lg" />
+        <p className="text-sm font-medium">Loading purchase report...</p>
+      </div>
+    );
+
+  if (error)
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-muted p-4">
+        <p className="rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-center text-sm font-medium text-destructive">
+          {error}
+        </p>
+      </div>
+    );
 
   return (
-    <div className="min-h-screen bg-gray-100 p-2 pb-16">
+    <div className="aurora min-h-screen bg-muted pb-16">
       {feedbackModal.isOpen && (
         <Modal
           type={feedbackModal.type}
@@ -637,155 +654,158 @@ const PurchaseReport: React.FC = () => {
       />
 
       {/* HEADER */}
-      <div className="flex items-center justify-between pb-3 border-b mb-2">
-        <BackButton />
-        <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
-          Purchase Report
-        </h1>
-        <button onClick={() => setShowSearch(true)} className="p-2">
-          <IconSearch />
-        </button>
-      </div>
+      <header className="glass sticky top-0 z-20 mx-3 mt-3 flex flex-col gap-3 rounded-2xl p-3 shadow-sm md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-3">
+          <BackButton />
+          <div className="rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.6_0.22_330)] p-[3px] shadow-sm shadow-primary/20">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-[13px] bg-gradient-brand text-white">
+              <ShoppingBag className="size-4" />
+            </span>
+          </div>
+          <div>
+            <h1 className="text-lg font-bold tracking-tight text-foreground md:text-xl">
+              Purchase <span className="text-gradient">Report</span>
+            </h1>
+            <p className="text-xs text-muted-foreground">Track supplier purchases and costs</p>
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={() => setShowSearch((v) => !v)}
+          aria-label="Search purchases"
+        >
+          {showSearch ? <X className="size-4" /> : <Search className="size-4" />}
+        </Button>
+      </header>
 
-      {showSearch && (
-        <div className="flex justify-center mb-2 px-2">
-          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-blue-700">
-            <input
+      <main className="space-y-3 p-3">
+        {showSearch && (
+          <div className="glass flex items-center gap-2 rounded-2xl p-2">
+            <Input
               type="text"
-              placeholder="Search by Name..."
-              className="flex-1 text-base font-light p-2 outline-none bg-transparent text-center"
+              placeholder="Search by supplier name..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               autoFocus
+              className="border-none bg-transparent shadow-none focus-visible:ring-0"
             />
-            <button
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               onClick={() => {
                 setSearchQuery('');
                 setShowSearch(false);
               }}
-              className="p-1 text-gray-500 hover:text-black"
+              aria-label="Clear search"
             >
-              <IconClose />
-            </button>
+              <X className="size-4" />
+            </Button>
+          </div>
+        )}
+
+        {/* FILTERS */}
+        <div className="glass space-y-3 rounded-2xl p-4">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <FilterSelect
+              label="Date Range"
+              value={datePreset}
+              onChange={(e) => handleDatePresetChange(e.target.value)}
+            >
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="last7">Last 7 Days</option>
+              <option value="last30">Last 30 Days</option>
+              <option value="custom">Custom</option>
+            </FilterSelect>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">Start Date</label>
+              <Input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => {
+                  setCustomStartDate(e.target.value);
+                  setDatePreset('custom');
+                }}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">End Date</label>
+              <Input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => {
+                  setCustomEndDate(e.target.value);
+                  setDatePreset('custom');
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-center md:justify-end">
+            <Button
+              type="button"
+              onClick={handleApplyFilters}
+              className="w-full bg-gradient-brand text-white hover:opacity-90 md:w-auto md:px-10"
+            >
+              Apply
+            </Button>
           </div>
         </div>
-      )}
 
-      {/* FILTERS */}
-      <div className="bg-white p-4 rounded-lg shadow-md mb-2">
-        <div className="grid grid-cols-1 gap-3">
-          <FilterSelect
-            value={datePreset}
-            onChange={(e) => handleDatePresetChange(e.target.value)}
-          >
-            <option value="today">Today</option>
-            <option value="yesterday">Yesterday</option>
-            <option value="last7">Last 7 Days</option>
-            <option value="last30">Last 30 Days</option>
-            <option value="custom">Custom</option>
-          </FilterSelect>
-
-          <div className="grid grid-cols-2 gap-4">
-            <input
-              type="date"
-              value={customStartDate}
-              onChange={(e) => {
-                setCustomStartDate(e.target.value);
-                setDatePreset('custom');
-              }}
-              className="w-full p-2 text-sm bg-gray-50 border rounded-md"
-            />
-            <input
-              type="date"
-              value={customEndDate}
-              onChange={(e) => {
-                setCustomEndDate(e.target.value);
-                setDatePreset('custom');
-              }}
-              className="w-full p-2 text-sm bg-gray-50 border rounded-md"
-            />
-          </div>
+        {/* SUMMARY */}
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatCard
+            label="Total Cost"
+            value={formatCurrency(summary.totalPurchases || 0)}
+            icon={<Receipt />}
+          />
+          <StatCard
+            label="Total Orders"
+            value={formatNumber(summary.totalOrders)}
+            icon={<ScrollText />}
+          />
+          <StatCard
+            label="Total Items"
+            value={formatNumber(summary.totalItemsPurchased)}
+            icon={<Package />}
+          />
+          <StatCard
+            label="Avg Purchase"
+            value={formatCurrency(summary.averagePurchaseValue || 0)}
+            icon={<TrendingUp />}
+          />
         </div>
 
-        <div className="flex justify-center mt-2">
-          <button onClick={handleApplyFilters}
-            className="w-full md:w-fit mt-2 px-10 py-2 bg-blue-600 text-white text-lg font-semibold rounded-sm hover:bg-blue-700" >
-            Apply
-          </button>
-        </div>
-      </div>
-
-      {/* SUMMARY */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-2">
-        <CustomCard
-          className="py-10"
-          variant={CardVariant.Summary}
-          title="Total Cost"
-          value={`₹${Math.round(summary.totalPurchases || 0).toLocaleString('en-IN')}`}
-        />
-        <CustomCard
-          className="py-10"
-          variant={CardVariant.Summary}
-          title="Total Orders"
-          value={summary.totalOrders.toString()}
-        />
-        <CustomCard
-          className="py-10"
-          variant={CardVariant.Summary}
-          title="Total Items"
-          value={summary.totalItemsPurchased.toString()}
-        />
-        <CustomCard
-          className="py-10"
-          variant={CardVariant.Summary}
-          title="Avg Purchase"
-          value={`₹${Math.round(summary.averagePurchaseValue || 0).toLocaleString('en-IN')}`}
-        />
-      </div>
-
-      {/* REPORT DETAILS */}
-      <div className="bg-white p-3 rounded-sm shadow-md mb-2 flex flex-col md:flex-row md:justify-between md:items-center gap-1">
-        <h2 className="text-lg font-semibold text-gray-700 text-center md:text-left w-full md:w-auto">Report Details</h2>
-        <div className="flex items-stretch gap-3 ">
-          <button
-            onClick={() => setIsListVisible(!isListVisible)}
-            className="flex-1 md:flex-none px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition"
-          >
-            {isListVisible ? 'Hide List' : 'Show List'}
-          </button>
-          <button
-            onClick={() => {
-              if (filteredPurchases.length === 0) {
-                setFeedbackModal({
-                  isOpen: true,
-                  type: State.INFO,
-                  message: 'No data available to download.',
-                });
-              } else {
-                setIsDownloadModalOpen(true);
-              }
-            }}
-            className="flex-1 md:flex-none px-4 py-0.5 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 transition"
-          >
-            Download Report
-          </button>
-        </div>
-      </div>
-
-      {isListVisible && (
-        <CustomTable<PurchaseRecord>
+        {/* REPORT DETAILS + TABLE */}
+        <PurchaseReportDetails<PurchaseRecord>
+          isListVisible={isListVisible}
+          setIsListVisible={setIsListVisible}
+          downloadAsPdf={() => {
+            if (filteredPurchases.length === 0) {
+              setFeedbackModal({
+                isOpen: true,
+                type: State.INFO,
+                message: 'No data available to download.',
+              });
+            } else {
+              setIsDownloadModalOpen(true);
+            }
+          }}
           data={filteredPurchases}
           columns={tableColumns}
           keyExtractor={(purchase) => purchase.id}
           sortConfig={sortConfig}
           onSort={handleSort}
-          emptyMessage="No purchases found for the selected period."
+          emptyTitle="No purchases found"
+          emptyDescription="No purchases found for the selected period."
         />
-      )}
-
+      </main>
     </div>
   );
 };
 
 export default PurchaseReport;
-

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import {
-  LineChart,
-  Line,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -15,6 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from './ui/card';
+import { cn } from '../lib/utils';
 
 interface SalesBarChartProps {
   isDataVisible: boolean;
@@ -70,7 +71,7 @@ export const SalesBarChartReport: React.FC<SalesBarChartProps> = ({ isDataVisibl
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-white border border-gray-200 p-2 rounded-lg shadow-sm text-sm">
+        <div className="bg-card border border-border p-2 rounded-lg shadow-sm text-sm">
           <p className="font-semibold mb-1">{label}</p>
           {payload.map((entry: any, index: number) => (
             <div key={index} className="flex items-center gap-2" style={{ color: entry.color }}>
@@ -91,69 +92,78 @@ export const SalesBarChartReport: React.FC<SalesBarChartProps> = ({ isDataVisibl
 
   if (!isDataVisible) {
     return (
-      <Card className="h-full">
+      <Card className="h-full rounded-2xl border border-border/70 shadow-sm">
         <CardHeader>
           <CardTitle>Daily Performance</CardTitle>
         </CardHeader>
-        <CardContent className="flex h-full min-h-[240px] flex-col items-center justify-center bg-gray-50 rounded-lg">
-          <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 mb-2">
+        <CardContent className="flex h-full min-h-[240px] flex-col items-center justify-center bg-muted rounded-lg">
+          <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground mb-2">
             <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
             <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
             <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
             <line x1="2" x2="22" y1="2" y2="22" />
           </svg>
-          <p className="text-gray-500">Data is hidden</p>
+          <p className="text-muted-foreground">Data is hidden</p>
         </CardContent>
       </Card>
     );
   }
 
+  const strokeColor = viewMode === 'amount' ? 'var(--primary)' : 'var(--success)';
+
   return (
-    <Card className="h-full flex flex-col">
-      <CardHeader className="flex flex-row items-center justify-between pb-4">
+    <Card className="h-full flex flex-col gap-3 rounded-2xl border border-border/70 border-t-2 border-t-primary py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg">
+      <CardHeader className="flex flex-row items-center justify-between px-4 pb-0">
         <div className="space-y-1">
           <CardTitle>Daily Performance</CardTitle>
           <CardDescription>
             {viewMode === 'amount' ? 'Sales amount' : 'Number of bills'}
           </CardDescription>
         </div>
-        <div className="flex items-center p-1 bg-gray-100 rounded-lg">
+        <div className="flex items-center rounded-full border border-border bg-muted p-0.5">
           <button
             onClick={() => setViewMode('amount')}
-            className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${viewMode === 'amount' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+            className={cn('rounded-full px-3 py-1 text-xs font-semibold transition-all', viewMode === 'amount' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}
           >
             Amt
           </button>
           <button
             onClick={() => setViewMode('quantity')}
-            className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${viewMode === 'quantity' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+            className={cn('rounded-full px-3 py-1 text-xs font-semibold transition-all', viewMode === 'quantity' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}
           >
             Qty
           </button>
         </div>
       </CardHeader>
 
-      <CardContent className="pl-0 flex-1 min-h-0">
-        <div className="h-full w-full min-h-[240px]">
+      <CardContent className="pl-0 pr-4 flex-1 min-h-0">
+        <div className="h-full w-full min-h-[200px]">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart
+            <AreaChart
               data={chartData}
               margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
             >
-              <CartesianGrid vertical={false} stroke="#e5e7eb" strokeDasharray="3 3" />
+              <defs>
+                <linearGradient id="salesAreaFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={strokeColor} stopOpacity={0.32} />
+                  <stop offset="100%" stopColor={strokeColor} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+
+              <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
 
               <XAxis
                 dataKey="date"
                 axisLine={false}
                 tickLine={false}
-                tick={{ fill: '#6b7280', fontSize: 12 }}
+                tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }}
                 dy={10}
               />
 
               <YAxis
                 axisLine={false}
                 tickLine={false}
-                tick={{ fill: '#6b7280', fontSize: 12 }}
+                tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }}
                 tickFormatter={(value) => {
                   if (viewMode === 'quantity') return value;
                   if (value === 0) return '₹0';
@@ -162,18 +172,19 @@ export const SalesBarChartReport: React.FC<SalesBarChartProps> = ({ isDataVisibl
                 }}
               />
 
-              <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#9ca3af', strokeWidth: 1, strokeDasharray: '4 4' }} />
+              <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'var(--muted-foreground)', strokeWidth: 1, strokeDasharray: '4 4' }} />
 
-              <Line
+              <Area
                 type="linear"
                 dataKey={viewMode === 'amount' ? 'sales' : 'bills'}
                 name={viewMode === 'amount' ? 'Sales' : 'Bills'}
-                stroke={viewMode === 'amount' ? '#3b82f6' : '#16a34a'}
+                stroke={strokeColor}
                 strokeWidth={2}
-                dot={{ fill: 'white', stroke: viewMode === 'amount' ? '#3b82f6' : '#16a34a', strokeWidth: 2, r: 4 }}
+                fill="url(#salesAreaFill)"
+                dot={{ fill: 'var(--card)', stroke: strokeColor, strokeWidth: 2, r: 4 }}
                 activeDot={{ r: 6, strokeWidth: 2 }}
               />
-            </LineChart>
+            </AreaChart>
           </ResponsiveContainer>
         </div>
       </CardContent>

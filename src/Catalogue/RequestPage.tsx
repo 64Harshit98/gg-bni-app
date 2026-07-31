@@ -197,7 +197,7 @@ function RequestPage() {
             case "declined":
                 return "bg-red-50 text-red-600 border-red-100";
             default:
-                return "bg-gray-50 text-gray-600 border-gray-100"; // pending
+                return "bg-muted text-muted-foreground border-border"; // pending
         }
     };
 
@@ -704,14 +704,14 @@ function RequestPage() {
                 />
             )}
             {/* --- HEADER --- */}
-            <header className="sticky top-0 z-[100] bg-white border-b border-gray-100 shadow-sm w-full">
+            <header className="sticky top-0 z-[100] bg-card border-b border-border shadow-sm w-full">
                 <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
 
                     {/* LEFT */}
                     <div className="flex items-center gap-3">
                         <button
                             onClick={() => navigate(-1)}
-                            className="p-1 hover:bg-gray-100 rounded-sm transition-colors"
+                            className="p-1 hover:bg-muted rounded-sm transition-colors"
                         >
                             <ChevronLeft className="text-[#F97316]" size={20} />
                         </button>
@@ -727,7 +727,7 @@ function RequestPage() {
                     <div className="flex items-center gap-1">
                         <button
                             onClick={() => setIsSearchOpen(prev => !prev)}
-                            className="p-2 rounded-sm hover:bg-gray-100 transition-colors"
+                            className="p-2 rounded-sm hover:bg-muted transition-colors"
                         >
                             <Search size={18} className="text-[#F97316]" />
                         </button>
@@ -735,20 +735,20 @@ function RequestPage() {
                         <div ref={dateFilterRef} className="relative">
                             <button
                                 onClick={() => setIsDateFilterOpen(prev => !prev)}
-                                className="p-2 rounded-sm hover:bg-gray-100 transition-colors"
+                                className="p-2 rounded-sm hover:bg-muted transition-colors"
                                 title="Filter by date"
                             >
                                 <Filter size={18} className="text-[#F97316]" />
                             </button>
 
                             {isDateFilterOpen && (
-                                <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-sm shadow-md z-50 p-3">
+                                <div className="absolute right-0 mt-2 w-64 bg-card border border-border rounded-sm shadow-md z-50 p-3">
                                     <ul className="py-1 border-b mb-2">
                                         {dateFilters.map(filter => (
                                             <li key={filter.value}>
                                                 <button
                                                     onClick={() => handleDateFilterSelect(filter.value)}
-                                                    className={`w-full text-left px-3 py-2 text-xs rounded-sm hover:bg-gray-50 ${activeDateFilter === filter.value ? 'bg-orange-50 text-[#F97316] font-bold' : 'text-gray-700'
+                                                    className={`w-full text-left px-3 py-2 text-xs rounded-sm hover:bg-muted ${activeDateFilter === filter.value ? 'bg-orange-50 text-[#F97316] font-bold' : 'text-foreground'
                                                         }`}
                                                 >
                                                     {filter.label}
@@ -762,13 +762,13 @@ function RequestPage() {
                                                 type="date"
                                                 value={customStartDate}
                                                 onChange={(e) => setCustomStartDate(e.target.value)}
-                                                className="text-xs p-1.5 border border-gray-300 rounded-sm w-full outline-none focus:border-[#F97316]"
+                                                className="text-xs p-1.5 border border-border rounded-sm w-full outline-none focus:border-[#F97316]"
                                             />
                                             <input
                                                 type="date"
                                                 value={customEndDate}
                                                 onChange={(e) => setCustomEndDate(e.target.value)}
-                                                className="text-xs p-1.5 border border-gray-300 rounded-sm w-full outline-none focus:border-[#F97316]"
+                                                className="text-xs p-1.5 border border-border rounded-sm w-full outline-none focus:border-[#F97316]"
                                             />
                                             <button
                                                 onClick={handleApplyCustomDate}
@@ -786,13 +786,13 @@ function RequestPage() {
             </header>
 
             {isSearchOpen && (
-                <div className="sticky top-[56px] z-[95] px-4 p-3 bg-white border-b border-gray-100">
+                <div className="sticky top-[56px] z-[95] px-4 p-3 bg-card border-b border-border">
                     <input
                         type="text"
                         placeholder="Search by name or number..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full p-3 border border-gray-200 rounded-sm text-sm outline-none focus:border-[#F97316]"
+                        className="w-full p-3 border border-border rounded-sm text-sm outline-none focus:border-[#F97316]"
                     />
                 </div>
             )}
@@ -803,12 +803,12 @@ function RequestPage() {
                 {/* Main Toggle: Pending / Completed */}
                 <div className="sticky top-[56px] z-[90] bg-[#E9F0F7] py-0">
                     {requireApproval ? (
-                        <div className="flex bg-white p-1 rounded-sm shadow-sm mb-2 border border-gray-200">
+                        <div className="flex bg-card p-1 rounded-sm shadow-sm mb-2 border border-border">
                             <button
                                 onClick={() => setRequestType('notify')}
                                 className={`flex-1 py-1 text-sm font-bold rounded-sm transition-all ${requestType === 'notify'
                                     ? 'bg-[#F97316] text-white'
-                                    : 'text-gray-500'
+                                    : 'text-muted-foreground'
                                     }`}
                             >
                                 Pre-Order Requests
@@ -817,14 +817,14 @@ function RequestPage() {
                                 onClick={() => setRequestType('approval')}
                                 className={`flex-1 py-1 text-sm font-bold rounded-sm transition-all ${requestType === 'approval'
                                     ? 'bg-[#F97316] text-white'
-                                    : 'text-gray-500'
+                                    : 'text-muted-foreground'
                                     }`}
                             >
                                 Approval Requests
                             </button>
                         </div>
                     ) : (
-                        <div className="bg-white p-2 rounded-sm shadow-sm mb-2 border border-gray-200 text-center">
+                        <div className="bg-card p-2 rounded-sm shadow-sm mb-2 border border-border text-center">
                             <span className="text-sm font-black text-[#F97316] uppercase tracking-tight">Pre-Order Requests</span>
                         </div>
                     )}
@@ -837,7 +837,7 @@ function RequestPage() {
                             onClick={() => setApprovalStatus('pending')}
                             className={`flex-1 py-2 text-xs font-bold rounded-sm border ${approvalStatus === 'pending'
                                 ? 'bg-[#F97316] text-white'
-                                : 'bg-white border-gray-200 text-gray-500'
+                                : 'bg-card border-border text-muted-foreground'
                                 }`}
                         >
                             Pending
@@ -847,7 +847,7 @@ function RequestPage() {
                             onClick={() => setApprovalStatus('completed')}
                             className={`flex-1 py-2 text-xs font-bold rounded-sm border ${approvalStatus === 'completed'
                                 ? 'bg-[#F97316] text-white'
-                                : 'bg-white border-gray-200 text-gray-500'
+                                : 'bg-card border-border text-muted-foreground'
                                 }`}
                         >
                             Completed
@@ -860,14 +860,14 @@ function RequestPage() {
                         <div className="relative">
                             <button
                                 onClick={() => setIsFilterOpen(prev => !prev)}
-                                className="p-2 border border-gray-200 rounded-sm bg-white hover:bg-gray-50"
+                                className="p-2 border border-border rounded-sm bg-card hover:bg-muted"
                                 title="Filter"
                             >
-                                <Filter size={16} className="text-gray-600" />
+                                <Filter size={16} className="text-muted-foreground" />
                             </button>
 
                             {isFilterOpen && (
-                                <div className="absolute right-0 mt-2 w-32 bg-white border border-gray-200 rounded-sm shadow-md z-50 overflow-hidden">
+                                <div className="absolute right-0 mt-2 w-32 bg-card border border-border rounded-sm shadow-md z-50 overflow-hidden">
                                     {['all', 'approved', 'declined'].map(option => (
                                         <button
                                             key={option}
@@ -875,8 +875,8 @@ function RequestPage() {
                                                 setCompletedFilter(option as any)
                                                 setIsFilterOpen(false)
                                             }}
-                                            className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 ${completedFilter === option
-                                                ? 'bg-gray-100 font-semibold'
+                                            className={`w-full text-left px-3 py-2 text-xs hover:bg-muted ${completedFilter === option
+                                                ? 'bg-muted font-semibold'
                                                 : ''
                                                 }`}
                                         >
@@ -890,7 +890,7 @@ function RequestPage() {
                 )}
 
                 {/* Content Area Placeholder */}
-                <div className="mt-1 text-center text-gray-400 text-sm italic">
+                <div className="mt-1 text-center text-muted-foreground text-sm italic">
                     Showing {requestType === 'notify' ? 'notify' : approvalStatus} requests...
                 </div>
 
@@ -915,7 +915,7 @@ function RequestPage() {
                                 <div
                                     key={`merged_${cardKey}`}
                                     onClick={() => setExpandedId(isExpanded ? null : cardKey)}
-                                    className="p-3.5 shadow-sm border rounded-sm cursor-pointer bg-white border-gray-100 transition-all duration-300"
+                                    className="p-3.5 shadow-sm border rounded-sm cursor-pointer bg-card border-border transition-all duration-300"
                                 >
                                     <div className="flex justify-between items-start gap-2">
                                         <div className="flex items-center gap-2.5 min-w-0">
@@ -928,9 +928,9 @@ function RequestPage() {
                                                 <Phone size={16} />
                                             </a>
                                             <div className="min-w-0">
-                                                <h3 className="text-sm font-bold text-slate-800 truncate">{card.name}</h3>
-                                                <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
-                                                    <Phone size={12} className="text-gray-400 shrink-0" />
+                                                <h3 className="text-sm font-bold text-foreground truncate">{card.name}</h3>
+                                                <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                                                    <Phone size={12} className="text-muted-foreground shrink-0" />
                                                     {card.phone || "No Number"}
                                                 </p>
                                             </div>
@@ -943,11 +943,11 @@ function RequestPage() {
                                                     </span>
                                                 ))}
                                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor"
-                                                    className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? "rotate-180" : ""}`}>
+                                                    className={`w-4 h-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`}>
                                                     <path d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
                                                 </svg>
                                             </div>
-                                            <span className="text-[10px] text-gray-400 font-medium">{formatDate(latestItem?.createdAt)}</span>
+                                            <span className="text-[10px] text-muted-foreground font-medium">{formatDate(latestItem?.createdAt)}</span>
                                         </div>
                                     </div>
                                     {isExpanded && (
@@ -955,9 +955,9 @@ function RequestPage() {
                                             {card.bulks.length > 0 && (
                                                 <div>
                                                     <div className="flex items-center gap-2 mb-2">
-                                                        <div className="flex-1 h-px bg-gray-200" />
-                                                        <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 whitespace-nowrap">Bulk Quote Requests ({card.bulks.length})</span>
-                                                        <div className="flex-1 h-px bg-gray-200" />
+                                                        <div className="flex-1 h-px bg-muted" />
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground whitespace-nowrap">Bulk Quote Requests ({card.bulks.length})</span>
+                                                        <div className="flex-1 h-px bg-muted" />
                                                     </div>
                                                     <div className="rounded-sm overflow-hidden border border-[#F97316]/30">
                                                         <div className="bg-[#F97316] px-3 py-1.5 flex items-center justify-between">
@@ -968,7 +968,7 @@ function RequestPage() {
                                                                     setReplyMessage(prev => ({ ...prev, [cardKey]: '' }));
                                                                     setReplyOpen(prev => ({ ...prev, [cardKey]: true }));
                                                                 }}
-                                                                className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-sm bg-white/20 hover:bg-white/30 text-white shrink-0"
+                                                                className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-sm bg-card/20 hover:bg-card/30 text-white shrink-0"
                                                             >
                                                                 <Reply size={11} /> Reply
                                                             </button>
@@ -976,13 +976,13 @@ function RequestPage() {
                                                         <div className="bg-[#F97316]/5 divide-y divide-[#F97316]/10">
                                                             {card.bulks.map(bq => (
                                                                 <div key={bq.id} className="flex gap-3 items-center p-3">
-                                                                    <div className="w-10 h-10 shrink-0 bg-white border border-gray-200 rounded-sm flex items-center justify-center overflow-hidden">
+                                                                    <div className="w-10 h-10 shrink-0 bg-card border border-border rounded-sm flex items-center justify-center overflow-hidden">
                                                                         {bq.itemImage ? <img src={bq.itemImage} alt={bq.itemName} className="w-full h-full object-contain" /> : <span className="text-gray-300 text-[8px] text-center">No img</span>}
                                                                     </div>
                                                                     <div className="flex-1 min-w-0">
-                                                                        <p className="text-[12px] font-black text-slate-800 uppercase truncate">{bq.itemName}</p>
-                                                                        <p className="text-[10px] text-gray-500"><span className="font-bold">Qty:</span> {bq.quantity}</p>
-                                                                        {bq.note && <p className="text-[10px] text-gray-400 mt-0.5 italic">{bq.note}</p>}
+                                                                        <p className="text-[12px] font-black text-foreground uppercase truncate">{bq.itemName}</p>
+                                                                        <p className="text-[10px] text-muted-foreground"><span className="font-bold">Qty:</span> {bq.quantity}</p>
+                                                                        {bq.note && <p className="text-[10px] text-muted-foreground mt-0.5 italic">{bq.note}</p>}
                                                                     </div>
                                                                     <button onClick={(e) => { e.stopPropagation(); handleDeleteBulk(bq.id); }} className="text-red-400 hover:text-red-600 text-sm font-bold p-1 shrink-0">✕</button>
                                                                 </div>
@@ -994,9 +994,9 @@ function RequestPage() {
                                             {card.queries.length > 0 && (
                                                 <div>
                                                     <div className="flex items-center gap-2 mb-2">
-                                                        <div className="flex-1 h-px bg-gray-200" />
-                                                        <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 whitespace-nowrap">Query Requests ({card.queries.length})</span>
-                                                        <div className="flex-1 h-px bg-gray-200" />
+                                                        <div className="flex-1 h-px bg-muted" />
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground whitespace-nowrap">Query Requests ({card.queries.length})</span>
+                                                        <div className="flex-1 h-px bg-muted" />
                                                     </div>
                                                     <div className="rounded-sm overflow-hidden border border-[#1A3B5D]/30">
                                                         <div className="bg-[#1A3B5D] px-3 py-1.5 flex items-center justify-between">
@@ -1007,7 +1007,7 @@ function RequestPage() {
                                                                     setReplyMessage(prev => ({ ...prev, [cardKey]: '' }));
                                                                     setReplyOpen(prev => ({ ...prev, [cardKey]: true }));
                                                                 }}
-                                                                className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-sm bg-white/20 hover:bg-white/30 text-white shrink-0"
+                                                                className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-sm bg-card/20 hover:bg-card/30 text-white shrink-0"
                                                             >
                                                                 <Reply size={11} /> Reply
                                                             </button>
@@ -1016,8 +1016,8 @@ function RequestPage() {
                                                             {card.queries.map(pr => (
                                                                 <div key={pr.id} className="flex gap-2 items-center p-3">
                                                                     <div className="flex-1 min-w-0">
-                                                                        <span className="text-[9px] font-black uppercase text-gray-400 block mb-0.5">Query</span>
-                                                                        <p className="text-[11px] text-gray-700 italic">"{pr.note}"</p>
+                                                                        <span className="text-[9px] font-black uppercase text-muted-foreground block mb-0.5">Query</span>
+                                                                        <p className="text-[11px] text-foreground italic">"{pr.note}"</p>
                                                                     </div>
                                                                     <button onClick={(e) => { e.stopPropagation(); handleDeletePersonalization(pr.id); }} className="text-red-400 hover:text-red-600 text-sm font-bold p-1 shrink-0">✕</button>
                                                                 </div>
@@ -1056,14 +1056,14 @@ function RequestPage() {
                                                         }}
                                                     >
                                                         <div
-                                                            className="bg-white w-full max-w-sm rounded-sm shadow-xl p-4 space-y-3"
+                                                            className="bg-card w-full max-w-sm rounded-sm shadow-xl p-4 space-y-3"
                                                             onClick={e => e.stopPropagation()}
                                                         >
                                                             <div className="flex items-center justify-between">
                                                                 <span className="text-xs font-black uppercase tracking-widest text-[#1A3B5D]">Reply to Customer</span>
                                                                 <button
                                                                     onClick={() => setReplyOpen(prev => ({ ...prev, [cardKey]: false }))}
-                                                                    className="text-gray-400 hover:text-gray-600 text-sm font-bold"
+                                                                    className="text-muted-foreground hover:text-muted-foreground text-sm font-bold"
                                                                 >✕</button>
                                                             </div>
                                                             <textarea
@@ -1071,7 +1071,7 @@ function RequestPage() {
                                                                 placeholder="Type your message to the customer..."
                                                                 value={replyMessage[cardKey] || ''}
                                                                 onChange={e => setReplyMessage(prev => ({ ...prev, [cardKey]: e.target.value }))}
-                                                                className="w-full p-2 border border-gray-200 rounded-sm text-xs outline-none focus:border-[#25D366] resize-none"
+                                                                className="w-full p-2 border border-border rounded-sm text-xs outline-none focus:border-[#25D366] resize-none"
                                                             />
                                                             <button
                                                                 disabled={sendingId === `reply_${cardKey}` || !replyMessage[cardKey]?.trim()}
@@ -1109,7 +1109,7 @@ function RequestPage() {
                                 onClick={() =>
                                     setExpandedId(isExpanded ? null : req.id)
                                 }
-                                className={`p-3 shadow-sm border rounded-sm cursor-pointer transition-all duration-300 bg-white border-gray-100 ${animatingId === req.id ? "opacity-0 scale-95 -translate-x-3" : "opacity-100 scale-100 translate-x-0"}`}>
+                                className={`p-3 shadow-sm border rounded-sm cursor-pointer transition-all duration-300 bg-card border-border ${animatingId === req.id ? "opacity-0 scale-95 -translate-x-3" : "opacity-100 scale-100 translate-x-0"}`}>
                                 {/* ===== COLLAPSED HEADER ===== */}
                                 <div className="flex justify-between items-start gap-2">
                                     {/* LEFT SIDE — avatar + name + phone */}
@@ -1123,11 +1123,11 @@ function RequestPage() {
                                             <Phone size={16} />
                                         </a>
                                         <div className="min-w-0">
-                                            <h3 className="text-sm font-bold text-slate-800 truncate">
+                                            <h3 className="text-sm font-bold text-foreground truncate">
                                                 {req.customerName || "No Name"}
                                             </h3>
-                                            <p className="text-xs text-gray-500 flex items-center gap-1 mt-0.5">
-                                                <Phone size={12} className="text-gray-400 shrink-0" />
+                                            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                                                <Phone size={12} className="text-muted-foreground shrink-0" />
                                                 {req.customerNumber || "No Number"}
                                             </p>
                                         </div>
@@ -1166,12 +1166,12 @@ function RequestPage() {
                                                 viewBox="0 0 24 24"
                                                 strokeWidth={2.5}
                                                 stroke="currentColor"
-                                                className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                                                className={`w-4 h-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`}
                                             >
                                                 <path d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
                                             </svg>
                                         </div>
-                                        <p className="text-[10px] text-gray-400 font-medium">
+                                        <p className="text-[10px] text-muted-foreground font-medium">
                                             {formatDate(req.createdAt)}
                                         </p>
                                     </div>
@@ -1187,11 +1187,11 @@ function RequestPage() {
                                         {req.type === 'notify' ? (
                                             <div className="mb-3">
                                                 <div className="flex items-center gap-2 mb-2">
-                                                    <div className="flex-1 h-px bg-gray-200" />
-                                                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 whitespace-nowrap">
+                                                    <div className="flex-1 h-px bg-muted" />
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground whitespace-nowrap">
                                                         Notify Me Items ({req.items?.length || 0})
                                                     </span>
-                                                    <div className="flex-1 h-px bg-gray-200" />
+                                                    <div className="flex-1 h-px bg-muted" />
                                                 </div>
                                                 {req.items?.length ? (
                                                     <div className="rounded-sm overflow-hidden border border-[#334155]/30">
@@ -1222,7 +1222,7 @@ function RequestPage() {
                                                                         setReplyMessage(prev => ({ ...prev, [req.id]: message }));
                                                                         setReplyOpen(prev => ({ ...prev, [req.id]: true }));
                                                                     }}
-                                                                    className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-sm bg-white/20 hover:bg-white/30 text-white shrink-0"
+                                                                    className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-sm bg-card/20 hover:bg-card/30 text-white shrink-0"
                                                                 >
                                                                     <Reply size={11} /> Send In Stock
                                                                 </button>
@@ -1231,7 +1231,7 @@ function RequestPage() {
                                                         <div className="bg-[#334155]/5 divide-y divide-[#334155]/10">
                                                             {req.items.map((item, idx) => (
                                                                 <div key={idx} className="flex justify-between items-center p-3">
-                                                                    <span className="text-[12px] font-black text-slate-800 uppercase truncate">
+                                                                    <span className="text-[12px] font-black text-foreground uppercase truncate">
                                                                         {item.name}
                                                                     </span>
                                                                     <span
@@ -1247,14 +1247,14 @@ function RequestPage() {
                                                         </div>
                                                     </div>
                                                 ) : (
-                                                    <div className="text-xs text-gray-400 italic text-center py-3">
+                                                    <div className="text-xs text-muted-foreground italic text-center py-3">
                                                         No items found
                                                     </div>
                                                 )}
                                             </div>
                                         ) : (
                                             req.businessCard && req.businessCard !== "Placeholder" && (
-                                                <div className="relative w-full overflow-hidden rounded-sm border border-gray-200 bg-gray-100 group">
+                                                <div className="relative w-full overflow-hidden rounded-sm border border-border bg-muted group">
                                                     <img
                                                         src={req.businessCard}
                                                         alt="Business Card"
@@ -1271,11 +1271,11 @@ function RequestPage() {
                                             return (
                                                 <div className="mt-3">
                                                     <div className="flex items-center gap-2 mb-2">
-                                                        <div className="flex-1 h-px bg-gray-200" />
-                                                        <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 whitespace-nowrap">
+                                                        <div className="flex-1 h-px bg-muted" />
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground whitespace-nowrap">
                                                             Bulk Quote Requests ({customerBulks.length})
                                                         </span>
-                                                        <div className="flex-1 h-px bg-gray-200" />
+                                                        <div className="flex-1 h-px bg-muted" />
                                                     </div>
                                                     <div className="rounded-sm overflow-hidden border border-[#F97316]/30">
                                                         <div className="bg-[#F97316] px-3 py-1.5 flex items-center justify-between">
@@ -1288,7 +1288,7 @@ function RequestPage() {
                                                                     setReplyMessage(prev => ({ ...prev, [req.id]: '' }));
                                                                     setReplyOpen(prev => ({ ...prev, [req.id]: true }));
                                                                 }}
-                                                                className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-sm bg-white/20 hover:bg-white/30 text-white shrink-0"
+                                                                className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-sm bg-card/20 hover:bg-card/30 text-white shrink-0"
                                                             >
                                                                 <Reply size={11} /> Reply
                                                             </button>
@@ -1296,7 +1296,7 @@ function RequestPage() {
                                                         <div className="bg-[#F97316]/5 divide-y divide-[#F97316]/10">
                                                             {customerBulks.map(bq => (
                                                                 <div key={bq.id} className="flex gap-3 items-center p-3">
-                                                                    <div className="w-10 h-10 shrink-0 bg-white border border-gray-200 rounded-sm flex items-center justify-center overflow-hidden">
+                                                                    <div className="w-10 h-10 shrink-0 bg-card border border-border rounded-sm flex items-center justify-center overflow-hidden">
                                                                         {bq.itemImage ? (
                                                                             <img src={bq.itemImage} alt={bq.itemName} className="w-full h-full object-contain" />
                                                                         ) : (
@@ -1304,10 +1304,10 @@ function RequestPage() {
                                                                         )}
                                                                     </div>
                                                                     <div className="flex-1 min-w-0">
-                                                                        <p className="text-[12px] font-black text-slate-800 uppercase truncate">{bq.itemName}</p>
-                                                                        <p className="text-[10px] text-gray-500"><span className="font-bold">Qty:</span> {bq.quantity}</p>
+                                                                        <p className="text-[12px] font-black text-foreground uppercase truncate">{bq.itemName}</p>
+                                                                        <p className="text-[10px] text-muted-foreground"><span className="font-bold">Qty:</span> {bq.quantity}</p>
                                                                         {bq.note && (
-                                                                            <p className="text-[10px] text-gray-400 mt-0.5 italic">{bq.note}</p>
+                                                                            <p className="text-[10px] text-muted-foreground mt-0.5 italic">{bq.note}</p>
                                                                         )}
                                                                     </div>
                                                                     <button
@@ -1331,11 +1331,11 @@ function RequestPage() {
                                             return (
                                                 <div className="mt-3">
                                                     <div className="flex items-center gap-2 mb-2">
-                                                        <div className="flex-1 h-px bg-gray-200" />
-                                                        <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 whitespace-nowrap">
+                                                        <div className="flex-1 h-px bg-muted" />
+                                                        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground whitespace-nowrap">
                                                             Query Requests ({customerPersonalizations.length})
                                                         </span>
-                                                        <div className="flex-1 h-px bg-gray-200" />
+                                                        <div className="flex-1 h-px bg-muted" />
                                                     </div>
                                                     <div className="rounded-sm overflow-hidden border border-[#1A3B5D]/30">
                                                         <div className="bg-[#1A3B5D] px-3 py-1.5 flex items-center justify-between">
@@ -1348,7 +1348,7 @@ function RequestPage() {
                                                                     setReplyMessage(prev => ({ ...prev, [req.id]: '' }));
                                                                     setReplyOpen(prev => ({ ...prev, [req.id]: true }));
                                                                 }}
-                                                                className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-sm bg-white/20 hover:bg-white/30 text-white shrink-0"
+                                                                className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-sm bg-card/20 hover:bg-card/30 text-white shrink-0"
                                                             >
                                                                 <Reply size={11} /> Reply
                                                             </button>
@@ -1357,8 +1357,8 @@ function RequestPage() {
                                                             {customerPersonalizations.map(pr => (
                                                                 <div key={pr.id} className="flex gap-2 items-center p-3">
                                                                     <div className="flex-1 min-w-0">
-                                                                        <span className="text-[9px] font-black uppercase text-gray-400 block mb-0.5">Query</span>
-                                                                        <p className="text-[11px] text-gray-700 italic">"{pr.note}"</p>
+                                                                        <span className="text-[9px] font-black uppercase text-muted-foreground block mb-0.5">Query</span>
+                                                                        <p className="text-[11px] text-foreground italic">"{pr.note}"</p>
                                                                     </div>
                                                                     <button
                                                                         onClick={(e) => { e.stopPropagation(); handleDeletePersonalization(pr.id); }}
@@ -1403,14 +1403,14 @@ function RequestPage() {
                                                         }}
                                                     >
                                                         <div
-                                                            className="bg-white w-full max-w-sm rounded-sm shadow-xl p-4 space-y-3"
+                                                            className="bg-card w-full max-w-sm rounded-sm shadow-xl p-4 space-y-3"
                                                             onClick={e => e.stopPropagation()}
                                                         >
                                                             <div className="flex items-center justify-between">
                                                                 <span className="text-xs font-black uppercase tracking-widest text-[#1A3B5D]">Reply to Customer</span>
                                                                 <button
                                                                     onClick={() => setReplyOpen(prev => ({ ...prev, [req.id]: false }))}
-                                                                    className="text-gray-400 hover:text-gray-600 text-sm font-bold"
+                                                                    className="text-muted-foreground hover:text-muted-foreground text-sm font-bold"
                                                                 >✕</button>
                                                             </div>
                                                             <textarea
@@ -1418,7 +1418,7 @@ function RequestPage() {
                                                                 placeholder="Type your message to the customer..."
                                                                 value={replyMessage[req.id] || ''}
                                                                 onChange={e => setReplyMessage(prev => ({ ...prev, [req.id]: e.target.value }))}
-                                                                className="w-full p-2 border border-gray-200 rounded-sm text-xs outline-none focus:border-[#25D366] resize-none"
+                                                                className="w-full p-2 border border-border rounded-sm text-xs outline-none focus:border-[#25D366] resize-none"
                                                             />
                                                             <button
                                                                 disabled={sendingId === `reply_${req.id}` || !replyMessage[req.id]?.trim()}
@@ -1458,7 +1458,7 @@ function RequestPage() {
                                                     {/* Decline button */}
                                                     {showDecline && (
                                                         <button
-                                                            className="py-2.5 bg-white border border-red-500 text-red-500 hover:bg-red-50 text-xs font-bold rounded-sm transition-colors"
+                                                            className="py-2.5 bg-card border border-red-500 text-red-500 hover:bg-red-50 text-xs font-bold rounded-sm transition-colors"
                                                             onClick={() => updateRequestStatus(req.id, "declined")}
                                                         >
                                                             Decline

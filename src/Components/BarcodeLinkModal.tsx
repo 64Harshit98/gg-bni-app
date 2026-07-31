@@ -44,12 +44,12 @@ const BarcodeLinkModal: React.FC<BarcodeLinkModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[2100] bg-black/50 flex items-center justify-center p-4">
-      <div className="w-full max-w-xl bg-white rounded-xl shadow-2xl p-5">
-        <h3 className="text-lg font-bold text-slate-800">Link Scanned Barcode</h3>
-        <p className="text-sm text-slate-600 mt-1">
+      <div className="w-full max-w-xl bg-card rounded-xl shadow-2xl p-5">
+        <h3 className="text-lg font-bold text-foreground">Link Scanned Barcode</h3>
+        <p className="text-sm text-muted-foreground mt-1">
           Barcode: <span className="font-semibold">{barcode}</span>
         </p>
-        <p className="text-xs text-slate-500 mt-1">
+        <p className="text-xs text-muted-foreground mt-1">
           Select the existing item (without barcode) to link this barcode.
         </p>
 
@@ -58,18 +58,18 @@ const BarcodeLinkModal: React.FC<BarcodeLinkModalProps> = ({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search item by name/group/HSN..."
-          className="w-full mt-4 border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full mt-4 border border-border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
         />
 
-        <div className="mt-3 max-h-72 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+        <div className="mt-3 max-h-72 overflow-y-auto border border-border rounded-lg divide-y divide-border">
           {filteredItems.length === 0 ? (
-            <p className="p-4 text-sm text-slate-500 text-center">No items found without barcode.</p>
+            <p className="p-4 text-sm text-muted-foreground text-center">No items found without barcode.</p>
           ) : (
             filteredItems.map((item) => (
               <div key={item.id || item.name} className="p-3 flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="font-medium text-slate-800 truncate">{item.name}</p>
-                  <p className="text-xs text-slate-500">
+                  <p className="font-medium text-foreground truncate">{item.name}</p>
+                  <p className="text-xs text-muted-foreground">
                     MRP: ₹{Number(item.mrp || 0).toLocaleString('en-IN')} | Group: {item.itemGroupId || 'N/A'}
                   </p>
                 </div>
@@ -89,7 +89,7 @@ const BarcodeLinkModal: React.FC<BarcodeLinkModalProps> = ({
           <button
             onClick={onClose}
             disabled={isLinking}
-            className="px-4 py-2 rounded-lg border border-gray-300 text-slate-700 hover:bg-gray-50 text-sm disabled:opacity-60"
+            className="px-4 py-2 rounded-lg border border-border text-foreground hover:bg-muted text-sm disabled:opacity-60"
           >
             Cancel
           </button>

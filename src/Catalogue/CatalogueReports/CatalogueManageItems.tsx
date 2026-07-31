@@ -146,7 +146,7 @@ const ManageItems: React.FC = () => {
   if (isLoading) return <Spinner />;
 
   return (
-    <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden">
+    <div className="flex flex-col h-full bg-muted w-full overflow-hidden">
       {/* -------- INFO / SUCCESS MODAL -------- */}
       {modal && (
         <Modal
@@ -157,12 +157,12 @@ const ManageItems: React.FC = () => {
       )}
 
       {/* -------------------- HEADER -------------------- */}
-      <div className="flex items-center justify-between bg-white border-b px-4 py-3 shadow-sm">
+      <div className="flex items-center justify-between bg-card border-b px-4 py-3 shadow-sm">
 
         <BackButton />
 
         {/* TITLE */}
-        <h1 className="text-xl font-bold text-gray-800 text-center flex-1">
+        <h1 className="text-xl font-bold text-foreground text-center flex-1">
           Manage Items
         </h1>
 
@@ -173,8 +173,8 @@ const ManageItems: React.FC = () => {
       </div>
 
       {showSearch && (
-        <div className="flex justify-center px-3 py-2 bg-white border-b">
-          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-[#F97316]">
+        <div className="flex justify-center px-3 py-2 bg-card border-b">
+          <div className="flex items-center w-full max-w-md border-b-2 border-border focus-within:border-[#F97316]">
 
             <input
               type="text"
@@ -190,7 +190,7 @@ const ManageItems: React.FC = () => {
                 setSearchQuery('');
                 setShowSearch(false);
               }}
-              className="p-1 text-gray-500 hover:text-black"
+              className="p-1 text-muted-foreground hover:text-foreground"
             >
               <IconClose />
             </button>
@@ -200,8 +200,8 @@ const ManageItems: React.FC = () => {
       )}
 
       {/* -------------------- FILTERS -------------------- */}
-      <div className="bg-white p-3 border-b flex flex-col gap-4">
-        <h2 className="text-sm font-semibold text-gray-700 mb-0 text-center">
+      <div className="bg-card p-3 border-b flex flex-col gap-4">
+        <h2 className="text-sm font-semibold text-foreground mb-0 text-center">
           FILTERS
         </h2>
 
@@ -249,14 +249,14 @@ const ManageItems: React.FC = () => {
         </div>
       </div>
       {/* -------------------- LIST TOGGLE + SORT -------------------- */}
-      <div className="bg-white p-3 flex flex-wrap gap-2 justify-between items-center border-b">
-        <h2 className="font-semibold text-gray-700">Item List</h2>
+      <div className="bg-card p-3 flex flex-wrap gap-2 justify-between items-center border-b">
+        <h2 className="font-semibold text-foreground">Item List</h2>
 
         <div className="flex gap-2 items-center">
           <select
             value={sortOption}
             onChange={(e) => setSortOption(e.target.value as SortOption)}
-            className="px-3 py-1.5 rounded-sm bg-slate-200 text-sm font-medium focus:outline-none"
+            className="px-3 py-1.5 rounded-sm bg-muted text-sm font-medium focus:outline-none"
           >
             <option value="NAME_ASC">Name (A → Z)</option>
             <option value="NAME_DESC">Name (Z → A)</option>
@@ -270,7 +270,7 @@ const ManageItems: React.FC = () => {
 
           <button
             onClick={() => setIsListVisible(!isListVisible)}
-            className="px-4 py-1.5 bg-slate-200 rounded-sm font-medium hover:bg-slate-300 transition"
+            className="px-4 py-1.5 bg-muted rounded-sm font-medium hover:bg-slate-300 transition"
           >
             {isListVisible ? 'Hide List' : 'Show List'}
           </button>
@@ -281,7 +281,7 @@ const ManageItems: React.FC = () => {
       {isListVisible && (
         <div className="flex-1 overflow-y-auto p-2 space-y-2">
           {filteredItems.length === 0 && (
-            <p className="text-center text-gray-500 py-8">No items found.</p>
+            <p className="text-center text-muted-foreground py-8">No items found.</p>
           )}
 
           {filteredItems.map((item) => {
@@ -291,7 +291,7 @@ const ManageItems: React.FC = () => {
             return (
               <div
                 key={item.id}
-                className="bg-white rounded-lg shadow-sm px-3 py-3 space-y-2"
+                className="bg-card rounded-lg shadow-sm px-3 py-3 space-y-2"
               >
                 {/* ROW 1 */}
                 <div className="flex items-center gap-3">
@@ -303,7 +303,7 @@ const ManageItems: React.FC = () => {
                   </button>
 
                   <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <span className="font-semibold text-gray-800 truncate">
+                    <span className="font-semibold text-foreground truncate">
                       {item.name}
                     </span>
 
@@ -325,17 +325,17 @@ const ManageItems: React.FC = () => {
                 </div>
 
                 {/* ROW 2 */}
-                <div className="flex flex-wrap gap-8 text-sm text-gray-600">
+                <div className="flex flex-wrap gap-8 text-sm text-muted-foreground">
                   <div>
-                    <span className="font-medium text-gray-700">MRP:</span> ₹
+                    <span className="font-medium text-foreground">MRP:</span> ₹
                     {item.mrp ?? 0}
                   </div>
                   <div>
-                    <span className="font-medium text-gray-700">Purchase:</span>{' '}
+                    <span className="font-medium text-foreground">Purchase:</span>{' '}
                     ₹{item.purchasePrice ?? 0}
                   </div>
                   <div>
-                    <span className="font-medium text-gray-700">Value:</span> ₹
+                    <span className="font-medium text-foreground">Value:</span> ₹
                     {value}
                   </div>
                 </div>

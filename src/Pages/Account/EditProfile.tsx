@@ -324,19 +324,20 @@ const SectionCard: React.FC<{ title: string; icon: string; children: React.React
   icon,
   children,
 }) => (
-  <div className="bg-white rounded-sm border border-slate-100 shadow-sm overflow-hidden flex flex-col h-full">
-    <div className="px-3 py-2 border-b border-slate-100 flex items-center gap-2">
-      <span className="text-xs">{icon}</span>
-      <span className="text-[9px] font-bold tracking-widest uppercase text-slate-500">{title}</span>
+  <div className="bg-card rounded-2xl border border-border/70 shadow-sm overflow-hidden flex flex-col h-full transition-shadow hover:shadow-md">
+    <div className="flex items-center gap-2 border-b border-border bg-gradient-to-r from-primary/5 to-transparent px-4 py-2.5">
+      <span className="size-1.5 rounded-full bg-gradient-to-br from-primary to-fuchsia-500" />
+      <span className="text-[10px] font-bold tracking-widest uppercase text-muted-foreground">{title}</span>
+      {icon && <span className="ml-auto text-xs">{icon}</span>}
     </div>
     <div className="p-4 flex-1">{children}</div>
   </div>
 );
 // ─── Shared input style (no coloured label highlight) ─────────────────────
 const inputClass =
-  'w-full border border-slate-200 rounded-sm text-sm bg-slate-50 outline-none ' +
-  'transition-all px-[12px] py-[8px] text-slate-800 ' +
-  'focus:border-slate-400 focus:bg-white';
+  'w-full border border-border rounded-sm text-sm bg-muted outline-none ' +
+  'transition-all px-[12px] py-[8px] text-foreground rounded-lg ' +
+  'focus:border-ring focus:bg-card';
 
 // Simple labelled field wrapper (no floating-label colour highlight)
 const LabeledField: React.FC<{
@@ -344,7 +345,7 @@ const LabeledField: React.FC<{
   children: React.ReactNode;
 }> = ({ label, children }) => (
   <div className="flex flex-col gap-0.5">
-    <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+    <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
       {label}
     </label>
     {children}
@@ -363,16 +364,16 @@ const ImageOptionsModal: React.FC<{
       onClick={onClose}
     >
       <div
-        className="bg-white w-[calc(100%-2rem)] max-w-sm sm:w-80 mx-4 sm:mx-0 mb-4 sm:mb-0 rounded-2xl sm:rounded-sm overflow-hidden shadow-xl"
+        className="bg-card w-[calc(100%-2rem)] max-w-sm sm:w-80 mx-4 sm:mx-0 mb-4 sm:mb-0 rounded-2xl sm:rounded-sm overflow-hidden shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-4 py-3 border-b border-slate-100 text-center">
-          <p className="text-sm font-semibold text-slate-700 m-0">{title}</p>
+        <div className="px-4 py-3 border-b border-border text-center">
+          <p className="text-sm font-semibold text-foreground m-0">{title}</p>
         </div>
         <button
           type="button"
           onClick={onUpload}
-          className="w-full text-center py-3 text-sm font-medium text-sky-600 border-b border-slate-100 cursor-pointer bg-white"
+          className="w-full text-center py-3 text-sm font-medium text-primary border-b border-border cursor-pointer bg-card"
         >
           {hasImage ? 'Change Photo' : 'Add Photo'}
         </button>
@@ -380,7 +381,7 @@ const ImageOptionsModal: React.FC<{
           <button
             type="button"
             onClick={onRemove}
-            className="w-full text-center py-3 text-sm font-medium text-red-500 border-b border-slate-100 cursor-pointer bg-white"
+            className="w-full text-center py-3 text-sm font-medium text-destructive border-b border-border cursor-pointer bg-card"
           >
             Remove Current Photo
           </button>
@@ -388,7 +389,7 @@ const ImageOptionsModal: React.FC<{
         <button
           type="button"
           onClick={onClose}
-          className="w-full text-center py-3 text-sm font-semibold text-slate-500 cursor-pointer bg-white"
+          className="w-full text-center py-3 text-sm font-semibold text-muted-foreground cursor-pointer bg-card"
         >
           Cancel
         </button>
@@ -620,10 +621,10 @@ const EditProfilePage: React.FC = () => {
   // ── Loading state ──
   if (authLoading || dataLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+      <div className="flex min-h-screen items-center justify-center bg-muted">
         <div className="text-center">
-          <div className="w-10 h-10 rounded-full border-[3px] border-slate-200 border-t-sky-500 animate-spin mx-auto mb-3" />
-          <p className="text-slate-500 text-sm">Loading profile…</p>
+          <div className="w-10 h-10 rounded-full border-[3px] border-border border-t-primary animate-spin mx-auto mb-3" />
+          <p className="text-muted-foreground text-sm">Loading profile…</p>
         </div>
       </div>
     );
@@ -631,7 +632,7 @@ const EditProfilePage: React.FC = () => {
 
   if (dataError) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-red-500">
+      <div className="flex min-h-screen items-center justify-center text-destructive">
         {dataError}
       </div>
     );
@@ -639,27 +640,45 @@ const EditProfilePage: React.FC = () => {
 
   // Derived submit button colour class (kept out of JSX to avoid long ternary chains)
   const submitBtnClass = submitSuccess
-    ? 'bg-gradient-to-br from-green-400 to-green-600 shadow-green-200/60'
+    ? 'bg-gradient-to-br from-emerald-500 to-green-600'
     : isSubmitting
-      ? 'bg-sky-200'
-      : 'bg-gradient-to-br from-sky-400 to-sky-600 shadow-sky-200/60';
+      ? 'bg-primary/60'
+      : 'glow-primary bg-gradient-to-br from-primary via-primary to-[oklch(0.5_0.24_320)]';
 
-  console.log('businessType value:', formData.businessType);
-  console.log('is known option:', businessTypeOptions.some(o => o.value === formData.businessType))
+  const completenessFields = [
+    formData.name, formData.phone, formData.businessName, formData.email,
+    formData.streetAddress, formData.city, formData.state, formData.postalCode,
+  ];
+  const completeness = Math.round(
+    (completenessFields.filter((v) => v && String(v).trim() !== '').length /
+      completenessFields.length) * 100,
+  );
   return (
-    <div className="min-h-screen bg-slate-100">
-      <div className="max-w-7xl mx-auto px-4 py-3 pb-24">
-
-        {/* ── Page Header ── */}
-        <div className="flex items-center justify-between mb-1">
+    <div className="aurora min-h-screen bg-muted">
+      <header className="glass sticky top-0 z-20 border-b border-border">
+        <div className="mx-auto flex max-w-none items-center gap-3 px-4 py-3 md:px-8">
           <BackButton />
-          <h1 className="text-xl font-bold text-slate-900 m-0">Edit Profile</h1>
+          <div className="mr-auto">
+            <h1 className="text-gradient text-lg font-bold tracking-tight">Edit Profile</h1>
+            <p className="text-xs text-muted-foreground">Keep your business details current</p>
+          </div>
+          <div className="hidden items-center gap-2 sm:flex">
+            <span className="text-sm font-bold text-foreground tabular-nums">{completeness}%</span>
+            <div className="h-2 w-28 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-primary to-fuchsia-500 transition-all duration-500"
+                style={{ width: `${completeness}%` }}
+              />
+            </div>
+          </div>
         </div>
+      </header>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-1">
+      <div className="mx-auto max-w-none px-4 py-4 pb-28 md:px-8">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3 animate-in fade-in-0 slide-in-from-bottom-2 duration-500">
 
           {/* ── IDENTITY BANNER: Avatar + Company Logo side by side ── */}
-          <div className="bg-white rounded-sm border border-slate-100 shadow-sm px-5 py-2 flex items-center gap-6">
+          <div className="bg-card rounded-2xl border border-border/70 shadow-sm px-5 py-3 flex items-center gap-6">
 
             {/* Profile Avatar */}
             <div className="flex flex-col items-center gap-1.5 shrink-0">
@@ -672,16 +691,16 @@ const EditProfilePage: React.FC = () => {
                     <img
                       src={previewUrl}
                       alt="Profile"
-                      className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-md shadow-sky-200 block"
+                      className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-md shadow-md block"
                     />
                   ) : (
-                    <div className="w-16 h-16 rounded-full border-2 border-white shadow-md shadow-sky-200 bg-gray-200 flex items-center justify-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-9 h-9 text-gray-400">
+                    <div className="w-16 h-16 rounded-full border-2 border-white shadow-md shadow-md bg-muted flex items-center justify-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-9 h-9 text-muted-foreground">
                         <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clipRule="evenodd" />
                       </svg>
                     </div>
                   )}
-                  <div className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-sky-500 border-2 border-white flex items-center justify-center text-white">
+                  <div className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-primary border-2 border-white flex items-center justify-center text-white">
                     <FiCamera size={8} />
                   </div>
                   <input
@@ -694,11 +713,11 @@ const EditProfilePage: React.FC = () => {
                   />
                 </div>
               </div>
-              <span className="text-[10px] text-slate-400 font-medium">Profile Photo</span>
+              <span className="text-[10px] text-muted-foreground font-medium">Profile Photo</span>
             </div>
 
             {/* Divider */}
-            <div className="w-px self-stretch bg-slate-100" />
+            <div className="w-px self-stretch bg-muted" />
 
             {/* Company Logo */}
             <div className="flex items-center gap-4 flex-1">
@@ -711,15 +730,15 @@ const EditProfilePage: React.FC = () => {
                     <img
                       src={logoPreviewUrl}
                       alt="Company Logo"
-                      className="w-14 h-14 rounded-sm object-contain border border-slate-200 bg-slate-50 p-1.5 shadow-sm"
+                      className="w-14 h-14 rounded-sm object-contain border border-border bg-muted p-1.5 shadow-sm"
                     />
                   ) : (
-                    <div className="w-14 h-14 rounded-sm border-2 border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center text-slate-300 gap-0.5">
+                    <div className="w-14 h-14 rounded-sm border-2 border-dashed border-border bg-muted flex flex-col items-center justify-center text-slate-300 gap-0.5">
                       <FiCamera size={14} />
                       <span className="text-[8px] font-bold tracking-wider">LOGO</span>
                     </div>
                   )}
-                  <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-sky-500 border-[1.5px] border-white flex items-center justify-center text-white">
+                  <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-primary border-[1.5px] border-white flex items-center justify-center text-white">
                     <FiCamera size={7} />
                   </div>
                   <input
@@ -733,8 +752,8 @@ const EditProfilePage: React.FC = () => {
                 </div>
               </div>
               <div>
-                <p className="text-[12px] font-semibold text-slate-700 m-0">Company Logo</p>
-                <p className="text-[11px] text-slate-400 m-0 mt-0.5 leading-relaxed">
+                <p className="text-[12px] font-semibold text-foreground m-0">Company Logo</p>
+                <p className="text-[11px] text-muted-foreground m-0 mt-0.5 leading-relaxed">
                   Appears on invoices, reports & PDFs.<br />
                   PNG or JPG recommended.
                 </p>
@@ -753,20 +772,17 @@ const EditProfilePage: React.FC = () => {
                   type="text" name="name" value={formData.name || ''}
                   onChange={handleInputChange} label="Full Name"
                 />
-                <div>
-                  <FloatingLabelInput
-                    type="text" name="phone" value={formData.phone || ''}
-                    onChange={handlePhoneChange} label="Phone Number"
-                    maxLength={10} inputMode="numeric"
-                  />
-                  {phoneError && (
-                    <p className="text-red-500 text-[11px] mt-1 mb-0">{phoneError}</p>
-                  )}
-                </div>
+                <FloatingLabelInput
+                  type="text" name="phone" value={formData.phone || ''}
+                  onChange={handlePhoneChange} label="Phone Number"
+                  maxLength={10} inputMode="numeric"
+                  error={phoneError}
+                  success={(formData.phone || '').length === 10}
+                />
                 <LabeledField label="Email Address">
                   <input
                     type="email" name="email" value={formData.email || ''} readOnly
-                    className={`${inputClass} bg-slate-100 text-slate-400 cursor-not-allowed`}
+                    className={`${inputClass} bg-muted text-muted-foreground cursor-not-allowed`}
                     placeholder="Email Address"
                   />
                 </LabeledField>
@@ -850,8 +866,8 @@ const EditProfilePage: React.FC = () => {
                     options={stateOptions}
                   />
                   <div>
-                    <FloatingLabelInput type="text" name="postalCode" value={formData.postalCode || ''} onChange={handlePostalCodeChange} label="Postal Code" maxLength={6} inputMode="numeric" />
-                    {postalError && <p className="text-red-500 text-[11px] mt-1 mb-0">{postalError}</p>}
+                    <FloatingLabelInput type="text" name="postalCode" value={formData.postalCode || ''} onChange={handlePostalCodeChange} label="Postal Code" maxLength={6} inputMode="numeric" error={postalError} success={(formData.postalCode || '').length === 6} />
+                    
                   </div>
                 </div>
               </SectionCard>
@@ -876,8 +892,8 @@ const EditProfilePage: React.FC = () => {
                   options={stateOptions}
                 />
                 <div className='col-span-2'>
-                  <FloatingLabelInput type="text" name="postalCode" value={formData.postalCode || ''} onChange={handlePostalCodeChange} label="Postal Code" maxLength={6} inputMode="numeric" />
-                  {postalError && <p className="text-red-500 text-[11px] mt-1 mb-0">{postalError}</p>}
+                  <FloatingLabelInput type="text" name="postalCode" value={formData.postalCode || ''} onChange={handlePostalCodeChange} label="Postal Code" maxLength={6} inputMode="numeric" error={postalError} success={(formData.postalCode || '').length === 6} />
+                  
                 </div>
               </div>
             </SectionCard>
@@ -931,25 +947,25 @@ const EditProfilePage: React.FC = () => {
 
           {/* ── Error banner ── */}
           {submitError && (
-            <div className="bg-red-50 border border-red-200 rounded-sm px-4 py-2.5 flex items-center gap-2">
+            <div className="flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2.5 animate-in fade-in-0 slide-in-from-top-1">
+              <p className="m-0 flex-1 text-sm font-medium text-destructive">{submitError}</p>
               <button
                 type="button"
                 onClick={() => setSubmitError(null)}
-                className="text-red-500 shrink-0 cursor-pointer"
+                className="shrink-0 cursor-pointer text-destructive/70 hover:text-destructive"
               >
-                <FiX size={14} />
+                <FiX size={16} />
               </button>
-              <p className="text-red-500 text-sm m-0">{submitError}</p>
             </div>
           )}
 
           {/* ── Submit button ── */}
-          <div className="sticky bottom-0 left-0 right-0 sm:static bg-slate-100 sm:bg-transparent pt-2 sm:pt-0 -mx-4 sm:mx-0 px-4 sm:px-0 pb-2 sm:pb-0 z-10">
+          <div className="sticky bottom-0 left-0 right-0 z-10 -mx-4 border-t border-border bg-card/90 px-4 pt-2 pb-2 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:pt-0 sm:pb-0">
             <button
               type="submit"
               disabled={isSubmitting}
               className={[
-                'w-full py-4 rounded-sm text-white text-[15px] font-semibold border-0',
+                'w-full py-3.5 rounded-xl text-white text-sm font-semibold border-0',
                 'flex items-center justify-center gap-2 shadow-lg transition-all duration-300',
                 isSubmitting ? 'cursor-not-allowed' : 'cursor-pointer',
                 submitBtnClass,

@@ -1,4 +1,6 @@
 import React from 'react';
+import { AlertCircle, Check } from 'lucide-react';
+
 import { cn } from '../../lib/utils';
 import { Input } from './input';
 
@@ -7,66 +9,100 @@ interface FloatingLabelInputProps
   label: string;
   onFill?: () => void;
   showFillButton?: boolean;
-  icon?: React.ReactNode; // Added icon prop
+  icon?: React.ReactNode;
+  /** Error message — shows a red ring, alert icon and inline text. */
+  error?: string | null;
+  /** Marks the field valid — shows a green ring and check icon. */
+  success?: boolean;
 }
 
 const FloatingLabelInput = React.forwardRef<
   HTMLInputElement,
   FloatingLabelInputProps
->(({ className, label, id, onFill, showFillButton, icon, ...props }, ref) => {
-  const inputId = id || label.replace(/\s+/g, '-').toLowerCase();
+>(
+  (
+    { className, label, id, onFill, showFillButton, icon, error, success, ...props },
+    ref,
+  ) => {
+    const inputId = id || label.replace(/\s+/g, '-').toLowerCase();
+    const hasError = Boolean(error);
+    const isValid = Boolean(success) && !hasError;
+    const showStatus = hasError || isValid;
 
-  return (
-    <div className="relative">
-      {/* Render Icon if present */}
-      {icon && (
-        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none">
-          {icon}
+    return (
+      <div>
+        <div className="relative">
+          {icon && (
+            <div className="text-muted-foreground pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
+              {icon}
+            </div>
+          )}
+
+          <Input
+            id={inputId}
+            aria-invalid={hasError || undefined}
+            className={cn(
+              'peer h-12 rounded-lg border bg-background placeholder-transparent transition-[color,box-shadow,border-color] focus-visible:ring-[3px]',
+              icon ? 'pl-10' : 'pl-3',
+              showStatus || (showFillButton && onFill) ? 'pr-10' : 'pr-3',
+              hasError
+                ? 'border-destructive focus-visible:border-destructive focus-visible:ring-destructive/25'
+                : isValid
+                  ? 'border-success/70 focus-visible:ring-success/25'
+                  : 'border-input',
+              className,
+            )}
+            placeholder=" "
+            ref={ref}
+            {...props}
+          />
+
+          {hasError ? (
+            <AlertCircle className="text-destructive pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2" />
+          ) : isValid ? (
+            <Check className="text-success pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2" />
+          ) : null}
+
+          <label
+            htmlFor={inputId}
+            className={cn(
+              'bg-background pointer-events-none absolute -top-2.5 left-3 px-1 text-xs transition-all',
+              'peer-placeholder-shown:text-base peer-focus:-top-2.5 peer-focus:text-xs',
+              icon
+                ? 'peer-placeholder-shown:top-3 peer-placeholder-shown:left-10'
+                : 'peer-placeholder-shown:top-3 peer-placeholder-shown:left-3',
+              hasError
+                ? 'text-destructive'
+                : isValid
+                  ? 'text-success'
+                  : 'text-muted-foreground peer-focus:text-primary',
+            )}
+          >
+            {label}
+            {props.required && <span className="text-destructive"> *</span>}
+          </label>
+
+          {showFillButton && onFill && !showStatus && (
+            <button
+              type="button"
+              onClick={onFill}
+              className="bg-primary/10 text-primary absolute right-3 top-1/2 -translate-y-1/2 rounded-full px-2 py-1 text-xs font-semibold transition hover:bg-primary/20"
+            >
+              Fill
+            </button>
+          )}
         </div>
-      )}
 
-      <Input
-        id={inputId}
-        className={cn(
-          'peer h-14 placeholder-transparent rounded-sm border border-gray-500',
-          // Add left padding if icon exists so text doesn't overlap
-          icon ? 'pl-10' : 'pl-3',
-          className
+        {hasError && (
+          <p className="text-destructive animate-in fade-in-0 slide-in-from-top-1 mt-1 flex items-center gap-1 text-[11px]">
+            <AlertCircle className="size-3 shrink-0" />
+            {error}
+          </p>
         )}
-        placeholder=" "
-        ref={ref}
-        {...props}
-      />
-
-      <label
-        htmlFor={inputId}
-        className={cn(
-          'absolute pointer-events-none left-3 -top-2.5 text-sm text-gray-600 bg-white px-1 transition-all',
-          'peer-placeholder-shown:text-base peer-focus:-top-2.5 peer-focus:text-sm',
-          // Dynamic positioning: 
-          // If icon exists, shift label right when inside (placeholder-shown). 
-          // When floating (top-2.5), keep it at standard left-3.
-          icon 
-            ? 'peer-placeholder-shown:top-4 peer-placeholder-shown:left-10' 
-            : 'peer-placeholder-shown:top-4 peer-placeholder-shown:left-3'
-        )}
-      >
-        {label}
-        {props.required && <span className="text-red-500">*</span>}
-      </label>
-
-      {showFillButton && onFill && (
-        <button
-          type="button" // Ensure it doesn't submit forms
-          onClick={onFill}
-          className="absolute top-1/2 right-3 -translate-y-1/2 text-xs bg-blue-100 text-blue-700 font-semibold px-2 py-1 rounded-full hover:bg-blue-200"
-        >
-          Fill
-        </button>
-      )}
-    </div>
-  );
-});
+      </div>
+    );
+  },
+);
 
 FloatingLabelInput.displayName = 'FloatingLabelInput';
 

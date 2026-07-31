@@ -4,6 +4,7 @@ import { onAuthStateChanged, type User } from 'firebase/auth';
 import { db, auth } from '../lib/Firebase';
 // Import your main app's auth context
 import { useAuth as useFullAuth } from '../context/auth-context';
+import { Spinner } from './ui/spinner';
 
 // --- Authentication Hook (Original) ---
 // This is a standalone hook. We'll use your main app's context instead,
@@ -245,25 +246,25 @@ export const useAttendance = (userId?: string, companyId?: string): UseAttendanc
 const AttendanceCard: React.FC<any> = ({ userName, status, checkInTime, checkOutTime, elapsedTime, onCheckIn, onCheckOut, loading }) => {
     const isCheckedIn = status === 'Checked In';
     return (
-        <div className="bg-white rounded-2xl shadow-md p-6 flex flex-col transition-all hover:shadow-lg w-full max-w-sm">
+        <div className="bg-card rounded-2xl shadow-md p-6 flex flex-col transition-all hover:shadow-lg w-full max-w-sm">
             <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-slate-800">{userName}</h2>
-                <span className={`px-3 py-1 text-xs font-semibold rounded-full ${isCheckedIn ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-600'}`}>
+                <h2 className="text-lg font-bold text-foreground">{userName}</h2>
+                <span className={`px-3 py-1 text-xs font-semibold rounded-full ${isCheckedIn ? 'bg-green-100 text-green-800' : 'bg-muted text-muted-foreground'}`}>
                     {loading ? '...' : status}
                 </span>
             </div>
             <div className="flex-grow space-y-3 mb-6">
-                <div className="flex justify-between items-center bg-slate-50 p-3 rounded-lg">
-                    <span className="text-sm font-medium text-slate-500">Checked In At:</span>
-                    <span className="text-sm font-semibold text-slate-800">{formatTime(checkInTime)}</span>
+                <div className="flex justify-between items-center bg-muted p-3 rounded-lg">
+                    <span className="text-sm font-medium text-muted-foreground">Checked In At:</span>
+                    <span className="text-sm font-semibold text-foreground">{formatTime(checkInTime)}</span>
                 </div>
                 <div className="flex justify-between items-center bg-blue-50 p-3 rounded-lg border border-blue-200">
                     <span className="text-sm font-medium text-blue-600">Duration:</span>
                     <span className="text-sm font-semibold text-blue-800 tabular-nums">{formatElapsedTime(elapsedTime)}</span>
                 </div>
-                <div className="flex justify-between items-center bg-slate-50 p-3 rounded-lg">
-                    <span className="text-sm font-medium text-slate-500">Checked Out At:</span>
-                    <span className="text-sm font-semibold text-slate-800">{formatTime(checkOutTime)}</span>
+                <div className="flex justify-between items-center bg-muted p-3 rounded-lg">
+                    <span className="text-sm font-medium text-muted-foreground">Checked Out At:</span>
+                    <span className="text-sm font-semibold text-foreground">{formatTime(checkOutTime)}</span>
                 </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -280,21 +281,21 @@ const AttendanceCard: React.FC<any> = ({ userName, status, checkInTime, checkOut
 
 const AttendanceLogCard: React.FC<{ log: LogEntry[] }> = ({ log }) => {
     return (
-        <div className="bg-white rounded-2xl shadow-md p-6 w-full max-w-sm">
-            <h3 className="text-lg font-bold text-slate-800 mb-4 border-b pb-2">Activity Log</h3>
+        <div className="bg-card rounded-2xl shadow-md p-6 w-full max-w-sm">
+            <h3 className="text-lg font-bold text-foreground mb-4 border-b pb-2">Activity Log</h3>
             <div className="max-h-48 overflow-y-auto">
                 {log.length === 0 ? (
-                    <p className="text-sm text-slate-500 text-center py-4">No activity recorded yet.</p>
+                    <p className="text-sm text-muted-foreground text-center py-4">No activity recorded yet.</p>
                 ) : (
                     <table className="w-full text-sm text-left">
-                        <thead className="text-xs text-slate-500 uppercase">
+                        <thead className="text-xs text-muted-foreground uppercase">
                             <tr><th className="py-2 px-2">Check In</th><th className="py-2 px-2">Check Out</th></tr>
                         </thead>
                         <tbody>
                             {[...log].reverse().map((entry, index) => (
                                 <tr key={index} className="border-b last:border-0">
-                                    <td className="py-2 px-2 font-medium text-slate-700">{formatTime(entry.checkIn)}</td>
-                                    <td className="py-2 px-2 font-medium text-slate-700">{formatTime(entry.checkOut)}</td>
+                                    <td className="py-2 px-2 font-medium text-foreground">{formatTime(entry.checkIn)}</td>
+                                    <td className="py-2 px-2 font-medium text-foreground">{formatTime(entry.checkOut)}</td>
                                 </tr>
                             ))}
                         </tbody>
@@ -314,13 +315,18 @@ export const AttendancePage: React.FC = () => {
     const { status, checkInTime, checkOutTime, elapsedTime, log, loading: attendanceLoading, handleCheckIn, handleCheckOut } = useAttendance(currentUser?.uid, currentUser?.companyId);
 
     if (authLoading) {
-        return <div className="flex justify-center items-center h-screen">Loading Authentication...</div>;
+        return (
+            <div className="flex h-screen flex-col items-center justify-center gap-3 text-muted-foreground">
+                <Spinner size="xl" />
+                <p className="text-sm font-medium">Loading Authentication...</p>
+            </div>
+        );
     }
 
     if (!currentUser) {
         return (
             <div className="flex justify-center items-center h-screen">
-                <p className="text-xl text-slate-600">Please log in to track your attendance.</p>
+                <p className="text-xl text-muted-foreground">Please log in to track your attendance.</p>
             </div>
         );
     }

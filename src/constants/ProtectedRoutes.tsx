@@ -4,6 +4,7 @@ import React from 'react'; // Ensure React is imported
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/auth-context';
 import { ROUTES } from '../constants/routes.constants';
+import { Spinner } from '../Components/ui/spinner';
 
 // Update ProtectedRouteProps interface
 interface ProtectedRouteProps {
@@ -19,7 +20,12 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   const { currentUser, loading } = useAuth();
 
   if (loading) {
-    return <div>Loading authentication...</div>;
+    return (
+      <div className="flex min-h-screen w-full flex-col items-center justify-center gap-3 text-muted-foreground">
+        <Spinner size="xl" />
+        <p className="text-sm font-medium">Loading authentication...</p>
+      </div>
+    );
   }
 
   if (!currentUser) {

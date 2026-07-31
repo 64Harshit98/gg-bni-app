@@ -12,8 +12,8 @@ const GlobalError: React.FC = () => {
     console.error("Global Error Caught:", error);
 
     return (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gray-50 p-6 text-center font-poppins overflow-hidden">
-            <div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full border border-red-100">
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-muted p-6 text-center font-poppins overflow-hidden">
+            <div className="bg-card p-8 rounded-lg shadow-md max-w-md w-full border border-red-100">
                 <div className="flex justify-center mx-auto mb-4">
 
                     <img
@@ -23,8 +23,8 @@ const GlobalError: React.FC = () => {
                     />
                 </div>
 
-                <h2 className="text-2xl font-bold text-gray-800 mb-2">Oops!</h2>
-                <p className="text-gray-500 mb-6 text-sm flex flex-col items-center gap-2">
+                <h2 className="text-2xl font-bold text-foreground mb-2">Oops!</h2>
+                <p className="text-muted-foreground mb-6 text-sm flex flex-col items-center gap-2">
                     <span>I crashed !!</span>
                 </p>
                 <div className="space-y-3">
@@ -38,7 +38,7 @@ const GlobalError: React.FC = () => {
 
                     <button
                         onClick={() => navigate('/')}
-                        className="text-sm text-gray-500 hover:text-gray-800 underline block w-full mt-2"
+                        className="text-sm text-muted-foreground hover:text-foreground underline block w-full mt-2"
                     >
                         Go to Home
                     </button>

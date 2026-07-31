@@ -233,7 +233,7 @@ const PartnerDashboard: React.FC = () => {
     };
 
     if (loading) {
-        return <div className="min-h-screen flex items-center justify-center bg-gray-50"><Spinner /></div>;
+        return <div className="min-h-screen flex items-center justify-center bg-muted"><Spinner /></div>;
     }
 
     const currentTier = agentData?.tier || 'Bronze';
@@ -253,14 +253,14 @@ const PartnerDashboard: React.FC = () => {
             bg: 'bg-[#E5E4E2]/20',
             cardBorder: 'border-[#E5E4E2]',
             textMain: 'text-[#363636]',
-            textSub: 'text-gray-600',
+            textSub: 'text-muted-foreground',
             iconBox: 'bg-gradient-to-br from-[#363636] to-gray-800 text-[#E5E4E2] shadow-sm',
             btnPrimary: '!bg-[#363636] hover:!bg-black !text-[#E5E4E2] disabled:!opacity-50',
             btnSecondary: 'bg-[#E5E4E2] hover:bg-[#C0C0C0] !text-[#363636]',
             badge: 'bg-[#363636] text-[#E5E4E2] border-gray-400',
-            gradient: 'bg-gradient-to-r from-gray-100 via-[#E5E4E2] to-gray-200', // Sleek, bright platinum header
+            gradient: 'bg-gradient-to-r from-muted via-[#E5E4E2] to-gray-200', // Sleek, bright platinum header
             headerText: 'text-[#363636]', // Dark gunmetal text for perfect visibility
-            headerSub: 'text-gray-600'
+            headerSub: 'text-muted-foreground'
         };
 
         if (t === 'gold') return {
@@ -270,11 +270,11 @@ const PartnerDashboard: React.FC = () => {
             textMain: 'text-[#B87333]',
             textSub: 'text-yellow-700',
             iconBox: 'bg-gradient-to-br from-[#FFD700] to-[#B87333] text-white shadow-sm',
-            btnPrimary: '!bg-[#FFD700] hover:!bg-[#B87333] !text-black disabled:!opacity-50',
+            btnPrimary: '!bg-[#FFD700] hover:!bg-[#B87333] !text-foreground disabled:!opacity-50',
             btnSecondary: 'bg-[#FFD700]/20 hover:bg-[#FFD700]/40 !text-yellow-900',
-            badge: 'bg-[#FFD700] text-black border-[#B87333]',
+            badge: 'bg-[#FFD700] text-foreground border-[#B87333]',
             gradient: 'bg-gradient-to-r from-[#B87333] via-[#FFD700] to-[#B87333]', // Solid Gold/Copper bar
-            headerText: 'text-black', // Dark text needed for bright gold readability
+            headerText: 'text-foreground', // Dark text needed for bright gold readability
             headerSub: 'text-yellow-950'
         };
 
@@ -283,14 +283,14 @@ const PartnerDashboard: React.FC = () => {
             bg: 'bg-[#C0C0C0]/10',
             cardBorder: 'border-[#C0C0C0]/50',
             textMain: 'text-[#363636]',
-            textSub: 'text-gray-600',
+            textSub: 'text-muted-foreground',
             iconBox: 'bg-gradient-to-br from-[#E5E4E2] to-[#C0C0C0] text-[#363636] shadow-sm',
             btnPrimary: '!bg-[#363636] hover:!bg-black !text-[#C0C0C0] disabled:!opacity-50',
-            btnSecondary: 'bg-[#C0C0C0]/20 hover:bg-[#C0C0C0]/40 !text-gray-900',
+            btnSecondary: 'bg-[#C0C0C0]/20 hover:bg-[#C0C0C0]/40 !text-foreground',
             badge: 'bg-[#C0C0C0] text-[#363636] border-gray-400',
             gradient: 'bg-gradient-to-r from-gray-500 via-[#C0C0C0] to-gray-500',
-            headerText: 'text-black',
-            headerSub: 'text-gray-800'
+            headerText: 'text-foreground',
+            headerSub: 'text-foreground'
         };
 
         // Default Bronze
@@ -333,7 +333,7 @@ const PartnerDashboard: React.FC = () => {
                     </div>
                     <button
                         onClick={handleLogout}
-                        className={`flex items-center gap-2 px-4 py-2 text-sm font-bold bg-white border ${theme.cardBorder} rounded-xs shadow-sm hover:shadow transition-all ${theme.textMain}`}
+                        className={`flex items-center gap-2 px-4 py-2 text-sm font-bold bg-card border ${theme.cardBorder} rounded-xs shadow-sm hover:shadow transition-all ${theme.textMain}`}
                     >
                         <FiLogOut /> Logout
                     </button>
@@ -344,11 +344,11 @@ const PartnerDashboard: React.FC = () => {
                     <div className="lg:col-span-1 space-y-6">
 
                         {/* Share Card */}
-                        <div className={`bg-white p-6 rounded-xs shadow-sm border ${theme.cardBorder}`}>
+                        <div className={`bg-card p-6 rounded-xs shadow-sm border ${theme.cardBorder}`}>
                             <h3 className={`text-lg font-bold mb-4 flex items-center gap-2 ${theme.textMain}`}>
                                 <div className={`p-2 rounded-xs ${theme.iconBox}`}><FiUsers /></div> Your Referral Code
                             </h3>
-                            <div className="bg-gray-50 px-4 py-3 rounded-xs border border-gray-200 font-mono text-2xl font-bold tracking-widest text-center text-gray-800 mb-4">
+                            <div className="bg-muted px-4 py-3 rounded-xs border border-border font-mono text-2xl font-bold tracking-widest text-center text-foreground mb-4">
                                 {agentData?.ownReferralCode}
                             </div>
                             <div className="flex gap-2">
@@ -362,7 +362,7 @@ const PartnerDashboard: React.FC = () => {
                         </div>
 
                         {/* Wallet Card */}
-                        <div className={`bg-white p-6 rounded-xs shadow-sm border ${theme.cardBorder}`}>
+                        <div className={`bg-card p-6 rounded-xs shadow-sm border ${theme.cardBorder}`}>
                             <h3 className={`text-lg font-bold mb-4 flex items-center gap-2 ${theme.textMain}`}>
                                 <div className={`p-2 rounded-xs ${theme.iconBox}`}><LuIndianRupee /></div> Wallet Balance
                             </h3>
@@ -372,7 +372,7 @@ const PartnerDashboard: React.FC = () => {
                                 <p className={`text-4xl font-bold ${theme.textMain}`}>₹{agentData?.unpaidBalance || 0}</p>
                             </div>
 
-                            <div className="mb-6 border-t border-gray-100 pt-4">
+                            <div className="mb-6 border-t border-border pt-4">
                                 <p className={`text-sm font-medium ${theme.textSub}`}>Lifetime Earnings (Total)</p>
                                 <p className={`text-xl font-bold flex items-center gap-2 ${theme.textMain}`}>
                                     ₹{calculatedLifetimeEarnings.toFixed(2)} <FiTrendingUp className="text-green-500" size={16} />
@@ -391,25 +391,25 @@ const PartnerDashboard: React.FC = () => {
 
                     {/* RIGHT COLUMN: Agency Leads */}
                     {isAgency && (
-                        <div className={`lg:col-span-2 bg-white rounded-xs shadow-sm border ${theme.cardBorder} flex flex-col`}>
-                            <div className={`p-5 sm:p-6 border-b border-gray-100 ${theme.gradient} flex justify-between items-center rounded-t-xl`}>
+                        <div className={`lg:col-span-2 bg-card rounded-xs shadow-sm border ${theme.cardBorder} flex flex-col`}>
+                            <div className={`p-5 sm:p-6 border-b border-border ${theme.gradient} flex justify-between items-center rounded-t-xl`}>
                                 <h3 className={`text-lg font-bold ${theme.headerText}`}>Active Leads</h3>
-                                <span className={`text-xs font-bold px-2.5 py-1 rounded-xs bg-white/20 ${theme.headerText}`}>
+                                <span className={`text-xs font-bold px-2.5 py-1 rounded-xs bg-card/20 ${theme.headerText}`}>
                                     {leads.length} Signups
                                 </span>
                             </div>
 
                             <div className="p-4 sm:p-6">
                                 {leads.length === 0 ? (
-                                    <div className="text-center text-gray-500 py-8 border border-dashed border-gray-300 rounded-xs w-full">
+                                    <div className="text-center text-muted-foreground py-8 border border-dashed border-border rounded-xs w-full">
                                         No leads yet. Share your code to get started!
                                     </div>
                                 ) : (
                                     <div className="flex flex-col gap-y-4 w-full mt-2">
                                         {leads.map((lead) => (
-                                            <div key={lead.id} className="bg-white rounded-xs border border-slate-200 p-3 pt-4 sm:p-4 shadow-sm hover:shadow-md transition relative flex items-center justify-between gap-2 w-full">
+                                            <div key={lead.id} className="bg-card rounded-xs border border-border p-3 pt-4 sm:p-4 shadow-sm hover:shadow-md transition relative flex items-center justify-between gap-2 w-full">
                                                 <div className="absolute -top-2.5 left-3">
-                                                    <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider whitespace-nowrap shadow-sm bg-white ${lead.status === 'Trial'
+                                                    <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider whitespace-nowrap shadow-sm bg-card ${lead.status === 'Trial'
                                                         ? 'text-orange-600 border-orange-200'
                                                         : 'text-emerald-600 border-emerald-200'
                                                         }`}>
@@ -418,16 +418,16 @@ const PartnerDashboard: React.FC = () => {
                                                 </div>
 
                                                 <div className="min-w-0 flex-1 pr-2">
-                                                    <p className="text-sm sm:text-base font-bold text-slate-800 truncate" title={lead.name}>{lead.name}</p>
-                                                    <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 truncate">{lead.ownerPhoneNumber}</p>
+                                                    <p className="text-sm sm:text-base font-bold text-foreground truncate" title={lead.name}>{lead.name}</p>
+                                                    <p className="text-[11px] sm:text-xs text-muted-foreground mt-0.5 truncate">{lead.ownerPhoneNumber}</p>
                                                 </div>
 
                                                 <div className="flex items-center gap-3 sm:gap-5 shrink-0">
                                                     <div className="flex items-baseline gap-1.5 text-right">
-                                                        <p className={`text-lg sm:text-xl font-bold leading-none ${lead.status === 'Trial' ? 'text-orange-500' : 'text-slate-800'}`}>
+                                                        <p className={`text-lg sm:text-xl font-bold leading-none ${lead.status === 'Trial' ? 'text-orange-500' : 'text-foreground'}`}>
                                                             {lead.daysRemaining}
                                                         </p>
-                                                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wide mt-1">Days Left</p>
+                                                        <p className="text-[9px] text-muted-foreground font-bold uppercase tracking-wide mt-1">Days Left</p>
                                                     </div>
 
                                                     {lead.ownerPhoneNumber !== 'N/A' && (
@@ -450,7 +450,7 @@ const PartnerDashboard: React.FC = () => {
                     )}
 
                     {!isAgency && (
-                        <div className={`lg:col-span-2 bg-white rounded-xs shadow-sm border ${theme.cardBorder} p-8 flex flex-col items-center justify-center text-center`}>
+                        <div className={`lg:col-span-2 bg-card rounded-xs shadow-sm border ${theme.cardBorder} p-8 flex flex-col items-center justify-center text-center`}>
                             <div className={`p-4 rounded-xs mb-4 ${theme.iconBox}`}>
                                 <FiTrendingUp size={40} />
                             </div>
@@ -464,15 +464,15 @@ const PartnerDashboard: React.FC = () => {
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
                     {/* Commission Earned History */}
-                    <div className={`bg-white rounded-xs shadow-sm border ${theme.cardBorder} overflow-hidden`}>
-                        <div className={`p-5 border-b border-gray-100 ${theme.gradient} flex justify-between items-center`}>
+                    <div className={`bg-card rounded-xs shadow-sm border ${theme.cardBorder} overflow-hidden`}>
+                        <div className={`p-5 border-b border-border ${theme.gradient} flex justify-between items-center`}>
                             <h3 className={`text-base font-bold flex items-center gap-2 ${theme.headerText}`}>
                                 <FiList /> Earnings Ledger
                             </h3>
                         </div>
                         <div className="overflow-x-auto">
-                            <table className="w-full text-sm text-left text-gray-500">
-                                <thead className="text-xs text-gray-400 uppercase bg-gray-50">
+                            <table className="w-full text-sm text-left text-muted-foreground">
+                                <thead className="text-xs text-muted-foreground uppercase bg-muted">
                                     <tr>
                                         <th className="px-5 py-3">Date</th>
                                         <th className="px-5 py-3">Business</th>
@@ -482,15 +482,15 @@ const PartnerDashboard: React.FC = () => {
                                 <tbody>
                                     {commissions.length === 0 ? (
                                         <tr>
-                                            <td colSpan={3} className="px-5 py-6 text-center text-gray-400 font-medium">No earnings recorded yet.</td>
+                                            <td colSpan={3} className="px-5 py-6 text-center text-muted-foreground font-medium">No earnings recorded yet.</td>
                                         </tr>
                                     ) : (
                                         commissions.map((record) => (
-                                            <tr key={record.id} className="bg-white border-b hover:bg-gray-50 transition">
+                                            <tr key={record.id} className="bg-card border-b hover:bg-muted transition">
                                                 <td className="px-5 py-3 whitespace-nowrap text-xs font-medium">
                                                     {record.date.toLocaleDateString()}
                                                 </td>
-                                                <td className="px-5 py-3 font-bold text-gray-800">
+                                                <td className="px-5 py-3 font-bold text-foreground">
                                                     {record.companyName}
                                                     <span className={`block text-[10px] font-bold uppercase mt-0.5 ${theme.textSub}`}>{record.type}</span>
                                                 </td>
@@ -506,15 +506,15 @@ const PartnerDashboard: React.FC = () => {
                     </div>
 
                     {/* Withdrawal / Payouts History */}
-                    <div className={`bg-white rounded-xs shadow-sm border ${theme.cardBorder} overflow-hidden`}>
-                        <div className={`p-5 border-b border-gray-100 ${theme.gradient} flex justify-between items-center`}>
+                    <div className={`bg-card rounded-xs shadow-sm border ${theme.cardBorder} overflow-hidden`}>
+                        <div className={`p-5 border-b border-border ${theme.gradient} flex justify-between items-center`}>
                             <h3 className={`text-base font-bold flex items-center gap-2 ${theme.headerText}`}>
                                 <LuIndianRupee /> Withdrawal History
                             </h3>
                         </div>
                         <div className="overflow-x-auto">
-                            <table className="w-full text-sm text-left text-gray-500">
-                                <thead className="text-xs text-gray-400 uppercase bg-gray-50">
+                            <table className="w-full text-sm text-left text-muted-foreground">
+                                <thead className="text-xs text-muted-foreground uppercase bg-muted">
                                     <tr>
                                         <th className="px-5 py-3">Date</th>
                                         <th className="px-5 py-3">Status</th>
@@ -524,11 +524,11 @@ const PartnerDashboard: React.FC = () => {
                                 <tbody>
                                     {payouts.length === 0 ? (
                                         <tr>
-                                            <td colSpan={3} className="px-5 py-6 text-center text-gray-400 font-medium">No withdrawals requested yet.</td>
+                                            <td colSpan={3} className="px-5 py-6 text-center text-muted-foreground font-medium">No withdrawals requested yet.</td>
                                         </tr>
                                     ) : (
                                         payouts.map((payout) => (
-                                            <tr key={payout.id} className="bg-white border-b hover:bg-gray-50 transition">
+                                            <tr key={payout.id} className="bg-card border-b hover:bg-muted transition">
                                                 <td className="px-5 py-3 whitespace-nowrap text-xs font-medium">
                                                     {payout.date.toLocaleDateString()}
                                                 </td>
@@ -542,9 +542,9 @@ const PartnerDashboard: React.FC = () => {
                                                             <FiCheckCircle size={10} /> SETTLED
                                                         </span>
                                                     )}
-                                                    <span className="block text-[10px] font-medium text-gray-400 mt-1 truncate max-w-[120px]">to {payout.upiId}</span>
+                                                    <span className="block text-[10px] font-medium text-muted-foreground mt-1 truncate max-w-[120px]">to {payout.upiId}</span>
                                                 </td>
-                                                <td className="px-5 py-3 text-right font-bold text-gray-800">
+                                                <td className="px-5 py-3 text-right font-bold text-foreground">
                                                     -₹{payout.amount.toFixed(2)}
                                                 </td>
                                             </tr>
@@ -561,23 +561,23 @@ const PartnerDashboard: React.FC = () => {
             {/* UPI Modal */}
             {showUpiModal && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                    <div className="bg-white p-6 rounded-2xl shadow-xl w-full max-w-sm border border-gray-100">
-                        <h3 className="text-xl font-bold mb-2 text-gray-900">Set up Payouts</h3>
-                        <p className="text-sm text-gray-500 mb-4 font-medium">Enter your UPI ID to receive your withdrawals.</p>
+                    <div className="bg-card p-6 rounded-2xl shadow-xl w-full max-w-sm border border-border">
+                        <h3 className="text-xl font-bold mb-2 text-foreground">Set up Payouts</h3>
+                        <p className="text-sm text-muted-foreground mb-4 font-medium">Enter your UPI ID to receive your withdrawals.</p>
 
                         <input
                             type="text"
                             value={upiInput}
                             onChange={(e) => setUpiInput(e.target.value)}
                             placeholder="e.g. name@okhdfcbank"
-                            className="w-full border border-gray-300 p-2.5 rounded-xs mb-4 focus:ring-2 focus:ring-black outline-none transition font-medium"
+                            className="w-full border border-border p-2.5 rounded-xs mb-4 focus:ring-2 focus:ring-black outline-none transition font-medium"
                         />
 
                         <div className="flex justify-end gap-2 mt-2">
                             <button
                                 onClick={() => setShowUpiModal(false)}
                                 disabled={isSavingUpi}
-                                className="px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-100 rounded-xs transition"
+                                className="px-4 py-2 text-sm font-bold text-muted-foreground hover:bg-muted rounded-xs transition"
                             >
                                 Cancel
                             </button>

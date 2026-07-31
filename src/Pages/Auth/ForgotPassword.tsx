@@ -67,10 +67,10 @@ const ForgotPasswordPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="w-full bg-gray-100 p-6 py-8 shadow-t-lg rounded-t-2xl flex-shrink-0 z-20 mt-[-50px]">
+          <div className="w-full bg-muted p-6 py-8 shadow-t-lg rounded-t-2xl flex-shrink-0 z-20 mt-[-50px]">
             <div className="w-full max-w-sm mx-auto">
-              <h2 className="text-xl font-bold text-gray-800 text-center mb-2">Forgot Password?</h2>
-              <p className="text-sm text-gray-500 text-center mb-6">
+              <h2 className="text-xl font-bold text-foreground text-center mb-2">Forgot Password?</h2>
+              <p className="text-sm text-muted-foreground text-center mb-6">
                 Enter your email and we'll send you a link to reset your password.
               </p>
 
@@ -92,7 +92,7 @@ const ForgotPasswordPage: React.FC = () => {
               ) : (
                 <form onSubmit={handleReset} className="space-y-4">
                   <div className="relative">
-                    <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                    <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
                     <FloatingLabelInput
                       id="email"
                       type="email"
@@ -101,7 +101,7 @@ const ForgotPasswordPage: React.FC = () => {
                       onChange={(e) => setEmail(e.target.value)}
                       required
                       disabled={loading}
-                      className="pl-10 h-14 border border-gray-300 rounded-lg text-lg"
+                      className="pl-10 h-14 border border-border rounded-lg text-lg"
                     />
                   </div>
 
@@ -125,7 +125,7 @@ const ForgotPasswordPage: React.FC = () => {
                   <div className="text-center pt-2">
                     <Link
                       to={ROUTES.LANDING}
-                      className="inline-flex items-center text-sm font-medium text-gray-600"
+                      className="inline-flex items-center text-sm font-medium text-muted-foreground"
                     >
                       <FiArrowLeft className="mr-2" />
                       Back to Login
@@ -148,11 +148,11 @@ const ForgotPasswordPage: React.FC = () => {
           </div>
 
           {/* RIGHT FORM */}
-          <div className="w-1/2 flex items-center justify-center bg-white">
+          <div className="w-1/2 flex items-center justify-center bg-card">
             <div className="w-full max-w-md px-6">
 
               <h1 className="text-4xl font-bold mb-4">Forgot Password</h1>
-              <p className="text-gray-500 mb-6">
+              <p className="text-muted-foreground mb-6">
                 Enter your email and we'll send you a reset link.
               </p>
 
@@ -171,8 +171,8 @@ const ForgotPasswordPage: React.FC = () => {
               ) : (
                 <form onSubmit={handleReset} className="space-y-6">
 
-                  <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
-                    <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" />
+                  <div className="relative [&_label]:!left-[3rem] [&_label]:bg-card">
+                    <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10" />
                     <FloatingLabelInput
                       id="email"
                       type="email"
@@ -181,7 +181,7 @@ const ForgotPasswordPage: React.FC = () => {
                       onChange={(e) => setEmail(e.target.value)}
                       required
                       disabled={loading}
-                      className="pl-12 py-3 bg-white border border-gray-300"
+                      className="pl-12 py-3 bg-card border border-border"
                     />
                   </div>
 
@@ -199,7 +199,7 @@ const ForgotPasswordPage: React.FC = () => {
                   </CustomButton>
 
                   <div className="text-center">
-                    <Link to={ROUTES.LANDING} className="text-sm text-gray-600">
+                    <Link to={ROUTES.LANDING} className="text-sm text-muted-foreground">
                       Back to Login
                     </Link>
                   </div>

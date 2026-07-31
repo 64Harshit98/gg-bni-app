@@ -2,16 +2,13 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../../context/auth-context';
 import { formatDateForInput } from '../SalesReportComponents/salesReport.utils';
-import { db } from '../../../lib/Firebase';
 import {
-  collection,
-  query,
-  getDocs,
-  orderBy,
-  doc,
-  getDoc,
-  where,
-} from 'firebase/firestore';
+  fetchMerchantTaxSettings,
+  fetchPurchasesInRange,
+  fetchSalesInRange,
+  type GstScheme,
+  type TaxDocRecord,
+} from '../../../services/reports/taxReport.service';
 
 export interface MerchantProfile {
   gstin: string;
@@ -25,10 +22,10 @@ export default function useTaxReport() {
   const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
 
-  const [salesData, setSalesData] = useState<any[]>([]);
-  const [purchaseData, setPurchaseData] = useState<any[]>([]);
+  const [salesData, setSalesData] = useState<TaxDocRecord[]>([]);
+  const [purchaseData, setPurchaseData] = useState<TaxDocRecord[]>([]);
 
-  const [gstScheme, setGstScheme] = useState<'Regular' | 'Composition' | 'None'>('Regular');
+  const [gstScheme, setGstScheme] = useState<GstScheme>('Regular');
 
   const [merchantProfile, setMerchantProfile] = useState<MerchantProfile>({
     gstin: '',
@@ -64,39 +61,17 @@ export default function useTaxReport() {
       return;
     }
 
+    const companyId = currentUser.companyId;
+    let cancelled = false;
+
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        const companyId = currentUser.companyId;
+        // 1. Merchant settings & profile
+        const { gstScheme: scheme, merchantProfile: merchantData } =
+          await fetchMerchantTaxSettings(companyId);
 
-        // 1. Fetch Merchant Settings & Profile Data
-        let scheme: 'Regular' | 'Composition' | 'None' = 'Regular';
-        const merchantData: MerchantProfile = { gstin: '', homeStateCode: '09', compositionRate: 1, legalName: '', tradeName: '' };
-
-        try {
-          const profileDoc = await getDoc(doc(db, 'companies', companyId));
-          const settingsDoc = await getDoc(doc(db, 'companies', companyId, 'settings', 'sales-settings'));
-
-          if (profileDoc.exists()) {
-            const pData = profileDoc.data();
-            merchantData.gstin = pData.gstin || '';
-            // Extract strict 2-digit state code from GSTIN if available, else default to UP
-            merchantData.homeStateCode = pData.gstin ? pData.gstin.substring(0, 2) : '09';
-            merchantData.legalName = pData.legalName || pData.ownerName || '';
-            merchantData.tradeName = pData.tradeName || pData.companyName || pData.storeName || '';
-          }
-
-          if (settingsDoc.exists()) {
-            const data = settingsDoc.data();
-            if (data.gstScheme === 'composition') {
-              scheme = 'Composition';
-              merchantData.compositionRate = data.compositionRate || 1;
-            } else if (data.gstScheme === 'none') scheme = 'None';
-          }
-        } catch (e) {
-          console.warn('Could not fetch settings, defaulting to Regular');
-        }
-
+        if (cancelled) return;
         setGstScheme(scheme);
         setMerchantProfile(merchantData);
 
@@ -105,40 +80,31 @@ export default function useTaxReport() {
           return;
         }
 
-        // 2. Optimized Date Query (Filters on backend instead of downloading everything)
+        // 2. Sales + purchases for the applied date range
         const startDate = new Date(appliedFilters.start);
         const endDate = new Date(appliedFilters.end);
 
-        const salesQ = query(
-          collection(db, 'companies', companyId, 'sales'),
-          where('createdAt', '>=', startDate),
-          where('createdAt', '<=', endDate),
-          orderBy('createdAt', 'desc'),
-        );
-        const salesSnap = await getDocs(salesQ);
-        setSalesData(salesSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        const [sales, purchases] = await Promise.all([
+          fetchSalesInRange(companyId, startDate, endDate),
+          fetchPurchasesInRange(companyId, startDate, endDate),
+        ]);
 
-        // 3. Purchases — fetch ALL purchases for both schemes. Composition dealers need
-        // every invoice from a registered supplier for GSTR-4A (RCM and non-RCM alike),
-        // not just RCM ones — RCM-only filtering happens client-side per-report instead.
-        const purchaseQ = query(
-          collection(db, 'companies', companyId, 'purchases'),
-          where('createdAt', '>=', startDate),
-          where('createdAt', '<=', endDate),
-          orderBy('createdAt', 'desc'),
-        );
-
-        const purchaseSnap = await getDocs(purchaseQ);
-        setPurchaseData(purchaseSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        if (cancelled) return;
+        setSalesData(sales);
+        setPurchaseData(purchases);
       } catch (err) {
         console.error('Error fetching tax data:', err);
-        setError('Failed to load tax data.');
+        if (!cancelled) setError('Failed to load tax data.');
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
     fetchData();
+
+    return () => {
+      cancelled = true;
+    };
   }, [currentUser, authLoading, appliedFilters]);
 
   return {

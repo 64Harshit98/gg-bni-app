@@ -2,17 +2,20 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/Firebase'; // adjust path if your db export differs
 import { useAuth } from '../context/auth-context'; // adjust if your auth hook path/name differs
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '../Components/ui/button';
 import { navItems } from '../routes/bottomRoutes';
+import { Sidebar, type QuickAction } from '../Components/layout/Sidebar';
+import { Header } from '../Components/layout/Header';
+import { ShoppingCart, PackagePlus, Plus, Scan, UserPlus, Receipt } from 'lucide-react';
 import { FloatingButton } from '../Components/FloatingButton';
+import { Spinner } from '../Components/ui/spinner';
 import { ROUTES } from '../constants/routes.constants';
 import { Permissions } from '../enums';
 import ShowWrapper from '../context/ShowWrapper';
-import sellarLogo from '../assets/sellar-logo-heading.png';
 import { TutorialStep } from '../Components/TutorialStep';
 import { ExpenseModal } from '../Components/ExpenseModal';
-import { useExpenses } from '../Pages/Reports/ExpenseReport/useExpense';
+import { useExpenses } from '@/features/expenses';
 import { useShopHours } from '../Pages/hooks/useShopHours'; // already exists
 import { ROLES } from '../enums';
 import ShopClosingReminderModal from '../Components/ShopClosingReminderModal';
@@ -130,37 +133,38 @@ const MainLayout = () => {
     }
   }, [location.pathname]);
 
-  const isActive = (path: string) => location.pathname === path;
+  const quickActions: QuickAction[] = [
+    { key: 'sales', to: ROUTES.SALES, icon: <ShoppingCart className="size-4" />, label: 'Add Sales' },
+    { key: 'purchase', to: ROUTES.PURCHASE, icon: <PackagePlus className="size-4" />, label: 'Add Purchase', permission: Permissions.CreatePurchase },
+    { key: 'item', to: ROUTES.ITEM_ADD, icon: <Plus className="size-4" />, label: 'Add Item', permission: Permissions.ManageItems },
+    { key: 'barcode', to: ROUTES.PRINTQR, icon: <Scan className="size-4" />, label: 'Add Barcode', permission: Permissions.PrintQR },
+    { key: 'user', to: ROUTES.USER_ADD, icon: <UserPlus className="size-4" />, label: 'Add User', permission: Permissions.CreateUsers },
+    { key: 'expense', icon: <Receipt className="size-4" />, label: 'Add Expense', permission: Permissions.ViewReports, onClick: () => setIsExpenseModalOpen(true) },
+  ];
 
   const MobileActionButtons = () => (
     <>
-      <Button variant="outline" className="w-full mb-2 rounded-sm bg-white" onClick={() => navigate(ROUTES.SALES)}>Add Sales</Button>
+      <Button variant="outline" className="w-full mb-2 rounded-sm bg-card" onClick={() => navigate(ROUTES.SALES)}>Add Sales</Button>
       <ShowWrapper requiredPermission={Permissions.CreatePurchase}>
-        <Button variant="outline" className="w-full mb-2 rounded-sm bg-white" onClick={() => navigate(ROUTES.PURCHASE)}>Add Purchase</Button>
+        <Button variant="outline" className="w-full mb-2 rounded-sm bg-card" onClick={() => navigate(ROUTES.PURCHASE)}>Add Purchase</Button>
       </ShowWrapper>
       <ShowWrapper requiredPermission={Permissions.ManageItems}>
-        <Button variant="outline" className="w-full mb-2 rounded-sm bg-white" onClick={() => navigate(ROUTES.ITEM_ADD)}>Add Item</Button>
+        <Button variant="outline" className="w-full mb-2 rounded-sm bg-card" onClick={() => navigate(ROUTES.ITEM_ADD)}>Add Item</Button>
       </ShowWrapper>
       <ShowWrapper requiredPermission={Permissions.PrintQR}>
-        <Button variant="outline" className="w-full mb-2 rounded-sm bg-white" onClick={() => navigate(ROUTES.PRINTQR)}>Add Barcode</Button>
+        <Button variant="outline" className="w-full mb-2 rounded-sm bg-card" onClick={() => navigate(ROUTES.PRINTQR)}>Add Barcode</Button>
       </ShowWrapper>
       <ShowWrapper requiredPermission={Permissions.CreateUsers}>
-        <Button variant="outline" className="w-full mb-2 rounded-sm bg-white" onClick={() => navigate(ROUTES.USER_ADD)}>Add User</Button>
+        <Button variant="outline" className="w-full mb-2 rounded-sm bg-card" onClick={() => navigate(ROUTES.USER_ADD)}>Add User</Button>
       </ShowWrapper>
       <ShowWrapper requiredPermission={Permissions.ViewReports}>
-        <Button variant="outline" className="w-full mb-2 rounded-sm bg-white" onClick={() => setIsExpenseModalOpen(true)}>Add Expense</Button>
+        <Button variant="outline" className="w-full mb-2 rounded-sm bg-card" onClick={() => setIsExpenseModalOpen(true)}>Add Expense</Button>
       </ShowWrapper>
     </>
   );
 
-  const sidebarLinkClass = (path: string) =>
-    `flex items-center gap-3 px-4 py-3 rounded-sm text-sm font-medium transition-all ${isActive(path)
-      ? 'bg-sky-50 text-sky-600 shadow-sm border border-sky-100'
-      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent'
-    }`;
-
   return (
-    <div className="h-dvh w-screen flex flex-col md:flex-row overflow-hidden bg-gray-100">
+    <div className="aurora relative h-dvh w-screen flex flex-col md:flex-row overflow-hidden bg-background">
       {/* NEW: Closing Reminder Modal */}
       {showReminder && shopSettings && (
         <ShopClosingReminderModal
@@ -170,46 +174,18 @@ const MainLayout = () => {
         />
       )}
       {/* DESKTOP SIDEBAR */}
-      <aside className="hidden md:flex flex-col w-48 bg-white border-r border-slate-200 h-full flex-shrink-0 z-20">
-        <div className="p-6 border-b border-slate-100">
-          <h1 className="text-xl font-bold text-slate-800">
-            <img src={sellarLogo} alt="Sellar Logo" className="w-48" />
-          </h1>
-        </div>
-        <nav className="flex-1 overflow-y-auto p-4 space-y-1">
-          {navItems.map(({ to, icon, label }) => (
-            <Link key={to} to={to} className={sidebarLinkClass(to)}>
-              <span className="text-lg">{icon}</span>
-              <span>{label}</span>
-            </Link>
-          ))}
-          <div className="pt-4 pb-2">
-            <div className="border-t border-slate-200" />
-            <p className="px-4 pt-4 pb-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">Quick Actions</p>
-          </div>
-          <Link to={ROUTES.SALES} className={sidebarLinkClass(ROUTES.SALES)}><span className="text-lg">+</span><span>Add Sales</span></Link>
-          <ShowWrapper requiredPermission={Permissions.CreatePurchase}>
-            <Link to={ROUTES.PURCHASE} className={sidebarLinkClass(ROUTES.PURCHASE)}><span className="text-lg">+</span><span>Add Purchase</span></Link>
-          </ShowWrapper>
-          <ShowWrapper requiredPermission={Permissions.ManageItems}>
-            <Link to={ROUTES.ITEM_ADD} className={sidebarLinkClass(ROUTES.ITEM_ADD)}><span className="text-lg">+</span><span>Add Item</span></Link>
-          </ShowWrapper>
-          <ShowWrapper requiredPermission={Permissions.PrintQR}>
-            <Link to={ROUTES.PRINTQR} className={sidebarLinkClass(ROUTES.PRINTQR)}><span className="text-lg">+</span><span>Add Barcode</span></Link>
-          </ShowWrapper>
-          <ShowWrapper requiredPermission={Permissions.CreateUsers}>
-            <Link to={ROUTES.USER_ADD} className={sidebarLinkClass(ROUTES.USER_ADD)}><span className="text-lg">+</span><span>Add User</span></Link>
-          </ShowWrapper>
-          <ShowWrapper requiredPermission={Permissions.ViewReports}>
-            <button onClick={() => setIsExpenseModalOpen(true)} className={sidebarLinkClass('')}><span className="text-lg">+</span><span>Add Expense</span></button>
-          </ShowWrapper>
-        </nav>
-      </aside>
+      <Sidebar
+        navItems={navItems}
+        quickActions={quickActions}
+        userName={currentUser?.name}
+        userRole={currentUser?.role}
+      />
 
       {/* MAIN CONTENT */}
       <main className="flex-1 relative flex flex-col min-w-0 overflow-hidden">
+        <Header navItems={navItems} userName={currentUser?.name} />
         <div ref={scrollRef} className="flex-1 overflow-y-auto pb-20 md:pb-4 scroll-smooth">
-          <Suspense fallback={<div>Loading...</div>}>
+          <Suspense fallback={<div className="flex h-full w-full items-center justify-center py-20"><Spinner size="xl" /></div>}>
             <Outlet />
           </Suspense>
         </div>
@@ -233,18 +209,21 @@ const MainLayout = () => {
       </main>
 
       {/* MOBILE BOTTOM NAV */}
-      <nav className="md:hidden fixed bottom-0 left-0 w-full border-t border-slate-200 bg-white">
-        <div className="flex justify-around items-center gap-2 px-2 pt-2 pb-3">
+      <nav className="glass md:hidden fixed bottom-3 left-3 right-3 z-40 rounded-2xl shadow-lg shadow-black/10">
+        <div className="flex justify-around items-center gap-1 px-2 py-2">
           {navItems.map(({ to, icon, label }) => (
-            <Link
+            <NavLink
               key={to}
               to={to}
-              className={`flex-1 flex flex-row items-center justify-center gap-1 py-2 rounded-sm text-sm transition-colors border border-[rgba(0,0,0,0.15)] duration-200 min-w-0 ${isActive(to) ? 'bg-sky-500 text-white' : 'text-black-500 hover:bg-gray-100'
-                }`}
+              end
+              className={({ isActive: active }) =>
+                `flex-1 flex flex-col items-center justify-center gap-0.5 py-2 rounded-xl text-xs font-medium transition-all duration-200 min-w-0 ${active ? 'bg-gradient-brand text-white shadow-md shadow-primary/25' : 'text-muted-foreground hover:bg-accent'
+                }`
+              }
             >
-              <div className="flex-shrink-0">{icon}</div>
-              <span className="font-medium truncate text-xs sm:text-sm">{label}</span>
-            </Link>
+              <div className="flex-shrink-0 [&>svg]:size-5">{icon}</div>
+              <span className="truncate">{label}</span>
+            </NavLink>
           ))}
         </div>
       </nav>

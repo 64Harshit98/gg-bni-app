@@ -137,11 +137,11 @@ const WebsiteLeadsDashboard: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 p-2 pb-16 md:p-6 md:pb-16 font-sans">
+    <div className="min-h-screen bg-muted p-2 pb-16 md:p-6 md:pb-16 font-sans">
 
       {/* HEADER */}
       <div className="flex items-center justify-between pb-3 border-b mb-2 md:mb-4">
-        <h1 className="flex-1 text-xl text-center font-bold text-gray-800 md:text-2xl">
+        <h1 className="flex-1 text-xl text-center font-bold text-foreground md:text-2xl">
           Website Query
         </h1>
         <button onClick={() => navigate(-1)} className="p-2">
@@ -150,7 +150,7 @@ const WebsiteLeadsDashboard: React.FC = () => {
       </div>
 
       {/* FILTERS */}
-      <div className="bg-white p-2 rounded-sm shadow-md mb-2 md:p-5 md:mb-4 md:rounded-sm">
+      <div className="bg-card p-2 rounded-sm shadow-md mb-2 md:p-5 md:mb-4 md:rounded-sm">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 md:grid-cols-1 md:gap-3">
           <div className="sm:col-span-1 md:col-span-1">
             <FilterSelect value={datePreset} onChange={(e) => handleDatePresetChange(e.target.value)}>
@@ -162,8 +162,8 @@ const WebsiteLeadsDashboard: React.FC = () => {
             </FilterSelect>
           </div>
           <div className="grid grid-cols-2 gap-4 sm:col-span-2 md:col-span-1 md:grid-cols-2 md:gap-4">
-            <input type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border rounded-sm md:p-2.5" />
-            <input type="date" value={endDate} onChange={(e) => { setEndDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border rounded-sm md:p-2.5" />
+            <input type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-muted border rounded-sm md:p-2.5" />
+            <input type="date" value={endDate} onChange={(e) => { setEndDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-muted border rounded-sm md:p-2.5" />
           </div>
         </div>
         <div className="mt-2 md:mt-3 md:flex md:justify-center">
@@ -198,7 +198,7 @@ const WebsiteLeadsDashboard: React.FC = () => {
 
         <div
           onClick={() => setActiveStatus('not_interested')}
-          className={`cursor-pointer rounded-sm transition-all border-2 ${activeStatus === 'not_interested' ? 'border-gray-600 bg-gray-100 shadow-md scale-105' : 'border-transparent'}`}
+          className={`cursor-pointer rounded-sm transition-all border-2 ${activeStatus === 'not_interested' ? 'border-gray-600 bg-muted shadow-md scale-105' : 'border-transparent'}`}
         >
           <CustomCard variant={CardVariant.Summary} title="Not Interested" value={stats.not_interested.toString()} />
         </div>
@@ -212,7 +212,7 @@ const WebsiteLeadsDashboard: React.FC = () => {
           return (
             <div
               key={lead.id}
-              className="bg-white rounded-sm shadow-sm border border-gray-100 transition-all hover:shadow-md overflow-hidden"
+              className="bg-card rounded-sm shadow-sm border border-border transition-all hover:shadow-md overflow-hidden"
             >
               {/* MAIN ROW */}
               <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer" onClick={() => toggleExpand(lead.id)}>
@@ -220,24 +220,24 @@ const WebsiteLeadsDashboard: React.FC = () => {
                 {/* Left: Name, Status, Email, Phone, City */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <h3 className="text-base font-bold text-gray-800">{lead.fullName}</h3>
+                    <h3 className="text-base font-bold text-foreground">{lead.fullName}</h3>
                     <span className={`text-[10px] px-2 py-0.5 rounded-sm font-bold uppercase ${lead.status === 'converted' ? 'bg-green-100 text-green-600' :
                       lead.status === 'issue' ? 'bg-red-100 text-red-600' :
-                        lead.status === 'not_interested' ? 'bg-gray-100 text-gray-500' :
+                        lead.status === 'not_interested' ? 'bg-muted text-muted-foreground' :
                           'bg-orange-100 text-orange-600'
                       }`}>
                       {lead.status || 'pending'}
                     </span>
                   </div>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5">
-                    <p className="text-sm text-gray-500 font-medium">{lead.email}</p>
+                    <p className="text-sm text-muted-foreground font-medium">{lead.email}</p>
                     {lead.phone && (
-                      <p className="text-sm text-gray-500 font-medium flex items-center gap-1">
+                      <p className="text-sm text-muted-foreground font-medium flex items-center gap-1">
                         📞 {lead.phone}
                       </p>
                     )}
                     {lead.city && (
-                      <p className="text-sm text-gray-400 font-medium flex items-center gap-1">
+                      <p className="text-sm text-muted-foreground font-medium flex items-center gap-1">
                         📍 {lead.city}
                       </p>
                     )}
@@ -251,14 +251,14 @@ const WebsiteLeadsDashboard: React.FC = () => {
                       value={lead.status || 'pending'}
                       onChange={(e) => updateStatus(lead.id, e.target.value)}
                       onClick={(e) => e.stopPropagation()}
-                      className="w-full md:w-56 text-xs font-bold bg-gray-50 border border-gray-200 rounded-sm px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+                      className="w-full md:w-56 text-xs font-bold bg-muted border border-border rounded-sm px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
                     >
                       <option value="pending">PENDING</option>
                       <option value="issue">PENDING ISSUE</option>
                       <option value="converted">CONVERTED</option>
                       <option value="not_interested">NOT INTERESTED</option>
                     </select>
-                    <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-400">
+                    <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-muted-foreground">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                       </svg>
@@ -268,11 +268,11 @@ const WebsiteLeadsDashboard: React.FC = () => {
                   {/* Expand/Collapse Arrow */}
                   <button
                     onClick={(e) => { e.stopPropagation(); toggleExpand(lead.id); }}
-                    className="p-2 rounded-sm hover:bg-gray-100 transition-colors flex-shrink-0"
+                    className="p-2 rounded-sm hover:bg-muted transition-colors flex-shrink-0"
                     aria-label={isExpanded ? 'Collapse message' : 'Expand message'}
                   >
                     <svg
-                      className={`w-5 h-5 text-gray-500 transition-transform duration-300 ${isExpanded ? 'rotate-180' : 'rotate-0'}`}
+                      className={`w-5 h-5 text-muted-foreground transition-transform duration-300 ${isExpanded ? 'rotate-180' : 'rotate-0'}`}
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -285,10 +285,10 @@ const WebsiteLeadsDashboard: React.FC = () => {
 
               {/* EXPANDABLE MESSAGE */}
               {isExpanded && (
-                <div className="px-4 pb-4 pt-3 border-t border-gray-100 bg-gray-50">
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Message</p>
-                  <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-                    {lead.message || <span className="text-gray-400 italic">No message provided.</span>}
+                <div className="px-4 pb-4 pt-3 border-t border-border bg-muted">
+                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Message</p>
+                  <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                    {lead.message || <span className="text-muted-foreground italic">No message provided.</span>}
                   </p>
                 </div>
               )}
@@ -298,7 +298,7 @@ const WebsiteLeadsDashboard: React.FC = () => {
       </div>
 
       {leads.length === 0 && !loading && (
-        <div className="text-center p-10 text-gray-400">No queries found for this period.</div>
+        <div className="text-center p-10 text-muted-foreground">No queries found for this period.</div>
       )}
     </div>
   );

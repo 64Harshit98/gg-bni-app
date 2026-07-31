@@ -17,19 +17,19 @@ const formatTime = (time: string): string => {
 
 const ShopClosingReminderModal: React.FC<Props> = ({ closeTime, onConfirmClose, onSnooze }) => (
   <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 px-4">
-    <div className="bg-white rounded-sm shadow-xl max-w-sm w-full p-6 text-center">
+    <div className="bg-card rounded-sm shadow-xl max-w-sm w-full p-6 text-center">
       <div className="text-4xl mb-3">⏰</div>
-      <h2 className="text-xl font-bold text-gray-800 mb-2">Closing Time Near!</h2>
-      <p className="text-gray-600 text-sm mb-1">
-        Shop closing time is <span className="font-semibold text-gray-800">{formatTime(closeTime)}</span>.
+      <h2 className="text-xl font-bold text-foreground mb-2">Closing Time Near!</h2>
+      <p className="text-muted-foreground text-sm mb-1">
+        Shop closing time is <span className="font-semibold text-foreground">{formatTime(closeTime)}</span>.
       </p>
-      <p className="text-gray-500 text-sm mb-6">
+      <p className="text-muted-foreground text-sm mb-6">
         Close now or snooze? If no action is taken, the shop will automatically close after 1 hour.
       </p>
       <div className="flex gap-3">
         <button
           onClick={onSnooze}
-          className="flex-1 py-2.5 rounded-sm border border-gray-300 text-gray-700 font-medium text-sm hover:bg-gray-50 transition"
+          className="flex-1 py-2.5 rounded-sm border border-border text-foreground font-medium text-sm hover:bg-muted transition"
         >
           🔕 Snooze (15 min)
         </button>

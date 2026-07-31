@@ -93,12 +93,12 @@ const LoginPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="w-full bg-white p-6 py-8 shadow-t-lg rounded-sm flex-shrink-0 z-20 mt-[-50px]">
+        <div className="w-full bg-card p-6 py-8 shadow-t-lg rounded-sm flex-shrink-0 z-20 mt-[-50px]">
           <div className="w-full max-w-sm mx-auto mb-auto">
             <form onSubmit={handleLogin} className="space-y-4">
 
-              <div className="relative [&_label]:bg-white">
-                <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+              <div className="relative [&_label]:bg-card">
+                <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
                 <FloatingLabelInput
                   id="email"
                   type="email"
@@ -107,12 +107,12 @@ const LoginPage: React.FC = () => {
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   disabled={loading}
-                  className="pl-10 h-14 border border-gray-300 rounded-sm text-lg bg-white"
+                  className="pl-10 h-14 border border-border rounded-sm text-lg bg-card"
                 />
               </div>
 
-              <div className="relative [&_label]:bg-white">
-                <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+              <div className="relative [&_label]:bg-card">
+                <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
                 <FloatingLabelInput
                   id="password"
                   type={showPassword ? 'text' : 'password'}
@@ -121,12 +121,12 @@ const LoginPage: React.FC = () => {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   disabled={loading}
-                  className="pl-10 pr-10 h-14 border border-gray-300 rounded-sm text-lg bg-white"
+                  className="pl-10 pr-10 h-14 border border-border rounded-sm text-lg bg-card"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
                 >
                   {showPassword ? <FiEye size={20} /> : <FiEyeOff size={20} />}
                 </button>
@@ -170,7 +170,7 @@ const LoginPage: React.FC = () => {
 
               {/* --- NEW: Referral Signup Link (Mobile) --- */}
               <div className="mt-4 text-center">
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-muted-foreground">
                   Want to become an Agent ?{''}
                   <Link
                     to={ROUTES.AGENT_SIGNUP || '/agent-signup'}
@@ -187,8 +187,8 @@ const LoginPage: React.FC = () => {
       </div>
 
       {/* ================= DESKTOP VIEW ================= */}
-      <div className="hidden lg:flex h-screen w-screen items-center justify-center bg-white\">
-        <div className="flex w-full  h-full rounded-sm overflow-hidden shadow-lg bg-white">
+      <div className="hidden lg:flex h-screen w-screen items-center justify-center bg-card\">
+        <div className="flex w-full  h-full rounded-sm overflow-hidden shadow-lg bg-card">
 
           <div className="w-1/2 relative">
             <img src={bgMain} alt="Login visual" className="h-full w-full object-cover" />
@@ -197,17 +197,17 @@ const LoginPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="w-1/2 flex items-center justify-center bg-white">
+          <div className="w-1/2 flex items-center justify-center bg-card">
             <div className="flex-grow px-0 overflow-hidden flex flex-col justify-center">
               <div className="w-full max-w-md mx-auto px-4">
 
                 <h1 className="text-4xl font-bold mb-6 text-left">Login</h1>
 
-                <div className="px-2 py-2 bg-white flex flex-col justify-center">
+                <div className="px-2 py-2 bg-card flex flex-col justify-center">
                   <form onSubmit={handleLogin} className="space-y-6">
                     {/* KEEP EXISTING FORM CONTENT SAME */}
-                    <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
-                      <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
+                    <div className="relative [&_label]:!left-[3rem] [&_label]:bg-card">
+                      <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10" size={18} />
                       <FloatingLabelInput
                         id="email"
                         type="email"
@@ -216,13 +216,13 @@ const LoginPage: React.FC = () => {
                         onChange={(e) => setEmail(e.target.value)}
                         required
                         disabled={loading}
-                        className="pl-12 py-3 bg-white border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
+                        className="pl-12 py-3 bg-card border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
                         style={{ '--label-left': '3rem' } as React.CSSProperties}
                       />
                     </div>
 
-                    <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
-                      <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={16} />
+                    <div className="relative [&_label]:!left-[3rem] [&_label]:bg-card">
+                      <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10" size={16} />
                       <FloatingLabelInput
                         id="password"
                         type={showPassword ? 'text' : 'password'}
@@ -231,13 +231,13 @@ const LoginPage: React.FC = () => {
                         onChange={(e) => setPassword(e.target.value)}
                         required
                         disabled={loading}
-                        className="pl-12 py-3 pr-10 bg-white border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
+                        className="pl-12 py-3 pr-10 bg-card border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
                         style={{ '--label-left': '3rem' } as React.CSSProperties}
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-muted-foreground"
                       >
                         {showPassword ? <FiEye size={20} /> : <FiEyeOff size={20} />}
                       </button>
@@ -272,7 +272,7 @@ const LoginPage: React.FC = () => {
                         <CustomButton
                           variant={Variant.Outline}
                           type="button"
-                          className="w-full h-12 text-lg font-semibold bg-white text-black border border-gray-300"
+                          className="w-full h-12 text-lg font-semibold bg-card text-foreground border border-border"
                         >
                           Sign Up
                         </CustomButton>
@@ -281,7 +281,7 @@ const LoginPage: React.FC = () => {
 
                     {/* --- NEW: Referral Signup Link (Desktop) --- */}
                     <div className="mt-4 text-center">
-                      <p className="text-sm text-gray-600">
+                      <p className="text-sm text-muted-foreground">
                         Want to become an Agent ?{''}
                         <Link
                           to={ROUTES.AGENT_SIGNUP || '/agent-signup'}

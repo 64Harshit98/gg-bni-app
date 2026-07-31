@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
+import { Spinner } from '../../Components/ui/spinner';
 import {
   collection,
   query,
@@ -202,11 +203,11 @@ const SupportTicketLeads: React.FC = () => {
 
   if (!currentUser || !SUPER_ADMIN_UIDS.includes(currentUser.uid)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+      <div className="min-h-screen flex items-center justify-center bg-muted">
         <div className="text-center">
           <div className="text-5xl mb-3">⛔</div>
           <p className="text-red-500 font-bold text-xl">ACCESS DENIED</p>
-          <p className="text-gray-500 mt-2">Super Admin Privileges Required</p>
+          <p className="text-muted-foreground mt-2">Super Admin Privileges Required</p>
         </div>
       </div>
     );
@@ -215,21 +216,21 @@ const SupportTicketLeads: React.FC = () => {
   if (loading) return <Loading />;
 
   return (
-    <div className="min-h-screen bg-gray-100 p-3 pb-16 md:p-6 md:pb-16 font-sans">
+    <div className="min-h-screen bg-muted p-3 pb-16 md:p-6 md:pb-16 font-sans">
 
       {/* HEADER */}
       <div className="flex items-center justify-between pb-3 border-b mb-6">
         <div className="w-8" />
-        <h1 className="flex-1 text-xl text-center font-bold text-gray-800 md:text-2xl uppercase tracking-wider">
+        <h1 className="flex-1 text-xl text-center font-bold text-foreground md:text-2xl uppercase tracking-wider">
           App Support Tickets
         </h1>
-        <button onClick={() => navigate(-1)} className="p-2 rounded-sm hover:bg-gray-200 transition-colors">
+        <button onClick={() => navigate(-1)} className="p-2 rounded-sm hover:bg-muted transition-colors">
           <IconClose />
         </button>
       </div>
 
       {/* DATE FILTER */}
-      <div className="bg-white p-3 rounded-sm shadow-md mb-4 md:p-5 md:rounded-sm">
+      <div className="bg-card p-3 rounded-sm shadow-md mb-4 md:p-5 md:rounded-sm">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 md:gap-3">
           <FilterSelect value={datePreset} onChange={(e) => handleDatePresetChange(e.target.value)}>
             <option value="all">All Time</option>
@@ -243,12 +244,12 @@ const SupportTicketLeads: React.FC = () => {
             <input
               type="date" value={startDate}
               onChange={(e) => { setStartDate(e.target.value); setDatePreset('custom'); }}
-              className="w-full p-2 text-sm bg-gray-50 border rounded-sm"
+              className="w-full p-2 text-sm bg-muted border rounded-sm"
             />
             <input
               type="date" value={endDate}
               onChange={(e) => { setEndDate(e.target.value); setDatePreset('custom'); }}
-              className="w-full p-2 text-sm bg-gray-50 border rounded-sm"
+              className="w-full p-2 text-sm bg-muted border rounded-sm"
             />
           </div>
         </div>
@@ -265,25 +266,25 @@ const SupportTicketLeads: React.FC = () => {
       {/* SEARCH BAR & SORT */}
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by ticket no. (TKT-0001), phone, or name..."
-            className="w-full pl-9 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-sm shadow-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            className="w-full pl-9 pr-4 py-2.5 text-sm bg-card border border-border rounded-sm shadow-sm focus:ring-2 focus:ring-blue-500 outline-none"
           />
         </div>
         <div className="relative sm:w-48">
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as 'recent' | 'oldest')}
-            className="appearance-none w-full px-4 py-2.5 text-sm bg-white border border-gray-200 rounded-sm shadow-sm focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer font-medium text-gray-700"
+            className="appearance-none w-full px-4 py-2.5 text-sm bg-card border border-border rounded-sm shadow-sm focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer font-medium text-foreground"
           >
             <option value="recent">Newest First</option>
             <option value="oldest">Oldest First</option>
           </select>
-          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
         </div>
       </div>
 
@@ -304,7 +305,7 @@ const SupportTicketLeads: React.FC = () => {
       </div>
 
       {/* COUNT LABEL */}
-      <p className="text-xs text-gray-400 font-semibold uppercase mb-2 ml-1">
+      <p className="text-xs text-muted-foreground font-semibold uppercase mb-2 ml-1">
         Showing {filteredTickets.length} of {stats.all} tickets
         {activeFilter !== 'all' && ` — filtered by "${activeFilter}"`}
         {searchQuery && ` — searching "${searchQuery}"`}
@@ -313,12 +314,12 @@ const SupportTicketLeads: React.FC = () => {
       {/* TICKET LIST */}
       <div className="flex flex-col gap-3">
         {filteredTickets.length === 0 ? (
-          <div className="text-center p-10 text-gray-400 bg-white rounded-sm border border-gray-100">
+          <div className="text-center p-10 text-muted-foreground bg-card rounded-sm border border-border">
             No tickets found.
           </div>
         ) : (
           filteredTickets.map((ticket) => (
-            <div key={ticket.id} className="bg-white rounded-sm shadow-sm border border-gray-100 transition-all hover:shadow-md overflow-hidden">
+            <div key={ticket.id} className="bg-card rounded-sm shadow-sm border border-border transition-all hover:shadow-md overflow-hidden">
 
               {/* ── DESKTOP LAYOUT (md and up) ── */}
               <div className="hidden md:flex p-4 items-center justify-between gap-4 cursor-pointer" onClick={() => setExpandedId(expandedId === ticket.id ? null : ticket.id)}>
@@ -327,45 +328,45 @@ const SupportTicketLeads: React.FC = () => {
                     <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded uppercase flex items-center gap-1">
                       <Hash className="w-3 h-3" /> {ticket.referenceNumber}
                     </span>
-                    <h3 className="text-base font-bold text-gray-800">{ticket.fullName}</h3>
+                    <h3 className="text-base font-bold text-foreground">{ticket.fullName}</h3>
                     <span className={`text-[10px] px-2 py-0.5 rounded-sm font-bold uppercase ${getStatusStyle(ticket.status)}`}>
                       {ticket.status}
                     </span>
                   </div>
                   <div className="flex flex-wrap gap-4 mt-1">
-                    <p className="text-xs text-gray-500 flex items-center gap-1">
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
                       <Mail className="w-3 h-3" />
                       <a href={`mailto:${ticket.email}`} className="hover:text-blue-600 transition-colors">{ticket.email}</a>
                     </p>
-                    <p className="text-xs text-gray-500 flex items-center gap-1">
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
                       <Phone className="w-3 h-3" />
                       <a href={`tel:${ticket.phone}`} className="hover:text-blue-600 transition-colors">{ticket.phone || 'N/A'}</a>
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <p className="text-[11px] text-gray-400 flex items-center gap-1 whitespace-nowrap">
+                  <p className="text-[11px] text-muted-foreground flex items-center gap-1 whitespace-nowrap">
                     <Calendar className="w-3 h-3" />
                     {ticket.createdAt?.toDate
                       ? ticket.createdAt.toDate().toLocaleString('en-IN')
-                      : 'Loading...'}
+                      : <Spinner size="sm" />}
                   </p>
                   <div className="relative">
                     <select
                       value={ticket.status}
                       onChange={(e) => handleStatusChange(ticket.id, e.target.value)}
                       onClick={(e) => e.stopPropagation()}
-                      className="appearance-none bg-gray-50 border border-gray-200 text-xs font-bold py-2 px-4 pr-10 rounded-sm cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="appearance-none bg-muted border border-border text-xs font-bold py-2 px-4 pr-10 rounded-sm cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none"
                     >
                       <option value="received">PENDING</option>
                       <option value="solved">SOLVED</option>
                       <option value="problem">PROBLEM</option>
                     </select>
-                    <Edit3 className="w-3 h-3 absolute right-3 top-2.5 text-gray-400 pointer-events-none" />
+                    <Edit3 className="w-3 h-3 absolute right-3 top-2.5 text-muted-foreground pointer-events-none" />
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === ticket.id ? null : ticket.id); }}
-                    className="p-2 rounded-sm text-gray-400 hover:bg-gray-100 transition-colors"
+                    className="p-2 rounded-sm text-muted-foreground hover:bg-muted transition-colors"
                   >
                     <ChevronDown className={`w-5 h-5 transition-transform duration-200 ${expandedId === ticket.id ? 'rotate-180' : ''}`} />
                   </button>
@@ -389,10 +390,10 @@ const SupportTicketLeads: React.FC = () => {
                   {/* Left: name, email, phone */}
                   <div className="flex-1 min-w-0">
                     {/* Row 2a: Customer name */}
-                    <h3 className="text-sm font-bold text-gray-800 mb-1 truncate">{ticket.fullName}</h3>
+                    <h3 className="text-sm font-bold text-foreground mb-1 truncate">{ticket.fullName}</h3>
 
                     {/* Row 2b: Email */}
-                    <p className="text-xs text-gray-500 flex items-center gap-1 mb-0.5">
+                    <p className="text-xs text-muted-foreground flex items-center gap-1 mb-0.5">
                       <Mail className="w-3 h-3 shrink-0" />
                       <a href={`mailto:${ticket.email}`} className="hover:text-blue-600 transition-colors truncate">
                         {ticket.email}
@@ -400,7 +401,7 @@ const SupportTicketLeads: React.FC = () => {
                     </p>
 
                     {/* Row 2c: Phone */}
-                    <p className="text-xs text-gray-500 flex items-center gap-1">
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
                       <Phone className="w-3 h-3 shrink-0" />
                       <a href={`tel:${ticket.phone}`} className="hover:text-blue-600 transition-colors">
                         {ticket.phone || 'N/A'}
@@ -417,28 +418,28 @@ const SupportTicketLeads: React.FC = () => {
                           value={ticket.status}
                           onChange={(e) => handleStatusChange(ticket.id, e.target.value)}
                           onClick={(e) => e.stopPropagation()}
-                          className="appearance-none bg-gray-50 border border-gray-200 text-[10px] font-bold py-1.5 pl-2 pr-6 rounded-sm cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none"
+                          className="appearance-none bg-muted border border-border text-[10px] font-bold py-1.5 pl-2 pr-6 rounded-sm cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none"
                         >
                           <option value="received">RECEIVED</option>
                           <option value="solved">SOLVED</option>
                           <option value="problem">PROBLEM</option>
                         </select>
-                        <Edit3 className="w-2.5 h-2.5 absolute right-1.5 top-2 text-gray-400 pointer-events-none" />
+                        <Edit3 className="w-2.5 h-2.5 absolute right-1.5 top-2 text-muted-foreground pointer-events-none" />
                       </div>
                       <button
                         onClick={(e) => { e.stopPropagation(); setExpandedId(expandedId === ticket.id ? null : ticket.id); }}
-                        className="p-1 rounded-sm text-gray-400 hover:bg-gray-100 transition-colors"
+                        className="p-1 rounded-sm text-muted-foreground hover:bg-muted transition-colors"
                       >
                         <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${expandedId === ticket.id ? 'rotate-180' : ''}`} />
                       </button>
                     </div>
 
                     {/* Date & time below the dropdown */}
-                    <p className="text-[10px] text-gray-400 flex items-center gap-1 whitespace-nowrap">
+                    <p className="text-[10px] text-muted-foreground flex items-center gap-1 whitespace-nowrap">
                       <Calendar className="w-3 h-3" />
                       {ticket.createdAt?.toDate
                         ? ticket.createdAt.toDate().toLocaleString('en-IN')
-                        : 'Loading...'}
+                        : <Spinner size="sm" />}
                     </p>
                   </div>
                 </div>
@@ -446,22 +447,22 @@ const SupportTicketLeads: React.FC = () => {
 
               {/* EXPANDED DETAIL — shared for both layouts */}
               {expandedId === ticket.id && (
-                <div className="border-t border-gray-100 bg-[#fbfcfd] p-4 md:p-5">
+                <div className="border-t border-border bg-[#fbfcfd] p-4 md:p-5">
                   <div className="flex flex-col gap-6">
                     <div className="relative pl-4 border-l-4 border-blue-500">
                       <h4 className="text-[10px] font-bold text-blue-600/70 uppercase tracking-widest mb-1 flex items-center gap-1.5">
                         <MessageSquare className="w-3 h-3" /> Subject
                       </h4>
-                      <p className="text-base font-bold text-gray-900 leading-tight">{ticket.subject}</p>
+                      <p className="text-base font-bold text-foreground leading-tight">{ticket.subject}</p>
                     </div>
                     <div className="group">
-                      <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                      <h4 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2 flex items-center gap-1.5">
                         <div className="w-1.5 h-1.5 rounded-sm bg-gray-300" /> Description
                       </h4>
                       <div className="relative">
                         <span className="absolute -top-2 -left-2 text-4xl text-gray-100 font-serif pointer-events-none select-none">"</span>
-                        <div className="bg-white p-4 rounded-sm border border-gray-200 shadow-sm ring-1 ring-black/5 hover:ring-blue-100 transition-all duration-300">
-                          <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{ticket.description}</p>
+                        <div className="bg-card p-4 rounded-sm border border-border shadow-sm ring-1 ring-black/5 hover:ring-blue-100 transition-all duration-300">
+                          <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{ticket.description}</p>
                         </div>
                       </div>
                     </div>

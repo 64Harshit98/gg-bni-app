@@ -4,20 +4,36 @@ import axios from 'axios';
 const API_BASE_URL = import.meta.env.VITE_BMS_BASE_URL; // Define the base URL here
 const PARTNER_UID = import.meta.env.VITE_BMS_PARTNER_UID; // Define the partner UID here
 const API_SEND_URL = import.meta.env.VITE_BMS_BASE_SEND_URL; // Define the send URL here
+// Server-side proxy that injects the BotMasterSender partner UID. When set,
+// registration goes through it and NO partner UID is sent from the browser.
+// Falls back to the legacy direct call when unset (keeps signup working).
+const REGISTER_PROXY_URL = import.meta.env.VITE_BMS_REGISTER_PROXY_URL;
 
 export const botMasterService = {
 
   // Matches image_059bc0.png
   registerUser: async (data: any) => {
-    const response = await axios.post(`${API_BASE_URL}/`, {
-      partnerUid: PARTNER_UID,
+    const payload = {
       username: data.name.toLowerCase().replace(/\s/g, ''),
       name: data.name,
       phone: data.phone.replace(/\D/g, ''),
       password: data.password,
       email: data.email,
-      country: "India"
-    }, { params: { action: 'register' } });
+      country: "India",
+    };
+
+    // Preferred: server-side proxy injects the partner UID (never leaves the server).
+    if (REGISTER_PROXY_URL) {
+      const response = await axios.post(REGISTER_PROXY_URL, payload);
+      return response.data;
+    }
+
+    // Fallback (legacy): direct call with the client-side partner UID.
+    const response = await axios.post(
+      `${API_BASE_URL}/`,
+      { partnerUid: PARTNER_UID, ...payload },
+      { params: { action: 'register' } },
+    );
     return response.data;
   },
 

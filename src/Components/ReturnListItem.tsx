@@ -51,7 +51,7 @@ const FloatingInput = ({
       }}
       readOnly={locked}
       autoComplete="off"
-      className={`focus:outline-none bg-transparent ${locked ? 'text-gray-400' : ''} ${className || ''}`}
+      className={`focus:outline-none bg-transparent ${locked ? 'text-muted-foreground' : ''} ${className || ''}`}
       {...props}
     />
   );
@@ -83,7 +83,7 @@ export const ReturnListItem: React.FC<ReturnListItemProps> = ({
     showMrp = true
 }) => {
     return (
-        <div className={`p-2 border rounded-sm flex flex-col gap-1 transition-all ${isSelected ? 'bg-red-50 shadow-sm border-red-200' : 'bg-gray-50 border-gray-200'
+        <div className={`p-2 border rounded-sm flex flex-col gap-1 transition-all ${isSelected ? 'bg-red-50 shadow-sm border-red-200' : 'bg-muted border-border'
             }`}>
             {/* Checkbox + name on same row */}
             <div className="flex items-center gap-2">
@@ -91,9 +91,9 @@ export const ReturnListItem: React.FC<ReturnListItemProps> = ({
                     type="checkbox"
                     checked={isSelected}
                     onChange={() => onToggle(item.id)}
-                    className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 flex-shrink-0 cursor-pointer"
+                    className="h-5 w-5 rounded border-border text-blue-600 focus:ring-blue-500 flex-shrink-0 cursor-pointer"
                 />
-                <p className="font-semibold text-gray-800 text-sm leading-tight">{item.name}</p>
+                <p className="font-semibold text-foreground text-sm leading-tight">{item.name}</p>
                 {item.unit && (
                     <span className="text-[10px] font-medium text-blue-600">({item.unit})</span>
                 )}
@@ -102,14 +102,14 @@ export const ReturnListItem: React.FC<ReturnListItemProps> = ({
             {/* Rest of content, indented to align under name */}
             <div className="flex flex-col gap-1 overflow-visible">
                 {showMrp && item.mrp !== undefined && (
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-muted-foreground">
                         MRP: <span className="line-through">₹{item.mrp.toFixed(2)}</span>
                     </p>
                 )}
 
                 {/* Qty + Price + Subtotal — no flex-wrap */}
                 <div className="flex items-center gap-2 overflow-visible pt-0">
-                    <div className="flex items-center border border-slate-300 rounded h-9 w-24 flex-shrink-0">
+                    <div className="flex items-center border border-border rounded h-9 w-24 flex-shrink-0">
                         <button
                             onClick={() => {
                                 const step = item.unitMultiplier || 1;
@@ -119,7 +119,7 @@ export const ReturnListItem: React.FC<ReturnListItemProps> = ({
                                 onQuantityChange(item.id, Math.max(moq, nextQty));
                             }}
                             disabled={item.quantity <= (item.unitMultiplier || 1) || !isSelected}
-                            className="px-2 text-gray-600 hover:bg-gray-100 disabled:text-gray-300 disabled:cursor-not-allowed text-lg leading-none flex items-center justify-center h-full w-8 border-r border-slate-300"
+                            className="px-2 text-muted-foreground hover:bg-muted disabled:text-gray-300 disabled:cursor-not-allowed text-lg leading-none flex items-center justify-center h-full w-8 border-r border-border"
                         >−</button>
                         <div className="flex-1 h-full flex items-center justify-center">
                             <FloatingInput
@@ -145,21 +145,21 @@ export const ReturnListItem: React.FC<ReturnListItemProps> = ({
                                 onQuantityChange(item.id, (item.quantity || step) + step);
                             }}
                             disabled={!isSelected}
-                            className="px-2 text-gray-600 hover:bg-gray-100 disabled:text-gray-300 disabled:cursor-not-allowed text-lg leading-none flex items-center justify-center h-full w-8 border-l border-slate-300"
+                            className="px-2 text-muted-foreground hover:bg-muted disabled:text-gray-300 disabled:cursor-not-allowed text-lg leading-none flex items-center justify-center h-full w-8 border-l border-border"
                         >+</button>
                     </div>
                     <div className="relative w-24 flex-shrink-0">
-                        <label className="absolute -top-1 left-3.5 bg-white px-1 text-[10px] text-gray-500 leading-none z-10">Price</label>
-                        <div className="flex items-center border border-slate-300 rounded px-2 h-9 bg-gray-50">
-                            <span className="text-xs text-gray-500 mr-1">₹</span>
-                            <span className="w-full text-sm text-right text-gray-400">{item.unitPrice.toFixed(2)}</span>
+                        <label className="absolute -top-1 left-3.5 bg-card px-1 text-[10px] text-muted-foreground leading-none z-10">Price</label>
+                        <div className="flex items-center border border-border rounded px-2 h-9 bg-muted">
+                            <span className="text-xs text-muted-foreground mr-1">₹</span>
+                            <span className="w-full text-sm text-right text-muted-foreground">{item.unitPrice.toFixed(2)}</span>
                         </div>
                     </div>
                     <div className="relative w-24 flex-shrink-0 ml-auto">
-                        <label className="absolute -top-1 left-3.5 bg-white px-1 text-[10px] text-gray-500 leading-none z-10">Subtotal</label>
-                        <div className="flex items-center border border-slate-300 rounded px-2 h-9 bg-gray-50">
-                            <span className="text-xs text-gray-500 mr-1">₹</span>
-                            <span className="w-full text-sm text-right text-gray-400">{(item.unitPrice * item.quantity).toFixed(2)}</span>
+                        <label className="absolute -top-1 left-3.5 bg-card px-1 text-[10px] text-muted-foreground leading-none z-10">Subtotal</label>
+                        <div className="flex items-center border border-border rounded px-2 h-9 bg-muted">
+                            <span className="text-xs text-muted-foreground mr-1">₹</span>
+                            <span className="w-full text-sm text-right text-muted-foreground">{(item.unitPrice * item.quantity).toFixed(2)}</span>
                         </div>
                     </div>
                 </div>

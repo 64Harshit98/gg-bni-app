@@ -73,7 +73,7 @@ export const InfoTooltip: React.FC<InfoTooltipProps> = ({ text }) => {
         onMouseEnter={handleMouseEnter}
         onMouseLeave={() => setIsVisible(false)}
       >
-        <FiInfo className="text-gray-400 hover:text-blue-500 cursor-help transition-colors" size={16} />
+        <FiInfo className="text-muted-foreground hover:text-blue-500 cursor-help transition-colors" size={16} />
       </div>
 
       {isVisible && createPortal(

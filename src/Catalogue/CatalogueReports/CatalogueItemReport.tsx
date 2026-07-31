@@ -606,7 +606,7 @@ const CatalogueItemReport: React.FC = () => {
   if (isLoading) return <Spinner />;
 
   return (
-    <div className="min-h-screen bg-gray-50 p-2 mb-12">
+    <div className="min-h-screen bg-muted p-2 mb-12">
       {/* 1. Generic Modal for Success/Error/Info */}
       {feedbackModal.isOpen && (
         <Modal
@@ -632,7 +632,7 @@ const CatalogueItemReport: React.FC = () => {
         <BackButton />
 
         {/* TITLE */}
-        <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
+        <h1 className="flex-1 text-xl text-center font-bold text-foreground">
           Item Report
         </h1>
 
@@ -644,7 +644,7 @@ const CatalogueItemReport: React.FC = () => {
 
       {showSearch && (
         <div className="flex justify-center mb-2 px-2">
-          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-[#F97316]">
+          <div className="flex items-center w-full max-w-md border-b-2 border-border focus-within:border-[#F97316]">
 
             <input
               type="text"
@@ -660,7 +660,7 @@ const CatalogueItemReport: React.FC = () => {
                 setSearchQuery('');
                 setShowSearch(false);
               }}
-              className="p-1 text-gray-500 hover:text-black"
+              className="p-1 text-muted-foreground hover:text-foreground"
             >
               <IconClose />
             </button>
@@ -669,8 +669,8 @@ const CatalogueItemReport: React.FC = () => {
         </div>
       )}
 
-      <div className="bg-white p-2 rounded-sm mb-2">
-        <h2 className="text-center font-semibold text-gray-700 mb-2">
+      <div className="bg-card p-2 rounded-sm mb-2">
+        <h2 className="text-center font-semibold text-foreground mb-2">
           FILTERS
         </h2>
         <div className="flex space-x-3 items-end">
@@ -729,12 +729,12 @@ const CatalogueItemReport: React.FC = () => {
         />
       </div>
 
-      <div className="bg-white p-4 rounded-sm flex flex-col md:flex-row justify-between items-center gap-4">
-        <h2 className="text-lg font-semibold text-gray-700">Report Details</h2>
+      <div className="bg-card p-4 rounded-sm flex flex-col md:flex-row justify-between items-center gap-4">
+        <h2 className="text-lg font-semibold text-foreground">Report Details</h2>
         <div className="flex items-center space-x-3 w-full md:w-auto overflow-x-auto">
           <button
             onClick={() => setIsListVisible(!isListVisible)}
-            className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-sm hover:bg-slate-300 transition whitespace-nowrap"
+            className="px-4 py-2 bg-muted text-foreground font-semibold rounded-sm hover:bg-slate-300 transition whitespace-nowrap"
           >
             {isListVisible ? 'Hide List' : 'Show List'}
           </button>

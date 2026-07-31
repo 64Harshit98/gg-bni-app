@@ -25,13 +25,13 @@ const ShopClosedScreen: React.FC<ShopClosedScreenProps> = ({ openTime, closeTime
   };
 
   return (
-    <div className="flex h-screen w-screen flex-col items-center justify-center bg-white px-6 text-center">
+    <div className="flex h-screen w-screen flex-col items-center justify-center bg-card px-6 text-center">
       <div className="text-5xl mb-4">🔒</div>
-      <h1 className="text-2xl font-bold text-gray-800 mb-2">Store Is Currently Closed</h1>
-      <p className="text-gray-600 max-w-sm mb-1">
+      <h1 className="text-2xl font-bold text-foreground mb-2">Store Is Currently Closed</h1>
+      <p className="text-muted-foreground max-w-sm mb-1">
         This account can only log in during the store's working hours.
       </p>
-      <p className="text-gray-800 font-medium mb-6">
+      <p className="text-foreground font-medium mb-6">
         Open: {formatTime(openTime)} &nbsp;–&nbsp; Close: {formatTime(closeTime)}
       </p>
       <button

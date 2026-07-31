@@ -639,3 +639,43 @@ exports.getPublicItem = functions
             res.status(500).json({ error: "Internal Server Error" });
         }
     });
+// --- WhatsApp (BotMasterSender) register proxy -------------------------------
+// Injects the BotMasterSender partner UID server-side so it is never shipped in
+// the browser bundle. The client posts the registration payload WITHOUT the
+// partner UID; this function adds it and forwards to BotMasterSender.
+// Requires Functions env/secrets: BMS_PARTNER_UID and BMS_BASE_URL.
+exports.botmasterRegister = functions
+    .runWith({ secrets: ["BMS_PARTNER_UID", "BMS_BASE_URL"] })
+    .https.onRequest((req, res) => {
+        cors(req, res, async () => {
+            if (req.method !== "POST") {
+                res.status(405).send({ error: "Method not allowed" });
+                return;
+            }
+            const partnerUid = process.env.BMS_PARTNER_UID;
+            const bmsBaseUrl = process.env.BMS_BASE_URL;
+            if (!partnerUid || !bmsBaseUrl) {
+                console.error("botmasterRegister: missing BMS_PARTNER_UID or BMS_BASE_URL");
+                res.status(500).send({ error: "Server not configured" });
+                return;
+            }
+            try {
+                // Ignore any partnerUid the client may send; always use the server's.
+                const body = req.body || {};
+                const { partnerUid: _ignored, ...payload } = body;
+                const response = await axios.post(
+                    `${bmsBaseUrl}/`,
+                    { ...payload, partnerUid },
+                    {
+                        params: { action: "register" },
+                        headers: { "Content-Type": "application/json" },
+                    }
+                );
+                res.status(response.status).send(response.data);
+            } catch (error) {
+                console.error("botmasterRegister proxy error:", error.message);
+                if (error.response) res.status(error.response.status).send(error.response.data);
+                else res.status(500).send({ error: "Register proxy failed" });
+            }
+        });
+    });

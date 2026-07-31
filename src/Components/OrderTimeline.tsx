@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '../constants/routes.constants';
 import { useFilter } from './Filter';
 import { Spinner } from '../constants/Spinner';
+import { Card } from './ui/card';
 import type { OrderStatus } from '../Catalogue/Orders';
 
 const orderStatuses: OrderStatus[] = ['Upcoming', 'Confirmed', 'Packed', 'Completed'];
@@ -44,22 +45,22 @@ export const OrderTimeline: React.FC<OrderTimelineProps> = ({
 
     if (loading) {
         return (
-            <div className="flex justify-center p-8 bg-white rounded-lg shadow-md">
+            <Card className="flex h-full items-center justify-center rounded-2xl border border-border/70 py-4 shadow-sm">
                 <Spinner />
-            </div>
+            </Card>
         );
     }
 
     return (
-        <div className="w-full p-4 md:p-6 bg-white rounded-sm shadow-md">
-            <div className="flex flex-col items-center mb-4">
-                <h2 className="text-xl md:text-2xl font-bold text-gray-800">Order Journey</h2>
-                <span className="bg-gray-50 text-[#F97316] text-[12px] font-bold px-2 py-0.5 rounded-full mt-1 uppercase">
+        <Card className="h-full gap-3 rounded-2xl border border-border/70 border-t-2 border-t-primary py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg">
+            <div className="flex flex-col items-center px-4">
+                <h2 className="text-sm font-semibold text-foreground">Order Journey</h2>
+                <span className="bg-primary/10 text-primary text-[11px] font-bold px-2 py-0.5 rounded-full mt-1 uppercase">
                     {selectedPeriodText}
                 </span>
             </div>
 
-            <div className="flex items-start w-full px-1 md:px-4 pt-12 pb-10">
+            <div className="flex items-start w-full px-3 md:px-5 pt-12 pb-8">
                 {orderStatuses.map((status, index) => {
                     const count = orderCounts[status] ?? 0;
                     const isLast = index === orderStatuses.length - 1;
@@ -70,38 +71,33 @@ export const OrderTimeline: React.FC<OrderTimelineProps> = ({
                         <React.Fragment key={status}>
                             <div className="flex flex-col items-center flex-1 min-w-0">
                                 <button
-                                    className={`relative flex flex-col items-center w-full group`}
+                                    className="relative flex flex-col items-center w-full group"
                                     onClick={() => handleViewStatus(status)}
                                 >
                                     {isTopLabel && (
-                                        <span className="absolute bottom-full mb-2 text-center text-[10px] sm:text-xs md:text-sm text-gray-600 font-bold whitespace-pre-line leading-tight w-max">
+                                        <span className="absolute bottom-full mb-2 text-center text-[10px] sm:text-xs text-muted-foreground font-semibold whitespace-pre-line leading-tight w-max">
                                             {labelContent}
                                         </span>
                                     )}
-                                    <div className="relative w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full bg-[#F97316] flex items-center justify-center transition-all duration-300 z-10 border-2 md:border-4 border-gray-300 shadow-sm group-hover:scale-110">
-                                        {/* {status === "Upcoming" ? (
-                                            <span className="absolute px-1 py-[2px] text-[6px] font-black uppercase rounded-full bg-orange-100 text-[#F97316] border border-orange-300 whitespace-nowrap">
-                                                Coming Soon
-                                            </span>
-                                        ) : ( */}
-                                        <span className="text-xs sm:text-sm md:text-xl font-bold text-white">
+                                    <div className="bg-gradient-brand relative w-8 h-8 sm:w-10 sm:h-10 md:w-11 md:h-11 rounded-full flex items-center justify-center transition-all duration-300 z-10 border-2 md:border-4 border-card shadow-md shadow-primary/20 group-hover:scale-110">
+                                        <span className="text-xs sm:text-sm md:text-base font-bold text-white">
                                             {isDataVisible ? count : '∗'}
                                         </span>
                                     </div>
                                     {!isTopLabel && (
-                                        <span className="absolute top-full mt-2 text-center text-[10px] sm:text-xs md:text-sm text-gray-600 font-bold whitespace-pre-line leading-tight w-max">
+                                        <span className="absolute top-full mt-2 text-center text-[10px] sm:text-xs text-muted-foreground font-semibold whitespace-pre-line leading-tight w-max">
                                             {labelContent}
                                         </span>
                                     )}
                                 </button>
                             </div>
                             {!isLast && (
-                                <div className="flex-auto h-0.5 md:h-1 bg-gray-300 mt-4 sm:mt-5 md:mt-6 -mx-1" />
+                                <div className="flex-auto h-0.5 bg-border mt-4 sm:mt-5 -mx-1" />
                             )}
                         </React.Fragment>
                     );
                 })}
             </div>
-        </div>
+        </Card>
     );
 };

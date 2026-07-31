@@ -117,7 +117,7 @@ const SignUpPage: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white">
+    <div className="flex h-screen overflow-hidden bg-card">
   {/* Left side like Figma */}
   <div className="hidden lg:block w-1/2 relative">
     <img
@@ -135,8 +135,8 @@ const SignUpPage: React.FC = () => {
   </div>
 
   {/* Right side keeps your original structure scale */}
-  <div className="flex flex-col h-screen overflow-hidden w-full lg:w-1/2 bg-white">
-    <div className="flex-shrink-0 bg-white pt-4 pb-2 px-4 shadow-sm z-40 flex justify-center">
+  <div className="flex flex-col h-screen overflow-hidden w-full lg:w-1/2 bg-card">
+    <div className="flex-shrink-0 bg-card pt-4 pb-2 px-4 shadow-sm z-40 flex justify-center">
       <div className="w-full max-w-xs">
         <Stepper totalSteps={2} currentStep={1} onStepClick={() => {}} />
       </div>
@@ -154,11 +154,11 @@ const SignUpPage: React.FC = () => {
         </button>
       </div>
 
-      <div className="bg-white p-7 pb-7 pt-7 rounded-sm space-y-2 pt-6 pb-6 pl-5 w-[103%] mx-auto">
+      <div className="bg-card p-7 pb-7 pt-7 rounded-sm space-y-2 pt-6 pb-6 pl-5 w-[103%] mx-auto">
         <form onSubmit={handleNext} className="flex flex-col space-y-6 lg:space-y-5">
-          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white lg:w-[85%] lg:mx-auto">
+          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-card lg:w-[85%] lg:mx-auto">
             <div style={{ position: 'relative' }}>
-              <FiUser className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={16} />
+              <FiUser className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10" size={16} />
               <FloatingLabelInput
                 id="fullName"
                 type="text"
@@ -166,16 +166,16 @@ const SignUpPage: React.FC = () => {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 required
-                className="pl-12 py-3 bg-white
+                className="pl-12 py-3 bg-card
                  border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
                 style={{ '--label-left': '3rem' } as React.CSSProperties}
               />
             </div>
           </div>
 
-          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white lg:w-[85%] lg:mx-auto">
+          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-card lg:w-[85%] lg:mx-auto">
             <div style={{ position: 'relative' }}>
-              <FiPhone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
+              <FiPhone className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10" size={18} />
               <FloatingLabelInput
                 id="phoneNumber"
                 type="tel"
@@ -186,15 +186,15 @@ const SignUpPage: React.FC = () => {
                   if (val.length <= 10) setPhoneNumber(val);
                 }}
                 required
-                className="pl-12 py-3 bg-white border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
+                className="pl-12 py-3 bg-card border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
                 style={{ '--label-left': '3rem' } as React.CSSProperties}
               />
             </div>
           </div>
 
-          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white lg:w-[85%] lg:mx-auto">
+          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-card lg:w-[85%] lg:mx-auto">
             <div style={{ position: 'relative' }}>
-              <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
+              <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10" size={18} />
               <FloatingLabelInput
                 id="email"
                 type="email"
@@ -202,15 +202,15 @@ const SignUpPage: React.FC = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="pl-12 py-3 bg-white border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
+                className="pl-12 py-3 bg-card border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
                 style={{ '--label-left': '3rem' } as React.CSSProperties}
               />
             </div>
           </div>
 
-          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white lg:w-[85%] lg:mx-auto">
+          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-card lg:w-[85%] lg:mx-auto">
             <div style={{ position: 'relative' }}>
-              <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={16} />
+              <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10" size={16} />
               <FloatingLabelInput
                 id="password"
                 type={showPassword ? "text" : "password"}
@@ -218,22 +218,22 @@ const SignUpPage: React.FC = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="pl-12 py-3 pr-10 bg-white border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)] w-full"
+                className="pl-12 py-3 pr-10 bg-card border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)] w-full"
                 style={{ '--label-left': '3rem' } as React.CSSProperties}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-muted-foreground"
               >
                 {showPassword ? <FiEye size={20} /> : <FiEyeOff size={20} />}
               </button>
             </div>
           </div>
 
-          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white lg:w-[85%] lg:mx-auto">
+          <div className="relative [&_label]:!left-[3rem] [&_label]:bg-card lg:w-[85%] lg:mx-auto">
             <div style={{ position: 'relative' }}>
-              <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={16} />
+              <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10" size={16} />
               <FloatingLabelInput
                 id="confirmPassword"
                 type={showConfirmPassword ? "text" : "password"}
@@ -241,13 +241,13 @@ const SignUpPage: React.FC = () => {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
-                className="pl-12 py-3 pr-10 bg-white border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)] w-full"
+                className="pl-12 py-3 pr-10 bg-card border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)] w-full"
                 style={{ '--label-left': '3rem' } as React.CSSProperties}
               />
               <button
                 type="button"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-muted-foreground"
               >
                 {showConfirmPassword ? <FiEye size={20} /> : <FiEyeOff size={20} />}
               </button>
@@ -259,7 +259,7 @@ const SignUpPage: React.FC = () => {
       </div>
     </div>
 
-    <div className="fixed lg:absolute bottom-0 left-0 lg:left-auto right-0 lg:w-1/2 p-4 h-[110px] bg-gray-100 border-t border-gray-200 z-50 shadow-lg">
+    <div className="fixed lg:absolute bottom-0 left-0 lg:left-auto right-0 lg:w-1/2 p-4 h-[110px] bg-muted border-t border-border z-50 shadow-lg">
       <div className="max-w-md mx-auto space-y-3">
         <CustomButton
           type="submit"
@@ -269,7 +269,7 @@ const SignUpPage: React.FC = () => {
         >
           Next
         </CustomButton>
-        <p className="text-center text-sm text-gray-600">
+        <p className="text-center text-sm text-muted-foreground">
           Already have an account?{" "}
           <Link to={ROUTES.LANDING} className="font-medium text-[#2B10F2] hover:underline">
             Log In

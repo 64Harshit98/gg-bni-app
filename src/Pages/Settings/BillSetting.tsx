@@ -1,162 +1,96 @@
 import React, { useState, useEffect, useRef } from 'react';
-import SignatureCanvas from 'react-signature-canvas';
-import { db } from '../../lib/Firebase';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import type SignatureCanvas from 'react-signature-canvas';
+import { useNavigate } from 'react-router';
+import { Receipt, CreditCard, MessageSquare, ScrollText } from 'lucide-react';
 import { useAuth } from '../../context/auth-context';
 import { State } from '../../enums';
 import { Modal } from '../../constants/Modal';
-import { useNavigate } from 'react-router';
 import BackButton from '../../Components/BackButton';
-import { InfoTooltip } from '../../Components/InfoToolTip';
+import { Input } from '../../Components/ui/input';
+import { Label } from '../../Components/ui/label';
+import { Textarea } from '../../Components/ui/textarea';
+import { Button } from '../../Components/ui/button';
+import { Spinner } from '../../Components/ui/spinner';
+import {
+    fetchBillSettings,
+    saveBillSettings,
+    getDefaultBillSettings,
+    type BillSettingsData,
+    type BusinessInfoData,
+} from '../../services/settings/billSetting.service';
+import { SettingsSectionCard } from './components/SettingsSectionCard';
+import { BillCompanyInfoCard } from './components/BillCompanyInfoCard';
+import { BillPrintPreferencesCard } from './components/BillPrintPreferencesCard';
+import { BillSignatureCard } from './components/BillSignatureCard';
 
-// --- Interfaces ---
-export interface BillSettingsData {
-    upiId?: string;
-    termsAndConditions: string;
-    signatureBase64?: string;
-    printFormat?: 'A4' | 'A5' | 'THERMAL58';
-    whatsappExtraMessage?: string;
-    enableTriplicate?: boolean;
-    discountDisplayFormat?: 'amount' | 'percentage';
-}
+// Re-exported for any external code depending on the previous module shape.
+export type { BillSettingsData };
 
-interface BusinessInfoData {
-    companyName: string;
-    address: string;
-    phone: string;
-    email: string;
-    gstin: string;
-    panNumber: string;
-    msmeNumber: string;
-    bankName: string;
-    accountHolderName: string;
-    accountNumber: string;
-    ifscCode: string;
-    companyLogo: string;
-}
+const DEFAULT_BUSINESS_INFO: BusinessInfoData = {
+    companyName: '',
+    address: '',
+    phone: '',
+    email: '',
+    gstin: '',
+    panNumber: '',
+    msmeNumber: '',
+    bankName: '',
+    accountHolderName: '',
+    accountNumber: '',
+    ifscCode: '',
+    companyLogo: '',
+};
 
 const BillSettings: React.FC = () => {
     const { currentUser } = useAuth();
     const navigate = useNavigate();
-    const sigPadRef = useRef<any>(null);
+    const sigPadRef = useRef<SignatureCanvas>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
 
-    const [businessInfo, setBusinessInfo] = useState<BusinessInfoData>({
-        companyName: '',
-        address: '',
-        phone: '',
-        email: '',
-        gstin: '',
-        panNumber: '',
-        msmeNumber: '',
-        bankName: '',
-        accountHolderName: '',
-        accountNumber: '',
-        ifscCode: '',
-        companyLogo: '',
-    });
-
-    const [settings, setSettings] = useState<BillSettingsData>({
-        upiId: '',
-        termsAndConditions: '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
-        signatureBase64: '',
-        printFormat: 'A4',
-        whatsappExtraMessage: '',
-        enableTriplicate: false,
-        discountDisplayFormat: 'amount',
-    });
-
-    const formatAddress = (addr: any): string => {
-        if (!addr) return '';
-        if (typeof addr === 'string') return addr;
-        const { streetAddress, city, state, postalCode, zipCode, pincode } = addr;
-        const parts = [streetAddress, city, state].filter(part => part && part.trim() !== '');
-        let fullAddress = parts.join(', ');
-        const code = postalCode || zipCode || pincode;
-        if (code) fullAddress += ` - ${code}`;
-        return fullAddress;
-    };
+    const [businessInfo, setBusinessInfo] = useState<BusinessInfoData>(DEFAULT_BUSINESS_INFO);
+    const [settings, setSettings] = useState<BillSettingsData>(getDefaultBillSettings());
 
     // --- 1. Load Data with Priority Fallback ---
     useEffect(() => {
-        const fetchData = async () => {
+        const loadData = async () => {
             if (!currentUser?.companyId) return;
 
             try {
                 setIsLoading(true);
-                const companyId = currentUser.companyId;
+                const { businessInfo: loadedBusinessInfo, settings: loadedSettings } = await fetchBillSettings(
+                    currentUser.companyId,
+                    currentUser.uid,
+                );
 
-                const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
-                const settingsDocRef = doc(db, 'companies', companyId, 'settings', 'bill');
-                const userDocRef = currentUser.uid
-                    ? doc(db, 'companies', companyId, 'users', currentUser.uid)
-                    : null;
-
-                const [businessSnap, settingsSnap, userSnap] = await Promise.all([
-                    getDoc(businessDocRef),
-                    getDoc(settingsDocRef),
-                    userDocRef ? getDoc(userDocRef) : Promise.resolve(null)
-                ]);
-
-                const bData = businessSnap.exists() ? businessSnap.data() : {};
-                const sData = settingsSnap.exists() ? settingsSnap.data() : {};
-                const uData = userSnap?.exists() ? userSnap.data() : {};
-                setBusinessInfo({
-                    companyName: bData.businessName || bData.name || 'Not Set',
-                    address: formatAddress(bData),
-                    phone: bData.phoneNumber || bData.phone || uData.phoneNumber || uData.phone || 'Not Set',
-                    email: bData.email || uData.email || 'Not Set',
-                    gstin: bData.gstin || '',
-                    panNumber: bData.panNumber || '',
-                    msmeNumber: bData.msmeUdyamNumber || bData.registrationNumber || '',
-                    bankName: bData.bankName || '',
-                    accountHolderName: bData.accountHolderName || '',
-                    accountNumber: bData.accountNumber || '',
-                    ifscCode: bData.ifscCode || '',
-                    companyLogo: bData.companyLogo || '',
-                });
-
-                const loadedSettings: BillSettingsData = {
-                    upiId: sData.upiId || bData.upiId || '',
-                    termsAndConditions: sData.posTermsAndConditions || '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
-                    signatureBase64: sData.signatureBase64 || '',
-                    printFormat: sData.posPrintFormat || 'A4',
-                    whatsappExtraMessage: sData.posWhatsappExtraMessage || '',
-                    enableTriplicate: sData.enableTriplicate || false,
-                    discountDisplayFormat: sData.discountDisplayFormat || 'amount',
-                };
-
+                setBusinessInfo(loadedBusinessInfo);
                 setSettings(loadedSettings);
 
                 if (loadedSettings.signatureBase64) {
                     setTimeout(() => {
-                        if (sigPadRef.current) {
-                            sigPadRef.current.fromDataURL(loadedSettings.signatureBase64);
-                        }
+                        sigPadRef.current?.fromDataURL(loadedSettings.signatureBase64 as string);
                     }, 200);
                 }
-
             } catch (error) {
-                console.error("Error fetching bill settings:", error);
-                setModal({ message: "Failed to load settings.", type: State.ERROR });
+                console.error('Error fetching bill settings:', error);
+                setModal({ message: 'Failed to load settings.', type: State.ERROR });
             } finally {
                 setIsLoading(false);
             }
         };
 
-        fetchData();
+        loadData();
     }, [currentUser]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
-        setSettings(prev => ({ ...prev, [name]: value }));
+        setSettings((prev) => ({ ...prev, [name]: value }));
     };
 
     const clearSignature = () => {
         sigPadRef.current?.clear();
-        setSettings(prev => ({ ...prev, signatureBase64: '' }));
+        setSettings((prev) => ({ ...prev, signatureBase64: '' }));
     };
 
     // --- 2. Save Data ---
@@ -175,37 +109,13 @@ const BillSettings: React.FC = () => {
                 currentSignature = '';
             }
 
-            const dataToSave = {
-                // Editable settings (shared)
-                upiId: settings.upiId,
-                signatureBase64: currentSignature,
+            await saveBillSettings(currentUser.companyId, { ...settings, signatureBase64: currentSignature }, businessInfo);
 
-                // Editable settings (independent per bill type)
-                posTermsAndConditions: settings.termsAndConditions,
-                posPrintFormat: settings.printFormat,
-                posWhatsappExtraMessage: settings.whatsappExtraMessage,
-                enableTriplicate: settings.enableTriplicate || false,
-                discountDisplayFormat: settings.discountDisplayFormat || 'amount',
-
-                // ✅ Always sync from businessInfo so these stay fresh
-                companyGstin: businessInfo.gstin,
-                panNumber: businessInfo.panNumber,
-                msmeNumber: businessInfo.msmeNumber,
-                accountName: businessInfo.accountHolderName,
-                accountNumber: businessInfo.accountNumber,
-                bankName: businessInfo.bankName,
-                ifscCode: businessInfo.ifscCode,
-                updatedAt: serverTimestamp()
-            };
-
-            const docRef = doc(db, 'companies', currentUser.companyId, 'settings', 'bill');
-            await setDoc(docRef, dataToSave, { merge: true });
-
-            setSettings(prev => ({ ...prev, signatureBase64: currentSignature }));
-            setModal({ message: "Bill settings saved successfully!", type: State.SUCCESS });
+            setSettings((prev) => ({ ...prev, signatureBase64: currentSignature }));
+            setModal({ message: 'Bill settings saved successfully!', type: State.SUCCESS });
         } catch (error) {
-            console.error("Error saving bill settings:", error);
-            setModal({ message: "Failed to save settings.", type: State.ERROR });
+            console.error('Error saving bill settings:', error);
+            setModal({ message: 'Failed to save settings.', type: State.ERROR });
         } finally {
             setIsSaving(false);
         }
@@ -213,371 +123,105 @@ const BillSettings: React.FC = () => {
 
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-gray-50">
-                <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                <span className="ml-3 text-gray-600 font-medium">Loading Settings...</span>
+            <div className="flex min-h-screen items-center justify-center bg-background">
+                <Spinner size="xl" className="text-primary" />
+                <span className="ml-3 font-medium text-muted-foreground">Loading settings...</span>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 pb-24 relative">
+        <div className="aurora relative min-h-screen bg-background pb-28">
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
-            <div className="flex items-center bg-white border-b border-gray-200 sticky top-0 z-10">
-                <BackButton className='ml-3' />
-                <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-                    <h1 className="text-2xl font-bold text-gray-900">Invoice Configuration</h1>
-                    <p className="text-sm text-gray-500 mt-1">Manage details printed on your bills.</p>
-                </div>
-            </div>
-
-            <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-6">
-
-                {/* SECTION 1: Company Identity — pulled from business profile, read-only */}
-                <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden">
-                    <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
-                        <div>
-                            <h2 className="text-lg font-semibold text-gray-800">Company Details</h2>
-                            <p className="text-xs text-gray-500">
-                                Fetched from your{' '}
-                                <button
-                                    type="button"
-                                    onClick={() => navigate('/edit-profile')}
-                                    className="text-blue-600 hover:underline text-xs bg-transparent border-0 cursor-pointer p-0 font-normal"
-                                >
-                                    Business Profile
-                                </button>
-                                . Edit there to update here.
-                            </p>
-                        </div>
-                        <span className="text-xs font-medium px-2 py-1 bg-gray-200 text-gray-600 rounded">
-                            Read Only
-                        </span>
-                    </div>
-                    <div className="p-5 space-y-6 opacity-80">
-
-                        {/* Logo + Name + Address */}
-                        <div className="flex flex-col sm:flex-row items-start gap-4">
-                            {businessInfo.companyLogo ? (
-                                <img
-                                    src={businessInfo.companyLogo}
-                                    alt="Company Logo"
-                                    className="w-16 h-16 rounded-sm object-contain border border-gray-200 bg-gray-50 p-1.5 shrink-0"
-                                />
-                            ) : (
-                                <div className="w-16 h-16 rounded-sm border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center text-gray-400 text-xs font-bold shrink-0">
-                                    LOGO
-                                </div>
-                            )}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 min-w-0">
-                                <div className="md:col-span-2">
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Company Name</label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium h-[44px] flex items-center truncate">
-                                        {businessInfo.companyName}
-                                    </div>
-                                </div>
-                                <div className="md:col-span-2">
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Registered Address</label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium h-[44px] flex items-center truncate">
-                                        {businessInfo.address}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Contact */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Phone</label>
-                                <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium h-[44px] flex items-center">
-                                    {businessInfo.phone}
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label>
-                                <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium h-[44px] flex items-center">
-                                    {businessInfo.email}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="border-t border-gray-100" />
-
-                        {/* Tax & Registration */}
-                        <div>
-                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">Tax & Registration</p>
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">GSTIN</label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate h-[44px] flex items-center">
-                                        {businessInfo.gstin}
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">PAN Number</label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium h-[44px] flex items-center">
-                                        {businessInfo.panNumber}
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">MSME No.</label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate h-[44px] flex items-center">
-                                        {businessInfo.msmeNumber}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="border-t border-gray-100" />
-
-                        {/* Bank Details */}
-                        <div>
-                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">Bank Details</p>
-                            <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Bank Name</label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate h-[44px] flex items-center">
-                                        {businessInfo.bankName}
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Acc.Holder Name</label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate h-[44px] flex items-center">
-                                        {businessInfo.accountHolderName}
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Account Number</label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate h-[44px] flex items-center">
-                                        {businessInfo.accountNumber}
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">IFSC Code</label>
-                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium h-[44px] flex items-center">
-                                        {businessInfo.ifscCode}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
+            <header className="glass sticky top-0 z-20 flex items-center gap-2 p-3">
+                <BackButton />
+                <div className="flex items-center gap-3">
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-brand text-white shadow-sm shadow-primary/20">
+                        <Receipt className="size-4" />
+                    </span>
+                    <div>
+                        <h1 className="text-lg font-bold tracking-tight text-foreground md:text-xl">
+                            Invoice <span className="text-gradient">Configuration</span>
+                        </h1>
+                        <p className="text-xs text-muted-foreground">Manage details printed on your bills</p>
                     </div>
                 </div>
+            </header>
 
-                {/* ── SECTION 2: UPI ID ── */}
-                <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden">
-                    <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-                        <h2 className="text-lg font-semibold text-gray-800">Payment</h2>
-                        <p className="text-xs text-gray-500">UPI ID displayed on invoices for quick payments.</p>
-                    </div>
-                    <div className="p-6">
-                        <div className="max-w-sm">
-                            <label className="block text-sm font-medium text-gray-700 mb-1">UPI ID</label>
-                            <input
-                                type="text"
-                                name="upiId"
-                                value={settings.upiId || ''}
-                                onChange={handleChange}
-                                placeholder="e.g. yourname@upi"
-                                className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-blue-500 focus:border-blue-500 outline-none"
-                            />
-                        </div>
-                    </div>
-                </div>
+            <main className="mx-auto max-w-5xl space-y-4 p-4 sm:p-6">
+                <BillCompanyInfoCard businessInfo={businessInfo} onEditProfile={() => navigate('/edit-profile')} />
 
-                {/* --- NEW SECTION: Print Preferences --- */}
-                <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden">
-                    <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-                        <h2 className="text-lg font-semibold text-gray-800">Print Preferences</h2>
-                        <p className="text-xs text-gray-500">Choose your default bill format.</p>
-                    </div>
-                    <div className="p-6">
-                        <div className="flex flex-col sm:flex-row gap-4">
-                            <label className={`flex-1 flex items-center p-4 border rounded-sm cursor-pointer transition-colors ${settings.printFormat === 'A4' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'}`}>
-                                <input
-                                    type="radio"
-                                    name="printFormat"
-                                    value="A4"
-                                    checked={settings.printFormat === 'A4'}
-                                    onChange={handleChange}
-                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                                />
-                                <div className="ml-3">
-                                    <span className="block text-sm font-medium text-gray-900">A4 Size</span>
-                                    <span className="block text-xs text-gray-500">Standard full-page invoice layout.</span>
-                                </div>
-                            </label>
-
-                            <label className={`flex-1 flex items-center p-4 border rounded-sm cursor-pointer transition-colors ${settings.printFormat === 'A5' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'
-                                }`}>
-                                <input
-                                    type="radio"
-                                    name="printFormat"
-                                    value="A5"
-                                    checked={settings.printFormat === 'A5'}
-                                    onChange={handleChange}
-                                    // disabled
-                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                                />
-                                <div className="ml-3">
-                                    <span className="block text-sm font-medium text-gray-900">A5 Size</span>
-                                    <span className="block text-xs text-gray-500">Half-page compact invoice layout.</span>
-                                </div>
-                            </label>
-
-                            <label className={`flex-1 flex items-center p-4 border rounded-sm cursor-pointer transition-colors ${settings.printFormat === 'THERMAL58' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'}`}>
-                                <input
-                                    type="radio"
-                                    name="printFormat"
-                                    value="THERMAL58"
-                                    checked={settings.printFormat === 'THERMAL58'}
-                                    onChange={handleChange}
-                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                                />
-                                <div className="ml-3">
-                                    <span className="block text-sm font-medium text-gray-900">2-Inch Thermal</span>
-                                    <span className="block text-xs text-gray-500">58mm continuous receipt layout.</span>
-                                </div>
-                            </label>
-                        </div>
-                        {/* NEW: Triplicate toggle */}
-                        <div className="mt-5 pt-5 border-t border-gray-100 flex items-center justify-between">
-                            <div>
-                                <span className="block text-sm font-medium text-gray-900">Print Triplicate Copies</span>
-                                <span className="block text-xs text-gray-500">
-                                    When enabled, "Print (Bill + Duplicate)" prints 1 original + 2 "DUPLICATE" stamped copies instead of 1.
-                                </span>
-                            </div>
-                            <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-4">
-                                <input
-                                    type="checkbox"
-                                    checked={!!settings.enableTriplicate}
-                                    onChange={(e) =>
-                                        setSettings(prev => ({ ...prev, enableTriplicate: e.target.checked }))
-                                    }
-                                    className="sr-only peer"
-                                />
-                                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:bg-blue-600 transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div>
-                            </label>
-                        </div>
-                        {/* NEW: Discount 1 + Discount 2 display format */}
-                        <div className="mt-5 pt-5 border-t border-gray-100">
-                            <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <p className="text-sm font-semibold text-gray-800 leading-5">Discount Display on Bill</p>
-                                    <InfoTooltip text="Choose how the Disc1 + Disc2 column is shown on the printed/PDF bill." />
-                                </div>
-                                <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
-                                    {[
-                                        { label: 'Amount (₹)', value: 'amount' },
-                                        { label: 'Percentage (%)', value: 'percentage' },
-                                    ].map((opt) => (
-                                        <button
-                                            key={opt.value}
-                                            type="button"
-                                            onClick={() => setSettings(prev => ({ ...prev, discountDisplayFormat: opt.value as 'amount' | 'percentage' }))}
-                                            className={`min-w-0 min-h-[42px] px-2 py-2 rounded-sm text-[11px] sm:text-sm font-semibold border leading-tight text-center whitespace-normal break-words ${(settings.discountDisplayFormat ?? 'amount') === opt.value
-                                                ? 'bg-blue-600 text-white border-blue-600'
-                                                : 'bg-white text-gray-700 border-gray-300'
-                                                }`}
-                                        >
-                                            {opt.label}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                {/* ------------------------------------- */}
-
-                {/* SECTION 4: Digital Signature */}
-                <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden">
-                    <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
-                        <div>
-                            <h2 className="text-lg font-semibold text-gray-800">Digital Signature</h2>
-                            <p className="text-xs text-gray-500">Sign here to display on invoices</p>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={clearSignature}
-                            className="text-xs text-red-600 hover:text-red-700 font-medium px-3 py-1 border border-red-200 rounded bg-red-50 hover:bg-red-100 transition-colors"
-                        >
-                            Clear Signature
-                        </button>
-                    </div>
-                    <div className="p-6">
-                        <div className="border-2 border-dashed border-gray-300 rounded-sm bg-gray-50 flex justify-center items-center overflow-hidden relative">
-                            <SignatureCanvas
-                                ref={sigPadRef}
-                                penColor="black"
-                                canvasProps={{
-                                    className: 'signature-canvas',
-                                    style: { width: '100%', height: '200px' },
-                                }}
-                                backgroundColor="rgba(255,255,255,0)"
-                            />
-                            <div className="absolute pointer-events-none text-gray-400 opacity-20 text-4xl font-bold select-none">
-                                SIGN HERE
-                            </div>
-                        </div>
-                        {settings.printFormat === 'THERMAL58' && (
-                            <p className="mt-2 text-xs text-amber-600 font-medium">Note: Signatures are not displayed on 2-Inch Thermal receipts.</p>
-                        )}
-                    </div>
-                </div>
-
-                <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden mb-6">
-                    <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-                        <h2 className="text-lg font-semibold text-gray-800">WhatsApp Message</h2>
-                        <p className="text-xs text-gray-500">Add an extra message to send along with your invoices on WhatsApp.</p>
-                    </div>
-                    <div className="p-6">
-                        <textarea
-                            name="whatsappExtraMessage"
-                            value={settings.whatsappExtraMessage || ''}
+                <SettingsSectionCard
+                    icon={<CreditCard className="size-4" />}
+                    title="Payment"
+                    description="UPI ID displayed on invoices for quick payments."
+                >
+                    <div className="max-w-sm space-y-1.5">
+                        <Label htmlFor="upiId">UPI ID</Label>
+                        <Input
+                            id="upiId"
+                            type="text"
+                            name="upiId"
+                            value={settings.upiId || ''}
                             onChange={handleChange}
-                            placeholder="e.g., Thank you for shopping with us! Please leave a Google review."
-                            rows={3}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-blue-500 focus:border-blue-500 outline-none text-sm leading-relaxed"
+                            placeholder="e.g. yourname@upi"
                         />
                     </div>
-                </div>
+                </SettingsSectionCard>
 
+                <BillPrintPreferencesCard
+                    printFormat={settings.printFormat ?? 'A4'}
+                    onPrintFormatChange={(value) => setSettings((prev) => ({ ...prev, printFormat: value }))}
+                    enableTriplicate={!!settings.enableTriplicate}
+                    onTriplicateChange={(value) => setSettings((prev) => ({ ...prev, enableTriplicate: value }))}
+                    discountDisplayFormat={settings.discountDisplayFormat ?? 'amount'}
+                    onDiscountFormatChange={(value) => setSettings((prev) => ({ ...prev, discountDisplayFormat: value }))}
+                />
 
-                {/* ── SECTION 4: Terms & Conditions ── */}
-                <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden mb-20">
-                    <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-                        <h2 className="text-lg font-semibold text-gray-800">Terms & Conditions</h2>
-                        <p className="text-xs text-gray-500">Printed at the footer of every invoice.</p>
-                    </div>
-                    <div className="p-6">
-                        <textarea
-                            name="termsAndConditions"
-                            value={settings.termsAndConditions}
-                            onChange={handleChange}
-                            rows={5}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-blue-500 focus:border-blue-500 outline-none text-sm leading-relaxed"
-                        />
-                    </div>
-                </div>
+                <BillSignatureCard sigPadRef={sigPadRef} onClear={clearSignature} />
 
-            </div>
+                <SettingsSectionCard
+                    icon={<MessageSquare className="size-4" />}
+                    title="WhatsApp Message"
+                    description="Add an extra message to send along with your invoices on WhatsApp."
+                >
+                    <Textarea
+                        name="whatsappExtraMessage"
+                        value={settings.whatsappExtraMessage || ''}
+                        onChange={handleChange}
+                        placeholder="e.g., Thank you for shopping with us! Please leave a Google review."
+                        rows={3}
+                        className="text-sm leading-relaxed"
+                    />
+                </SettingsSectionCard>
 
-            {/* ── Floating Save Button ── */}
-            <div className="fixed bottom-0 left-0 right-0 p-4 bg-transparent pb-18 flex justify-center md:px-8">
-                <button
+                <SettingsSectionCard
+                    icon={<ScrollText className="size-4" />}
+                    title="Terms & Conditions"
+                    description="Printed at the footer of every invoice."
+                >
+                    <Textarea
+                        name="termsAndConditions"
+                        value={settings.termsAndConditions}
+                        onChange={handleChange}
+                        rows={5}
+                        className="text-sm leading-relaxed"
+                    />
+                </SettingsSectionCard>
+            </main>
+
+            {/* Floating Save Button */}
+            <div className="fixed inset-x-0 bottom-0 z-30 flex justify-center bg-transparent p-4 md:px-8">
+                <Button
                     onClick={handleSave}
                     disabled={isSaving}
-                    className={`
-                        w-auto min-w-[150px] py-3 px-6 rounded-sm text-white font-bold shadow-lg transition-colors
-    ${isSaving ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}
-                    `}
+                    size="lg"
+                    className="min-w-[160px] gap-2 bg-gradient-brand text-white shadow-lg shadow-primary/20 hover:opacity-90"
                 >
+                    {isSaving && <Spinner size="sm" />}
                     {isSaving ? 'Saving...' : 'Save Settings'}
-                </button>
-
+                </Button>
             </div>
         </div>
     );

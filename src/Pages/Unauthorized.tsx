@@ -105,7 +105,7 @@ const UnauthorizedPage: React.FC = () => {
             {/* Left Side: Gradient Branding */}
             <div className="flex md:w-1/2 bg-gradient-to-br from-[#002B7F] via-blue-700 to-indigo-600 flex-col items-center justify-center px-8 py-10 md:p-12 text-white text-center relative overflow-hidden shrink-0">
                 {/* Abstract glow backgrounds */}
-                <div className="absolute -top-24 -left-24 w-96 h-96 bg-white/10 rounded-sm blur-[100px]" />
+                <div className="absolute -top-24 -left-24 w-96 h-96 bg-card/10 rounded-sm blur-[100px]" />
                 <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-blue-400/20 rounded-sm blur-[100px]" />
 
                 {/* Shield Icon */}
@@ -123,7 +123,7 @@ const UnauthorizedPage: React.FC = () => {
                             <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 4a3 3 0 110 6 3 3 0 010-6zm0 14c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08A7.24 7.24 0 0112 19z" />
                         </svg>
                     </div>
-                    <div className="absolute inset-0 bg-white/20 blur-3xl rounded-sm scale-50" />
+                    <div className="absolute inset-0 bg-card/20 blur-3xl rounded-sm scale-50" />
                 </div>
 
                 <div className="relative z-10">
@@ -135,12 +135,12 @@ const UnauthorizedPage: React.FC = () => {
             </div>
 
             {/* Right Side: Available Pages */}
-            <div className="w-full md:w-1/2 bg-gray-50 flex flex-col h-full overflow-y-auto">
+            <div className="w-full md:w-1/2 bg-muted flex flex-col h-full overflow-y-auto">
                 <div className="max-w-xl mx-auto w-full space-y-6 p-8 md:px-16 lg:px-24 py-10">
                     <div>
-                        <h2 className="text-2xl font-semibold text-gray-800">Available Pages</h2>
+                        <h2 className="text-2xl font-semibold text-foreground">Available Pages</h2>
                         {hasMore && (
-                            <p className="text-sm text-gray-400 mt-1">
+                            <p className="text-sm text-muted-foreground mt-1">
                                 Showing {showAll ? allowedPages.length : VISIBLE_COUNT} of {allowedPages.length} pages
                             </p>
                         )}
@@ -152,14 +152,14 @@ const UnauthorizedPage: React.FC = () => {
                                 <Link
                                     key={page.path}
                                     to={page.path}
-                                    className="flex items-center gap-4 p-4 bg-white hover:bg-gray-50 rounded-xl border border-gray-200 hover:border-blue-400 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group"
+                                    className="flex items-center gap-4 p-4 bg-card hover:bg-muted rounded-xl border border-border hover:border-blue-400 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group"
                                 >
                                     <div className="p-3 bg-blue-50 text-blue-600 rounded-xl shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors duration-200">
                                         {page.icon}
                                     </div>
                                     <div className="flex-grow min-w-0">
-                                        <p className="text-sm font-semibold text-gray-800">{page.name}</p>
-                                        <p className="text-xs text-gray-400 mt-0.5 leading-snug">{page.description}</p>
+                                        <p className="text-sm font-semibold text-foreground">{page.name}</p>
+                                        <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{page.description}</p>
                                     </div>
                                     <svg className="w-5 h-5 text-gray-300 group-hover:text-blue-500 transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
@@ -168,7 +168,7 @@ const UnauthorizedPage: React.FC = () => {
                             ))}
                         </div>
                     ) : (
-                        <p className="text-sm text-gray-400">No pages are accessible with your current permissions.</p>
+                        <p className="text-sm text-muted-foreground">No pages are accessible with your current permissions.</p>
                     )}
 
                     {hasMore && (

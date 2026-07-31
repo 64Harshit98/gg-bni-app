@@ -4,14 +4,7 @@ import {
   type PurchaseRecord,
 } from './purchaseReports.utils';
 import { useAuth } from '../../../context/auth-context';
-import { db } from '../../../lib/Firebase';
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  Timestamp,
-} from 'firebase/firestore';
+import { purchaseReportService } from '../../../services/reports/purchaseReport.service';
 
 export default function usePurchaseReports() {
   const { currentUser, loading: authLoading } = useAuth();
@@ -59,34 +52,14 @@ export default function usePurchaseReports() {
     }
 
     const companyId = currentUser.companyId;
-    const start = new Date(appliedFilters.start);
-    const end = new Date(appliedFilters.end);
 
     const fetchPurchases = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        const q = query(
-          collection(db, 'companies', companyId, 'purchases'),
-          where('createdAt', '>=', Timestamp.fromDate(start)),
-          where('createdAt', '<=', Timestamp.fromDate(end)),
-        );
-        const querySnapshot = await getDocs(q);
-        const fetchedPurchases: PurchaseRecord[] = querySnapshot.docs.map(
-          (doc) => {
-            const data = doc.data();
-            return {
-              id: doc.id,
-              partyName: data.partyName || 'N/A',
-              totalAmount: data.totalAmount || 0,
-              paymentMethods: data.paymentMethods || {},
-              createdAt:
-                data.createdAt instanceof Timestamp
-                  ? data.createdAt.toMillis()
-                  : Date.now(),
-              items: data.items || [],
-            };
-          },
+        const fetchedPurchases = await purchaseReportService.fetchPurchases(
+          companyId,
+          appliedFilters,
         );
         setPurchases(fetchedPurchases);
       } catch (err) {

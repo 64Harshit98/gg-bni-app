@@ -5,6 +5,7 @@ import { useEffect, useState, useRef } from "react";
 import { FiShare2, FiDownload } from "react-icons/fi"; // Download icon add kiya
 import { toPng } from 'html-to-image'; // Install this: npm install html-to-image
 import { sanitizeName } from "../utils/stringUtils";
+import { Spinner } from "../../Components/ui/spinner";
 
 // ─── Compress uploaded card image (same logic as EditProfilePage) ───────────
 const compressImage = (file: File): Promise<string> => {
@@ -240,7 +241,12 @@ function BusinessCard() {
         }
     };
 
-    if (!data) return <div className="p-4 text-[10px]">Loading...</div>;
+    if (!data) return (
+        <div className="flex items-center gap-1.5 p-4 text-[10px] text-muted-foreground">
+            <Spinner className="size-2.5" />
+            Loading...
+        </div>
+    );
 
     const cards = [0, 1, 2];
 

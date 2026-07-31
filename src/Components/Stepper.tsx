@@ -49,7 +49,7 @@ export const Stepper: React.FC<StepperProps> = ({
                                         ? `${activeClassName} scale-110 shadow-md` // Use prop
                                         : isCompleted
                                             ? completedClassName // Use prop
-                                            : 'bg-gray-200 text-gray-500'
+                                            : 'bg-muted text-muted-foreground'
                                     }
                                     ${isClickable ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}
                                 `}
@@ -61,7 +61,7 @@ export const Stepper: React.FC<StepperProps> = ({
                         {/* Connector Line */}
                         {stepNumber < totalSteps && (
                             <div
-                                className={`flex-1 h-1 mx-2 rounded transition-colors duration-300 ${isCompleted ? connectorClassName : 'bg-gray-200'
+                                className={`flex-1 h-1 mx-2 rounded transition-colors duration-300 ${isCompleted ? connectorClassName : 'bg-muted'
                                     }`}
                             />
                         )}

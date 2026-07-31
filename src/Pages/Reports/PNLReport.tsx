@@ -131,18 +131,22 @@ const PnlReportPage: React.FC = () => {
             (sum, t) => sum + (t.profit || 0),
             0,
           ) - totalExpenses,
-        grossProfitPercentage:
-          invoiceFilteredTransactions.reduce((sum, t) => sum + t.totalAmount, 0) > 0
-            ? (invoiceFilteredTransactions.reduce(
+        grossProfitPercentage: (() => {
+          const totalSalesSum = invoiceFilteredTransactions.reduce(
+            (sum, t) => sum + t.totalAmount,
+            0,
+          );
+          const totalProfitSum =
+            invoiceFilteredTransactions.reduce(
               (sum, t) => sum + (t.profit || 0),
               0,
-            ) /
-              invoiceFilteredTransactions.reduce(
-                (sum, t) => sum + t.totalAmount,
-                0,
-              )) *
-            100
-            : 0,
+            ) - totalExpenses;
+
+          if (totalSalesSum > 0) {
+            return (totalProfitSum / totalSalesSum) * 100;
+          }
+          return totalProfitSum < 0 ? -100 : 0;
+        })(),
       },
       filteredTransactions: invoiceFilteredTransactions,
     };

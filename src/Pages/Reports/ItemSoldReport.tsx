@@ -1,9 +1,9 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import FilterSelect from './SalesReportComponents/FilterSelect';
 import {
     formatDate,
     formatDateForInput,
 } from './SalesReportComponents/salesReport.utils';
+import FilterSelect from './SalesReportComponents/FilterSelect';
 import { useAuth } from '../../context/auth-context';
 import useSalesReport from './SalesReportComponents/useSalesReport';
 import { jsPDF } from 'jspdf';
@@ -138,6 +138,15 @@ const ItemsSoldReport: React.FC = () => {
         end.setHours(23, 59, 59, 999);
 
         setAppliedFilters({ start: start.getTime(), end: end.getTime() });
+    };
+
+    const handleStartDateChange = (value: string) => {
+        setCustomStartDate(value);
+        setDatePreset('custom');
+    };
+    const handleEndDateChange = (value: string) => {
+        setCustomEndDate(value);
+        setDatePreset('custom');
     };
 
     /* ---------- SORT ---------- */
@@ -760,10 +769,7 @@ const ItemsSoldReport: React.FC = () => {
                             <Input
                                 type="date"
                                 value={customStartDate}
-                                onChange={(e) => {
-                                    setCustomStartDate(e.target.value);
-                                    setDatePreset('custom');
-                                }}
+                                onChange={(e) => handleStartDateChange(e.target.value)}
                             />
                         </div>
                         <div>
@@ -771,10 +777,7 @@ const ItemsSoldReport: React.FC = () => {
                             <Input
                                 type="date"
                                 value={customEndDate}
-                                onChange={(e) => {
-                                    setCustomEndDate(e.target.value);
-                                    setDatePreset('custom');
-                                }}
+                                onChange={(e) => handleEndDateChange(e.target.value)}
                             />
                         </div>
                     </div>

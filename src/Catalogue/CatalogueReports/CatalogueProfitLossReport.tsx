@@ -7,7 +7,7 @@ import { CardVariant, State } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
 import { IconClose, IconSearch } from '../../constants/Icons';
 import { getPnlColumns } from '../../constants/TableColoumns';
-import FilterSelect from '../../Pages/Reports/ItemReportComponents/FilterSelect';
+import ReportDateFilter from '../../Components/ReportDateFilter';
 import { usePnlReport, usePnlStates } from '../hooks/usePnlReport';
 import { type TransactionDetail } from '../../Pages/Reports/PNLReportComponents/pnlReport.utils';
 import { formatDate } from '../../Pages/Reports/PNLReportComponents/pnlReport.utils';
@@ -133,7 +133,9 @@ const CatalogueProfitLossReport: React.FC = () => {
       .reduce((sum, e) => sum + e.amount, 0);
 
     const netProfit = grossProfit - totalExpenses;
-    const netProfitPercentage = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+    const netProfitPercentage = totalRevenue > 0
+      ? (netProfit / totalRevenue) * 100
+      : (netProfit < 0 ? -100 : 0);
 
     return {
       pnlSummary: {
@@ -166,6 +168,18 @@ const CatalogueProfitLossReport: React.FC = () => {
       start: start.toISOString(),
       end: end.toISOString(),
     });
+  };
+
+  const onDatePresetChange = (preset: string) =>
+    handleDatePresetChange(preset, setDatePreset, setStartDate, setEndDate);
+
+  const handleStartDateChange = (value: string) => {
+    setStartDate(value);
+    setDatePreset('custom');
+  };
+  const handleEndDateChange = (value: string) => {
+    setEndDate(value);
+    setDatePreset('custom');
   };
 
 
@@ -632,53 +646,16 @@ const CatalogueProfitLossReport: React.FC = () => {
       )}
 
       {/* FILTERS */}
-      <div className="bg-card p-4 rounded-sm shadow-md mb-2">
-        <FilterSelect
-          label="Select Period"
-          value={datePreset}
-          onChange={(e) =>
-            handleDatePresetChange(
-              e.target.value,
-              setDatePreset,
-              setStartDate,
-              setEndDate,
-            )
-          }
-        >
-          <option value="today">Today</option>
-          <option value="yesterday">Yesterday</option>
-          <option value="last7">Last 7 Days</option>
-          <option value="last30">Last 30 Days</option>
-          <option value="custom">Custom</option>
-        </FilterSelect>
-        <div className="grid grid-cols-2 gap-2 mt-2">
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => {
-              setStartDate(e.target.value);
-              setDatePreset('custom');
-            }}
-            className="w-full p-2 text-sm bg-muted border rounded-sm"
-          />
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => {
-              setEndDate(e.target.value);
-              setDatePreset('custom');
-            }}
-            className="w-full p-2 text-sm bg-muted border rounded-sm"
-          />
-        </div>
-
-        <button
-          onClick={handleApplyFilters}
-          className="w-full mt-2 px-3 py-1 bg-[#F97316] text-white text-lg font-semibold rounded-sm hover:bg-[#F97316]"
-        >
-          Apply
-        </button>
-      </div>
+      <ReportDateFilter
+        datePreset={datePreset}
+        startDate={startDate}
+        endDate={endDate}
+        onPresetChange={onDatePresetChange}
+        onStartDateChange={handleStartDateChange}
+        onEndDateChange={handleEndDateChange}
+        onApply={handleApplyFilters}
+        theme="catalogue"
+      />
 
       {/* SUMMARY */}
       <div className="grid grid-cols-2 md:grid-cols-6 xl:grid-cols-5 gap-2 mb-2">
@@ -749,7 +726,7 @@ const CatalogueProfitLossReport: React.FC = () => {
                 setIsDownloadModalOpen(true);
               }
             }}
-            className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md"
+            className="px-4 py-2 bg-orange-600 text-white font-semibold rounded-md"
           >
             Download Report
           </button>

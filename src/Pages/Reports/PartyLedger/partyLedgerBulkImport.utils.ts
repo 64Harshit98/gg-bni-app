@@ -92,6 +92,13 @@ export function parseBulkImportWorkbook(worksheet: ExcelJS.Worksheet): ParsedBul
     const advanceVal = parseFloat(safeGetVal(row, 6) as string) || 0;
     const narration = (safeGetVal(row, 7) as string).trim();
 
+    // Type must be explicitly "Customer"/"Supplier" — no silent default anymore
+    if (!typeVal || !(typeVal.startsWith('c') || typeVal.startsWith('s'))) { skippedCount++; continue; }
+
+    // Party Number is mandatory AND must be a valid 10-digit phone number
+    const partyNumberDigits = partyNumber.replace(/\D/g, '');
+    if (!partyNumber || partyNumberDigits.length !== 10) { skippedCount++; continue; }
+
     const partyType: 'Customer' | 'Supplier' = typeVal.startsWith('s') ? 'Supplier' : 'Customer';
 
     // Skip rows with no balance, or rows that fill BOTH columns (ambiguous)

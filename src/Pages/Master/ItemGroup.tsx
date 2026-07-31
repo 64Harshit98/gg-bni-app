@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo} from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import type { ItemGroup } from '../../constants/models';
 import { useDatabase } from '../../context/auth-context';
@@ -71,7 +71,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
   const [deleteModal, setDeleteModal] = useState<{ message: string; type: State } | null>(null);
   const [groupPendingFullDelete, setGroupPendingFullDelete] = useState<ItemGroup | null>(null);
   const isActive = (path: string) => location.pathname === path;
-const displayedItemGroups = useMemo(() => {
+  const displayedItemGroups = useMemo(() => {
     const query = newItemGroupName.trim().toLowerCase();
     if (!query) return itemGroups;
 

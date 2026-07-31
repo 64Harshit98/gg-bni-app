@@ -66,6 +66,7 @@ const SAMPLE_INVOICES: Invoice[] = [
   },
 ];
 
+
 const useJournalData = (companyId?: string) => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -327,6 +328,7 @@ const Journal: React.FC = () => {
   const handleInvoiceClick = (invoiceId: string) => {
     setExpandedInvoiceId(prevId => (prevId === invoiceId ? null : invoiceId));
   };
+
 
 
   const handlePdfAction = async (invoice: Invoice, action: ACTION.DOWNLOAD | ACTION.PRINT, withDuplicate: boolean = false) => {

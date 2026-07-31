@@ -72,6 +72,15 @@ const ExpenseReportPage: React.FC = () => {
         setAppliedFilters({ start: s.getTime(), end: e.getTime() });
     };
 
+    const handleStartDateChange = (value: string) => {
+        setStartDate(value);
+        setDatePreset('custom');
+    };
+    const handleEndDateChange = (value: string) => {
+        setEndDate(value);
+        setDatePreset('custom');
+    };
+
     const handleSort = (key: keyof Expense) => {
         setSortConfig((prev) => ({
             key,
@@ -200,8 +209,8 @@ const ExpenseReportPage: React.FC = () => {
                     onDatePresetChange={handleDatePreset}
                     startDate={startDate}
                     endDate={endDate}
-                    onStartDateChange={(value) => { setStartDate(value); setDatePreset('custom'); }}
-                    onEndDateChange={(value) => { setEndDate(value); setDatePreset('custom'); }}
+                    onStartDateChange={handleStartDateChange}
+                    onEndDateChange={handleEndDateChange}
                     onApply={handleApply}
                     showSearch={showSearch}
                     searchQuery={searchQuery}

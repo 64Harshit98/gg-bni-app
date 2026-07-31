@@ -273,6 +273,7 @@ const PartyLedger: React.FC = () => {
         }
     };
 
+    // ✅ FIXED: Complete rewrite of handleSettlePayment
     const handleSettlePayment = async (
         invoice: any,
         amount: number,

@@ -508,7 +508,7 @@ const OrdersPage: React.FC = () => {
     const [vehicleNo, setVehicleNo] = useState('');
     const [stationFrom, setStationFrom] = useState('');
     const [pinCode, setPinCode] = useState('');
-
+    const [salesSettings, setSalesSettings] = useState<any>(null);
     const hasTransportDetails = !!(transportName || grRrNo || grRrDate || vehicleNo || stationFrom || pinCode);
     const [pendingAdjustment, setPendingAdjustment] = useState<{ amount: number } | null>(null);
     const [showAdjustmentPopup, setShowAdjustmentPopup] = useState(false);
@@ -797,12 +797,18 @@ const OrdersPage: React.FC = () => {
     const calculatedEditTotal = useMemo(() => {
         if (!editingOrder?.items) return 0;
         let exclusiveTax = 0;
+
+        // 👈 Check if GST scheme is Regular AND Tax Type is not NONE
+        const isTaxEnabled =
+            salesSettings?.gstScheme?.toLowerCase() === 'regular' &&
+            salesSettings?.taxType?.toUpperCase() !== 'NONE';
+
         const itemsTotal = editingOrder.items.reduce((sum, item) => {
             const qty = Number(item.quantity || 0);
             const unitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
             const rowNet = unitPrice * qty;
 
-            const taxRate = Number(item.tax ?? item.taxRate ?? 0);
+            const taxRate = isTaxEnabled ? Number(item.tax ?? item.taxRate ?? 0) : 0;
             const taxType = (item.taxType || '').toLowerCase();
 
             if (taxRate > 0 && (taxType === 'exclusive' || taxType === 'regular')) {
@@ -814,7 +820,7 @@ const OrdersPage: React.FC = () => {
         const expensesTotal = editExpenses.reduce((sum, e) => sum + (parseFloat(e.amount.toString()) || 0), 0);
 
         return Math.round(Math.max(0, itemsTotal + exclusiveTax + expensesTotal - editDiscount));
-    }, [editingOrder?.items, editExpenses, editDiscount]);
+    }, [editingOrder?.items, editExpenses, editDiscount, salesSettings]); // 👈 Added salesSettings to dependencies
 
     const handleNetPriceChange = (id: string, value: string) => {
         if (!editingOrder) return;
@@ -1085,15 +1091,12 @@ const OrdersPage: React.FC = () => {
                 if (snap.exists()) {
                     const data = snap.data();
                     console.log("Sales settings loaded:", data);
-                    setEnableItemWiseDiscount(
-                        data.enableItemWiseDiscount ?? false
-                    );
-                    setEnableDiscount2(
-                        data.enableDiscount2 ?? false
-                    );
-                    setEnableTransportDetails(
-                        data.enableTransportDetails ?? false
-                    );
+
+                    setSalesSettings(data); // 👈 Add this line to store the settings
+
+                    setEnableItemWiseDiscount(data.enableItemWiseDiscount ?? false);
+                    setEnableDiscount2(data.enableDiscount2 ?? false);
+                    setEnableTransportDetails(data.enableTransportDetails ?? false);
                 }
             } catch (error) {
                 console.error("Error fetching sales settings:", error);
@@ -1392,7 +1395,7 @@ const OrdersPage: React.FC = () => {
                 customer: {
                     billing: {
                         name: Order.billingDetails?.name || Order.userName || "Customer",
-                        phone: Order.billingDetails?.phone || "",
+                        phone: Order.billingDetails?.phone || Order.userLoginPhone || "",
                         address: Order.billingDetails?.address || "",
                         city: Order.billingDetails?.city || "",
                         state: Order.billingDetails?.state || "",
@@ -1527,7 +1530,7 @@ const OrdersPage: React.FC = () => {
                 customer: {
                     billing: {
                         name: Order.billingDetails?.name || Order.userName || "Customer",
-                        phone: Order.billingDetails?.phone || "",
+                        phone: Order.billingDetails?.phone || Order.userLoginPhone || "",
                         address: Order.billingDetails?.address || "",
                         city: Order.billingDetails?.city || "",
                         state: Order.billingDetails?.state || "",
@@ -1690,7 +1693,7 @@ const OrdersPage: React.FC = () => {
                 customer: {
                     billing: {
                         name: Order.billingDetails?.name || Order.userName || "Customer",
-                        phone: Order.billingDetails?.phone || "",
+                        phone: Order.billingDetails?.phone || Order.userLoginPhone || "",
                         address: Order.billingDetails?.address || "",
                         city: Order.billingDetails?.city || "",
                         state: Order.billingDetails?.state || "",
@@ -2306,6 +2309,10 @@ const OrdersPage: React.FC = () => {
                 ? ({ id: editingOrder.id, ...(liveOrderSnap.data() as any) } as any)
                 : Orders.find(o => o.id === editingOrder.id);
 
+            const isTaxEnabled =
+                salesSettings?.gstScheme?.toLowerCase() === 'regular' &&
+                salesSettings?.taxType?.toUpperCase() !== 'NONE';
+
             const getItemsTotal = (items: any[] = [], expenses: any[] = [], discount: number = 0) => {
                 let exclusiveTax = 0;
                 const base = items.reduce((sum, item) => {
@@ -2313,7 +2320,8 @@ const OrdersPage: React.FC = () => {
                     const unitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
                     const rowNet = unitPrice * qty;
 
-                    const taxRate = Number(item.tax ?? item.taxRate ?? 0);
+                    // 👈 Bypass tax if disabled
+                    const taxRate = isTaxEnabled ? Number(item.tax ?? item.taxRate ?? 0) : 0;
                     const taxType = (item.taxType || '').toLowerCase();
 
                     if (taxRate > 0 && (taxType === 'exclusive' || taxType === 'regular')) {
@@ -2326,8 +2334,9 @@ const OrdersPage: React.FC = () => {
                 return Math.max(0, base + exclusiveTax + exp - discount);
             };
 
-            // Calculate exact tax separately so we can save it to DB
+            // Also fix the totalTax property to save as 0
             const newTotalTax = (editingOrder.items || []).reduce((sum, item) => {
+                if (!isTaxEnabled) return 0;
                 const qty = Number(item.quantity || 0);
                 const unitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
                 const rowNet = unitPrice * qty;
@@ -2981,15 +2990,21 @@ const OrdersPage: React.FC = () => {
                                         )) : [];
                             const isExpanded = expandedorderId === Order.id;
                             const isUpcomingStatus = Order.status === 'Upcoming';
-                            // Add extra tax on top ONLY for exclusive/regular items.
-                            // Inclusive items already have tax baked into unitPrice — don't add Order.totalTax again.
+
+                            // 👇 1. Check the GST Scheme from salesSettings, NOT companyInfo
+                            const isTaxEnabled =
+                                salesSettings?.gstScheme?.toLowerCase() === 'regular' &&
+                                salesSettings?.taxType?.toLowerCase() !== 'none';
+
                             const itemsSubtotal = (Order.items || []).reduce((sum, item) => {
                                 const unitPrice = item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0;
                                 const qty = Number(item.quantity || 0);
                                 const rowNet = Number(unitPrice) * qty;
 
-                                const taxRate = Number(item.tax ?? item.taxRate ?? 0);
+                                // 👇 2. Force tax to 0 globally if the scheme is not 'regular'
+                                const taxRate = isTaxEnabled ? Number(item.tax ?? item.taxRate ?? 0) : 0;
                                 const taxType = (item.taxType || '').toLowerCase();
+
                                 const extraTax = (taxRate > 0 && (taxType === 'exclusive' || taxType === 'regular'))
                                     ? rowNet * (taxRate / 100)
                                     : 0;
@@ -3191,9 +3206,6 @@ const OrdersPage: React.FC = () => {
                                                         </div>
                                                     )}
                                                     {Order.items?.map((item, idx) => {
-                                                        // const returnedQty = getReturnedQuantityForItem(item, Order);
-
-                                                        // Collect per-return-event entries for this item
                                                         const returnedEntries: { qty: number; modeOfReturn: string; returnedAt: any; unitPrice: number }[] = [];
                                                         (Order.returnHistory || []).forEach((h: any) => {
                                                             (h.returnedItems || []).forEach((r: any) => {
@@ -3213,11 +3225,23 @@ const OrdersPage: React.FC = () => {
                                                             });
                                                         });
                                                         const totalReturnedFromHistory = returnedEntries.reduce((sum, e) => sum + e.qty, 0);
-                                                        // item.quantity may already reflect post-return qty, so add back returned qty to get original
                                                         const originalQty = Number(item.quantity || 0) + totalReturnedFromHistory;
-                                                        const remainingQty = originalQty - totalReturnedFromHistory; // = item.quantity
-                                                        // Extract the pure base price for display so the visual math aligns with the Tax row below it
-                                                        const unitPrice = item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0;
+                                                        const remainingQty = originalQty - totalReturnedFromHistory;
+
+                                                        // 👇 1. NEW LOGIC: Extract Base Price for UI Math
+                                                        const rawUnitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
+                                                        const taxRate = isTaxEnabled ? Number(item.tax ?? item.taxRate ?? 0) : 0;
+                                                        const taxType = (item.taxType || '').toLowerCase();
+
+                                                        let displayUnitPrice = rawUnitPrice;
+
+                                                        // If tax is inclusive, reverse-calculate the base price so the UI math adds up with the "+Tax" row
+                                                        if (taxRate > 0 && taxType === 'inclusive') {
+                                                            displayUnitPrice = rawUnitPrice / (1 + (taxRate / 100));
+                                                        }
+
+                                                        const displayLineTotal = displayUnitPrice * remainingQty;
+                                                        // --------------------------------------------------
 
                                                         return (
                                                             <div key={idx} className="p-2 cursor-pointer">
@@ -3238,12 +3262,14 @@ const OrdersPage: React.FC = () => {
                                                                                 </p>
                                                                             )}
                                                                             <p className="text-[10px] text-muted-foreground">
-                                                                                ₹{formatAmount(unitPrice)} per {item.unit || "pcs"}
+                                                                                {/* 👇 2. Use displayUnitPrice here */}
+                                                                                ₹{formatAmount(displayUnitPrice)} per {item.unit || "pcs"}
                                                                             </p>
                                                                         </div>
                                                                         <div className="text-right ml-4">
                                                                             <p className="text-[13px] font-black text-foreground">
-                                                                                ₹{formatAmount(unitPrice * remainingQty)}
+                                                                                {/* 👇 3. Use displayLineTotal here */}
+                                                                                ₹{formatAmount(displayLineTotal)}
                                                                             </p>
                                                                             <p className="text-[9px] font-bold text-muted-foreground bg-card">
                                                                                 Qty: {remainingQty}
@@ -3253,8 +3279,15 @@ const OrdersPage: React.FC = () => {
                                                                 )}
 
                                                                 {/* RETURNED ENTRIES — one crossed-out row per return event */}
-                                                                {returnedEntries.map((entry, rIdx) => (
-                                                                    entry.qty > 0 && (
+                                                                {returnedEntries.map((entry, rIdx) => {
+                                                                    // 👇 4. Also fix the math for returned items crossed out on the UI
+                                                                    let retDisplayUnitPrice = entry.unitPrice;
+                                                                    if (taxRate > 0 && taxType === 'inclusive') {
+                                                                        retDisplayUnitPrice = entry.unitPrice / (1 + (taxRate / 100));
+                                                                    }
+                                                                    const retDisplayLineTotal = retDisplayUnitPrice * entry.qty;
+
+                                                                    return entry.qty > 0 && (
                                                                         <div key={rIdx} className="flex justify-between items-start mt-1 -mb-1">
                                                                             <div className="flex-1">
                                                                                 <p className="text-[11px] font-extrabold leading-tight mb-1"
@@ -3290,7 +3323,8 @@ const OrdersPage: React.FC = () => {
                                                                             </div>
                                                                             <div className="text-right ml-4">
                                                                                 <p className="text-[13px] font-black" style={{ color: '#94a3b8', textDecoration: 'line-through' }}>
-                                                                                    ₹{formatAmount(entry.unitPrice * entry.qty)}
+                                                                                    {/* 👇 5. Use retDisplayLineTotal here */}
+                                                                                    ₹{formatAmount(retDisplayLineTotal)}
                                                                                 </p>
                                                                                 <p className="text-[9px] font-bold text-muted-foreground">
                                                                                     Qty: {entry.qty}
@@ -3298,7 +3332,7 @@ const OrdersPage: React.FC = () => {
                                                                             </div>
                                                                         </div>
                                                                     )
-                                                                ))}
+                                                                })}
                                                             </div>
                                                         );
                                                     })}
@@ -3479,7 +3513,7 @@ const OrdersPage: React.FC = () => {
                                                 {(
                                                     <div
                                                         className={`grid ${isUpcomingStatus
-                                                            ? Order.userLoginPhone ? 'grid-cols-3' : 'grid-cols-1'
+                                                            ? Order.userLoginPhone ? 'grid-cols-4' : 'grid-cols-2'
                                                             : Order.status === "Packed"
                                                                 ? 'grid-cols-5 md:grid-cols-5'
                                                                 : Order.status === "Paid"
@@ -3495,7 +3529,7 @@ const OrdersPage: React.FC = () => {
                                                                 <a
                                                                     href={`tel:${Order.userLoginPhone.replace(/\D/g, '')}`}
                                                                     onClick={(e) => e.stopPropagation()}
-                                                                    className="py-2.5 bg-card border border-emerald-200 text-emerald-600 text-xs font-bold rounded-sm text-center"
+                                                                    className="min-h-[44px] py-2.5 bg-card border border-emerald-200 text-emerald-600 text-xs font-bold rounded-sm text-center"
                                                                 >
                                                                     Call
                                                                 </a>
@@ -3505,10 +3539,45 @@ const OrdersPage: React.FC = () => {
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
                                                                     onClick={(e) => e.stopPropagation()}
-                                                                    className="py-2.5 bg-[#25D366] text-white text-xs font-bold rounded-sm text-center"
+                                                                    className="min-h-[44px] py-2.5 bg-emerald-500 text-white text-xs font-bold rounded-sm text-center"
                                                                 >
                                                                     WhatsApp
                                                                 </a>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setSelectedOrderForAction(Order);
+                                                                    }}
+                                                                    disabled={pdfLoadingOrderId === Order.id}
+                                                                    className="min-h-[44px] py-2.5 bg-black text-white text-xs font-bold rounded-sm flex items-center justify-center"
+                                                                >
+                                                                    {pdfLoadingOrderId === Order.id ? <Spinner /> : "Print"}
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleDeleteOrder(Order.id);
+                                                                    }}
+                                                                    className="min-h-[44px] py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm cursor-pointer"
+                                                                >
+                                                                    Delete
+                                                                </button>
+                                                            </>
+                                                        )}
+                                                        {/* NEW: fallback for upcoming/lead orders that have no phone captured yet —
+    still let the seller print/download the bill */}
+                                                        {isUpcomingStatus && !Order.userLoginPhone && (
+                                                            <>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setSelectedOrderForAction(Order);
+                                                                    }}
+                                                                    disabled={pdfLoadingOrderId === Order.id}
+                                                                    className="py-2.5 bg-blue-600 text-white text-xs font-bold rounded-sm flex items-center justify-center"
+                                                                >
+                                                                    {pdfLoadingOrderId === Order.id ? <Spinner /> : "Print"}
+                                                                </button>
 
                                                                 <button
                                                                     onClick={(e) => {
@@ -3521,7 +3590,6 @@ const OrdersPage: React.FC = () => {
                                                                 </button>
                                                             </>
                                                         )}
-
                                                         {!isUpcomingStatus && (isFinalStage ? (
                                                             <>
 
@@ -3843,14 +3911,21 @@ const OrdersPage: React.FC = () => {
             )}
 
             {showPaymentModal && (() => {
+                // 👇 1. Apply the exact same salesSettings check here
+                const isTaxEnabled =
+                    salesSettings?.gstScheme?.toLowerCase() === 'regular' &&
+                    salesSettings?.taxType?.toLowerCase() !== 'none';
+
                 // FIX 3: Include Expenses and Discounts in the Payment Drawer Total
                 const itemsTotal = (showPaymentModal.items || []).reduce((sum, item) => {
                     const unitPrice = item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0;
                     const qty = Number(item.quantity || 0);
                     const rowNet = Number(unitPrice) * qty;
 
-                    const taxRate = Number(item.tax ?? item.taxRate ?? 0);
+                    // 👇 2. Force tax to 0 globally if disabled
+                    const taxRate = isTaxEnabled ? Number(item.tax ?? item.taxRate ?? 0) : 0;
                     const taxType = (item.taxType || '').toLowerCase();
+
                     const extraTax = (taxRate > 0 && (taxType === 'exclusive' || taxType === 'regular'))
                         ? rowNet * (taxRate / 100)
                         : 0;

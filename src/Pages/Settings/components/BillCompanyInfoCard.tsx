@@ -7,12 +7,19 @@ interface ReadOnlyFieldProps {
   label: string;
   value: React.ReactNode;
   className?: string;
+  wrap?: boolean;
 }
 
-const ReadOnlyField: React.FC<ReadOnlyFieldProps> = ({ label, value, className }) => (
+const ReadOnlyField: React.FC<ReadOnlyFieldProps> = ({ label, value, className, wrap }) => (
   <div className={className}>
     <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-muted-foreground">{label}</label>
-    <div className="flex h-11 items-center truncate rounded-lg border border-border bg-muted px-3 text-sm font-medium text-foreground">
+    <div
+      className={
+        wrap
+          ? 'flex min-h-11 items-center whitespace-normal break-words rounded-lg border border-border bg-muted px-3 py-2 text-sm font-medium text-foreground'
+          : 'flex h-11 items-center truncate rounded-lg border border-border bg-muted px-3 text-sm font-medium text-foreground'
+      }
+    >
       {value || '—'}
     </div>
   </div>
@@ -64,7 +71,7 @@ export const BillCompanyInfoCard: React.FC<BillCompanyInfoCardProps> = ({ busine
       )}
       <div className="grid min-w-0 flex-1 grid-cols-1 gap-4 md:grid-cols-2">
         <ReadOnlyField className="md:col-span-2" label="Company Name" value={businessInfo.companyName} />
-        <ReadOnlyField className="md:col-span-2" label="Registered Address" value={businessInfo.address} />
+        <ReadOnlyField className="md:col-span-2" label="Registered Address" value={businessInfo.address} wrap />
       </div>
     </div>
 

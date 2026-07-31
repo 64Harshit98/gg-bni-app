@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import FilterSelect from '../../Pages/Reports/SalesReportComponents/FilterSelect';
+import ReportDateFilter from '../../Components/ReportDateFilter';
 import {
     formatDate,
     formatDateForInput,
@@ -220,6 +220,18 @@ const ItemsSoldReport: React.FC = () => {
             start: start.getTime(),
             end: end.getTime()
         });
+    };
+
+    const onDatePresetChange = (preset: string) =>
+        handleDatePresetChange(preset as DatePreset);
+
+    const handleStartDateChange = (value: string) => {
+        setCustomStartDate(value);
+        setDatePreset(DatePreset.CUSTOM);
+    };
+    const handleEndDateChange = (value: string) => {
+        setCustomEndDate(value);
+        setDatePreset(DatePreset.CUSTOM);
     };
 
     /* ---------- SORT ---------- */
@@ -810,48 +822,16 @@ const ItemsSoldReport: React.FC = () => {
             )}
 
             {/* FILTERS */}
-            <div className="bg-card p-2 rounded-sm shadow-md mb-2">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <FilterSelect
-                        value={datePreset}
-                        onChange={(e) => handleDatePresetChange(e.target.value as DatePreset)}
-                    >
-                        <option value={DatePreset.TODAY}>Today</option>
-                        <option value={DatePreset.YESTERDAY}>Yesterday</option>
-                        <option value={DatePreset.LAST_7_DAYS}>Last 7 Days</option>
-                        <option value={DatePreset.LAST_30_DAYS}>Last 30 Days</option>
-                        <option value={DatePreset.CUSTOM}>Custom</option>
-                    </FilterSelect>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <input
-                            type="date"
-                            value={customStartDate}
-                            onChange={(e) => {
-                                setCustomStartDate(e.target.value);
-                                setDatePreset(DatePreset.CUSTOM);
-                            }}
-                            className="w-full p-2 text-sm bg-muted border rounded-sm"
-                        />
-                        <input
-                            type="date"
-                            value={customEndDate}
-                            onChange={(e) => {
-                                setCustomEndDate(e.target.value);
-                                setDatePreset(DatePreset.CUSTOM);
-                            }}
-                            className="w-full p-2 text-sm bg-muted border rounded-sm"
-                        />
-                    </div>
-                </div>
-
-                <button
-                    onClick={handleApplyFilters}
-                    className="w-full mt-2 px-3 py-1 bg-[#F97316] text-white text-lg font-semibold rounded-sm hover:bg-orange-700"
-                >
-                    Apply
-                </button>
-            </div>
+            <ReportDateFilter
+                datePreset={datePreset}
+                startDate={customStartDate}
+                endDate={customEndDate}
+                onPresetChange={onDatePresetChange}
+                onStartDateChange={handleStartDateChange}
+                onEndDateChange={handleEndDateChange}
+                onApply={handleApplyFilters}
+                theme="catalogue"
+            />
 
             {/* REPORT DETAILS */}
             <ReportDetails

@@ -5,7 +5,6 @@ import type { ItemGroup, Item } from '../constants/models';
 import { FiPackage, FiPlus } from 'react-icons/fi';
 import { FaWhatsapp } from 'react-icons/fa';
 import { ShoppingCart, Pin } from 'lucide-react';
-import { Spinner } from '../Components/ui/spinner';
 import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName.tsx';
 import SearchBar from './SearchBar.tsx';
@@ -121,6 +120,8 @@ const SharedCataloguePage: React.FC = () => {
     const [cart, setCart] = useState<{ item: Item; quantity: number }[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [loadProgress, setLoadProgress] = useState(0);
+    const [readyToShow, setReadyToShow] = useState(false);
     const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A'>('A-Z');
     const [isSortOpen, setIsSortOpen] = useState(false);
     const [isSearchSticky, setIsSearchSticky] = useState(false);
@@ -230,6 +231,28 @@ const SharedCataloguePage: React.FC = () => {
         };
         fetchData();
     }, [effectiveCompanyId]);
+
+    // Simulate a progressive fill while data is still loading
+    useEffect(() => {
+        if (!effectiveCompanyId || (!isLoading && !nameLoading)) return;
+
+        setLoadProgress(0);
+        const interval = setInterval(() => {
+            setLoadProgress(prev => (prev >= 90 ? prev : prev + Math.random() * 10));
+        }, 200);
+
+        return () => clearInterval(interval);
+    }, [effectiveCompanyId, isLoading, nameLoading]);
+
+    // Once actual loading finishes, complete the bar to 100% then reveal the store
+    useEffect(() => {
+        if (!effectiveCompanyId || isLoading || nameLoading) return;
+
+        setLoadProgress(100);
+        const timer = setTimeout(() => setReadyToShow(true), 400);
+
+        return () => clearTimeout(timer);
+    }, [effectiveCompanyId, isLoading, nameLoading]);
 
     const fuzzyMatch = (text: string, query: string) => {
         const normalize = (str: string) =>
@@ -399,11 +422,22 @@ const SharedCataloguePage: React.FC = () => {
         );
     }
 
-    // Wait until the domain is fully resolved AND the data finishes loading
-    if (!effectiveCompanyId || isLoading || nameLoading) {
+    // Wait until the domain is fully resolved AND the progress bar has finished filling
+    if (!effectiveCompanyId || !readyToShow) {
         return (
-            <div className="flex items-center justify-center h-screen bg-[#E9F0F7]">
-                <Spinner size="lg" /> <span className="ml-2 font-bold text-[#1A3B5D]">Loading Store...</span>
+            <div className="flex flex-col items-center justify-center h-screen bg-[#E9F0F7] gap-3">
+                <span className="font-black text-[#1A3B5D] text-xs uppercase tracking-widest">
+                    Loading Store...
+                </span>
+                <div className="w-64 max-w-[70%] h-2.5 bg-white rounded-full overflow-hidden shadow-inner border border-gray-100">
+                    <div
+                        className="h-full bg-[#F97316] rounded-full transition-all duration-300 ease-out"
+                        style={{ width: `${Math.min(loadProgress, 100)}%` }}
+                    />
+                </div>
+                <span className="text-[10px] font-black text-[#1A3B5D]/50">
+                    {Math.round(Math.min(loadProgress, 100))}%
+                </span>
             </div>
         );
     }

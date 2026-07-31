@@ -924,6 +924,14 @@ const CataloguePartyLedger: React.FC = () => {
                 const dueVal = parseFloat(safeGetVal(row, 5) as string) || 0;
                 const advanceVal = parseFloat(safeGetVal(row, 6) as string) || 0;
                 const narration = (safeGetVal(row, 7) as string).trim();
+
+                // ✅ Type must be explicitly "Customer"/"Supplier" — no silent default
+                if (!typeVal || !(typeVal.startsWith('c') || typeVal.startsWith('s'))) { skippedCount++; continue; }
+
+                // ✅ Party Number is mandatory AND must be a valid 10-digit phone number
+                const partyNumberDigits = partyNumber.replace(/\D/g, '');
+                if (!partyNumber || partyNumberDigits.length !== 10) { skippedCount++; continue; }
+
                 const partyType: 'Customer' | 'Supplier' = typeVal.startsWith('s') ? 'Supplier' : 'Customer';
                 if (dueVal <= 0 && advanceVal <= 0) { skippedCount++; continue; }
                 if (dueVal > 0 && advanceVal > 0) { skippedCount++; continue; }
@@ -1075,7 +1083,7 @@ const CataloguePartyLedger: React.FC = () => {
             { header: '● Date', note: 'DD/MM/YYYY (Optional, defaults to today)', width: 14 },
             { header: '★ Type', note: 'Customer or Supplier', width: 14 },
             { header: '★ Party Name', note: 'Full party name', width: 22 },
-            { header: '● Party Number', note: 'Phone number (Recommended)', width: 16 },
+            { header: '★ Party Number', note: 'Phone number (Required)', width: 16 },
             { header: '● Due Amount', note: 'They owe you (₹) — leave blank if none', width: 16 },
             { header: '● Advance Amount', note: 'You owe them (₹) — leave blank if none', width: 16 },
             { header: '● Narration', note: 'Optional note / description', width: 26 },
@@ -1387,9 +1395,9 @@ const CataloguePartyLedger: React.FC = () => {
                                         <option value="thisMonth">This Month</option>
                                         <option value="custom">Custom</option>
                                     </FilterSelect>
-                                    <div className="grid grid-cols-2 gap-2 sm:gap-4">
-                                        <input type="date" value={customStartDate} onChange={(e) => { setCustomStartDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-muted border border-border rounded-sm" />
-                                        <input type="date" value={customEndDate} onChange={(e) => { setCustomEndDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-muted border border-border rounded-sm" />
+                                    <div className="grid grid-cols-2 gap-2 sm:gap-3 sm:col-span-2">
+                                        <input type="date" value={customStartDate} onChange={(e) => { setCustomStartDate(e.target.value); setDatePreset('custom'); }} className="w-full min-w-0 p-2 text-sm bg-muted border border-border rounded-sm" />
+                                        <input type="date" value={customEndDate} onChange={(e) => { setCustomEndDate(e.target.value); setDatePreset('custom'); }} className="w-full min-w-0 p-2 text-sm bg-muted border border-border rounded-sm" />
                                     </div>
                                 </div>
 
@@ -1475,7 +1483,7 @@ const CataloguePartyLedger: React.FC = () => {
                                                             </p>
                                                         </div>
                                                     </div>
-                                                     {/* NEW: Remind button — only when party has a due and a valid number */}
+                                                    {/* NEW: Remind button — only when party has a due and a valid number */}
                                                     {party.totalDue > 0 && party.partyNumber && party.partyNumber.trim() !== '' && (
                                                         <div className="mt-2 pt-2 border-t border-border">
                                                             <button

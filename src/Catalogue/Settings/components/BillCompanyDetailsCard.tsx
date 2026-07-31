@@ -8,10 +8,16 @@ interface BillCompanyDetailsCardProps {
   onEditProfile: () => void;
 }
 
-const ReadOnlyField = ({ label, value }: { label: string; value: string }) => (
+const ReadOnlyField = ({ label, value, wrap }: { label: string; value: string; wrap?: boolean }) => (
   <div>
     <label className="mb-1 block text-xs font-bold tracking-wide text-muted-foreground uppercase">{label}</label>
-    <div className="flex h-[44px] items-center truncate rounded-lg border border-border bg-muted px-3 font-medium text-foreground">
+    <div
+      className={
+        wrap
+          ? 'flex min-h-[44px] items-center whitespace-normal break-words rounded-lg border border-border bg-muted px-3 py-2 font-medium text-foreground'
+          : 'flex h-[44px] items-center truncate rounded-lg border border-border bg-muted px-3 font-medium text-foreground'
+      }
+    >
       {value}
     </div>
   </div>
@@ -55,7 +61,7 @@ export function BillCompanyDetailsCard({ businessInfo, onEditProfile }: BillComp
               <ReadOnlyField label="Company Name" value={businessInfo.companyName} />
             </div>
             <div className="md:col-span-2">
-              <ReadOnlyField label="Registered Address" value={businessInfo.address} />
+              <ReadOnlyField label="Registered Address" value={businessInfo.address} wrap />
             </div>
           </div>
         </div>

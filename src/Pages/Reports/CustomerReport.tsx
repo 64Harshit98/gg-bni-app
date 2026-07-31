@@ -194,6 +194,18 @@ const CustomerReport: React.FC = () => {
     });
   };
 
+  const onDatePresetChange = (preset: string) =>
+    handleDatePresetChange(preset, setDatePreset, setStartDate, setEndDate);
+
+  const handleStartDateChange = (value: string) => {
+    setStartDate(value);
+    setDatePreset('custom');
+  };
+  const handleEndDateChange = (value: string) => {
+    setEndDate(value);
+    setDatePreset('custom');
+  };
+
   /* ---------- EXPORT HELPERS ---------- */
   const downloadAsExcel = () => {
     try {
@@ -304,26 +316,31 @@ const CustomerReport: React.FC = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               autoFocus
-              className="h-11 pl-9"
+              className="h-11 pl-9 pr-9"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setShowSearch(false);
+                }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                aria-label="Clear search"
+              >
+                <X className="size-4" />
+              </button>
+            )}
           </div>
         )}
 
         <CustomerFilterBar
           datePreset={datePreset}
-          onPresetChange={(value) =>
-            handleDatePresetChange(value, setDatePreset, setStartDate, setEndDate)
-          }
+          onPresetChange={onDatePresetChange}
           startDate={startDate}
           endDate={endDate}
-          onStartDateChange={(value) => {
-            setStartDate(value);
-            setDatePreset('custom');
-          }}
-          onEndDateChange={(value) => {
-            setEndDate(value);
-            setDatePreset('custom');
-          }}
+          onStartDateChange={handleStartDateChange}
+          onEndDateChange={handleEndDateChange}
           onApply={handleApplyFilters}
         />
 

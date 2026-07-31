@@ -193,16 +193,17 @@ const CatalogueSalesSettingsPage: React.FC = () => {
 
       <main className="w-full flex-grow overflow-y-auto p-3 pb-28 sm:p-4 md:p-5 md:pb-24">
         <form onSubmit={handleSave} className="mx-auto max-w-5xl space-y-5">
-          <InventoryStockSection settings={settings} onToggle={handleCheckboxChange} />
-
-          <CustomerAccessSection settings={settings} onToggle={handleCheckboxChange} />
-
           <PricingTaxSection
             settings={settings}
             onToggle={handleCheckboxChange}
             onTaxTypeChange={(value) => handleChange('taxType', value)}
             onGstSchemeSelect={handleGstSchemeSelect}
           />
+
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+            <InventoryStockSection settings={settings} onToggle={handleCheckboxChange} />
+            <CustomerAccessSection settings={settings} onToggle={handleCheckboxChange} />
+          </div>
 
           <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
             <OrderDeliverySection settings={settings} onChange={handleChange} onToggle={handleCheckboxChange} />

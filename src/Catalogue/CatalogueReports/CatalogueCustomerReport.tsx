@@ -10,7 +10,7 @@ import { IconClose, IconSearch } from '../../constants/Icons';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
 import { handleDatePresetChange } from '../../Pages/Reports/PNLReportComponents/pnlReport.utils';
-import FilterSelect from '../../Pages/Reports/SalesReportComponents/FilterSelect';
+import ReportDateFilter from '../../Components/ReportDateFilter';
 import DownloadChoiceModal from '../../Pages/Reports/ItemReportComponents/DownloadChoiceModal';
 import { type CustomerRow } from '../../Pages/Reports/CustomerReportComponents/customerReport.utils';
 type CustomerRowWithCredit = CustomerRow & { creditNote: number };
@@ -250,6 +250,17 @@ const CatalogueCustomerReport: React.FC = () => {
     });
   };
 
+  const onDatePresetChange = (preset: string) =>
+    handleDatePresetChange(preset, setDatePreset, setStartDate, setEndDate);
+
+  const handleStartDateChange = (value: string) => {
+    setStartDate(value);
+    setDatePreset('custom');
+  };
+  const handleEndDateChange = (value: string) => {
+    setEndDate(value);
+    setDatePreset('custom');
+  };
   // /* ---------- EXPORT HELPERS ---------- */
   // const prepareExportData = (row: CustomerRowWithCredit) => ({
   //   customerName: row.customerName,
@@ -482,7 +493,7 @@ const CatalogueCustomerReport: React.FC = () => {
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
 
-     doc.setFontSize(16);
+      doc.setFontSize(16);
 
       const pageHeight = doc.internal.pageSize.getHeight();
 
@@ -801,53 +812,16 @@ const CatalogueCustomerReport: React.FC = () => {
       )}
 
       {/* FILTERS */}
-      <div className="bg-card p-4 rounded-sm shadow-md mb-2">
-        <FilterSelect
-          value={datePreset}
-          onChange={(e) =>
-            handleDatePresetChange(
-              e.target.value,
-              setDatePreset,
-              setStartDate,
-              setEndDate,
-            )
-          }
-        >
-          <option value="today">Today</option>
-          <option value="yesterday">Yesterday</option>
-          <option value="last7">Last 7 Days</option>
-          <option value="last30">Last 30 Days</option>
-          <option value="custom">Custom</option>
-        </FilterSelect>
-
-        <div className="grid grid-cols-2 gap-2 mt-2">
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => {
-              setStartDate(e.target.value);
-              setDatePreset('custom');
-            }}
-            className="w-full p-2 text-sm bg-muted border rounded-sm"
-          />
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => {
-              setEndDate(e.target.value);
-              setDatePreset('custom');
-            }}
-            className="w-full p-2 text-sm bg-muted border rounded-sm"
-          />
-        </div>
-
-        <button
-          onClick={handleApplyFilters}
-          className="w-full mt-2 px-3 py-1 bg-[#F97316] text-white text-lg font-semibold rounded-sm hover:bg-[#F97316]"
-        >
-          Apply
-        </button>
-      </div>
+      <ReportDateFilter
+        datePreset={datePreset}
+        startDate={startDate}
+        endDate={endDate}
+        onPresetChange={onDatePresetChange}
+        onStartDateChange={handleStartDateChange}
+        onEndDateChange={handleEndDateChange}
+        onApply={handleApplyFilters}
+        theme="catalogue"
+      />
 
       {/* SUMMARY CARDS */}
       <div className="grid grid-cols-2 gap-2">

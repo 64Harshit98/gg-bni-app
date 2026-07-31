@@ -129,7 +129,7 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
             <div id={scannerContainerId} className="w-full max-w-md bg-gray-900 rounded-lg overflow-hidden"></div>
             <button
                 onClick={onClose}
-                className="mt-4 bg-white text-gray-800 font-bold py-2 px-6 rounded-lg shadow-lg hover:bg-gray-200 transition"
+                className="mt-4 bg-card text-foreground font-bold py-2 px-6 rounded-lg shadow-lg hover:bg-muted transition"
             >
                 Close Scanner
             </button>

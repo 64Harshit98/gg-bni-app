@@ -11,6 +11,7 @@ import { InfoTooltip } from '../../Components/InfoToolTip';
 import { formatDateForInput } from '../../Pages/Reports/SalesReportComponents/salesReport.utils';
 import FilterSelect from '../../Pages/Reports/SalesReportComponents/FilterSelect';
 import useTaxReport from '../hooks/useTaxReport';
+import { Spinner } from '../../Components/ui/spinner';
 import {
   handleDatePresetChange,
   handleApplyFilters,
@@ -216,7 +217,10 @@ const CatalogueTaxReport: React.FC = () => {
 
   if (isLoading || authLoading)
     return (
-      <div className="p-10 text-center text-gray-500">Loading Tax Data...</div>
+      <div className="flex flex-col items-center justify-center gap-3 p-10 text-muted-foreground">
+        <Spinner size="xl" />
+        <p className="text-sm font-medium">Loading Tax Data...</p>
+      </div>
     );
   if (error)
     return <div className="p-10 text-center text-red-500">{error}</div>;
@@ -226,20 +230,20 @@ const CatalogueTaxReport: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 p-2 pb-16">
+    <div className="min-h-screen bg-muted p-2 pb-16">
       <div className="flex items-center justify-between pb-3 border-b mb-2">
-        <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
+        <h1 className="flex-1 text-xl text-center font-bold text-foreground">
           Tax Liability Report
         </h1>
         <button
           onClick={() => navigate(-1)}
-          className="p-2 text-gray-600 hover:bg-gray-200 rounded-full"
+          className="p-2 text-muted-foreground hover:bg-muted rounded-full"
         >
           <IconClose width={20} height={20} />
         </button>
       </div>
 
-      <div className="bg-white p-3 rounded-lg shadow-sm mb-3">
+      <div className="bg-card p-3 rounded-lg shadow-sm mb-3">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <FilterSelect
             label="Period"
@@ -260,7 +264,7 @@ const CatalogueTaxReport: React.FC = () => {
           </FilterSelect>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-xs text-center font-medium text-gray-600 mb-1">
+              <label className="block text-xs text-center font-medium text-muted-foreground mb-1">
                 From
               </label>
               <input
@@ -270,11 +274,11 @@ const CatalogueTaxReport: React.FC = () => {
                   setCustomStartDate(e.target.value);
                   setDatePreset('custom');
                 }}
-                className="w-full p-2 text-sm bg-gray-50 border rounded-md"
+                className="w-full p-2 text-sm bg-muted border rounded-md"
               />
             </div>
             <div>
-              <label className="block text-xs text-center font-medium text-gray-600 mb-1">
+              <label className="block text-xs text-center font-medium text-muted-foreground mb-1">
                 To
               </label>
               <input
@@ -284,7 +288,7 @@ const CatalogueTaxReport: React.FC = () => {
                   setCustomEndDate(e.target.value);
                   setDatePreset('custom');
                 }}
-                className="w-full p-2 text-sm bg-gray-50 border rounded-md"
+                className="w-full p-2 text-sm bg-muted border rounded-md"
               />
             </div>
           </div>
@@ -309,7 +313,7 @@ const CatalogueTaxReport: React.FC = () => {
         <div className="text-sm text-blue-800">
           <span className="font-bold">Detected Scheme:</span> {gstScheme}
           {gstScheme === 'Composition' && (
-            <span className="ml-2 text-xs text-gray-500">
+            <span className="ml-2 text-xs text-muted-foreground">
               (Flat rate on turnover, No ITC)
             </span>
           )}
@@ -330,7 +334,7 @@ const CatalogueTaxReport: React.FC = () => {
         )}
       </div>
 
-      <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 ml-1">
+      <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 ml-1">
         Turnover Overview
       </h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
@@ -338,17 +342,17 @@ const CatalogueTaxReport: React.FC = () => {
           variant={CardVariant.Summary}
           title="Total Sales"
           value={`₹${summary.totalSales.toLocaleString('en-IN')}`}
-          className="bg-white border-blue-200"
+          className="bg-card border-blue-200"
         />
         <CustomCard
           variant={CardVariant.Summary}
           title="Total Purchases"
           value={`₹${summary.totalPurchases.toLocaleString('en-IN')}`}
-          className="bg-white border-orange-200"
+          className="bg-card border-orange-200"
         />
       </div>
 
-      <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 ml-1">
+      <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 ml-1">
         Tax Liability
       </h3>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
@@ -371,7 +375,7 @@ const CatalogueTaxReport: React.FC = () => {
             value={`₹${summary.inputTax.toLocaleString('en-IN')}`}
           />
           {gstScheme === 'Composition' && (
-            <div className="absolute top-2 right-2 text-xs bg-gray-200 px-1 rounded">
+            <div className="absolute top-2 right-2 text-xs bg-muted px-1 rounded">
               Not Usable
             </div>
           )}
@@ -398,7 +402,7 @@ const CatalogueTaxReport: React.FC = () => {
           <button
             key={mode}
             onClick={() => setViewMode(mode as any)}
-            className={`px-4 py-2 text-sm font-medium ${viewMode === mode ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+            className={`px-4 py-2 text-sm font-medium ${viewMode === mode ? 'border-b-2 border-blue-600 text-blue-600' : 'text-muted-foreground hover:text-foreground'}`}
           >
             {mode}
           </button>
@@ -406,7 +410,7 @@ const CatalogueTaxReport: React.FC = () => {
       </div>
 
       {viewMode === 'Summary' ? (
-        <div className="bg-white p-6 rounded shadow-sm text-center text-gray-500 mt-4">
+        <div className="bg-card p-6 rounded shadow-sm text-center text-muted-foreground mt-4">
           <p>
             Select "Sales" or "Purchases" above to view detailed line items.
           </p>

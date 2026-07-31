@@ -13,6 +13,7 @@ import { TopSoldItemsCard } from '../Components/TopFiveOrder';
 import { OrderBarChartReport } from '../Components/OrderSalesGraph';
 import { IconChevronDown } from '../constants/Icons';
 import { FiRefreshCw, FiLoader } from 'react-icons/fi';
+import { Spinner } from '../Components/ui/spinner';
 import { fetchDashboardData, CACHE_DURATION } from '../lib/fetchDashboardData';
 import ShinyText from '../Components/ShinyText';
 import type { WithCacheMeta } from '../lib/fetchDashboardData';
@@ -335,10 +336,10 @@ const displayData = isTutorialActive ? sampleData : data;
     }, [currentUser]);
 
     return (
-        <div className="flex min-h-screen w-full flex-col bg-gray-100 mb-16">
+        <div className="aurora relative flex min-h-screen w-full flex-col bg-background mb-16">
 
             {soon && (
-                <div className={`w-full text-center py-2 text-sm font-bold text-white shadow-sm transition-colors duration-300 ${isUrgent ? 'bg-red-300' : 'bg-amber-200'}`}>
+                <div className={`w-full text-center py-2 text-sm font-bold shadow-sm transition-colors duration-300 ${isUrgent ? 'bg-destructive text-destructive-foreground' : 'bg-warning text-warning-foreground'}`}>
                     <ShinyText
                         text={` Subscription expires ${daysLeft} day${daysLeft === 1 ? '' : 's'}.`}
                         speed={4}
@@ -351,57 +352,75 @@ const displayData = isTutorialActive ? sampleData : data;
                         pauseOnHover={false}
                         disabled={false}
                     />
-                    <Link to="/subscription" className="text-black ml-2 underline hover:text-gray-100">Renew Now</Link>
+                    <Link to="/subscription" className="ml-2 underline underline-offset-2 hover:opacity-80">Renew Now</Link>
                 </div>
             )}
 
             {/* ── Header ──────────────────────────────────────────────────── */}
-            <header className="flex flex-shrink-0 items-center justify-between border-b border-slate-300 bg-gray-100 p-2">
+            <header className="glass sticky top-0 z-20 mx-3 mt-3 flex flex-wrap flex-shrink-0 items-center justify-between gap-3 rounded-2xl p-3 shadow-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                    {/* Left: page navigation dropdown */}
+                    <TutorialStep step={1} currentStep={tutorialStep} text="Use this menu to switch between POS and Catalogue views." onNext={() => next(2)} onSkip={skip} mobileArrowAlign="left">
+                        <div ref={setTutorialRef(1)} className="relative inline-block">
+                            <button
+                                disabled={!hasCataloguePermission}
+                                onClick={() => setIsMenuOpen(!isMenuOpen)}
+                                className={`flex min-w-20 items-center justify-between gap-2 rounded-xl border border-border p-2 text-sm font-medium text-foreground transition-colors whitespace-nowrap
+                                ${!hasCataloguePermission ? 'opacity-50 cursor-not-allowed bg-muted' : 'hover:bg-accent cursor-pointer'}`}
+                            >
+                                <span className="font-medium">{currentLabel}</span>
+                                <IconChevronDown width={16} height={16} className={`transition-transform ${isMenuOpen ? 'rotate-180' : 'rotate-0'}`} />
+                            </button>
 
-                {/* Left: page navigation dropdown */}
-                <TutorialStep step={1} currentStep={tutorialStep} text="Use this menu to switch between POS and Catalogue views." onNext={() => next(2)} onSkip={skip} mobileArrowAlign="left">
-                    <div ref={setTutorialRef(1)} className="relative flex justify-start">
-                        <button
-                            disabled={!hasCataloguePermission}
-                            onClick={() => setIsMenuOpen(!isMenuOpen)}
-                            className={`flex min-w-20 items-center justify-between rounded-sm border border-slate-400 p-2 text-sm font-medium text-slate-700 transition-colors whitespace-nowrap
-                            ${!hasCataloguePermission ? 'opacity-50 cursor-not-allowed bg-gray-100' : 'hover:bg-slate-200 cursor-pointer'}`}
-                        >
-                            <span className="font-medium">{currentLabel}</span>
-                            <IconChevronDown width={16} height={16} className={`transition-transform ${isMenuOpen ? 'rotate-180' : 'rotate-0'}`} />
-                        </button>
+                            {isMenuOpen && hasCataloguePermission && (
+                                <div className="glass absolute top-full left-0 mt-2 w-56 rounded-xl shadow-lg z-10 overflow-hidden">
+                                    <ul className="py-1">
+                                        {SiteItems.map(({ to, label }) => (
+                                            <li key={to}>
+                                                <Link
+                                                    to={to}
+                                                    onClick={() => setIsMenuOpen(false)}
+                                                    className={`flex w-full items-center gap-3 px-4 py-2 text-sm font-medium
+                                                    ${location.pathname === to ? 'bg-gradient-brand text-white' : 'text-foreground hover:bg-accent'}`}
+                                                >
+                                                    {label}
+                                                </Link>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
+                    </TutorialStep>
 
-                        {isMenuOpen && hasCataloguePermission && (
-                            <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-slate-300 rounded-md shadow-lg z-10">
-                                <ul className="py-1">
-                                    {SiteItems.map(({ to, label }) => (
-                                        <li key={to}>
-                                            <Link
-                                                to={to}
-                                                onClick={() => setIsMenuOpen(false)}
-                                                className={`flex w-full items-center gap-3 px-4 py-2 text-sm font-medium
-                                                ${location.pathname === to ? 'bg-gray-500 text-white' : 'text-slate-700 hover:bg-gray-100'}`}
-                                            >
-                                                {label}
-                                            </Link>
-                                        </li>
-                                    ))}
-                                </ul>
+                    {/* Filter */}
+                    <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueFilter}>
+                        <TutorialStep step={3} currentStep={tutorialStep} text="Use these filters to select the date range for your dashboard data." onNext={() => next(4)} onSkip={skip}>
+                            <div ref={setTutorialRef(3)}>
+                                <FilterControls />
                             </div>
-                        )}
-                    </div>
-                </TutorialStep>
+                        </TutorialStep>
+                    </ShowWrapper>
+                </div>
 
                 {/* Center: dashboard title and business name */}
                 <div className="flex-1 text-center flex flex-col items-center justify-center">
-                    <h1 className="text-2xl font-bold text-slate-800">Dashboard</h1>
-                    <p className="text-sm text-slate-500">{isHeaderLoading ? '...' : businessName}</p>
+                    <h1 className="text-gradient text-2xl font-bold">Dashboard</h1>
+                    <p className="text-sm text-muted-foreground">{isHeaderLoading ? '...' : businessName}</p>
                 </div>
 
-                {/* Right: Notification bell + toggle button */}
-                <div className="w-28 flex justify-end items-center gap-2">
+                {/* Right: Last updated + Notification bell + toggle button */}
+                <div className="flex flex-wrap items-center justify-end gap-1.5">
+                    <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueFilter}>
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card/60 px-3 py-1 text-xs text-muted-foreground">
+                            Last updated: {formattedLastUpdated}
+                            <button onClick={handleRefresh} className={`text-muted-foreground hover:text-primary transition-all ${loading ? 'animate-spin' : ''}`}>
+                                {loading ? <FiLoader size={13} /> : <FiRefreshCw size={13} />}
+                            </button>
+                        </span>
+                    </ShowWrapper>
                     <ShowWrapper requiredPermission={Cata_Permissions.ViewNotification}>
-                        <div className="border border-slate-300 rounded-sm bg-gray-100 shadow-sm">
+                        <div className="relative flex items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
                             <NotificationBell />
                         </div>
                     </ShowWrapper>
@@ -409,15 +428,13 @@ const displayData = isTutorialActive ? sampleData : data;
                         <TutorialStep step={2} currentStep={tutorialStep} text="Toggle this to show or hide sensitive sales figures." onNext={() => next(3)} onSkip={skip}>
                             <button
                                 onClick={() => setIsDataVisible(!isDataVisible)}
-                                className="p-2 rounded-sm border border-slate-400 hover:bg-slate-200 transition-colors"
+                                className="flex size-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
                                 title={isDataVisible ? 'Hide Data' : 'Show Data'}
                             >
                                 {isDataVisible ? (
-                                    // Eye open — data is currently visible
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></svg>
                                 ) : (
-                                    // Eye closed — data is currently hidden
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" /><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" /><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" /><line x1="2" x2="22" y1="2" y2="22" /></svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" /><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" /><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" /><line x1="2" x2="22" y1="2" y2="22" /></svg>
                                 )}
                             </button>
                         </TutorialStep>
@@ -426,38 +443,12 @@ const displayData = isTutorialActive ? sampleData : data;
             </header>
 
             {/* ── Main Content ─────────────────────────────────────────────── */}
-            <main ref={mainRef} className="flex-grow overflow-y-auto p-2">
-
-                {/* Refresh bar: shows when data was last fetched + manual refresh button */}
-                <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueFilter}>
-                    <div className="flex justify-center gap-2 mb-2">
-                        <p className="text-sm text-slate-500 flex items-center">
-                            Last Updated: {formattedLastUpdated}
-                        </p>
-                        <button
-                            onClick={handleRefresh}
-                            className={`p-1 rounded-full hover:bg-slate-200 text-slate-600 transition-all ${loading ? 'animate-spin' : ''}`}
-                        >
-                            {loading ? <FiLoader size={14} /> : <FiRefreshCw size={14} />}
-                        </button>
-                    </div>
-                </ShowWrapper>
-
-                <div className="mx-auto max-w-7xl relative">
-
-                    {/* Date Filter — matches POS (mb-2 inside max-w-7xl) */}
-                    <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueFilter}>
-
-                        <TutorialStep step={3} currentStep={tutorialStep} text="Use these filters to select the date range for your dashboard data." onNext={() => next(4)} onSkip={skip}>
-                            <div ref={setTutorialRef(3)} className="mb-2">
-                                <FilterControls />
-                            </div>
-                        </TutorialStep>
-                    </ShowWrapper>
+            <main ref={mainRef} className="flex-grow overflow-y-auto p-3">
+                <div className="mx-auto max-w-none relative">
                     {/* Full-page loader shown only on the very first load */}
                     {(loading && !data && !isTutorialActive) ? (
-                        <div className="flex h-64 items-center justify-center text-slate-500">
-                            <FiLoader className="animate-spin mr-2" /> Loading Dashboard...
+                        <div className="flex h-64 items-center justify-center gap-2 text-muted-foreground">
+                            <Spinner size="sm" /> Loading Dashboard...
                         </div>
                     ) : (
                         <div className="flex flex-col gap-2">
@@ -534,13 +525,13 @@ const displayData = isTutorialActive ? sampleData : data;
                                 </TutorialStep>
 
                                 {/* Coming Soon placeholder */}
-                                <div className="relative rounded-xl border border-gray-200 bg-white p-4 shadow-sm opacity-70 cursor-not-allowed flex items-center justify-center min-h-[160px]">
-                                    <span className="absolute top-2 right-2 text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">
+                                <div className="relative flex min-h-[160px] cursor-not-allowed items-center justify-center rounded-2xl border border-dashed border-border/70 bg-card/60 p-4 shadow-sm">
+                                    <span className="absolute top-3 right-3 rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning">
                                         Coming Soon
                                     </span>
                                     <div className="text-center">
-                                        <h3 className="text-lg font-semibold text-gray-500">Restock Alerts</h3>
-                                        <p className="text-sm text-gray-400">Feature under development</p>
+                                        <h3 className="text-sm font-semibold text-muted-foreground">Restock Alerts</h3>
+                                        <p className="text-xs text-muted-foreground">Feature under development</p>
                                     </div>
                                 </div>
 

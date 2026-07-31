@@ -768,13 +768,13 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     width: rect.width * 2 + 8,
                     zIndex: 99999,
                 }}
-                className="bg-white border border-gray-200 shadow-xl rounded-sm max-h-48 overflow-y-auto"
+                className="bg-card border border-border shadow-xl rounded-sm max-h-48 overflow-y-auto"
             >
                 {suggestions.map((party, idx) => (
                     <div key={idx} className="px-2 py-1 hover:bg-blue-50 cursor-pointer border-b last:border-0 text-sm flex justify-between items-center" onClick={() => selectParty(party)}>
                         <div>
-                            <div className="font-semibold text-xs text-gray-800">{party.name}</div>
-                            <div className="text-[10px] text-gray-500">{party.number}</div>
+                            <div className="font-semibold text-xs text-foreground">{party.name}</div>
+                            <div className="text-[10px] text-muted-foreground">{party.number}</div>
                         </div>
                         {party.creditBalance && party.creditBalance > 0 && (<span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full">Credit: ₹{party.creditBalance}</span>)}
                     </div>
@@ -794,7 +794,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             {showTransportModal && (
                 <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4" onClick={() => setShowTransportModal(false)}>
                     <div className="absolute inset-0 bg-black/50" />
-                    <div className="relative w-full max-w-md bg-white rounded-sm shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                    <div className="relative w-full max-w-md bg-card rounded-sm shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
                         <div className="bg-blue-500 px-4 py-2.5 flex items-center justify-between">
                             <h3 className="text-white font-semibold text-sm">Transport Details</h3>
                             <button onClick={() => setShowTransportModal(false)} className="text-white hover:text-orange-100">
@@ -804,28 +804,28 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                         <div className="p-4 space-y-3">
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="col-span-2">
-                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Transport Name</label>
-                                    <input type="text" value={transportName} onChange={(e) => setTransportName(e.target.value)} placeholder="e.g. DP World Express Logistic" className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-orange-500 outline-none" />
+                                    <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">Transport Name</label>
+                                    <input type="text" value={transportName} onChange={(e) => setTransportName(e.target.value)} placeholder="e.g. DP World Express Logistic" className="w-full p-2 text-sm rounded-sm border border-border bg-muted focus:border-orange-500 outline-none" />
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">GR/RR No.</label>
-                                    <input type="text" value={grRrNo} onChange={(e) => setGrRrNo(e.target.value)} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-orange-500 outline-none" />
+                                    <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">GR/RR No.</label>
+                                    <input type="text" value={grRrNo} onChange={(e) => setGrRrNo(e.target.value)} className="w-full p-2 text-sm rounded-sm border border-border bg-muted focus:border-orange-500 outline-none" />
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">GR/RR Date</label>
-                                    <input type="date" value={grRrDate} onChange={(e) => setGrRrDate(e.target.value)} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-orange-500 outline-none" />
+                                    <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">GR/RR Date</label>
+                                    <input type="date" value={grRrDate} onChange={(e) => setGrRrDate(e.target.value)} className="w-full p-2 text-sm rounded-sm border border-border bg-muted focus:border-orange-500 outline-none" />
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Vehicle No.</label>
-                                    <input type="text" value={vehicleNo} onChange={(e) => setVehicleNo(e.target.value)} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-orange-500 outline-none" />
+                                    <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">Vehicle No.</label>
+                                    <input type="text" value={vehicleNo} onChange={(e) => setVehicleNo(e.target.value)} className="w-full p-2 text-sm rounded-sm border border-border bg-muted focus:border-orange-500 outline-none" />
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">PIN Code</label>
-                                    <input type="text" maxLength={6} value={pinCode} onChange={(e) => setPinCode(e.target.value.replace(/\D/g, '').slice(0, 6))} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-orange-500 outline-none" />
+                                    <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">PIN Code</label>
+                                    <input type="text" maxLength={6} value={pinCode} onChange={(e) => setPinCode(e.target.value.replace(/\D/g, '').slice(0, 6))} className="w-full p-2 text-sm rounded-sm border border-border bg-muted focus:border-orange-500 outline-none" />
                                 </div>
                                 <div className="col-span-2">
-                                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Station / From Place</label>
-                                    <input type="text" value={stationFrom} onChange={(e) => setStationFrom(e.target.value)} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-orange-500 outline-none" />
+                                    <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">Station / From Place</label>
+                                    <input type="text" value={stationFrom} onChange={(e) => setStationFrom(e.target.value)} className="w-full p-2 text-sm rounded-sm border border-border bg-muted focus:border-orange-500 outline-none" />
                                 </div>
                             </div>
                             <div className="flex gap-2 pt-2">
@@ -848,31 +848,31 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     </div>
                 </div>
             )}
-            <div className="relative w-full max-w-lg md:max-w-3xl bg-gray-50 rounded-t-xs sm:rounded-2xl shadow-2xl max-h-[90dvh] flex flex-col transform transition-transform duration-300 ease-out animate-slide-up" onClick={(e) => e.stopPropagation()}>
+            <div className="relative w-full max-w-lg md:max-w-3xl bg-muted rounded-t-xs sm:rounded-2xl shadow-2xl max-h-[90dvh] flex flex-col transform transition-transform duration-300 ease-out animate-slide-up" onClick={(e) => e.stopPropagation()}>
                 {/* Header */}
-                <div className="p-3 bg-white rounded-t-xs border-b border-gray-200 sticky top-0 z-10 flex items-center justify-center shadow-sm">
+                <div className="p-3 bg-card rounded-t-xs border-b border-border sticky top-0 z-10 flex items-center justify-center shadow-sm">
                     <div className="w-10 h-1 bg-gray-300 rounded-full absolute top-2"></div>
-                    <button onClick={onClose} className="absolute left-4 p-1.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors">
+                    <button onClick={onClose} className="absolute left-4 p-1.5 rounded-full bg-muted hover:bg-muted text-muted-foreground transition-colors">
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
                     </button>
-                    <h2 className="text-lg font-semibold text-gray-800 mt-2">Payment Details</h2>
+                    <h2 className="text-lg font-semibold text-foreground mt-2">Payment Details</h2>
                 </div>
 
                 {/* MIDDLE SECTION */}
-                <div className="flex-1 overflow-y-auto md:overflow-hidden bg-white flex flex-col md:flex-row">
+                <div className="flex-1 overflow-y-auto md:overflow-hidden bg-card flex flex-col md:flex-row">
 
                     {/* LEFT COLUMN: Customer Info & Balances */}
                     {enableCustomerDetails && (
-                        <div className="md:w-1/2 flex flex-col border-b md:border-b-0 md:border-r border-gray-200 bg-white">
+                        <div className="md:w-1/2 flex flex-col border-b md:border-b-0 md:border-r border-border bg-card">
 
                             <div className="p-2 md:p-3 space-y-1 md:space-y-3 flex-1 overflow-y-auto">
                                 {!isCalculator && (
                                     <div className="flex justify-between items-center mb-2">
-                                        <h3 className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-wider">{partyLabel} Info</h3>
+                                        <h3 className="text-[10px] md:text-xs font-bold text-muted-foreground uppercase tracking-wider">{partyLabel} Info</h3>
                                         {isSale && enableShippingDetails && (
-                                            <div className="flex bg-gray-200 rounded-xs p-1 shadow-inner">
-                                                <button onClick={() => setAddressType('billing')} className={`text-[10px] md:text-xs px-4 md:px-5 py-1.5 md:py-2 rounded font-semibold transition-all ${addressType === 'billing' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Billing</button>
-                                                <button onClick={() => setAddressType('shipping')} className={`text-[10px] md:text-xs px-4 md:px-5 py-1.5 md:py-2 rounded font-semibold transition-all ${addressType === 'shipping' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>Shipping</button>
+                                            <div className="flex bg-muted rounded-xs p-1 shadow-inner">
+                                                <button onClick={() => setAddressType('billing')} className={`text-[10px] md:text-xs px-4 md:px-5 py-1.5 md:py-2 rounded font-semibold transition-all ${addressType === 'billing' ? 'bg-card text-blue-600 shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>Billing</button>
+                                                <button onClick={() => setAddressType('shipping')} className={`text-[10px] md:text-xs px-4 md:px-5 py-1.5 md:py-2 rounded font-semibold transition-all ${addressType === 'shipping' ? 'bg-card text-blue-600 shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>Shipping</button>
                                             </div>
                                         )}
                                     </div>
@@ -881,7 +881,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                 {!isCalculator && isSale && enableShippingDetails && addressType === 'shipping' && (
                                     <div className="flex items-center justify-end mb-2 md:mb-3 animate-in fade-in slide-in-from-top-1">
                                         <label className="flex items-center gap-1.5 md:gap-2 cursor-pointer bg-blue-50 px-2 md:px-3 py-1 md:py-1.5 rounded-xs border border-blue-100">
-                                            <input type="checkbox" checked={isSameAsBilling} onChange={(e) => { const isChecked = e.target.checked; setIsSameAsBilling(isChecked); if (!isChecked) { setShippingName(''); setShippingNumber(''); setShippingAddress(''); setShippingGST(''); } }} className="w-3.5 h-3.5 md:w-4 md:h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer" />
+                                            <input type="checkbox" checked={isSameAsBilling} onChange={(e) => { const isChecked = e.target.checked; setIsSameAsBilling(isChecked); if (!isChecked) { setShippingName(''); setShippingNumber(''); setShippingAddress(''); setShippingGST(''); } }} className="w-3.5 h-3.5 md:w-4 md:h-4 text-blue-600 rounded border-border focus:ring-blue-500 cursor-pointer" />
                                             <span className="text-[10px] md:text-xs font-semibold text-blue-800">Same as Billing Details</span>
                                         </label>
                                     </div>
@@ -901,7 +901,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                                 else { setShippingNumber(val); setIsSameAsBilling(false); }
                                             }}
                                             onFocus={() => { if (isSale && addressType === 'billing' && partyNumber.length >= 3) searchParty(partyNumber, 'number'); }}
-                                            className={`w-full bg-gray-50 p-2 md:p-3 text-xs md:text-sm rounded-xs border ${requireCustomerMobile && !partyNumber && addressType === 'billing' ? 'border-red-300 focus:border-red-500' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none`}
+                                            className={`w-full bg-muted p-2 md:p-3 text-xs md:text-sm rounded-xs border ${requireCustomerMobile && !partyNumber && addressType === 'billing' ? 'border-red-300 focus:border-red-500' : 'border-border focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none`}
                                             autoComplete="off"
                                         />
                                         {requireCustomerMobile && addressType === 'billing' && <span className="absolute right-2 top-2 md:right-3 md:top-3 text-red-500 font-bold">*</span>}
@@ -918,7 +918,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                                 else { setShippingName(e.target.value); setIsSameAsBilling(false); }
                                             }}
                                             onFocus={() => { if (!isSale && addressType === 'billing' && partyName.length >= 3) searchParty(partyName, 'name'); }}
-                                            className={`w-full bg-gray-50 p-2 md:p-3 text-xs md:text-sm rounded-xs border ${requireCustomerName && !partyName && addressType === 'billing' ? '' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none`}
+                                            className={`w-full bg-muted p-2 md:p-3 text-xs md:text-sm rounded-xs border ${requireCustomerName && !partyName && addressType === 'billing' ? '' : 'border-border focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none`}
                                             autoComplete="off"
                                         />
                                         {requireCustomerName && addressType === 'billing' && <span className="absolute right-2 top-2 md:right-3 md:top-3 text-red-500 font-bold">*</span>}
@@ -933,7 +933,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                                 <span>{isDetailsExpanded ? '-' : '+'} GST & Address</span>
                                             </div>
                                             {isSale && enableNarration && (
-                                                <div onClick={() => setIsNarrationExpanded(!isNarrationExpanded)} className="flex items-center justify-start cursor-pointer text-gray-500 hover:text-gray-700 transition-colors text-[10px] md:text-xs font-semibold select-none">
+                                                <div onClick={() => setIsNarrationExpanded(!isNarrationExpanded)} className="flex items-center justify-start cursor-pointer text-muted-foreground hover:text-foreground transition-colors text-[10px] md:text-xs font-semibold select-none">
                                                     <span>{isNarrationExpanded ? '- ' : '+'} Narration</span>
                                                 </div>
                                             )}
@@ -951,10 +951,10 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
 
                                         {isDetailsExpanded && (
                                             <div className="flex flex-col gap-2 md:gap-3 mt-1.5 md:mt-3 animate-in slide-in-from-top-2 fade-in duration-200">
-                                                <input type="text" placeholder="GST Number" maxLength={15} value={addressType === 'billing' ? partyGST : shippingGST} onChange={(e) => { if (addressType === 'billing') { setPartyGST(e.target.value); } else { setShippingGST(e.target.value); setIsSameAsBilling(false); } }} className="w-full p-2 text-xs md:text-sm rounded-xs border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none" />
+                                                <input type="text" placeholder="GST Number" maxLength={15} value={addressType === 'billing' ? partyGST : shippingGST} onChange={(e) => { if (addressType === 'billing') { setPartyGST(e.target.value); } else { setShippingGST(e.target.value); setIsSameAsBilling(false); } }} className="w-full p-2 text-xs md:text-sm rounded-xs border border-border bg-muted focus:border-blue-500 outline-none" />
                                                 <div className="flex gap-2 w-full">
-                                                    <input type="text" placeholder="Full Address" value={addressType === 'billing' ? partyAddress : shippingAddress} onChange={(e) => { if (addressType === 'billing') { setPartyAddress(e.target.value); } else { setShippingAddress(e.target.value); setIsSameAsBilling(false); } }} className="flex-1 p-2 text-xs md:text-sm rounded-xs border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none" />
-                                                    <select value={addressType === 'billing' ? partyState : shippingState} onChange={(e) => { if (addressType === 'billing') { setPartyState(e.target.value); } else { setShippingState(e.target.value); setIsSameAsBilling(false); } }} className="w-1/3 p-2 text-xs md:text-sm rounded-xs border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none">
+                                                    <input type="text" placeholder="Full Address" value={addressType === 'billing' ? partyAddress : shippingAddress} onChange={(e) => { if (addressType === 'billing') { setPartyAddress(e.target.value); } else { setShippingAddress(e.target.value); setIsSameAsBilling(false); } }} className="flex-1 p-2 text-xs md:text-sm rounded-xs border border-border bg-muted focus:border-blue-500 outline-none" />
+                                                    <select value={addressType === 'billing' ? partyState : shippingState} onChange={(e) => { if (addressType === 'billing') { setPartyState(e.target.value); } else { setShippingState(e.target.value); setIsSameAsBilling(false); } }} className="w-1/3 p-2 text-xs md:text-sm rounded-xs border border-border bg-muted focus:border-blue-500 outline-none">
                                                         <option value="">State</option>
                                                         {INDIAN_STATES.map(state => (<option key={state} value={state}>{state}</option>))}
                                                     </select>
@@ -966,8 +966,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                             <div className="flex flex-col gap-1.5 md:gap-2 mt-1.5 md:mt-3 animate-in slide-in-from-top-2 fade-in duration-200">
                                                 {expenses.map((expense) => (
                                                     <div key={expense.id} className="flex items-center gap-1.5 md:gap-2 p-1.5 min-w-0 bg-orange-50 rounded-xs border border-orange-100">
-                                                        <input type="text" placeholder="Expense Name" value={expense.name} onChange={(e) => setExpenses(prev => prev.map(ex => ex.id === expense.id ? { ...ex, name: e.target.value } : ex))} className="flex-1 min-w-0 p-2 text-xs md:text-sm rounded-xs border border-orange-200 bg-white focus:border-orange-500 outline-none" />
-                                                        <input type="number" placeholder="Amt (₹)" value={expense.amount} onChange={(e) => setExpenses(prev => prev.map(ex => ex.id === expense.id ? { ...ex, amount: parseFloat(e.target.value) || '' } : ex))} className="w-20 min-w-0 md:w-28 p-2 text-xs md:text-sm rounded-xs border border-orange-200 bg-white focus:border-orange-500 outline-none" />
+                                                        <input type="text" placeholder="Expense Name" value={expense.name} onChange={(e) => setExpenses(prev => prev.map(ex => ex.id === expense.id ? { ...ex, name: e.target.value } : ex))} className="flex-1 min-w-0 p-2 text-xs md:text-sm rounded-xs border border-orange-200 bg-card focus:border-orange-500 outline-none" />
+                                                        <input type="number" placeholder="Amt (₹)" value={expense.amount} onChange={(e) => setExpenses(prev => prev.map(ex => ex.id === expense.id ? { ...ex, amount: parseFloat(e.target.value) || '' } : ex))} className="w-20 min-w-0 md:w-28 p-2 text-xs md:text-sm rounded-xs border border-orange-200 bg-card focus:border-orange-500 outline-none" />
                                                         <button onClick={() => setExpenses(prev => prev.filter(ex => ex.id !== expense.id))} className="p-1 md:p-1.5 rounded-full bg-orange-100 hover:bg-red-100 text-orange-400 hover:text-red-500 transition-colors flex-shrink-0"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button>
                                                     </div>
                                                 ))}
@@ -975,7 +975,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                         )}
                                         {isNarrationExpanded && (
                                             <div className="mt-1.5 md:mt-2 animate-in slide-in-from-top-2 fade-in duration-200">
-                                                <textarea placeholder="Enter narration or remarks..." value={narration} onChange={(e) => setNarration(e.target.value)} className="w-full p-2 text-xs md:text-sm rounded-xs border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none resize-none" rows={2} />
+                                                <textarea placeholder="Enter narration or remarks..." value={narration} onChange={(e) => setNarration(e.target.value)} className="w-full p-2 text-xs md:text-sm rounded-xs border border-border bg-muted focus:border-blue-500 outline-none resize-none" rows={2} />
                                             </div>
                                         )}
                                     </div>
@@ -985,14 +985,14 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                             {/* Available Balances */}
                             {(partyCredit > 0 || partyDebit > 0) && (
                                 <div className="px-2 md:px-5 pb-1 md:pb-3">
-                                    <h3 className="text-[9px] md:text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5 md:mb-1">Available Balances</h3>
+                                    <h3 className="text-[9px] md:text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1.5 md:mb-1">Available Balances</h3>
                                     {partyCredit > 0 && (
                                         <div className="flex items-center justify-between p-1 md:p-3 bg-green-50 border border-green-100 rounded-xs mb-1.5 md:mb-2">
                                             <span className="text-[10px] md:text-sm font-semibold text-green-800">Credit Note</span>
                                             <span className="text-[8px] md:text-xs text-green-600 mx-auto ml-2">Avail: ₹{partyCredit.toFixed(2)}</span>
                                             <label className="flex items-center gap-1.5 md:gap-2 cursor-pointer ml-2">
-                                                <input type="checkbox" checked={useCredit} onChange={(e) => setUseCredit(e.target.checked)} className="w-3.5 h-3.5 md:w-5 md:h-5 text-green-600 rounded focus:ring-green-500 border-gray-300" />
-                                                <span className="text-[10px] md:text-sm font-medium text-gray-700">Apply</span>
+                                                <input type="checkbox" checked={useCredit} onChange={(e) => setUseCredit(e.target.checked)} className="w-3.5 h-3.5 md:w-5 md:h-5 text-green-600 rounded focus:ring-green-500 border-border" />
+                                                <span className="text-[10px] md:text-sm font-medium text-foreground">Apply</span>
                                             </label>
                                         </div>
                                     )}
@@ -1001,8 +1001,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                             <span className="text-[10px] md:text-sm font-semibold text-red-800">Debit Balance</span>
                                             <span className="text-[8px] md:text-xs text-red-600 mx-auto ml-2">Avail: ₹{partyDebit.toFixed(2)}</span>
                                             <label className="flex items-center gap-1.5 md:gap-2 cursor-pointer ml-2">
-                                                <input type="checkbox" checked={useDebit} onChange={(e) => setUseDebit(e.target.checked)} className="w-3.5 h-3.5 md:w-5 md:h-5 text-red-600 rounded focus:ring-red-500 border-gray-300" />
-                                                <span className="text-[10px] md:text-sm font-medium text-gray-700">Apply</span>
+                                                <input type="checkbox" checked={useDebit} onChange={(e) => setUseDebit(e.target.checked)} className="w-3.5 h-3.5 md:w-5 md:h-5 text-red-600 rounded focus:ring-red-500 border-border" />
+                                                <span className="text-[10px] md:text-sm font-medium text-foreground">Apply</span>
                                             </label>
                                         </div>
                                     )}
@@ -1012,8 +1012,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     )}
 
                     {/* RIGHT COLUMN: Transaction Type */}
-                    <div className={`p-2 md:p-4 bg-gray-50 flex flex-col justify-center border-t md:border-t-0 ${enableCustomerDetails ? 'md:w-1/2' : 'w-full'}`}>
-                        <h3 className="text-[10px] md:text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2 md:mb-3">
+                    <div className={`p-2 md:p-4 bg-muted flex flex-col justify-center border-t md:border-t-0 ${enableCustomerDetails ? 'md:w-1/2' : 'w-full'}`}>
+                        <h3 className="text-[10px] md:text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-2 md:mb-3">
                             Transaction Type
                         </h3>
                         <div className="grid grid-cols-2 gap-6">
@@ -1035,8 +1035,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                             [&_button]:text-[9px] [&_button]:px-2 [&_button]:py-0.5 [&_button]:h-auto [&_button]:rounded-[3px] [&_button]:tracking-wider
                                             [&_input]:text-xs [&_input]:font-bold [&_label]:text-[10px]
                                             ${isDisabled
-                                                ? 'bg-gray-100 cursor-not-allowed opacity-60 pointer-events-none'
-                                                : 'bg-white'
+                                                ? 'bg-muted cursor-not-allowed opacity-60 pointer-events-none'
+                                                : 'bg-card'
                                             }
                                         `}
                                         disabled={isDisabled}
@@ -1048,7 +1048,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 </div>
 
                 {/* Footer Totals & Summary Box */}
-                <div className="p-2 md:px-4 md:py-3 bg-gray-50 border-t border-gray-200 rounded-b-xs shadow-[0_-4px_15px_rgba(0,0,0,0.05)] z-20">
+                <div className="p-2 md:px-4 md:py-3 bg-muted border-t border-border rounded-b-xs shadow-[0_-4px_15px_rgba(0,0,0,0.05)] z-20">
                     {/* MOBILE LAYOUT */}
                     <div
                         className="md:hidden flex justify-between items-center mb-1.5 px-1"
@@ -1060,11 +1060,11 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                         onClick={handleDiscountClick}
                     >
                         <div className="flex items-center gap-1.5">
-                            <span className={`text-gray-500 text-[11px] ${isDiscountLocked ? '' : 'text-blue-600 font-semibold'}`}>
+                            <span className={`text-muted-foreground text-[11px] ${isDiscountLocked ? '' : 'text-blue-600 font-semibold'}`}>
                                 Bill Discount
                             </span>
                             {isDiscountLocked && (
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-muted-foreground" viewBox="0 0 20 20" fill="currentColor">
                                     <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                                 </svg>
                             )}
@@ -1102,13 +1102,13 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                         </div>
                     </div>
 
-                    <div className="md:hidden pt-1.5 border-t border-gray-200">
+                    <div className="md:hidden pt-1.5 border-t border-border">
                         <div className="flex justify-between items-center mb-1 px-1">
-                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Tax Type</span>
-                            <div className="flex bg-gray-100 p-0.5 rounded-xs shadow-inner">
-                                <button onClick={() => onTaxModeChange && onTaxModeChange('exempt')} disabled={isTaxToggleLocked} className={`px-4 py-1 text-[10px] font-bold rounded-xs shadow-sm transition-all ${taxMode === 'exempt' ? 'bg-blue-500 text-white' : 'text-gray-600 hover:text-gray-800'} ${isTaxToggleLocked ? 'opacity-50 cursor-not-allowed' : ''}`}>Exempt</button>
-                                <button onClick={() => onTaxModeChange && onTaxModeChange('inclusive')} disabled={isTaxToggleLocked} className={`px-4 py-0.5 text-[10px] font-bold rounded-xs shadow-sm transition-all ${taxMode === 'inclusive' ? 'bg-blue-500 text-white' : 'text-gray-600 hover:text-gray-800'} ${isTaxToggleLocked ? 'opacity-50 cursor-not-allowed' : ''}`}>Inclusive</button>
-                                <button onClick={() => onTaxModeChange && onTaxModeChange('exclusive')} disabled={isTaxToggleLocked} className={`px-4 py-0.5 text-[10px] font-bold rounded-xs shadow-sm transition-all ${taxMode === 'exclusive' ? 'bg-blue-500 text-white' : 'text-gray-600 hover:text-gray-800'} ${isTaxToggleLocked ? 'opacity-50 cursor-not-allowed' : ''}`}>Exclusive</button>
+                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Tax Type</span>
+                            <div className="flex bg-muted p-0.5 rounded-xs shadow-inner">
+                                <button onClick={() => onTaxModeChange && onTaxModeChange('exempt')} disabled={isTaxToggleLocked} className={`px-4 py-1 text-[10px] font-bold rounded-xs shadow-sm transition-all ${taxMode === 'exempt' ? 'bg-blue-500 text-white' : 'text-muted-foreground hover:text-foreground'} ${isTaxToggleLocked ? 'opacity-50 cursor-not-allowed' : ''}`}>Exempt</button>
+                                <button onClick={() => onTaxModeChange && onTaxModeChange('inclusive')} disabled={isTaxToggleLocked} className={`px-4 py-0.5 text-[10px] font-bold rounded-xs shadow-sm transition-all ${taxMode === 'inclusive' ? 'bg-blue-500 text-white' : 'text-muted-foreground hover:text-foreground'} ${isTaxToggleLocked ? 'opacity-50 cursor-not-allowed' : ''}`}>Inclusive</button>
+                                <button onClick={() => onTaxModeChange && onTaxModeChange('exclusive')} disabled={isTaxToggleLocked} className={`px-4 py-0.5 text-[10px] font-bold rounded-xs shadow-sm transition-all ${taxMode === 'exclusive' ? 'bg-blue-500 text-white' : 'text-muted-foreground hover:text-foreground'} ${isTaxToggleLocked ? 'opacity-50 cursor-not-allowed' : ''}`}>Exclusive</button>
                             </div>
                         </div>
                         <div className="flex flex-col gap-1 mb-1 px-1">
@@ -1121,26 +1121,26 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                     </span>
                                 )}
                             </div>
-                            <div className="flex items-center justify-between bg-white rounded-xs border border-gray-200 shadow-sm text-center">
+                            <div className="flex items-center justify-between bg-card rounded-xs border border-border shadow-sm text-center">
                                 <div className="flex flex-col items-center flex-1">
-                                    <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5 leading-none">MRP</span>
-                                    <span className="text-[11px] font-bold text-gray-700 leading-none">₹{totalMrp.toFixed(0)}</span>
+                                    <span className="text-[9px] text-muted-foreground font-bold uppercase mb-0.5 leading-none">MRP</span>
+                                    <span className="text-[11px] font-bold text-foreground leading-none">₹{totalMrp.toFixed(0)}</span>
                                 </div>
-                                <div className="flex flex-col items-center flex-1 border-r border-gray-100 pr-1">
-                                    <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5 leading-none">Disc</span>
+                                <div className="flex flex-col items-center flex-1 border-r border-border pr-1">
+                                    <span className="text-[9px] text-muted-foreground font-bold uppercase mb-0.5 leading-none">Disc</span>
                                     <span className="text-[11px] font-bold text-red-500 leading-none">-₹{(totalItemDiscount + discount).toFixed(0)}</span>
                                 </div>
                                 <div className="bg-blue-600 text-white rounded-xs py-1.5 px-3 flex flex-col items-center justify-center shadow-sm mx-1.5">
                                     <span className="text-[8px] font-bold uppercase tracking-wider text-blue-200 mb-0.5 leading-none">Total</span>
                                     <span className="font-extrabold text-lg tracking-tight leading-none">₹{netPayable.toFixed(0)}</span>
                                 </div>
-                                <div className="flex flex-col items-center flex-1 border-l border-gray-100 pl-1">
-                                    <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5 leading-none">Sub</span>
-                                    <span className="text-[11px] font-bold text-gray-700 leading-none">₹{Math.max(0, netPayable - liveTax).toFixed(0)}</span>
+                                <div className="flex flex-col items-center flex-1 border-l border-border pl-1">
+                                    <span className="text-[9px] text-muted-foreground font-bold uppercase mb-0.5 leading-none">Sub</span>
+                                    <span className="text-[11px] font-bold text-foreground leading-none">₹{Math.max(0, netPayable - liveTax).toFixed(0)}</span>
                                 </div>
                                 <div className="flex flex-col items-center flex-1">
-                                    <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5 leading-none">Tax</span>
-                                    <span className="text-[11px] font-bold text-gray-700 leading-none">+₹{liveTax.toFixed(0)}</span>
+                                    <span className="text-[9px] text-muted-foreground font-bold uppercase mb-0.5 leading-none">Tax</span>
+                                    <span className="text-[11px] font-bold text-foreground leading-none">+₹{liveTax.toFixed(0)}</span>
                                 </div>
                             </div>
                         </div>
@@ -1158,9 +1158,9 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                             >
                                 <div className="flex flex-col">
                                     <div className="flex items-center gap-1 mb-1">
-                                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Bill Discount</span>
+                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Bill Discount</span>
                                         {isDiscountLocked && (
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-muted-foreground" viewBox="0 0 20 20" fill="currentColor">
                                                 <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                                             </svg>
                                         )}
@@ -1197,7 +1197,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                             </div>
 
                             <div className="flex flex-col items-end">
-                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Tax Type</span>
+                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Tax Type</span>
                                 <div className="flex items-center gap-1">
                                     {(['exempt', 'inclusive', 'exclusive'] as const).map((mode) => (
                                         <button
@@ -1208,7 +1208,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                                 px-4 py-[7px] text-xs font-bold rounded border transition-all
                                                 ${taxMode === mode
                                                     ? 'bg-blue-500 border-blue-500 text-white shadow-sm'
-                                                    : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-800'
+                                                    : 'bg-muted border-border text-muted-foreground hover:border-border hover:text-foreground'
                                                 }
                                                 ${isTaxToggleLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
                                             `}
@@ -1220,26 +1220,26 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                             </div>
                         </div>
 
-                        <div className="flex items-center justify-between bg-white rounded-xs border border-gray-200 shadow-sm text-center">
+                        <div className="flex items-center justify-between bg-card rounded-xs border border-border shadow-sm text-center">
                             <div className="flex flex-col items-center flex-1 py-1.5">
-                                <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5 leading-none">MRP</span>
-                                <span className="text-[12px] font-bold text-gray-700 leading-none">₹{totalMrp.toFixed(0)}</span>
+                                <span className="text-[9px] text-muted-foreground font-bold uppercase mb-0.5 leading-none">MRP</span>
+                                <span className="text-[12px] font-bold text-foreground leading-none">₹{totalMrp.toFixed(0)}</span>
                             </div>
-                            <div className="flex flex-col items-center flex-1 border-r border-gray-100 py-1.5">
-                                <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5 leading-none">Disc</span>
+                            <div className="flex flex-col items-center flex-1 border-r border-border py-1.5">
+                                <span className="text-[9px] text-muted-foreground font-bold uppercase mb-0.5 leading-none">Disc</span>
                                 <span className="text-[12px] font-bold text-red-500 leading-none">-₹{(totalItemDiscount + discount).toFixed(0)}</span>
                             </div>
                             <div className="bg-blue-600 text-white rounded-xs py-2 px-5 flex flex-col items-center justify-center shadow-sm mx-2">
                                 <span className="text-[9px] font-bold uppercase tracking-wider text-blue-200 mb-0.5 leading-none">Total</span>
                                 <span className="font-extrabold text-xl tracking-tight leading-none">₹{netPayable.toFixed(0)}</span>
                             </div>
-                            <div className="flex flex-col items-center flex-1 border-l border-gray-100 py-1.5">
-                                <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5 leading-none">Sub</span>
-                                <span className="text-[12px] font-bold text-gray-700 leading-none">₹{Math.max(0, netPayable - liveTax).toFixed(0)}</span>
+                            <div className="flex flex-col items-center flex-1 border-l border-border py-1.5">
+                                <span className="text-[9px] text-muted-foreground font-bold uppercase mb-0.5 leading-none">Sub</span>
+                                <span className="text-[12px] font-bold text-foreground leading-none">₹{Math.max(0, netPayable - liveTax).toFixed(0)}</span>
                             </div>
                             <div className="flex flex-col items-center flex-1 py-1.5">
-                                <span className="text-[9px] text-gray-400 font-bold uppercase mb-0.5 leading-none">Tax</span>
-                                <span className="text-[12px] font-bold text-gray-700 leading-none">+₹{liveTax.toFixed(0)}</span>
+                                <span className="text-[9px] text-muted-foreground font-bold uppercase mb-0.5 leading-none">Tax</span>
+                                <span className="text-[12px] font-bold text-foreground leading-none">+₹{liveTax.toFixed(0)}</span>
                             </div>
                         </div>
 

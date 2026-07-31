@@ -2,15 +2,15 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/auth-context';
 import type { Item } from '../../constants/models';
-import { getFirestoreOperations } from '../../lib/ItemsFirebase';
-import { Card, CardContent, CardHeader, CardTitle } from '../../Components/ui/card';
-import { CustomButton } from '../../Components';
-import { Variant } from '../../enums';
+import { fetchPrintQRData, fetchCompanyBusinessInfo } from '../../services/printQR.service';
+import { Button } from '../../Components/ui/button';
 import { Input } from '../../Components/ui/input';
+import { Spinner } from '../../Components/ui/spinner';
+import { EmptyState } from '../../Components/ui/empty-state';
+import { QrCode, ChevronDown, Minus, Plus, X, Printer, PackageSearch } from 'lucide-react';
 import QRCodeLib from 'qrcode';
 import JsBarcode from 'jsbarcode';
 import SearchableItemInput from '../../UseComponents/SearchIteminput';
-import { IconClose } from '../../constants/Icons';
 import BackButton from '../../Components/BackButton';
 
 // --- Data Types ---
@@ -49,7 +49,9 @@ const LabelPreview: React.FC<{ item: Item, companyName: string }> = ({ item, com
     }, [item.barcode]);
 
     return (
-        <div className="w-[200px] h-[200px] border border-dashed border-gray-400 p-2 flex flex-col items-center justify-around font-sans bg-white shadow-lg mt-4">
+        // NOTE: this mirrors the physical printed label (white paper stock),
+        // so it intentionally stays white/black regardless of app theme.
+        <div className="w-[200px] h-[200px] border border-dashed border-neutral-400 p-2 flex flex-col items-center justify-around font-sans bg-white text-black shadow-lg mt-4 rounded-sm">
             <div className="text-xs font-bold text-center">{companyName}</div>
             <div className="flex flex-col justify-center items-center h-28">
                 {barcodeDataUrl && (
@@ -77,29 +79,18 @@ const QRCodeGeneratorPage: React.FC = () => {
 
     const hasPrefilled = useRef(false);
     const location = useLocation();
-
-    const dbOperations = useMemo(() => {
-        if (currentUser?.companyId) {
-            return getFirestoreOperations(currentUser.companyId);
-        }
-        return null;
-    }, [currentUser]);
+    const companyId = currentUser?.companyId;
 
     useEffect(() => {
-        if (!dbOperations) {
+        if (!companyId) {
             setIsLoading(false); return;
         }
         const fetchData = async () => {
             setIsLoading(true);
             try {
-                const [fetchedItems, businessInfo] = await Promise.all([
-                    dbOperations.syncItems(),
-                    dbOperations.getBusinessInfo()
-                ]);
-
-                setAllItems(fetchedItems.filter(item => item.barcode && item.barcode.trim() !== ''));
-                setCompanyName(businessInfo.name || 'Your Company');
-
+                const data = await fetchPrintQRData(companyId);
+                setAllItems(data.items);
+                setCompanyName(data.companyName);
             } catch (err) {
                 console.error(err);
             } finally {
@@ -107,7 +98,7 @@ const QRCodeGeneratorPage: React.FC = () => {
             }
         };
         fetchData();
-    }, [dbOperations]);
+    }, [companyId]);
 
     useEffect(() => {
         const prefilledItems = location.state?.prefilledItems as PrefilledItem[] | undefined;
@@ -174,15 +165,15 @@ const QRCodeGeneratorPage: React.FC = () => {
 
     const isPrintButtonDisabled = printQueue.length === 0 || isPrinting;
 
-    // --- UPDATED PRINT LOGIC ---
+    // --- PRINT LOGIC ---
     const handlePrint = useCallback(async () => {
-        if (isPrintButtonDisabled || !dbOperations) return;
+        if (isPrintButtonDisabled || !companyId) return;
 
         setIsPrinting(true);
 
         try {
-            const businessInfo = await dbOperations.getBusinessInfo();
-            const companyName = businessInfo.name || 'Your Company';
+            const businessInfo = await fetchCompanyBusinessInfo(companyId);
+            const companyNameForPrint = businessInfo.name || 'Your Company';
             const businessAddress = (businessInfo.address || '').replace(/</g, "&lt;").replace(/>/g, "&gt;");
             const businessPhoneNumber = (businessInfo.phoneNumber || '').replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
@@ -216,7 +207,7 @@ const QRCodeGeneratorPage: React.FC = () => {
                     allLabelsHtml += `
                         <div class="label-container">
                             <div>
-                                <p class="company-name">${companyName}</p>
+                                <p class="company-name">${companyNameForPrint}</p>
                                 <div class="info-row">
                                     <p class="business-info info-left">${businessAddress}</p>
                                     <p class="business-info info-right">${businessPhoneNumber}</p>
@@ -280,186 +271,208 @@ const QRCodeGeneratorPage: React.FC = () => {
 
             printWindow.document.close();
 
-        } catch (err: any) {
+        } catch (err) {
             console.error("Printing failed:", err);
-            alert(`Printing failed: ${err.message}.`);
+            alert(`Printing failed: ${err instanceof Error ? err.message : 'Unknown error'}.`);
         } finally {
             setIsPrinting(false);
         }
-    }, [printQueue, isPrintButtonDisabled, dbOperations]);
+    }, [printQueue, isPrintButtonDisabled, companyId]);
 
     const renderContent = () => {
-        if (isLoading) return <p className="text-center text-gray-500">Loading items...</p>;
+        if (isLoading) return (
+            <div className="flex flex-col items-center justify-center gap-3 py-10 text-muted-foreground">
+                <Spinner size="lg" />
+                <p className="text-sm font-medium">Loading items...</p>
+            </div>
+        );
 
         return (
-            <div className="flex flex-col gap-5 bg-white/80 p-4 rounded-sm border border-gray-100 shadow-sm">
+            <div className="flex flex-col gap-5 rounded-2xl border border-border bg-card p-4 shadow-xs sm:p-6">
 
-  {/* Search */}
-  <div className="relative">
-    <SearchableItemInput
-      label=""
-      placeholder="Search to add items to the print list..."
-      items={availableItemsForSearch}
-      onItemSelected={handleAddItemToQueue}
-    />
-  </div>
+                {/* Search */}
+                <div className="relative">
+                    <SearchableItemInput
+                        label=""
+                        placeholder="Search to add items to the print list..."
+                        items={availableItemsForSearch}
+                        onItemSelected={handleAddItemToQueue}
+                    />
+                </div>
 
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-    {/* Preview Section */}
-    <div className="bg-gray-50 rounded-sm p-3 self-start border border-gray-100">
-      <button
-        onClick={() => setIsPreviewOpen(!isPreviewOpen)}
-        className="w-full flex justify-between items-center text-sm font-medium text-gray-800"
-      >
-        <span>Label Preview</span>
-        <span
-          className={`text-xs text-gray-500 transition-transform duration-200 ${
-            isPreviewOpen ? "rotate-180" : "rotate-0"
-          }`}
-        >
-          ▼
-        </span>
-      </button>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    {/* Preview Section */}
+                    <div className="rounded-xl bg-muted p-3 self-start border border-border">
+                        <button
+                            onClick={() => setIsPreviewOpen(!isPreviewOpen)}
+                            className="w-full flex justify-between items-center text-sm font-medium text-foreground"
+                        >
+                            <span>Label Preview</span>
+                            <ChevronDown
+                                className={`size-4 text-muted-foreground transition-transform duration-200 ${isPreviewOpen ? "rotate-180" : "rotate-0"
+                                    }`}
+                            />
+                        </button>
 
-      {isPreviewOpen && (
-        <div className="mt-3 rounded-sm border border-dashed border-gray-200 bg-white flex items-center justify-center px-4 py-6">
-          {itemForPreview ? (
-            <LabelPreview item={itemForPreview} companyName={companyName} />
-          ) : (
-            <div className="text-xs text-gray-400 text-center">
-              Select an item from the cart to preview its label.
+                        {isPreviewOpen && (
+                            <div className="mt-3 rounded-xl border border-dashed border-border bg-card flex items-center justify-center px-4 py-6">
+                                {itemForPreview ? (
+                                    <LabelPreview item={itemForPreview} companyName={companyName} />
+                                ) : (
+                                    <div className="text-xs text-muted-foreground text-center">
+                                        Select an item from the cart to preview its label.
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Queue List */}
+                    <div className="flex flex-col gap-3">
+                        <div className="flex items-center justify-between">
+                            {printQueue.length > 0 ? (
+                                <>
+                                    <h3 className="text-sm font-medium text-foreground">Cart</h3>
+                                    <span className="text-xs text-muted-foreground">
+                                        {printQueue.length} item{printQueue.length > 1 ? "s" : ""} selected
+                                    </span>
+                                </>
+                            ) : (
+                                <h3 className="text-sm font-medium text-muted-foreground">Cart</h3>
+                            )}
+                        </div>
+
+                        {printQueue.length === 0 && (
+                            <EmptyState
+                                icon={<PackageSearch />}
+                                title="Your cart is empty"
+                                description="Search above to add items to the print list."
+                                className="border-border bg-muted py-8"
+                            />
+                        )}
+
+                        {printQueue.map((item) => (
+                            <div
+                                key={item.queueId}
+                                onClick={() => setItemForPreview(item)}
+                                className={`p-2 border rounded-xl bg-card flex items-center justify-between gap-2 cursor-pointer transition shadow-xs hover:shadow-md ${itemForPreview?.queueId === item.queueId
+                                    ? "border-primary/50 ring-1 ring-primary/20"
+                                    : "border-border"
+                                    }`}
+                            >
+                                <div className="flex items-center gap-2 flex-1 overflow-hidden">
+                                    <div className="flex flex-col min-w-0">
+                                        <span className="font-medium text-[12px] truncate text-foreground">{item.name}</span>
+                                        <span className="text-[10px] text-muted-foreground truncate">Barcode: {item.barcode}</span>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[12px] font-semibold text-foreground">₹{item.mrp}</span>
+                                    <div className="flex items-center gap-1">
+                                        <span className="text-[11px] text-muted-foreground">Qty</span>
+                                        <div className="flex items-center border border-border rounded-lg overflow-hidden bg-muted h-7">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleQuantityChange(item.queueId, item.quantityToPrint - 1);
+                                                }}
+                                                className="px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+                                            >
+                                                <Minus className="size-3" />
+                                            </button>
+                                            <Input
+                                                type="number"
+                                                value={item.quantityToPrint}
+                                                onClick={(e) => e.stopPropagation()}
+                                                onChange={(e) => {
+                                                    e.stopPropagation();
+                                                    handleQuantityChange(item.queueId, Number(e.target.value));
+                                                }}
+                                                className="w-12 h-7 text-center text-xs border-x border-border rounded-none p-0 focus-visible:ring-0 bg-card"
+                                            />
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleQuantityChange(item.queueId, item.quantityToPrint + 1);
+                                                }}
+                                                className="px-2 py-0.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+                                            >
+                                                <Plus className="size-3" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleRemoveItemFromQueue(item.queueId);
+                                        }}
+                                        className="text-muted-foreground hover:text-destructive p-1"
+                                    >
+                                        <X className="size-3.5" />
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {printQueue.length > 0 && (
+                    <div className="border-t border-border pt-4 mt-4 flex flex-col items-center gap-3">
+                        <p className="text-[11px] text-muted-foreground">
+                            Ready to print QR labels for{" "}
+                            <span className="font-medium text-foreground">
+                                {printQueue.length} item{printQueue.length > 1 ? "s" : ""}
+                            </span>
+                            .
+                        </p>
+
+                        <div className="w-full flex justify-center">
+                            <Button
+                                onClick={handlePrint}
+                                disabled={isPrintButtonDisabled}
+                                size="lg"
+                                className="w-60 gap-2 bg-gradient-brand text-white shadow-md shadow-primary/20 hover:opacity-90"
+                            >
+                                {isPrinting ? (
+                                    <>
+                                        <Spinner size="sm" />
+                                        Generating...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Printer className="size-4" />
+                                        Print labels
+                                    </>
+                                )}
+                            </Button>
+                        </div>
+                    </div>
+                )}
             </div>
-          )}
-        </div>
-      )}
-    </div>
-
-    {/* Queue List */}
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        {printQueue.length > 0 ? (
-          <>
-            <h3 className="text-sm font-medium text-gray-800">Cart</h3>
-            <span className="text-xs text-gray-500">
-              {printQueue.length} item{printQueue.length > 1 ? "s" : ""} selected
-            </span>
-          </>
-        ) : (
-          <h3 className="text-sm font-medium text-gray-400">Cart</h3>
-        )}
-      </div>
-
-      {printQueue.length === 0 && (
-        <div className="flex flex-col items-center justify-center gap-2 rounded-sm border border-dashed border-gray-200 bg-gray-50 py-8">
-          <p className="text-xs text-gray-500">Your cart is empty.</p>
-          <p className="text-[11px] text-gray-400">Search above to add items to the print list.</p>
-        </div>
-      )}
-
-      {printQueue.map((item) => (
-        <div
-          key={item.queueId}
-          onClick={() => setItemForPreview(item)}
-          className={`p-2 border rounded-sm bg-white flex items-center justify-between gap-2 cursor-pointer transition shadow-sm hover:shadow-md ${
-            itemForPreview?.queueId === item.queueId
-              ? "border-blue-400 ring-1 ring-blue-100"
-              : "border-gray-200"
-          }`}
-        >
-          <div className="flex items-center gap-2 flex-1 overflow-hidden">
-            <div className="flex flex-col min-w-0">
-              <span className="font-medium text-[12px] truncate">{item.name}</span>
-              <span className="text-[10px] text-gray-500 truncate">Barcode: {item.barcode}</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[12px] font-semibold text-gray-800">₹{item.mrp}</span>
-            <div className="flex items-center gap-1">
-              <span className="text-[11px] text-gray-500">Qty</span>
-              <div className="flex items-center border border-gray-200 rounded-sm overflow-hidden bg-gray-50 h-7">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleQuantityChange(item.queueId, item.quantityToPrint - 1);
-                  }}
-                  className="px-2 py-0.5 text-xs font-medium text-gray-600 hover:bg-gray-100"
-                >
-                  -
-                </button>
-                <Input
-                  type="number"
-                  value={item.quantityToPrint}
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => {
-                    e.stopPropagation();
-                    handleQuantityChange(item.queueId, Number(e.target.value));
-                  }}
-                  className="w-12 h-7 text-center text-xs border-x border-gray-200 rounded-sm p-0 focus:ring-0 bg-white"
-                />
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleQuantityChange(item.queueId, item.quantityToPrint + 1);
-                  }}
-                  className="px-2 py-0.5 text-xs font-medium text-gray-600 hover:bg-gray-100"
-                >
-                  +
-                </button>
-              </div>
-            </div>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleRemoveItemFromQueue(item.queueId);
-              }}
-              className="text-gray-400 hover:text-red-500 p-1"
-            >
-              <IconClose width={14} height={14} />
-            </button>
-          </div>
-        </div>
-      ))}
-    </div>
-  </div>
-
-  {printQueue.length > 0 && (
-    <div className="border-t border-gray-100 pt-4 mt-4 flex flex-col items-center gap-3">
-      <p className="text-[11px] text-gray-500">
-        Ready to print QR labels for{" "}
-        <span className="font-medium text-gray-700">
-          {printQueue.length} item{printQueue.length > 1 ? "s" : ""}
-        </span>
-        .
-      </p>
-
-      <div className="w-full flex justify-center">
-        <CustomButton
-          onClick={handlePrint}
-          disabled={isPrintButtonDisabled}
-          variant={Variant.Filled}
-          className="w-60 py-3 !rounded-sm !bg-gray-900 !text-white !text-sm !font-semibold hover:!bg-black"
-        >
-          {isPrinting ? "Generating..." : "Print labels"}
-        </CustomButton>
-      </div>
-    </div>
-  )}
-</div>
         );
     };
 
     return (
-        <Card className="max-w-4xl mx-auto mb-16">
-            <CardHeader className="flex items-center justify-between">
-                <BackButton/>
-                <CardTitle className="text-lg font-bold text-gray-800 text-center flex-1">
-                    Item QR Code Generator
-                </CardTitle>
+        <div className="aurora flex h-full w-full flex-col overflow-hidden bg-muted">
+            <header className="glass mx-3 mt-3 flex flex-shrink-0 items-center gap-3 rounded-2xl p-3 shadow-sm">
+                <BackButton />
+                <div className="rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.6_0.22_330)] p-[3px] shadow-sm shadow-primary/20">
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-[13px] bg-gradient-brand text-white">
+                        <QrCode className="size-4" />
+                    </span>
+                </div>
+                <div>
+                    <h1 className="text-lg font-bold tracking-tight text-foreground md:text-xl">
+                        Item <span className="text-gradient">QR Code Generator</span>
+                    </h1>
+                    <p className="text-xs text-muted-foreground">Search items, queue labels, and print in one batch</p>
+                </div>
+            </header>
 
-                <div className="w-8" /> 
-            </CardHeader>
-            <CardContent>{renderContent()}</CardContent>
-        </Card>
+            <main className="w-full flex-grow overflow-y-auto p-4 sm:p-6">
+                <div className="mx-auto w-full max-w-7xl">{renderContent()}</div>
+            </main>
+        </div>
     );
 };
 

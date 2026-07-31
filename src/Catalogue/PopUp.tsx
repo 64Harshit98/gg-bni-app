@@ -268,14 +268,14 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
 
     return (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-            <div className="bg-white w-full max-w-md rounded-xs shadow-2xl overflow-hidden relative border-t-4 border-[#F97316] overflow-y-auto max-h-[90dvh]">
+            <div className="bg-card w-full max-w-md rounded-xs shadow-2xl overflow-hidden relative border-t-4 border-[#F97316] overflow-y-auto max-h-[90dvh]">
 
                 {/* Close Button */}
                 <button
                     onClick={() => {
                         setIsVisible(false);
                     }}
-                    className="absolute top-3 right-3 text-gray-400 hover:text-red-500 transition-colors"
+                    className="absolute top-3 right-3 text-muted-foreground hover:text-red-500 transition-colors"
                 >
                     <X size={24} />
                 </button>
@@ -283,7 +283,7 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
                 {step === 1 ? (
                     <div className="p-8">
 
-                        <p className="text-gray-500 text-lg mb-6 font-bold">
+                        <p className="text-muted-foreground text-lg mb-6 font-bold">
                             {detailsOnly
                                 ? "You're one step away! Enter your name and number to add items to your cart."
                                 : "Please share your details to get the best business deals."}
@@ -291,24 +291,24 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
 
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div>
-                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Your Name</label>
+                                <label className="block text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1 ml-1">Your Name</label>
                                 <input
                                     required
-                                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xs focus:border-[#F97316] outline-none text-sm transition-all"
+                                    className="w-full p-3 bg-muted border border-border rounded-xs focus:border-[#F97316] outline-none text-sm transition-all"
                                     placeholder="Your name"
                                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">
+                                <label className="block text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1 ml-1">
                                     Phone Number
                                 </label>
                                 <input
                                     required
                                     type="text" // 'tel' ya 'number' ki jagah 'text' use karenge control ke liye
                                     inputMode="numeric" // Mobile keyboard par sirf numbers dikhayega
-                                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xs focus:border-[#F97316] outline-none text-sm transition-all"
+                                    className="w-full p-3 bg-muted border border-border rounded-xs focus:border-[#F97316] outline-none text-sm transition-all"
                                     placeholder="10-digit mobile number"
                                     value={formData.number} // Value ko bind karna zaroori hai
                                     onChange={handleNumberChange}
@@ -318,7 +318,7 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
                             {/* Business Card Upload */}
                             {!detailsOnly && (
                                 <div className="relative">
-                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">
+                                    <label className="block text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-2 ml-1">
                                         Business Card
                                     </label>
 
@@ -347,7 +347,7 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
                                         {/* Choose from gallery */}
                                         <label
                                             htmlFor="businessCardFile"
-                                            className="cursor-pointer flex items-center justify-center gap-2 py-3 text-[11px] font-bold text-slate-700 bg-gray-100 border border-gray-200 rounded-xs hover:bg-gray-200 active:scale-95 transition-all"
+                                            className="cursor-pointer flex items-center justify-center gap-2 py-3 text-[11px] font-bold text-foreground bg-muted border border-border rounded-xs hover:bg-muted active:scale-95 transition-all"
                                         >
                                             🖼 Choose File
                                         </label>
@@ -363,7 +363,7 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
 
                                     {/* Preview */}
                                     {cardPreview && (
-                                        <div className="mt-3 border rounded-xs p-2 bg-gray-50">
+                                        <div className="mt-3 border rounded-xs p-2 bg-muted">
                                             <img
                                                 src={cardPreview}
                                                 alt="Business Card Preview"
@@ -387,7 +387,7 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
                             <CheckCircle size={40} strokeWidth={3} />
                         </div>
                         <h2 className="text-2xl font-black text-[#1A3B5D] uppercase tracking-tighter">Thank You!</h2>
-                        <p className="text-gray-500 text-sm mt-2">We have received your information. Our team will contact you shortly.</p>
+                        <p className="text-muted-foreground text-sm mt-2">We have received your information. Our team will contact you shortly.</p>
                     </div>
                 ) : step === 3 ? (
 
@@ -401,7 +401,7 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
                             Already Submitted
                         </h2>
 
-                        <p className="text-gray-500 text-sm mt-2">
+                        <p className="text-muted-foreground text-sm mt-2">
                             This number has already shared details with us.
                         </p>
                     </div>

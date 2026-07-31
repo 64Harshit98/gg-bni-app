@@ -7,6 +7,7 @@ import { db, storage } from '../lib/Firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { FiSave, FiX, FiPackage, FiCamera } from 'react-icons/fi';
 import { Spinner } from '../constants/Spinner';
+import { Spinner as ModernSpinner } from './ui/spinner';
 import imageCompression from 'browser-image-compression';
 import ReactCrop, { type Crop, centerCrop, makeAspectCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
@@ -54,7 +55,7 @@ const formatImageUrl = (url: string | null | undefined): string | null => {
 const ImagePreview: React.FC<{ imageUrl: string | null; alt: string }> = ({ imageUrl, alt }) => {
     if (!imageUrl) {
         return (
-            <div className="w-full h-40 bg-gray-200 rounded-sm flex items-center justify-center text-gray-400">
+            <div className="w-full h-40 bg-muted rounded-sm flex items-center justify-center text-muted-foreground">
                 <FiPackage size={40} />
             </div>
         );
@@ -63,7 +64,7 @@ const ImagePreview: React.FC<{ imageUrl: string | null; alt: string }> = ({ imag
         <img
             src={imageUrl}
             alt={alt}
-            className="w-full h-40 object-cover rounded-sm border border-gray-300"
+            className="w-full h-40 object-cover rounded-sm border border-border"
         />
     );
 };
@@ -536,15 +537,15 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
             onClick={onClose}
         >
             <div
-                className={`bg-white rounded-t-lg shadow-xl w-full max-w-md h-[80vh] flex flex-col transform transition-all duration-300 ease-in-out ${drawerClasses}`}
+                className={`bg-card rounded-t-lg shadow-xl w-full max-w-md h-[80vh] flex flex-col transform transition-all duration-300 ease-in-out ${drawerClasses}`}
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* CROP MODAL */}
                 {showCropModal && rawImageSrc && (
                     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 rounded-t-lg px-4">
-                        <div className="bg-white rounded-lg shadow-xl w-full p-4 flex flex-col gap-3">
-                            <h3 className="text-base font-bold text-gray-800">Crop Image</h3>
-                            <p className="text-xs text-gray-500">Drag to select crop area. Tap <strong>Use Full Image</strong> to skip.</p>
+                        <div className="bg-card rounded-lg shadow-xl w-full p-4 flex flex-col gap-3">
+                            <h3 className="text-base font-bold text-foreground">Crop Image</h3>
+                            <p className="text-xs text-muted-foreground">Drag to select crop area. Tap <strong>Use Full Image</strong> to skip.</p>
                             <div className="flex justify-center overflow-hidden" style={{ maxHeight: 'calc(80vh - 180px)' }}>
                                 <ReactCrop
                                     crop={crop}
@@ -570,13 +571,13 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         if (cameraInputRef.current) cameraInputRef.current.value = '';
                                         if (fileInputRef.current) fileInputRef.current.value = '';
                                     }}
-                                    className="px-3 py-2 text-xs font-medium text-gray-600 bg-gray-100 rounded-sm hover:bg-gray-200"
+                                    className="px-3 py-2 text-xs font-medium text-muted-foreground bg-muted rounded-sm hover:bg-muted"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     onClick={async () => { if (pendingRawFile.current) await applyCompression(pendingRawFile.current); setShowCropModal(false); }}
-                                    className="px-3 py-2 text-xs font-medium text-gray-700 bg-gray-200 rounded-sm hover:bg-gray-300"
+                                    className="px-3 py-2 text-xs font-medium text-foreground bg-muted rounded-sm hover:bg-gray-300"
                                 >
                                     Use Full Image
                                 </button>
@@ -598,12 +599,12 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                     <h2 className="text-lg font-semibold leading-none tracking-tight pt-4">
                         Edit Item
                     </h2>
-                    <p className="text-sm mt-1 text-gray-500">
+                    <p className="text-sm mt-1 text-muted-foreground">
                         {item?.name || 'Item details'}
                     </p>
                     <button
                         onClick={onClose}
-                        className="absolute right-3 top-3 rounded-sm p-1 text-gray-500 hover:bg-gray-100 opacity-70"
+                        className="absolute right-3 top-3 rounded-sm p-1 text-muted-foreground hover:bg-muted opacity-70"
                         aria-label="Close"
                     >
                         <FiX size={18} />
@@ -613,8 +614,8 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
                     {isFetching ? (
                         <div className="flex flex-col items-center justify-center h-40 space-y-2">
-                            <Spinner />
-                            <p className="text-gray-500 text-sm">Loading latest details...</p>
+                            <ModernSpinner size="lg" />
+                            <p className="text-muted-foreground text-sm">Loading latest details...</p>
                         </div>
                     ) : (
                         <>
@@ -672,7 +673,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                             }
                                         }}
                                         disabled={!!imageFile || isSaving}
-                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="flex h-10 w-full rounded-sm border border-border bg-card px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         placeholder="https://example.com/image.jpg"
                                     />
                                 </div>
@@ -700,7 +701,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                     ref={firstInputRef}
                                     type="text" id="edit-name" name="name"
                                     value={formData.name || ''} onChange={handleChange}
-                                    className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="flex h-10 w-full rounded-sm border border-border bg-card px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                     disabled={isSaving}
                                 />
                             </div>
@@ -719,7 +720,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         value={formData.mrp ?? ''}
                                         onWheel={(e) => (e.target as HTMLInputElement).blur()}
                                         onChange={handleChange}
-                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="flex h-10 w-full rounded-sm border border-border bg-card px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                     />
                                 </div>
                                 <div>
@@ -727,7 +728,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                     <input
                                         type="text" id="edit-barcode" name="barcode"
                                         value={formData.barcode || ''} onChange={handleChange}
-                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="flex h-10 w-full rounded-sm border border-border bg-card px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={isSaving}
                                     />
                                 </div>
@@ -743,7 +744,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         value={formData.salesPrice ?? ''}
                                         onWheel={(e) => (e.target as HTMLInputElement).blur()}
                                         onChange={handleChange}
-                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="flex h-10 w-full rounded-sm border border-border bg-card px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                     />
                                 </div>
 
@@ -756,7 +757,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         value={formData.purchasePrice ?? ''}
                                         onWheel={(e) => (e.target as HTMLInputElement).blur()}
                                         onChange={handleChange}
-                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="flex h-10 w-full rounded-sm border border-border bg-card px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                     />
                                 </div>
                             </div>
@@ -771,7 +772,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         value={formData.discount ?? ''}
                                         onWheel={(e) => (e.target as HTMLInputElement).blur()}
                                         onChange={handleChange}
-                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="flex h-10 w-full rounded-sm border border-border bg-card px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={isSaving}
                                     />
                                 </div>
@@ -783,7 +784,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         value={formData.purchasediscount ?? ''}
                                         onWheel={(e) => (e.target as HTMLInputElement).blur()}
                                         onChange={handleChange}
-                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="flex h-10 w-full rounded-sm border border-border bg-card px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={isSaving}
                                     />
                                 </div>
@@ -798,7 +799,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         value={formData.tax ?? ''}
                                         onChange={handleChange}
                                         onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="flex h-10 w-full rounded-sm border border-border bg-card px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={isSaving}
                                     />
                                 </div>
@@ -809,7 +810,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         value={formData.hsnSac || ''}
                                         onChange={handleChange}
                                         onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="flex h-10 w-full rounded-sm border border-border bg-card px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={isSaving}
                                         placeholder="e.g. 123456"
                                     />
@@ -832,7 +833,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         name="moq"
                                         value={formData.moq ?? ''}
                                         onChange={handleChange}
-                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="flex h-10 w-full rounded-sm border border-border bg-card px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={isSaving}
                                     />
                                 </div>
@@ -853,7 +854,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                     setUnitChangeWarning(true);
                                                 }
                                             }}
-                                            className={`flex h-10 rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50 ${formData.unit === 'pkt' ? 'w-1/2' : 'w-full'}`}
+                                            className={`flex h-10 rounded-sm border border-border bg-card px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50 ${formData.unit === 'pkt' ? 'w-1/2' : 'w-full'}`}
                                             disabled={isSaving}
                                         >
                                             {UNIT_OPTIONS.map(u => (
@@ -870,7 +871,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                 value={formData.packetSize ?? ''}
                                                 onChange={handleChange}
                                                 placeholder="Qty per pkt"
-                                                className="flex h-10 w-1/2 rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
+                                                className="flex h-10 w-1/2 rounded-sm border border-border bg-card px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
                                                 disabled={isSaving}
                                                 min="1"
                                             />
@@ -891,7 +892,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         value={formData.stock ?? ''}
                                         onChange={handleChange}
                                         onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="flex h-10 w-full rounded-sm border border-border bg-card px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={isSaving}
                                     />
                                 </div>
@@ -900,7 +901,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                     <input
                                         type="text" id="edit-description" name="description"
                                         value={formData.description || ''} onChange={handleChange}
-                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="flex h-10 w-full rounded-sm border border-border bg-card px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         disabled={isSaving}
                                     />
                                 </div>
@@ -926,10 +927,10 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         });
                                     }}
                                     disabled={isSaving}
-                                    className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="flex h-10 w-full rounded-sm border border-border bg-card px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                     <option value="">Uncategorized</option>
-                                    <option value="ADD_NEW_GROUP" className="font-semibold bg-gray-100">+ Add New Group</option>
+                                    <option value="ADD_NEW_GROUP" className="font-semibold bg-muted">+ Add New Group</option>
                                     {itemGroups.map((group) => (
                                         <option key={group.id} value={group.id}>
                                             {group.name}
@@ -983,11 +984,11 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                 }
                                                 setShowCategoryDropdown(false);
                                             }}
-                                            className="flex-1 min-w-0 h-10 rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                                            className="flex-1 min-w-0 h-10 rounded-sm border border-border bg-card px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
                                             disabled={isSaving}
                                         >
                                             <option value="">Add more</option>
-                                            <option value="ADD_NEW_GROUP" className="font-semibold bg-gray-100">+ Add New Group</option>
+                                            <option value="ADD_NEW_GROUP" className="font-semibold bg-muted">+ Add New Group</option>
                                             {itemGroups
                                                 .filter(g => !selectedCategories.includes(g.id!))
                                                 .map(g => (
@@ -997,7 +998,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         <button
                                             type="button"
                                             onClick={() => setShowCategoryDropdown(false)}
-                                            className="text-xs text-gray-400 hover:text-gray-600"
+                                            className="text-xs text-muted-foreground hover:text-muted-foreground"
                                         >
                                             Cancel
                                         </button>
@@ -1023,11 +1024,11 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         checked={formData.isListed ?? false}
                                         onChange={handleChange}
                                         disabled={isSaving}
-                                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-sky-500 cursor-pointer"
+                                        className="h-4 w-4 rounded border-border text-blue-600 focus:ring-sky-500 cursor-pointer"
                                     />
                                     <label
                                         htmlFor={`edit-isListed-${item?.id}`}
-                                        className="text-sm font-medium text-gray-700 select-none cursor-pointer"
+                                        className="text-sm font-medium text-foreground select-none cursor-pointer"
                                     >
                                         List this item on Catalog
                                     </label>
@@ -1035,7 +1036,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                             </ShowWrapper>
                         </>
                     )}
-                    <div className="border-t p-4 flex gap-3 bg-white sticky bottom-0">
+                    <div className="border-t p-4 flex gap-3 bg-card sticky bottom-0">
                         <button
                             onClick={handleSave}
                             disabled={isSaving || isFetching}
@@ -1047,7 +1048,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                         <button
                             onClick={onClose}
                             disabled={isSaving}
-                            className="inline-flex items-center justify-center whitespace-nowrap rounded-sm text-sm font-medium ring-offset-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-gray-300 bg-white hover:bg-gray-100 hover:text-gray-900 h-10 px-4 py-2 flex-1"
+                            className="inline-flex items-center justify-center whitespace-nowrap rounded-sm text-sm font-medium ring-offset-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-border bg-card hover:bg-muted hover:text-foreground h-10 px-4 py-2 flex-1"
                         >
                             Cancel
                         </button>

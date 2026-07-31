@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { cn } from '../lib/utils';
 
 interface TopItem {
   name: string;
@@ -33,28 +34,34 @@ export const TopSoldItemsCard: React.FC<TopSoldItemsCardProps> = ({
   }, [items, viewMode]);
 
   return (
-    <Card className="shadow-sm border-gray-200">
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-base font-semibold text-gray-900">
+    <Card className="gap-3 rounded-2xl border border-border/70 border-t-2 border-t-primary py-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg">
+      <CardHeader className="flex flex-row items-center justify-between px-4">
+        <CardTitle className="text-sm font-semibold text-foreground">
           Top 5 Items
         </CardTitle>
-        <div className="flex bg-gray-50 p-1 rounded-lg border border-gray-100">
+        <div className="flex rounded-full border border-border bg-muted p-0.5">
           <button
             onClick={() => setViewMode('amount')}
-            className={`px-2 py-1 text-xs font-medium rounded-md transition-all ${viewMode === 'amount' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500'}`}
+            className={cn(
+              'rounded-full px-2.5 py-1 text-xs font-medium transition-all',
+              viewMode === 'amount' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground',
+            )}
           >
             Amt
           </button>
           <button
             onClick={() => setViewMode('quantity')}
-            className={`px-2 py-1 text-xs font-medium rounded-md transition-all ${viewMode === 'quantity' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500'}`}
+            className={cn(
+              'rounded-full px-2.5 py-1 text-xs font-medium transition-all',
+              viewMode === 'quantity' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground',
+            )}
           >
             Qty
           </button>
         </div>
       </CardHeader>
 
-      <CardContent className=" space-y-4">
+      <CardContent className="space-y-2.5 px-4">
         {isDataVisible ? (
           sortedItems.length > 0 ? (
             sortedItems.map((item, index) => (
@@ -63,17 +70,17 @@ export const TopSoldItemsCard: React.FC<TopSoldItemsCardProps> = ({
                 className="flex items-center justify-between"
               >
                 <div className="flex items-center gap-3 overflow-hidden">
-                  <div className="flex-shrink-0 h-6 w-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold">
+                  <div className="bg-gradient-brand flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-sm">
                     {index + 1}
                   </div>
                   <span
-                    className="text-sm text-gray-700 truncate max-w-[200px]"
+                    className="text-xs text-foreground truncate max-w-[200px]"
                     title={item.name}
                   >
                     {item.name}
                   </span>
                 </div>
-                <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">
+                <span className="text-xs font-semibold text-foreground whitespace-nowrap">
                   {viewMode === 'amount'
                     ? `₹${item.amount.toLocaleString('en-IN')}`
                     : `${item.quantity} units`}
@@ -82,11 +89,11 @@ export const TopSoldItemsCard: React.FC<TopSoldItemsCardProps> = ({
             ))
           ) : (
             <div className="text-center py-8">
-              <p className="text-sm text-gray-500">No items sold</p>
+              <p className="text-sm text-muted-foreground">No items sold</p>
             </div>
           )
         ) : (
-          <div className="text-center py-8 text-gray-400 text-sm">
+          <div className="text-center py-8 text-muted-foreground text-sm">
             Data hidden
           </div>
         )}

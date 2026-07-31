@@ -24,17 +24,17 @@ const CustomCard = React.forwardRef<HTMLDivElement, CustomCardProps>(
         ...props
     }, ref) => {
 
-        const baseClasses = 'flex flex-col bg-white transition-all duration-200';
+        const baseClasses = 'flex flex-col bg-card transition-all duration-200';
 
         const variantClasses = {
             [CardVariant.Default]:
-                'mb-2 rounded-sm border border-slate-200 p-5.5 shadow-sm',
+                'mb-2 rounded-sm border border-border p-5.5 shadow-sm',
 
             [CardVariant.Summary]:
                 'p-4 rounded-lg shadow-md text-center items-center justify-center min-h-[100px]',
 
             [CardVariant.Outline]:
-                'rounded-sm border-2 border-dashed border-slate-300 p-6 hover:border-slate-400',
+                'rounded-sm border-2 border-dashed border-border p-6 hover:border-slate-400',
         };
 
         const activeClasses = {
@@ -48,10 +48,10 @@ const CustomCard = React.forwardRef<HTMLDivElement, CustomCardProps>(
             if (variant === CardVariant.Summary && (title || value)) {
                 return (
                     <>
-                        <h3 className={cn("text-sm font-medium text-gray-500 uppercase tracking-wider", titleClassName)}>
+                        <h3 className={cn("text-sm font-medium text-muted-foreground uppercase tracking-wider", titleClassName)}>
                             {title}
                         </h3>
-                        <p className={cn("text-2xl font-bold text-gray-900 mt-1", valueClassName)}>
+                        <p className={cn("text-2xl font-bold text-foreground mt-1", valueClassName)}>
                             {value}
                         </p>
                         {children}

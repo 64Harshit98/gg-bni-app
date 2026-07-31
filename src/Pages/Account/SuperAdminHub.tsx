@@ -78,7 +78,7 @@ const SuperAdminHub: React.FC = () => {
 
     if (!currentUser || !SUPER_ADMIN_UIDS.includes(currentUser.uid)) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-100">
+            <div className="min-h-screen flex items-center justify-center bg-muted">
                 <div className="text-center">
                     <div className="text-5xl mb-3">⛔</div>
                     <p className="text-red-500 font-bold text-xl">ACCESS DENIED</p>
@@ -88,18 +88,18 @@ const SuperAdminHub: React.FC = () => {
     }
 
     return (
-        <div className="min-h-screen bg-gray-100 p-2 pb-16 md:p-6 md:pb-16 font-sans">
+        <div className="min-h-screen bg-muted p-2 pb-16 md:p-6 md:pb-16 font-sans">
 
             {/* Header — matches every other page exactly */}
             <div className="flex items-center justify-between pb-3 border-b mb-4">
                 <div className="w-8" /> {/* left spacer to balance UID badge */}
-                <h1 className="flex-1 text-xl text-center font-bold text-gray-800 md:text-2xl">
+                <h1 className="flex-1 text-xl text-center font-bold text-foreground md:text-2xl">
                     Super Admin
                 </h1>
             </div>
 
             {/* Section label */}
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 ml-1">
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3 ml-1">
                 Choose a section
             </p>
 
@@ -109,7 +109,7 @@ const SuperAdminHub: React.FC = () => {
                     <div
                         key={tile.label}
                         onClick={() => navigate(tile.route)}
-                        className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-start gap-4 cursor-pointer transition-all hover:shadow-md hover:border-gray-300 active:scale-[0.98]"
+                        className="bg-card rounded-xl shadow-sm border border-border p-4 flex items-start gap-4 cursor-pointer transition-all hover:shadow-md hover:border-border active:scale-[0.98]"
                     >
                         {/* Icon box */}
                         <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${tile.iconClass}`}>
@@ -118,10 +118,10 @@ const SuperAdminHub: React.FC = () => {
 
                         {/* Text */}
                         <div className="flex-1">
-                            <p className="text-base font-bold text-gray-800 mb-1">
+                            <p className="text-base font-bold text-foreground mb-1">
                                 {tile.label}
                             </p>
-                            <p className="text-sm text-gray-500 leading-snug mb-3">
+                            <p className="text-sm text-muted-foreground leading-snug mb-3">
                                 {tile.description}
                             </p>
                             <span className={`text-sm font-semibold ${tile.textClass}`}>

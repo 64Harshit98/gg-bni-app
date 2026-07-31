@@ -1,25 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
-import { db } from '../lib/Firebase';
-import {
-  collection,
-  query,
-  getDocs,
-  doc,
-  getDoc,
-  writeBatch,
-  arrayUnion,
-  serverTimestamp,
-  increment as firebaseIncrement,
-} from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
 import type { Item } from '../constants/models';
 
 import { ROUTES } from '../constants/routes.constants';
 import { Modal } from '../constants/Modal';
-import { State, Variant } from '../enums';
-import { CustomButton } from '../Components';
+import { State } from '../enums';
+import { Button } from '../Components/ui/button';
 import PaymentDrawer, { type PaymentCompletionData } from '../Components/PaymentDrawer';
 import { ReturnListItem } from '../Components/ReturnListItem';
 import type { Order, OrderItem } from './Orders';
@@ -30,6 +18,14 @@ import { GenericCartList } from '../Components/CartItem';
 import { applyRounding } from '../Pages/Master/Sales'
 import { ItemEditDrawer } from '../Components/ItemDrawer';
 import type { SalesItem } from '../constants/models';
+import { Spinner } from '../Components/ui/spinner';
+import {
+  fetchCompanyOrders,
+  fetchCatalogueSettings,
+  fetchCompanyItems,
+  fetchOrderById,
+  processReturnTransaction,
+} from '../services/catalogue/orderReturn.service';
 
 interface TransactionItem {
   id: string;
@@ -123,14 +119,7 @@ const OrdersReturnPage: React.FC = () => {
       if (!currentUser?.companyId) return; // Safety check
       setIsLoading(true);
       try {
-        const ordersQuery = query(
-          collection(db, 'companies', currentUser.companyId, 'Orders')
-        );
-
-        const snap = await getDocs(ordersQuery);
-        const completedOrders = snap.docs.map(
-          d => ({ id: d.id, ...d.data() } as Order)
-        );
+        const completedOrders = await fetchCompanyOrders(currentUser.companyId);
         setSalesList(completedOrders);
       } catch (err) {
         console.error(err);
@@ -159,19 +148,8 @@ const OrdersReturnPage: React.FC = () => {
     if (!currentUser?.companyId) return;
 
     const fetchSettings = async () => {
-      const ref = doc(
-        db,
-        "companies",
-        currentUser.companyId,
-        "settings",
-        "catalogue-sales-settings"
-      );
-
-      const snap = await getDoc(ref);
-
-      if (snap.exists()) {
-        setCatalogueSettings(snap.data());
-      }
+      const settings = await fetchCatalogueSettings(currentUser.companyId!);
+      if (settings) setCatalogueSettings(settings);
     };
 
     fetchSettings();
@@ -182,15 +160,7 @@ const OrdersReturnPage: React.FC = () => {
 
     const fetchItems = async () => {
       try {
-        const q = query(
-          collection(db, 'companies', currentUser.companyId, 'items')
-        );
-        const snap = await getDocs(q);
-        const list = snap.docs.map(d => ({
-          id: d.id,
-          ...d.data()
-        })) as any[];
-
+        const list = await fetchCompanyItems(currentUser.companyId!);
         setAvailableItems(list);
       } catch (err) {
         console.error(err);
@@ -640,22 +610,9 @@ const paidAmountOnSale = useMemo(() => {
   const refreshSelectedOrder = async (orderId: string) => {
     if (!currentUser?.companyId) return;
 
-    const orderRef = doc(
-      db,
-      'companies',
-      currentUser.companyId,
-      'Orders',
-      orderId
-    );
+    const updatedOrder = await fetchOrderById(currentUser.companyId, orderId);
 
-    const snap = await getDoc(orderRef);
-
-    if (snap.exists()) {
-      const updatedOrder = {
-        id: snap.id,
-        ...snap.data(),
-      } as Order;
-
+    if (updatedOrder) {
       // Update selected sale
       setSelectedSale(updatedOrder);
       handleSelectSale(updatedOrder);
@@ -742,324 +699,25 @@ const paidSoFar = Object.entries(selectedSale?.paymentMethods || {})
     const companyId = currentUser.companyId;
 
     try {
-      const batch = writeBatch(db);
-      const saleRef = doc(db, 'companies', companyId, 'Orders', selectedSale.id);
+      const availableItemIds = new Set(availableItems.map(i => i.id));
 
-      // --- 0. FINAL PARTY DETAILS ---
-      const finalPartyName =
-        (completionData?.partyName || partyName || selectedSale.userName || '').trim();
-
-      const finalPartyNumber =
-        (completionData?.partyNumber || partyNumber || '').trim();
-
-      // --- 1. ORIGINAL ITEMS MAP ---
-      const originalItemsMap = new Map<string, any>();
-
-      (selectedSale.items || []).forEach((item: any) => {
-        const safeId = item.id;
-        const qty = Number(item.quantity) || 1;
-        const total = Number(item.finalPrice || item.amount || 0);
-        const unit =
-          item.effectiveUnitPrice !== undefined
-            ? Number(item.effectiveUnitPrice)
-            : (qty > 0 ? total / qty : 0) ||
-            Number(item.customPrice ?? item.unitPrice ?? item.salesPrice) ||
-            0;
-
-        originalItemsMap.set(safeId, {
-          ...item,
-          _effectiveUnitPrice: unit
-        });
-      });
-
-
-      const originalInvoiceTotal = (selectedSale.items || []).reduce(
-        (sum: number, item: any) => sum + Number(item.finalPrice || 0),
-        0
-      );
-
-      const validInventoryIds = new Set(availableItems.map(i => i.id));
-
-      // --- 2. HANDLE RETURNS ---
-      let returnedItemsGrossValue = 0;
-
-      // --- 2. HANDLE RETURNS ---
-      if (modeOfReturn !== 'Exchange') {
-        itemsToReturn.forEach(returnItem => {
-          const originalItem = originalItemsMap.get(returnItem.originalItemId);
-
-          if (originalItem) {
-            originalItem.quantity -= returnItem.quantity;
-            returnedItemsGrossValue +=
-              originalItem._effectiveUnitPrice * returnItem.quantity;
-
-            if (originalItem.quantity <= 0) {
-              originalItemsMap.delete(returnItem.originalItemId);
-            }
-          }
-        });
-      }
-
-      // --- 3. HANDLE EXCHANGE ---
-      if (modeOfReturn === 'Exchange') {
-        // 🔁 remove returned items first
-        itemsToReturn.forEach(returnItem => {
-          const originalItem = originalItemsMap.get(returnItem.originalItemId);
-
-          if (originalItem) {
-            originalItem.quantity -= returnItem.quantity;
-
-            if (originalItem.quantity <= 0) {
-              originalItemsMap.delete(returnItem.originalItemId);
-            }
-          }
-        });
-      }
-
-      // ➕ add exchange items
-      if (modeOfReturn === 'Exchange') {
-        exchangeItems.forEach(exchangeItem => {
-          const existingItem = originalItemsMap.get(exchangeItem.originalItemId);
-
-          if (existingItem) {
-            existingItem.quantity += exchangeItem.quantity;
-          } else {
-            originalItemsMap.set(exchangeItem.originalItemId, {
-              id: exchangeItem.originalItemId,
-              name: exchangeItem.name,
-              mrp: exchangeItem.mrp,
-              quantity: exchangeItem.quantity,
-              discount: exchangeItem.discount || 0,
-              finalPrice: exchangeItem.amount,
-              amount: exchangeItem.amount,
-              unitPrice:
-                exchangeItem.amount / exchangeItem.quantity || exchangeItem.mrp,
-              _effectiveUnitPrice:
-                exchangeItem.amount / exchangeItem.quantity || exchangeItem.mrp
-            });
-          }
-        });
-      }
-
-      // --- 3.5 HANDLE RETURN STOCK (ADD BACK) ---
-      itemsToReturn.forEach(returnItem => {
-        if (validInventoryIds.has(returnItem.originalItemId)) {
-          batch.update(
-            doc(db, 'companies', companyId, 'items', returnItem.originalItemId),
-            {
-              stock: firebaseIncrement(returnItem.quantity),
-              updatedAt: serverTimestamp()
-            }
-          );
-        }
-      });
-
-      // --- 3.6 HANDLE EXCHANGE STOCK (DEDUCT) ---
-      exchangeItems.forEach(exchangeItem => {
-        if (validInventoryIds.has(exchangeItem.originalItemId)) {
-          batch.update(
-            doc(db, 'companies', companyId, 'items', exchangeItem.originalItemId),
-            {
-              stock: firebaseIncrement(-exchangeItem.quantity),
-              updatedAt: serverTimestamp()
-            }
-          );
-        }
-      });
-
-      // --- 4. RECALCULATE BILL ---
-      const newItemsList = Array.from(originalItemsMap.values()).map(item => {
-        const safeUnit =
-          Number(item._effectiveUnitPrice) ||
-          Number(item.unitPrice) ||
-          Number(item.mrp)
-        0;
-
-        const lineTotal = safeUnit * Number(item.quantity);
-
-        const { _effectiveUnitPrice, ...clean } = item;
-
-        return {
-          ...clean,
-          unitPrice: safeUnit,
-          salesPrice: safeUnit,
-          finalPrice: lineTotal,
-          amount: lineTotal
-        };
-      });
-
-      const totals = newItemsList.reduce(
-        (acc, item) => {
-          const gross = item.mrp * item.quantity;
-          const discount = gross - item.finalPrice;
-          acc.subtotal += gross;
-          acc.totalItemDiscount += discount;
-          return acc;
-        },
-        { subtotal: 0, totalItemDiscount: 0 }
-      );
-
-      // --- 5. MANUAL DISCOUNT ---
-      const originalManualDiscount = Number(selectedSale.manualDiscount) || 0;
-      let discountDeduction = 0;
-
-      if (
-        originalManualDiscount > 0 &&
-        originalInvoiceTotal > 0 &&
-        returnedItemsGrossValue > 0
-      ) {
-        discountDeduction =
-          (returnedItemsGrossValue / originalInvoiceTotal) *
-          originalManualDiscount;
-      }
-
-      discountDeduction = Math.round(discountDeduction * 100) / 100;
-      const newManualDiscount = Math.max(
-        0,
-        originalManualDiscount - discountDeduction
-      );
-
-      const updatedFinalAmount =
-        totals.subtotal - totals.totalItemDiscount - newManualDiscount;
-
-      // --- 6. PAYMENTS ---
-      const updatedPaymentMethods = {
-        ...(selectedSale.paymentMethods || {})
-      };
-
-      if (completionData?.paymentDetails) {
-        Object.entries(completionData.paymentDetails).forEach(
-          ([mode, amount]) => {
-            if (mode.toLowerCase() !== 'due') {
-              updatedPaymentMethods[mode] =
-                (updatedPaymentMethods[mode] || 0) + Number(amount);
-            }
-          }
-        );
-      }
-
-      // --- NEW FIX: Add Credit/Refund amounts to paymentMethods for OrdersPage badges ---
-      let creditAmountToAdd = 0;
-      let refundAmountToAdd = 0;
-
-      if (finalBalance > 0) {
-        if (modeOfReturn === 'Credit Note' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Credit Note')) {
-          creditAmountToAdd = finalBalance;
-          updatedPaymentMethods['CREDIT NOTE'] = (updatedPaymentMethods['CREDIT NOTE'] || 0) + finalBalance;
-        } else if (modeOfReturn === 'Cash Refund' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Cash Refund')) {
-          refundAmountToAdd = finalBalance;
-          updatedPaymentMethods['CASH REFUND'] = (updatedPaymentMethods['CASH REFUND'] || 0) + finalBalance;
-        }
-      }
-
-
-      const paid = Object.entries(updatedPaymentMethods)
-        .filter(([k]) => k !== 'due')
-        .reduce((sum, [, v]) => sum + Number(v), 0);
-
-      updatedPaymentMethods.due = Math.max(0, updatedFinalAmount - paid);
-
-      // --- 7. HISTORY ---
-
-      const cleanItem = (item: any) => ({
-        id: item.id || '',
-        originalItemId: item.originalItemId || '',
-        name: item.name || '',
-        mrp: item.mrp ?? 0,
-        quantity: item.quantity ?? 1,
-        unitPrice: item.unitPrice ?? 0,
-        amount: item.amount ?? 0,
-        discount: item.discount ?? 0,
-      });
-      const cleanPaymentDetails = completionData?.paymentDetails
-        ? Object.fromEntries(
-          Object.entries(completionData.paymentDetails).filter(
-            ([_, v]) => v !== undefined && v !== null
-          )
-        )
-        : null;
-
-      const returnHistoryRecord = {
-        id: crypto.randomUUID(),
-        returnedAt: new Date(),
-        returnedItems: itemsToReturn.map(cleanItem),
-        exchangeItems: exchangeItems.map(cleanItem),
-        finalBalance,
-        discountDeducted: discountDeduction,
+      const { newItemsList } = await processReturnTransaction({
+        companyId,
+        selectedSale,
+        partyName,
+        partyNumber,
+        itemsToReturn,
+        exchangeItems,
         modeOfReturn,
-        paymentDetails: cleanPaymentDetails,
-        partyName: finalPartyName,
-        partyNumber: finalPartyNumber
-      };
-
-      const safeReturnHistoryRecord = JSON.parse(
-        JSON.stringify(returnHistoryRecord)
-      );
-
-      // --- 9. CUSTOMER LEDGER ---
-      const shouldAddCredit =
-        finalBalance > 0 &&
-        (modeOfReturn === 'Credit Note' ||
-          (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Credit Note'));
-      if (finalPartyNumber.length >= 3 && shouldAddCredit) {
-        batch.set(
-          doc(db, 'companies', companyId, 'customers', finalPartyNumber),
-          {
-            name: finalPartyName,
-            number: finalPartyNumber,
-            creditBalance: firebaseIncrement(finalBalance),
-            lastUpdatedAt: serverTimestamp()
-          },
-          { merge: true }
-        );
-      }
-
-      const actualPaid = selectedSale.paidAmount ?? 0;
-      const isUnpaidOrder = actualPaid === 0;
-
-      // Total paid = original paidAmount + any new payment made during this exchange
-      const newPaymentAmount = completionData?.paymentDetails
-        ? Object.entries(completionData.paymentDetails)
-          .filter(([k]) => k.toLowerCase() !== 'due')
-          .reduce((sum, [, v]) => sum + Number(v), 0)
-        : 0;
-
-      const totalPaidAfterReturn = actualPaid + newPaymentAmount;
-
-      // Clamp: paidAmount should never exceed the new bill total
-      const effectivePaid = Math.min(totalPaidAfterReturn, updatedFinalAmount);
-      const effectiveDue = Math.max(0, updatedFinalAmount - effectivePaid);
-
-      // Smart status: if due is 0 (or negligible), mark as Paid
-      const newStatus = effectiveDue <= 0.1 ? 'Paid' : 'Completed';
-
-      batch.update(saleRef, {
-        items: newItemsList,
-        totalAmount: updatedFinalAmount,
-
-        manualDiscount: newManualDiscount,
-        paymentMethods: {
-          ...updatedPaymentMethods,
-          due: isUnpaidOrder
-            ? Math.max(0, selectedSale.totalAmount - returnedItemsGrossValue)
-            : effectiveDue,
-        },
-
-        paidAmount: effectivePaid,
-        status: isUnpaidOrder ? 'Completed' : newStatus,
-
-        returnHistory: arrayUnion(safeReturnHistoryRecord),
-
-        // --- NEW FIX: Update root fields for OrdersPage summary totals ---
-        ...(creditAmountToAdd > 0 && { creditNoteAmount: firebaseIncrement(creditAmountToAdd) }),
-        ...(refundAmountToAdd > 0 && { refundAmount: firebaseIncrement(refundAmountToAdd) }),
-
-        updatedAt: serverTimestamp()
+        exchangeBalanceAction,
+        finalBalance,
+        availableItemIds,
+        completionData,
       });
-      await batch.commit();
+
       await refreshSelectedOrder(selectedSale.id);
       setOriginalSaleItems(
-        newItemsList.map((item: any) => ({
+        newItemsList.map((item) => ({
           id: item.id,
           originalItemId: item.id,
           name: item.name,
@@ -1074,7 +732,7 @@ const paidSoFar = Object.entries(selectedSale?.paymentMethods || {})
         prev
           ? {
             ...prev,
-            items: newItemsList
+            items: newItemsList as unknown as OrderItem[]
           }
           : prev
       );
@@ -1084,11 +742,11 @@ const paidSoFar = Object.entries(selectedSale?.paymentMethods || {})
         message: 'Return processed successfully!'
       });
       setTimeout(() => navigate(ROUTES.ORDERDETAILS), 1500);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
       setModal({
         type: State.ERROR,
-        message: `Failed: ${err.message}`
+        message: `Failed: ${err instanceof Error ? err.message : 'Unknown error'}`
       });
     } finally {
       setIsLoading(false);
@@ -1196,22 +854,27 @@ const isCreditNote =
     return 'Credit Due';
   };
 
-  if (isLoading) return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
+  if (isLoading) return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-muted-foreground">
+      <Spinner size="xl" />
+      <p className="text-sm font-medium">Loading...</p>
+    </div>
+  );
 
 
   return (
-    <div className="flex flex-col h-screen w-full bg-gray-100 overflow-hidden">
+    <div className="flex flex-col h-screen w-full bg-muted overflow-hidden">
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
       <BarcodeScanner isOpen={scannerPurpose !== null} onClose={() => setScannerPurpose(null)} onScanSuccess={handleBarcodeScanned} />
 
       {/* === HEADER === */}
-      <header className="flex flex-shrink-0 items-center justify-between border-b border-slate-300 bg-gray-100 p-2 shadow-sm">
+      <header className="flex flex-shrink-0 items-center justify-between border-b border-border bg-muted p-2 shadow-sm">
 
         {/* Left: Back Button */}
         <div className="w-14 flex justify-start">
           <button
             onClick={() => navigate(ROUTES.ORDERDETAILS)}
-            className="p-2 rounded-sm border border-slate-400 hover:bg-slate-200 transition-colors text-slate-700"
+            className="p-2 rounded-sm border border-slate-400 hover:bg-muted transition-colors text-foreground"
             title="Back"
           >
             <svg
@@ -1233,10 +896,10 @@ const isCreditNote =
 
         {/* Center: Title */}
         <div className="flex-1 text-center">
-          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
+          <h1 className="text-2xl font-bold text-foreground tracking-tight">
             Orders Return
           </h1>
-          <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
             Process Refunds & Exchange
           </p>
         </div>
@@ -1251,12 +914,12 @@ const isCreditNote =
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
 
         {/* --- LEFT PANEL (Desktop: 65%, Search + Lists) --- */}
-        <div className="flex-1 w-full md:w-[65%] bg-gray-100 md:bg-white md:border-r border-gray-200 overflow-y-auto p-2 md:p-2 pb-24 md:pb-2 relative">
+        <div className="flex-1 w-full md:w-[65%] bg-muted md:bg-card md:border-r border-border overflow-y-auto p-2 md:p-2 pb-24 md:pb-2 relative">
 
           {/* Search */}
-          <div className="bg-white p-2 rounded-sm shadow-md mb-4 border border-gray-200">
+          <div className="bg-card p-2 rounded-sm shadow-md mb-4 border border-border">
             <div className="relative" ref={salesDropdownRef}>
-              <label htmlFor="search-sale" className="block text-sm font-medium mb-1 text-gray-700">Search Original Sale</label>
+              <label htmlFor="search-sale" className="block text-sm font-medium mb-1 text-foreground">Search Original Sale</label>
               <div className="flex gap-2">
                 <input
                   id="search-sale"
@@ -1283,10 +946,10 @@ const isCreditNote =
                   autoComplete="off"
                   readOnly={!!selectedSale}
                 />
-                {selectedSale && (<button onClick={handleClear} className=" px-3 bg-gray-200 text-gray-700 font-semibold rounded-sm whitespace-nowrap hover:bg-gray-300">Clear</button>)}
+                {selectedSale && (<button onClick={handleClear} className=" px-3 bg-muted text-foreground font-semibold rounded-sm whitespace-nowrap hover:bg-gray-300">Clear</button>)}
               </div>
               {isSalesDropdownOpen && !selectedSale && (
-                <div className="absolute top-full w-full z-20 mt-1 bg-white border rounded-sm shadow-lg max-h-60 overflow-y-auto">
+                <div className="absolute top-full w-full z-20 mt-1 bg-card border rounded-sm shadow-lg max-h-60 overflow-y-auto">
                   {filteredSales.map((sale) => {
                     // Calculate total from items instead of using static totalAmount
                     const calculatedAmount = (sale.items || []).reduce(
@@ -1303,16 +966,16 @@ const isCreditNote =
                     return (
                       <div
                         key={sale.id}
-                        className="p-3 cursor-pointer hover:bg-gray-100 border-b border-gray-50 last:border-0"
+                        className="p-3 cursor-pointer hover:bg-muted border-b border-gray-50 last:border-0"
                         onClick={() => handleSelectSale(sale)}
                       >
                         <p className="font-semibold text-sm">
                           {sale.userName}{' '}
-                          <span className="text-gray-500 font-normal">
+                          <span className="text-muted-foreground font-normal">
                             ({sale.orderId || 'N/A'})
                           </span>
                         </p>
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-muted-foreground">
                           Amount: ₹{calculatedAmount.toFixed(2)}
                         </p>
                       </div>
@@ -1326,16 +989,16 @@ const isCreditNote =
           {selectedSale && (
             <>
               {/* Sale Details & Items To Return */}
-              <div className="bg-white p-3 rounded-sm shadow-md mb-4 border border-gray-200">
+              <div className="bg-card p-3 rounded-sm shadow-md mb-4 border border-border">
                 <div className="space-y-3 mb-4">
                   <div className="grid grid-cols-2 gap-4">
-                    <div><label className="block text-xs font-bold text-gray-500 uppercase">Date</label><input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-[#F97316] outline-none text-sm" /></div>
-                    <div><label className="block text-xs font-bold text-gray-500 uppercase">Party</label><input type="text" value={partyName} readOnly className="w-full p-1 border-b border-gray-300 focus:border-[#F97316] outline-none text-sm" /></div>
+                    <div><label className="block text-xs font-bold text-muted-foreground uppercase">Date</label><input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full p-1 border-b border-border focus:border-[#F97316] outline-none text-sm" /></div>
+                    <div><label className="block text-xs font-bold text-muted-foreground uppercase">Party</label><input type="text" value={partyName} readOnly className="w-full p-1 border-b border-border focus:border-[#F97316] outline-none text-sm" /></div>
                   </div>
 
                   {/* --- NEW DROPDOWN FOR PARTY NUMBER --- */}
                   <div className="relative" ref={customerDropdownRef}>
-                    <label className="block text-xs font-bold text-gray-500 uppercase">Party Number</label>
+                    <label className="block text-xs font-bold text-muted-foreground uppercase">Party Number</label>
                     <input
                       type="text"
                       value={partyNumber}
@@ -1349,21 +1012,21 @@ const isCreditNote =
                       //   }
                       // }}
                       // onFocus={() => setIsCustomerDropdownOpen(true)}
-                      className="w-full p-1 border-b border-gray-300 focus:border-[#F97316] outline-none text-sm"
+                      className="w-full p-1 border-b border-border focus:border-[#F97316] outline-none text-sm"
                       autoComplete="off"
                       placeholder="Search customer by number or name..."
                       maxLength={10}
                     />
                     {isCustomerDropdownOpen && filteredCustomers.length > 0 && (
-                      <div className="absolute top-full left-0 w-full z-20 mt-1 bg-white border rounded-sm shadow-lg max-h-48 overflow-y-auto">
+                      <div className="absolute top-full left-0 w-full z-20 mt-1 bg-card border rounded-sm shadow-lg max-h-48 overflow-y-auto">
                         {filteredCustomers.map((customer) => (
                           <div
                             key={customer.id}
-                            className="p-2 cursor-pointer hover:bg-gray-100 border-b last:border-0"
+                            className="p-2 cursor-pointer hover:bg-muted border-b last:border-0"
                             onClick={() => handleSelectCustomer(customer)}
                           >
-                            <p className="font-semibold text-sm text-gray-800">{customer.name}</p>
-                            <p className="text-xs text-gray-500">{customer.number}</p>
+                            <p className="font-semibold text-sm text-foreground">{customer.name}</p>
+                            <p className="text-xs text-muted-foreground">{customer.number}</p>
                           </div>
                         ))}
                       </div>
@@ -1372,7 +1035,7 @@ const isCreditNote =
 
                 </div>
 
-                <h3 className="text-sm font-bold text-gray-700 mb-2 border-b pb-1">Select Return Items</h3>
+                <h3 className="text-sm font-bold text-foreground mb-2 border-b pb-1">Select Return Items</h3>
                 <div className="flex items-end gap-1 mb-3">
                   <div className="flex-grow">
                     <input
@@ -1390,7 +1053,7 @@ const isCreditNote =
                 </div>
                 <div className="flex flex-col gap-2">
                   {originalSaleItems.length === 0 && (
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-muted-foreground">
                       No returnable items found for this order.
                     </p>
                   )}
@@ -1414,11 +1077,11 @@ const isCreditNote =
               </div>
 
               {/* Exchange Section (Input + List) */}
-              <div className="bg-white p-2 rounded-sm shadow-md mb-4 md:mb-0 border border-gray-200">
+              <div className="bg-card p-2 rounded-sm shadow-md mb-4 md:mb-0 border border-border">
                 {/* Mobile View: Select Mode Here. Desktop: Mode is in Right Panel, but show Content if Exchange is selected */}
                 <div className="md:hidden mb-4">
                   <label className="block font-medium text-sm mb-1">Transaction Type</label>
-                  <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-2 border rounded bg-white">
+                  <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-2 border rounded bg-card">
                     <option disabled={isDueSale}>Credit Note</option>
                     <option>Exchange</option>
                     <option>Refund</option>
@@ -1450,11 +1113,11 @@ const isCreditNote =
 
                     {exchangeItems.length > 0 && (
                       <div className="border rounded-sm overflow-hidden mt-4">
-                        <div className="bg-gray-50 px-3 py-2 border-b text-xs font-bold text-gray-500 uppercase">
+                        <div className="bg-muted px-3 py-2 border-b text-xs font-bold text-muted-foreground uppercase">
                           Exchange Cart
                         </div>
 
-                        <div className="max-h-60 overflow-y-auto bg-gray-50">
+                        <div className="max-h-60 overflow-y-auto bg-muted">
                           <GenericCartList<any>
                             items={mappedExchangeItems}
                             availableItems={availableItems as any}
@@ -1510,7 +1173,7 @@ const isCreditNote =
               </div>
 
               {/* Mobile Only: Inline Summary (Above Footer) */}
-              <div className="md:hidden bg-white p-2 rounded-sm shadow-md">
+              <div className="md:hidden bg-card p-2 rounded-sm shadow-md">
                 <div className="flex justify-between items-center text-sm text-[#F97316]">
                   <p>Return Value</p><p className="font-medium">₹{totalReturnGross.toFixed(2)}</p>
                 </div>
@@ -1524,13 +1187,13 @@ const isCreditNote =
                     <p>Exchange Value</p><p className="font-medium">₹{totalExchangeValue.toFixed(2)}</p>
                   </div>
                 )}
-                <div className="border-t border-gray-200 my-2"></div>
+                <div className="border-t border-border my-2"></div>
                 <div className={`flex justify-between items-center text-lg font-bold ${finalBalance >= 0 ? 'text-[#F97316]' : 'text-red-600'}`}>
                   {modeOfReturn === 'Exchange' && finalBalance > 0 ? (
                     <select
                       value={exchangeBalanceAction}
                       onChange={(e) => setExchangeBalanceAction(e.target.value as any)}
-                      className="bg-transparent border border-gray-300 rounded-sm hover:border-gray-400 focus:border-orange-500 outline-none cursor-pointer py-1 pr-2 text-gray-700 transition-colors"
+                      className="bg-transparent border border-border rounded-sm hover:border-gray-400 focus:border-orange-500 outline-none cursor-pointer py-1 pr-2 text-foreground transition-colors"
                     >
                       <option value="Credit Note">Credit Due</option>
                       <option value="Cash Refund">Cash Refund</option>
@@ -1546,15 +1209,15 @@ const isCreditNote =
         </div>
 
         {/* --- RIGHT PANEL (Desktop Only: 35%) --- */}
-        <div className="hidden md:flex w-[35%] flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10 p-6">
+        <div className="hidden md:flex w-[35%] flex-col bg-card h-full relative border-l border-border shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10 p-6">
           {selectedSale ? (
             <div className="flex flex-col h-full">
-              <h2 className="text-xl font-bold text-gray-800 mb-6 border-b pb-2">Return Summary</h2>
+              <h2 className="text-xl font-bold text-foreground mb-6 border-b pb-2">Return Summary</h2>
 
               {/* Transaction Type */}
               <div className="mb-6">
-                <label className="block text-sm font-semibold text-gray-600 mb-2">Transaction Type</label>
-                <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-3 border border-gray-300 rounded-sm bg-gray-50 focus:ring-2 focus:ring-[#F97316] outline-none">
+                <label className="block text-sm font-semibold text-muted-foreground mb-2">Transaction Type</label>
+                <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-3 border border-border rounded-sm bg-muted focus:ring-2 focus:ring-[#F97316] outline-none">
                   <option disabled={isDueSale}>Credit Note</option>
                   <option>Exchange</option>
                   <option>Cash Refund</option>
@@ -1562,7 +1225,7 @@ const isCreditNote =
               </div>
 
               {/* Financials */}
-              <div className="space-y-4 text-sm text-gray-700 bg-gray-50 p-4 rounded-sm border border-gray-100 flex-grow">
+              <div className="space-y-4 text-sm text-foreground bg-muted p-4 rounded-sm border border-border flex-grow">
                 <div className="flex justify-between">
                   <span>Return Sale Amount</span>
                   <span className="font-medium">₹{totalReturnGross.toFixed(2)}</span>
@@ -1573,11 +1236,11 @@ const isCreditNote =
                     <span>- ₹{discountDeducted.toFixed(2)}</span>
                   </div>
                 )}
-                <div className="flex justify-between text-gray-700">
+                <div className="flex justify-between text-foreground">
                   <span>Paid Amount</span>
                   <span className="font-medium">₹{paidAmountOnSale.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between font-semibold border-t border-gray-200 pt-2">
+                <div className="flex justify-between font-semibold border-t border-border pt-2">
                   <span>Net Return Value</span>
                   <span>₹{(totalReturnGross - discountDeducted).toFixed(2)}</span>
                 </div>
@@ -1591,19 +1254,19 @@ const isCreditNote =
               </div>
 
               {/* Final Total */}
-              <div className="mt-auto pt-4 border-t border-gray-100">
+              <div className="mt-auto pt-4 border-t border-border">
                 <div className="flex justify-between items-end mb-4">
                   {modeOfReturn === 'Exchange' && finalBalance > 0 ? (
                     <select
                       value={exchangeBalanceAction}
                       onChange={(e) => setExchangeBalanceAction(e.target.value as any)}
-                      className="text-gray-500 font-medium bg-transparent border border-gray-200 rounded-sm hover:border-gray-400 focus:border-orange-500 outline-none cursor-pointer pb-1 pr-2 transition-colors"
+                      className="text-muted-foreground font-medium bg-transparent border border-border rounded-sm hover:border-gray-400 focus:border-orange-500 outline-none cursor-pointer pb-1 pr-2 transition-colors"
                     >
                       <option value="Credit Note">Credit Due</option>
                       <option value="Cash Refund">Cash Refund</option>
                     </select>
                   ) : (
-                    <span className="text-gray-500 font-medium">{getBalanceLabel()}</span>
+                    <span className="text-muted-foreground font-medium">{getBalanceLabel()}</span>
                   )}
                   <span className={`text-3xl font-bold ${finalBalance >= 0 ? 'text-[#F97316]' : 'text-red-600'}`}>
                     ₹{Math.abs(finalBalance).toFixed(2)}
@@ -1617,7 +1280,7 @@ const isCreditNote =
               </div>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center h-full text-gray-400">
+            <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
               <p>Select a sale to begin return</p>
             </div>
           )}
@@ -1625,16 +1288,18 @@ const isCreditNote =
 
         {/* --- MOBILE FOOTER (Sticky) --- */}
         <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-transparent flex justify-center pb-18">
-          {selectedSale && (<CustomButton
-            onClick={handleProcessReturn}
-            disabled={
-              modeOfReturn === 'Exchange' &&
-              (exchangeItems.length === 0 || itemsToReturn.length === 0)
-            }
-            variant={Variant.Payment}
-          >
-            Process Transaction
-          </CustomButton>)}
+          {selectedSale && (
+            <Button
+              onClick={handleProcessReturn}
+              disabled={
+                modeOfReturn === 'Exchange' &&
+                (exchangeItems.length === 0 || itemsToReturn.length === 0)
+              }
+              className="flex-1 h-auto rounded-sm py-3 px-8 text-lg font-semibold bg-success text-success-foreground hover:bg-success/90"
+            >
+              Process Transaction
+            </Button>
+          )}
         </div>
       </div>
 

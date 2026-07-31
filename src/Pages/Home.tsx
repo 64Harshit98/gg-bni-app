@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { collection, query, where, orderBy, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import { useAuth } from '../context/auth-context';
 import ShowWrapper from '../context/ShowWrapper';
@@ -19,55 +19,16 @@ import { TopEntitiesList } from '../Components/TopFiveEntities';
 import { TutorialStep } from '../Components/TutorialStep';
 import ShinyText from '../Components/ShinyText';
 import NotificationBell from '../Components/NotificationBell';
-import { CACHE_DURATION } from '../lib/fetchDashboardData';
+import { Skeleton } from '../Components/ui/skeleton';
+import { StatCard } from '../Components/ui/stat-card';
+import { Receipt, Wallet, TrendingUp } from 'lucide-react';
+import { useDashboard } from '../features/dashboard';
+import type { DashboardData } from '../features/dashboard';
 import useTutorial from '../Catalogue/hooks/useTutorial';
 import { completeTutorial } from '../Catalogue/hooks/useCompleteTutorial';
 
 
-export interface SmartMetric { name: string; amount: number; quantity: number; }
 
-interface DashboardData {
-  totalSales: number;
-  totalOrders: number;
-  percentageChange: number;
-  salesByDate: {
-    name: string;
-    sales: number;
-    previousSales: number;
-    count: number;
-    qty?: number;
-    quantity?: number;
-    bills?: number;
-    Bills?: number;
-  }[];
-  paymentMethods: SmartMetric[];
-  topItems: SmartMetric[];
-  topCustomers: SmartMetric[];
-  topSalesmen: SmartMetric[];
-  lastUpdated: number;
-  cacheStart?: string;
-  cacheEnd?: string;
-}
-
-const cleanString = (str: string) => {
-  if (!str) return 'N/A';
-  return str.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-};
-
-const parseNum = (val: any): number => {
-  if (val === null || val === undefined) return 0;
-  if (typeof val === 'number') return val;
-  const clean = String(val).replace(/,/g, '').replace(/[^0-9.-]+/g, "");
-  return Number(clean) || 0;
-};
-
-const getSafeDate = (val: any): Date | null => {
-  if (!val) return null;
-  if (val.toDate) return val.toDate();
-  if (val.seconds) return new Date(val.seconds * 1000);
-  if (typeof val === 'string' || typeof val === 'number') return new Date(val);
-  return null;
-};
 const SAMPLE_DASHBOARD_DATA: DashboardData = {
   totalSales: 48250,
   totalOrders: 132,
@@ -119,7 +80,7 @@ const useBusinessName = () => {
         const docRef = doc(db, 'companies', currentUser.companyId!, 'business_info', currentUser.companyId!);
         const docSnap = await getDoc(docRef);
         setBusinessName(docSnap.exists() ? docSnap.data().businessName : 'Business');
-      } catch { } finally { setLoading(false); }
+      } catch { /* ignore */ } finally { setLoading(false); }
     };
     fetchBusinessInfo();
   }, [currentUser]);
@@ -134,8 +95,8 @@ const DashboardContent = () => {
   const { businessName, loading: nameLoading } = useBusinessName();
   const { filters } = useFilter();
 
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data, isLoading: loading, isFetching, refetch, dataUpdatedAt } =
+    useDashboard(currentUser?.companyId, filters.startDate, filters.endDate);
   const [isDataVisible, setIsDataVisible] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(0);
@@ -189,184 +150,14 @@ const DashboardContent = () => {
   const currentItem = SiteItems.find(item => item.to === location.pathname);
   const currentLabel = currentItem ? currentItem.label : 'Dashboard';
 
-  const fetchData = useCallback(async (forceRefresh = false) => {
-    if (!currentUser?.companyId || !filters.startDate || !filters.endDate) {
-      setLoading(false);
-      return;
-    }
-    if (!forceRefresh) setLoading(true);
-    const CACHE_KEY = `dashboard_cache_v2_${currentUser.companyId}`;
-    try {
-      const cached = localStorage.getItem(CACHE_KEY);
-      if (!forceRefresh && cached) {
-        const parsed = JSON.parse(cached);
-        const isTimeValid = (Date.now() - parsed.lastUpdated < CACHE_DURATION);
-        const isDateValid = parsed.cacheStart === filters.startDate && parsed.cacheEnd === filters.endDate;
-        if (isTimeValid && isDateValid) { setData(parsed); setLoading(false); return; }
-      }
-
-      const start = new Date(filters.startDate); start.setHours(0, 0, 0, 0);
-      const end = new Date(filters.endDate); end.setHours(23, 59, 59, 999);
-      const duration = end.getTime() - start.getTime();
-      const prevEnd = new Date(start.getTime() - 1);
-      const prevStart = new Date(prevEnd.getTime() - duration);
-
-      const salesRef = collection(db, 'companies', currentUser.companyId, 'sales');
-      const usersRef = collection(db, 'companies', currentUser.companyId, 'users');
-      const qSales = query(salesRef, where('createdAt', '>=', prevStart), where('createdAt', '<=', end), orderBy('createdAt', 'desc'));
-      const [snapSales, snapUsers] = await Promise.all([getDocs(qSales), getDocs(usersRef)]);
-
-      const currentSalesMap: Record<string, { amount: number, count: number }> = {};
-      const paymentMap: Record<string, { amount: number, count: number }> = {};
-      const itemMap: Record<string, { amount: number, count: number, latestName: string }> = {};
-      const customerMap: Record<string, { amount: number, count: number }> = {};
-      const salesmanMap: Record<string, { amount: number, count: number }> = {};
-      let currentTotalSales = 0, currentOrderCount = 0, prevTotalSales = 0;
-
-      const validSalesmen = new Map<string, string>();
-      snapUsers.docs.forEach(doc => {
-        const u = doc.data();
-        const role = String(u.role || '').toLowerCase().trim();
-        const isSalesRole =
-          role.includes('sales') ||
-          role === 'salesman' ||
-          role === 'sales person' ||
-          role === 'manager';
-        if (!isSalesRole) return;
-
-        // Grab the best available display name
-        const displayName = u.name || u.fullName || u.displayName || u.username || u.userName || 'Unknown Salesperson';
-
-        // Map the Document ID (the "gibberish") to the display name
-        validSalesmen.set(doc.id, displayName);
-
-        // Also map name variations just in case the sales doc stores names directly
-        const possibleNames = [
-          u.name,
-          u.fullName,
-          u.displayName,
-          u.username,
-          u.userName,
-        ]
-          .map((n: any) => String(n || '').trim().toLowerCase())
-          .filter(Boolean);
-
-        possibleNames.forEach((name: string) => validSalesmen.set(name, displayName));
-      });
-
-      snapSales.docs.forEach(doc => {
-        const d = doc.data();
-        const saleDate = getSafeDate(d.createdAt);
-        if (!saleDate) return;
-        const amount = parseNum(d.totalAmount || d.total || d.amount || d.grandTotal || 0);
-        const offset = saleDate.getTimezoneOffset() * 60000;
-        const dateKey = new Date(saleDate.getTime() - offset).toISOString().split('T')[0];
-        if (!currentSalesMap[dateKey]) currentSalesMap[dateKey] = { amount: 0, count: 0 };
-        currentSalesMap[dateKey].amount += amount;
-        currentSalesMap[dateKey].count++;
-
-        if (saleDate >= start && saleDate <= end) {
-          currentTotalSales += amount;
-          currentOrderCount++;
-          if (d.paymentMethods && typeof d.paymentMethods === 'object') {
-            const methods = Object.entries(d.paymentMethods).map(([key, val]) => ({ key: cleanString(key), amt: parseNum(val) })).filter(m => m.amt > 0);
-            if (methods.length > 0) {
-              const totalTendered = methods.reduce((sum, m) => sum + m.amt, 0);
-              let change = totalTendered > amount ? totalTendered - amount : 0;
-              methods.forEach(m => {
-                let finalAmt = m.amt;
-                if (change > 0 && m.key.toLowerCase() === 'cash') { const deduct = Math.min(finalAmt, change); finalAmt -= deduct; change -= deduct; }
-                if (change > 0) { const deduct = Math.min(finalAmt, change); finalAmt -= deduct; change -= deduct; }
-                if (finalAmt > 0) { if (!paymentMap[m.key]) paymentMap[m.key] = { amount: 0, count: 0 }; paymentMap[m.key].amount += finalAmt; paymentMap[m.key].count++; }
-              });
-            }
-          }
-          let cust = d.partyName || d.customerName || d.customer || 'N/A';
-          if (typeof cust === 'object' && cust.name) cust = cust.name;
-          if (!customerMap[cust]) customerMap[cust] = { amount: 0, count: 0 };
-          customerMap[cust].amount += amount; customerMap[cust].count++;
-
-          let sm = d.salesmanName || d.salesman || d.salesmanId || 'Admin';
-          if (typeof sm === 'object' && sm.name) sm = sm.name;
-
-          const smStr = String(sm);
-          // Translate the ID (or Name) into the official Display Name
-          const resolvedName = validSalesmen.get(smStr) || validSalesmen.get(smStr.toLowerCase().trim());
-
-          // Strictly filter: Only track if they have the salesman role
-          if (resolvedName) {
-            if (!salesmanMap[resolvedName]) salesmanMap[resolvedName] = { amount: 0, count: 0 };
-            salesmanMap[resolvedName].amount += amount;
-            salesmanMap[resolvedName].count++;
-          }
-
-          if (Array.isArray(d.items)) {
-            d.items.forEach((item: any) => {
-              const name = item.name || item.itemName;
-              const id = item.id || item.itemId || item.sku || name;
-              if (id && name) {
-                const qty = parseNum(item.quantity || item.qty || 1);
-                let val = parseNum(item.finalPrice || item.totalAmount || item.total || item.amount);
-                if (val === 0) { const price = parseNum(item.mrp || item.price || item.rate || item.sellingPrice || 0); val = price * qty; }
-                if (!itemMap[id]) itemMap[id] = { amount: 0, count: 0, latestName: name };
-                itemMap[id].amount += val; itemMap[id].count += qty;
-              }
-            });
-          }
-        }
-        if (saleDate >= prevStart && saleDate <= prevEnd) prevTotalSales += amount;
-      });
-
-      let percentageChange = 0;
-      if (prevTotalSales > 0) percentageChange = ((currentTotalSales - prevTotalSales) / prevTotalSales) * 100;
-      else if (currentTotalSales > 0) percentageChange = 100;
-
-      const chartData = [];
-
-      const itr = new Date(start);
-      itr.setDate(itr.getDate() - 1);
-
-      while (itr <= end) {
-        const offset = itr.getTimezoneOffset() * 60000;
-        const key = new Date(itr.getTime() - offset).toISOString().split('T')[0];
-        const label = itr.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
-
-        const countVal = currentSalesMap[key]?.count || 0;
-
-        chartData.push({
-          name: label,
-          sales: currentSalesMap[key]?.amount || 0,
-          count: countVal,
-          // FIX 2: Pass all possible variations of the count key to ensure the chart reads it
-          quantity: countVal,
-          qty: countVal,
-          bills: countVal,
-          Bills: countVal,
-          previousSales: 0
-        });
-
-        itr.setDate(itr.getDate() + 1);
-      }
-
-      const toList = (map: any) => Object.entries(map).map(([key, v]: [string, any]) => ({ name: v.latestName ?? key, amount: v.amount, quantity: v.count })).sort((a, b) => b.amount - a.amount).slice(0, 5);
-      const topSalesmen = Object.entries(salesmanMap)
-        .map(([name, v]: [string, any]) => ({ name, amount: v.amount, quantity: v.count }))
-        .sort((a, b) => b.amount - a.amount)
-        .slice(0, 5);
-
-      const finalData = { totalSales: currentTotalSales, totalOrders: currentOrderCount, percentageChange, salesByDate: chartData, paymentMethods: toList(paymentMap), topItems: toList(itemMap), topCustomers: toList(customerMap), topSalesmen, lastUpdated: Date.now(), cacheStart: filters.startDate, cacheEnd: filters.endDate };
-      setData(finalData);
-      localStorage.setItem(CACHE_KEY, JSON.stringify(finalData));
-    } catch (e) { console.error(e); } finally { setLoading(false); }
-  }, [currentUser, filters]);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
-  const handleRefresh = () => fetchData(true);
+  const handleRefresh = () => {
+    void refetch();
+  };
 
   const formattedLastUpdated = useMemo(() => {
-    if (!data?.lastUpdated) return 'Never';
-    return new Date(data.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  }, [data]);
+    if (!dataUpdatedAt) return 'Never';
+    return new Date(dataUpdatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }, [dataUpdatedAt]);
 
   useTutorial(currentUser, setTutorialStep, 'dashboardTutorialDone');
 
@@ -382,88 +173,123 @@ const DashboardContent = () => {
   }, [currentUser]);
 
   return (
-    <div className="flex min-h-screen w-full flex-col bg-gray-100">
+    <div className="aurora relative flex min-h-screen w-full flex-col bg-background">
       {showBadge && (
-        <div className={`w-full text-center py-2 text-sm font-bold text-white shadow-sm transition-colors duration-300 ${isUrgent ? 'bg-red-300' : 'bg-amber-200'}`}>
+        <div className={`w-full text-center py-2 text-sm font-bold shadow-sm transition-colors duration-300 ${isUrgent ? 'bg-destructive text-destructive-foreground' : 'bg-warning text-warning-foreground'}`}>
           <ShinyText text={`Subscription expires in ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}.`} speed={4} delay={0} color="#030303" shineColor="#faf5f5" spread={100} direction="left" yoyo={false} pauseOnHover={false} disabled={false} />
-          <Link to="/subscription" className="text-black ml-2 underline hover:text-gray-100">Renew Now</Link>
+          <Link to="/subscription" className="ml-2 underline underline-offset-2 hover:opacity-80">Renew Now</Link>
         </div>
       )}
 
-      <header className="flex flex-shrink-0 items-center justify-between border-b border-slate-300 bg-gray-100 p-2">
-        {/* Step 1 — POS/Catalogue switch button */}
-        <TutorialStep step={1} currentStep={tutorialStep} text="Use this menu to switch between POS and Catalogue views." onNext={() => next(2)} onSkip={skip} mobileArrowAlign="left" >
-          <div ref={setTutorialRef(1)} className="relative inline-block">
-            <button
-              disabled={!hasCataloguePermission}
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className={`flex w-20 items-center justify-between gap-2 rounded-sm border border-slate-400 p-2 text-sm font-medium text-slate-700 transition-colors ${!hasCataloguePermission ? 'opacity-50 cursor-not-allowed bg-gray-100' : 'hover:bg-slate-200 cursor-pointer'}`}
-            >
-              <span className="font-medium">{currentLabel}</span>
-              <IconChevronDown width={16} height={16} className={`transition-transform ${isMenuOpen ? 'rotate-180' : 'rotate-0'}`} />
-            </button>
-            {isMenuOpen && hasCataloguePermission && (
-              <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-slate-300 rounded-md shadow-lg z-10">
-                <ul className="py-1">
-                  {SiteItems.map(({ to, label }) => (
-                    <li key={to}>
-                      <Link to={to} onClick={() => setIsMenuOpen(false)} className={`flex w-full items-center gap-3 px-4 py-2 text-sm font-medium ${location.pathname === to ? 'bg-gray-500 text-white' : 'text-slate-700 hover:bg-gray-100'}`}>{label}</Link>
-                    </li>
-                  ))}
-                </ul>
+      <header className="glass sticky top-0 z-20 mx-3 mt-3 flex flex-wrap flex-shrink-0 items-center justify-between gap-3 rounded-2xl p-3 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Step 1 — POS/Catalogue switch button */}
+          <TutorialStep step={1} currentStep={tutorialStep} text="Use this menu to switch between POS and Catalogue views." onNext={() => next(2)} onSkip={skip} mobileArrowAlign="left" >
+            <div ref={setTutorialRef(1)} className="relative inline-block">
+              <button
+                disabled={!hasCataloguePermission}
+                onClick={() => setIsMenuOpen(!isMenuOpen)}
+                className={`flex w-20 items-center justify-between gap-2 rounded-xl border border-border p-2 text-sm font-medium text-foreground transition-colors ${!hasCataloguePermission ? 'opacity-50 cursor-not-allowed bg-muted' : 'hover:bg-accent cursor-pointer'}`}
+              >
+                <span className="font-medium">{currentLabel}</span>
+                <IconChevronDown width={16} height={16} className={`transition-transform ${isMenuOpen ? 'rotate-180' : 'rotate-0'}`} />
+              </button>
+              {isMenuOpen && hasCataloguePermission && (
+                <div className="glass absolute top-full left-0 mt-2 w-56 rounded-xl shadow-lg z-10 overflow-hidden">
+                  <ul className="py-1">
+                    {SiteItems.map(({ to, label }) => (
+                      <li key={to}>
+                        <Link to={to} onClick={() => setIsMenuOpen(false)} className={`flex w-full items-center gap-3 px-4 py-2 text-sm font-medium ${location.pathname === to ? 'bg-gradient-brand text-white' : 'text-foreground hover:bg-accent'}`}>{label}</Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </TutorialStep>
+
+          {/* Step 3 — Filter */}
+          <ShowWrapper requiredPermission={Permissions.ViewFilter}>
+            <TutorialStep step={3} currentStep={tutorialStep} text="Use these filters to select the date range for your dashboard data." onNext={() => next(4)} onSkip={skip}>
+              <div ref={setTutorialRef(3)}>
+                <FilterControls />
               </div>
-            )}
-          </div>
-        </TutorialStep>
+            </TutorialStep>
+          </ShowWrapper>
+        </div>
 
         <div className="flex-1 text-center flex flex-col items-center justify-center">
-          <h1 className="text-2xl font-bold text-slate-800 pl-8">Dashboard</h1>
-          <p className="text-sm text-slate-500 pl-8">{nameLoading ? '...' : businessName}</p>
+          <h1 className="text-gradient text-2xl font-bold pl-8">Dashboard</h1>
+          <p className="text-sm text-muted-foreground pl-8">{nameLoading ? '...' : businessName}</p>
         </div>
 
         {/* Step 2 — Eye / hide button and Notification Bell */}
-        <div className="flex items-center gap-3 justify-end">
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          <ShowWrapper requiredPermission={Permissions.ViewHidebutton}>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card/60 px-3 py-1 text-xs text-muted-foreground">
+              Last updated: {formattedLastUpdated}
+              <button onClick={handleRefresh} className={`text-muted-foreground hover:text-primary transition-all ${isFetching ? 'animate-spin' : ''}`}>
+                {isFetching ? <FiLoader size={13} /> : <FiRefreshCw size={13} />}
+              </button>
+            </span>
+          </ShowWrapper>
           <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-            <div className="relative border border-slate-300 rounded-sm bg-gray-100 shadow-sm">
+            <div className="relative flex items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
               <NotificationBell />
             </div>
           </ShowWrapper>
           <ShowWrapper requiredPermission={Permissions.ViewHidebutton}>
             <TutorialStep step={2} currentStep={tutorialStep} text="Toggle this to show or hide sensitive sales figures." onNext={() => next(3)} onSkip={skip}>
-              <button ref={setTutorialRef(2)} onClick={() => setIsDataVisible(!isDataVisible)} className="p-2 rounded-sm border border-slate-400 hover:bg-slate-200 transition-colors">
-                {isDataVisible ? <IconEye width={24} height={24} /> : <IconEyeOff width={24} height={24} />}
+              <button ref={setTutorialRef(2)} onClick={() => setIsDataVisible(!isDataVisible)} className="flex size-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
+                {isDataVisible ? <IconEye width={20} height={20} /> : <IconEyeOff width={20} height={20} />}
               </button>
             </TutorialStep>
           </ShowWrapper>
         </div>
       </header>
 
-      <main ref={mainRef} className="flex-grow overflow-y-auto p-2 sm:p-2 relative">
-        <ShowWrapper requiredPermission={Permissions.ViewHidebutton}>
-          <div className="flex justify-center gap-2">
-            <p className="text-sm text-slate-500 flex items-center">Last Updated: {formattedLastUpdated}</p>
-            <button onClick={handleRefresh} className={`p-1 rounded-full hover:bg-slate-200 text-slate-600 transition-all ${loading ? 'animate-spin' : ''}`}>
-              {loading ? <FiLoader size={14} /> : <FiRefreshCw size={14} />}
-            </button>
-          </div>
-        </ShowWrapper>
-
-        <div className="mx-auto max-w-7xl relative">
-
-          {/* Step 3 — Filter */}
-          <ShowWrapper requiredPermission={Permissions.ViewFilter}>
-            <TutorialStep step={3} currentStep={tutorialStep} text="Use these filters to select the date range for your dashboard data." onNext={() => next(4)} onSkip={skip}>
-              <div ref={setTutorialRef(3)} className="mb-2">
-                <FilterControls />
-              </div>
-            </TutorialStep>
-          </ShowWrapper>
+      <main ref={mainRef} className="flex-grow overflow-y-auto p-3 relative">
+        <div className="mx-auto max-w-none relative">
 
           {(loading && !data && !isTutorialActive) ? (
-            <div className="flex h-64 items-center justify-center text-slate-500"><FiLoader className="animate-spin mr-2" /> Loading Dashboard...</div>
+            <div className="space-y-2 pt-2">
+              <div className="grid grid-cols-1 md:grid-cols-10 gap-2">
+                <Skeleton className="h-40 rounded-xl md:col-span-4" />
+                <Skeleton className="h-40 rounded-xl md:col-span-6" />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                <Skeleton className="h-56 rounded-xl" />
+                <Skeleton className="h-56 rounded-xl" />
+                <Skeleton className="h-56 rounded-xl" />
+              </div>
+              <Skeleton className="h-40 rounded-xl md:w-2/5" />
+            </div>
           ) : (
             <>
-              <div className="space-y-2 pb-30">
+              <div className="space-y-2 pb-30 animate-in fade-in-0 slide-in-from-bottom-3 duration-500">
+
+                {/* ── KPI overview strip ── */}
+                <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                  <StatCard
+                    label="Total Orders"
+                    value={effectiveDataVisible ? (displayData?.totalOrders ?? 0).toLocaleString('en-IN') : '••••'}
+                    icon={<Receipt />}
+                    iconClassName="bg-primary/15 text-primary"
+                  />
+                  <StatCard
+                    label="Avg Order Value"
+                    value={effectiveDataVisible ? `₹${(displayData && displayData.totalOrders > 0 ? Math.round(displayData.totalSales / displayData.totalOrders) : 0).toLocaleString('en-IN')}` : '₹ ••••'}
+                    icon={<Wallet />}
+                    iconClassName="bg-info/15 text-info"
+                  />
+                  <StatCard
+                    label="Growth"
+                    value={effectiveDataVisible ? `${(displayData?.percentageChange ?? 0) >= 0 ? '+' : ''}${(displayData?.percentageChange ?? 0).toFixed(1)}%` : '••.•%'}
+                    icon={<TrendingUp />}
+                    iconClassName="bg-success/15 text-success"
+                    className="col-span-2 md:col-span-1"
+                  />
+                </div>
 
                 {/* ── ROW 1: Sales Card + Daily Performance Bar Chart ── */}
                 <div className="grid grid-cols-1 md:grid-cols-10 gap-2 items-stretch md:[direction:ltr]">
@@ -489,6 +315,8 @@ const DashboardContent = () => {
                     </div>
                   </TutorialStep>
                 </div>
+
+                <h2 className="flex items-center gap-2 px-1 pt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><span className="bg-gradient-brand inline-block size-1.5 rounded-full" />Top performers</h2>
 
                 {/* ── ROW 2: Top 5 Items, Top Salesperson, Top Customers ── */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 items-stretch">
@@ -519,6 +347,8 @@ const DashboardContent = () => {
                     </div>
                   </TutorialStep>
                 </div>
+
+                <h2 className="flex items-center gap-2 px-1 pt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><span className="bg-gradient-brand inline-block size-1.5 rounded-full" />Payments</h2>
 
                 {/* ── ROW 3: Payment Methods (full width) ── */}
                 <TutorialStep

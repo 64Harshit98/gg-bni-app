@@ -57,6 +57,7 @@ import { useNavigate } from 'react-router-dom';
 import { botMasterService } from '../../Pages/Additional/Whatsapp/WhatsappApi';
 import { ROUTES } from '../../constants/routes.constants';
 import { Spinner } from '../../constants/Spinner';
+import { Spinner as ModernSpinner } from '../../Components/ui/spinner';
 
 const useOrdersData = (companyId?: string) => {
     const [Orders, setOrders] = React.useState<any[]>([]);
@@ -1198,17 +1199,22 @@ const CataloguePartyLedger: React.FC = () => {
         setExpandedBillId(null);
     };
 
-    if (isLoading || authLoading) return <div className="p-4 text-center">Loading Ledger...</div>;
+    if (isLoading || authLoading) return (
+        <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-muted-foreground">
+            <ModernSpinner size="xl" />
+            <p className="text-sm font-medium">Loading Ledger...</p>
+        </div>
+    );
     if (error) return <div className="p-4 text-center text-red-500">{error}</div>;
 
     return (
-        <div ref={pageTopRef} className="min-h-screen bg-gray-50 pb-16 flex flex-col">
+        <div ref={pageTopRef} className="min-h-screen bg-muted pb-16 flex flex-col">
             {/* Opening Balance Modal */}
             {isOBModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-                    <div className="bg-white rounded-sm shadow-xl w-full max-w-sm p-5">
+                    <div className="bg-card rounded-sm shadow-xl w-full max-w-sm p-5">
                         <div className="flex items-center justify-between mb-4">
-                            <h2 className="text-base font-bold text-gray-800">Add Opening Balance</h2>
+                            <h2 className="text-base font-bold text-foreground">Add Opening Balance</h2>
                             <span className={`text-xs font-bold px-2.5 py-1 rounded border tracking-wide
         ${obForm.partyType === 'Customer'
                                     ? 'bg-blue-50 text-blue-600 border-blue-200'
@@ -1223,33 +1229,33 @@ const CataloguePartyLedger: React.FC = () => {
                                     placeholder="Party Name *"
                                     value={obForm.partyName}
                                     readOnly
-                                    className="flex-1 p-2 border border-gray-200 rounded-sm text-sm bg-gray-50 text-gray-500 cursor-not-allowed"
+                                    className="flex-1 p-2 border border-border rounded-sm text-sm bg-muted text-muted-foreground cursor-not-allowed"
                                 />
                                 <input
                                     placeholder="Phone"
                                     value={obForm.partyNumber}
                                     readOnly
                                     maxLength={10}
-                                    className="w-28 p-2 border border-gray-200 rounded-sm text-sm bg-gray-50 text-gray-500 cursor-not-allowed"
+                                    className="w-28 p-2 border border-border rounded-sm text-sm bg-muted text-muted-foreground cursor-not-allowed"
                                 />
                             </div>
                             <div>
-                                <p className="text-xs font-semibold text-gray-500 mb-1.5">Balance Type</p>
-                                <div className="flex border border-gray-200 rounded-sm overflow-hidden text-sm">
+                                <p className="text-xs font-semibold text-muted-foreground mb-1.5">Balance Type</p>
+                                <div className="flex border border-border rounded-sm overflow-hidden text-sm">
                                     <button
                                         onClick={() => setObForm(f => ({ ...f, balanceType: 'due' }))}
-                                        className={`flex-1 px-3 py-2 font-medium transition ${obForm.balanceType === 'due' ? 'bg-red-500 text-white' : 'bg-white text-gray-500'}`}
+                                        className={`flex-1 px-3 py-2 font-medium transition ${obForm.balanceType === 'due' ? 'bg-red-500 text-white' : 'bg-card text-muted-foreground'}`}
                                     >
                                         Due (They Owe You)
                                     </button>
                                     <button
                                         onClick={() => setObForm(f => ({ ...f, balanceType: 'advance' }))}
-                                        className={`flex-1 px-3 py-2 font-medium border-l border-gray-200 transition ${obForm.balanceType === 'advance' ? 'bg-emerald-500 text-white' : 'bg-white text-gray-500'}`}
+                                        className={`flex-1 px-3 py-2 font-medium border-l border-border transition ${obForm.balanceType === 'advance' ? 'bg-emerald-500 text-white' : 'bg-card text-muted-foreground'}`}
                                     >
                                         Debt (You Owe Them)
                                     </button>
                                 </div>
-                                <p className="text-[10px] text-gray-400 mt-1">
+                                <p className="text-[10px] text-muted-foreground mt-1">
                                     {obForm.balanceType === 'due'
                                         ? 'Party owes you money — receivable/debit balance.'
                                         : 'You owe the party — payable/credit balance.'}
@@ -1260,19 +1266,19 @@ const CataloguePartyLedger: React.FC = () => {
                                 placeholder="Amount (₹) *"
                                 value={obForm.amount}
                                 onChange={e => setObForm(f => ({ ...f, amount: e.target.value }))}
-                                className="w-full p-2 border border-gray-300 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                                className="w-full p-2 border border-border rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
                             />
                             <input
                                 placeholder="Note (optional)"
                                 value={obForm.note}
                                 onChange={e => setObForm(f => ({ ...f, note: e.target.value }))}
-                                className="w-full p-2 border border-gray-300 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+                                className="w-full p-2 border border-border rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
                             />
                         </div> {/* closes space-y-3 */}
                         <div className="flex gap-2 mt-4">
                             <button
                                 onClick={() => { setIsOBModalOpen(false); setObForm({ partyName: '', partyNumber: '', partyType: 'Customer', balanceType: 'due', amount: '', note: '' }); }}
-                                className="flex-1 px-3 py-2 text-sm font-semibold text-gray-600 bg-gray-100 rounded-sm hover:bg-gray-200"
+                                className="flex-1 px-3 py-2 text-sm font-semibold text-muted-foreground bg-muted rounded-sm hover:bg-muted"
                             >Cancel</button>
                             <button
                                 onClick={handleAddOpeningBalance}
@@ -1311,15 +1317,15 @@ const CataloguePartyLedger: React.FC = () => {
             {/* Bulk import progress overlay */}
             {bulkUploadProgress && (
                 <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center">
-                    <div className="bg-white p-8 rounded-sm shadow-xl w-80 text-center">
-                        <h3 className="text-lg font-bold mb-4 text-gray-800">Importing Opening Balances...</h3>
-                        <div className="w-full bg-gray-200 rounded-sm h-4 mb-2 overflow-hidden">
+                    <div className="bg-card p-8 rounded-sm shadow-xl w-80 text-center">
+                        <h3 className="text-lg font-bold mb-4 text-foreground">Importing Opening Balances...</h3>
+                        <div className="w-full bg-muted rounded-sm h-4 mb-2 overflow-hidden">
                             <div
                                 className="bg-orange-500 h-4 rounded-sm transition-all duration-100"
                                 style={{ width: `${(bulkUploadProgress.current / bulkUploadProgress.total) * 100}%` }}
                             />
                         </div>
-                        <p className="text-sm text-gray-600 font-mono">
+                        <p className="text-sm text-muted-foreground font-mono">
                             {bulkUploadProgress.current} / {bulkUploadProgress.total} processed
                         </p>
                     </div>
@@ -1328,9 +1334,9 @@ const CataloguePartyLedger: React.FC = () => {
             {/* HEADER — master list only */}
             {
                 !selectedPartyName && (
-                    <div className="flex items-center justify-between pb-4 border-b border-gray-200 mb-3">
+                    <div className="flex items-center justify-between pb-4 border-b border-border mb-3">
                         <BackButton className="mt-2 ml-3" />
-                        <h1 className="flex-1 text-xl text-center font-bold text-gray-800">Party Ledger</h1>
+                        <h1 className="flex-1 text-xl text-center font-bold text-foreground">Party Ledger</h1>
                         <div className="w-10 mt-2 mr-3" />
                     </div>
                 )
@@ -1369,14 +1375,14 @@ const CataloguePartyLedger: React.FC = () => {
                     {/* FILTERS — master list only */}
                     {
                         !selectedPartyName && (
-                            <div className="bg-white p-3 rounded-sm shadow-sm border border-gray-200 mb-4 mx-3 md:mx-0">
+                            <div className="bg-card p-3 rounded-sm shadow-sm border border-border mb-4 mx-3 md:mx-0">
                                 <div className="mb-3">
                                     <input
                                         type="text"
                                         placeholder="Search by Party Name or Number..."
                                         value={searchQuery}
                                         onChange={(e) => { setSearchQuery(e.target.value); if (e.target.value.trim()) setShowTransactionList(true); }}
-                                        className="w-full p-2 border border-gray-300 rounded-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
+                                        className="w-full p-2 border border-border rounded-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
                                     />
                                 </div>
 
@@ -1390,8 +1396,8 @@ const CataloguePartyLedger: React.FC = () => {
                                         <option value="custom">Custom</option>
                                     </FilterSelect>
                                     <div className="grid grid-cols-2 gap-2 sm:gap-3 sm:col-span-2">
-                                        <input type="date" value={customStartDate} onChange={(e) => { setCustomStartDate(e.target.value); setDatePreset('custom'); }} className="w-full min-w-0 p-2 text-sm bg-gray-50 border border-gray-200 rounded-sm" />
-                                        <input type="date" value={customEndDate} onChange={(e) => { setCustomEndDate(e.target.value); setDatePreset('custom'); }} className="w-full min-w-0 p-2 text-sm bg-gray-50 border border-gray-200 rounded-sm" />
+                                        <input type="date" value={customStartDate} onChange={(e) => { setCustomStartDate(e.target.value); setDatePreset('custom'); }} className="w-full min-w-0 p-2 text-sm bg-muted border border-border rounded-sm" />
+                                        <input type="date" value={customEndDate} onChange={(e) => { setCustomEndDate(e.target.value); setDatePreset('custom'); }} className="w-full min-w-0 p-2 text-sm bg-muted border border-border rounded-sm" />
                                     </div>
                                 </div>
 
@@ -1410,16 +1416,16 @@ const CataloguePartyLedger: React.FC = () => {
                                     </button>
                                 </div>
                                 <div className="flex justify-center mt-3">
-                                    <div className="flex bg-gray-100 rounded-sm p-1 text-sm">
+                                    <div className="flex bg-muted rounded-sm p-1 text-sm">
                                         <button
                                             onClick={() => { setStatusFilter(prev => prev === 'due' ? 'all' : 'due'); setShowTransactionList(true); }}
-                                            className={`px-3 py-1.5 rounded-sm transition ${statusFilter === 'due' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-600'}`}
+                                            className={`px-3 py-1.5 rounded-sm transition ${statusFilter === 'due' ? 'bg-orange-500 text-white shadow-sm' : 'text-muted-foreground'}`}
                                         >
                                             Due
                                         </button>
                                         <button
                                             onClick={() => { setStatusFilter(prev => prev === 'settled' ? 'all' : 'settled'); setShowTransactionList(true); }}
-                                            className={`px-3 py-1.5 rounded-sm transition ${statusFilter === 'settled' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-600'}`}
+                                            className={`px-3 py-1.5 rounded-sm transition ${statusFilter === 'settled' ? 'bg-orange-500 text-white shadow-sm' : 'text-muted-foreground'}`}
                                         >
                                             Settled
                                         </button>
@@ -1436,12 +1442,12 @@ const CataloguePartyLedger: React.FC = () => {
                                 // VIEW 1: MASTER LIST
                                 <div className="space-y-2 mt-2">
                                     {filteredParties.length === 0 ? (
-                                        <div className="p-6 text-center text-gray-500 bg-white">No parties found for this period.</div>
+                                        <div className="p-6 text-center text-muted-foreground bg-card">No parties found for this period.</div>
                                     ) : (
                                         <>
                                             <button
                                                 onClick={() => setShowTransactionList(prev => !prev)}
-                                                className="w-full flex items-center justify-between px-4 py-2.5 bg-white border border-slate-200 rounded-sm text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                                                className="w-full flex items-center justify-between px-4 py-2.5 bg-card border border-border rounded-sm text-sm font-semibold text-muted-foreground hover:bg-muted transition-colors"
                                             >
                                                 <span>{showTransactionList ? 'Hide' : 'Show'} List ({filteredParties.length} parties)</span>
                                                 <span className={`inline-block transition-transform duration-200 ${showTransactionList ? 'rotate-180' : ''}`}>▼</span>
@@ -1456,18 +1462,18 @@ const CataloguePartyLedger: React.FC = () => {
                                                         setSelectedPartyNumber(party.partyNumber);
                                                         setExpandedBillId(null);
                                                     }}
-                                                    className="cursor-pointer transition-shadow hover:shadow-md p-3.5 bg-white"
+                                                    className="cursor-pointer transition-shadow hover:shadow-md p-3.5 bg-card"
                                                 >
                                                     <div className="flex items-start justify-between mb-1.5">
                                                         <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider whitespace-nowrap bg-orange-50 text-orange-600 border-orange-200">
                                                             {party.partyType}
                                                         </span>
-                                                        <p className="text-xs text-slate-400">Total: ₹{party.totalBilled.toLocaleString('en-IN')}</p>
+                                                        <p className="text-xs text-muted-foreground">Total: ₹{party.totalBilled.toLocaleString('en-IN')}</p>
                                                     </div>
                                                     <div className="flex items-end justify-between">
                                                         <div>
-                                                            <p className="text-base font-semibold text-slate-800">{party.partyName}</p>
-                                                            <p className="text-sm text-slate-500 mt-0.5">
+                                                            <p className="text-base font-semibold text-foreground">{party.partyName}</p>
+                                                            <p className="text-sm text-muted-foreground mt-0.5">
                                                                 {party.partyNumber || 'N/A'} <span className="mx-1 text-slate-300">•</span> {party.totalTransactions} Bills
                                                             </p>
                                                         </div>
@@ -1479,7 +1485,7 @@ const CataloguePartyLedger: React.FC = () => {
                                                     </div>
                                                     {/* NEW: Remind button — only when party has a due and a valid number */}
                                                     {party.totalDue > 0 && party.partyNumber && party.partyNumber.trim() !== '' && (
-                                                        <div className="mt-2 pt-2 border-t border-slate-100">
+                                                        <div className="mt-2 pt-2 border-t border-border">
                                                             <button
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
@@ -1502,21 +1508,21 @@ const CataloguePartyLedger: React.FC = () => {
                                 <div className="flex flex-col gap-2">
 
                                     {/* STICKY HEADER */}
-                                    <div className="sticky top-0 z-30 pt-2 pb-3 -mx-2 px-2 bg-gray-50">
+                                    <div className="sticky top-0 z-30 pt-2 pb-3 -mx-2 px-2 bg-muted">
                                         <div className="flex items-center justify-between pb-2 mb-2">
                                             <BackButton onClick={goBack} />
-                                            <h1 className="flex-1 text-lg text-center font-bold text-gray-800 truncate px-2">
+                                            <h1 className="flex-1 text-lg text-center font-bold text-foreground truncate px-2">
                                                 {selectedPartyName} - Ledger
                                             </h1>
                                             <div className="w-10 h-10" />
                                         </div>
 
                                         {/* Summary Card */}
-                                        <div className="rounded-sm border border-slate-200 bg-white overflow-hidden">
+                                        <div className="rounded-sm border border-border bg-card overflow-hidden">
                                             <div className="bg-orange-50 border-b border-orange-100 px-4 py-2 flex justify-between items-center">
-                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Ledger Summary</span>
+                                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Ledger Summary</span>
                                                 <div className="flex items-center gap-3">
-                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{selectedPartyLedger?.transactions.filter(t => !t.isOpeningBalance).length} Bills</span>
+                                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{selectedPartyLedger?.transactions.filter(t => !t.isOpeningBalance).length} Bills</span>
                                                     <button
                                                         onClick={() => {
                                                             setObForm({
@@ -1537,14 +1543,14 @@ const CataloguePartyLedger: React.FC = () => {
                                             </div>
                                             <div className="p-4 flex justify-between items-center">
                                                 <div className="flex flex-col flex-1">
-                                                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Total Billed</span>
-                                                    <span className="text-lg sm:text-xl font-extrabold text-slate-800 truncate">
+                                                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Total Billed</span>
+                                                    <span className="text-lg sm:text-xl font-extrabold text-foreground truncate">
                                                         ₹{selectedPartyLedger?.totalBilled.toLocaleString('en-IN')}
                                                     </span>
                                                 </div>
-                                                <div className="h-10 w-px bg-slate-200 mx-3" />
+                                                <div className="h-10 w-px bg-muted mx-3" />
                                                 <div className="flex flex-col flex-1 text-right">
-                                                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Total Pending</span>
+                                                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Total Pending</span>
                                                     <span className={`text-lg sm:text-xl font-extrabold truncate ${selectedPartyLedger && selectedPartyLedger.totalDue > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
                                                         ₹{selectedPartyLedger?.totalDue.toLocaleString('en-IN')}
                                                     </span>
@@ -1556,12 +1562,12 @@ const CataloguePartyLedger: React.FC = () => {
                                     {/* Bill Cards */}
                                     <div className="px-1 space-y-3">
                                         {selectedPartyLedger?.transactions.length === 0 && (
-                                            <div className="p-6 text-center text-gray-500 bg-white rounded-sm">No transactions found for this period.</div>
+                                            <div className="p-6 text-center text-muted-foreground bg-card rounded-sm">No transactions found for this period.</div>
                                         )}
                                         {selectedPartyLedger?.transactions.map((txn: LedgerTransaction) => {
                                             const isExpanded = expandedBillId === txn.id;
                                             return (
-                                                <CustomCard key={txn.id} onClick={() => toggleBillExpansion(txn.id)} className="cursor-pointer transition-shadow hover:shadow-md bg-white">
+                                                <CustomCard key={txn.id} onClick={() => toggleBillExpansion(txn.id)} className="cursor-pointer transition-shadow hover:shadow-md bg-card">
                                                     <div className="flex justify-between items-end w-full -mt-5 relative pointer-events-none">
                                                         <div className="flex justify-start gap-1 flex-wrap max-w-[50%] pointer-events-auto">
                                                             {txn.isOpeningBalance ? (
@@ -1584,13 +1590,13 @@ const CataloguePartyLedger: React.FC = () => {
                                                         <div className="flex-1">
                                                             {txn.isOpeningBalance ? (
                                                                 <>
-                                                                    <p className="text-base font-semibold text-slate-800">Opening Due</p>
-                                                                    <p className="text-sm text-slate-500 mt-1">{formatDate(txn.createdAt.getTime())}</p>
+                                                                    <p className="text-base font-semibold text-foreground">Opening Due</p>
+                                                                    <p className="text-sm text-muted-foreground mt-1">{formatDate(txn.createdAt.getTime())}</p>
                                                                 </>
                                                             ) : (
                                                                 <>
-                                                                    <p className="text-base font-semibold text-slate-800">{txn.invoiceNumber || txn.id.slice(0, 8)}</p>
-                                                                    <p className="text-sm text-slate-500 mt-1">{formatDate(txn.createdAt.getTime())}</p>
+                                                                    <p className="text-base font-semibold text-foreground">{txn.invoiceNumber || txn.id.slice(0, 8)}</p>
+                                                                    <p className="text-sm text-muted-foreground mt-1">{formatDate(txn.createdAt.getTime())}</p>
                                                                 </>
                                                             )}
                                                         </div>
@@ -1610,39 +1616,39 @@ const CataloguePartyLedger: React.FC = () => {
                                                                 {txn.dueAmount > 0 ? (
                                                                     <>
                                                                         <p className="text-lg font-bold text-red-600">{txn.dueAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })}</p>
-                                                                        <p className="text-xs text-slate-400">Total: {txn.totalAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })}</p>
+                                                                        <p className="text-xs text-muted-foreground">Total: {txn.totalAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })}</p>
                                                                     </>
                                                                 ) : (
-                                                                    <p className="text-lg font-bold text-slate-800">{txn.totalAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })}</p>
+                                                                    <p className="text-lg font-bold text-foreground">{txn.totalAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })}</p>
                                                                 )}
                                                             </div>
-                                                            <IconChevronDown className={`w-5 h-5 text-slate-400 transition-transform duration-200 flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
+                                                            <IconChevronDown className={`w-5 h-5 text-muted-foreground transition-transform duration-200 flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
                                                         </div>
                                                     </div>
 
                                                     {isExpanded && (
                                                         <div className="mt-3">
                                                             {txn.isOpeningBalance && txn.note && (
-                                                                <p className="text-xs text-slate-500 italic mb-2 px-1">
+                                                                <p className="text-xs text-muted-foreground italic mb-2 px-1">
                                                                     Note: {txn.note}
                                                                 </p>
                                                             )}
                                                             <div className="relative py-2">
-                                                                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200" /></div>
+                                                                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border" /></div>
                                                                 <div className="relative flex justify-center">
-                                                                    <span className="bg-white px-2 text-xs font-bold text-slate-400 uppercase tracking-widest">Payment History</span>
+                                                                    <span className="bg-card px-2 text-xs font-bold text-muted-foreground uppercase tracking-widest">Payment History</span>
                                                                 </div>
                                                             </div>
                                                             <div className="space-y-1 mt-2">
                                                                 {txn.paymentHistory && txn.paymentHistory.length > 0 ? (
                                                                     txn.paymentHistory.map((payment: PaymentRecord, index: number) => (
-                                                                        <div key={index} className="flex justify-between items-center text-slate-700 py-2 border-b border-slate-50 last:border-0">
+                                                                        <div key={index} className="flex justify-between items-center text-foreground py-2 border-b border-slate-50 last:border-0">
                                                                             <div className="flex items-center gap-4">
                                                                                 <div className="flex flex-col">
-                                                                                    <span className="font-medium text-sm text-slate-600">
+                                                                                    <span className="font-medium text-sm text-muted-foreground">
                                                                                         {new Date(payment.date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' })}
                                                                                     </span>
-                                                                                    <span className="text-[10px] text-slate-400">
+                                                                                    <span className="text-[10px] text-muted-foreground">
                                                                                         {new Date(payment.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
                                                                                     </span>
                                                                                 </div>
@@ -1656,12 +1662,12 @@ const CataloguePartyLedger: React.FC = () => {
                                                                         </div>
                                                                     ))
                                                                 ) : (
-                                                                    <p className="text-xs text-slate-400 text-center py-3">No payment records found.</p>
+                                                                    <p className="text-xs text-muted-foreground text-center py-3">No payment records found.</p>
                                                                 )}
                                                             </div>
                                                             {/* ✅ Settle Payment Button */}
                                                             {txn.dueAmount > 0 && !(txn.isOpeningBalance && txn.balanceType === 'advance') && (
-                                                                <div className="mt-3 pt-3 border-t border-slate-200">
+                                                                <div className="mt-3 pt-3 border-t border-border">
                                                                     <button
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
@@ -1696,7 +1702,7 @@ const CataloguePartyLedger: React.FC = () => {
 
                 {/* RIGHT: white sidebar panel — Bulk Import (desktop only, master list only) */}
                 {!selectedPartyName && (
-                    <div className="hidden md:flex w-[35%] flex-col bg-white border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
+                    <div className="hidden md:flex w-[35%] flex-col bg-card border-l border-border shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
                         <div className="p-6 sticky top-4 self-start w-full">
                             <div className="bg-orange-50 rounded-sm p-5 border border-orange-100">
                                 <h2 className="text-lg font-bold text-orange-800 mb-2">Bulk Import</h2>
@@ -1707,7 +1713,7 @@ const CataloguePartyLedger: React.FC = () => {
                                     <button
                                         onClick={() => bulkFileInputRef.current?.click()}
                                         disabled={isBulkUploading}
-                                        className="w-full bg-white text-orange-600 border border-orange-200 hover:bg-orange-50 py-3 px-4 rounded-sm font-semibold disabled:bg-gray-100 flex items-center justify-center gap-2 transition-colors"
+                                        className="w-full bg-card text-orange-600 border border-orange-200 hover:bg-orange-50 py-3 px-4 rounded-sm font-semibold disabled:bg-muted flex items-center justify-center gap-2 transition-colors"
                                     >
                                         {isBulkUploading ? <Spinner /> : 'Upload Excel File'}
                                     </button>

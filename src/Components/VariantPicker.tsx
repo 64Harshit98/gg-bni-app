@@ -59,7 +59,7 @@ export const VariantPicker: React.FC<VariantPickerProps> = ({
           {selectedItems.map(item => (
             <span
               key={item.id}
-              className="flex items-center gap-1 bg-gray-100 border border-gray-200 text-gray-700 text-xs font-semibold px-2 py-1 rounded-sm"
+              className="flex items-center gap-1 bg-muted border border-border text-foreground text-xs font-semibold px-2 py-1 rounded-sm"
             >
               {item.imageUrl && (
                 <img src={item.imageUrl} alt="" className="w-4 h-4 rounded-sm object-cover" />
@@ -68,7 +68,7 @@ export const VariantPicker: React.FC<VariantPickerProps> = ({
               <button
                 type="button"
                 onClick={() => removeVariant(item.id)}
-                className="text-gray-400 hover:text-red-500 ml-1"
+                className="text-muted-foreground hover:text-red-500 ml-1"
               >
                 <FiX size={11} />
               </button>
@@ -85,25 +85,25 @@ export const VariantPicker: React.FC<VariantPickerProps> = ({
           onChange={e => { setQuery(e.target.value); setIsOpen(true); }}
           onFocus={() => setIsOpen(true)}
           placeholder="Search item to add as variant..."
-          className={`flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ${activeTheme.focusRing} focus:outline-none focus:ring-2`}
+          className={`flex h-10 w-full rounded-sm border border-border bg-card px-3 py-2 text-sm ${activeTheme.focusRing} focus:outline-none focus:ring-2`}
         />
 
         {isOpen && suggestions.length > 0 && (
-          <div className="absolute z-50 top-full left-0 right-0 bg-white border border-gray-200 rounded-sm shadow-lg mt-1 max-h-52 overflow-y-auto">
+          <div className="absolute z-50 top-full left-0 right-0 bg-card border border-border rounded-sm shadow-lg mt-1 max-h-52 overflow-y-auto">
             {suggestions.map(item => (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => addVariant(item)}
-                className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-left transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted text-left transition-colors"
               >
                 {item.imageUrl
-                  ? <img src={item.imageUrl} alt="" className="w-8 h-8 object-cover rounded-sm border border-gray-100 flex-shrink-0" />
-                  : <div className="w-8 h-8 bg-gray-100 rounded-sm flex-shrink-0" />
+                  ? <img src={item.imageUrl} alt="" className="w-8 h-8 object-cover rounded-sm border border-border flex-shrink-0" />
+                  : <div className="w-8 h-8 bg-muted rounded-sm flex-shrink-0" />
                 }
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-gray-800 truncate">{item.name}</p>
-                  <p className="text-xs text-gray-400">#{item.barcode} · ₹{item.salesPrice || item.mrp}</p>
+                  <p className="text-sm font-semibold text-foreground truncate">{item.name}</p>
+                  <p className="text-xs text-muted-foreground">#{item.barcode} · ₹{item.salesPrice || item.mrp}</p>
                 </div>
               </button>
             ))}
@@ -111,7 +111,7 @@ export const VariantPicker: React.FC<VariantPickerProps> = ({
         )}
 
         {isOpen && query.trim().length > 0 && suggestions.length === 0 && (
-          <div className="absolute z-50 top-full left-0 right-0 bg-white border border-gray-200 rounded-sm shadow-lg mt-1 px-3 py-2 text-xs text-gray-400">
+          <div className="absolute z-50 top-full left-0 right-0 bg-card border border-border rounded-sm shadow-lg mt-1 px-3 py-2 text-xs text-muted-foreground">
             No items found
           </div>
         )}

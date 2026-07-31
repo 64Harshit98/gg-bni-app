@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { Item } from '../constants/models';
 import { FiSearch, FiX, FiBox } from 'react-icons/fi';
+import { Spinner } from '../Components/ui/spinner';
 
 interface SearchableDebouncedInputProps {
   onSearch: (query: string) => Promise<Item[]>;
@@ -130,7 +131,7 @@ const SearchableDebouncedInput: React.FC<SearchableDebouncedInputProps> = ({
     <div className="relative w-full group" ref={dropdownRef}>
       {/* INPUT CONTAINER */}
       <div className="relative flex items-center">
-        <div className="absolute left-3 text-gray-400 pointer-events-none">
+        <div className="absolute left-3 text-muted-foreground pointer-events-none">
           <FiSearch size={18} />
         </div>
 
@@ -146,9 +147,9 @@ const SearchableDebouncedInput: React.FC<SearchableDebouncedInputProps> = ({
           onFocus={() => setIsDropdownOpen(true)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
-          className={`w-full pl-10 pr-10 py-3 bg-white border border-gray-300 rounded-sm shadow-sm
+          className={`w-full pl-10 pr-10 py-3 bg-card border border-border rounded-sm shadow-sm
                                focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all
-                               text-gray-800 placeholder-gray-400 font-medium
+                               text-foreground placeholder-gray-400 font-medium
                                ${error ? 'border-red-500 focus:border-red-500 focus:ring-red-100' : ''}`}
           autoComplete="off"
         />
@@ -156,7 +157,7 @@ const SearchableDebouncedInput: React.FC<SearchableDebouncedInputProps> = ({
         {searchQuery && (
           <button
             onClick={handleClear}
-            className="absolute right-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 p-1 rounded-full transition-colors"
+            className="absolute right-3 text-muted-foreground hover:text-muted-foreground hover:bg-muted p-1 rounded-full transition-colors"
           >
             <FiX size={16} />
           </button>
@@ -167,11 +168,11 @@ const SearchableDebouncedInput: React.FC<SearchableDebouncedInputProps> = ({
       {isDropdownOpen && searchQuery && (
         <div
           ref={listRef}
-          className="absolute top-full left-0 right-0 z-50 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl max-h-72 overflow-y-auto overflow-x-hidden scroll-smooth"
+          className="absolute top-full left-0 right-0 z-50 mt-2 bg-card border border-border rounded-xl shadow-xl max-h-72 overflow-y-auto overflow-x-hidden scroll-smooth"
         >
           {isLoading || searchLoading ? (
-            <div className="p-4 flex items-center justify-center text-gray-500 gap-2">
-              <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            <div className="p-4 flex items-center justify-center text-muted-foreground gap-2">
+              <Spinner size="sm" className="text-blue-500" />
               <span>Loading...</span>
             </div>
           ) : error ? (
@@ -181,7 +182,7 @@ const SearchableDebouncedInput: React.FC<SearchableDebouncedInputProps> = ({
           ) : (
             <>
               {filteredItems.length === 0 ? (
-                <div className="p-6 text-center text-gray-500 flex flex-col items-center">
+                <div className="p-6 text-center text-muted-foreground flex flex-col items-center">
                   <FiBox size={24} className="mb-2 text-gray-300" />
                   <span>No items found for "{searchQuery}"</span>
                 </div>
@@ -202,16 +203,16 @@ const SearchableDebouncedInput: React.FC<SearchableDebouncedInputProps> = ({
                       onMouseEnter={() => setActiveIndex(index)}
                       onClick={() => handleSelect(item)}
                       className={`px-4 py-3 cursor-pointer border-b border-gray-50 last:border-0 transition-colors duration-150 flex justify-between items-center
-                                                ${isSelected ? 'bg-blue-100' : 'hover:bg-gray-50'}
+                                                ${isSelected ? 'bg-blue-100' : 'hover:bg-muted'}
                                             `}
                     >
                       {/* Left: Name & Barcode */}
                       <div className="flex flex-col min-w-0 pr-4">
-                        <span className="text-sm font-medium text-gray-800 truncate">
+                        <span className="text-sm font-medium text-foreground truncate">
                           {item.name}
                         </span>
                         {item.barcode && (
-                          <span className="text-xs text-gray-400 font-mono mt-0.5">
+                          <span className="text-xs text-muted-foreground font-mono mt-0.5">
                             {item.barcode}
                           </span>
                         )}
@@ -219,7 +220,7 @@ const SearchableDebouncedInput: React.FC<SearchableDebouncedInputProps> = ({
 
                       {/* Right: Price & Stock Badge */}
                       <div className="flex flex-col items-end flex-shrink-0 gap-1">
-                        <span className="text-sm font-bold text-gray-900">
+                        <span className="text-sm font-bold text-foreground">
                           ₹{item.mrp.toFixed(2)}
                         </span>
                         <span

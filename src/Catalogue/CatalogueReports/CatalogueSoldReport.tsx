@@ -22,6 +22,7 @@ import { DatePreset } from '../../Catalogue/enum/datePreset.enum';
 //import CataShowWrapper from '../../context/CataShowWrapper';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import BackButton from '../../Components/BackButton';
+import { Spinner } from '../../Components/ui/spinner';
 // 1. Define the strictly 4-column structure
 export interface AggregatedItem {
     id: string;
@@ -380,19 +381,19 @@ const ItemsSoldReport: React.FC = () => {
             header: 'Category',
             accessor: 'itemGroup',
             sortKey: 'itemGroup',
-            className: 'text-slate-600'
+            className: 'text-muted-foreground'
         },
         {
             header: 'Qty Sold',
             accessor: 'quantitySold',
             sortKey: 'quantitySold',
-            className: 'text-slate-600 font-medium'
+            className: 'text-muted-foreground font-medium'
         },
         {
             header: 'Value Sold',
             accessor: (row) => `₹${Math.round(row.valueSold).toLocaleString('en-IN')}`,
             sortKey: 'valueSold',
-            className: 'text-slate-800 font-medium'
+            className: 'text-foreground font-medium'
         }
     ], []);
 
@@ -751,11 +752,16 @@ const ItemsSoldReport: React.FC = () => {
 
     /* ---------- LOAD STATES ---------- */
     if (isLoading || authLoading)
-        return <div className="p-4 text-center">Loading...</div>;
+        return (
+            <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-muted-foreground">
+                <Spinner size="xl" />
+                <p className="text-sm font-medium">Loading...</p>
+            </div>
+        );
     if (error) return <div className="p-4 text-center text-red-500">{error}</div>;
 
     return (
-        <div className="min-h-screen bg-gray-100 p-2 pb-16">
+        <div className="min-h-screen bg-muted p-2 pb-16">
             {feedbackModal.isOpen && (
                 <Modal
                     type={feedbackModal.type}
@@ -778,7 +784,7 @@ const ItemsSoldReport: React.FC = () => {
                 <BackButton />
 
                 {/* TITLE */}
-                <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
+                <h1 className="flex-1 text-xl text-center font-bold text-foreground">
                     Items Sold Report
                 </h1>
 
@@ -790,7 +796,7 @@ const ItemsSoldReport: React.FC = () => {
 
             {showSearch && (
                 <div className="flex justify-center mb-2 px-2">
-                    <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-[#F97316]">
+                    <div className="flex items-center w-full max-w-md border-b-2 border-border focus-within:border-[#F97316]">
 
                         <input
                             type="text"
@@ -806,7 +812,7 @@ const ItemsSoldReport: React.FC = () => {
                                 setSearchQuery('');
                                 setShowSearch(false);
                             }}
-                            className="p-1 text-gray-500 hover:text-black"
+                            className="p-1 text-muted-foreground hover:text-foreground"
                         >
                             <IconClose />
                         </button>

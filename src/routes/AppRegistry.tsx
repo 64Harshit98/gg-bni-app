@@ -38,7 +38,7 @@ const PartyLedger = lazy(() => import('../Pages/Reports/PartyLedger'));
 const GallaHisaabTool = lazy(() => import('../Pages/Reports/GallaHisaabTool'))
 const ItemSoldReport = lazy(() => import('../Pages/Reports/ItemSoldReport'));
 const ExpenseReport = lazy(() => import('../Pages/Reports/ExpenseReport'));
-import UserReport from '../Pages/Reports/UserReport';
+const UserReport = lazy(() => import('../Pages/Reports/UserReport'));
 
 // --- CATALOGUE MODULE IMPORTS ---
 const CHome = lazy(() => import('../Catalogue/CatalogueHome'));

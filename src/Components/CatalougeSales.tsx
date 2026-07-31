@@ -34,27 +34,29 @@ export const CompletedSalesCard: React.FC<CompletedSalesCardProps> = ({
     }, [filters.startDate, filters.endDate]);
 
     return (
-        <Card>
-            <CardHeader className='-mb-4'>
-                <CardTitle>Completed Sales</CardTitle>
-                <CardDescription>
-                    {selectedPeriodText}
-                </CardDescription>
+        <Card className="glow-primary bg-gradient-brand relative h-full gap-2 overflow-hidden border-0 py-4 text-white">
+            <div className="pointer-events-none absolute -right-10 -top-10 size-40 rounded-full bg-white/15 blur-2xl" />
+            <div className="pointer-events-none absolute -bottom-12 -left-8 size-40 rounded-full bg-white/10 blur-3xl" />
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_120%_at_0%_0%,rgba(255,255,255,0.12),transparent_55%)]" />
+
+            <CardHeader className="relative -mb-2">
+                <CardTitle className="text-sm font-medium text-white/80">Completed Sales</CardTitle>
+                <CardDescription className="text-white/60">{selectedPeriodText}</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="relative flex flex-1 flex-col items-center justify-center py-3">
                 {loading ? (
                     <div className="flex h-20 items-center justify-center">
                         <Spinner />
                     </div>
                 ) : (
-                    <div className="text-center">
-                        <p className="text-4xl font-bold text-[#F97316]">
-                            {isDataVisible ? `₹${totalSalesAmount.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '₹ ******'}
+                    <>
+                        <p className="text-3xl font-bold tracking-tight tabular-nums drop-shadow-sm">
+                            {isDataVisible ? `₹${totalSalesAmount.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '₹ ••••••'}
                         </p>
-                        <p className="text-md text-gray-500 mt-2">
-                            from {isDataVisible ? <strong>{totalSalesCount}</strong> : '**'} orders
+                        <p className="mt-2 text-sm text-white/70">
+                            from {isDataVisible ? <strong className="text-white">{totalSalesCount}</strong> : '••'} orders
                         </p>
-                    </div>
+                    </>
                 )}
             </CardContent>
         </Card>

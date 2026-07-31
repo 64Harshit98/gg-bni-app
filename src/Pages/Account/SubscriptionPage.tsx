@@ -7,6 +7,40 @@ import { doc, getDoc } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { logoutUser } from '../../lib/AuthOperations';
 import { ROUTES } from '../../constants/routes.constants';
+import { cn } from '../../lib/utils';
+import { Button } from '../../Components/ui/button';
+import { Badge } from '../../Components/ui/badge';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogFooter,
+    DialogTitle,
+    DialogDescription,
+} from '../../Components/ui/dialog';
+import {
+    Tooltip,
+    TooltipTrigger,
+    TooltipContent,
+    TooltipProvider,
+} from '../../Components/ui/tooltip';
+import {
+    LogOut,
+    Calendar,
+    Check,
+    Minus,
+    Info,
+    Store,
+    Layers,
+    Crown,
+    Phone,
+    Sparkles,
+    Clock,
+    Mail,
+    Copy,
+    User,
+    RefreshCw,
+} from 'lucide-react';
 
 // --- HELPER: Feature Descriptions ---
 const FEATURE_DESCRIPTIONS: Record<string, string> = {
@@ -193,6 +227,97 @@ const BOTH_TIERS = [
     }
 ];
 
+const TABS: { key: 'pos' | 'catalogue' | 'both'; label: string; icon: React.ReactNode }[] = [
+    { key: 'pos', label: 'POS', icon: <Store className="size-4" /> },
+    { key: 'catalogue', label: 'Catalogue', icon: <Layers className="size-4" /> },
+    { key: 'both', label: 'Both', icon: <Crown className="size-4" /> },
+];
+
+// Icon shown on the active-plan hero badge, keyed by plan id.
+const PLAN_ICONS: Record<string, React.ReactNode> = {
+    [PLANS.ENTERPRISE]: <Crown className="size-8 drop-shadow-sm" />,
+    [PLANS.POS_PRO]: <Sparkles className="size-8 drop-shadow-sm" />,
+    pro: <Sparkles className="size-8 drop-shadow-sm" />,
+};
+
+const DAYS_CYCLE_TOTAL = 365;
+const RING_RADIUS = 16;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+
+// Groups features into logical sections so the comparison table reads like
+// a spec sheet instead of a flat wall of rows.
+const CATEGORY_ORDER = [
+    'Billing & Checkout',
+    'Purchases & Inventory',
+    'Dashboards & Insights',
+    'Reports & Analytics',
+    'Customers & Payments',
+    'Team & Access',
+    'Business Tools',
+    'Online Catalogue',
+];
+
+const CATEGORY_OF: Record<string, string> = {
+    'Calculator Billing': 'Billing & Checkout',
+    'Automated Invoice Generation': 'Billing & Checkout',
+    'Autofill Bill Amount & Balances': 'Billing & Checkout',
+    'Custom Voucher Numbering': 'Billing & Checkout',
+    'Automated rounding off (upto ₹100)': 'Billing & Checkout',
+    'Item-wise discount setting': 'Billing & Checkout',
+    'Negative inventory billing': 'Billing & Checkout',
+    'Salesman wise billing': 'Billing & Checkout',
+    'Credit sales setting': 'Billing & Checkout',
+    'Discount/Sale amount secret editor': 'Billing & Checkout',
+    'Exchange items functionality': 'Billing & Checkout',
+    'Credit Note functionality': 'Billing & Checkout',
+    'Sales return voucher': 'Billing & Checkout',
+    'Voucher/Invoice modification': 'Billing & Checkout',
+    'Shortcut Barcode Printing': 'Billing & Checkout',
+    'Individual barcode printing': 'Billing & Checkout',
+    'Custom barcode generation': 'Billing & Checkout',
+    'Multi-tax Purchase vouchering': 'Purchases & Inventory',
+    'Purchase voucher': 'Purchases & Inventory',
+    'Purchase return voucher': 'Purchases & Inventory',
+    'Restock Items Board': 'Purchases & Inventory',
+    'Restock Alerts': 'Purchases & Inventory',
+    'Supplier database management': 'Purchases & Inventory',
+    'Vendor POS Dashboard Access': 'Dashboards & Insights',
+    'Total Sale Board': 'Dashboards & Insights',
+    'Daily Performance Board': 'Dashboards & Insights',
+    'Payment Methods Board': 'Dashboards & Insights',
+    'Top Items Sold Board': 'Dashboards & Insights',
+    'Top Salesman Board': 'Dashboards & Insights',
+    'Amount vs Quantity in Boards': 'Dashboards & Insights',
+    'Completed Sales Board': 'Dashboards & Insights',
+    'Top 5 Items Sold Board': 'Dashboards & Insights',
+    'Hide Data Functionality': 'Dashboards & Insights',
+    'List vs Card view': 'Dashboards & Insights',
+    'Order Journey Tracking': 'Dashboards & Insights',
+    'Automated Sales Reports': 'Reports & Analytics',
+    'Automated purchase reports': 'Reports & Analytics',
+    'Automated Item reports': 'Reports & Analytics',
+    'Automated PnL reports': 'Reports & Analytics',
+    'Downloadable reports': 'Reports & Analytics',
+    'Sales Report': 'Reports & Analytics',
+    'Customer Report': 'Reports & Analytics',
+    'Profit & Loss Report': 'Reports & Analytics',
+    'Item Report': 'Reports & Analytics',
+    'Order Analytics': 'Reports & Analytics',
+    'Payment reminder feature': 'Customers & Payments',
+    'Customer database management': 'Customers & Payments',
+    'Online Payments': 'Customers & Payments',
+    'Custom users management': 'Team & Access',
+    'Custom user app permissions': 'Team & Access',
+    'Multiple owners in same company': 'Team & Access',
+    'Transaction filter & search': 'Business Tools',
+    'Multi-store functionality': 'Business Tools',
+    'Automated business card making': 'Business Tools',
+    'Online Catalogue': 'Online Catalogue',
+    'Share on WhatsApp': 'Online Catalogue',
+    'Receive Orders': 'Online Catalogue',
+    'Custom Domain': 'Online Catalogue',
+};
+
 const SubscriptionPage: React.FC = () => {
     const { currentUser } = useAuth();
     const navigate = useNavigate();
@@ -203,9 +328,6 @@ const SubscriptionPage: React.FC = () => {
     };
 
     const [activeTab, setActiveTab] = useState<'pos' | 'catalogue' | 'both'>('pos');
-    const [isDetailsOpen] = useState(true);
-    const [selectedTooltip, setSelectedTooltip] = useState<string | null>(null);
-    const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number } | null>(null);
 
     const subData = (currentUser as any)?.subscription || (currentUser as any)?.Subscription;
     const currentPack = subData?.pack || PLANS.POS_BASIC;
@@ -222,6 +344,7 @@ const SubscriptionPage: React.FC = () => {
         };
         fetchEmail();
     }, [currentUser]);
+
     const showActiveView = isPlanActive && (
         currentPack === PLANS.ENTERPRISE ||
         currentPack === PLANS.POS_PRO ||
@@ -243,271 +366,429 @@ const SubscriptionPage: React.FC = () => {
         return Array.from(features);
     }, [currentTiers, activeTab]);
 
-    useEffect(() => {
-        const handleOutsideClick = () => setSelectedTooltip(null);
-        if (selectedTooltip) {
-            window.addEventListener('click', handleOutsideClick);
-        }
-        return () => window.removeEventListener('click', handleOutsideClick);
-    }, [selectedTooltip]);
+    const groupedFeatures = useMemo(() => {
+        const groups: Record<string, string[]> = {};
+        allFeatures.forEach(feature => {
+            const category = CATEGORY_OF[feature] || 'Other';
+            (groups[category] ||= []).push(feature);
+        });
+        const ordered = CATEGORY_ORDER.filter(cat => groups[cat]?.length).map(category => ({
+            category,
+            features: groups[category],
+        }));
+        if (groups.Other?.length) ordered.push({ category: 'Other', features: groups.Other });
+        return ordered;
+    }, [allFeatures]);
 
-    const ActivePlanCollapsible = () => (
-        <div className="max-w-4xl mx-auto mb-8 transition-all duration-300">
-            <div className="bg-white rounded-sm shadow-md border border-green-100 overflow-hidden">
-                <div className="bg-green-600 p-4 flex justify-between items-center cursor-pointer hover:bg-green-700 transition-colors">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-white/20 p-2 rounded-sm">
-                            <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                        </div>
-                        <div>
-                            <h2 className="text-white font-bold text-lg leading-tight">
-                                Current Plan: {currentPack.replace('pos_', '').toUpperCase()}
-                            </h2>
-                            <p className="text-green-100 text-xs">
-                                {isPlanActive ? 'Active Subscription' : 'Expired'}
-                            </p>
-                        </div>
-                    </div>
-                </div>
-                <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isDetailsOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
-                    <div className="p-6 bg-green-50/30">
-                        <div className="grid grid-cols-2 sm:grid-cols-2 gap-6">
-                            <div>
-                                <p className="text-sm text-gray-500 uppercase font-bold tracking-wider">Status</p>
-                                <div className="mt-1 flex items-center gap-2">
-                                    <span className="h-2 w-2 rounded-sm bg-green-500 animate-pulse"></span>
-                                    <span className="text-base font-semibold text-gray-800">Active</span>
-                                </div>
-                            </div>
-                            <div>
-                                <p className="text-sm text-gray-500 uppercase font-bold tracking-wider">Expires On</p>
-                                <p className="mt-1 text-base font-semibold text-gray-800">
-                                    {expiryDate
-                                        ? new Date((expiryDate as any).toDate ? (expiryDate as any).toDate() : expiryDate).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
-                                        : 'Lifetime / Unknown'}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div className="mt-3 px-4 py-3 bg-white rounded-sm shadow-sm border border-gray-200 grid grid-cols-2 gap-4">
-                    <div>
-                        <p className="text-sm text-gray-500 uppercase font-bold tracking-wider">Name</p>
-                        <p className="mt-1 text-base font-semibold text-gray-800">
-                            {(currentUser as any)?.name || (currentUser as any)?.displayName || '—'}
-                        </p>
-                    </div>
-                    <div>
-                        <p className="text-sm text-gray-500 uppercase font-bold tracking-wider">Email</p>
-                        <p className="mt-1 text-base font-semibold text-gray-800 break-all">
-                            {userEmail || '—'}
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
+    const expiryDateObj = useMemo(() => {
+        if (!expiryDate) return null;
+        return (expiryDate as any).toDate ? (expiryDate as any).toDate() : new Date(expiryDate);
+    }, [expiryDate]);
+
+    const daysRemaining = useMemo(() => {
+        if (!expiryDateObj) return null;
+        return Math.ceil((expiryDateObj.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    }, [expiryDateObj]);
+
+    const daysRemainingClamped = daysRemaining !== null ? Math.max(0, daysRemaining) : null;
+    const daysProgressPct = daysRemainingClamped !== null
+        ? Math.max(0, Math.min(100, (daysRemainingClamped / DAYS_CYCLE_TOTAL) * 100))
+        : 0;
+    const daysUrgency: 'critical' | 'warning' | 'healthy' = daysRemainingClamped !== null && daysRemainingClamped <= 7
+        ? 'critical'
+        : daysRemainingClamped !== null && daysRemainingClamped <= 30
+            ? 'warning'
+            : 'healthy';
+    const daysRingColorClass = daysUrgency === 'critical' ? 'text-destructive' : daysUrgency === 'warning' ? 'text-warning' : 'text-success';
+
+    const [emailCopied, setEmailCopied] = useState(false);
+    const handleCopyEmail = async () => {
+        if (!userEmail) return;
+        try {
+            await navigator.clipboard.writeText(userEmail);
+            setEmailCopied(true);
+            setTimeout(() => setEmailCopied(false), 1500);
+        } catch (err) {
+            console.error('Copy failed:', err);
+        }
+    };
+
+    const handleManagePlan = () => {
+        setSelectedPlan(String(currentPack).replace('pos_', '').toUpperCase());
+        setIsContactModalOpen(true);
+    };
 
     return (
-        <div className="min-h-screen bg-gray-50 pb-20 font-sans">
-            <div className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-20">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex justify-between h-16 items-center">
-                        <BackButton />
-                        <h1 className="text-xl font-bold text-gray-800">Subscription</h1>
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={handleLogout}
-                                className="ml-1 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-sm transition-colors"
-                            >
-                                Logout
-                            </button>
-                        </div>
-                    </div>
+        <div className="aurora min-h-screen bg-muted pb-20">
+            {/* Header */}
+            <header className="glass sticky top-0 z-20 flex items-center gap-3 border-b border-border px-4 py-3">
+                <BackButton />
+                <div className="flex-1">
+                    <h1 className="text-lg font-bold tracking-tight text-foreground">
+                        Subscription <span className="text-gradient">Plans</span>
+                    </h1>
+                    <p className="text-xs text-muted-foreground">Manage your billing & unlock more features</p>
                 </div>
-            </div>
-
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
-                {showActiveView && <ActivePlanCollapsible />}
-
-                <div className="flex justify-center w-full mb-6">
-                    <div className="bg-white p-1 rounded-sm shadow-sm border border-gray-200 inline-flex">
-                        <button
-                            onClick={() => setActiveTab('pos')}
-                            className={`px-6 py-2 rounded-sm text-sm font-bold transition-all duration-200 ${activeTab === 'pos' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
-                        >
-                            POS
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('catalogue')}
-                            className={`px-6 py-2 rounded-sm text-sm font-bold transition-all duration-200 ${activeTab === 'catalogue' ? 'bg-[#F97316] text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
-                        >
-                            Catalogue
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('both')}
-                            className={`px-6 py-2 rounded-sm text-sm font-bold transition-all duration-200 ${activeTab === 'both' ? 'bg-yellow-400 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
-                        >
-                            Both
-                        </button>
-                    </div>
-                </div>
-
-                <div className="bg-white rounded-sm shadow-xl border border-gray-200 max-w-5xl mx-auto ">
-                    <div className="overflow-x-auto">
-                        {/* Changed table-fixed to auto-layout to prevent truncation */}
-                        <table className="w-full border-collapse table-fixed ">
-                            <thead className="sticky top-0 z-30 shadow-sm ">
-                                <tr>
-                                    {/* Increased width for Features column */}
-                                    <th className="p-2 sm:p-4 text-left w-1/3 bg-gray-50 border-b border-gray-200 align-bottom">
-                                        <span className="text-gray-500 font-medium text-xs sm:text-sm uppercase tracking-wider">Features</span>
-                                    </th>
-                                    {currentTiers.map(tier => (
-                                        <th
-                                            key={tier.id}
-                                            className={`pt-6 pb-4 px-2 text-center border-b border-gray-200 relative ${tier.recommended ? 'bg-yellow-50' : 'bg-white'}`}
-                                        >
-                                            {tier.recommended && (
-                                                <span className="absolute top-2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-yellow-400 text-yellow-900 text-[9px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wide whitespace-nowrap">
-                                                    {activeTab === 'catalogue' ? 'Best Seller' : 'Recommended'}
-                                                </span>
-                                            )}
-                                            <h3 className="text-sm sm:text-lg font-bold text-gray-900 leading-tight">
-                                                {tier.name.split('(')[0].trim()}
-                                                {tier.name.includes('(') && (
-                                                    <span className="block text-xs sm:text-sm font-semibold text-gray-500">
-                                                        ({tier.name.split('(')[1]}
-                                                    </span>
-                                                )}
-                                            </h3>
-                                            <div className="mt-1 sm:mt-2">
-                                                {tier.originalPrice && (
-                                                    <span className="text-xs sm:text-base text-gray-400 line-through mr-1 font-medium">
-                                                        {tier.originalPrice.yearly}
-                                                    </span>
-                                                )}
-                                                <span className="text-base sm:text-3xl font-extrabold text-gray-900 break-all">
-                                                    {tier.price.yearly}
-                                                </span>
-                                                <span className="text-xs text-gray-500 block font-medium">
-                                                    per year
-                                                </span>
-                                            </div>
-                                            <button
-                                                onClick={() => {
-                                                    setSelectedPlan(tier.name);
-                                                    setIsContactModalOpen(true);
-                                                }}
-                                                className={`mt-3 w-full py-1.5 rounded-sm text-xs sm:text-sm font-bold transition-colors ${tier.recommended
-                                                    ? activeTab === 'pos' ? 'bg-blue-600 text-white hover:bg-gray-800' : activeTab === 'catalogue' ? 'bg-[#F97316] text-white hover:bg-sky-700' : 'bg-yellow-400 text-black hover:bg-yellow-500'
-                                                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-                                                    }`}
-                                            >
-                                                Choose
-                                            </button>
-                                        </th>
-                                    ))}
-                                </tr>
-                            </thead>
-
-                            <tbody className="divide-y divide-gray-100">
-                                {allFeatures.map((feature, idx) => (
-                                    <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                                        <td className="p-2 sm:p-3 text-xs sm:text-sm font-medium text-gray-700 pl-2 sm:pl-6">
-                                            <div className="flex items-center gap-2">
-                                                {/* Removed truncate class to show full text */}
-                                                <span className="whitespace-normal leading-tight">{feature}</span>
-                                                {FEATURE_DESCRIPTIONS[feature] && (
-                                                    <div className="relative inline-block leading-none flex-shrink-0">
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                if (selectedTooltip === feature) {
-                                                                    setSelectedTooltip(null);
-                                                                    setTooltipPos(null);
-                                                                } else {
-                                                                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                                                                    setTooltipPos({ top: rect.top, left: rect.right + 8 });
-                                                                    setSelectedTooltip(feature);
-                                                                }
-                                                            }}
-                                                            className="text-gray-400 hover:text-blue-500 transition-colors focus:outline-none"
-                                                        >
-                                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                            </svg>
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </td>
-                                        {currentTiers.map(tier => {
-                                            const hasFeature = tier.features.includes(feature);
-                                            return (
-                                                <td key={tier.id} className="p-3 text-center">
-                                                    {hasFeature ? (
-                                                        <div className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-100 text-green-600">
-                                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                                            </svg>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-100 text-red-600">
-                                                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                                                <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} />
-                                                            </svg>
-                                                        </div>
-                                                    )}
-                                                </td>
-                                            );
-                                        })}
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-            {isContactModalOpen && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-lg shadow-2xl max-w-md w-full p-6">
-                        <h3 className="text-lg font-bold text-gray-900 mb-4">Contact Admin</h3>
-                        <p className="text-gray-700 mb-4">
-                            To subscribe to <span className="font-semibold">{selectedPlan}</span>, please contact our admin:
-                        </p>
-                        <div className="bg-gray-50 rounded-md p-4 mb-6 text-center">
-                            <p className="text-sm text-gray-600 mb-2">Call us at:</p>
-                            <a
-                                href="tel:9818815838"
-                                className="text-2xl font-bold text-blue-600 hover:text-blue-700"
-                            >
-                                9818815838
-                            </a>
-                        </div>
-                        <button
-                            onClick={() => setIsContactModalOpen(false)}
-                            className="w-full py-2 bg-gray-900 text-white rounded-md font-semibold hover:bg-gray-800 transition-colors"
-                        >
-                            OK
-                        </button>
-                    </div>
-                </div>
-
-            )}
-            {selectedTooltip && tooltipPos && (
-                <div
-                    style={{ position: 'fixed', top: tooltipPos.top - 10, left: tooltipPos.left, zIndex: 9999 }}
-                    className="w-48 p-2 bg-gray-900 text-white text-[10px] leading-tight rounded-md shadow-lg"
-                    onClick={(e) => e.stopPropagation()}
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleLogout}
+                    className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
                 >
-                    {FEATURE_DESCRIPTIONS[selectedTooltip]}
-                </div>
-            )}
-        </div>
+                    <LogOut className="size-3.5" />
+                    <span className="hidden sm:inline">Logout</span>
+                </Button>
+            </header>
 
+            <div className="mx-auto max-w-6xl px-4 pt-6 sm:px-6 lg:px-8 animate-in fade-in-0 slide-in-from-bottom-2 duration-500">
+                {/* ── Active plan hero ── */}
+                {showActiveView && (
+                    <div className="relative mb-8 overflow-hidden rounded-3xl border border-border bg-card shadow-lg ring-1 ring-primary/10">
+                        <div
+                            className="relative h-28 overflow-hidden bg-gradient-to-br from-primary via-primary to-[oklch(0.5_0.24_320)]"
+                            style={{
+                                backgroundImage:
+                                    'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.18) 1px, transparent 0), linear-gradient(to bottom right, var(--primary), var(--primary), oklch(0.5 0.24 320))',
+                                backgroundSize: '18px 18px, 100% 100%',
+                            }}
+                        >
+                            <div className="pointer-events-none absolute -right-8 -top-8 size-40 rounded-full bg-white/15 blur-2xl" />
+                            <div className="pointer-events-none absolute -bottom-16 left-16 size-40 rounded-full bg-white/10 blur-3xl" />
+                            <Badge
+                                variant="success"
+                                className="absolute right-4 top-4 gap-1.5 border-white/30 bg-white/15 py-1.5 text-white backdrop-blur-sm"
+                            >
+                                <span className="size-1.5 rounded-full bg-white animate-pulse" />
+                                Active Subscription
+                            </Badge>
+                        </div>
+                        <div className="px-6 pb-6">
+                            <div className="-mt-10 flex items-start justify-between gap-4">
+                                <div className="glow-primary shrink-0 rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.6_0.22_330)] p-[3px]">
+                                    <span className="flex size-20 items-center justify-center rounded-[15px] border-4 border-card bg-gradient-brand text-white">
+                                        {PLAN_ICONS[currentPack] ?? <Crown className="size-8 drop-shadow-sm" />}
+                                    </span>
+                                </div>
+                                <Button size="sm" onClick={handleManagePlan} className="mt-11 gap-1.5 shadow-md shadow-primary/20">
+                                    <RefreshCw className="size-3.5" />
+                                    Manage Plan
+                                </Button>
+                            </div>
+                            <div className="mt-4">
+                                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Current plan</p>
+                                <h2 className="text-2xl font-extrabold tracking-tight text-foreground">{String(currentPack).replace('pos_', '').toUpperCase()}</h2>
+                            </div>
+
+                            <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                <div className="group flex items-center gap-3 rounded-2xl border border-border bg-card p-3.5 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md">
+                                    <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-sky-500/20 to-cyan-500/20 text-sky-600 shadow-inner dark:text-sky-400">
+                                        <Calendar className="size-[18px]" />
+                                    </span>
+                                    <div className="min-w-0">
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Expires on</p>
+                                        <p className="truncate text-sm font-bold text-foreground">
+                                            {expiryDateObj
+                                                ? expiryDateObj.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
+                                                : 'Lifetime / Unknown'}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {daysRemainingClamped !== null && (
+                                    <div className="group flex items-center gap-3 rounded-2xl border border-border bg-card p-3.5 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md">
+                                        <div className="relative flex size-11 shrink-0 items-center justify-center">
+                                            <svg className="absolute inset-0 size-11 -rotate-90" viewBox="0 0 40 40">
+                                                <circle cx="20" cy="20" r={RING_RADIUS} fill="none" strokeWidth="4" className="stroke-muted" />
+                                                <circle
+                                                    cx="20"
+                                                    cy="20"
+                                                    r={RING_RADIUS}
+                                                    fill="none"
+                                                    strokeWidth="4"
+                                                    strokeLinecap="round"
+                                                    stroke="currentColor"
+                                                    className={daysRingColorClass}
+                                                    strokeDasharray={RING_CIRCUMFERENCE}
+                                                    strokeDashoffset={RING_CIRCUMFERENCE * (1 - daysProgressPct / 100)}
+                                                />
+                                            </svg>
+                                            <Clock className={cn('size-4', daysRingColorClass)} />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Days left</p>
+                                            <p className={cn('text-sm font-bold', daysUrgency === 'critical' ? 'text-destructive' : 'text-foreground')}>
+                                                {daysRemainingClamped} day{daysRemainingClamped === 1 ? '' : 's'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="group flex items-center gap-3 rounded-2xl border border-border bg-card p-3.5 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md">
+                                    <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 text-violet-600 shadow-inner dark:text-violet-400">
+                                        <User className="size-[18px]" />
+                                    </span>
+                                    <div className="min-w-0">
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Name</p>
+                                        <p className="truncate text-sm font-bold text-foreground">
+                                            {(currentUser as any)?.name || (currentUser as any)?.displayName || '—'}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="group flex items-center gap-3 rounded-2xl border border-border bg-card p-3.5 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md">
+                                    <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 text-emerald-600 shadow-inner dark:text-emerald-400">
+                                        <Mail className="size-[18px]" />
+                                    </span>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Email</p>
+                                        <p className="truncate text-sm font-bold text-foreground">{userEmail || '—'}</p>
+                                    </div>
+                                    {userEmail && (
+                                        <button
+                                            type="button"
+                                            onClick={handleCopyEmail}
+                                            title="Copy email"
+                                            aria-label="Copy email"
+                                            className="shrink-0 rounded-lg p-1.5 text-muted-foreground opacity-0 transition hover:bg-primary/10 hover:text-primary group-hover:opacity-100 focus-visible:opacity-100"
+                                        >
+                                            {emailCopied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ── Tab switcher ── */}
+                <div className="mb-8 flex justify-center">
+                    <div className="glass inline-flex gap-1 rounded-2xl p-1 shadow-sm">
+                        {TABS.map(tab => (
+                            <button
+                                key={tab.key}
+                                type="button"
+                                onClick={() => setActiveTab(tab.key)}
+                                className={cn(
+                                    'flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all duration-200',
+                                    activeTab === tab.key
+                                        ? 'bg-gradient-brand text-white shadow-md shadow-primary/25'
+                                        : 'text-muted-foreground hover:bg-sidebar-accent hover:text-foreground',
+                                )}
+                            >
+                                {tab.icon}
+                                {tab.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* ── Pricing cards ── */}
+                <div className={cn('mb-10 grid gap-5', currentTiers.length > 1 ? 'sm:grid-cols-2' : 'mx-auto max-w-md sm:grid-cols-1')}>
+                    {currentTiers.map(tier => (
+                        <div
+                            key={tier.id}
+                            className={cn(
+                                'group relative flex flex-col overflow-hidden rounded-3xl border p-6 transition-all duration-200',
+                                tier.recommended
+                                    ? 'glow-primary border-0 bg-gradient-to-br from-primary via-primary to-[oklch(0.5_0.24_320)] text-primary-foreground'
+                                    : 'border-border bg-card hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg',
+                            )}
+                        >
+                            {tier.recommended && (
+                                <>
+                                    <div className="pointer-events-none absolute -right-10 -top-10 size-40 rounded-full bg-white/15 blur-2xl" />
+                                    <span className="absolute right-5 top-5 inline-flex items-center gap-1 rounded-full bg-white/20 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white">
+                                        <Sparkles className="size-3" />
+                                        {activeTab === 'catalogue' ? 'Best Seller' : 'Recommended'}
+                                    </span>
+                                </>
+                            )}
+
+                            <h3 className={cn('relative text-lg font-bold', tier.recommended ? 'text-white' : 'text-foreground')}>
+                                {tier.name}
+                            </h3>
+                            <p className={cn('relative mt-1 text-sm', tier.recommended ? 'text-white/80' : 'text-muted-foreground')}>
+                                {tier.description}
+                            </p>
+
+                            <div className="relative mt-6 flex flex-wrap items-end gap-2">
+                                {tier.originalPrice && (
+                                    <span className={cn('text-sm line-through', tier.recommended ? 'text-white/60' : 'text-muted-foreground')}>
+                                        {tier.originalPrice.yearly}
+                                    </span>
+                                )}
+                                <span className={cn('text-3xl font-extrabold', tier.recommended ? 'text-white' : 'text-foreground')}>
+                                    {tier.price.yearly}
+                                </span>
+                                <span className={cn('pb-1 text-xs font-medium', tier.recommended ? 'text-white/70' : 'text-muted-foreground')}>
+                                    / year
+                                </span>
+                            </div>
+
+                            <Button
+                                onClick={() => { setSelectedPlan(tier.name); setIsContactModalOpen(true); }}
+                                variant={tier.recommended ? 'default' : 'outline'}
+                                className={cn('relative mt-6 w-full', tier.recommended && 'bg-white text-primary hover:bg-white/90')}
+                            >
+                                Choose {tier.name.split('(')[0].trim()}
+                            </Button>
+
+                            <p
+                                className={cn(
+                                    'relative mt-6 border-t pt-4 text-xs font-medium',
+                                    tier.recommended ? 'border-white/20 text-white/70' : 'border-border text-muted-foreground',
+                                )}
+                            >
+                                {tier.features.length}+ features included
+                            </p>
+                        </div>
+                    ))}
+                </div>
+
+                {/* ── Full feature comparison ── */}
+                <div className="mb-10 overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3.5">
+                        <div>
+                            <h3 className="text-sm font-bold text-foreground">Full feature comparison</h3>
+                            <p className="text-xs text-muted-foreground">Everything included in each plan, grouped by category</p>
+                        </div>
+                        <div className="flex items-center gap-3 text-[11px] font-medium text-muted-foreground">
+                            <span className="inline-flex items-center gap-1.5">
+                                <span className="inline-flex size-4 items-center justify-center rounded-full bg-success/15 text-success">
+                                    <Check className="size-2.5" strokeWidth={3.5} />
+                                </span>
+                                Included
+                            </span>
+                            <span className="inline-flex items-center gap-1.5">
+                                <Minus className="size-3.5 text-muted-foreground/40" />
+                                Not available
+                            </span>
+                            <span className="rounded-full bg-muted px-2 py-0.5 font-semibold text-foreground">
+                                {allFeatures.length} features
+                            </span>
+                        </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <TooltipProvider delayDuration={150}>
+                            <table className="w-full min-w-[420px] border-collapse text-[13px]">
+                                <thead>
+                                    <tr className="border-b border-border bg-muted/40">
+                                        <th className="w-1/2 px-5 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:w-2/5">
+                                            Feature
+                                        </th>
+                                        {currentTiers.map(tier => (
+                                            <th key={tier.id} className="px-2.5 py-2 text-center text-xs font-semibold text-foreground">
+                                                <span
+                                                    className={cn(
+                                                        'inline-flex flex-col items-center gap-0.5 rounded-xl px-2.5 py-1',
+                                                        tier.recommended ? 'bg-primary/10 text-primary' : 'text-muted-foreground',
+                                                    )}
+                                                >
+                                                    <span>{tier.name.split('(')[0].trim()}</span>
+                                                    <span className="text-[10px] font-normal opacity-70">
+                                                        {tier.features.length}/{allFeatures.length}
+                                                    </span>
+                                                </span>
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border/60">
+                                    {groupedFeatures.map(group => (
+                                        <React.Fragment key={group.category}>
+                                            <tr className="bg-muted/50">
+                                                <td
+                                                    colSpan={currentTiers.length + 1}
+                                                    className="px-5 py-1.5 text-[10.5px] font-bold uppercase tracking-wider text-primary"
+                                                >
+                                                    {group.category}
+                                                </td>
+                                            </tr>
+                                            {group.features.map((feature, idx) => (
+                                                <tr key={idx} className="transition-colors hover:bg-accent/40">
+                                                    <td className="px-5 py-1.5 text-[13px] font-medium text-foreground">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="leading-tight">{feature}</span>
+                                                            {FEATURE_DESCRIPTIONS[feature] && (
+                                                                <Tooltip>
+                                                                    <TooltipTrigger asChild>
+                                                                        <button
+                                                                            type="button"
+                                                                            aria-label={`About ${feature}`}
+                                                                            className="rounded-full p-0.5 text-muted-foreground/60 transition hover:bg-primary/10 hover:text-primary"
+                                                                        >
+                                                                            <Info className="size-3.5" />
+                                                                        </button>
+                                                                    </TooltipTrigger>
+                                                                    <TooltipContent side="right" className="max-w-[220px] text-left">
+                                                                        {FEATURE_DESCRIPTIONS[feature]}
+                                                                    </TooltipContent>
+                                                                </Tooltip>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    {currentTiers.map(tier => {
+                                                        const hasFeature = tier.features.includes(feature);
+                                                        return (
+                                                            <td key={tier.id} className="px-2.5 py-1.5 text-center">
+                                                                {hasFeature ? (
+                                                                    <span className="inline-flex size-[18px] items-center justify-center rounded-full bg-success/15 text-success">
+                                                                        <Check className="size-3" strokeWidth={3.5} />
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="inline-flex size-[18px] items-center justify-center text-muted-foreground/30">
+                                                                        <Minus className="size-3" />
+                                                                    </span>
+                                                                )}
+                                                            </td>
+                                                        );
+                                                    })}
+                                                </tr>
+                                            ))}
+                                        </React.Fragment>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </TooltipProvider>
+                    </div>
+                </div>
+            </div>
+
+            {/* ── Contact modal ── */}
+            <Dialog open={isContactModalOpen} onOpenChange={setIsContactModalOpen}>
+                <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                        <div className="flex items-center gap-3">
+                            <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-brand text-white shadow-md">
+                                <Phone className="size-5" />
+                            </span>
+                            <div>
+                                <DialogTitle>Contact Admin</DialogTitle>
+                                <DialogDescription>We&apos;ll help you upgrade right away</DialogDescription>
+                            </div>
+                        </div>
+                    </DialogHeader>
+
+                    <p className="text-sm text-muted-foreground">
+                        To subscribe to <span className="font-semibold text-foreground">{selectedPlan}</span>, please reach out to our admin team:
+                    </p>
+
+                    <a
+                        href="tel:9818815838"
+                        className="flex flex-col items-center gap-1 rounded-2xl border border-dashed border-primary/30 bg-primary/5 py-5 text-center transition hover:bg-primary/10"
+                    >
+                        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Call us at</span>
+                        <span className="text-gradient text-2xl font-extrabold">9818815838</span>
+                    </a>
+
+                    <DialogFooter>
+                        <Button onClick={() => setIsContactModalOpen(false)} className="w-full">
+                            Got it
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </div>
     );
 };
 

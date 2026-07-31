@@ -3,9 +3,7 @@ import {
     formatDate,
     formatDateForInput,
 } from './SalesReportComponents/salesReport.utils';
-import ReportDateFilter from '../../Components/ReportDateFilter';
-import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../../lib/Firebase';
+import FilterSelect from './SalesReportComponents/FilterSelect';
 import { useAuth } from '../../context/auth-context';
 import useSalesReport from './SalesReportComponents/useSalesReport';
 import { jsPDF } from 'jspdf';
@@ -13,13 +11,18 @@ import autoTable from 'jspdf-autotable';
 import XLSX from 'xlsx-js-style';
 import { type TableColumn } from '../../Components/CustomTable';
 import { State } from '../../enums';
-import { CustomTable } from '../../Components/CustomTable';
-import { IconClose, IconSearch } from '../../constants/Icons';
+import { Spinner } from '../../Components/ui/spinner';
+import { Button } from '../../Components/ui/button';
+import { Input } from '../../Components/ui/input';
+import { StatCard } from '../../Components/ui/stat-card';
+import { IndianRupee, Layers, Package, Search, X } from 'lucide-react';
 import ReportDetails from './SalesReportComponents/ReportDetails';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
 import BackButton from '../../Components/BackButton';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import { formatCurrency, formatNumber } from '../../utils/formatters';
+import { itemSoldReportService } from '../../services/reports/itemSoldReport.service';
 
 // 1. Define the strictly 4-column structure
 export interface AggregatedItem {
@@ -28,6 +31,25 @@ export interface AggregatedItem {
     itemGroup: string;
     quantitySold: number;
     valueSold: number;
+}
+
+/** Shape of a sale line item as read off Firestore sale docs (loosely typed
+ * upstream via `SaleRecord.items: SalesItem[]`, which only declares
+ * name/mrp/quantity). Sold-item aggregation additionally reads a handful of
+ * pricing/category fields that exist on the real documents but aren't part
+ * of that narrower type, so we declare the fuller shape locally instead of
+ * reaching for `any`. */
+interface SoldLineItem {
+    productId?: string;
+    id?: string;
+    name?: string;
+    itemGroupId?: string;
+    category?: string;
+    quantity?: number;
+    effectiveUnitPrice?: number;
+    customPrice?: number;
+    salesPrice?: number;
+    mrp?: number;
 }
 
 const ItemsSoldReport: React.FC = () => {
@@ -66,18 +88,10 @@ const ItemsSoldReport: React.FC = () => {
         const fetchItemGroups = async () => {
             if (!currentUser?.companyId) return;
             try {
-                const groupsRef = collection(db, 'companies', currentUser.companyId, 'itemGroups');
-                const groupsSnap = await getDocs(groupsRef);
-
-                const map: Record<string, string> = {};
-                groupsSnap.docs.forEach(doc => {
-                    const data = doc.data();
-                    map[doc.id] = data.name || data.groupName || 'Unknown Group';
-                });
-
+                const map = await itemSoldReportService.fetchItemGroupMap(currentUser.companyId);
                 setItemGroupMap(map);
             } catch (err) {
-                console.error("Error fetching item groups:", err);
+                console.error('Error fetching item groups:', err);
             }
         };
 
@@ -164,18 +178,16 @@ const ItemsSoldReport: React.FC = () => {
         );
 
         const itemMap = new Map<string, AggregatedItem>();
-        let overallValue = 0;
-        let overallQty = 0;
 
         billsInRange.forEach((sale) => {
-            sale.items.forEach((item: any) => {
+            (sale.items as unknown as SoldLineItem[]).forEach((item) => {
                 const id = item.productId || item.id || 'unknown';
 
                 if (!itemMap.has(id)) {
                     itemMap.set(id, {
                         id,
                         name: item.name || 'Unknown Item',
-                        itemGroup: itemGroupMap[item.itemGroupId] || item.category || 'Uncategorized',
+                        itemGroup: itemGroupMap[item.itemGroupId ?? ''] || item.category || 'Uncategorized',
                         quantitySold: 0,
                         valueSold: 0,
                     });
@@ -189,9 +201,6 @@ const ItemsSoldReport: React.FC = () => {
 
                 existingItem.quantitySold += qty;
                 existingItem.valueSold += lineValue;
-
-                overallQty += qty;
-                overallValue += lineValue;
             });
         });
 
@@ -238,19 +247,19 @@ const ItemsSoldReport: React.FC = () => {
             header: 'Category',
             accessor: 'itemGroup',
             sortKey: 'itemGroup',
-            className: 'text-slate-600'
+            className: 'text-muted-foreground'
         },
         {
             header: 'Qty Sold',
             accessor: 'quantitySold',
             sortKey: 'quantitySold',
-            className: 'text-slate-600 font-medium'
+            className: 'text-muted-foreground font-medium'
         },
         {
             header: 'Value Sold',
             accessor: (row) => `₹${Math.round(row.valueSold).toLocaleString('en-IN')}`,
             sortKey: 'valueSold',
-            className: 'text-slate-800 font-medium'
+            className: 'text-foreground font-medium'
         }
     ], []);
 
@@ -654,11 +663,23 @@ const ItemsSoldReport: React.FC = () => {
 
     /* ---------- LOAD STATES ---------- */
     if (isLoading || authLoading)
-        return <div className="p-4 text-center">Loading...</div>;
-    if (error) return <div className="p-4 text-center text-red-500">{error}</div>;
+        return (
+            <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-muted p-10 text-muted-foreground">
+                <Spinner size="lg" />
+                <p className="text-sm font-medium">Loading items sold report...</p>
+            </div>
+        );
+    if (error)
+        return (
+            <div className="flex min-h-screen items-center justify-center bg-muted p-4">
+                <p className="rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-center text-sm font-medium text-destructive">
+                    {error}
+                </p>
+            </div>
+        );
 
     return (
-        <div className="min-h-screen bg-gray-100 p-2 pb-16">
+        <div className="aurora min-h-screen bg-muted pb-16">
             {feedbackModal.isOpen && (
                 <Modal
                     type={feedbackModal.type}
@@ -676,82 +697,144 @@ const ItemsSoldReport: React.FC = () => {
             />
 
             {/* HEADER */}
-            <div className="flex items-center justify-between pb-3 border-b mb-2">
-                <BackButton />
+            <header className="glass sticky top-0 z-20 mx-3 mt-3 flex flex-col gap-3 rounded-2xl p-3 shadow-sm md:flex-row md:items-center md:justify-between">
+                <div className="flex items-center gap-3">
+                    <BackButton />
+                    <div className="rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.6_0.22_330)] p-[3px] shadow-sm shadow-primary/20">
+                        <span className="flex size-9 shrink-0 items-center justify-center rounded-[13px] bg-gradient-brand text-white">
+                            <Layers className="size-4" />
+                        </span>
+                    </div>
+                    <div>
+                        <h1 className="text-lg font-bold tracking-tight text-foreground md:text-xl">
+                            Items Sold <span className="text-gradient">Report</span>
+                        </h1>
+                        <p className="text-xs text-muted-foreground">See which items move the most</p>
+                    </div>
+                </div>
+                <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowSearch((v) => !v)}
+                    aria-label="Search items"
+                >
+                    {showSearch ? <X className="size-4" /> : <Search className="size-4" />}
+                </Button>
+            </header>
 
-                <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
-                    Items Sold Report
-                </h1>
-
-                <button onClick={() => setShowSearch(true)} className="p-2">
-                    <IconSearch />
-                </button>
-            </div>
-
-            {showSearch && (
-                <div className="flex justify-center mb-2 px-2">
-                    <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-blue-700">
-                        <input
+            <main className="space-y-3 p-3">
+                {showSearch && (
+                    <div className="glass flex items-center gap-2 rounded-2xl p-2">
+                        <Input
                             type="text"
-                            placeholder="Search by Name..."
-                            className="flex-1 text-base font-light p-2 outline-none bg-transparent text-center"
+                            placeholder="Search by item name..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             autoFocus
+                            className="border-none bg-transparent shadow-none focus-visible:ring-0"
                         />
-                        <button
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
                             onClick={() => {
                                 setSearchQuery('');
                                 setShowSearch(false);
                             }}
-                            className="p-1 text-gray-500 hover:text-black"
+                            aria-label="Clear search"
                         >
-                            <IconClose />
-                        </button>
+                            <X className="size-4" />
+                        </Button>
                     </div>
+                )}
+
+                {/* FILTERS */}
+                <div className="glass space-y-3 rounded-2xl p-4">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        <FilterSelect
+                            label="Date Range"
+                            value={datePreset}
+                            onChange={(e) => handleDatePresetChange(e.target.value)}
+                        >
+                            <option value="today">Today</option>
+                            <option value="yesterday">Yesterday</option>
+                            <option value="last7">Last 7 Days</option>
+                            <option value="last30">Last 30 Days</option>
+                            <option value="custom">Custom</option>
+                        </FilterSelect>
+
+                        <div>
+                            <label className="mb-1 block text-xs font-medium text-muted-foreground">Start Date</label>
+                            <Input
+                                type="date"
+                                value={customStartDate}
+                                onChange={(e) => handleStartDateChange(e.target.value)}
+                            />
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-xs font-medium text-muted-foreground">End Date</label>
+                            <Input
+                                type="date"
+                                value={customEndDate}
+                                onChange={(e) => handleEndDateChange(e.target.value)}
+                            />
+                        </div>
+                    </div>
+
+                    <Button
+                        type="button"
+                        onClick={handleApplyFilters}
+                        className="w-full bg-gradient-brand text-white hover:opacity-90 sm:w-auto"
+                    >
+                        Apply
+                    </Button>
                 </div>
-            )}
 
-            {/* FILTERS */}
-            <ReportDateFilter
-                datePreset={datePreset}
-                startDate={customStartDate}
-                endDate={customEndDate}
-                onPresetChange={handleDatePresetChange}
-                onStartDateChange={handleStartDateChange}
-                onEndDateChange={handleEndDateChange}
-                onApply={handleApplyFilters}
-            />
+                {/* SUMMARY */}
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+                    <StatCard
+                        label="Total Value Sold"
+                        value={formatCurrency(summary.totalValueSold || 0)}
+                        icon={<IndianRupee />}
+                    />
+                    <StatCard
+                        label="Total Qty Sold"
+                        value={formatNumber(summary.totalQuantitySold)}
+                        icon={<Package />}
+                    />
+                    <StatCard
+                        label="Unique Items"
+                        value={formatNumber(summary.uniqueItemCount)}
+                        icon={<Layers />}
+                        className="col-span-2 lg:col-span-1"
+                    />
+                </div>
 
-            {/* REPORT DETAILS */}
-            <ReportDetails
-                downloadAsPdf={() => {
-                    if (aggregatedItems.length === 0) {
-                        setFeedbackModal({
-                            isOpen: true,
-                            type: State.INFO,
-                            message: 'No data available to download.',
-                        });
-                    } else {
-                        setIsDownloadModalOpen(true);
-                    }
-                }}
-                filteredSales={aggregatedItems as any}
-                isListVisible={isListVisible}
-                setIsListVisible={setIsListVisible}
-            />
-
-            {/* DATA TABLE */}
-            {isListVisible && (
-                <CustomTable<AggregatedItem>
+                {/* REPORT DETAILS + TABLE */}
+                <ReportDetails<AggregatedItem>
+                    downloadAsPdf={() => {
+                        if (aggregatedItems.length === 0) {
+                            setFeedbackModal({
+                                isOpen: true,
+                                type: State.INFO,
+                                message: 'No data available to download.',
+                            });
+                        } else {
+                            setIsDownloadModalOpen(true);
+                        }
+                    }}
                     data={aggregatedItems}
                     columns={tableColumns}
                     keyExtractor={(item) => item.id}
-                    sortConfig={sortConfig as any}
-                    onSort={handleSort as any}
-                    emptyMessage="No items were sold during the selected period."
+                    sortConfig={sortConfig}
+                    onSort={handleSort}
+                    isListVisible={isListVisible}
+                    setIsListVisible={setIsListVisible}
+                    emptyTitle="No items sold"
+                    emptyDescription="No items were sold during the selected period."
                 />
-            )}
+            </main>
         </div>
     );
 };

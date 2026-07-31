@@ -1,22 +1,20 @@
 import React, { useMemo, useState } from 'react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import XLSX from 'xlsx-js-style';
-import { CustomCard } from '../../Components/CustomCard';
-import { CardVariant, State } from '../../enums';
-import { CustomTable } from '../../Components/CustomTable';
-import { IconClose, IconSearch } from '../../constants/Icons';
-import { getPnlColumns } from '../../constants/TableColoumns';
-import ReportDateFilter from '../../Components/ReportDateFilter';
-import { usePnlReport, usePnlStates } from './PNLReportComponents/usePnlReport';
-import { type TransactionDetail } from './PNLReportComponents/pnlReport.utils';
-import { formatDate } from './PNLReportComponents/pnlReport.utils';
-import { handleDatePresetChange } from './PNLReportComponents/pnlReport.utils';
-import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
-import { Modal } from '../../constants/Modal';
-import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import { BarChart3, Download, Eye, EyeOff, Search } from 'lucide-react';
+
+import { State } from '../../enums';
+import { Button } from '../../Components/ui/button';
+import { Spinner } from '../../Components/ui/spinner';
 import BackButton from '../../Components/BackButton';
-import { useExpenses } from './ExpenseReport/useExpense';
+import { Modal } from '../../constants/Modal';
+import { useExpenses } from '@/features/expenses';
+
+import { usePnlReport, usePnlStates } from './PNLReportComponents/usePnlReport';
+import { type TransactionDetail, handleDatePresetChange } from './PNLReportComponents/pnlReport.utils';
+import { downloadPnlPdf, downloadPnlExcel, type PnlSummary } from './PNLReportComponents/pnlReport.downloads';
+import { PnlFilterBar } from './PNLReportComponents/components/PnlFilterBar';
+import { PnlSummaryCards } from './PNLReportComponents/components/PnlSummaryCards';
+import { PnlTransactionsTable } from './PNLReportComponents/components/PnlTransactionsTable';
+import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 
 const PnlReportPage: React.FC = () => {
   const {
@@ -44,9 +42,9 @@ const PnlReportPage: React.FC = () => {
   } = usePnlReport(currentUser?.companyId);
   const { expenses: posExpenses } = useExpenses(currentUser?.companyId, 'pos');
   const { expenses: catExpenses } = useExpenses(currentUser?.companyId, 'catalogue');
-  const expenses = [...posExpenses, ...catExpenses];
+  const expenses = useMemo(() => [...posExpenses, ...catExpenses], [posExpenses, catExpenses]);
 
-  /* ---------- LOCAL STATES (ADDED) ---------- */
+  /* ---------- LOCAL STATES ---------- */
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -57,7 +55,10 @@ const PnlReportPage: React.FC = () => {
   });
 
   /* ---------- FILTER + SUMMARY ---------- */
-  const { pnlSummary, filteredTransactions } = useMemo(() => {
+  const { pnlSummary, filteredTransactions } = useMemo<{
+    pnlSummary: PnlSummary;
+    filteredTransactions: TransactionDetail[];
+  }>(() => {
     const startTimestamp = appliedFilters?.start
       ? new Date(appliedFilters.start).getTime()
       : 0;
@@ -71,18 +72,10 @@ const PnlReportPage: React.FC = () => {
         s.createdAt.getTime() <= endTimestamp,
     );
 
-    // const totalRevenue = filteredSales.reduce(
-    //   (sum, sale) => sum + sale.totalAmount,
-    //   0,
-    // );
-    // const totalCostOfGoodsSold = filteredSales.reduce(
-    //   (sum, sale) => sum + (sale.costOfGoodsSold || 0),
-    //   0,
-    // );
-
     const totalExpenses = expenses
-      .filter(e => e.date >= startTimestamp && e.date <= endTimestamp)
+      .filter((e) => e.date >= startTimestamp && e.date <= endTimestamp)
       .reduce((sum, e) => sum + e.amount, 0);
+
     const salesTransactions: TransactionDetail[] = filteredSales.map((s) => {
       const cogs = s.costOfGoodsSold ?? 0;
       // If cogs is 0 but totalAmount > 0, we know there's a data entry error
@@ -93,7 +86,7 @@ const PnlReportPage: React.FC = () => {
         type: 'Revenue' as const,
         costOfGoodsSold: cogs,
         profit: s.totalAmount - cogs,
-        isWarning: isMissingCost // Use this to style your table row later
+        isWarning: isMissingCost, // styled in PnlTransactionsTable
       };
     });
 
@@ -107,8 +100,8 @@ const PnlReportPage: React.FC = () => {
     invoiceFilteredTransactions.sort((a, b) => {
       const key = sortConfig.key;
       const direction = sortConfig.direction === 'asc' ? 1 : -1;
-      const valA = (a[key] as any) ?? (typeof a[key] === 'number' ? 0 : '');
-      const valB = (b[key] as any) ?? (typeof b[key] === 'number' ? 0 : '');
+      const valA = (a[key] as unknown) ?? (typeof a[key] === 'number' ? 0 : '');
+      const valB = (b[key] as unknown) ?? (typeof b[key] === 'number' ? 0 : '');
 
       if (valA instanceof Date && valB instanceof Date) {
         return (valA.getTime() - valB.getTime()) * direction;
@@ -133,13 +126,21 @@ const PnlReportPage: React.FC = () => {
           0,
         ),
         totalExpenses,
-        grossProfit: invoiceFilteredTransactions.reduce(
-          (sum, t) => sum + (t.profit || 0),
-          0,
-        ) - totalExpenses,
+        grossProfit:
+          invoiceFilteredTransactions.reduce(
+            (sum, t) => sum + (t.profit || 0),
+            0,
+          ) - totalExpenses,
         grossProfitPercentage: (() => {
-          const totalSalesSum = invoiceFilteredTransactions.reduce((sum, t) => sum + t.totalAmount, 0);
-          const totalProfitSum = invoiceFilteredTransactions.reduce((sum, t) => sum + (t.profit || 0), 0) - totalExpenses;
+          const totalSalesSum = invoiceFilteredTransactions.reduce(
+            (sum, t) => sum + t.totalAmount,
+            0,
+          );
+          const totalProfitSum =
+            invoiceFilteredTransactions.reduce(
+              (sum, t) => sum + (t.profit || 0),
+              0,
+            ) - totalExpenses;
 
           if (totalSalesSum > 0) {
             return (totalProfitSum / totalSalesSum) * 100;
@@ -173,441 +174,33 @@ const PnlReportPage: React.FC = () => {
     });
   };
 
-  const onDatePresetChange = (preset: string) =>
-    handleDatePresetChange(preset, setDatePreset, setStartDate, setEndDate);
-
-  const handleStartDateChange = (value: string) => {
-    setStartDate(value);
-    setDatePreset('custom');
-  };
-  const handleEndDateChange = (value: string) => {
-    setEndDate(value);
-    setDatePreset('');
-  };
-
-  /* ---------- PDF DOWNLOAD (UNCHANGED) ---------- */
+  /* ---------- DOWNLOADS ---------- */
   const downloadAsPdf = async () => {
     try {
-      const doc = new jsPDF();
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.getHeight();
-
-      const { totalRevenue, totalCost, grossProfit, grossProfitPercentage } = pnlSummary;
-      // ===== GENERATION TAG (drawn first, reserves space for logo) =====
-      const tagText = `Generated by SELLAR • ${new Date().toLocaleString('en-IN')}`;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-
-      const textWidth = doc.getTextWidth(tagText);
-      const paddingX = 2;
-      const boxWidth = textWidth + paddingX * 2;
-      const boxHeight = 5;
-
-      const logoReservedWidth = 25; // space reserved for logo + gap, so tag never overlaps it
-      const boxX = pageWidth - 14 - logoReservedWidth - boxWidth;
-      const boxY = 10;
-
-      doc.setFillColor(245, 245, 245);
-      doc.rect(boxX, boxY, boxWidth, boxHeight, 'F');
-
-      doc.setTextColor(80, 80, 80);
-      doc.text(tagText, boxX + paddingX, boxY + 3.5);
-
-      doc.setTextColor(0, 0, 0);
-
-      // ===== LOGO (drawn after, in its own reserved slot at top-right corner) =====
-      try {
-        const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
-        if (base64Logo) {
-          const img = new Image();
-          img.src = base64Logo;
-          await new Promise<void>((resolve) => {
-            img.onload = () => {
-              const logoWidth = 15;
-              const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
-              const logoX = pageWidth - logoWidth - 14;
-              doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
-              resolve();
-            };
-            img.onerror = () => resolve();
-          });
-        }
-      } catch {
-        // Continue without logo
-      }
-
-      // --- 1. BRAND ACCENT BAR ---
-      doc.setFillColor(37, 99, 235); // blue-600
-      doc.rect(0, 0, pageWidth, 6, 'F');
-
-      // --- 2. HEADER SECTION ---
-      doc.setFontSize(22);
-      doc.setTextColor(17, 24, 39); // gray-900
-      doc.setFont('helvetica', 'bold');
-      doc.text('Profit & Loss Report', 14, 24);
-
-      // Dynamic Subtitle with Date Range
-      doc.setFontSize(10);
-      doc.setTextColor(107, 114, 128); // gray-500
-      doc.setFont('helvetica', 'normal');
-
-      const generationDate = new Date().toLocaleDateString('en-IN', {
-        year: 'numeric', month: 'short', day: 'numeric',
+      await downloadPnlPdf({
+        pnlSummary,
+        filteredTransactions,
+        appliedFilters,
+        startDate,
+        endDate,
+        companyId: currentUser?.companyId,
       });
-
-      const start = appliedFilters?.start ? formatDate(new Date(appliedFilters.start)) : 'All Time';
-      const end = appliedFilters?.end ? formatDate(new Date(appliedFilters.end)) : 'All Time';
-
-      const subtitleText = `Generated: ${generationDate}   |   Period: ${start} to ${end}`;
-      doc.text(subtitleText, 14, 31);
-
-      // --- 3. SUMMARY METRICS BLOCK ---
-      autoTable(doc, {
-        startY: 38,
-        body: [
-          [
-            'TOTAL SALES (Rs.)',
-            totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-            'GROSS PROFIT / LOSS (Rs.)',
-            grossProfit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-          ],
-          [
-            'TOTAL COST (Rs.)',
-            totalCost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-            'GROSS MARGIN',
-            `${grossProfitPercentage.toFixed(2)}%`,
-          ],
-          [
-            'TOTAL EXPENSES (Rs.)',
-            (pnlSummary.totalExpenses ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-            '',
-            '',
-          ],
-        ],
-        theme: 'plain',
-        styles: {
-          font: 'helvetica',
-          cellPadding: 4,
-          fontSize: 11,
-          textColor: [17, 24, 39], // gray-900
-        },
-        columnStyles: {
-          0: { fontStyle: 'bold', textColor: [107, 114, 128], cellWidth: 40 }, // Labels
-          1: { fontStyle: 'bold', halign: 'right', cellWidth: 40 },            // Values
-          2: { fontStyle: 'bold', textColor: [107, 114, 128], cellWidth: 55 }, // Labels
-          3: { fontStyle: 'bold', halign: 'right', cellWidth: 40 },            // Values
-        },
-        didParseCell: function (data) {
-          // Highlight negative Gross Profit or Margin in red
-          if ((data.row.index === 0 && data.column.index === 3) ||
-            (data.row.index === 1 && data.column.index === 3)) {
-            const rawVal = parseFloat(String(data.cell.raw).replace(/,/g, '').replace('%', ''));
-            if (rawVal < 0) {
-              data.cell.styles.textColor = [220, 38, 38]; // red-600
-            }
-          }
-        }
-      });
-
-      // --- 4. DETAILED TRANSACTIONS TABLE ---
-      autoTable(doc, {
-        startY: (doc as any).lastAutoTable.finalY + 12,
-        head: [['DATE', 'INVOICE', 'SALES (Rs.)', 'COST (Rs.)', 'PROFIT (Rs.)']],
-        body: filteredTransactions.map((t) => [
-          formatDate(t.createdAt),
-          t.invoiceNumber || 'N/A',
-          t.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-          (t.costOfGoodsSold || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-          (t.profit || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        ]),
-        foot: [[
-          'TOTAL',
-          '-',
-          totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-          totalCost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-          grossProfit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        ]],
-        theme: 'plain',
-        styles: {
-          font: 'helvetica',
-          cellPadding: 7,
-          fontSize: 10,
-          textColor: [55, 65, 81], // gray-700
-        },
-        headStyles: {
-          fillColor: [249, 250, 251], // gray-50
-          textColor: [17, 24, 39], // gray-900
-          fontStyle: 'bold',
-          halign: 'center',
-          lineWidth: { top: 1, bottom: 1 },
-          lineColor: [229, 231, 235], // gray-200
-        },
-        footStyles: {
-          fillColor: [255, 255, 255],
-          textColor: [17, 24, 39],
-          fontStyle: 'bold',
-          halign: 'right', // Right aligns the totals to match the data columns
-          lineWidth: { top: 1, bottom: 2 }, // Thicker bottom line for totals
-          lineColor: [17, 24, 39],
-        },
-        alternateRowStyles: {
-          fillColor: [252, 252, 252], // Subtle zebra striping
-        },
-        columnStyles: {
-          0: { halign: 'left', cellWidth: 35 },
-          1: { halign: 'left', cellWidth: 'auto' },
-          2: { halign: 'right', cellWidth: 35 },
-          3: { halign: 'right', cellWidth: 35 },
-          4: { halign: 'right', cellWidth: 35 },
-        },
-        // --- 5. CONDITIONAL FORMATTING ---
-        didParseCell: function (data) {
-          // Highlight negative values in the 'Profit' column for body and foot
-          if ((data.section === 'body' || data.section === 'foot') && data.column.index === 4) {
-            const rawVal = parseFloat(String(data.cell.raw).replace(/,/g, ''));
-            if (rawVal < 0) {
-              data.cell.styles.textColor = [220, 38, 38]; // red-600
-              data.cell.styles.fontStyle = 'bold';
-            }
-          }
-          // Fix alignment for the "TOTAL" label in the footer
-          if (data.section === 'foot' && data.column.index === 0) {
-            data.cell.styles.halign = 'left';
-          }
-        },
-        // --- 6. PAGINATION FOOTER ---
-        didDrawPage: function () {
-          const pageCount = (doc.internal as any).getNumberOfPages();
-          doc.setFontSize(9);
-          doc.setTextColor(156, 163, 175); // gray-400
-          doc.text(
-            `Page ${pageCount}`,
-            pageWidth - 14,
-            pageHeight - 10,
-            { align: 'right' }
-          );
-        },
-      });
-
-      // Safely naming the file based on the parsed dates
-      const safeStart = appliedFilters?.start ? startDate : 'All_Time';
-      const safeEnd = appliedFilters?.end ? endDate : 'All_Time';
-      doc.save(`PNL_Report_${safeStart}_to_${safeEnd}.pdf`);
-
     } catch (err) {
       console.error('PDF Generation Error:', err);
+      setFeedbackModal({ isOpen: true, type: State.ERROR, message: 'Failed to generate PDF.' });
     }
   };
 
-  /* ---------- EXCEL DOWNLOAD (NEW) ---------- */
   const downloadAsExcel = () => {
     try {
-      const s = (font: any, fill?: any, alignment?: any, border?: any) => ({
-        font: { name: 'Arial', ...font },
-        fill: fill ?? {},
-        alignment: alignment ?? { horizontal: 'center', vertical: 'center', wrapText: true },
-        border: border ?? {},
+      downloadPnlExcel({
+        pnlSummary,
+        filteredTransactions,
+        appliedFilters,
+        startDate,
+        endDate,
+        companyId: currentUser?.companyId,
       });
-      const solidFill = (rgb: string) => ({ patternType: 'solid', fgColor: { rgb } });
-      const allBorders = {
-        top: { style: 'thin', color: { rgb: 'CBD5E1' } },
-        bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
-        left: { style: 'thin', color: { rgb: 'CBD5E1' } },
-        right: { style: 'thin', color: { rgb: 'CBD5E1' } },
-      };
-      const bblr = {
-        bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
-        left: { style: 'thin', color: { rgb: 'CBD5E1' } },
-        right: { style: 'thin', color: { rgb: 'CBD5E1' } },
-      };
-
-      const generationDate = new Date().toLocaleDateString('en-IN', {
-        year: 'numeric', month: 'short', day: 'numeric',
-      });
-
-      const periodLabel = appliedFilters
-        ? `Period: ${formatDate(new Date(appliedFilters.start))} – ${formatDate(new Date(appliedFilters.end))}`
-        : 'Period: All';
-
-      // ── COLUMN DEFINITIONS ──────────────────────────────────────────────
-      const COLS = [
-        { header: '#', width: 6 },
-        { header: 'Date', width: 18 },
-        { header: 'Invoice', width: 22 },
-        { header: 'Sales (₹)', width: 22 },
-        { header: 'Cost (₹)', width: 22 },
-        { header: 'Profit (₹)', width: 22 },
-      ];
-      const colCount = COLS.length;
-
-      // Row layout:
-      // 0  → Title (merged)
-      // 1  → Meta (merged)
-      // 2  → blank spacer
-      // 3  → Summary label (merged)
-      // 4  → Summary values
-      // 5  → blank spacer
-      // 6  → Column headers
-      // 7+ → Data rows
-      // Last → Totals footer
-
-      const dataStartRow = 7;
-      const totalRows = dataStartRow + filteredTransactions.length + 1;
-      const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
-
-      // Row 0 – Title
-      aoa[0][0] = 'Profit & Loss Report';
-
-      // Row 1 – Meta
-      aoa[1][0] = `Generated: ${generationDate}   |   ${periodLabel}   |   Transactions: ${filteredTransactions.length}`;
-
-      // Row 3 – Summary label
-      aoa[3][0] = 'SUMMARY';
-
-      // Row 4 – Summary values (single merged cell)
-      aoa[4][0] = `Total Sales: ₹${pnlSummary.totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Total Cost: ₹${pnlSummary.totalCost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Expenses: ₹${(pnlSummary.totalExpenses ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Net Profit: ₹${pnlSummary.grossProfit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Net Margin: ${pnlSummary.grossProfitPercentage.toFixed(2)}%`;
-
-      // Row 6 – Column headers
-      COLS.forEach((c, i) => { aoa[6][i] = c.header; });
-
-      // Rows 7+ – Data
-      filteredTransactions.forEach((txn, idx) => {
-        const r = dataStartRow + idx;
-        aoa[r][0] = idx + 1;
-        aoa[r][1] = formatDate(txn.createdAt);
-        aoa[r][2] = txn.invoiceNumber || 'N/A';
-        aoa[r][3] = Math.round(txn.totalAmount);
-        aoa[r][4] = Math.round(txn.costOfGoodsSold || 0);
-        aoa[r][5] = Math.round(txn.profit || 0);
-      });
-
-      // Footer row
-      const footerRow = dataStartRow + filteredTransactions.length;
-      aoa[footerRow][0] = 'TOTAL';
-      aoa[footerRow][1] = `${filteredTransactions.length} transactions`;
-      aoa[footerRow][3] = Math.round(pnlSummary.totalRevenue);
-      aoa[footerRow][4] = Math.round(pnlSummary.totalCost);
-      aoa[footerRow][5] = Math.round(pnlSummary.grossProfit);
-
-      // ── BUILD WORKSHEET ──────────────────────────────────────────────────
-      const worksheet = XLSX.utils.aoa_to_sheet(aoa);
-      worksheet['!cols'] = COLS.map(c => ({ wch: c.width }));
-      worksheet['!rows'] = [
-        { hpt: 36 }, // 0 title
-        { hpt: 20 }, // 1 meta
-        { hpt: 8 },  // 2 spacer
-        { hpt: 18 }, // 3 summary label
-        { hpt: 48 }, // 4 summary values
-        { hpt: 8 },  // 5 spacer
-        { hpt: 28 }, // 6 headers
-        ...filteredTransactions.map(() => ({ hpt: 20 })),
-        { hpt: 24 }, // footer
-      ];
-
-      worksheet['!merges'] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
-        { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
-        { s: { r: 3, c: 0 }, e: { r: 3, c: colCount - 1 } },
-        { s: { r: 4, c: 0 }, e: { r: 4, c: colCount - 1 } },
-        { s: { r: footerRow, c: 1 }, e: { r: footerRow, c: 2 } },
-      ];
-
-      const style = (addr: string, st: any) => {
-        if (!worksheet[addr]) worksheet[addr] = { t: 's', v: '' };
-        worksheet[addr].s = st;
-      };
-
-      // ── APPLY STYLES ─────────────────────────────────────────────────────
-
-      // Title (row 0)
-      style('A1', s(
-        { sz: 16, bold: true, color: { rgb: 'FFFFFF' } },
-        solidFill('2563EB'),
-        { horizontal: 'center', vertical: 'center' },
-      ));
-
-      // Meta (row 1)
-      style('A2', s(
-        { sz: 9, italic: true, color: { rgb: '475569' } },
-        solidFill('DBEAFE'),
-        { horizontal: 'center', vertical: 'center' },
-      ));
-
-      // Summary label (row 3)
-      style('A4', s(
-        { sz: 10, bold: true, color: { rgb: '1D4ED8' } },
-        solidFill('EFF6FF'),
-        { horizontal: 'left', vertical: 'center' },
-        allBorders,
-      ));
-
-      style('A5', s(
-        { sz: 10, bold: true, color: { rgb: '166534' } },
-        solidFill('DCFCE7'),
-        { horizontal: 'center', vertical: 'center', wrapText: true },
-        bblr,
-      ));
-
-      // Column headers (row 6)
-      COLS.forEach((_c, i) => {
-        const addr = XLSX.utils.encode_cell({ r: 6, c: i });
-        style(addr, s(
-          { sz: 10, bold: true, color: { rgb: 'FFFFFF' } },
-          solidFill('1E40AF'),
-          { horizontal: i <= 2 ? 'left' : 'center', vertical: 'center' },
-          allBorders,
-        ));
-      });
-
-      // Numeric column indices: 3 = Sales, 4 = Cost, 5 = Profit
-      const numericCols = new Set([3, 4, 5]);
-
-      // Data rows
-      filteredTransactions.forEach((_txn, idx) => {
-        const r = dataStartRow + idx;
-        const isAlt = idx % 2 === 1;
-        const rowBg = solidFill(isAlt ? 'F8FAFC' : 'FFFFFF');
-
-        for (let ci = 0; ci < colCount; ci++) {
-          const addr = XLSX.utils.encode_cell({ r, c: ci });
-          const isNumeric = numericCols.has(ci);
-          style(addr, s(
-            { sz: 9, color: { rgb: '1E293B' } },
-            rowBg,
-            { horizontal: isNumeric ? 'center' : 'left', vertical: 'center' },
-            bblr,
-          ));
-          if (worksheet[addr] && isNumeric) {
-            worksheet[addr].t = 'n';
-            worksheet[addr].z = '₹#,##0.00';
-          }
-        }
-      });
-
-      // Footer row
-      for (let ci = 0; ci < colCount; ci++) {
-        const addr = XLSX.utils.encode_cell({ r: footerRow, c: ci });
-        style(addr, s(
-          { sz: 10, bold: true, color: { rgb: '1E293B' } },
-          solidFill('E2E8F0'),
-          { horizontal: ci <= 2 ? 'left' : 'center', vertical: 'center' },
-          {
-            top: { style: 'medium', color: { rgb: '1E293B' } },
-            bottom: { style: 'medium', color: { rgb: '1E293B' } },
-            left: { style: 'thin', color: { rgb: 'CBD5E1' } },
-            right: { style: 'thin', color: { rgb: 'CBD5E1' } },
-          },
-        ));
-        if ([3, 4, 5].includes(ci) && worksheet[addr]) {
-          worksheet[addr].t = 'n';
-          worksheet[addr].z = '₹#,##0.00';
-        }
-      }
-
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'PNL Report');
-      XLSX.writeFile(workbook, `PNL-Report-${startDate}-to-${endDate}.xlsx`);
-
       setIsDownloadModalOpen(false);
       setFeedbackModal({
         isOpen: true,
@@ -623,19 +216,26 @@ const PnlReportPage: React.FC = () => {
     }
   };
 
-  const tableColumns = useMemo(() => getPnlColumns(), []);
-
   if (authLoading || dataLoading)
-    return <div className="p-4 text-center">Loading Report...</div>;
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-muted p-10 text-muted-foreground">
+        <Spinner size="lg" />
+        <p className="text-sm font-medium">Loading Report...</p>
+      </div>
+    );
   if (error)
-    return <div className="p-4 text-center text-red-500">Error: {error}</div>;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-muted p-4 text-center text-destructive">
+        Error: {error}
+      </div>
+    );
   if (!currentUser) {
     navigate('/login');
     return null;
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 p-2 pb-16">
+    <div className="aurora min-h-screen bg-muted pb-16">
       {feedbackModal.isOpen && (
         <Modal
           type={feedbackModal.type}
@@ -653,137 +253,88 @@ const PnlReportPage: React.FC = () => {
       />
 
       {/* HEADER */}
-      <div className="flex items-center justify-between pb-3 border-b mb-2">
+      <header className="glass sticky top-0 z-20 flex items-center gap-3 border-b border-border px-4 py-3">
         <BackButton />
-        <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
-          Profit & Loss Report
-        </h1>
-        <button onClick={() => setShowSearch(true)} className="p-2">
-          <IconSearch />
-        </button>
-      </div>
+        <div className="rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.6_0.22_330)] p-[3px] shadow-sm shadow-primary/20">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-[13px] bg-gradient-brand text-white">
+            <BarChart3 className="size-4" />
+          </span>
+        </div>
+        <div className="flex-1">
+          <h1 className="text-lg font-bold tracking-tight text-foreground md:text-xl">
+            Profit &amp; Loss <span className="text-gradient">Report</span>
+          </h1>
+          <p className="text-xs text-muted-foreground">Revenue, cost of goods, and expenses for any period</p>
+        </div>
+        <Button variant="ghost" size="icon" onClick={() => setShowSearch(true)} aria-label="Search by invoice">
+          <Search className="size-4" />
+        </Button>
+      </header>
 
-      {showSearch && (
-        <div className="flex justify-center mb-2 px-2">
-          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-blue-700">
-            <input
-              type="text"
-              placeholder="Search by INV Number..."
-              className="flex-1 text-base font-light p-2 outline-none bg-transparent text-center"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              autoFocus
-            />
-            <button
+      <div className="mx-auto max-w-6xl space-y-4 px-4 pt-6 sm:px-6 lg:px-8">
+        <PnlFilterBar
+          datePreset={datePreset}
+          onDatePresetChange={(value) =>
+            handleDatePresetChange(value, setDatePreset, setStartDate, setEndDate)
+          }
+          startDate={startDate}
+          endDate={endDate}
+          onStartDateChange={(value) => {
+            setStartDate(value);
+            setDatePreset('custom');
+          }}
+          onEndDateChange={(value) => {
+            setEndDate(value);
+            setDatePreset('');
+          }}
+          onApply={handleApplyFilters}
+          showSearch={showSearch}
+          searchQuery={searchQuery}
+          onSearchQueryChange={setSearchQuery}
+          onCloseSearch={() => setShowSearch(false)}
+        />
+
+        <PnlSummaryCards summary={pnlSummary} />
+
+        {/* DETAILS */}
+        <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 shadow-xs md:flex-row md:items-center md:justify-between">
+          <h2 className="w-full text-center text-lg font-semibold text-foreground md:w-auto md:text-left">
+            Report Details
+          </h2>
+          <div className="flex w-full justify-between gap-3 md:w-auto md:justify-end">
+            <Button variant="secondary" onClick={() => setIsListVisible(!isListVisible)} className="gap-1.5">
+              {isListVisible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              {isListVisible ? 'Hide List' : 'Show List'}
+            </Button>
+            <Button
               onClick={() => {
-                setSearchQuery('');
-                setShowSearch(false);
+                if (filteredTransactions.length === 0) {
+                  setFeedbackModal({
+                    isOpen: true,
+                    type: State.INFO,
+                    message: 'No data available to download.',
+                  });
+                } else {
+                  setIsDownloadModalOpen(true);
+                }
               }}
-              className="p-1 text-gray-500 hover:text-black"
+              className="gap-1.5 bg-gradient-brand text-white shadow-md shadow-primary/20 hover:opacity-90"
             >
-              <IconClose />
-            </button>
+              <Download className="size-4" />
+              Download Report
+            </Button>
           </div>
         </div>
-      )}
 
-      {/* FILTERS */}
-      <ReportDateFilter
-        datePreset={datePreset}
-        startDate={startDate}
-        endDate={endDate}
-        onPresetChange={onDatePresetChange}
-        onStartDateChange={handleStartDateChange}
-        onEndDateChange={handleEndDateChange}
-        onApply={handleApplyFilters}
-      />
-
-      {/* SUMMARY */}
-      <div className="grid grid-cols-2 md:grid-cols-6 xl:grid-cols-5 gap-2 mb-2">
-        <CustomCard
-          className="py-10 md:col-span-2 xl:col-span-1"
-          variant={CardVariant.Summary}
-          title="Total Sales"
-          value={`₹${pnlSummary.totalRevenue.toLocaleString('en-IN')}`}
-          valueClassName="text-blue-600"
-        />
-        <CustomCard
-          className="py-10 md:col-span-2 xl:col-span-1"
-          variant={CardVariant.Summary}
-          title="Total Cost"
-          value={`₹${pnlSummary.totalCost.toLocaleString('en-IN')}`}
-          valueClassName="text-red-600"
-        />
-        <CustomCard
-          className="py-10 md:col-span-2 xl:col-span-1"
-          variant={CardVariant.Summary}
-          title="Expenses"
-          value={`₹${(pnlSummary.totalExpenses ?? 0).toLocaleString('en-IN')}`}
-          valueClassName="text-orange-600"
-        />
-        <CustomCard
-          className="py-10 md:col-span-3 xl:col-span-1"
-          variant={CardVariant.Summary}
-          title="Profit / Loss"
-          value={`₹${pnlSummary.grossProfit.toLocaleString('en-IN')}`}
-          valueClassName={
-            pnlSummary.grossProfit >= 0
-              ? 'text-green-600'
-              : 'text-red-600'
-          }
-        />
-        <CustomCard
-          className="col-span-2 md:col-span-3 xl:col-span-1"
-          variant={CardVariant.Summary}
-          title="Gross Profit %"
-          value={`${Math.round(pnlSummary.grossProfitPercentage)}%`}
-          valueClassName={
-            pnlSummary.grossProfit >= 0
-              ? 'text-green-600'
-              : 'text-red-600'
-          }
-        />
+        {isListVisible && (
+          <PnlTransactionsTable
+            transactions={filteredTransactions}
+            summary={pnlSummary}
+            sortConfig={sortConfig}
+            onSort={handleSort}
+          />
+        )}
       </div>
-
-      {/* DETAILS */}
-      <div className="bg-white p-4 rounded-lg shadow-md flex flex-col md:flex-row md:justify-between md:items-center gap-3">
-        <h2 className="text-lg font-semibold text-gray-700 text-center md:text-left w-full md:w-auto">Report Details</h2>
-        <div className="flex justify-between w-full md:w-auto md:justify-end md:space-x-3 ">
-          <button
-            onClick={() => setIsListVisible(!isListVisible)}
-            className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition"
-          >
-            {isListVisible ? 'Hide List' : 'Show List'}
-          </button>
-          <button
-            onClick={() => {
-              if (filteredTransactions.length === 0) {
-                setFeedbackModal({
-                  isOpen: true,
-                  type: State.INFO,
-                  message: 'No data available to download.',
-                });
-              } else {
-                setIsDownloadModalOpen(true);
-              }
-            }}
-            className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md"
-          >
-            Download Report
-          </button>
-        </div>
-      </div>
-
-      {isListVisible && (
-        <CustomTable<TransactionDetail>
-          data={filteredTransactions}
-          columns={tableColumns}
-          keyExtractor={(item) => item.id}
-          sortConfig={sortConfig}
-          onSort={handleSort}
-          emptyMessage="No transactions found for this period."
-        />
-      )}
     </div>
   );
 };

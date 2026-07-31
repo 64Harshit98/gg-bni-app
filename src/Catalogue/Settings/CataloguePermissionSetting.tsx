@@ -1,382 +1,219 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { db } from '../../lib/Firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { ShieldCheck } from 'lucide-react';
 import { useAuth } from '../../context/auth-context';
-import { ROLES, State } from '../../enums';
+import { ROLES } from '../../enums';
 import { Cata_Permissions } from '../../Catalogue/enum/cata_permissions.enum';
 import BackButton from '../../Components/BackButton';
-import { Modal } from '../../constants/Modal';
+import { Spinner as ModernSpinner } from '../../Components/ui/spinner';
+import { Button } from '../../Components/ui/button';
+import { Badge } from '../../Components/ui/badge';
+import { Tabs, TabsList, TabsTrigger } from '../../Components/ui/tabs';
+import { ConfirmDialog } from '../../Components/ui/confirm-dialog';
+import { toast } from '../../lib/toast';
+import {
+  fetchCataloguePermissions,
+  saveCataloguePermissionsForRole,
+  syncOwnerCataloguePermissions,
+  type CataloguePermissionMap,
+} from '../../services/settings/cataloguePermissionSetting.service';
+import {
+  CATA_PERM_VALUES,
+  cataPermissionGroups,
+  getDefaultCataPermissions,
+  getUngroupedPermissions,
+} from './components/cataloguePermissionGroups';
+import { CataloguePermissionGroupTable } from './components/CataloguePermissionGroupTable';
 
-const CATA_PERM_VALUES = Object.values(Cata_Permissions);
+// Re-exported so existing consumers (e.g. AuthContext) keep working unchanged.
+export { getDefaultCataPermissions };
 
-// --- DEFAULTS ---
-export const getDefaultCataPermissions = (role: string): Cata_Permissions[] => {
-    switch (role) {
-        case ROLES.OWNER:
-            return Object.values(Cata_Permissions);
-        case ROLES.MANAGER:
-            return [
-                Cata_Permissions.ViewCatalogueDashboard,
-                Cata_Permissions.ViewCatalogueAccounts,
-                Cata_Permissions.ViewCatalogueOrders,
-                Cata_Permissions.ViewCatalogueRequests,
-                Cata_Permissions.ViewCatalogueFilter,
-                Cata_Permissions.ViewReports,
-                Cata_Permissions.ManageItems,
-                Cata_Permissions.ViewEditButton,
-            ];
-        case ROLES.SALESMAN:
-            return [
-                Cata_Permissions.ViewCatalogueDashboard,
-                Cata_Permissions.ViewCatalogueOrders,
-                Cata_Permissions.ViewCatalogueFilter,
-            ];
-        default:
-            return [];
-    }
-};
-
-// --- GROUPS FOR UI ---
-const cataPermissionGroups = {
-    dashboard: {
-        title: 'Dashboard & Widgets',
-        permissions: [
-            Cata_Permissions.ViewCatalogueDashboard,
-            Cata_Permissions.ViewCatalogueFilter,
-            Cata_Permissions.ViewCatalogueHidebutton,
-            Cata_Permissions.ViewCatalogueSalesbarchart,
-            Cata_Permissions.ViewTopSoldItems,
-        ].filter(Boolean),
-    },
-    orders: {
-        title: 'Orders, Shop & Requests',
-        permissions: [
-            Cata_Permissions.ViewCatalogueOrders,
-            Cata_Permissions.ViewOrdersReturn,
-            Cata_Permissions.ViewCatalogueRequests,
-            Cata_Permissions.ViewShop,
-            Cata_Permissions.ViewShopItems,
-            Cata_Permissions.ViewEditButton,
-        ].filter(Boolean),
-    },
-    reports: {
-        title: 'Reports',
-        permissions: [
-            Cata_Permissions.ViewReports,
-            Cata_Permissions.ViewItemReport,
-            Cata_Permissions.ViewSalesReport,
-            Cata_Permissions.ViewItemSoldReport,
-            Cata_Permissions.ViewCustomerReport,
-            Cata_Permissions.ViewUserReport,
-            Cata_Permissions.ViewPartyLedger,
-            Cata_Permissions.ViewTaxReport,
-            Cata_Permissions.ViewPNLReport,
-            Cata_Permissions.ViewExpenseReport,
-        ].filter(Boolean),
-    },
-    management: {
-        title: 'Management & Settings',
-        permissions: [
-            Cata_Permissions.ViewCatalogueAccounts,
-            Cata_Permissions.ManageItems,
-            Cata_Permissions.ManageEditProfile,
-            Cata_Permissions.ManageMasters,
-            Cata_Permissions.ManageSalesSettings,
-            Cata_Permissions.ManageBillSettings,
-            Cata_Permissions.ManageItemSettings,
-            Cata_Permissions.ManageUserSettings,
-            Cata_Permissions.ManagePermissions,
-        ].filter(Boolean),
-    }
-};
-
-// --- DESCRIPTIONS (Tooltips) ---
-const CATA_PERMISSION_DESCRIPTIONS: Partial<Record<Cata_Permissions, string>> = {
-    [Cata_Permissions.ViewCatalogueDashboard]: 'Access the main catalogue dashboard.',
-    [Cata_Permissions.ViewCatalogueHidebutton]: 'Toggle visibility of sensitive data on the dashboard.',
-    [Cata_Permissions.ViewPNLReport]: 'Access the profit & loss report (contains sensitive financial data).',
-    [Cata_Permissions.ManagePermissions]: 'Configure role-based permissions — high privilege action.',
-    [Cata_Permissions.ViewEditButton]: 'Allow editing of existing catalogue orders or entries.',
-};
-
-const getUngroupedPermissions = (allPermissions: Cata_Permissions[]): Cata_Permissions[] => {
-    const grouped = new Set<Cata_Permissions>();
-    Object.values(cataPermissionGroups).forEach(group => {
-        group.permissions.forEach(perm => grouped.add(perm as Cata_Permissions));
-    });
-    return allPermissions.filter(perm => !grouped.has(perm));
-};
+const MANAGED_ROLES = [ROLES.SALESMAN, ROLES.MANAGER];
 
 const CataloguePermissionSetting: React.FC = () => {
-    const { currentUser } = useAuth();
-    const [rolePermissions, setRolePermissions] = useState<Record<string, Cata_Permissions[]>>({});
-    const [loading, setLoading] = useState(true);
-    const [selectedRole, setSelectedRole] = useState<string>(ROLES.SALESMAN);
+  const { currentUser } = useAuth();
+  const [rolePermissions, setRolePermissions] = useState<CataloguePermissionMap>({});
+  const [loading, setLoading] = useState(true);
+  const [selectedRole, setSelectedRole] = useState<string>(ROLES.SALESMAN);
 
-    const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-    const [isResetOpen, setIsResetOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isResetOpen, setIsResetOpen] = useState(false);
 
-    const ungroupedPermissions = useMemo(() => getUngroupedPermissions(CATA_PERM_VALUES as Cata_Permissions[]), []);
+  const ungroupedPermissions = useMemo(
+    () => getUngroupedPermissions(CATA_PERM_VALUES as Cata_Permissions[]),
+    [],
+  );
 
-    useEffect(() => {
-        if (!currentUser?.companyId) return;
+  useEffect(() => {
+    if (!currentUser?.companyId) return;
+    let cancelled = false;
+    const companyId = currentUser.companyId;
 
-        const initializeAndFetchPermissions = async () => {
-            const companyId = currentUser.companyId;
+    const initializeAndFetchPermissions = async () => {
+      try {
+        // Always keep the Owner role fully-permissioned.
+        await syncOwnerCataloguePermissions(companyId);
+      } catch {
+        // Non-fatal — already logged by the service layer.
+      }
 
-            // 1. AUTO-SAVE ALL PERMISSIONS FOR OWNER
-            try {
-                const ownerRef = doc(db, 'companies', companyId, 'cata_permissions', ROLES.OWNER);
-                await setDoc(ownerRef, {
-                    allowedPermissions: CATA_PERM_VALUES,
-                    role: ROLES.OWNER,
-                    companyId: companyId
-                }, { merge: true });
-            } catch (err) {
-                console.error("Failed to auto-sync Owner permissions", err);
-            }
-
-            // 2. FETCH SALESMAN & MANAGER FOR UI
-            const rolesToManage = [ROLES.SALESMAN, ROLES.MANAGER];
-            const newMap: Record<string, Cata_Permissions[]> = {};
-
-            for (const role of rolesToManage) {
-                const docRef = doc(db, 'companies', companyId, 'cata_permissions', role);
-                const snap = await getDoc(docRef);
-
-                if (snap.exists()) {
-                    newMap[role] = snap.data().allowedPermissions || [];
-                } else {
-                    newMap[role] = [];
-                }
-            }
-
-            setRolePermissions(newMap);
-            setLoading(false);
-        };
-
-        initializeAndFetchPermissions();
-    }, [currentUser?.companyId]);
-
-    // --- LOCAL STATE UPDATE (No longer auto-saves) ---
-    const handlePermissionChange = (role: string, perm: Cata_Permissions, checked: boolean) => {
-        const currentUI = rolePermissions[role] || [];
-        const newCataloguePerms = checked
-            ? [...new Set([...currentUI, perm])]
-            : currentUI.filter(p => p !== perm);
-
-        setRolePermissions(prev => ({ ...prev, [role]: newCataloguePerms }));
+      try {
+        const map = await fetchCataloguePermissions(companyId, MANAGED_ROLES);
+        if (!cancelled) setRolePermissions(map);
+      } catch (error) {
+        console.error('Failed to load catalogue permissions:', error);
+        if (!cancelled) toast.error('Failed to load permissions.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     };
 
-    // --- MANUAL SAVE LOGIC ---
-    const handleSaveChanges = async (role: string) => {
-        if (!currentUser?.companyId) return;
-        setSaveStatus('saving');
-
-        try {
-            const docRef = doc(db, 'companies', currentUser.companyId, 'cata_permissions', role);
-
-            await setDoc(docRef, {
-                allowedPermissions: rolePermissions[role] || [],
-                role: role,
-                companyId: currentUser.companyId
-            }, { merge: true });
-
-            setSaveStatus('saved');
-            setTimeout(() => setSaveStatus('idle'), 3000);
-
-        } catch (error) {
-            console.error("Save failed:", error);
-            setSaveStatus('error');
-        }
+    initializeAndFetchPermissions();
+    return () => {
+      cancelled = true;
     };
+  }, [currentUser?.companyId]);
 
-    // --- RESET LOGIC ---
-    const handleResetPermissions = async () => {
-        if (!currentUser?.companyId) return;
+  const handlePermissionChange = (role: string, perm: Cata_Permissions, checked: boolean) => {
+    const currentUI = rolePermissions[role] || [];
+    const next = checked ? [...new Set([...currentUI, perm])] : currentUI.filter((p) => p !== perm);
+    setRolePermissions((prev) => ({ ...prev, [role]: next }));
+  };
 
-        const defaults = getDefaultCataPermissions(selectedRole);
+  const handleSaveChanges = async (role: string) => {
+    if (!currentUser?.companyId) return;
+    setIsSaving(true);
 
-        // Update Local State
-        setRolePermissions(prev => ({ ...prev, [selectedRole]: defaults }));
-        setIsResetOpen(false);
-        setSaveStatus('saving');
+    try {
+      await saveCataloguePermissionsForRole(currentUser.companyId, role, rolePermissions[role] || []);
+      toast.success(`Permissions saved for ${role}.`);
+    } catch (error) {
+      console.error('Save failed:', error);
+      toast.error('Failed to save permissions. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
-        // Save Defaults to Firebase Immediately
-        try {
-            const docRef = doc(db, 'companies', currentUser.companyId, 'cata_permissions', selectedRole);
-            await setDoc(docRef, {
-                allowedPermissions: defaults,
-                role: selectedRole,
-                companyId: currentUser.companyId
-            }, { merge: true });
+  const handleResetPermissions = async () => {
+    if (!currentUser?.companyId) return;
 
-            setSaveStatus('saved');
-            setTimeout(() => setSaveStatus('idle'), 3000);
-        } catch (error) {
-            console.error("Reset failed:", error);
-            setSaveStatus('error');
-        }
-    };
+    const defaults = getDefaultCataPermissions(selectedRole);
+    setRolePermissions((prev) => ({ ...prev, [selectedRole]: defaults }));
 
-    if (loading) return <div className="p-4">Loading permissions...</div>;
+    try {
+      await saveCataloguePermissionsForRole(currentUser.companyId, selectedRole, defaults);
+      toast.success(`${selectedRole} permissions reset to default.`);
+    } catch (error) {
+      console.error('Reset failed:', error);
+      toast.error('Failed to reset permissions. Please try again.');
+    }
+  };
 
+  if (loading) {
     return (
-        <div className="p-4 bg-gray-50 min-h-screen pb-24">
-            <div className="flex items-center justify-between mb-6 bg-white p-4 rounded shadow-sm sticky top-0 z-30">
-                <div className="flex items-center gap-4">
-                    <BackButton />
-                    <h1 className="text-2xl font-bold text-gray-800">Catalogue Permissions</h1>
-                </div>
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background">
+        <ModernSpinner size="xl" />
+        <p className="text-muted-foreground">Loading permissions...</p>
+      </div>
+    );
+  }
 
-                <div className="text-sm font-medium">
-                    {saveStatus === 'saving' && <span className="text-[#F97316] animate-pulse">Saving changes...</span>}
-                    {saveStatus === 'saved' && <span className="text-green-600">✓ All changes saved</span>}
-                    {saveStatus === 'error' && <span className="text-red-500">❌ Error saving</span>}
-                </div>
-            </div>
+  const activeCount = rolePermissions[selectedRole]?.length || 0;
 
-            <div className="flex gap-2 mb-6 justify-center">
-                <div className="bg-gray-200 p-1 rounded-lg inline-flex">
-                    {[ROLES.SALESMAN, ROLES.MANAGER].map(role => (
-                        <button
-                            key={role}
-                            onClick={() => setSelectedRole(role)}
-                            className={`px-6 py-2 font-medium rounded transition-colors ${selectedRole === role
-                                ? 'bg-white text-[#F97316] shadow-sm'
-                                : 'text-gray-600 hover:text-gray-900'
-                                }`}
-                        >
-                            {role}
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 max-w-7xl mx-auto">
-                <div className="flex justify-between items-center border-b pb-4 mb-6">
-                    <h2 className="text-xl font-semibold capitalize text-gray-800">
-                        {selectedRole} Access
-                    </h2>
-                    <div className="flex items-center gap-3">
-                        <span className="px-3 py-2 text-xs font-semibold tracking-wide text-orange-800 bg-orange-100 rounded-sm">
-                            {rolePermissions[selectedRole]?.length || 0} Active
-                        </span>
-                        <button
-                            type="button"
-                            onClick={() => setIsResetOpen(true)}
-                            className="text-xs text-red-600 hover:text-red-800 font-bold px-3.5 py-1 rounded-sm bg-red-50 hover:bg-red-100 transition-colors border border-red-100"
-                        >
-                            Reset to Default
-                        </button>
-                    </div>
-                </div>
-
-                {isResetOpen && (
-                    <Modal
-                        message={`Are you sure you want to reset ${selectedRole} permissions to default? This cannot be undone.`}
-                        type={State.ERROR}
-                        showConfirmButton={true}
-                        onConfirm={handleResetPermissions}
-                        onClose={() => setIsResetOpen(false)}
-                    />
-                )}
-
-                <div className="space-y-6">
-                    {/* Render Grouped Permissions */}
-                    {Object.values(cataPermissionGroups).map((group, index) => {
-                        if (group.permissions.length === 0) return null;
-                        return (
-                            <fieldset key={group.title} className={`p-4 border border-gray-200 rounded-lg bg-gray-50/50 ${index > 0 ? 'pt-4' : ''}`}>
-                                <legend className="text-md font-bold text-gray-700 px-2 bg-white">{group.title}</legend>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
-                                    {group.permissions.map((permission) => (
-                                        <PermissionCheckbox
-                                            key={permission}
-                                            permission={permission as Cata_Permissions}
-                                            isChecked={rolePermissions[selectedRole]?.includes(permission as Cata_Permissions) || false}
-                                            onChange={(checked) => handlePermissionChange(selectedRole, permission as Cata_Permissions, checked)}
-                                        />
-                                    ))}
-                                </div>
-                            </fieldset>
-                        );
-                    })}
-
-                    {/* Render Ungrouped Permissions */}
-                    {ungroupedPermissions.length > 0 && (
-                        <fieldset className="p-4 border border-gray-200 rounded-lg bg-gray-50/50">
-                            <legend className="text-md font-bold text-gray-700 px-2 bg-white border border-gray-200 rounded shadow-sm">Other Permissions</legend>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
-                                {ungroupedPermissions.map((permission) => (
-                                    <PermissionCheckbox
-                                        key={permission}
-                                        permission={permission}
-                                        isChecked={rolePermissions[selectedRole]?.includes(permission) || false}
-                                        onChange={(checked) => handlePermissionChange(selectedRole, permission, checked)}
-                                    />
-                                ))}
-                            </div>
-                        </fieldset>
-                    )}
-                </div>
-            </div>
-
-            {/* FLOATING SAVE BUTTON */}
-            <div className="fixed inset-x-0 bottom-16 md:bottom-0 z-40 bg-transparent px-4 pb-2 md:p-4 pointer-events-none">
-                <div className="max-w-2xl mx-auto flex justify-center gap-4 pointer-events-auto">
-                    <button
-                        onClick={() => handleSaveChanges(selectedRole)}
-                        className="w-auto bg-[#F97316] text-white font-bold py-3 px-6 rounded-sm hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 shadow-lg transition-transform active:scale-95"
-                    >
-                        Save Changes for {selectedRole}
-                    </button>
-                </div>
-            </div>
+  return (
+    <div className="aurora flex min-h-screen w-full flex-col bg-muted pb-24">
+      <header className="glass sticky top-0 z-30 flex items-center gap-3 border-b border-border/60 p-3 md:p-4">
+        <BackButton />
+        <div className="flex items-center gap-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-brand text-white shadow-md shadow-primary/20">
+            <ShieldCheck className="size-4" />
+          </span>
+          <div>
+            <h1 className="text-lg font-bold tracking-tight text-foreground md:text-xl">
+              Catalogue <span className="text-gradient">Permissions</span>
+            </h1>
+            <p className="text-xs text-muted-foreground">Control what your team can access</p>
+          </div>
         </div>
-    );
-};
+      </header>
 
-// --- EXTRACTED CHECKBOX COMPONENT ---
-const PermissionCheckbox = ({
-    permission,
-    isChecked,
-    onChange
-}: {
-    permission: Cata_Permissions;
-    isChecked: boolean;
-    onChange: (checked: boolean) => void;
-}) => {
-    return (
-        <label className="flex items-center space-x-3 p-2 rounded transition hover:bg-white hover:shadow-sm cursor-pointer">
-            <div className="relative flex items-center">
-                <input
-                    type="checkbox"
-                    className="peer h-5 w-5 appearance-none rounded border border-gray-300 transition-all checked:border-[#F97316] checked:bg-[#F97316] hover:shadow-sm"
-                    checked={isChecked}
-                    onChange={(e) => onChange(e.target.checked)}
+      <main className="w-full flex-grow overflow-y-auto p-3 pb-28 sm:p-4 md:p-5 md:pb-24">
+        <div className="mx-auto max-w-4xl space-y-5">
+          <Tabs value={selectedRole} onValueChange={setSelectedRole}>
+            <TabsList>
+              {MANAGED_ROLES.map((role) => (
+                <TabsTrigger key={role} value={role}>
+                  {role}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+
+          <div className="rounded-2xl border border-border bg-card p-5 shadow-xs">
+            <div className="mb-5 flex items-center justify-between border-b border-border pb-4">
+              <h2 className="text-lg font-semibold text-foreground capitalize">{selectedRole} Access</h2>
+              <div className="flex items-center gap-3">
+                <Badge variant="secondary">{activeCount} Active</Badge>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsResetOpen(true)}
+                  className="text-destructive hover:text-destructive"
+                >
+                  Reset to Default
+                </Button>
+              </div>
+            </div>
+
+            <ConfirmDialog
+              open={isResetOpen}
+              onOpenChange={setIsResetOpen}
+              title={`Reset ${selectedRole} permissions?`}
+              description={`This will restore ${selectedRole} to the default permission set. This cannot be undone.`}
+              confirmLabel="Reset"
+              variant="destructive"
+              onConfirm={handleResetPermissions}
+            />
+
+            <div className="space-y-5">
+              {Object.values(cataPermissionGroups).map((group) => (
+                <CataloguePermissionGroupTable
+                  key={group.title}
+                  title={group.title}
+                  permissions={group.permissions}
+                  checkedPermissions={rolePermissions[selectedRole] || []}
+                  onChange={(perm, checked) => handlePermissionChange(selectedRole, perm, checked)}
                 />
-                <svg className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 peer-checked:opacity-100" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" width="12" height="12">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
+              ))}
+
+              <CataloguePermissionGroupTable
+                title="Other Permissions"
+                permissions={ungroupedPermissions}
+                checkedPermissions={rolePermissions[selectedRole] || []}
+                onChange={(perm, checked) => handlePermissionChange(selectedRole, perm, checked)}
+              />
             </div>
-            <div className="flex items-center gap-1.5">
-                <span className="text-sm text-gray-600 select-none font-medium">
-                    {permission}
-                </span>
-                {CATA_PERMISSION_DESCRIPTIONS[permission] && (
-                    <div className="relative group">
-                        <span className="flex items-center justify-center w-3 h-3 rounded-full border border-gray-500 text-gray-500 text-[8px] cursor-default select-none">
-                            i
-                        </span>
-                        <div className="absolute left-5 top-1/2 -translate-y-1/2 z-50 hidden group-hover:block w-52 bg-white border border-gray-400 rounded-md shadow-md px-3 py-2 text-[11px] text-gray-500 leading-snug pointer-events-none">
-                            {CATA_PERMISSION_DESCRIPTIONS[permission]}
-                        </div>
-                    </div>
-                )}
-            </div>
-        </label>
-    );
+          </div>
+        </div>
+      </main>
+
+      {/* Sticky save bar */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-16 z-40 px-4 pb-2 md:bottom-0 md:p-4">
+        <div className="pointer-events-auto mx-auto flex max-w-2xl justify-center">
+          <Button
+            onClick={() => handleSaveChanges(selectedRole)}
+            disabled={isSaving}
+            size="lg"
+            className="min-w-[170px] gap-2 bg-gradient-brand text-white shadow-lg shadow-primary/25 hover:opacity-90"
+          >
+            {isSaving ? <ModernSpinner size="sm" /> : null}
+            {isSaving ? 'Saving...' : `Save Changes for ${selectedRole}`}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default CataloguePermissionSetting;

@@ -21,6 +21,7 @@ import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import { collection, onSnapshot, query } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 import BackButton from '../../Components/BackButton';
+import { Spinner } from '../../Components/ui/spinner';
 
 
 const CatalogueCustomerReport: React.FC = () => {
@@ -736,7 +737,12 @@ const CatalogueCustomerReport: React.FC = () => {
 
   /* ---------- STATES ---------- */
   if (authLoading || loading)
-    return <div className="p-4 text-center">Loading Report...</div>;
+    return (
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-muted-foreground">
+        <Spinner size="xl" />
+        <p className="text-sm font-medium">Loading Report...</p>
+      </div>
+    );
   if (error)
     return <div className="p-4 text-center text-red-500">Error: {error}</div>;
   if (!currentUser) {
@@ -745,7 +751,7 @@ const CatalogueCustomerReport: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 p-2">
+    <div className="min-h-screen bg-muted p-2">
       {feedbackModal.isOpen && (
         <Modal
           type={feedbackModal.type}
@@ -768,7 +774,7 @@ const CatalogueCustomerReport: React.FC = () => {
         <BackButton />
 
         {/* TITLE */}
-        <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
+        <h1 className="flex-1 text-xl text-center font-bold text-foreground">
           Customer Report
         </h1>
 
@@ -780,7 +786,7 @@ const CatalogueCustomerReport: React.FC = () => {
 
       {showSearch && (
         <div className="flex justify-center mb-2 px-2">
-          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-[#F97316]">
+          <div className="flex items-center w-full max-w-md border-b-2 border-border focus-within:border-[#F97316]">
 
             <input
               type="text"
@@ -796,7 +802,7 @@ const CatalogueCustomerReport: React.FC = () => {
                 setSearchQuery('');
                 setShowSearch(false);
               }}
-              className="p-1 text-gray-500 hover:text-black"
+              className="p-1 text-muted-foreground hover:text-foreground"
             >
               <IconClose />
             </button>
@@ -848,12 +854,12 @@ const CatalogueCustomerReport: React.FC = () => {
       </div>
 
       {/* REPORT DETAILS */}
-      <div className="bg-white p-4 rounded-sm flex justify-between items-center mt-2">
-        <h2 className="text-lg font-semibold text-gray-700">Report Details</h2>
+      <div className="bg-card p-4 rounded-sm flex justify-between items-center mt-2">
+        <h2 className="text-lg font-semibold text-foreground">Report Details</h2>
         <div className="flex gap-2">
           <button
             onClick={() => setIsListVisible(!isListVisible)}
-            className="px-4 py-2 bg-slate-200 rounded-sm font-semibold"
+            className="px-4 py-2 bg-muted rounded-sm font-semibold"
           >
             {isListVisible ? 'Hide List' : 'Show List'}
           </button>

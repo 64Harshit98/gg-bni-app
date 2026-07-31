@@ -55,9 +55,9 @@ const GlobalCatalogueModal = () => {
                 onClick={() => setShow(false)}
             />
 
-            <div className="relative bg-white rounded-sm shadow-xl p-5 w-[90%] max-w-sm z-10 animate-in zoom-in duration-200">
+            <div className="relative bg-card rounded-sm shadow-xl p-5 w-[90%] max-w-sm z-10 animate-in zoom-in duration-200">
                 <button
-                    className="absolute top-2 right-3 text-gray-500 hover:text-gray-800"
+                    className="absolute top-2 right-3 text-muted-foreground hover:text-foreground"
                     onClick={() => setShow(false)}
                 >
                     ✕

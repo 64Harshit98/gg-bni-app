@@ -1,29 +1,35 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../../../context/auth-context';
-import { getFirestoreOperations } from '../../../lib/ItemsFirebase';
 import type { Item, ItemGroup } from '../../../constants/models';
 import { State } from '../../../enums';
+import {
+  deleteAllItemsService,
+  deleteItemService,
+  deleteItemsByCategoryService,
+  fetchItemReportData,
+} from '../../../services/reports/itemReport.service';
+
+export interface FeedbackModalState {
+  isOpen: boolean;
+  type: State;
+  message: string;
+}
+
+export interface ItemSortConfig {
+  key: keyof Item;
+  direction: 'asc' | 'desc';
+}
 
 export default function useItemReport() {
   const { currentUser, loading: authLoading } = useAuth();
-
-  const firestoreApi = useMemo(() => {
-    if (currentUser?.companyId) {
-      return getFirestoreOperations(currentUser.companyId);
-    }
-    return null;
-  }, [currentUser?.companyId]);
+  const companyId = currentUser?.companyId;
 
   const [items, setItems] = useState<Item[]>([]);
   const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // State for the Generic Modal (Success/Error messages)
-  const [feedbackModal, setFeedbackModal] = useState<{
-    isOpen: boolean;
-    type: State;
-    message: string;
-  }>({
+  const [feedbackModal, setFeedbackModal] = useState<FeedbackModalState>({
     isOpen: false,
     type: State.INFO,
     message: '',
@@ -34,29 +40,22 @@ export default function useItemReport() {
 
   const [itemGroupId, setItemGroupId] = useState<string>('');
   const [appliedItemGroupId, setAppliedItemGroupId] = useState<string>('');
-  const [sortConfig, setSortConfig] = useState<{
-    key: keyof Item;
-    direction: 'asc' | 'desc';
-  }>({ key: 'name', direction: 'asc' });
+  const [sortConfig, setSortConfig] = useState<ItemSortConfig>({ key: 'name', direction: 'asc' });
   const [isListVisible, setIsListVisible] = useState(false);
 
   useEffect(() => {
-    if (!firestoreApi) {
+    if (!companyId) {
       setIsLoading(authLoading);
       return;
     }
     const fetchAllData = async () => {
       setIsLoading(true);
       try {
-        const [fetchedItems, fetchedGroups] = await Promise.all([
-          firestoreApi.syncItems(),
-          firestoreApi.getItemGroups(),
-        ]);
+        const { items: fetchedItems, itemGroups: fetchedGroups } = await fetchItemReportData(companyId);
         setItems(fetchedItems);
         setItemGroups(fetchedGroups);
       } catch (err) {
         console.error(err);
-        // Use Generic Modal for Error
         setFeedbackModal({
           isOpen: true,
           type: State.ERROR,
@@ -67,30 +66,17 @@ export default function useItemReport() {
       }
     };
     fetchAllData();
-  }, [firestoreApi, authLoading]);
+  }, [companyId, authLoading]);
 
   const deleteItemsByCategory = async (categoryId: string) => {
-    if (!firestoreApi) return;
+    if (!companyId) return;
     setIsLoading(true);
     try {
-      // 1. Find all items that belong to this category and delete them
-      const itemsToDelete = items.filter(item => item.itemGroupId === categoryId);
-      await Promise.all(
-        itemsToDelete.map(item => {
-          if (item.id) return firestoreApi.deleteItem(item.id);
-          return Promise.resolve();
-        })
-      );
+      await deleteItemsByCategoryService(companyId, categoryId, items);
 
-      // 2. Delete the Item Group (Category) itself
-      // Note: Make sure 'deleteItemGroup' matches the method name in your ItemsFirebase.ts
-      await firestoreApi.deleteItemGroup(categoryId);
+      setItems((prevItems) => prevItems.filter((item) => item.itemGroupId !== categoryId));
+      setItemGroups((prevGroups) => prevGroups.filter((group) => group.id !== categoryId));
 
-      // 3. Update local state to remove items and the group
-      setItems(prevItems => prevItems.filter(item => item.itemGroupId !== categoryId));
-      setItemGroups(prevGroups => prevGroups.filter(group => group.id !== categoryId));
-
-      // 4. Reset the dropdown selection since this category no longer exists
       if (appliedItemGroupId === categoryId) setAppliedItemGroupId('');
       if (itemGroupId === categoryId) setItemGroupId('');
 
@@ -100,7 +86,7 @@ export default function useItemReport() {
         message: 'Category and its items deleted successfully.',
       });
     } catch (err) {
-      console.error("Error deleting category:", err);
+      console.error('Error deleting category:', err);
       setFeedbackModal({
         isOpen: true,
         type: State.ERROR,
@@ -112,26 +98,11 @@ export default function useItemReport() {
   };
 
   const deleteAllItems = async () => {
-    if (!firestoreApi) return;
+    if (!companyId) return;
     setIsLoading(true);
     try {
-      // 1. Delete all items from Firebase
-      await Promise.all(
-        items.map(item => {
-          if (item.id) return firestoreApi.deleteItem(item.id);
-          return Promise.resolve();
-        })
-      );
+      await deleteAllItemsService(companyId, items, itemGroups);
 
-      // 2. Delete all Item Groups (Categories) from Firebase
-      await Promise.all(
-        itemGroups.map(group => {
-          if (group.id) return firestoreApi.deleteItemGroup(group.id);
-          return Promise.resolve();
-        })
-      );
-
-      // 3. Clear all local state
       setItems([]);
       setItemGroups([]);
       setAppliedItemGroupId('');
@@ -143,7 +114,7 @@ export default function useItemReport() {
         message: 'Entire inventory and all categories deleted successfully.',
       });
     } catch (err) {
-      console.error("Error clearing inventory:", err);
+      console.error('Error clearing inventory:', err);
       setFeedbackModal({
         isOpen: true,
         type: State.ERROR,
@@ -154,18 +125,12 @@ export default function useItemReport() {
     }
   };
 
-  // --- NEW: Add the deleteItem function here ---
   const deleteItem = async (itemId: string) => {
-    if (!firestoreApi) throw new Error("Firestore API not initialized");
+    if (!companyId) throw new Error('Firestore API not initialized');
 
-    // 1. Delete from Firebase 
-    // (Make sure 'deleteItem' matches the exact method name in your ItemsFirebase file)
-    await firestoreApi.deleteItem(itemId);
-
-    // 2. Update local state to remove the item from the list instantly
+    await deleteItemService(companyId, itemId);
     setItems((prevItems) => prevItems.filter((item) => item.id !== itemId));
   };
-  // ---------------------------------------------
 
   return {
     items,

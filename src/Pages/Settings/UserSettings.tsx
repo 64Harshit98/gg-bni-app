@@ -1,383 +1,412 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, query, getDocs, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../../lib/Firebase';
+import { Users, Search, Plus, Pencil, Trash2, ShieldAlert } from 'lucide-react';
+
 import { useAuth } from '../../context/auth-context';
 import { ROUTES } from '../../constants/routes.constants';
-import { Spinner } from '../../constants/Spinner';
-import { Permissions, ROLES, State, Variant } from '../../enums'; // Import ROLES
-import { CustomButton } from '../../Components';
-import { Modal } from '../../constants/Modal';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { Permissions, ROLES } from '../../enums';
+import { toast } from '../../lib/toast';
 import BackButton from '../../Components/BackButton';
+import { Spinner } from '../../Components/ui/spinner';
+import { Button } from '../../Components/ui/button';
+import { Input } from '../../Components/ui/input';
+import { Label } from '../../Components/ui/label';
+import { Badge } from '../../Components/ui/badge';
+import { Avatar, AvatarImage, AvatarFallback } from '../../Components/ui/avatar';
+import { EmptyState } from '../../Components/ui/empty-state';
+import { ConfirmDialog } from '../../Components/ui/confirm-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '../../Components/ui/dialog';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../Components/ui/select';
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '../../Components/ui/table';
+import { Pagination } from '../../Components/ui/pagination';
+import { usePagination } from '../../hooks/usePagination';
+import {
+  fetchCompanyUsers,
+  updateCompanyUser,
+  deleteCompanyUser,
+  type AppUser,
+} from '../../services/settings/userSettings.service';
 
-
-interface AppUser {
-    uid: string;
-    name?: string;
-    email?: string;
-    phoneNumber?: string;
-    role?: string;
-    companyId?: string;
-    photoURL?: string;
-    profilePicture?: string;
-}
-
-// EditFormData now correctly includes 'name'
 type EditFormData = {
-    name?: string;
-    phoneNumber?: string;
-    role?: string;
+  name?: string;
+  phoneNumber?: string;
+  role?: string;
 };
+
+const PAGE_SIZE = 10;
+
 const getInitials = (name?: string): string => {
-    if (!name) return '?';
-    return name
-        .split(' ')
-        .map((n) => n[0])
-        .join('')
-        .toUpperCase()
-        .slice(0, 2);
+  if (!name) return '?';
+  return name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
 };
 
-const AVATAR_COLORS: { bg: string; text: string }[] = [
-    { bg: 'bg-blue-100', text: 'text-blue-700' },
-    { bg: 'bg-green-100', text: 'text-green-700' },
-    { bg: 'bg-blue-100', text: 'text-blue-700' },
-    { bg: 'bg-amber-100', text: 'text-amber-700' },
-    { bg: 'bg-pink-100', text: 'text-pink-700' },
-    { bg: 'bg-teal-100', text: 'text-teal-700' },
-];
+const ManageUsersPage = () => {
+  const navigate = useNavigate();
+  const { currentUser, hasPermission, loading: authLoading } = useAuth();
+  const [users, setUsers] = useState<AppUser[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
-const avatarColor = (uid: string) =>
-    AVATAR_COLORS[
-    uid.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) %
-    AVATAR_COLORS.length
-    ];
+  const [editingUser, setEditingUser] = useState<AppUser | null>(null);
+  const [editFormData, setEditFormData] = useState<EditFormData>({});
+  const [deleteTarget, setDeleteTarget] = useState<AppUser | null>(null);
 
-const ManageUsersPage: React.FC = () => {
-    const navigate = useNavigate();
-    const { currentUser, hasPermission, loading: authLoading } = useAuth();
-    const [users, setUsers] = useState<AppUser[]>([]);
-    const [isLoading, setIsLoading] = useState<boolean>(true);
-    const [isSaving, setIsSaving] = useState<boolean>(false);
-    const [error, setError] = useState<string | null>(null);
-    const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
+  const canManageUsers = hasPermission(Permissions.ManageUsers);
 
-    const [editingUserId, setEditingUserId] = useState<string | null>(null);
-    const [editFormData, setEditFormData] = useState<EditFormData>({});
+  // Convert ROLES enum object into an array for mapping in the dropdown
+  const availableRoles = useMemo(() => Object.values(ROLES).filter((r) => r !== ROLES.OWNER), []);
 
-    const canManageUsers = hasPermission(Permissions.ManageUsers);
-
-    // Convert ROLES enum object into an array for mapping in the dropdown
-    const availableRoles = useMemo(() => Object.values(ROLES).filter(r => r !== ROLES.OWNER), []);
-
-    useEffect(() => {
-        if (authLoading) {
-            setIsLoading(true);
-            return;
-        }
-
-        if (!currentUser || !currentUser.companyId) {
-            setError("User or company information is missing.");
-            setIsLoading(false);
-            return;
-        }
-
-        if (!canManageUsers) {
-            setError("You do not have permission to manage users.");
-            setIsLoading(false);
-            return;
-        }
-
-
-        const fetchUsers = async () => {
-            setIsLoading(true);
-            setError(null);
-            try {
-                // --- FIX: Use the correct multi-tenant path ---
-                const usersCollectionRef = collection(db, 'companies', currentUser.companyId, 'users');
-
-                // --- FIX: No 'where' clause for companyId is needed ---
-                const q = query(usersCollectionRef);
-
-                const querySnapshot = await getDocs(q);
-                const fetchedUsers: AppUser[] = [];
-                querySnapshot.forEach((doc) => {
-                    const data = doc.data();
-                    fetchedUsers.push({
-                        uid: doc.id,
-                        name: data.name || '',
-                        email: data.email || '',
-                        phoneNumber: data.phoneNumber || '',
-                        role: data.role || '',
-                        companyId: data.companyId || '',
-                        photoURL: data.photoURL || '',
-                        // ← Pick up the field saved by EditProfilePage
-                        profilePicture: data.profilePicture || '',
-                    } as AppUser);
-                });
-                setUsers(fetchedUsers);
-            } catch (err) {
-                console.error("Error fetching users:", err);
-                setError("Failed to load user data. Please try again.");
-                setModal({ message: "Failed to load users.", type: State.ERROR });
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        fetchUsers();
-    }, [currentUser, currentUser?.companyId, canManageUsers, authLoading, navigate]);
-
-    const handleAddUser = () => {
-        navigate(ROUTES.USER_ADD);
-    };
-    const handleDeleteUser = async (userToDelete: AppUser) => {
-        // 1. Prevent deleting the currently logged-in owner
-        if (userToDelete.uid === currentUser?.uid) {
-            setModal({ message: "You cannot delete your own account from this screen.", type: State.ERROR });
-            return;
-        }
-
-        // 2. Ask for confirmation
-        const isConfirmed = window.confirm(`Are you absolutely sure you want to delete ${userToDelete.name}? This removes their login access permanently.`);
-        if (!isConfirmed) return;
-
-        if (!currentUser?.companyId) return;
-
-        setIsSaving(true); // You can reuse isSaving, or create a specific isDeleting state
-        setModal(null);
-
-        try {
-            // 3. Call your secure backend to delete the Auth record AND Firestore doc
-            const functions = getFunctions();
-            const deleteUserFunction = httpsCallable(functions, 'deleteUserAccount');
-
-            await deleteUserFunction({
-                targetUid: userToDelete.uid,
-                companyId: currentUser.companyId
-            });
-
-            // 4. Update local state to remove the user from the UI immediately
-            setUsers(prevUsers => prevUsers.filter(u => u.uid !== userToDelete.uid));
-
-            setModal({ message: 'User deleted successfully.', type: State.SUCCESS });
-        } catch (err) {
-            console.error("Error deleting user:", err);
-            setModal({ message: 'Failed to delete user. Ensure you have the right permissions.', type: State.ERROR });
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const handleEditClick = (user: AppUser) => {
-        setEditingUserId(user.uid);
-        // --- FIX: Pre-fill the 'name' field as well ---
-        setEditFormData({
-            name: user.name || '',
-            phoneNumber: user.phoneNumber || '',
-            role: user.role || '',
-        });
-    };
-
-    const handleCancelEdit = () => {
-        setEditingUserId(null);
-        setEditFormData({});
-    };
-
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value } = e.target;
-        setEditFormData(prev => ({ ...prev, [name]: value }));
-    };
-
-    const handleSaveEdit = async () => {
-        // --- FIX: Add guard for companyId ---
-        if (!editingUserId || !currentUser?.companyId) {
-            setModal({ message: 'Error: Cannot save. User or Company ID is missing.', type: State.ERROR });
-            return;
-        }
-        const companyId = currentUser.companyId;
-
-        setIsSaving(true);
-        setModal(null);
-        try {
-            // --- FIX: Use the correct multi-tenant path ---
-            const userDocRef = doc(db, 'companies', companyId, 'users', editingUserId);
-
-            const updateData: Partial<AppUser> = {
-                name: editFormData.name?.trim() || '',
-                phoneNumber: editFormData.phoneNumber?.trim() || '',
-                role: editFormData.role?.trim() || '',
-            };
-
-            await updateDoc(userDocRef, updateData);
-
-            setUsers(prevUsers => prevUsers.map(user =>
-                user.uid === editingUserId ? { ...user, ...updateData } : user
-            ));
-
-            setModal({ message: 'User updated successfully!', type: State.SUCCESS });
-            handleCancelEdit();
-
-        } catch (err) {
-            console.error("Error updating user:", err);
-            setModal({ message: 'Failed to update user. Please try again.', type: State.ERROR });
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-
-    if (isLoading) {
-        return (
-            <div className="flex flex-col min-h-screen items-center justify-center">
-                <Spinner />
-                <p className="mt-4 text-gray-600">Loading users...</p>
-            </div>
-        );
+  useEffect(() => {
+    if (authLoading) {
+      setIsLoading(true);
+      return;
     }
 
-    if (error) {
-        return (
-            <div className="flex flex-col min-h-screen items-center justify-center text-red-600">
-                <p>{error}</p>
-                <CustomButton onClick={() => navigate(-1)} variant={Variant.Outline} className="mt-4">
-                    Go Back
-                </CustomButton>
-            </div>
-        );
+    if (!currentUser || !currentUser.companyId) {
+      setError('User or company information is missing.');
+      setIsLoading(false);
+      return;
     }
 
-    return (
-        <div className="flex flex-col min-h-screen bg-gray-100 w-full mb-15">
-            {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+    if (!canManageUsers) {
+      setError('You do not have permission to manage users.');
+      setIsLoading(false);
+      return;
+    }
 
-            <div className="flex items-center justify-between p-3 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
-                <BackButton />
-                <h1 className="text-lg font-semibold text-gray-800 ml-2">Manage Users</h1>
-                <CustomButton onClick={handleAddUser} variant={Variant.Save} className='flex justify-right ml-8'>
-                    Add User
-                </CustomButton>
-            </div>
+    const companyId = currentUser.companyId;
 
+    const load = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const fetchedUsers = await fetchCompanyUsers(companyId);
+        setUsers(fetchedUsers);
+      } catch (err) {
+        console.error('Error fetching users:', err);
+        setError('Failed to load user data. Please try again.');
+        toast.error('Failed to load users.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-            <main className="flex-grow p-3 overflow-y-auto">
-                {users.length === 0 ? (
-                    <div className="text-center py-10 text-gray-500">No users found for this company.</div>
-                ) : (
-                    /* ── CHANGED: grid instead of space-y-2 list ── */
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                        {users.map((user) => {
-                            const { bg, text } = avatarColor(user.uid);   // ← NEW
-                            const avatarSrc = user.profilePicture || user.photoURL || '';
-                            return (
-                                <div key={user.uid} className="bg-white rounded-sm shadow border p-3 flex flex-col items-center">
+    load();
+  }, [currentUser, currentUser?.companyId, canManageUsers, authLoading]);
 
-                                    {editingUserId === user.uid ? (
-                                        /* ── Edit form: logic unchanged, styling matches original ── */
-                                        <div className="space-y-3 w-full">
-                                            <div>
-                                                <label className="block text-xs font-medium text-gray-500 mb-1">Name</label>
-                                                <input type="text" name="name" value={editFormData.name || ''} onChange={handleInputChange}
-                                                    className="w-full px-1.5 py-1 border border-gray-300 rounded text-sm" />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-medium text-gray-500 mb-1">Phone Number</label>
-                                                <input type="tel" name="phoneNumber" value={editFormData.phoneNumber || ''} onChange={handleInputChange} maxLength={10}
-                                                    className="w-full px-1.5 py-1 border border-gray-300 rounded text-sm" />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-medium text-gray-500 mb-1">Role</label>
-                                                {user.role === ROLES.OWNER ? (
-                                                    <input type="text" value={user.role || 'OWNER'} readOnly
-                                                        className="w-full px-1.5 py-1 border border-gray-300 rounded text-sm bg-gray-200 cursor-not-allowed" />
-                                                ) : (
-                                                    <select name="role" value={editFormData.role || ''} onChange={handleInputChange}
-                                                        className="w-full px-1.5 py-1 border border-gray-300 rounded text-sm bg-white">
-                                                        <option value="" disabled>Select Role</option>
-                                                        {availableRoles.map(role => (
-                                                            <option key={role} value={role}>
-                                                                {role.charAt(0).toUpperCase() + role.slice(1)}
-                                                            </option>
-                                                        ))}
-                                                    </select>
-                                                )}
-                                            </div>
-                                            <p className="text-[10px] text-gray-500 break-all leading-tight w-full">Email: {user.email || 'N/A'} (Not editable)</p>
-                                            <div className="flex gap-1.5 mt-2 w-full">
-                                                <button
-                                                    onClick={handleCancelEdit}
-                                                    className="flex-1 py-1 text-[10px] bg-white text-black border-2 border-gray-300 hover:bg-gray-100 rounded-sm">
-                                                    Cancel
-                                                </button>
-                                                <button
-                                                    onClick={handleSaveEdit}
-                                                    disabled={isSaving}
-                                                    className="flex-1 py-1 text-[10px] bg-white text-blue-600 border-2 border-blue-300 hover:bg-blue-50 hover:text-blue-700 rounded-sm">
-                                                    {isSaving ? <Spinner /> : 'Save'}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            {/* Avatar — uses profilePicture first, then photoURL, then initials */}
-                                            {avatarSrc ? (
-                                                <img
-                                                    src={avatarSrc}
-                                                    alt={user.name}
-                                                    className="w-12 h-12 rounded-full object-cover mb-1.5 border border-gray-200"
-                                                />
-                                            ) : (
-                                                <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-1.5 text-base font-semibold ${bg} ${text}`}>
-                                                    {getInitials(user.name)}
-                                                </div>
-                                            )}
-
-                                            {/* Name */}
-                                            <p className="font-semibold text-gray-900 text-xs text-center leading-tight truncate w-full">
-                                                {user.name || 'No Name'}
-                                            </p>
-
-                                            {/* Role badge */}
-                                            <span className={`mt-1 text-[10px] px-1.5 py-0.5 rounded-sm font-medium
-                                                ${user.role === ROLES.OWNER
-                                                    ? 'bg-blue-100 text-blue-700'
-                                                    : 'bg-gray-100 text-gray-600'}`}>
-                                                {user.role || 'No role'}
-                                            </span>
-
-                                            {/* Contact */}
-                                            <div className="mt-1.5 w-full border-t border-gray-100 pt-1.5 space-y-0.5">
-                                                <p className="text-[10px] text-gray-500 truncate text-center">{user.email || '—'}</p>
-                                                <p className="text-[10px] text-gray-400 text-center">{user.phoneNumber || 'No phone'}</p>
-                                            </div>
-
-                                            {/* Actions */}
-                                            <div className="flex gap-1.5 mt-2 w-full">
-                                                <button
-                                                    onClick={() => handleEditClick(user)}
-                                                    className="flex-1 py-1 text-[10px] bg-white text-black border-2 border-gray-300 hover:bg-gray-100 rounded-sm">
-                                                    Edit
-                                                </button>
-                                                {user.role !== ROLES.OWNER && (
-                                                    <button
-                                                        onClick={() => handleDeleteUser(user)}
-                                                        disabled={isSaving}
-                                                        className="flex-1 py-1 text-[10px] bg-white text-blue-600 border-2 border-blue-300 hover:bg-blue-50 hover:text-blue-700 rounded-sm">
-                                                        Delete
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
-            </main>
-        </div>
+  const filteredUsers = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return users;
+    return users.filter(
+      (u) =>
+        (u.name || '').toLowerCase().includes(q) ||
+        (u.email || '').toLowerCase().includes(q) ||
+        (u.phoneNumber || '').includes(q),
     );
+  }, [users, searchQuery]);
+
+  const { currentPage, totalPages, pageItems, goToPage } = usePagination<AppUser>({
+    totalItems: filteredUsers.length,
+    pageSize: PAGE_SIZE,
+  });
+  const visibleUsers = pageItems(filteredUsers);
+
+  const handleAddUser = () => {
+    navigate(ROUTES.USER_ADD);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget || !currentUser?.companyId) return;
+
+    if (deleteTarget.uid === currentUser?.uid) {
+      toast.error('You cannot delete your own account from this screen.');
+      setDeleteTarget(null);
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      await deleteCompanyUser(currentUser.companyId, deleteTarget.uid);
+      setUsers((prev) => prev.filter((u) => u.uid !== deleteTarget.uid));
+      toast.success('User deleted successfully.');
+    } catch (err) {
+      console.error('Error deleting user:', err);
+      toast.error('Failed to delete user. Ensure you have the right permissions.');
+    } finally {
+      setIsDeleting(false);
+      setDeleteTarget(null);
+    }
+  };
+
+  const handleEditClick = (user: AppUser) => {
+    setEditingUser(user);
+    setEditFormData({
+      name: user.name || '',
+      phoneNumber: user.phoneNumber || '',
+      role: user.role || '',
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingUser(null);
+    setEditFormData({});
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingUser || !currentUser?.companyId) {
+      toast.error('Error: Cannot save. User or Company ID is missing.');
+      return;
+    }
+    const companyId = currentUser.companyId;
+
+    setIsSaving(true);
+    try {
+      const updateData = {
+        name: editFormData.name?.trim() || '',
+        phoneNumber: editFormData.phoneNumber?.trim() || '',
+        role: editFormData.role?.trim() || '',
+      };
+
+      await updateCompanyUser(companyId, editingUser.uid, updateData);
+
+      setUsers((prev) =>
+        prev.map((user) => (user.uid === editingUser.uid ? { ...user, ...updateData } : user)),
+      );
+
+      toast.success('User updated successfully!');
+      handleCancelEdit();
+    } catch (err) {
+      console.error('Error updating user:', err);
+      toast.error('Failed to update user. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center">
+        <Spinner size="xl" />
+        <p className="mt-4 text-muted-foreground">Loading users...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center p-4">
+        <EmptyState
+          icon={<ShieldAlert className="size-5" />}
+          title={error}
+          action={
+            <Button variant="outline" onClick={() => navigate(-1)}>
+              Go Back
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="aurora flex min-h-screen w-full flex-col bg-muted">
+      <header className="glass sticky top-0 z-30 mx-3 mt-3 flex flex-shrink-0 items-center justify-between gap-3 rounded-2xl p-3 shadow-sm">
+        <div className="flex items-center gap-3">
+          <BackButton />
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-brand text-white shadow-md shadow-primary/25">
+            <Users className="size-4" />
+          </span>
+          <div>
+            <h1 className="text-base font-bold tracking-tight text-foreground md:text-lg">
+              Manage <span className="text-gradient">Users</span>
+            </h1>
+            <p className="text-xs text-muted-foreground">{users.length} team member{users.length === 1 ? '' : 's'}</p>
+          </div>
+        </div>
+        <Button onClick={handleAddUser} className="gap-1.5 bg-gradient-brand text-white shadow-md shadow-primary/20 hover:opacity-90">
+          <Plus className="size-4" />
+          <span className="hidden sm:inline">Add User</span>
+        </Button>
+      </header>
+
+      <main className="w-full flex-grow overflow-y-auto p-3 sm:p-4 md:p-5">
+        <div className="mx-auto max-w-5xl space-y-4">
+          <div className="relative">
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search by name, email or phone"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-11 pl-9"
+            />
+          </div>
+
+          {filteredUsers.length === 0 ? (
+            <EmptyState
+              icon={<Users className="size-5" />}
+              title="No users found"
+              description={searchQuery ? 'Try a different search term.' : 'No users found for this company yet.'}
+            />
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>User</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Phone</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {visibleUsers.map((user) => {
+                    const avatarSrc = user.profilePicture || user.photoURL || '';
+                    const isOwner = user.role === ROLES.OWNER;
+                    return (
+                      <TableRow key={user.uid}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Avatar>
+                              <AvatarImage src={avatarSrc} alt={user.name} />
+                              <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
+                            </Avatar>
+                            <span className="font-medium text-foreground">{user.name || 'No Name'}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">{user.email || '—'}</TableCell>
+                        <TableCell className="text-muted-foreground">{user.phoneNumber || '—'}</TableCell>
+                        <TableCell>
+                          <Badge variant={isOwner ? 'default' : 'secondary'}>{user.role || 'No role'}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1.5">
+                            <Button variant="ghost" size="icon" onClick={() => handleEditClick(user)} title="Edit user">
+                              <Pencil className="size-4" />
+                            </Button>
+                            {!isOwner && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setDeleteTarget(user)}
+                                className="text-destructive hover:text-destructive"
+                                title="Delete user"
+                              >
+                                <Trash2 className="size-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+
+              {totalPages > 1 && (
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={goToPage}
+                  totalItems={filteredUsers.length}
+                  pageSize={PAGE_SIZE}
+                />
+              )}
+            </>
+          )}
+        </div>
+      </main>
+
+      {/* Edit user dialog */}
+      <Dialog open={!!editingUser} onOpenChange={(open) => { if (!open) handleCancelEdit(); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Edit User</DialogTitle>
+            <DialogDescription>Email: {editingUser?.email || 'N/A'} (not editable)</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="edit-name" className="mb-1 block">Name</Label>
+              <Input
+                id="edit-name"
+                value={editFormData.name || ''}
+                onChange={(e) => setEditFormData((prev) => ({ ...prev, name: e.target.value }))}
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-phone" className="mb-1 block">Phone Number</Label>
+              <Input
+                id="edit-phone"
+                type="tel"
+                maxLength={10}
+                value={editFormData.phoneNumber || ''}
+                onChange={(e) => setEditFormData((prev) => ({ ...prev, phoneNumber: e.target.value }))}
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-role" className="mb-1 block">Role</Label>
+              {editingUser?.role === ROLES.OWNER ? (
+                <Input id="edit-role" value={editingUser?.role || 'OWNER'} readOnly disabled />
+              ) : (
+                <Select
+                  value={editFormData.role || ''}
+                  onValueChange={(value) => setEditFormData((prev) => ({ ...prev, role: value }))}
+                >
+                  <SelectTrigger id="edit-role" className="w-full">
+                    <SelectValue placeholder="Select Role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableRoles.map((role) => (
+                      <SelectItem key={role} value={role}>
+                        {role.charAt(0).toUpperCase() + role.slice(1)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={handleCancelEdit} disabled={isSaving}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleSaveEdit} disabled={isSaving} className="gap-2">
+              {isSaving ? <Spinner size="sm" /> : null}
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirmation */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title="Delete user"
+        description={`Are you sure you want to delete ${deleteTarget?.name || 'this user'}? This removes their login access permanently.`}
+        confirmLabel="Delete"
+        variant="destructive"
+        loading={isDeleting}
+        onConfirm={handleDeleteConfirm}
+      />
+    </div>
+  );
 };
 
 export default ManageUsersPage;

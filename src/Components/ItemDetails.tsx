@@ -154,22 +154,22 @@ const shouldHidePrice = hidePriceEnabled || (approvalEnabled && !isCustomerAppro
             />
 
             <div
-                className={`fixed bottom-0 left-0 right-0 h-[85vh] max-h-[95vh] bg-white z-[1000] transition-transform duration-500 ease-out max-w-[450px] mx-auto rounded-sm overflow-hidden shadow-2xl ${isOpen ? 'translate-y-0' : 'translate-y-full'}`}
+                className={`fixed bottom-0 left-0 right-0 h-[85vh] max-h-[95vh] bg-card z-[1000] transition-transform duration-500 ease-out max-w-[450px] mx-auto rounded-sm overflow-hidden shadow-2xl ${isOpen ? 'translate-y-0' : 'translate-y-full'}`}
             >
-                <div className="text-center py-3 border-b border-gray-100 relative">
-                    <div className="w-10 h-1 bg-gray-200 rounded-sm mx-auto mb-1.5" />
-                    <h2 className="text-base font-bold text-gray-900 leading-tight">Item Details</h2>
+                <div className="text-center py-3 border-b border-border relative">
+                    <div className="w-10 h-1 bg-muted rounded-sm mx-auto mb-1.5" />
+                    <h2 className="text-base font-bold text-foreground leading-tight">Item Details</h2>
 
                     <button
                         onClick={onClose}
-                        className="absolute top-4 right-4 p-1 border border-gray-100 rounded-sm text-gray-400 hover:bg-gray-50"
+                        className="absolute top-4 right-4 p-1 border border-border rounded-sm text-muted-foreground hover:bg-muted"
                     >
                         <X size={14} />
                     </button>
                 </div>
 
                 <div className="flex flex-col h-full">
-                    <div className="w-full flex-[0.9] bg-gray-100 overflow-hidden relative">
+                    <div className="w-full flex-[0.9] bg-muted overflow-hidden relative">
                         {item.imageUrl ? (
                             <img src={item.imageUrl} alt={item.name} className="w-full h-full object-contain" />
                         ) : (
@@ -186,46 +186,46 @@ const shouldHidePrice = hidePriceEnabled || (approvalEnabled && !isCustomerAppro
 
                     <div className="p-5">
                         <div className="text-left mb-4">
-                            <p className="text-[15px] text-gray-900 truncate font-bold">{item.name}</p>
-                            {!shouldHidePrice && <h4 className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Price</h4>}
+                            <p className="text-[15px] text-foreground truncate font-bold">{item.name}</p>
+                            {!shouldHidePrice && <h4 className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Price</h4>}
 
                             <div className="flex items-center justify-between mt-1">
                                 {!shouldHidePrice && (
                                     <div className="flex items-center gap-2">
                                         {priceMode === 'mrp' && (
-                                            <p className="text-xl font-black text-gray-900">
+                                            <p className="text-xl font-black text-foreground">
                                                 ₹{mrp}
-                                                <span className="text-xs text-gray-500 ml-1 font-semibold">{unitLabel}</span>
+                                                <span className="text-xs text-muted-foreground ml-1 font-semibold">{unitLabel}</span>
                                             </p>
                                         )}
 
                                         {priceMode === 'salePrice' && (
                                             <p className="text-xl font-black text-[#F97316]">
                                                 ₹{salePrice}
-                                                <span className="text-xs text-gray-500 ml-1 font-semibold">{unitLabel}</span>
+                                                <span className="text-xs text-muted-foreground ml-1 font-semibold">{unitLabel}</span>
                                             </p>
                                         )}
 
                                         {priceMode === 'both' && hasBothPrices ? (
                                             <>
-                                                <p className="text-sm font-bold text-gray-400 line-through">
+                                                <p className="text-sm font-bold text-muted-foreground line-through">
                                                     ₹{mrp}
                                                 </p>
                                                 <p className="text-xl font-black text-[#F97316]">
                                                     ₹{salePrice}
-                                                    <span className="text-xs text-gray-500 ml-1 font-semibold">{unitLabel}</span>
+                                                    <span className="text-xs text-muted-foreground ml-1 font-semibold">{unitLabel}</span>
                                                 </p>
                                             </>
                                         ) : priceMode === 'both' ? (
                                             <p className="text-xl font-black text-[#F97316]">
                                                 ₹{salePrice}
-                                                <span className="text-xs text-gray-500 ml-1 font-semibold">{unitLabel}</span>
+                                                <span className="text-xs text-muted-foreground ml-1 font-semibold">{unitLabel}</span>
                                             </p>
                                         ) : null}
                                     </div>
                                 )}
                                 {shouldHidePrice && (
-                                    <p className="text-sm font-semibold text-gray-600 mt-1">
+                                    <p className="text-sm font-semibold text-muted-foreground mt-1">
                                         {unitLabel}
                                     </p>
                                 )}
@@ -233,19 +233,19 @@ const shouldHidePrice = hidePriceEnabled || (approvalEnabled && !isCustomerAppro
                         </div>
 
                         <div className="mt-3">
-                            <h4 className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Description</h4>
-                            <p className="text-xs text-gray-600 leading-snug font-medium mt-1">
+                            <h4 className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Description</h4>
+                            <p className="text-xs text-muted-foreground leading-snug font-medium mt-1">
                                 {item.description ? item.description : 'No description available for this item.'}
                             </p>
                         </div>
 
                         {(variantLoading || variantItems.length > 0) && (
                             <div className="mt-3">
-                                <h4 className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-2">Variants</h4>
+                                <h4 className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Variants</h4>
                                 {variantLoading ? (
                                     <div className="flex gap-2">
                                         {[1, 2, 3].map(n => (
-                                            <div key={n} className="w-16 h-20 bg-gray-100 rounded-sm animate-pulse flex-shrink-0" />
+                                            <div key={n} className="w-16 h-20 bg-muted rounded-sm animate-pulse flex-shrink-0" />
                                         ))}
                                     </div>
                                 ) : (
@@ -263,16 +263,16 @@ const shouldHidePrice = hidePriceEnabled || (approvalEnabled && !isCustomerAppro
                                                         onClick={() => !isSelected && onVariantSelect?.(v)}
                                                         className={`flex-shrink-0 flex flex-col items-center gap-1 p-1.5 rounded-sm border-2 transition-all active:scale-95 ${isSelected
                                                             ? 'border-[#F97316] bg-[#F97316]/5 text-[#F97316]'
-                                                            : 'border-gray-200 bg-white text-gray-700 hover:border-[#F97316] hover:bg-[#F97316]/5'
+                                                            : 'border-border bg-card text-foreground hover:border-[#F97316] hover:bg-[#F97316]/5'
                                                             }`}
                                                     >
                                                         {v.imageUrl
                                                             ? <img src={v.imageUrl} alt={v.name} className="w-10 h-10 object-cover rounded-sm" />
-                                                            : <div className={`w-10 h-10 rounded-sm ${isSelected ? 'bg-orange-100' : 'bg-gray-100'}`} />
+                                                            : <div className={`w-10 h-10 rounded-sm ${isSelected ? 'bg-orange-100' : 'bg-muted'}`} />
                                                         }
                                                         <span className="text-[9px] font-black max-w-[52px] truncate text-center leading-tight">{v.name}</span>
                                                         {!shouldHidePrice && (
-                                                            <span className={`text-[9px] font-bold ${isSelected ? 'text-[#F97316]' : 'text-gray-500'}`}>
+                                                            <span className={`text-[9px] font-bold ${isSelected ? 'text-[#F97316]' : 'text-muted-foreground'}`}>
                                                                 ₹{vPriceInfo.salePrice}
                                                             </span>
                                                         )}
@@ -286,23 +286,23 @@ const shouldHidePrice = hidePriceEnabled || (approvalEnabled && !isCustomerAppro
                         )}
 
                         {!isOutOfStock && quantity > 0 ? (
-                            <div className="flex items-center justify-between py-3 border-t border-gray-100 mb-1 mt-4">
-                                <span className="text-xs font-bold text-gray-800 uppercase tracking-wide">
+                            <div className="flex items-center justify-between py-3 border-t border-border mb-1 mt-4">
+                                <span className="text-xs font-bold text-foreground uppercase tracking-wide">
                                     Quantity:
                                 </span>
-                                <div className="flex items-center border border-gray-200 rounded-sm p-0.5">
+                                <div className="flex items-center border border-border rounded-sm p-0.5">
                                     <button
                                         onClick={() => updateQuantity(-1)}
-                                        className="p-1.5 text-gray-500 hover:text-[#F97316]"
+                                        className="p-1.5 text-muted-foreground hover:text-[#F97316]"
                                     >
                                         <Minus size={16} />
                                     </button>
-                                    <span className="w-10 text-center font-black text-gray-900 text-base">
+                                    <span className="w-10 text-center font-black text-foreground text-base">
                                         {quantity}
                                     </span>
                                     <button
                                         onClick={() => updateQuantity(1)}
-                                        className="p-1.5 text-gray-500 hover:text-[#F97316]"
+                                        className="p-1.5 text-muted-foreground hover:text-[#F97316]"
                                     >
                                         <Plus size={16} />
                                     </button>
@@ -316,7 +316,7 @@ const shouldHidePrice = hidePriceEnabled || (approvalEnabled && !isCustomerAppro
                                     handleAddToCartClick();
                                 }}
                                 className={`w-full py-3.5 rounded-sm font-black text-[10px] uppercase tracking-[0.2em] shadow-lg flex items-center justify-center gap-2 active:scale-[0.97] transition-all mt-4 mb-4 ${isOutOfStock
-                                    ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                                    ? "bg-gray-300 text-muted-foreground cursor-not-allowed"
                                     : "bg-[#F97316] text-white shadow-blue-200"
                                     }`}
                             >

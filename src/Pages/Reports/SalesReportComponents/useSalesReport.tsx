@@ -1,13 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/auth-context';
-import {
-  collection,
-  query,
-  getDocs,
-  Timestamp,
-  orderBy,
-} from 'firebase/firestore';
-import { db } from '../../../lib/Firebase';
+import { salesReportService } from '../../../services/reports/salesReport.service';
 import { formatDateForInput, type SaleRecord } from './salesReport.utils';
 
 export default function useSalesReport() {
@@ -55,27 +48,7 @@ export default function useSalesReport() {
     const fetchSales = async () => {
       setIsLoading(true);
       try {
-        const q = query(
-          collection(db, 'companies', companyId, 'sales'),
-          orderBy('createdAt', 'desc'),
-        );
-
-        const querySnapshot = await getDocs(q);
-        const fetchedSales: SaleRecord[] = querySnapshot.docs.map((doc) => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            partyName: data.partyName || 'N/A',
-            invoiceNumber: data.invoiceNumber || 'N/A',
-            totalAmount: data.totalAmount || 0,
-            paymentMethods: data.paymentMethods || {},
-            createdAt:
-              data.createdAt instanceof Timestamp
-                ? data.createdAt.toMillis()
-                : Date.now(),
-            items: data.items || [],
-          };
-        });
+        const fetchedSales = await salesReportService.fetchSales(companyId);
         setSales(fetchedSales);
       } catch (err) {
         console.error('Error fetching sales:', err);

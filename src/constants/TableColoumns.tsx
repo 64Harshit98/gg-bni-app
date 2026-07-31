@@ -26,7 +26,7 @@ export const getItemColumns = (itemGroups: any[]): TableColumn<any>[] => [
        const group = itemGroups.find(g => g.id === item.itemGroupId);
        return group?.name || item.itemGroupId || UNASSIGNED_GROUP_NAME;
     },
-    className: 'text-slate-600'
+    className: 'text-muted-foreground'
   },
   { 
     header: 'MRP', 
@@ -48,13 +48,13 @@ export const getSalesColumns = (): TableColumn<any>[] => [
       header: 'Date',
       accessor: (row) => formatDate(row.createdAt),
       sortKey: 'createdAt',
-      className: 'text-slate-600'
+      className: 'text-muted-foreground'
     },
     {
       header: 'INV No.',
       accessor: 'invoiceNumber',
       sortKey: 'invoiceNumber',
-      className: 'font-medium text-slate-600'
+      className: 'font-medium text-muted-foreground'
     },
     {
       header: 'Party Name',
@@ -66,13 +66,13 @@ export const getSalesColumns = (): TableColumn<any>[] => [
       header: 'Items',
       accessor: (row) => row.items.reduce((sum: number, i: any) => sum + (i.quantity || 0), 0),
       sortKey: 'items',
-      className: 'text-slate-600'
+      className: 'text-muted-foreground'
     },
     {
       header: 'Amount',
       accessor: (row) => `₹${row.totalAmount.toLocaleString('en-IN')}`,
       sortKey: 'totalAmount',
-      className: 'text-slate-600'
+      className: 'text-muted-foreground'
     }
 ];
 
@@ -82,7 +82,7 @@ export const getPurchaseColumns = (): TableColumn<any>[] => [
       header: 'Date',
       accessor: (row) => formatDate(row.createdAt),
       sortKey: 'createdAt',
-      className: 'text-slate-600'
+      className: 'text-muted-foreground'
     },
     {
       header: 'Name',
@@ -94,13 +94,13 @@ export const getPurchaseColumns = (): TableColumn<any>[] => [
       header: 'Items',
       accessor: (row) => row.items.reduce((sum: number, i: any) => sum + (i.quantity || 0), 0),
       sortKey: 'items',
-      className: 'text-slate-600'
+      className: 'text-muted-foreground'
     },
     {
       header: 'Amount',
       accessor: (row) => `₹${row.totalAmount.toLocaleString('en-IN')}`,
       sortKey: 'totalAmount',
-      className: 'text-slate-600'
+      className: 'text-muted-foreground'
     }
 ];
 
@@ -110,7 +110,7 @@ export const getPnlColumns = (): TableColumn<any>[] => [
         header: 'Date', 
         accessor: (row) => formatDate(row.createdAt), 
         sortKey: 'createdAt',
-        className: 'text-slate-600'
+        className: 'text-muted-foreground'
     },
     { 
         header: 'Invoice', 

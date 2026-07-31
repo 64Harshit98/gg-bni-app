@@ -1,72 +1,33 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { BarChart3, Lock } from 'lucide-react';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
 import useUserReport from './UserReportComponents/useUserReport';
 import BackButton from '../../Components/BackButton';
-
-// ─── Donut Chart ───────────────────────────────────────────────────────────────
-const DonutChart: React.FC<{ cash: number; upi: number; card: number; total: number }> = ({
-  cash, upi, card, total,
-}) => {
-  if (total === 0) {
-    return (
-      <svg width={140} height={140} viewBox="0 0 140 140" className="flex-shrink-0">
-        <circle cx={70} cy={70} r={52} fill="none" stroke="#e5e7eb" strokeWidth={20} />
-        <circle cx={70} cy={70} r={40} fill="white" />
-        <text x={70} y={75} textAnchor="middle" fill="#9ca3af" fontSize={12} fontFamily="sans-serif">No data</text>
-      </svg>
-    );
-  }
-  const r = 52;
-  const circ = 2 * Math.PI * r;
-  const cardArc = (card / total) * circ;
-  const upiArc  = (upi  / total) * circ;
-  const cashArc = (cash / total) * circ;
-  return (
-    <svg width={140} height={140} viewBox="0 0 140 140" className="flex-shrink-0">
-      <circle cx={70} cy={70} r={r} fill="none" stroke="#2563eb" strokeWidth={20}
-        strokeDasharray={`${cardArc} ${circ - cardArc}`} strokeDashoffset={0}
-        transform="rotate(-90 70 70)" />
-      <circle cx={70} cy={70} r={r} fill="none" stroke="#6b7280" strokeWidth={20}
-        strokeDasharray={`${upiArc} ${circ - upiArc}`} strokeDashoffset={-cardArc}
-        transform="rotate(-90 70 70)" />
-      <circle cx={70} cy={70} r={r} fill="none" stroke="#d1d5db" strokeWidth={20}
-        strokeDasharray={`${cashArc} ${circ - cashArc}`} strokeDashoffset={-(cardArc + upiArc)}
-        transform="rotate(-90 70 70)" />
-      <circle cx={70} cy={70} r={40} fill="white" />
-      <text x={70} y={66} textAnchor="middle" fill="#6b7280" fontSize={9} fontFamily="sans-serif" letterSpacing={1}>NET REV</text>
-      <text x={70} y={82} textAnchor="middle" fill="#111827" fontSize={15} fontWeight={700} fontFamily="sans-serif">
-        Rs.{(total / 1000).toFixed(1)}k
-      </text>
-    </svg>
-  );
-};
-
-// ─── Efficiency Ring ───────────────────────────────────────────────────────────
-const EfficiencyRing: React.FC<{ score: number }> = ({ score }) => {
-  const r = 52;
-  const circ = 2 * Math.PI * r;
-  const offset = circ - (score / 100) * circ;
-  return (
-    <svg width={140} height={140} viewBox="0 0 140 140">
-      <circle cx={70} cy={70} r={r} fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth={12} />
-      <circle cx={70} cy={70} r={r} fill="none" stroke="white" strokeWidth={12}
-        strokeDasharray={circ} strokeDashoffset={offset}
-        strokeLinecap="round" transform="rotate(-90 70 70)" />
-      <text x={70} y={65} textAnchor="middle" fill="white" fontSize={30} fontWeight={700} fontFamily="sans-serif">{score}</text>
-      <text x={70} y={82} textAnchor="middle" fill="rgba(255,255,255,0.75)" fontSize={10} fontFamily="sans-serif" letterSpacing={1}>PERCENTILE</text>
-    </svg>
-  );
-};
-// ─── Empty / No-data state ────────────────────────────────────────────────────
-const EmptyState: React.FC = () => (
-  <div className="bg-white rounded-sm shadow-md p-10 text-center text-gray-400 mb-2">
-    <p className="text-4xl mb-2">📊</p>
-    <p className="font-semibold text-gray-600">No data for this period</p>
-    <p className="text-sm mt-1">Select a date range and press Apply to load the report.</p>
-  </div>
-);
+import { Spinner } from '../../Components/ui/spinner';
+import { Button } from '../../Components/ui/button';
+import { Input } from '../../Components/ui/input';
+import { EmptyState } from '../../Components/ui/empty-state';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../Components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../Components/ui/tabs';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableFooter,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../../Components/ui/table';
+import DonutChart from './UserReportComponents/DonutChart';
+import EfficiencyRing from './UserReportComponents/EfficiencyRing';
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 const UserReport: React.FC = () => {
@@ -97,34 +58,46 @@ const UserReport: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'items'>('overview');
 
   // ── Owner guard ───────────────────────────────────────────────────────────
-  if (authLoading) return <div className="p-8 text-center text-gray-500">Loading...</div>;
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background text-muted-foreground">
+        <Spinner size="lg" />
+        <p className="text-sm font-medium">Loading...</p>
+      </div>
+    );
+  }
   if (!currentUser || currentUser.role !== 'Owner') {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-6">
-        <div className="bg-white rounded-sm shadow-md p-8 text-center max-w-sm">
-          <p className="text-4xl mb-3">🔒</p>
-          <p className="font-bold text-gray-800 text-lg">Access Restricted</p>
-          <p className="text-sm text-gray-500 mt-1">
-            This report is only accessible to the business Owner.
-          </p>
-          <button
-            onClick={() => navigate(-1)}
-            className="mt-5 px-6 py-2 bg-blue-600 text-white font-semibold rounded-sm hover:bg-blue-700 transition"
-          >
-            Go Back
-          </button>
+      <div className="aurora flex min-h-screen items-center justify-center bg-background p-6">
+        <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-8 shadow-sm">
+          <EmptyState
+            icon={<Lock />}
+            title="Access Restricted"
+            description="This report is only accessible to the business Owner."
+            action={
+              <Button onClick={() => navigate(-1)} className="mt-1">
+                Go Back
+              </Button>
+            }
+          />
         </div>
       </div>
     );
   }
 
-  if (error) return <div className="p-4 text-center text-red-500">{error}</div>;
+  if (error) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-4 text-center text-destructive">
+        {error}
+      </div>
+    );
+  }
 
   // ── Date preset handler ───────────────────────────────────────────────────
   const handleDatePresetChange = (preset: string) => {
     setDatePreset(preset);
     const start = new Date();
-    const end   = new Date();
+    const end = new Date();
     switch (preset) {
       case 'yesterday':
         start.setDate(start.getDate() - 1);
@@ -156,392 +129,349 @@ const UserReport: React.FC = () => {
   const selectedStaff = staffList.find((s) => s.uid === selectedUserId);
 
   return (
-    <div className="min-h-screen bg-gray-100 p-2 pb-16 md:p-6 md:pb-16">
-
+    <div className="aurora min-h-screen bg-background pb-16">
       {/* ── HEADER ─────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between pb-3 border-b mb-2">
-        <BackButton/>
-        <h1 className="flex-1 text-2xl text-center font-bold text-gray-800">
-          User Report
-        </h1>
-      </div>
+      <header className="glass sticky top-0 z-10 flex items-center gap-3 border-b border-border px-4 py-3">
+        <BackButton />
+        <div className="flex-1">
+          <h1 className="text-lg font-bold tracking-tight text-foreground">
+            User <span className="text-gradient">Report</span>
+          </h1>
+          <p className="text-xs text-muted-foreground">Staff performance &amp; attendance</p>
+        </div>
+        <span className="hidden size-9 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground shadow-xs sm:flex">
+          <BarChart3 className="size-4" />
+        </span>
+      </header>
 
-      {/* ── STAFF SELECTOR ─────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-sm shadow-md px-4 py-3 mb-2 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="w-10 h-10 rounded-sm bg-blue-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-            {selectedStaff
-              ? selectedStaff.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
-              : '?'}
+      <div className="mx-auto w-full max-w-5xl px-4 py-6 md:px-8 animate-in fade-in-0 slide-in-from-bottom-2 duration-500">
+        {/* ── STAFF SELECTOR ─────────────────────────────────────────────────── */}
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4 shadow-xs">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <div className="flex size-10 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-brand text-sm font-bold text-white">
+              {selectedStaff
+                ? selectedStaff.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
+                : '?'}
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-foreground">
+                {selectedStaff?.name ?? 'Select a staff member'}
+              </p>
+              <p className="truncate text-xs text-muted-foreground">
+                {selectedStaff?.role ?? '—'}
+              </p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <p className="font-semibold text-gray-800 text-sm truncate">
-              {selectedStaff?.name ?? 'Select a staff member'}
-            </p>
-            <p className="text-xs text-gray-500 truncate">
-              {selectedStaff?.role ?? '—'}
-            </p>
+
+          {staffLoading ? (
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Spinner size="sm" />
+              Loading staff...
+            </span>
+          ) : (
+            <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+              <SelectTrigger size="sm" className="w-40 flex-shrink-0 bg-muted">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {staffList.map((s) => (
+                  <SelectItem key={s.uid} value={s.uid}>
+                    {s.name} ({s.role})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+
+        {/* ── DATE FILTER ──────────────────────────────────────────────────── */}
+        <div className="mb-4 rounded-2xl border border-border bg-card p-4 shadow-xs">
+          <div className="grid grid-cols-1 gap-3">
+            <Select value={datePreset} onValueChange={handleDatePresetChange}>
+              <SelectTrigger className="w-full bg-muted">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="yesterday">Yesterday</SelectItem>
+                <SelectItem value="last7">Last 7 Days</SelectItem>
+                <SelectItem value="last30">Last 30 Days</SelectItem>
+                <SelectItem value="custom">Custom</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                type="date"
+                value={customStartDate}
+                onChange={(e) => { setCustomStartDate(e.target.value); setDatePreset('custom'); }}
+              />
+              <Input
+                type="date"
+                value={customEndDate}
+                onChange={(e) => { setCustomEndDate(e.target.value); setDatePreset('custom'); }}
+              />
+            </div>
+          </div>
+
+          <div className="mt-3 flex justify-center">
+            <Button onClick={handleApplyFilters} className="w-full md:w-fit md:px-10">
+              Apply
+            </Button>
           </div>
         </div>
 
-        {staffLoading ? (
-          <p className="text-xs text-gray-400">Loading staff...</p>
-        ) : (
-          <select
-            value={selectedUserId}
-            onChange={(e) => setSelectedUserId(e.target.value)}
-            className="text-xs border border-gray-200 px-2.5 py-1.5 rounded-sm bg-gray-50 outline-none focus:ring-2 ring-blue-400 flex-shrink-0"
-          >
-            {staffList.map((s) => (
-              <option key={s.uid} value={s.uid}>
-                {s.name} ({s.role})
-              </option>
-            ))}
-          </select>
+        {/* Loading spinner */}
+        {isLoading && (
+          <div className="mb-4 flex flex-col items-center justify-center gap-2 rounded-2xl border border-border bg-card p-6 text-center text-muted-foreground shadow-xs">
+            <Spinner size="default" />
+            <span>Loading report data...</span>
+          </div>
         )}
-      </div>
 
-      {/* ── DATE FILTER — exact PurchaseReport pattern ──────────────────────── */}
-      <div className="bg-white p-4 rounded-sm shadow-md mb-2">
-        <div className="grid grid-cols-1 gap-3">
-          <select
-            value={datePreset}
-            onChange={(e) => handleDatePresetChange(e.target.value)}
-            className="w-full p-2 text-sm bg-gray-50 border rounded-sm outline-none focus:ring-2 ring-blue-400"
-          >
-            <option value="today">Today</option>
-            <option value="yesterday">Yesterday</option>
-            <option value="last7">Last 7 Days</option>
-            <option value="last30">Last 30 Days</option>
-            <option value="custom">Custom</option>
-          </select>
+        {/* No filters applied yet */}
+        {!isLoading && !appliedFilters && (
+          <EmptyState
+            className="rounded-2xl border-border bg-card"
+            icon={<BarChart3 />}
+            title="No data for this period"
+            description="Select a date range and press Apply to load the report."
+          />
+        )}
 
-          <div className="grid grid-cols-2 gap-4">
-            <input
-              type="date"
-              value={customStartDate}
-              onChange={(e) => { setCustomStartDate(e.target.value); setDatePreset('custom'); }}
-              className="w-full p-2 text-sm bg-gray-50 border rounded-sm"
-            />
-            <input
-              type="date"
-              value={customEndDate}
-              onChange={(e) => { setCustomEndDate(e.target.value); setDatePreset('custom'); }}
-              className="w-full p-2 text-sm bg-gray-50 border rounded-sm"
-            />
-          </div>
-        </div>
+        {/* Data loaded */}
+        {!isLoading && appliedFilters && summary && (
+          <>
+            {/* ── KPI CARDS ──────────────────────────────────────────────────── */}
+            <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <CustomCard className="py-10" variant={CardVariant.Summary} title="Total Sales"
+                value={`Rs.${Math.round(summary.totalSales).toLocaleString('en-IN')}`} />
+              <CustomCard className="py-10" variant={CardVariant.Summary} title="Total Orders"
+                value={summary.totalOrders.toString()} />
+              <CustomCard className="py-10" variant={CardVariant.Summary} title="Avg Order Value"
+                value={`Rs.${summary.avgOrderValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
+              <CustomCard className="py-10" variant={CardVariant.Summary} title="Items Sold"
+                value={summary.itemsSold.toString()} />
+            </div>
 
-        <div className="flex justify-center mt-2">
-          <button
-            onClick={handleApplyFilters}
-            className="w-full md:w-fit mt-2 px-10 py-2 bg-blue-600 text-white text-lg font-semibold rounded-sm hover:bg-blue-700"
-          >
-            Apply
-          </button>
-        </div>
-      </div>
+            {/* Date range info strip */}
+            <div className="mb-4 flex items-center justify-between rounded-2xl border border-info/20 bg-info/10 px-4 py-2">
+              <p className="text-xs font-semibold tracking-wide text-info">SHOWING DATA FOR</p>
+              <p className="text-xs font-bold text-info">{dateRangeLabel}</p>
+            </div>
 
-      {/* Loading spinner */}
-      {isLoading && (
-        <div className="bg-white rounded-sm shadow-md p-6 text-center text-gray-500 mb-2">
-          Loading report data...
-        </div>
-      )}
+            {/* ── TABS ───────────────────────────────────────────────────────── */}
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'overview' | 'items')} className="mb-4">
+              <TabsList className="w-full sm:w-fit">
+                <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="items">Top Items</TabsTrigger>
+              </TabsList>
 
-      {/* No filters applied yet */}
-      {!isLoading && !appliedFilters && <EmptyState />}
-
-      {/* Data loaded */}
-      {!isLoading && appliedFilters && summary && (
-        <>
-          {/* ── KPI CARDS ──────────────────────────────────────────────────── */}
-          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-2">
-            <CustomCard className="py-10" variant={CardVariant.Summary} title="Total Sales"
-              value={`Rs.${Math.round(summary.totalSales).toLocaleString('en-IN')}`} />
-            <CustomCard className="py-10" variant={CardVariant.Summary} title="Total Orders"
-              value={summary.totalOrders.toString()} />
-            <CustomCard className="py-10" variant={CardVariant.Summary} title="Avg Order Value"
-              value={`Rs.${summary.avgOrderValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}/>
-            <CustomCard className="py-10" variant={CardVariant.Summary} title="Items Sold"
-              value={summary.itemsSold.toString()} />
-          </div>
-
-          {/* Date range info strip */}
-          <div className="bg-blue-50 border border-blue-100 rounded-sm px-4 py-2 mb-2 flex items-center justify-between">
-            <p className="text-xs text-blue-500 font-semibold tracking-wide">SHOWING DATA FOR</p>
-            <p className="text-xs font-bold text-blue-700">{dateRangeLabel}</p>
-          </div>
-
-          {/* ── TABS ───────────────────────────────────────────────────────── */}
-          <div className="bg-white rounded-sm shadow-md mb-2 flex border-b">
-            {(['overview', 'items'] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`flex-1 py-2.5 text-sm font-semibold transition ${
-                  activeTab === tab
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {tab === 'overview' ? 'Overview' : 'Top Items'}
-              </button>
-            ))}
-          </div>
-
-          {activeTab === 'overview' ? (
-            <>
-              {/* ROW 1: Efficiency + Attendance */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
-
-                {/* Efficiency */}
-                <div className="bg-blue-600 rounded-sm shadow-md p-4 flex flex-col items-center text-center">
-                  <p className="text-[11px] tracking-widest text-blue-200 font-semibold mb-3">
-                    STAFF EFFICIENCY RATING
-                  </p>
-                  <EfficiencyRing score={summary.efficiencyScore} />
-                  <p className="text-white font-bold text-lg mt-3">
-                    {summary.efficiencyScore >= 90
-                      ? 'Excellent Performance'
-                      : summary.efficiencyScore >= 70
-                      ? 'Good Performance'
-                      : 'Needs Improvement'}
-                  </p>
-                  <p className="text-blue-200 text-xs mt-1">
-                    Based on sales output and active time
-                  </p>
-                  <div className="grid grid-cols-2 gap-2 mt-4 w-full">
-                    <div className="bg-blue-700 rounded-sm px-3 py-2">
-                      <p className="text-[10px] text-blue-300 tracking-widest font-semibold">EFFICIENCY</p>
-                      <p className="text-white font-bold text-xl">{summary.efficiencyPct}%</p>
-                    </div>
-                    <div className="bg-blue-700 rounded-sm px-3 py-2">
-                      <p className="text-[10px] text-blue-300 tracking-widest font-semibold">ACTIVE TIME</p>
-                      <p className="text-white font-bold text-xl">{summary.activeTime}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Attendance */}
-                <div className="bg-white rounded-sm shadow-md p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-base font-semibold text-gray-700">Attendance Log</h2>
-                    {summary.lateLogin && (
-                      <span className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-sm">
-                        ⚠ LATE LOGIN
-                      </span>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      { label: 'CLOCK IN',      val: summary.clockIn },
-                      { label: 'CLOCK OUT',     val: summary.clockOut },
-                      { label: 'WORKING HOURS', val: summary.workingHours },
-                      { label: 'ATTENDANCE %',  val: `${summary.attendancePct}%`, highlight: true },
-                    ].map((item) => (
-                      <div key={item.label} className="bg-gray-50 rounded-sm px-3 py-2.5">
-                        <p className="text-[10px] text-gray-400 tracking-widest font-semibold">{item.label}</p>
-                        <p className={`font-bold text-xl mt-0.5 ${item.highlight ? 'text-blue-600' : 'text-gray-800'}`}>
-                          {item.val}
-                        </p>
+              <TabsContent value="overview" className="mt-4 flex flex-col gap-3">
+                {/* ROW 1: Efficiency + Attendance */}
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {/* Efficiency */}
+                  <div className="flex flex-col items-center rounded-2xl bg-primary p-4 text-center shadow-xs">
+                    <p className="mb-3 text-[11px] font-semibold tracking-widest text-primary-foreground/70">
+                      STAFF EFFICIENCY RATING
+                    </p>
+                    <EfficiencyRing score={summary.efficiencyScore} />
+                    <p className="mt-3 text-lg font-bold text-primary-foreground">
+                      {summary.efficiencyScore >= 90
+                        ? 'Excellent Performance'
+                        : summary.efficiencyScore >= 70
+                        ? 'Good Performance'
+                        : 'Needs Improvement'}
+                    </p>
+                    <p className="mt-1 text-xs text-primary-foreground/70">
+                      Based on sales output and active time
+                    </p>
+                    <div className="mt-4 grid w-full grid-cols-2 gap-2">
+                      <div className="rounded-xl bg-black/10 px-3 py-2">
+                        <p className="text-[10px] font-semibold tracking-widest text-primary-foreground/60">EFFICIENCY</p>
+                        <p className="text-xl font-bold text-primary-foreground">{summary.efficiencyPct}%</p>
                       </div>
-                    ))}
-                  </div>
-
-                  {/* Velocity */}
-                  <div className="mt-3 border-t pt-3">
-                    <h3 className="text-sm font-semibold text-gray-600 mb-2">Daily Velocity</h3>
-                    <div className="space-y-2.5">
-                      <div>
-                        <div className="flex justify-between mb-1">
-                          <span className="text-[10px] text-gray-400 tracking-widest font-semibold">SALES / HR</span>
-                          <span className="text-sm font-bold text-gray-800">Rs.{Number(summary.salesPerHr).toLocaleString('en-IN')}</span>
-                        </div>
-                        <div className="h-1.5 bg-gray-100 rounded-sm overflow-hidden">
-                          <div
-                            className="h-full bg-blue-600 rounded-sm"
-                            style={{ width: `${Math.min(100, (summary.salesPerHr / 1000) * 100)}%` }}
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <div className="flex justify-between mb-1">
-                          <span className="text-[10px] text-gray-400 tracking-widest font-semibold">ORDERS / HR</span>
-                          <span className="text-sm font-bold text-gray-800">{summary.ordersPerHr}</span>
-                        </div>
-                        <div className="h-1.5 bg-gray-100 rounded-sm overflow-hidden">
-                          <div
-                            className="h-full bg-gray-400 rounded-sm"
-                            style={{ width: `${Math.min(100, (summary.ordersPerHr / 30) * 100)}%` }}
-                          />
-                        </div>
+                      <div className="rounded-xl bg-black/10 px-3 py-2">
+                        <p className="text-[10px] font-semibold tracking-widest text-primary-foreground/60">ACTIVE TIME</p>
+                        <p className="text-xl font-bold text-primary-foreground">{summary.activeTime}</p>
                       </div>
                     </div>
                   </div>
-                </div>
-              </div>
 
-              {/* ROW 2: Payments + Coming Soon cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
-
-                {/* Payment Methods */}
-                <div className="bg-white rounded-sm shadow-md p-4">
-                  <h2 className="text-base font-semibold text-gray-700 mb-3">Payment Methods</h2>
-                  <div className="flex items-center gap-4">
-                    <DonutChart
-                      cash={summary.payments.cash}
-                      upi={summary.payments.upi}
-                      card={summary.payments.card}
-                      total={summary.paymentTotal}
-                    />
-                    <div className="flex flex-col gap-3 flex-1">
+                  {/* Attendance */}
+                  <div className="rounded-2xl border border-border bg-card p-4 shadow-xs">
+                    <div className="mb-3 flex items-center justify-between">
+                      <h2 className="text-base font-semibold text-foreground">Attendance Log</h2>
+                      {summary.lateLogin && (
+                        <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-bold text-destructive">
+                          ⚠ LATE LOGIN
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
                       {[
-                        { label: 'Card', amount: summary.payments.card, dot: 'bg-blue-600' },
-                        { label: 'UPI',  amount: summary.payments.upi,  dot: 'bg-gray-500' },
-                        { label: 'Cash', amount: summary.payments.cash, dot: 'bg-gray-300' },
-                      ].map((pm) => {
-                        const pct = summary.paymentTotal > 0
-                          ? Math.round((pm.amount / summary.paymentTotal) * 100)
-                          : 0;
-                        return (
-                          <div key={pm.label} className="flex items-center gap-2">
-                            <span className={`w-2.5 h-2.5 rounded-sm flex-shrink-0 ${pm.dot}`} />
-                            <div className="flex-1">
-                              <div className="flex justify-between items-baseline">
-                                <span className="text-xs text-gray-500">{pm.label} ({pct}%)</span>
-                                <span className="text-sm font-semibold text-gray-800">
-                                  Rs.{pm.amount.toFixed(2)}
-                                </span>
+                        { label: 'CLOCK IN', val: summary.clockIn },
+                        { label: 'CLOCK OUT', val: summary.clockOut },
+                        { label: 'WORKING HOURS', val: summary.workingHours },
+                        { label: 'ATTENDANCE %', val: `${summary.attendancePct}%`, highlight: true },
+                      ].map((item) => (
+                        <div key={item.label} className="rounded-xl bg-muted px-3 py-2.5">
+                          <p className="text-[10px] font-semibold tracking-widest text-muted-foreground">{item.label}</p>
+                          <p className={`mt-0.5 text-xl font-bold ${item.highlight ? 'text-primary' : 'text-foreground'}`}>
+                            {item.val}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Velocity */}
+                    <div className="mt-3 border-t border-border pt-3">
+                      <h3 className="mb-2 text-sm font-semibold text-muted-foreground">Daily Velocity</h3>
+                      <div className="space-y-2.5">
+                        <div>
+                          <div className="mb-1 flex justify-between">
+                            <span className="text-[10px] font-semibold tracking-widest text-muted-foreground">SALES / HR</span>
+                            <span className="text-sm font-bold text-foreground">Rs.{Number(summary.salesPerHr).toLocaleString('en-IN')}</span>
+                          </div>
+                          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                            <div
+                              className="h-full rounded-full bg-primary"
+                              style={{ width: `${Math.min(100, (summary.salesPerHr / 1000) * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="mb-1 flex justify-between">
+                            <span className="text-[10px] font-semibold tracking-widest text-muted-foreground">ORDERS / HR</span>
+                            <span className="text-sm font-bold text-foreground">{summary.ordersPerHr}</span>
+                          </div>
+                          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                            <div
+                              className="h-full rounded-full bg-muted-foreground/50"
+                              style={{ width: `${Math.min(100, (summary.ordersPerHr / 30) * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ROW 2: Payments */}
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {/* Payment Methods */}
+                  <div className="rounded-2xl border border-border bg-card p-4 shadow-xs">
+                    <h2 className="mb-3 text-base font-semibold text-foreground">Payment Methods</h2>
+                    <div className="flex items-center gap-4">
+                      <DonutChart
+                        cash={summary.payments.cash}
+                        upi={summary.payments.upi}
+                        card={summary.payments.card}
+                        total={summary.paymentTotal}
+                      />
+                      <div className="flex flex-1 flex-col gap-3">
+                        {[
+                          { label: 'Card', amount: summary.payments.card, dot: 'bg-primary' },
+                          { label: 'UPI', amount: summary.payments.upi, dot: 'bg-muted-foreground/60' },
+                          { label: 'Cash', amount: summary.payments.cash, dot: 'bg-muted-foreground/30' },
+                        ].map((pm) => {
+                          const pct = summary.paymentTotal > 0
+                            ? Math.round((pm.amount / summary.paymentTotal) * 100)
+                            : 0;
+                          return (
+                            <div key={pm.label} className="flex items-center gap-2">
+                              <span className={`size-2.5 flex-shrink-0 rounded-full ${pm.dot}`} />
+                              <div className="flex-1">
+                                <div className="flex items-baseline justify-between">
+                                  <span className="text-xs text-muted-foreground">{pm.label} ({pct}%)</span>
+                                  <span className="text-sm font-semibold text-foreground">
+                                    Rs.{pm.amount.toFixed(2)}
+                                  </span>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 mt-4 border-t pt-3">
-                    <div className="text-center">
-                      <p className="text-[10px] text-gray-400 tracking-widest font-semibold">DISCOUNTS</p>
-                      <p className="font-bold text-gray-800 mt-0.5">Rs.{summary.discounts.toFixed(2)}</p>
-                    </div>
-                    <div className="text-center border-x">
-                      <p className="text-[10px] text-gray-400 tracking-widest font-semibold">REFUNDS</p>
-                      <p className="font-bold text-red-500 mt-0.5">Rs.{summary.refunds.toFixed(2)}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-[10px] text-gray-400 tracking-widest font-semibold">RETURNS</p>
-                      <p className="font-bold text-gray-800 mt-0.5">{summary.returns} items</p>
+                    <div className="mt-4 grid grid-cols-3 gap-2 border-t border-border pt-3">
+                      <div className="text-center">
+                        <p className="text-[10px] font-semibold tracking-widest text-muted-foreground">DISCOUNTS</p>
+                        <p className="mt-0.5 font-bold text-foreground">Rs.{summary.discounts.toFixed(2)}</p>
+                      </div>
+                      <div className="border-x border-border text-center">
+                        <p className="text-[10px] font-semibold tracking-widest text-muted-foreground">REFUNDS</p>
+                        <p className="mt-0.5 font-bold text-destructive">Rs.{summary.refunds.toFixed(2)}</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-[10px] font-semibold tracking-widest text-muted-foreground">RETURNS</p>
+                        <p className="mt-0.5 font-bold text-foreground">{summary.returns} items</p>
+                      </div>
                     </div>
                   </div>
                 </div>
+              </TabsContent>
 
-                {/* Week Trend + Top Performer — Coming Soon */}
-                {/* <div className="flex flex-col gap-2">
-                  <div className="relative bg-white rounded-sm shadow-md p-4 flex-1 overflow-hidden" style={{ minHeight: 120 }}>
-                    <ComingSoon label="Weekly Trend — Coming Soon" />
-                    <h2 className="text-base font-semibold text-gray-300">Weekly Sales Trend</h2>
-                    <div className="flex items-end gap-1.5 mt-2 opacity-20" style={{ height: 60 }}>
-                      {[40, 60, 45, 80, 70, 90, 35].map((h, i) => (
-                        <div key={i} className="flex-1 bg-blue-200 rounded-t-sm" style={{ height: `${h}%` }} />
-                      ))}
-                    </div>
+              <TabsContent value="items" className="mt-4">
+                {/* ── TOP ITEMS TAB ──────────────────────────────────────────────── */}
+                <div className="rounded-2xl border border-border bg-card shadow-xs">
+                  <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                    <h2 className="text-base font-semibold text-foreground">Top Selling Items</h2>
+                    <span className="rounded-full border border-info/20 bg-info/10 px-2 py-0.5 text-[10px] font-semibold text-info">
+                      {dateRangeLabel}
+                    </span>
                   </div>
-                  <div className="relative bg-blue-600 rounded-sm shadow-md p-4 overflow-hidden">
-                    <ComingSoon label="Top Performer — Coming Soon" />
-                    <div className="flex items-center gap-4 opacity-20">
-                      <div className="w-14 h-14 rounded-sm border-2 border-white/40 flex items-center justify-center flex-shrink-0">
-                        <span className="text-white font-bold text-xl">#1</span>
-                      </div>
-                      <div>
-                        <p className="text-white font-bold">Top Performer</p>
-                        <p className="text-blue-200 text-xs mt-0.5">Coming soon</p>
-                      </div>
-                    </div>
-                  </div>
-                </div> */}
-              </div>
 
-              {/* ROW 3: Smart Alerts (real data) */}
-              {/* <div className="bg-white p-4 rounded-sm shadow-md mb-2">
-                <h2 className="text-base font-semibold text-gray-700 mb-3">Smart Alerts</h2>
-                <div className="flex flex-col gap-2">
-                  {alerts.map((alert) => {
-                    const s = ALERT_STYLES[alert.level];
-                    return (
-                      <div key={alert.id} className={`border-l-4 rounded-sm px-3 py-2.5 ${s.border} ${s.bg}`}>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-sm ${s.badge}`}>
-                            {alert.level}
-                          </span>
-                          <span className="text-[11px] text-gray-400">{alert.time}</span>
-                        </div>
-                        <p className="text-sm font-semibold text-gray-800">{alert.title}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{alert.description}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div> */}
-            </>
-          ) : (
-            /* ── TOP ITEMS TAB ──────────────────────────────────────────────── */
-            <div className="bg-white rounded-sm shadow-md mb-2 overflow-hidden">
-              <div className="px-4 py-3 border-b flex items-center justify-between">
-                <h2 className="text-base font-semibold text-gray-700">Top Selling Items</h2>
-                <span className="text-[10px] font-semibold text-blue-500 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-sm">
-                  {dateRangeLabel}
-                </span>
-              </div>
-
-              {topItems.length === 0 ? (
-                <p className="p-6 text-center text-gray-400 text-sm">
-                  No items sold in this period.
-                </p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-gray-50 border-b">
-                        {['#', 'Item Name', 'Qty Sold', 'Revenue', 'Avg / Item'].map((h) => (
-                          <th key={h} className="text-left px-4 py-2.5 text-[10px] text-gray-400 font-semibold tracking-widest uppercase">
-                            {h}
-                          </th>
+                  {topItems.length === 0 ? (
+                    <EmptyState
+                      className="border-none"
+                      title="No items sold"
+                      description="No items were sold in this period."
+                    />
+                  ) : (
+                    <Table containerClassName="border-none rounded-none">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>#</TableHead>
+                          <TableHead>Item Name</TableHead>
+                          <TableHead>Qty Sold</TableHead>
+                          <TableHead>Revenue</TableHead>
+                          <TableHead>Avg / Item</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {topItems.map((item, i) => (
+                          <TableRow key={item.name}>
+                            <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+                            <TableCell className="font-semibold text-foreground">{item.name}</TableCell>
+                            <TableCell className="text-muted-foreground">{item.qty}</TableCell>
+                            <TableCell className="font-bold text-primary">Rs.{item.revenue.toFixed(2)}</TableCell>
+                            <TableCell className="text-muted-foreground">
+                              Rs.{item.qty > 0 ? (item.revenue / item.qty).toFixed(2) : '0.00'}
+                            </TableCell>
+                          </TableRow>
                         ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {topItems.map((item, i) => (
-                        <tr key={item.name} className="border-b last:border-0 hover:bg-gray-50 transition">
-                          <td className="px-4 py-3 text-gray-400">{i + 1}</td>
-                          <td className="px-4 py-3 font-semibold text-gray-800">{item.name}</td>
-                          <td className="px-4 py-3 text-gray-600">{item.qty}</td>
-                          <td className="px-4 py-3 font-bold text-blue-600">Rs.{item.revenue.toFixed(2)}</td>
-                          <td className="px-4 py-3 text-gray-500">
-                            Rs.{item.qty > 0 ? (item.revenue / item.qty).toFixed(2) : '0.00'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="bg-blue-600">
-                        <td colSpan={2} className="px-4 py-2.5 text-white font-bold">Total</td>
-                        <td className="px-4 py-2.5 text-white font-bold">
-                          {topItems.reduce((a, i) => a + i.qty, 0)}
-                        </td>
-                        <td className="px-4 py-2.5 text-white font-bold">
-                          Rs.{topItems.reduce((a, i) => a + i.revenue, 0).toFixed(2)}
-                        </td>
-                        <td />
-                      </tr>
-                    </tfoot>
-                  </table>
+                      </TableBody>
+                      <TableFooter>
+                        <TableRow className="bg-primary hover:bg-primary">
+                          <TableCell colSpan={2} className="font-bold text-primary-foreground">Total</TableCell>
+                          <TableCell className="font-bold text-primary-foreground">
+                            {topItems.reduce((a, i) => a + i.qty, 0)}
+                          </TableCell>
+                          <TableCell className="font-bold text-primary-foreground">
+                            Rs.{topItems.reduce((a, i) => a + i.revenue, 0).toFixed(2)}
+                          </TableCell>
+                          <TableCell />
+                        </TableRow>
+                      </TableFooter>
+                    </Table>
+                  )}
                 </div>
-              )}
-            </div>
-          )}
-        </>
-      )}
+              </TabsContent>
+            </Tabs>
+          </>
+        )}
+      </div>
     </div>
   );
 };

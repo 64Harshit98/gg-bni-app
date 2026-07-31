@@ -60,7 +60,7 @@ const SuperAdminCompanies: React.FC = () => {
   // Access guard
   if (!currentUser || !SUPER_ADMIN_UIDS.includes(currentUser.uid)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+      <div className="min-h-screen flex items-center justify-center bg-muted">
         <div className="text-center">
           <div className="text-5xl mb-3">⛔</div>
           <p className="text-red-500 font-bold text-xl">ACCESS DENIED</p>
@@ -338,7 +338,7 @@ const SuperAdminCompanies: React.FC = () => {
     if (p.includes('platinum')) return 'bg-purple-100 text-purple-700';
     if (p.includes('gold')) return 'bg-yellow-100 text-yellow-700';
     if (p.includes('basic')) return 'bg-blue-100 text-blue-700';
-    return 'bg-gray-100 text-gray-500';
+    return 'bg-muted text-muted-foreground';
   };
 
   const toggleFilter = (f: FilterType) =>
@@ -347,16 +347,16 @@ const SuperAdminCompanies: React.FC = () => {
   if (loading) return <Loading />;
 
   return (
-    <div className="min-h-screen bg-gray-100 p-2 pb-16 md:p-6 md:pb-16 font-sans">
+    <div className="min-h-screen bg-muted p-2 pb-16 md:p-6 md:pb-16 font-sans">
 
       {/* ── HEADER ── */}
       <div className="flex items-center justify-between pb-3 border-b mb-4">
         <div className="w-8" />
-        <h1 className="flex-1 text-xl text-center font-bold text-gray-800 md:text-2xl">
+        <h1 className="flex-1 text-xl text-center font-bold text-foreground md:text-2xl">
           Super Admin
         </h1>
-        <button onClick={() => navigate(-1)} className="p-2 rounded-sm hover:bg-gray-200 transition-colors">
-          <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <button onClick={() => navigate(-1)} className="p-2 rounded-sm hover:bg-muted transition-colors">
+          <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
@@ -409,7 +409,7 @@ const SuperAdminCompanies: React.FC = () => {
 
       {/* ── COMPANY LIST ── */}
       {filteredCompanies.length === 0 ? (
-        <div className="text-center p-10 text-gray-400">No companies found.</div>
+        <div className="text-center p-10 text-muted-foreground">No companies found.</div>
       ) : (
         <div className="flex flex-col gap-3">
           {filteredCompanies.map((company) => {
@@ -421,18 +421,18 @@ const SuperAdminCompanies: React.FC = () => {
             return (
               <div
                 key={company.id}
-                className="bg-white rounded-sm shadow-sm border border-gray-100 transition-all hover:shadow-md overflow-hidden"
+                className="bg-card rounded-sm shadow-sm border border-border transition-all hover:shadow-md overflow-hidden"
               >
                 {/* ── Card row ── */}
                 <div
                   onClick={() => isEditing ? setEditingId(null) : startEdit(company)}
-                  className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer hover:bg-gray-50 transition-colors"
+                  className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer hover:bg-muted transition-colors"
                 >
 
                   {/* Left: info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <h3 className={`text-base font-bold ${company.name === 'Unknown (Phantom)' ? 'text-red-400 italic' : 'text-gray-800'}`}>
+                      <h3 className={`text-base font-bold ${company.name === 'Unknown (Phantom)' ? 'text-red-400 italic' : 'text-foreground'}`}>
                         {company.name}
                       </h3>
                       {/* Pack badge */}
@@ -445,7 +445,7 @@ const SuperAdminCompanies: React.FC = () => {
                         : getStatus(company) === 'near_expiry'
                           ? 'bg-orange-100 text-orange-500'
                           : getStatus(company) === 'trial'
-                            ? 'bg-gray-100 text-gray-500'
+                            ? 'bg-muted text-muted-foreground'
                             : 'bg-green-100 text-green-600'}`}>
                         {getStatus(company) === 'expired' ? 'inactive' : getStatus(company) === 'trial' ? 'trial' : 'active'}
                       </span>
@@ -457,17 +457,17 @@ const SuperAdminCompanies: React.FC = () => {
                       )}
                     </div>
 
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-muted-foreground">
                       Expires:{' '}
-                      <span className={`font-semibold ${soon ? 'text-orange-500' : 'text-gray-700'}`}>
-                        {expiryStr ?? <span className="italic text-gray-400">No Expiry</span>}
+                      <span className={`font-semibold ${soon ? 'text-orange-500' : 'text-foreground'}`}>
+                        {expiryStr ?? <span className="italic text-muted-foreground">No Expiry</span>}
                       </span>
                     </p>
-                    <p className="text-xs text-gray-400 font-mono mt-0.5 truncate">{company.id}</p>
+                    <p className="text-xs text-muted-foreground font-mono mt-0.5 truncate">{company.id}</p>
                   </div>
 
                   {/* Right: chevron toggle */}
-                  <div className="p-2 shrink-0 text-gray-400">
+                  <div className="p-2 shrink-0 text-muted-foreground">
                     <svg
                       className={`w-5 h-5 transition-transform duration-200 ${isEditing ? 'rotate-180' : ''}`}
                       fill="none" stroke="currentColor" viewBox="0 0 24 24"
@@ -479,29 +479,29 @@ const SuperAdminCompanies: React.FC = () => {
 
                 {/* ── Inline edit panel & Contact Details ── */}
                 {isEditing && (
-                  <div className="border-t border-gray-100 bg-gray-50 p-4">
+                  <div className="border-t border-border bg-muted p-4">
 
                     {/* Contact Info & Activity Section */}
-                    <div className="mb-5 p-3 bg-white border border-gray-200 rounded-sm shadow-sm">
-                      <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 border-b border-gray-100 pb-1">
+                    <div className="mb-5 p-3 bg-card border border-border rounded-sm shadow-sm">
+                      <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2 border-b border-border pb-1">
                         Owner Contact & Activity Details
                       </h4>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-4 text-sm">
                         <div className="flex flex-col">
-                          <span className="text-[10px] text-gray-400 font-bold uppercase">Owner Name</span>
-                          <span className="text-gray-800 font-medium">{company.ownerName || 'N/A'}</span>
+                          <span className="text-[10px] text-muted-foreground font-bold uppercase">Owner Name</span>
+                          <span className="text-foreground font-medium">{company.ownerName || 'N/A'}</span>
                         </div>
                         <div className="flex flex-col">
-                          <span className="text-[10px] text-gray-400 font-bold uppercase">Email</span>
+                          <span className="text-[10px] text-muted-foreground font-bold uppercase">Email</span>
                           <span className="text-blue-600 font-medium truncate">{company.email || 'N/A'}</span>
                         </div>
                         <div className="flex flex-col">
-                          <span className="text-[10px] text-gray-400 font-bold uppercase">Phone Number</span>
-                          <span className="text-gray-800 font-medium">{company.phone || 'N/A'}</span>
+                          <span className="text-[10px] text-muted-foreground font-bold uppercase">Phone Number</span>
+                          <span className="text-foreground font-medium">{company.phone || 'N/A'}</span>
                         </div>
                         <div className="flex flex-col">
-                          <span className="text-[10px] text-gray-400 font-bold uppercase">Account Created / Last Activity</span>
-                          <span className="text-gray-800 font-medium">{formatDateTime(company.lastLogin)}</span>
+                          <span className="text-[10px] text-muted-foreground font-bold uppercase">Account Created / Last Activity</span>
+                          <span className="text-foreground font-medium">{formatDateTime(company.lastLogin)}</span>
                         </div>
                       </div>
                     </div>
@@ -510,20 +510,20 @@ const SuperAdminCompanies: React.FC = () => {
 
                       {/* Plan */}
                       <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">
+                        <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1">
                           Plan
                         </label>
                         <div className="relative">
                           <select
                             value={editForm.pack}
                             onChange={e => setEditForm({ ...editForm, pack: e.target.value })}
-                            className="w-full text-sm font-semibold bg-white border border-gray-200 rounded-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+                            className="w-full text-sm font-semibold bg-card border border-border rounded-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
                           >
                             {Object.values(PLANS).map(p => (
                               <option key={p} value={p}>{p.toUpperCase()}</option>
                             ))}
                           </select>
-                          <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-400">
+                          <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-muted-foreground">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                             </svg>
@@ -533,19 +533,19 @@ const SuperAdminCompanies: React.FC = () => {
 
                       {/* Status */}
                       <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">
+                        <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1">
                           Status
                         </label>
                         <div className="relative">
                           <select
                             value={editForm.validity}
                             onChange={e => setEditForm({ ...editForm, validity: e.target.value as 'active' | 'inactive' })}
-                            className="w-full text-sm font-semibold bg-white border border-gray-200 rounded-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+                            className="w-full text-sm font-semibold bg-card border border-border rounded-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
                           >
                             <option value="active">ACTIVE</option>
                             <option value="inactive">INACTIVE</option>
                           </select>
-                          <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-400">
+                          <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-muted-foreground">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                             </svg>
@@ -555,16 +555,16 @@ const SuperAdminCompanies: React.FC = () => {
 
                       {/* Expiry date */}
                       <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">
+                        <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wide mb-1">
                           Expiry Date
                         </label>
                         <input
                           type="date"
                           value={editForm.expiryDate}
                           onChange={e => setEditForm({ ...editForm, expiryDate: e.target.value })}
-                          className="w-full text-sm bg-white border border-gray-200 rounded-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full text-sm bg-card border border-border rounded-sm px-3 py-2.5 outline-none focus:ring-2 focus:ring-blue-500"
                         />
-                        <p className="text-[10px] text-gray-400 mt-1">
+                        <p className="text-[10px] text-muted-foreground mt-1">
                           {editForm.expiryDate ? 'Custom date selected' : 'Empty = +28 days from today'}
                         </p>
                       </div>

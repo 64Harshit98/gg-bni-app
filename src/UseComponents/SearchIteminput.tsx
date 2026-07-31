@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import type { Item } from '../constants/models';
 import { FiSearch, FiX, FiBox } from 'react-icons/fi';
+import { Spinner } from '../Components/ui/spinner';
 
 interface SearchableItemInputProps {
     items: Item[];
@@ -202,7 +203,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
                             onClick={() => onCategoryChange(cat)}
                             className={`px-2.5 py-1 rounded-sm text-xs whitespace-nowrap border flex-shrink-0 transition ${selectedCategory === cat
                                 ? 'bg-blue-600 text-white border-blue-600'
-                                : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                                : 'bg-muted text-muted-foreground border-border hover:bg-muted'
                                 }`}
                         >
                             {cat === 'All' ? 'All' : itemGroupMap[cat] || cat}
@@ -212,7 +213,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
             )}
             {/* INPUT CONTAINER */}
             <div className="relative flex items-center">
-                <div className="absolute left-3 text-gray-400 pointer-events-none">
+                <div className="absolute left-3 text-muted-foreground pointer-events-none">
                     <FiSearch size={18} />
                 </div>
 
@@ -229,9 +230,9 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
                     onFocus={() => setIsDropdownOpen(true)}
                     onKeyDown={handleKeyDown}
                     placeholder={placeholder}
-                    className={`w-full pl-10 pr-10 py-3 bg-white border border-gray-300 rounded-sm shadow-sm 
+                    className={`w-full pl-10 pr-10 py-3 bg-card border border-border rounded-sm shadow-sm 
                                focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all 
-                               text-gray-800 placeholder-gray-400 font-medium
+                               text-foreground placeholder-gray-400 font-medium
                                ${error ? 'border-red-500 focus:border-red-500 focus:ring-red-100' : ''}`}
                     autoComplete="off"
                 />
@@ -239,7 +240,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
                 {searchQuery && (
                     <button
                         onClick={handleClear}
-                        className="absolute right-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 p-1 rounded-full transition-colors"
+                        className="absolute right-3 text-muted-foreground hover:text-muted-foreground hover:bg-muted p-1 rounded-full transition-colors"
                     >
                         <FiX size={16} />
                     </button>
@@ -250,12 +251,12 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
             {isDropdownOpen && searchQuery && (
                 <div
                     ref={listRef} // Attached Ref here for scrolling
-                    className="absolute top-full left-0 right-0 z-50 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl max-h-72 overflow-y-auto overflow-x-hidden scroll-smooth"
+                    className="absolute top-full left-0 right-0 z-50 mt-2 bg-card border border-border rounded-xl shadow-xl max-h-72 overflow-y-auto overflow-x-hidden scroll-smooth"
                 >
 
                     {isLoading ? (
-                        <div className="p-4 flex items-center justify-center text-gray-500 gap-2">
-                            <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                        <div className="p-4 flex items-center justify-center text-muted-foreground gap-2">
+                            <Spinner size="sm" className="text-blue-500" />
                             <span>Loading inventory...</span>
                         </div>
                     ) : error ? (
@@ -264,7 +265,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
                         <>
                             {filteredItems.length === 0 ? (
                                 <div className='flex flex-col'>
-                                    <div className="p-6 text-center text-gray-500 flex flex-col items-center">
+                                    <div className="p-6 text-center text-muted-foreground flex flex-col items-center">
                                         <FiBox size={24} className="mb-2 text-gray-300" />
                                         <span>No items found for "{searchQuery}"</span>
                                     </div>
@@ -274,7 +275,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
                                                 e.preventDefault(); // prevents input blur closing dropdown before click fires
                                                 onAddItem(searchQuery);
                                             }}
-                                            className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-blue-600 hover:bg-blue-50 border-t border-gray-100 transition-colors w-full"
+                                            className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-blue-600 hover:bg-blue-50 border-t border-border transition-colors w-full"
                                         >
                                             <span className="text-lg leading-none">+</span>
                                             Add new item "{searchQuery}"
@@ -294,24 +295,24 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
                                             onMouseEnter={() => setActiveIndex(index)}
                                             onClick={() => handleSelect(item)}
                                             className={`px-4 py-3 cursor-pointer border-b border-gray-50 last:border-0 transition-colors duration-150 flex justify-between items-center
-                                                ${isSelected ? 'bg-blue-100' : 'hover:bg-gray-50'}
+                                                ${isSelected ? 'bg-blue-100' : 'hover:bg-muted'}
                                             `}
                                         >
                                             {/* Left: Name & Barcode */}
                                             <div className="flex flex-col min-w-0 pr-4">
-                                                <span className="text-sm font-medium text-gray-800 truncate">
+                                                <span className="text-sm font-medium text-foreground truncate">
                                                     {item.name}
                                                 </span>
                                                 <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                                                     {item.barcode && (
-                                                        <span className="text-xs text-gray-400 font-mono">
+                                                        <span className="text-xs text-muted-foreground font-mono">
                                                             {item.barcode}
                                                         </span>
                                                     )}
                                                     {categoryName && (
                                                         <span className={`text-[10px] px-1.5 py-0.3 rounded font-medium ${categoryName.toLowerCase().includes(trimmedQ)
                                                             ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                                                            : 'bg-gray-100 text-gray-500'
+                                                            : 'bg-muted text-muted-foreground'
                                                             }`}>
                                                             {categoryName}
                                                         </span>
@@ -321,7 +322,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
 
                                             {/* Right: Price & Stock Badge */}
                                             <div className="flex flex-col items-end flex-shrink-0 gap-1">
-                                                <span className="text-sm font-bold text-gray-900">
+                                                <span className="text-sm font-bold text-foreground">
                                                     ₹{Number(item.mrp || item.salesPrice || 0).toFixed(2)}
                                                 </span>
                                                 <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${stockColor}`}>

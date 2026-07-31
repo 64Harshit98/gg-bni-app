@@ -57,25 +57,25 @@ const AgentSignup: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4 py-8">
-            <div className="bg-white p-6 md:p-8 rounded-sm shadow-lg w-full max-w-2xl max-h-[95vh] overflow-y-auto custom-scrollbar">
-                <h2 className="text-2xl md:text-3xl font-bold text-center mb-2 text-gray-900">Partner with Sellar</h2>
-                <p className="text-center text-gray-500 mb-6 text-sm md:text-base">Earn recurring commissions by referring businesses.</p>
+        <div className="min-h-screen flex items-center justify-center bg-muted p-4 py-8">
+            <div className="bg-card p-6 md:p-8 rounded-sm shadow-lg w-full max-w-2xl max-h-[95vh] overflow-y-auto custom-scrollbar">
+                <h2 className="text-2xl md:text-3xl font-bold text-center mb-2 text-foreground">Partner with Sellar</h2>
+                <p className="text-center text-muted-foreground mb-6 text-sm md:text-base">Earn recurring commissions by referring businesses.</p>
 
                 <form onSubmit={handleSubmit} className="space-y-5">
                     {/* Account Type Toggle */}
-                    <div className="flex bg-gray-100 p-1 rounded-sm mb-4">
+                    <div className="flex bg-muted p-1 rounded-sm mb-4">
                         <button
                             type="button"
                             onClick={() => setIsAgency(false)}
-                            className={`flex-1 py-2 text-sm font-bold rounded-sm transition-all ${!isAgency ? 'bg-white shadow-sm text-black' : 'text-gray-500 hover:text-black'}`}
+                            className={`flex-1 py-2 text-sm font-bold rounded-sm transition-all ${!isAgency ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                         >
                             Independent Agent
                         </button>
                         <button
                             type="button"
                             onClick={() => setIsAgency(true)}
-                            className={`flex-1 py-2 text-sm font-bold rounded-sm transition-all ${isAgency ? 'bg-white shadow-sm text-black' : 'text-gray-500 hover:text-black'}`}
+                            className={`flex-1 py-2 text-sm font-bold rounded-sm transition-all ${isAgency ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                         >
                             Agency (Business)
                         </button>
@@ -84,39 +84,39 @@ const AgentSignup: React.FC = () => {
                     {/* Basic Info - Uses Grid for Desktop side-by-side */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div className="relative [&_label]:!left-[3rem]">
-                            <FiUser className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
-                            <FloatingLabelInput id="name" label={isAgency ? "Agency/Business Name" : "Full Name"} value={name} onChange={(e) => setName(e.target.value)} required className="pl-12 py-3 bg-gray-50 rounded-sm w-full" />
+                            <FiUser className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground z-10" size={18} />
+                            <FloatingLabelInput id="name" label={isAgency ? "Agency/Business Name" : "Full Name"} value={name} onChange={(e) => setName(e.target.value)} required className="pl-12 py-3 bg-muted rounded-sm w-full" />
                         </div>
 
                         <div className="relative [&_label]:!left-[3rem]">
-                            <FiPhone className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
-                            <FloatingLabelInput id="phone" type="tel" label="Phone Number" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} required className="pl-12 py-3 bg-gray-50 rounded-sm w-full" />
+                            <FiPhone className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground z-10" size={18} />
+                            <FloatingLabelInput id="phone" type="tel" label="Phone Number" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} required className="pl-12 py-3 bg-muted rounded-sm w-full" />
                         </div>
                     </div>
 
                     <div className="relative [&_label]:!left-[3rem]">
-                        <FiMail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
-                        <FloatingLabelInput id="email" type="email" label="Email Address" value={email} onChange={(e) => setEmail(e.target.value)} required className="pl-12 py-3 bg-gray-50 rounded-sm w-full" />
+                        <FiMail className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground z-10" size={18} />
+                        <FloatingLabelInput id="email" type="email" label="Email Address" value={email} onChange={(e) => setEmail(e.target.value)} required className="pl-12 py-3 bg-muted rounded-sm w-full" />
                     </div>
 
                     <div className="relative [&_label]:!left-[3rem]">
-                        <FiMapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
-                        <FloatingLabelInput id="address" type="text" label={isAgency ? "Registered Business Address" : "Current Residence Address"} value={address} onChange={(e) => setAddress(e.target.value)} required className="pl-12 py-3 bg-gray-50 rounded-sm w-full" />
+                        <FiMapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground z-10" size={18} />
+                        <FloatingLabelInput id="address" type="text" label={isAgency ? "Registered Business Address" : "Current Residence Address"} value={address} onChange={(e) => setAddress(e.target.value)} required className="pl-12 py-3 bg-muted rounded-sm w-full" />
                     </div>
 
                     {/* --- IDENTITY VERIFICATION (ALWAYS VISIBLE) --- */}
-                    <div className="bg-gray-50 p-4 rounded-sm border border-gray-200 space-y-4 mt-2">
-                        <h4 className="text-sm font-bold text-gray-800 mb-2 border-b border-gray-200 pb-2">
+                    <div className="bg-muted p-4 rounded-sm border border-border space-y-4 mt-2">
+                        <h4 className="text-sm font-bold text-foreground mb-2 border-b border-border pb-2">
                             Identity Verification (Required)
                         </h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="relative [&_label]:!left-[3rem]">
-                                <FiCreditCard className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
-                                <FloatingLabelInput id="pan" type="text" label="PAN Card Number" value={panNumber} onChange={(e) => setPanNumber(e.target.value.toUpperCase())} required className="pl-12 py-3 bg-white rounded-sm uppercase w-full" />
+                                <FiCreditCard className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground z-10" size={18} />
+                                <FloatingLabelInput id="pan" type="text" label="PAN Card Number" value={panNumber} onChange={(e) => setPanNumber(e.target.value.toUpperCase())} required className="pl-12 py-3 bg-card rounded-sm uppercase w-full" />
                             </div>
                             <div className="relative [&_label]:!left-[3rem]">
-                                <FiCreditCard className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
-                                <FloatingLabelInput id="aadhaar" type="text" label="Aadhaar Card Number" value={aadhaarNumber} onChange={(e) => setAadhaarNumber(e.target.value)} required className="pl-12 py-3 bg-white rounded-sm w-full" />
+                                <FiCreditCard className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground z-10" size={18} />
+                                <FloatingLabelInput id="aadhaar" type="text" label="Aadhaar Card Number" value={aadhaarNumber} onChange={(e) => setAadhaarNumber(e.target.value)} required className="pl-12 py-3 bg-card rounded-sm w-full" />
                             </div>
                         </div>
                     </div>
@@ -131,20 +131,20 @@ const AgentSignup: React.FC = () => {
                                 <div className="relative [&_label]:!left-[3rem]">
                                     <FiFileText className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-400 z-10" size={18} />
                                     {/* Notice 'required' has been removed from here */}
-                                    <FloatingLabelInput id="gstin" type="text" label="GSTIN (Optional)" value={gstinNumber} onChange={(e) => setGstinNumber(e.target.value.toUpperCase())} className="pl-12 py-3 bg-white rounded-sm uppercase w-full border-blue-200 focus:border-blue-500 focus:ring-blue-500" />
+                                    <FloatingLabelInput id="gstin" type="text" label="GSTIN (Optional)" value={gstinNumber} onChange={(e) => setGstinNumber(e.target.value.toUpperCase())} className="pl-12 py-3 bg-card rounded-sm uppercase w-full border-blue-200 focus:border-blue-500 focus:ring-blue-500" />
                                 </div>
                                 <div className="relative [&_label]:!left-[3rem]">
                                     <FiFileText className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-400 z-10" size={18} />
                                     {/* Notice 'required' has been removed from here */}
-                                    <FloatingLabelInput id="msme" type="text" label="MSME Number (Optional)" value={msmeNumber} onChange={(e) => setMsmeNumber(e.target.value.toUpperCase())} className="pl-12 py-3 bg-white rounded-sm uppercase w-full border-blue-200 focus:border-blue-500 focus:ring-blue-500" />
+                                    <FloatingLabelInput id="msme" type="text" label="MSME Number (Optional)" value={msmeNumber} onChange={(e) => setMsmeNumber(e.target.value.toUpperCase())} className="pl-12 py-3 bg-card rounded-sm uppercase w-full border-blue-200 focus:border-blue-500 focus:ring-blue-500" />
                                 </div>
                             </div>
                         </div>
                     )}
 
                     <div className="relative [&_label]:!left-[3rem] mt-4">
-                        <FiLock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
-                        <FloatingLabelInput id="password" type="password" label="Create Password (min 6 chars)" value={password} onChange={(e) => setPassword(e.target.value)} required className="pl-12 py-3 bg-gray-50 rounded-sm w-full" />
+                        <FiLock className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground z-10" size={18} />
+                        <FloatingLabelInput id="password" type="password" label="Create Password (min 6 chars)" value={password} onChange={(e) => setPassword(e.target.value)} required className="pl-12 py-3 bg-muted rounded-sm w-full" />
                     </div>
 
                     {error && <p className="text-red-500 text-sm font-medium text-center bg-red-50 p-3 rounded-sm border border-red-100">{error}</p>}
@@ -154,7 +154,7 @@ const AgentSignup: React.FC = () => {
                     </CustomButton>
                 </form>
 
-                <p className="text-center mt-6 text-sm font-medium text-gray-600">
+                <p className="text-center mt-6 text-sm font-medium text-muted-foreground">
                     Already a partner? <Link to={ROUTES.LANDING} className="text-blue-600 hover:text-blue-800 hover:underline">Log In</Link>
                 </p>
             </div>

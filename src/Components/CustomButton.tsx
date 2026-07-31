@@ -16,11 +16,11 @@ const CustomButton = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
     const variantClasses = {
       [Variant.Outline]:
-        'bg-white text-black border border-black hover:bg-gray-100 border-2',
+        'bg-card text-foreground border border-black hover:bg-muted border-2',
       [Variant.Filled]:
         'bg-black text-white border border-black border-2 hover:bg-gray-800',
       [Variant.Transparent]:
-        'bg-white text-black border border-slate-300 hover:bg-gray-800 hover:text-white',
+        'bg-card text-foreground border border-border hover:bg-gray-800 hover:text-white',
       [Variant.Payment]:
         'bg-emerald-500 hover:bg-emerald-600 text-white font-semibold text-lg py-3 px-8 rounded-sm transition-colors',
       [Variant.Save]:

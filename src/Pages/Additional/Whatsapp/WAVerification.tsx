@@ -256,12 +256,12 @@ const WhatsAppVerification: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
+        <div className="min-h-screen bg-muted flex flex-col font-sans">
             {/* Stepper Header (Only visible when modal is NOT open) */}
             <div className="sticky top-0 z-40 w-full backdrop-blur-sm transition-all duration-300">
                 <div className="max-w-md mx-auto px-6 py-4">
                     <Stepper totalSteps={3} currentStep={3} onStepClick={handleGlobalStepClick} activeClassName="bg-emerald-600 text-white" completedClassName="bg-emerald-100 text-emerald-600" connectorClassName="bg-emerald-600" />
-                    <div className="flex justify-between text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-2 px-1">
+                    <div className="flex justify-between text-[10px] font-bold text-muted-foreground uppercase tracking-wider mt-2 px-1">
                         <span>Select Plan</span><span>Details</span><span className="text-emerald-600">Verification</span>
                     </div>
                 </div>
@@ -271,9 +271,9 @@ const WhatsAppVerification: React.FC = () => {
                 <TermsAgreementModal isOpen={showTerms} onAccept={handleTermsAccepted} />
 
                 {/* --- MAIN BACKGROUND CARD --- */}
-                <div className="max-w-md w-full bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden relative z-10">
-                    <div className="bg-white p-6 border-b border-gray-100 flex items-center justify-between">
-                        <h1 className="text-xl font-bold text-gray-800">WhatsApp Verification</h1>
+                <div className="max-w-md w-full bg-card rounded-xl shadow-lg border border-border overflow-hidden relative z-10">
+                    <div className="bg-card p-6 border-b border-border flex items-center justify-between">
+                        <h1 className="text-xl font-bold text-foreground">WhatsApp Verification</h1>
                         {internalStep !== 'SUCCESS' && (
                             <span className="text-xs font-mono bg-emerald-50 text-emerald-600 px-2 py-1 rounded">
                                 {internalStep === 'CREATE_SESSION' ? 'Step 1' : 'Step 2'}
@@ -296,12 +296,12 @@ const WhatsAppVerification: React.FC = () => {
                                     <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
                                         <FiSmartphone className="w-8 h-8" />
                                     </div>
-                                    <h3 className="text-gray-800 font-bold">Step 1: Initialize Session</h3>
-                                    <p className="text-gray-600 text-sm mt-1">Confirm your number to start a secure WhatsApp session.</p>
+                                    <h3 className="text-foreground font-bold">Step 1: Initialize Session</h3>
+                                    <p className="text-muted-foreground text-sm mt-1">Confirm your number to start a secure WhatsApp session.</p>
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">WhatsApp Number</label>
-                                    <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-lg font-medium outline-none focus:ring-2 focus:ring-blue-500" />
+                                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">WhatsApp Number</label>
+                                    <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full p-4 bg-muted border border-border rounded-lg text-lg font-medium outline-none focus:ring-2 focus:ring-blue-500" />
                                 </div>
                                 <button onClick={handleLinkNumber} disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-4 rounded-lg shadow-md flex items-center justify-center transition-all">
                                     {loading ? <FiRefreshCw className="animate-spin" /> : "Create Session"}
@@ -314,8 +314,8 @@ const WhatsAppVerification: React.FC = () => {
                                     <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
                                         <FiCheckCircle className="w-8 h-8" />
                                     </div>
-                                    <h3 className="text-gray-800 font-bold">Session Active!</h3>
-                                    <p className="text-gray-600 text-sm mt-1">Session created for <strong>{phone}</strong>.</p>
+                                    <h3 className="text-foreground font-bold">Session Active!</h3>
+                                    <p className="text-muted-foreground text-sm mt-1">Session created for <strong>{phone}</strong>.</p>
                                 </div>
                                 <button
                                     onClick={() => handleFetchQR(0)}
@@ -324,7 +324,7 @@ const WhatsAppVerification: React.FC = () => {
                                 >
                                     {loading ? <FiRefreshCw className="animate-spin mr-2" /> : <><FiCode className="mr-2" /> Get QR Code</>}
                                 </button>
-                                <button onClick={() => setInternalStep('CREATE_SESSION')} className="w-full text-xs text-gray-400 hover:text-gray-600">Back to Number</button>
+                                <button onClick={() => setInternalStep('CREATE_SESSION')} className="w-full text-xs text-muted-foreground hover:text-muted-foreground">Back to Number</button>
                             </div>
                         )}
                     </div>
@@ -334,7 +334,7 @@ const WhatsAppVerification: React.FC = () => {
             {/* --- FULL-SCREEN POPUP MODAL FOR QR SCANNING & SUCCESS --- */}
             {(internalStep === 'DISPLAY_QR' || internalStep === 'SUCCESS') && (
                 <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-gray-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                    <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-8 relative flex flex-col items-center animate-in zoom-in-95 duration-300">
+                    <div className="bg-card w-full max-w-sm rounded-2xl shadow-2xl p-8 relative flex flex-col items-center animate-in zoom-in-95 duration-300">
 
                         {/* --- MODAL CONTENT: DISPLAY QR --- */}
                         {internalStep === 'DISPLAY_QR' && (
@@ -342,8 +342,8 @@ const WhatsAppVerification: React.FC = () => {
                                 {isAuthenticating ? (
                                     <div className="py-12 flex flex-col items-center justify-center space-y-4">
                                         <FiRefreshCw className="animate-spin text-emerald-600 w-12 h-12" />
-                                        <h3 className="text-lg font-bold text-gray-800">Device Scanned!</h3>
-                                        <p className="text-sm text-gray-500 text-center">Logging in and securely syncing your chats...</p>
+                                        <h3 className="text-lg font-bold text-foreground">Device Scanned!</h3>
+                                        <p className="text-sm text-muted-foreground text-center">Logging in and securely syncing your chats...</p>
                                     </div>
                                 ) : (
                                     <>
@@ -351,11 +351,11 @@ const WhatsAppVerification: React.FC = () => {
                                             <FiCheckCircle className="mr-2" /> Ready to Scan
                                         </div>
                                         <div className="text-center space-y-1">
-                                            <h3 className="font-bold text-gray-800 text-lg">Scan to Link</h3>
-                                            <p className="text-xs text-gray-500">Open WhatsApp &gt; Settings &gt; Linked Devices &gt; Scan</p>
+                                            <h3 className="font-bold text-foreground text-lg">Scan to Link</h3>
+                                            <p className="text-xs text-muted-foreground">Open WhatsApp &gt; Settings &gt; Linked Devices &gt; Scan</p>
                                         </div>
                                         {qrCodeData && (
-                                            <div className="p-4 bg-white border-2 border-dashed border-gray-200 rounded-xl">
+                                            <div className="p-4 bg-card border-2 border-dashed border-border rounded-xl">
                                                 {qrCodeData.startsWith('data:image') ? (
                                                     <img src={qrCodeData} alt="WhatsApp QR Code" className="w-56 h-56 mx-auto object-contain" />
                                                 ) : (
@@ -363,11 +363,11 @@ const WhatsAppVerification: React.FC = () => {
                                                 )}
                                             </div>
                                         )}
-                                        <div className="flex flex-col items-center w-full bg-gray-50 p-3 rounded-lg">
-                                            <p className="text-xs text-gray-500 uppercase tracking-widest font-bold">
+                                        <div className="flex flex-col items-center w-full bg-muted p-3 rounded-lg">
+                                            <p className="text-xs text-muted-foreground uppercase tracking-widest font-bold">
                                                 QR Refreshes in <span className="text-emerald-600 text-sm">{timeLeft}s</span>
                                             </p>
-                                            <p className="text-[10px] text-gray-400 italic mt-1 text-center">
+                                            <p className="text-[10px] text-muted-foreground italic mt-1 text-center">
                                                 Keep this window open. It will automatically redirect when connected.
                                             </p>
                                         </div>
@@ -383,8 +383,8 @@ const WhatsAppVerification: React.FC = () => {
                                     <FiCheckCircle className="w-10 h-10" />
                                 </div>
                                 <div>
-                                    <h2 className="text-2xl font-bold text-gray-800">Connected!</h2>
-                                    <p className="text-gray-500 text-sm mt-1">Your WhatsApp account is securely linked.</p>
+                                    <h2 className="text-2xl font-bold text-foreground">Connected!</h2>
+                                    <p className="text-muted-foreground text-sm mt-1">Your WhatsApp account is securely linked.</p>
                                 </div>
                                 <svg ref={barcodeCanvasRef} className="w-full h-20"></svg>
                                 <button onClick={() => navigate(ROUTES.WHATSAPP_LANDING)} className="w-full bg-gray-900 text-white font-semibold py-4 rounded-lg hover:bg-black transition-all shadow-lg text-lg mt-4">

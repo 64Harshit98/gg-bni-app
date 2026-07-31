@@ -9,18 +9,21 @@ import { type SaleRecord } from './SalesReportComponents/salesReport.utils';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import XLSX from 'xlsx-js-style';
+import { IndianRupee, Package, Receipt, Search, TrendingUp, X } from 'lucide-react';
 
-import { CustomCard } from '../../Components/CustomCard';
-import { CardVariant, State } from '../../enums';
-import { CustomTable } from '../../Components/CustomTable';
+import { Spinner } from '../../Components/ui/spinner';
+import { Button } from '../../Components/ui/button';
+import { Input } from '../../Components/ui/input';
+import { StatCard } from '../../Components/ui/stat-card';
+import { State } from '../../enums';
 import BackButton from '../../Components/BackButton';
-import { IconClose, IconSearch } from '../../constants/Icons';
 import { getSalesColumns } from '../../constants/TableColoumns';
 import ReportDetails from './SalesReportComponents/ReportDetails';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
 import { useAuth } from '../../context/auth-context';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import { formatCurrency, formatNumber } from '../../utils/formatters';
 
 const SalesReport: React.FC = () => {
   const { currentUser } = useAuth();
@@ -617,11 +620,24 @@ const SalesReport: React.FC = () => {
 
   /* ---------- LOAD STATES ---------- */
   if (isLoading || authLoading)
-    return <div className="p-4 text-center">Loading...</div>;
-  if (error) return <div className="p-4 text-center text-red-500">{error}</div>;
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-muted p-10 text-muted-foreground">
+        <Spinner size="lg" />
+        <p className="text-sm font-medium">Loading sales report...</p>
+      </div>
+    );
+
+  if (error)
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-muted p-4">
+        <p className="rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-center text-sm font-medium text-destructive">
+          {error}
+        </p>
+      </div>
+    );
 
   return (
-    <div className="min-h-screen bg-gray-100 p-2 pb-16 md:p-6 md:pb-16">
+    <div className="aurora min-h-screen bg-muted pb-16">
       {feedbackModal.isOpen && (
         <Modal
           type={feedbackModal.type}
@@ -639,105 +655,117 @@ const SalesReport: React.FC = () => {
       />
 
       {/* HEADER */}
-      <div className="flex items-center justify-between pb-3 border-b mb-2 md:mb-4">
-        <BackButton />
-        <h1 className="flex-1 text-xl text-center font-bold text-gray-800 md:text-2xl">
-          Sales Report
-        </h1>
-        <button onClick={() => setShowSearch(true)} className="p-2">
-          <IconSearch />
-        </button>
-      </div>
+      <header className="glass sticky top-0 z-20 mx-3 mt-3 flex flex-col gap-3 rounded-2xl p-3 shadow-sm md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-3">
+          <BackButton />
+          <div className="rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.6_0.22_330)] p-[3px] shadow-sm shadow-primary/20">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-[13px] bg-gradient-brand text-white">
+              <Receipt className="size-4" />
+            </span>
+          </div>
+          <div>
+            <h1 className="text-lg font-bold tracking-tight text-foreground md:text-xl">
+              Sales <span className="text-gradient">Report</span>
+            </h1>
+            <p className="text-xs text-muted-foreground">Track revenue and customer transactions</p>
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={() => setShowSearch((v) => !v)}
+          aria-label="Search sales"
+        >
+          {showSearch ? <X className="size-4" /> : <Search className="size-4" />}
+        </Button>
+      </header>
 
-      {showSearch && (
-        <div className="flex justify-center mb-2 px-2">
-          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-[#F97316]">
-            <input
+      <main className="space-y-3 p-3 md:space-y-4 md:p-6">
+        {showSearch && (
+          <div className="glass flex items-center gap-2 rounded-2xl p-2">
+            <Input
               type="text"
-              placeholder="Search by Customer..."
-              className="flex-1 text-base font-light p-2 outline-none bg-transparent text-center"
+              placeholder="Search by customer name..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               autoFocus
+              className="border-none bg-transparent shadow-none focus-visible:ring-0"
             />
-            <button
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               onClick={() => {
                 setSearchQuery('');
                 setShowSearch(false);
               }}
-              className="p-1 text-gray-500 hover:text-black"
+              aria-label="Clear search"
             >
-              <IconClose />
-            </button>
+              <X className="size-4" />
+            </Button>
           </div>
+        )}
+
+        {/* FILTERS */}
+        <ReportDateFilter
+          datePreset={datePreset}
+          startDate={customStartDate}
+          endDate={customEndDate}
+          onPresetChange={handleDatePresetChange}
+          onStartDateChange={handleStartDateChange}
+          onEndDateChange={handleEndDateChange}
+          onApply={handleApplyFilters}
+        />
+
+        {/* SUMMARY */}
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <StatCard
+            label="Total Sales"
+            value={formatCurrency(summary.totalSales || 0)}
+            icon={<IndianRupee />}
+          />
+          <StatCard
+            label="Total Bills"
+            value={formatNumber(summary.totalTransactions)}
+            icon={<Receipt />}
+          />
+          <StatCard
+            label="Items Sold"
+            value={formatNumber(summary.totalItemsSold)}
+            icon={<Package />}
+          />
+          <StatCard
+            label="Avg Sale Value"
+            value={formatCurrency(summary.averageSaleValue || 0)}
+            icon={<TrendingUp />}
+          />
         </div>
-      )}
 
-      {/* FILTERS */}
-      <ReportDateFilter
-        datePreset={datePreset}
-        startDate={customStartDate}
-        endDate={customEndDate}
-        onPresetChange={handleDatePresetChange}
-        onStartDateChange={handleStartDateChange}
-        onEndDateChange={handleEndDateChange}
-        onApply={handleApplyFilters}
-      />
-
-      {/* SUMMARY — 2 cols on mobile, 4 cols on md+ */}
-      <div className="grid grid-cols-2 gap-2 mb-2 md:grid-cols-4 md:gap-4 md:mb-4">
-        <CustomCard
-          variant={CardVariant.Summary}
-          title="Total Sales"
-          value={`₹${Math.round(summary.totalSales).toLocaleString('en-IN')}`}
-        />
-        <CustomCard
-          variant={CardVariant.Summary}
-          title="Total Bills"
-          value={summary.totalTransactions.toString()}
-        />
-        <CustomCard
-          variant={CardVariant.Summary}
-          title="Items Sold"
-          value={summary.totalItemsSold.toString()}
-        />
-        <CustomCard
-          variant={CardVariant.Summary}
-          title="Avg Sale Value"
-          value={`₹${Math.round(summary.averageSaleValue).toLocaleString(
-            'en-IN',
-          )}`}
-        />
-      </div>
-
-      {/* REPORT DETAILS */}
-      <ReportDetails
-        downloadAsPdf={() => {
-          if (filteredSales.length === 0) {
-            setFeedbackModal({
-              isOpen: true,
-              type: State.INFO,
-              message: 'No data available to download.',
-            });
-          } else {
-            setIsDownloadModalOpen(true);
-          }
-        }}
-        filteredSales={filteredSales}
-        isListVisible={isListVisible}
-        setIsListVisible={setIsListVisible}
-      />
-
-      {isListVisible && (
-        <CustomTable<SaleRecord>
+        {/* REPORT DETAILS + TABLE */}
+        <ReportDetails<SaleRecord>
+          downloadAsPdf={() => {
+            if (filteredSales.length === 0) {
+              setFeedbackModal({
+                isOpen: true,
+                type: State.INFO,
+                message: 'No data available to download.',
+              });
+            } else {
+              setIsDownloadModalOpen(true);
+            }
+          }}
           data={filteredSales}
           columns={tableColumns}
           keyExtractor={(sale) => sale.id}
           sortConfig={sortConfig}
           onSort={handleSort}
-          emptyMessage="No sales found for the selected period."
+          isListVisible={isListVisible}
+          setIsListVisible={setIsListVisible}
+          emptyTitle="No sales found"
+          emptyDescription="No sales found for the selected period."
         />
-      )}
+      </main>
     </div>
   );
 };

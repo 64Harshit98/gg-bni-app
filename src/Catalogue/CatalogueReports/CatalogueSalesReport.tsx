@@ -18,6 +18,7 @@ import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
 import { IconSearch, IconClose } from '../../constants/Icons';
 import BackButton from '../../Components/BackButton';
+import { Spinner } from '../../Components/ui/spinner';
 import ReportDateFilter from '../../Components/ReportDateFilter';
 //import CataShowWrapper from '../../context/CataShowWrapper';
 //import { Cata_Permissions } from '../enum/cata_permissions.enum';
@@ -59,10 +60,10 @@ const formatDateForInput = (date: Date): string => {
 
 // --- Reusable Components (Unchanged) ---
 const SummaryCard: React.FC<{ title: string; value: string; note?: string }> = ({ title, value, note }) => (
-    <div className="bg-white p-4 rounded-sm shadow-md text-center">
-        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">{title}</h3>
-        <p className="text-2xl font-bold text-gray-900 mt-2">{value}</p>
-        {note && <p className="text-xs text-gray-400 mt-1">{note}</p>}
+    <div className="bg-card p-4 rounded-sm shadow-md text-center">
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">{title}</h3>
+        <p className="text-2xl font-bold text-foreground mt-2">{value}</p>
+        {note && <p className="text-xs text-muted-foreground mt-1">{note}</p>}
     </div>
 );
 
@@ -73,20 +74,20 @@ const RankCircle: React.FC<{ rank: number }> = ({ rank }) => (
 );
 
 const TopCustomersList: React.FC<{ customers: [string, number][] }> = ({ customers }) => (
-    <div className="bg-white p-6 rounded-sm shadow-md">
-        <h3 className="text-lg font-bold text-gray-800 mb-5">Top 5 Customers</h3>
+    <div className="bg-card p-6 rounded-sm shadow-md">
+        <h3 className="text-lg font-bold text-foreground mb-5">Top 5 Customers</h3>
         <div className="space-y-4">
             {customers.length > 0 ? customers.map(([name, total], index) => (
                 <div key={name} className="flex items-center justify-between">
                     <div className="flex items-center">
                         <RankCircle rank={index + 1} />
-                        <p className="font-medium text-gray-700">{name}</p>
+                        <p className="font-medium text-foreground">{name}</p>
                     </div>
-                    <div className="text-right font-semibold text-gray-800">
+                    <div className="text-right font-semibold text-foreground">
                         ₹{total.toLocaleString('en-IN')}
                     </div>
                 </div>
-            )) : <p className="text-sm text-center text-gray-500">No customer data for this period.</p>}
+            )) : <p className="text-sm text-center text-muted-foreground">No customer data for this period.</p>}
         </div>
     </div>
 );
@@ -100,24 +101,24 @@ const PaymentChart: React.FC<{ data: { [key: string]: number } }> = ({ data }) =
 
     if (visibleData.length === 0) {
         return (
-            <div className="bg-white p-6 rounded-sm shadow-md">
-                <h3 className="text-lg font-bold text-gray-800 mb-5">Payment Methods</h3>
-                <p className="text-sm text-center text-gray-500">No payment data for this period.</p>
+            <div className="bg-card p-6 rounded-sm shadow-md">
+                <h3 className="text-lg font-bold text-foreground mb-5">Payment Methods</h3>
+                <p className="text-sm text-center text-muted-foreground">No payment data for this period.</p>
             </div>
         );
     }
 
     return (
-        <div className="bg-white p-6 rounded-sm shadow-md">
-            <h3 className="text-lg font-bold text-gray-800 mb-5">Payment Methods</h3>
+        <div className="bg-card p-6 rounded-sm shadow-md">
+            <h3 className="text-lg font-bold text-foreground mb-5">Payment Methods</h3>
             <div className="space-y-4">
                 {visibleData.map(([method, value]) => (
                     <div key={method}>
                         <div className="flex justify-between items-center text-sm mb-1">
-                            <span className="font-medium text-gray-600">{method}</span>
-                            <span className="font-semibold text-gray-800">₹{value.toLocaleString('en-IN')}</span>
+                            <span className="font-medium text-muted-foreground">{method}</span>
+                            <span className="font-semibold text-foreground">₹{value.toLocaleString('en-IN')}</span>
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2.5">
+                        <div className="w-full bg-muted rounded-full h-2.5">
                             <div
                                 className="bg-[#F97316] h-2.5 rounded-full transition-all duration-500"
                                 style={{ width: `${(value / maxValue) * 100}%` }}
@@ -157,7 +158,7 @@ const SalesListTable: React.FC<{
                                 {directionIcon}
                             </span>
                         ) : (
-                            <span className="text-gray-400 text-[10px] inline-flex flex-col leading-[8px] opacity-60">
+                            <span className="text-muted-foreground text-[10px] inline-flex flex-col leading-[8px] opacity-60">
                                 <span>{ASC_ICON}</span>
                                 <span>{DESC_ICON}</span>
                             </span>
@@ -169,10 +170,10 @@ const SalesListTable: React.FC<{
     };
 
     return (
-        <div className="bg-white p-2 rounded-sm shadow-md mt-2">
+        <div className="bg-card p-2 rounded-sm shadow-md mt-2">
             <div className="max-h-96 overflow-y-auto">
                 <table className="w-full text-sm text-center">
-                    <thead className="text-xs text-slate-500 bg-slate-100 sticky top-0">
+                    <thead className="text-xs text-muted-foreground bg-muted sticky top-0">
                         <tr>
                             <SortableHeader sortKey="createdAt">Date</SortableHeader>
                             <SortableHeader sortKey="invoiceNumber">Order ID</SortableHeader> {/* Changed label */}
@@ -183,12 +184,12 @@ const SalesListTable: React.FC<{
                     </thead>
                     <tbody className="divide-y">
                         {sales.map(sale => (
-                            <tr key={sale.id} className="hover:bg-slate-50">
-                                <td className="py-2 px-3 text-slate-600">{formatDate(sale.createdAt)}</td>
-                                <td className="py-2 px-3 text-slate-600">{sale.invoiceNumber}</td> {/* Use invoiceNumber */}
+                            <tr key={sale.id} className="hover:bg-muted">
+                                <td className="py-2 px-3 text-muted-foreground">{formatDate(sale.createdAt)}</td>
+                                <td className="py-2 px-3 text-muted-foreground">{sale.invoiceNumber}</td> {/* Use invoiceNumber */}
                                 <td className="py-2 px-3 font-medium">{sale.partyName}</td>
-                                <td className="py-2 px-3 text-slate-600">{sale.items.reduce((sum, i) => sum + i.quantity, 0)}</td>
-                                <td className="py-2 px-3 text-slate-600">₹{sale.totalAmount.toLocaleString('en-IN')}</td>
+                                <td className="py-2 px-3 text-muted-foreground">{sale.items.reduce((sum, i) => sum + i.quantity, 0)}</td>
+                                <td className="py-2 px-3 text-muted-foreground">₹{sale.totalAmount.toLocaleString('en-IN')}</td>
                             </tr>
                         ))}
                     </tbody>
@@ -786,11 +787,16 @@ const OrdersReport: React.FC = () => {
         }
     };
 
-    if (isLoading || authLoading) return <div className="p-4 text-center">Loading...</div>;
+    if (isLoading || authLoading) return (
+        <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-muted-foreground">
+            <Spinner size="xl" />
+            <p className="text-sm font-medium">Loading...</p>
+        </div>
+    );
     if (error) return <div className="p-4 text-center text-red-500">{error}</div>;
 
     return (
-        <div className="min-h-screen bg-gray-100 p-2 pb-16">
+        <div className="min-h-screen bg-muted p-2 pb-16">
 
             {feedbackModal.isOpen && (
                 <Modal
@@ -812,7 +818,7 @@ const OrdersReport: React.FC = () => {
                 <BackButton />
 
                 {/* TITLE */}
-                <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
+                <h1 className="flex-1 text-xl text-center font-bold text-foreground">
                     Orders Report (Completed)
                 </h1>
 
@@ -828,7 +834,7 @@ const OrdersReport: React.FC = () => {
             {showSearch && (
                 <div className="flex justify-center mb-2 px-2">
 
-                    <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-[#F97316]">
+                    <div className="flex items-center w-full max-w-md border-b-2 border-border focus-within:border-[#F97316]">
 
                         {/* INPUT */}
                         <input
@@ -846,7 +852,7 @@ const OrdersReport: React.FC = () => {
                                 setSearchQuery('');
                                 setShowSearch(false);
                             }}
-                            className="p-1 text-gray-500 hover:text-black"
+                            className="p-1 text-muted-foreground hover:text-foreground"
                         >
                             <IconClose />
                         </button>
@@ -881,10 +887,10 @@ const OrdersReport: React.FC = () => {
                 <PaymentChart data={paymentModes} />
             </div>
 
-            <div className="bg-white p-4 rounded-sm shadow-md flex justify-between items-center">
-                <h2 className="text-lg font-semibold text-gray-700">Report Details</h2>
+            <div className="bg-card p-4 rounded-sm shadow-md flex justify-between items-center">
+                <h2 className="text-lg font-semibold text-foreground">Report Details</h2>
                 <div className="flex items-center space-x-3">
-                    <button onClick={() => setIsListVisible(!isListVisible)} className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-sm hover:bg-slate-300 transition">{isListVisible ? 'Hide List' : 'Show List'}</button>
+                    <button onClick={() => setIsListVisible(!isListVisible)} className="px-4 py-2 bg-muted text-foreground font-semibold rounded-sm hover:bg-slate-300 transition">{isListVisible ? 'Hide List' : 'Show List'}</button>
 
                     <button
                         onClick={() => {

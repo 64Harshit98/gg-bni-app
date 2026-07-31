@@ -15,7 +15,7 @@ export const RestockAlertsCard: React.FC = () => {
                 </CardTitle>
             </CardHeader>
             <CardContent>
-                <p className="text-sm text-gray-500 mb-4">
+                <p className="text-sm text-muted-foreground mb-4">
                     Check which items are below their minimum quantity threshold and need reordering.
                 </p>
 

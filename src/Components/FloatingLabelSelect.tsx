@@ -21,7 +21,7 @@ export const FloatingLabelSelect = React.forwardRef<
     <div className="relative">
       {icon && (
         // Icon is centered vertically
-        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10">
+        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10">
           {icon}
         </div>
       )}
@@ -44,7 +44,7 @@ export const FloatingLabelSelect = React.forwardRef<
           const val = typeof opt === 'string' ? opt : opt.value;
           const lbl = typeof opt === 'string' ? opt : opt.label;
           return (
-            <option key={val} value={val} className="text-black">
+            <option key={val} value={val} className="text-foreground">
               {lbl}
             </option>
           );
@@ -53,20 +53,20 @@ export const FloatingLabelSelect = React.forwardRef<
       <label
         htmlFor={inputId}
         className={cn(
-          'absolute pointer-events-none bg-white px-1 transition-all duration-200 ease-out origin-[0]',
+          'absolute pointer-events-none bg-card px-1 transition-all duration-200 ease-out origin-[0]',
           
           // --- LOGIC FIX START ---
           // When floated (hasValue or focus): Always reset left position to align with border
           // When inside (no value): If icon exists, push left to avoid overlap.
           
           hasValue 
-            ? '-top-2.5 left-3 scale-90 text-sm text-gray-600' 
+            ? '-top-2.5 left-3 scale-90 text-sm text-muted-foreground' 
             : icon 
-                ? 'top-4 left-10 text-base text-gray-600' // Push right if icon exists
-                : 'top-4 left-3 text-base text-gray-600',
+                ? 'top-4 left-10 text-base text-muted-foreground' // Push right if icon exists
+                : 'top-4 left-3 text-base text-muted-foreground',
 
           // Peer Focus State (Always float to top)
-          'peer-focus:-top-2.5 peer-focus:left-3 peer-focus:scale-90 peer-focus:text-sm peer-focus:text-gray-600'
+          'peer-focus:-top-2.5 peer-focus:left-3 peer-focus:scale-90 peer-focus:text-sm peer-focus:text-muted-foreground'
           // --- LOGIC FIX END ---
         )}
       >

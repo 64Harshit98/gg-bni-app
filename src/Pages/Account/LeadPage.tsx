@@ -221,11 +221,11 @@ function LeadsPage() {
     setActiveFilter(prev => (prev === f ? "all" : f));
 
   return (
-    <div className="min-h-screen bg-gray-100 p-4 md:p-8 pb-16">
+    <div className="min-h-screen bg-muted p-4 md:p-8 pb-16">
 
       {/* HEADER */}
       <div className="flex items-center justify-between pb-3 border-b mb-2">
-        <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
+        <h1 className="flex-1 text-xl text-center font-bold text-foreground">
           App Registration Leads
         </h1>
         <button onClick={() => navigate(-1)} className="p-2">
@@ -234,12 +234,12 @@ function LeadsPage() {
       </div>
 
       {/* DATE FILTER */}
-      <div className="bg-white p-4 rounded-sm shadow-md mb-2">
+      <div className="bg-card p-4 rounded-sm shadow-md mb-2">
         <div className="grid grid-cols-1 gap-3">
           <select
             value={datePreset}
             onChange={(e) => handleDatePresetChange(e.target.value)}
-            className="w-full p-2 text-sm bg-gray-50 border rounded-sm outline-none focus:ring-1 focus:ring-gray-400"
+            className="w-full p-2 text-sm bg-muted border rounded-sm outline-none focus:ring-1 focus:ring-gray-400"
           >
             <option value="today">Today</option>
             <option value="yesterday">Yesterday</option>
@@ -253,13 +253,13 @@ function LeadsPage() {
               type="date"
               value={customStartDate}
               onChange={(e) => { setCustomStartDate(e.target.value); setDatePreset("custom"); }}
-              className="w-full p-2 text-sm bg-gray-50 border rounded-sm outline-none focus:ring-1 focus:ring-gray-400"
+              className="w-full p-2 text-sm bg-muted border rounded-sm outline-none focus:ring-1 focus:ring-gray-400"
             />
             <input
               type="date"
               value={customEndDate}
               onChange={(e) => { setCustomEndDate(e.target.value); setDatePreset("custom"); }}
-              className="w-full p-2 text-sm bg-gray-50 border rounded-sm outline-none focus:ring-1 focus:ring-gray-400"
+              className="w-full p-2 text-sm bg-muted border rounded-sm outline-none focus:ring-1 focus:ring-gray-400"
             />
           </div>
         </div>
@@ -279,7 +279,7 @@ function LeadsPage() {
         <div
           onClick={() => toggleFilter("all" as FilterType)}
           className={`cursor-pointer rounded-sm transition-all border-2 ${activeFilter === "all"
-            ? "border-gray-600 bg-gray-100 shadow-md scale-105"
+            ? "border-gray-600 bg-muted shadow-md scale-105"
             : "border-transparent"
             }`}
         >
@@ -318,18 +318,18 @@ function LeadsPage() {
       </div>
 
       {/* SEARCH, SORTER & TABLE */}
-      <div className="bg-white p-4 rounded-sm shadow-md mb-2">
+      <div className="bg-card p-4 rounded-sm shadow-md mb-2">
         <div className="flex flex-col md:flex-row justify-between items-center gap-3 mb-4">
 
           {/* Main Search Bar */}
           <div className="relative w-full md:max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search by name, email, or phone..."
-              className="w-full pl-9 pr-4 py-2 text-sm bg-white border border-gray-200 rounded-sm shadow-sm focus:ring-1 focus:ring-gray-400 outline-none"
+              className="w-full pl-9 pr-4 py-2 text-sm bg-card border border-border rounded-sm shadow-sm focus:ring-1 focus:ring-gray-400 outline-none"
             />
           </div>
 
@@ -337,7 +337,7 @@ function LeadsPage() {
           <select
             value={sortOrder}
             onChange={(e) => setSortOrder(e.target.value as "newest" | "oldest")}
-            className="w-full md:w-auto p-2 text-sm bg-gray-50 border border-gray-200 rounded-sm outline-none cursor-pointer focus:ring-1 focus:ring-gray-400"
+            className="w-full md:w-auto p-2 text-sm bg-muted border border-border rounded-sm outline-none cursor-pointer focus:ring-1 focus:ring-gray-400"
           >
             <option value="newest">Newest First</option>
             <option value="oldest">Oldest First</option>
@@ -346,7 +346,7 @@ function LeadsPage() {
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[800px] text-sm">
-            <thead className="bg-gray-50 text-gray-600">
+            <thead className="bg-muted text-muted-foreground">
               <tr>
                 <th className="p-3 text-left">Name</th>
                 <th className="p-3 text-left">Phone</th>
@@ -360,22 +360,22 @@ function LeadsPage() {
             <tbody>
               {filteredLeads.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-6 text-center text-gray-400">No leads found.</td>
+                  <td colSpan={6} className="p-6 text-center text-muted-foreground">No leads found.</td>
                 </tr>
               ) : (
                 filteredLeads.map((lead) => (
-                  <tr key={lead.id} className="border-t hover:bg-gray-50 transition-colors">
+                  <tr key={lead.id} className="border-t hover:bg-muted transition-colors">
                     <td className="p-3">
-                      <p className="font-bold text-gray-800">{lead.fullName || "-"}</p>
-                      <p className="text-xs text-gray-500">{lead.email || "-"}</p>
+                      <p className="font-bold text-foreground">{lead.fullName || "-"}</p>
+                      <p className="text-xs text-muted-foreground">{lead.email || "-"}</p>
                     </td>
                     <td className="p-3 font-medium">{lead.phoneNumber || "-"}</td>
                     <td className="p-3">
-                      <span className="bg-gray-100 px-2 py-1 rounded-sm text-xs font-bold text-gray-600">
+                      <span className="bg-muted px-2 py-1 rounded-sm text-xs font-bold text-muted-foreground">
                         {lead.currentStep || "-"}
                       </span>
                     </td>
-                    <td className="p-3 text-gray-500">{formatDate(lead.lastUpdated)}</td>
+                    <td className="p-3 text-muted-foreground">{formatDate(lead.lastUpdated)}</td>
 
                     {/* Call Dispositions Dropdown */}
                     <td className="p-3">

@@ -138,18 +138,18 @@ export const TutorialStep: React.FC<Props> = ({
             const { top, left, placeBelow } = getTooltipStyle(rect);
             return (
               <div
-                className="fixed z-[9999] bg-white rounded-sm shadow-xl p-4 w-64"
+                className="fixed z-[9999] bg-card rounded-sm shadow-xl p-4 w-64"
                 style={{ top, left }}
               >
                 {!placeBelow ? (
-                  <div className={`absolute -bottom-2 ${computedArrowAlign === 'left' ? 'left-6' : 'right-6'} w-4 h-4 bg-white border-r border-b border-gray-100 rotate-45`} />
+                  <div className={`absolute -bottom-2 ${computedArrowAlign === 'left' ? 'left-6' : 'right-6'} w-4 h-4 bg-card border-r border-b border-border rotate-45`} />
                 ) : (
-                  <div className={`absolute -top-2 ${computedArrowAlign === 'left' ? 'left-6' : 'right-6'} w-4 h-4 bg-white border-l border-t border-gray-100 rotate-45`} />
+                  <div className={`absolute -top-2 ${computedArrowAlign === 'left' ? 'left-6' : 'right-6'} w-4 h-4 bg-card border-l border-t border-border rotate-45`} />
                 )}
 
-                <p className="text-sm font-medium text-gray-800 mb-3">{text}</p>
+                <p className="text-sm font-medium text-foreground mb-3">{text}</p>
                 <div className="flex justify-between items-center">
-                  <button onClick={onSkip} className="text-xs text-gray-400 hover:text-gray-600">
+                  <button onClick={onSkip} className="text-xs text-muted-foreground hover:text-muted-foreground">
                     Skip tour
                   </button>
                   <button

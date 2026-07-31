@@ -43,7 +43,7 @@ export const CustomTable = <T,>({
             {directionIcon}
           </span>
         ) : (
-          <span className="text-gray-400 hover:text-gray-600 text-xs inline-flex flex-col leading-3 opacity-50">
+          <span className="text-muted-foreground hover:text-muted-foreground text-xs inline-flex flex-col leading-3 opacity-50">
             <span>{ASC_ICON}</span>
             <span className="-mt-1">{DESC_ICON}</span>
           </span>
@@ -53,10 +53,10 @@ export const CustomTable = <T,>({
   };
 
   return (
-    <div className={cn('bg-white p-2 rounded-lg shadow-md mt-2', className)}>
+    <div className={cn('bg-card p-2 rounded-lg shadow-md mt-2', className)}>
       <div className="max-h-96 overflow-y-auto">
         <table className="w-full text-sm text-center border-collapse">
-          <thead className="text-xs text-slate-600 bg-slate-100 sticky top-0 z-10 shadow-sm ">
+          <thead className="text-xs text-muted-foreground bg-muted sticky top-0 z-10 shadow-sm ">
             <tr>
               {columns.map((col, index) => (
                 <th
@@ -69,7 +69,7 @@ export const CustomTable = <T,>({
                   {col.sortKey && onSort ? (
                     <button
                       onClick={() => onSort(col.sortKey!)}
-                      className="flex items-center justify-center gap-1 w-full hover:text-slate-700 transition-colors"
+                      className="flex items-center justify-center gap-1 w-full hover:text-foreground transition-colors"
                     >
                       {col.header}
                       {renderSortIcon(col.sortKey)}
@@ -81,17 +81,17 @@ export const CustomTable = <T,>({
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+          <tbody className="divide-y divide-border">
             {data.length > 0 ? (
               data.map((row) => (
                 <tr
                   key={keyExtractor(row)}
-                  className="hover:bg-slate-50 transition-colors"
+                  className="hover:bg-muted transition-colors"
                 >
                   {columns.map((col, index) => (
                     <td
                       key={index}
-                      className={cn('py-2 px-3 text-slate-700', col.className)}
+                      className={cn('py-2 px-3 text-foreground', col.className)}
                     >
                       {typeof col.accessor === 'function'
                         ? col.accessor(row)
@@ -104,7 +104,7 @@ export const CustomTable = <T,>({
               <tr>
                 <td
                   colSpan={columns.length}
-                  className="py-8 text-center text-gray-400"
+                  className="py-8 text-center text-muted-foreground"
                 >
                   {emptyMessage}
                 </td>

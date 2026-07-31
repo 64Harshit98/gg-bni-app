@@ -63,7 +63,7 @@ const CalcDisplay: React.FC<CalcDisplayProps> = ({
                 );
             })}
             <div
-                className="w-full text-right font-light text-gray-800 tracking-wide leading-snug"
+                className="w-full text-right font-light text-foreground tracking-wide leading-snug"
                 style={{ fontSize: 'clamp(2rem, 10vw, 3rem)' }}
             >
                 {currentLine || <span className="text-gray-300">0</span>}

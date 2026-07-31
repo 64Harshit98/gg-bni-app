@@ -50,7 +50,7 @@ const TermsAgreementModal: React.FC<TermsModalProps> = ({ isOpen, onAccept }) =>
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="bg-card rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
 
                 {/* Header */}
                 <div className="bg-orange-50 border-b border-orange-100 p-6 flex items-start gap-4 shrink-0">
@@ -58,8 +58,8 @@ const TermsAgreementModal: React.FC<TermsModalProps> = ({ isOpen, onAccept }) =>
                         <FiAlertTriangle className="w-6 h-6" />
                     </div>
                     <div>
-                        <h2 className="text-xl font-bold text-gray-900">User Agreement</h2>
-                        <p className="text-gray-600 text-sm mt-1">Please accept these terms to generate your WhatsApp QR Code.</p>
+                        <h2 className="text-xl font-bold text-foreground">User Agreement</h2>
+                        <p className="text-muted-foreground text-sm mt-1">Please accept these terms to generate your WhatsApp QR Code.</p>
                     </div>
                 </div>
 
@@ -96,7 +96,7 @@ const TermsAgreementModal: React.FC<TermsModalProps> = ({ isOpen, onAccept }) =>
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end shrink-0">
+                <div className="p-4 border-t border-border bg-muted flex justify-end shrink-0">
                     <button
                         onClick={handleAccept}
                         disabled={isSubmitting}
@@ -116,14 +116,14 @@ const TermsAgreementModal: React.FC<TermsModalProps> = ({ isOpen, onAccept }) =>
 };
 
 const TermItem: React.FC<{ number: number; title: string; children: React.ReactNode }> = ({ number, title, children }) => (
-    <div className="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors">
+    <div className="border border-border rounded-lg p-3 hover:bg-muted transition-colors">
         <div className="flex items-center gap-3 mb-1">
             <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-xs font-bold shrink-0">
                 {number}
             </div>
-            <h3 className="font-bold text-gray-800 text-sm">{title}</h3>
+            <h3 className="font-bold text-foreground text-sm">{title}</h3>
         </div>
-        <p className="text-gray-600 text-xs pl-8 leading-relaxed">
+        <p className="text-muted-foreground text-xs pl-8 leading-relaxed">
             {children}
         </p>
     </div>

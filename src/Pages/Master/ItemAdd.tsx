@@ -1,24 +1,31 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import type { ItemGroup } from '../../constants/models';
-import { CustomButton } from '../../Components';
-import { Variant, State } from '../../enums';
+import { State } from '../../enums';
 import XLSX from 'xlsx-js-style';
 import BarcodeScanner from '../../UseComponents/BarcodeScanner';
 import { useAuth, useDatabase } from '../../context/auth-context';
 import { Spinner } from '../../constants/Spinner';
 import { Modal } from '../../constants/Modal';
 import { useItemSettings } from '../../context/SettingsContext';
-import { IconScanCircle } from '../../constants/Icons';
 import { collection, query, where, getDocs, limit, doc, runTransaction, getDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import ExcelJS from 'exceljs';
 import { db, storage } from '../../lib/Firebase';
 import imageCompression from 'browser-image-compression';
-import ReactCrop, { type Crop, centerCrop, makeAspectCrop } from 'react-image-crop';
-import 'react-image-crop/dist/ReactCrop.css';
-import { InfoTooltip } from '../../Components/InfoToolTip';
-import { VariantPicker } from '../../Components/VariantPicker';
+import { type Crop, centerCrop, makeAspectCrop } from 'react-image-crop';
+import { Tag, X, CheckCircle2, AlertCircle, Layers } from 'lucide-react';
+import { ImageUploadCard } from './components/ImageUploadCard';
+import { BasicInfoSection } from './components/BasicInfoSection';
+import { PricingSection } from './components/PricingSection';
+import { InventorySection } from './components/InventorySection';
+import { VariantsSection } from './components/VariantsSection';
+import { BulkImportCard } from './components/BulkImportCard';
+import { StickyActionBar } from './components/StickyActionBar';
+import { CropImageModal } from './components/CropImageModal';
+import { ImportSettingsModal, type ImportMode } from './components/ImportSettingsModal';
+import { UploadProgressOverlay } from './components/UploadProgressOverlay';
+import { PageNavToggle } from './components/PageNavToggle';
 
 interface ItemAddProps {
   theme?: 'blue' | 'orange';
@@ -56,51 +63,13 @@ const formatImageUrl = (url: string | null | undefined): string | null => {
   return cleanUrl;
 };
 
-const UNIT_OPTIONS = [
-  { value: 'pcs', label: 'Pieces (1 pcs)' },
-  { value: 'box', label: 'Box(10 pcs)' },
-  { value: 'pkt', label: 'Packet (Custom)' },
-  { value: 'doz', label: 'Dozen (12 pcs)' },
-  { value: 'qt', label: 'Quintal(100 pcs)' },
-  { value: 'ton', label: 'Ton(1000 pcs)' },
-];
-
 const DRAFT_STORAGE_KEY = 'sellar_item_add_draft';
 
 const ItemAdd: React.FC<ItemAddProps> = ({
-  theme = 'blue',
   routes = { itemAdd: '/item-add', itemGroup: '/item-group' }
 }) => {
-  const themeStyles = {
-    blue: {
-      primaryBg: 'bg-blue-600',
-      primaryHover: 'hover:bg-blue-600',
-      text: 'text-blue-500',
-      textHover: 'hover:text-blue-700',
-      border: 'border-blue-500',
-      focusRing: 'focus:ring-blue-500',
-      panelBg: 'bg-blue-50',
-      panelBorder: 'border-blue-100',
-      panelHeader: 'text-blue-800',
-      panelSubText: 'text-blue-600',
-      panelBtn: 'text-blue-600 border-blue-200 hover:bg-blue-50',
-    },
-    orange: {
-      primaryBg: 'bg-[#F97316]',
-      primaryHover: 'hover:bg-[#ea580c]',
-      text: 'text-[#F97316]',
-      textHover: 'hover:text-[#c2410c]',
-      border: 'border-[#F97316]',
-      focusRing: 'focus:ring-[#F97316]',
-      panelBg: 'bg-[#F97316]/10',
-      panelBorder: 'border-[#F97316]/20',
-      panelHeader: 'text-[#ea580c]',
-      panelSubText: 'text-[#F97316]',
-      panelBtn: 'text-[#F97316] border-[#F97316]/20 hover:bg-[#F97316]/10',
-    }
-  };
-
-  const activeTheme = themeStyles[theme];
+  // NOTE: `theme` prop is retained on ItemAddProps for backward compatibility
+  // only. Styling is unified via design-system tokens regardless of theme.
   const navigate = useNavigate();
   const location = useLocation();
   const dbOperations = useDatabase();
@@ -990,459 +959,264 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     XLSX.writeFile(wb, 'Sellar_Items_Import_Template.xlsx');
   };
 
-  const reqClasses = " after:content-['*'] after:ml-0.5 after:text-red-500";
   if (pageIsLoading) return <Spinner />;
 
+  const addItemDisabled = isSaving || pageIsLoading || (loading && itemGroups.length === 0);
+
+  // --- Category handlers (moved out of inline JSX for the extracted BasicInfoSection) ---
+  const handlePrimaryCategoryChange = (value: string) => {
+    if (value === 'ADD_NEW_GROUP') { navigate(routes.itemGroup); return; }
+    setSelectedCategories(prev => {
+      const rest = prev.slice(1); // keep extra categories
+      return value ? [value, ...rest] : rest;
+    });
+  };
+
+  const handleAddCategory = (value: string) => {
+    if (!value) return;
+    if (value === 'ADD_NEW_GROUP') { navigate(routes.itemGroup); return; }
+    if (!selectedCategories.includes(value)) {
+      setSelectedCategories(prev => [...prev, value]);
+    }
+    setShowCategoryDropdown(false);
+  };
+
+  const handleRemoveCategory = (categoryId: string) => {
+    setSelectedCategories(prev => prev.filter(id => id !== categoryId));
+  };
+
+  // --- Unit handler (moved out of inline JSX for the extracted InventorySection) ---
+  const handleItemUnitChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setItemUnit(e.target.value);
+    if (e.target.value !== 'pkt') setPacketSize('');
+  };
+
+  // --- Image handlers (moved out of inline JSX for the extracted ImageUploadCard / CropImageModal) ---
+  const handleRemoveImage = () => {
+    setImageFile(null);
+    setImagePreview(null);
+    if (imageInputRef.current) imageInputRef.current.value = '';
+  };
+
+  const handleCropCancel = () => {
+    setShowCropModal(false);
+    pendingRawFile.current = null;
+    if (imageInputRef.current) imageInputRef.current.value = '';
+  };
+
+  const handleUseFullImage = async () => {
+    if (pendingRawFile.current) await applyCompression(pendingRawFile.current);
+    setShowCropModal(false);
+  };
+
+  // --- Bulk import modal handlers (moved out of inline JSX for the extracted ImportSettingsModal) ---
+  const handleCancelImport = () => {
+    setShowImportModal(false);
+    setPendingFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleToggleUpdateField = (key: string, value: boolean) => {
+    setUpdateFields(prev => ({ ...prev, [key]: value }));
+  };
+
   const renderHeader = () => (
-    <div className="fixed top-0 left-0 right-0 z-10 p-4 bg-gray-100 border-b border-gray-300 flex flex-col md:static md:flex-row md:justify-between md:items-center md:p-3 md:bg-white md:shadow-sm">
-      <h1 className="text-2xl font-bold text-gray-800 text-center mb-4 md:mb-0 md:text-left">
-        Add Item
-      </h1>
-      <div className="flex items-center justify-center gap-6">
-        <CustomButton variant={Variant.Transparent} onClick={() => navigate(routes.itemAdd)} active={isActive(routes.itemAdd)}>Add Item</CustomButton>
-        <CustomButton variant={Variant.Transparent} onClick={() => navigate(routes.itemGroup)} active={isActive(routes.itemGroup)}>Item Groups</CustomButton>
+    <div className="glass fixed top-0 left-0 right-0 z-10 mx-3 mt-3 flex flex-col gap-3 rounded-2xl p-3 shadow-sm md:static md:flex-row md:items-center md:justify-between">
+      <div className="flex items-center gap-3">
+        <div className="rounded-2xl bg-gradient-to-br from-primary to-[oklch(0.6_0.22_330)] p-[3px] shadow-sm shadow-primary/20">
+          <div className="bg-gradient-brand flex h-9 w-9 shrink-0 items-center justify-center rounded-[13px]">
+            <Tag className="size-4 text-white" />
+          </div>
+        </div>
+        <div>
+          <h1 className="text-lg font-bold tracking-tight text-foreground md:text-xl">Add Item</h1>
+          <p className="hidden text-xs text-muted-foreground md:block">Create a new product or bulk import your catalogue</p>
+        </div>
+      </div>
+      <div className="flex items-center justify-center gap-2">
+        <PageNavToggle
+          items={[
+            { key: 'add', label: 'Add Item', icon: <Tag className="size-3.5" />, path: routes.itemAdd },
+            { key: 'groups', label: 'Item Groups', icon: <Layers className="size-3.5" />, path: routes.itemGroup },
+          ]}
+          isActive={isActive}
+          onSelect={(path) => navigate(path)}
+        />
       </div>
     </div>
   );
 
   return (
-    <div className="flex flex-col h-screen w-full bg-gray-100 font-poppins text-gray-800 overflow-hidden relative">
+    <div className="aurora relative flex h-screen w-full flex-col overflow-hidden bg-muted font-poppins text-foreground">
       <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
       {uploadProgress && (
-        <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center">
-          <div className="bg-white p-8 rounded-sm shadow-xl w-80 text-center">
-            <h3 className="text-lg font-bold mb-4 text-gray-800">Uploading Items...</h3>
-            <div className="w-full bg-gray-200 rounded-sm h-4 mb-2 overflow-hidden">
-              <div
-                className={`${activeTheme.primaryBg} h-4 rounded-sm transition-all duration-100`}
-                style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
-              ></div>
-            </div>
-            <p className="text-sm text-gray-600 font-mono">
-              {uploadProgress.current} / {uploadProgress.total} processed
-            </p>
-          </div>
-        </div>
+        <UploadProgressOverlay current={uploadProgress.current} total={uploadProgress.total} />
       )}
+
       {showCropModal && rawImageSrc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6 flex flex-col gap-4">
-            <h2 className="text-lg font-bold text-gray-800">Crop Image</h2>
-            <p className="text-sm text-gray-500">Drag to select the area you want to keep. Click <strong>Use Full Image</strong> to skip cropping.</p>
-            <div className="flex justify-center max-h-[60vh] overflow-auto">
-              <ReactCrop
-                crop={crop}
-                onChange={(c) => setCrop(c)}
-                onComplete={(c) => setCompletedCrop(c)}
-                aspect={undefined}
-              >
-                <img
-                  ref={imgRef}
-                  src={rawImageSrc}
-                  alt="Crop preview"
-                  onLoad={handleImageLoaded}
-                  className="max-w-full object-contain"
-                />
-              </ReactCrop>
-            </div>
-            <div className="flex justify-end gap-3 mt-2">
-              <button
-                onClick={() => { setShowCropModal(false); pendingRawFile.current = null; if (imageInputRef.current) imageInputRef.current.value = ''; }}
-                className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-sm hover:bg-gray-200"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={async () => { if (pendingRawFile.current) await applyCompression(pendingRawFile.current); setShowCropModal(false); }}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-sm hover:bg-gray-300"
-              >
-                Use Full Image
-              </button>
-              <button
-                onClick={handleCropConfirm}
-                className={`px-6 py-2 text-sm font-bold text-white ${activeTheme.primaryBg} rounded-sm`}
-              >
-                Crop & Use
-              </button>
-            </div>
-          </div>
-        </div>
+        <CropImageModal
+          rawImageSrc={rawImageSrc}
+          crop={crop}
+          onCropChange={setCrop}
+          onCropComplete={setCompletedCrop}
+          imgRef={imgRef}
+          onImageLoaded={handleImageLoaded}
+          onCancel={handleCropCancel}
+          onUseFullImage={handleUseFullImage}
+          onCropConfirm={handleCropConfirm}
+        />
       )}
+
       {showImportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6 flex flex-col">
-            <h2 className="text-xl font-bold text-gray-800 mb-4">Bulk Import Settings</h2>
-
-            <div className="mb-6 space-y-3">
-              <label className="flex items-start gap-3 p-3 border rounded-md cursor-pointer hover:bg-gray-50 transition-colors">
-                <input type="radio" name="mode" className="mt-1 w-4 h-4 text-sky-500" checked={importMode === 'create_update'} onChange={() => setImportMode('create_update')} />
-                <div>
-                  <span className="block font-semibold text-gray-800">Add New & Update All</span>
-                  <span className="text-xs text-gray-500">Creates new items if they don't exist. Fully updates existing items.</span>
-                </div>
-              </label>
-
-              <label className="flex items-start gap-3 p-3 border rounded-md cursor-pointer hover:bg-gray-50 transition-colors">
-                <input type="radio" name="mode" className="mt-1 w-4 h-4 text-sky-500" checked={importMode === 'update_only'} onChange={() => setImportMode('update_only')} />
-                <div>
-                  <span className="block font-semibold text-gray-800">Update Existing Inventory Only</span>
-                  <span className="text-xs text-gray-500">Skips new items. Matches by Barcode or Name. Select which fields to update below.</span>
-                </div>
-              </label>
-            </div>
-
-            {importMode === 'update_only' && (
-              <div className="mb-6 bg-gray-50 p-4 rounded-md border border-gray-200">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">Fields to Update</h3>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  {Object.entries(updateFields).map(([key, value]) => (
-                    <label key={key} className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        className="rounded text-sky-500 focus:ring-sky-500"
-                        checked={value}
-                        onChange={(e) => setUpdateFields(prev => ({ ...prev, [key]: e.target.checked }))}
-                      />
-                      <span className="capitalize text-gray-700">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="flex justify-end gap-3 mt-auto">
-              <button onClick={() => { setShowImportModal(false); setPendingFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }} className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-sm hover:bg-gray-200">Cancel</button>
-              <button onClick={executeImport} className={`px-6 py-2 text-sm font-bold text-white ${activeTheme.primaryBg} rounded-sm hover:${activeTheme.primaryBg}`}>Start Import</button>
-            </div>
-          </div>
-        </div>
+        <ImportSettingsModal
+          importMode={importMode}
+          onImportModeChange={(mode: ImportMode) => setImportMode(mode)}
+          updateFields={updateFields}
+          onToggleUpdateField={handleToggleUpdateField}
+          onCancel={handleCancelImport}
+          onConfirm={executeImport}
+        />
       )}
 
       {renderHeader()}
 
-      <div className="flex-1 flex flex-col md:flex-row relative min-h-0">
+      <div className="relative flex min-h-0 flex-1 flex-col md:flex-row">
 
         {/* LEFT PANEL */}
-        <div className="flex-1 h-full overflow-y-auto w-full md:w-[65%] bg-gray-100 md:bg-gray-50 md:border-r border-gray-200 pt-24 pb-10 px-4 md:pt-6 md:px-6 md:pb-6">
+        <div className="h-full w-full flex-1 overflow-y-auto px-4 pb-10 pt-28 md:w-[65%] md:px-6 md:pb-6 md:pt-6">
 
-          {error && <div className="mb-4 text-center p-3 bg-red-100 text-red-700 rounded-sm">{error}</div>}
+          {error && (
+            <div className="mb-4 flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive animate-in fade-in-0 slide-in-from-top-1">
+              <AlertCircle className="size-4 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
 
-          <div className="md:hidden bg-white p-2 rounded-sm shadow-md mb-4 mt-4">
-            <div className="flex flex-col items-center justify-center mb-4">
-              <h2 className="text-lg font-semibold text-gray-700 mb-2">Bulk Import</h2>
-              <input type="file" ref={fileInputRef} onChange={handleFileSelected} className="hidden" accept=".xlsx, .xls, .csv" />
-              <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className={`w-full max-w-xs ${activeTheme.primaryBg} text-white py-2 px-4 rounded-sm ${activeTheme.primaryHover} disabled:bg-gray-400 flex items-center justify-center gap-2`}>
-                {isUploading ? <Spinner /> : 'Import from Excel'}
+          {success && (
+            <div
+              ref={successBannerRef}
+              className="mb-4 flex items-center justify-between gap-2 rounded-xl border border-success/30 bg-success/10 p-3 text-success animate-in fade-in-0 slide-in-from-top-1"
+            >
+              <span className="flex flex-1 items-center justify-center gap-2 text-sm font-medium">
+                <CheckCircle2 className="size-4 shrink-0" />
+                {success}
+              </span>
+              <button onClick={() => setSuccess(null)} className="shrink-0 leading-none text-success/70 hover:text-success">
+                <X className="size-4" />
               </button>
-              <button type="button" onClick={handleDownloadSample} disabled={isUploading} className={`w-full max-w-xs bg-white ${activeTheme.text} border ${activeTheme.border} py-2 px-4 rounded-sm mt-4 hover:bg-gray-50`}>
-                Download Sample
-              </button>
             </div>
-          </div>
+          )}
 
-          <div className="bg-white p-6 rounded-sm shadow-md md:mb-0 md:rounded-sm md:shadow-sm md:border md:border-gray-200 mb-10">
-            {success && (
-              <div ref={successBannerRef} className="mb-4 p-3 bg-green-100 text-green-700 rounded-sm flex items-center justify-between gap-2">
-                <span className="flex-1 text-center">{success}</span>
-                <button onClick={() => setSuccess(null)} className="text-green-600 hover:text-green-900 font-bold text-lg leading-none shrink-0">✕</button>
-              </div>
-            )}
+          <BulkImportCard
+            variant="compact"
+            isUploading={isUploading}
+            onUploadClick={() => fileInputRef.current?.click()}
+            onDownloadSample={handleDownloadSample}
+          />
+          <input type="file" ref={fileInputRef} onChange={handleFileSelected} className="hidden" accept=".xlsx, .xls, .csv" />
 
-            <h2 className="text-lg font-bold text-gray-800 mb-4 md:mb-6 md:border-b md:pb-2">Add a Single Item</h2>
-
-            <div className="mb-6 flex flex-col md:flex-row gap-4 items-start">
-              <div className="w-32 h-32 flex-shrink-0 border-2 border-dashed border-gray-300 rounded-lg overflow-hidden bg-gray-50 flex items-center justify-center relative cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => imageInputRef.current?.click()}>
-                {isImageCompressing ? (
-                  <div className="flex flex-col items-center"><Spinner /><span className="text-[10px] mt-2 text-gray-500">Compressing...</span></div>
-                ) : imagePreview ? (
-                  <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-xs text-gray-400 text-center px-2">Click to add<br />Image</span>
-                )}
-                <input type="file" accept="image/*" ref={imageInputRef} onChange={handleImageChange} className="hidden" />
-              </div>
-              <div className="flex-1 w-full space-y-2">
-                <div className="flex flex-col">
-                  <label className={`text-sm font-medium leading-none block ${itemSettings?.requireImage ? reqClasses : ''} mb-1`}>Or paste Image URL</label>
-                  <input type="text" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} disabled={!!imageFile} className={`w-full p-3 border border-gray-300 rounded-sm ${activeTheme.focusRing} outline-none disabled:bg-gray-100 disabled:text-gray-400`} placeholder="https://example.com/image.jpg" />
-                </div>
-                {imageFile && <button onClick={() => { setImageFile(null); setImagePreview(null); if (imageInputRef.current) imageInputRef.current.value = ''; }} className="text-xs text-red-500 hover:underline">Remove Selected Image</button>}
-              </div>
+          <div className="mt-4 space-y-6 md:mt-0">
+            <div className="rounded-2xl border border-border bg-card p-6 shadow-sm transition-shadow duration-200 hover:shadow-md">
+              <p className="mb-4 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">Product Image</p>
+              <ImageUploadCard
+                imagePreview={imagePreview}
+                isImageCompressing={isImageCompressing}
+                imageUrl={imageUrl}
+                imageFile={imageFile}
+                requireImage={itemSettings?.requireImage}
+                imageInputRef={imageInputRef}
+                onFileChange={handleImageChange}
+                onUrlChange={(e) => setImageUrl(e.target.value)}
+                onRemoveImage={handleRemoveImage}
+              />
             </div>
 
-            <div className="space-y-4">
+            <BasicInfoSection
+              itemName={itemName}
+              onItemNameChange={(e) => setItemName(e.target.value)}
+              itemBarcode={itemBarcode}
+              onItemBarcodeChange={(e) => setItemBarcode(e.target.value)}
+              requireBarcode={itemSettings?.requireBarcode}
+              onScanClick={() => setIsScannerOpen(true)}
+              itemGroups={itemGroups}
+              selectedCategories={selectedCategories}
+              requireCategory={itemSettings?.requireCategory}
+              showCategoryDropdown={showCategoryDropdown}
+              onToggleCategoryDropdown={setShowCategoryDropdown}
+              onPrimaryCategoryChange={handlePrimaryCategoryChange}
+              onAddCategory={handleAddCategory}
+              onRemoveCategory={handleRemoveCategory}
+            />
 
-              {/* --- Name Row (Full Width) --- */}
-              <div>
-                <div className="flex items-center mb-1">
-                  <label className="text-sm font-medium leading-none block after:content-['*'] after:ml-0.5 after:text-red-500 mr-2">Item Name</label>
-                  <InfoTooltip text="The name of the product being added." />
-                </div>
-                <input type="text" value={itemName} onChange={(e) => setItemName(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50" placeholder="e.g. Apple" />
-              </div>
+            <PricingSection
+              unitLabel={getUnitLabel()}
+              itemMRP={itemMRP}
+              onItemMRPChange={(e) => setItemMRP(e.target.value)}
+              itemSalesPrice={itemSalesPrice}
+              onItemSalesPriceChange={(e) => setItemSalesPrice(e.target.value)}
+              itemPurchasePrice={itemPurchasePrice}
+              onItemPurchasePriceChange={(e) => setItemPurchasePrice(e.target.value)}
+              requirePurchasePrice={itemSettings?.requirePurchasePrice}
+              itemDiscount={itemDiscount}
+              onItemDiscountChange={(e) => setItemDiscount(e.target.value)}
+              requireSaleDiscount={itemSettings?.requireSaleDiscount}
+              purchaseDiscount={PurchaseDiscount}
+              onPurchaseDiscountChange={(e) => setPurchaseDiscount(e.target.value)}
+              requirePurchaseDiscount={itemSettings?.requirePurchaseDiscount}
+              itemTax={itemTax}
+              onItemTaxChange={(e) => setItemTax(e.target.value)}
+              requireTax={itemSettings?.requireTax}
+              hsnCode={hsnCode}
+              onHsnCodeChange={(e) => setHsnCode(e.target.value)}
+              requireHsnCode={itemSettings?.requireHsnCode}
+            />
 
+            <InventorySection
+              itemAmount={itemAmount}
+              onItemAmountChange={(e) => setItemAmount(e.target.value)}
+              requireStock={itemSettings?.requireStock}
+              restockQuantity={restockQuantity}
+              onRestockQuantityChange={(e) => setRestockQuantity(e.target.value)}
+              requireRestockQuantity={itemSettings?.requireRestockQuantity}
+              moq={moq}
+              onMoqChange={(e) => setMoq(e.target.value)}
+              requireMoq={itemSettings?.requireMoq}
+              itemUnit={itemUnit}
+              onItemUnitChange={handleItemUnitChange}
+              requireUnit={itemSettings?.requireUnit}
+              packetSize={packetSize}
+              onPacketSizeChange={(e) => setPacketSize(e.target.value)}
+            />
 
-
-              {/* --- MRP & Category Row --- */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="flex items-center mb-1">
-                    <label className="text-sm font-medium leading-none block mr-2">{`MRP (${getUnitLabel()})`}</label>
-                    <InfoTooltip text="Maximum Retail Price printed on the product." />
-                  </div>
-                  <input type="number" value={itemMRP} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemMRP(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0.00" />
-                  <p className="text-[10px] text-gray-400 mt-1">Required if Sale Price is empty</p>
-                </div>
-                {/* --- Barcode --- */}
-                <div>
-                  <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requireBarcode ? reqClasses : ''} mr-2`}>Barcode</label>
-                    <InfoTooltip text="Unique identifier for scanning the product." />
-                  </div>
-                  <div className="flex gap-2">
-                    <input type="text" value={itemBarcode} onChange={(e) => setItemBarcode(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50" placeholder="Scan or Type" />
-                    <button type="button" onClick={() => setIsScannerOpen(true)} className="bg-gray-700 text-white px-4 rounded-sm flex items-center justify-center h-10"><IconScanCircle width={20} height={20} /></button>
-                  </div>
-                  <p className="text-[10px] text-gray-400 mt-1">This is the next available number. You can change it if needed.</p>
-                </div>
-
-              </div>
-
-              {/* --- Sales Price & Purchase Price Row --- */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="flex items-center mb-1">
-                    <label className="text-sm font-medium leading-none block after:content-['*'] after:text-red-500 mr-2">{`Sales Price (${getUnitLabel()})`}</label>
-                    <InfoTooltip text="The price you are selling this item for." />
-                  </div>
-                  <input type="number" value={itemSalesPrice} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemSalesPrice(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0.00" />
-                  <p className="text-[10px] text-gray-400 mt-1">Required if MRP is empty</p>
-                </div>
-                <div>
-                  <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requirePurchasePrice ? reqClasses : ''} mr-2`}>Purchase Price</label>
-                    <InfoTooltip text="The price you paid to acquire this item." />
-                  </div>
-                  <input type="number" value={itemPurchasePrice} onChange={(e) => setItemPurchasePrice(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0.00" />
-                </div>
-              </div>
-
-              {/* --- Sale Disc & Purchase Disc Row --- */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requireSaleDiscount ? reqClasses : ''} mr-2`}>Sale Disc (%)</label>
-                    <InfoTooltip text="Default discount percentage given to customers." />
-                  </div>
-                  <input type="number" value={itemDiscount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemDiscount(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0" />
-                </div>
-                <div>
-                  <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requirePurchaseDiscount ? reqClasses : ''} mr-2`}>Purchase Disc (%)</label>
-                    <InfoTooltip text="Discount percentage received from the supplier." />
-                  </div>
-                  <input type="number" value={PurchaseDiscount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setPurchaseDiscount(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0" />
-                </div>
-              </div>
-
-              {/* --- Tax & HSN Code Row --- */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requireTax ? reqClasses : ''} mr-2`}>Tax (%)</label>
-                    <InfoTooltip text="Applicable tax percentage for this item." />
-                  </div>
-                  <input type="number" value={itemTax} onChange={(e) => setItemTax(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0" />
-                </div>
-                <div>
-                  <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requireHsnCode ? reqClasses : ''} mr-2`}>HSN Code</label>
-                    <InfoTooltip text="Harmonized System Nomenclature code for taxation." />
-                  </div>
-                  <input type="text" value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="e.g. 123456" />
-                </div>
-              </div>
-
-              {/* --- Stock & Restock Level Row --- */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requireStock ? reqClasses : ''} mr-2`}>Stock</label>
-                    <InfoTooltip text="Current available quantity in your inventory." />
-                  </div>
-                  <input type="number" value={itemAmount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemAmount(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0" />
-                </div>
-                <div>
-                  <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requireRestockQuantity ? reqClasses : ''} mr-2`}>Restock Level</label>
-                    <InfoTooltip text="Minimum stock level to trigger a reorder alert." />
-                  </div>
-                  <input type="number" onWheel={(e) => (e.target as HTMLInputElement).blur()} value={restockQuantity} onChange={(e) => setRestockQuantity(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0" />
-                </div>
-              </div>
-
-              {/* --- MOQ & Unit Row --- */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requireMoq ? reqClasses : ''} mr-2`}>MOQ</label>
-                    <InfoTooltip text="Minimum Item Quantity to be ordered." />
-                  </div>
-                  <input type="number" value={moq} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setMoq(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="1" />
-                </div>
-                <div>
-                  <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium leading-none block ${(itemSettings as any)?.requireUnit ? reqClasses : ''} mr-2`}>Unit</label>
-                    <InfoTooltip text="Measurement unit (e.g., pieces, box, kg)." />
-                  </div>
-                  <div className="flex gap-2">
-                    <select value={itemUnit} onChange={(e) => { setItemUnit(e.target.value); if (e.target.value !== 'pkt') setPacketSize(''); }} className={`flex h-10 rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${itemUnit === 'pkt' ? 'w-1/2' : 'w-full'}`}>
-                      {UNIT_OPTIONS.filter(u => u.value !== '').map(unit => (<option key={unit.value} value={unit.value}>{unit.label}</option>))}
-                    </select>
-                    {itemUnit === 'pkt' && (<input type="number" value={packetSize} onChange={(e) => setPacketSize(e.target.value)} className="flex h-10 w-1/2 rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="Qty per pkt" min="1" />)}
-                  </div>
-                </div>
-              </div>
-              <div>
-                <div className="flex items-center mb-1">
-                  <label className={`text-sm font-medium text-gray-600 ${(itemSettings as any)?.requireCategory ? reqClasses : ''} mr-2`}>
-                    Category
-                  </label>
-                  <InfoTooltip text="Select a primary category. Add more as catalogue-only tags below." />
-                </div>
-
-                {/* Primary category dropdown — always visible */}
-                <select
-                  value={selectedCategories[0] || ''}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val === 'ADD_NEW_GROUP') { navigate(routes.itemGroup); return; }
-                    setSelectedCategories(prev => {
-                      const rest = prev.slice(1); // keep extra categories
-                      return val ? [val, ...rest] : rest;
-                    });
-                  }}
-                  className={`flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500`}
-                >
-                  <option value="">Select category</option>
-                  <option value="ADD_NEW_GROUP" className="font-semibold bg-gray-100">+ Add New Group</option>
-                  {itemGroups.map(g => (
-                    <option key={g.id} value={g.id!}>{g.name}</option>
-                  ))}
-                </select>
-
-                {/* Extra categories as "Catalogue only" chips */}
-                {selectedCategories.length > 1 && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {selectedCategories.slice(1).map((catId) => {
-                      const group = itemGroups.find(g => g.id === catId);
-                      if (!group) return null;
-                      return (
-                        <span key={catId} className={`inline-flex items-center gap-1 ${activeTheme.panelBg} border ${activeTheme.panelBorder} ${activeTheme.panelHeader} text-xs px-2 py-1 rounded-full`}>
-                          {group.name}
-                          <button
-                            type="button"
-                            onClick={() => setSelectedCategories(prev => prev.filter(id => id !== catId))}
-                            className={`ml-1 ${activeTheme.panelSubText} hover:text-red-500 font-bold leading-none`}
-                          >×</button>
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Add more category link */}
-                {!showCategoryDropdown ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowCategoryDropdown(true)}
-                    className={`mt-2 text-sm ${activeTheme.text} hover:underline`}
-                  >
-                    + Add more category
-                  </button>
-                ) : (
-                  <div className="mt-2 flex gap-2 items-center">
-                    <select
-                      defaultValue=""
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (!val) return;
-                        if (val === 'ADD_NEW_GROUP') { navigate(routes.itemGroup); return; }
-                        if (!selectedCategories.includes(val)) {
-                          setSelectedCategories(prev => [...prev, val]);
-                        }
-                        setShowCategoryDropdown(false);
-                      }}
-                      className={`flex-1 min-w-0 p-2 border border-gray-300 rounded-sm bg-white text-sm ${activeTheme.focusRing}`}
-                    >
-                      <option value="">Add more</option>
-                      <option value="ADD_NEW_GROUP" className="font-semibold bg-gray-100">+ Add New Group</option>
-                      {itemGroups
-                        .filter(g => !selectedCategories.includes(g.id!))
-                        .map(g => (<option key={g.id} value={g.id!}>{g.name}</option>))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => setShowCategoryDropdown(false)}
-                      className="text-xs text-gray-400 hover:text-gray-600"
-                    >Cancel</button>
-                  </div>
-                )}
-              </div>
-              {/* --- Variants --- */}
-              <div>
-                <div className="flex items-center mb-1">
-                  <label className="text-sm font-medium leading-none block mr-2">Variants</label>
-                  <InfoTooltip text="Link other items as variants (e.g. different sizes or colors)." />
-                </div>
-                <VariantPicker
-                  allItems={allItems}
-                  selectedIds={itemVariants}
-                  currentItemBarcode={itemBarcode}
-                  onChange={setItemVariants}
-                  activeTheme={activeTheme}
-                />
-              </div>
-            </div>
+            <VariantsSection
+              allItems={allItems}
+              itemVariants={itemVariants}
+              itemBarcode={itemBarcode}
+              onChange={setItemVariants}
+            />
           </div>
         </div>
 
         {/* RIGHT PANEL: Sticky Sidebar on Desktop */}
-        <div className="hidden md:flex w-[35%] flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
-          <div className="flex-1 p-6 flex flex-col">
-            <div className={`${activeTheme.panelBg} rounded-sm p-5 border ${activeTheme.panelBorder}`}>
-              <h2 className={`text-lg font-bold ${activeTheme.panelHeader} mb-2`}>Bulk Import</h2>
-              <p className={`text-sm ${activeTheme.panelSubText} mb-4`}>
-                Upload Excel/CSV. Missing categories created automatically. You can embed images into rows.
-              </p>
-              <div className="flex flex-col gap-3">
-                <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className={`w-full bg-white ${activeTheme.panelBtn} border py-3 px-4 rounded-sm font-semibold disabled:bg-gray-100 flex items-center justify-center gap-2 transition-colors`}>
-                  {isUploading ? <Spinner /> : 'Upload Excel File'}
-                </button>
-                <button type="button" onClick={handleDownloadSample} disabled={isUploading} className={`text-sm ${activeTheme.text} ${activeTheme.textHover} underline text-center`}>
-                  Download Sample Template
-                </button>
-              </div>
-            </div>
+        <div className="relative z-10 hidden h-full w-[35%] flex-col border-l border-border bg-card md:flex">
+          <div className="flex flex-1 flex-col p-6">
+            <BulkImportCard
+              variant="panel"
+              isUploading={isUploading}
+              onUploadClick={() => fileInputRef.current?.click()}
+              onDownloadSample={handleDownloadSample}
+            />
 
-            <div className="flex-grow"></div>
+            <div className="flex-grow" />
 
-            <div className="border-t border-gray-100 pb-10">
-              <button onClick={handleAddItem} disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)} className={`w-full ${activeTheme.primaryBg} text-white py-4 px-6 rounded-sm text-lg font-bold ${activeTheme.primaryHover} disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg transition-all active:scale-[0.98]`}>
-                {isSaving ? <Spinner /> : 'Add Item'}
-              </button>
-            </div>
+            <StickyActionBar variant="sidebar" isSaving={isSaving} disabled={addItemDisabled} onClick={handleAddItem} />
           </div>
         </div>
 
         {/* --- MOBILE FIXED FOOTER --- */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-transparent z-20 flex justify-center pb-20 pointer-events-none">
-          <button onClick={handleAddItem} disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)} className={`pointer-events-auto w-48 max-w-sm ${activeTheme.primaryBg} text-white py-3 px-6 rounded-sm text-lg font-semibold ${activeTheme.primaryHover} disabled:bg-gray-400 flex items-center justify-center gap-2 shadow-xl shadow-gray-400/50`}>
-            {isSaving ? <Spinner /> : 'Add Item'}
-          </button>
-        </div>
+        <StickyActionBar variant="mobile" isSaving={isSaving} disabled={addItemDisabled} onClick={handleAddItem} />
 
       </div>
     </div>

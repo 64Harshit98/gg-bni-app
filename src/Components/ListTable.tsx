@@ -49,7 +49,7 @@ export const SortableListTable = <T extends GenericRecord>({
                         {isSorted ? (
                             <span className="text-blue-600 text-xs">{directionIcon}</span>
                         ) : (
-                            <span className="text-gray-400 hover:text-gray-600 text-xs inline-flex flex-col leading-3">
+                            <span className="text-muted-foreground hover:text-muted-foreground text-xs inline-flex flex-col leading-3">
                                 <span>{ASC_ICON}</span>
                                 <span className="-mt-1">{DESC_ICON}</span>
                             </span>
@@ -61,9 +61,9 @@ export const SortableListTable = <T extends GenericRecord>({
     };
 
     return (
-        <div className="overflow-x-auto bg-white rounded-lg shadow">
-            <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+        <div className="overflow-x-auto bg-card rounded-lg shadow">
+            <table className="min-w-full divide-y divide-border">
+                <thead className="bg-muted">
                     <tr>
                         {/* Render Headers Dynamically */}
                         {headers.map(header => (
@@ -79,10 +79,10 @@ export const SortableListTable = <T extends GenericRecord>({
                         ))}
                     </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
+                <tbody className="divide-y divide-border">
                     {data.length === 0 ? (
                         <tr>
-                            <td colSpan={headers.length} className="py-4 text-center text-gray-500">
+                            <td colSpan={headers.length} className="py-4 text-center text-muted-foreground">
                                 No records found.
                             </td>
                         </tr>

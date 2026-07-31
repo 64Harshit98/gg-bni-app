@@ -1,17 +1,18 @@
 import { Suspense, useEffect, useRef, useState } from 'react'; // <-- Add useState
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'; // <-- Add useLocation
 import { Button } from '../Components/ui/button';
+import { Sidebar, type QuickAction } from '../Components/layout/Sidebar';
+import { Header } from '../Components/layout/Header';
 import { FloatingButton } from '../Components/FloatingButton';
 import { ROUTES } from '../constants/routes.constants';
 import { CatItems } from '../routes/CatalougeRoutes';
 import { useAuth } from '../context/auth-context';
-import sellarLogo from '../assets/sellar-logo-heading.png';
-import { Share2 } from "lucide-react"; // <-- Add Globe icon
+import { Share2, FilePlus2, PackagePlus, Undo2, Inbox, Receipt } from 'lucide-react';
 import { useOrderSound } from '../Catalogue/hooks/useOrderSound';
 import { useConfirmedOrdersCount } from '../Catalogue/hooks/useConfirmedOrdersCount';
 import GlobalCatalogueModal from '../Components/CatalogueShareCard';
 import { ExpenseModal } from '../Components/ExpenseModal';
-import { useExpenses } from '../Pages/Reports/ExpenseReport/useExpense';
+import { useExpenses } from '@/features/expenses';
 // Add Firebase imports for fetching the subdomain
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
@@ -20,6 +21,7 @@ import { ROLES } from '../enums';
 import ShopClosingReminderModal from '../Components/ShopClosingReminderModal';
 import ShowWrapper from '../context/ShowWrapper';
 import { Cata_Permissions } from '../Catalogue/enum/cata_permissions.enum';
+import { Spinner } from '../Components/ui/spinner';
 
 const CatalogueLayout = () => {
     const navigate = useNavigate();
@@ -104,12 +106,6 @@ const CatalogueLayout = () => {
         }
     }, [location.pathname]);
 
-    const sidebarLinkClass = (isActive: boolean) =>
-        `flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium transition-all ${isActive
-            ? 'bg-orange-50 text-[#F97316] shadow-sm border border-orange-100'
-            : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent'
-        }`;
-
     // 3. Pass the dynamic link into the Custom Event!
     const handleShare = () => {
         window.dispatchEvent(new CustomEvent("open-catalogue-share", {
@@ -117,12 +113,26 @@ const CatalogueLayout = () => {
         }));
     };
 
+    const navItems = CatItems.map((item) => ({
+        ...item,
+        badge: item.label === 'Orders' ? confirmedCount : undefined,
+    }));
+
+    const quickActions: QuickAction[] = [
+        { key: 'edit-catalog', to: `${ROUTES.CHOME}/${ROUTES.ORDER}`, icon: <FilePlus2 className="size-4" />, label: 'Edit Catalog', permission: Cata_Permissions.ViewShop },
+        { key: 'add-item', to: `${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`, icon: <PackagePlus className="size-4" />, label: 'Add Item', permission: Cata_Permissions.ManageItems },
+        { key: 'requests', to: `${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`, icon: <Inbox className="size-4" />, label: 'Requests', permission: Cata_Permissions.ViewCatalogueRequests },
+        { key: 'orders-return', to: `${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`, icon: <Undo2 className="size-4" />, label: 'Orders Return', permission: Cata_Permissions.ViewOrdersReturn },
+        { key: 'add-expense', icon: <Receipt className="size-4" />, label: 'Add Expense', permission: Cata_Permissions.ViewExpenseReport, onClick: () => setIsExpenseModalOpen(true) },
+        { key: 'share', icon: <Share2 className="size-4" />, label: 'Share', onClick: handleShare },
+    ];
+
     const MobileActions = () => (
         <>
             <ShowWrapper requiredPermission={Cata_Permissions.ViewShop}>
                 <Button
                     variant="outline"
-                    className="w-full mb-2 rounded bg-white"
+                    className="w-full mb-2 rounded bg-card"
                     onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ORDER}`)}
                 >
                     Edit Catalog
@@ -131,7 +141,7 @@ const CatalogueLayout = () => {
             <ShowWrapper requiredPermission={Cata_Permissions.ManageItems}>
                 <Button
                     variant="outline"
-                    className="w-full mb-2 rounded bg-white"
+                    className="w-full mb-2 rounded bg-card"
                     onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`)}
                 >
                     Add Item
@@ -140,7 +150,7 @@ const CatalogueLayout = () => {
             <ShowWrapper requiredPermission={Cata_Permissions.ViewOrdersReturn}>
                 <Button
                     variant="outline"
-                    className="w-full mb-2 rounded bg-white"
+                    className="w-full mb-2 rounded bg-card"
                     onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`)}
                 >
                     Orders Return
@@ -149,14 +159,14 @@ const CatalogueLayout = () => {
             <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueRequests}>
                 <Button
                     variant="outline"
-                    className="w-full mb-2 rounded bg-white"
+                    className="w-full mb-2 rounded bg-card"
                     onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`)}
                 >
                     Requests
                 </Button>
             </ShowWrapper>
             <ShowWrapper requiredPermission={Cata_Permissions.ViewExpenseReport}>
-                <Button variant="outline" className="w-full mb-2 rounded bg-white"
+                <Button variant="outline" className="w-full mb-2 rounded bg-card"
                     onClick={() => setIsExpenseModalOpen(true)}>
                     Add Expense
                 </Button>
@@ -165,7 +175,7 @@ const CatalogueLayout = () => {
     );
 
     return (
-        <div className="h-dvh w-screen flex flex-col md:flex-row overflow-hidden bg-gray-100">
+        <div className="aurora relative h-dvh w-screen flex flex-col md:flex-row overflow-hidden bg-background">
             {showReminder && shopSettings && (
                 <ShopClosingReminderModal
                     closeTime={shopSettings.closeTime}
@@ -174,104 +184,18 @@ const CatalogueLayout = () => {
                 />
             )}
             {/* --- DESKTOP SIDEBAR --- */}
-            <aside className="hidden md:flex flex-col w-48 bg-white border-r border-slate-200 h-full flex-shrink-0 z-20">
-                <div className="p-6 border-b border-slate-100">
-                    <img src={sellarLogo} alt="Sellar Logo" className="w-48" />
-                </div>
-
-                <nav className="flex-1 overflow-y-auto p-4 space-y-1">
-                    {/* MAIN NAV */}
-                    {CatItems.map(({ to, icon, label }) => (
-                        <NavLink
-                            key={to}
-                            to={to}
-                            end
-                            className={({ isActive }) => sidebarLinkClass(isActive)}
-                        >
-                            <span className="text-lg">{icon}</span>
-
-                            <div className="flex items-center justify-between w-full">
-                                <span>{label}</span>
-
-                                {label === "Orders" && confirmedCount > 0 && (
-                                    <span className="ml-2 px-2 py-[2px] text-[10px] font-bold bg-red-500 text-white rounded-full">
-                                        {confirmedCount}
-                                    </span>
-                                )}
-                            </div>
-                        </NavLink>
-                    ))}
-
-                    {/* QUICK ACTIONS */}
-                    <div className="pt-4 pb-2">
-                        <div className="border-t border-dashed border-slate-200" />
-                        <p className="px-4 pt-4 pb-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                            Quick Actions
-                        </p>
-                    </div>
-                    <ShowWrapper requiredPermission={Cata_Permissions.ViewShop}>
-                        <NavLink
-                            to={`${ROUTES.CHOME}/${ROUTES.ORDER}`}
-                            end
-                            className={({ isActive }) => sidebarLinkClass(isActive)}
-                        >
-                            <span className="text-lg">+</span>
-                            <span>Edit Catalog</span>
-                        </NavLink>
-                    </ShowWrapper>
-                    <ShowWrapper requiredPermission={Cata_Permissions.ManageItems}>
-                        <NavLink
-                            to={`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`}
-                            end
-                            className={({ isActive }) => sidebarLinkClass(isActive)}
-                        >
-                            <span className="text-lg">+</span>
-                            <span>Add Item</span>
-                        </NavLink>
-                    </ShowWrapper>
-                    <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueRequests}>
-                        <NavLink
-                            to={`${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`}
-                            end
-                            className={({ isActive }) => sidebarLinkClass(isActive)}
-                        >
-                            <span className="text-lg">+</span>
-                            <span>Requests</span>
-                        </NavLink>
-                    </ShowWrapper>
-                    <ShowWrapper requiredPermission={Cata_Permissions.ViewOrdersReturn}>
-                        <NavLink
-                            to={`${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`}
-                            end
-                            className={({ isActive }) => sidebarLinkClass(isActive)}
-                        >
-                            <span className="text-lg">+</span>
-                            <span>Orders Return</span>
-                        </NavLink>
-                    </ShowWrapper>
-                    <ShowWrapper requiredPermission={Cata_Permissions.ViewExpenseReport}>
-                        <button
-                            onClick={() => setIsExpenseModalOpen(true)}
-                            className={sidebarLinkClass(false)}
-                        >
-                            <span className="text-lg">+</span>
-                            <span>Add Expense</span>
-                        </button>
-                    </ShowWrapper>
-                    <button
-                        onClick={handleShare}
-                        className={sidebarLinkClass(false)} // same design, no active
-                    >
-                        <Share2 size={18} />
-                        <span>Share</span>
-                    </button>
-                </nav>
-            </aside>
+            <Sidebar
+                navItems={navItems}
+                quickActions={quickActions}
+                userName={currentUser?.name}
+                userRole={currentUser?.role}
+            />
 
             {/* --- MAIN CONTENT --- */}
             <main className="flex-1 relative flex flex-col min-w-0 overflow-hidden">
+                <Header navItems={navItems} userName={currentUser?.name} />
                 <div ref={scrollRef} className="flex-1 overflow-y-auto pb-20 md:pb-4 scroll-smooth">
-                    <Suspense fallback={<div>Loading...</div>}>
+                    <Suspense fallback={<div className="flex h-full w-full items-center justify-center"><Spinner size="xl" /></div>}>
                         <Outlet />
                     </Suspense>
                 </div>
@@ -280,7 +204,7 @@ const CatalogueLayout = () => {
                 <div className="md:hidden absolute bottom-36 right-4 z-50">
                     <button
                         onClick={handleShare}
-                        className="bg-white border border-gray-300 shadow-md rounded-full p-3"
+                        className="bg-card border border-border shadow-md rounded-full p-3"
                     >
                         <Share2 size={20} />
                     </button>
@@ -291,35 +215,27 @@ const CatalogueLayout = () => {
             </main>
 
             {/* --- MOBILE BOTTOM NAV --- */}
-            <nav className="md:hidden fixed bottom-0 left-0 w-full border-t border-slate-200 bg-white z-40">
-                <div className="flex justify-around items-center gap-2 px-2 pt-2 pb-3">
-                    {CatItems.map(({ to, icon, label }) => (
+            <nav className="glass md:hidden fixed bottom-3 left-3 right-3 z-40 rounded-2xl shadow-lg shadow-black/10">
+                <div className="flex justify-around items-center gap-1 px-2 py-2">
+                    {navItems.map(({ to, icon, label, badge }) => (
                         <NavLink
                             key={to}
                             to={to}
                             end
-                            className={({ isActive }) =>
-                                `flex-1 flex flex-row items-center justify-center gap-1 py-2 rounded-sm text-sm transition-colors border border-[rgba(0,0,0,0.15)] duration-200 min-w-0 ${isActive
-                                    ? 'bg-[#F97316] text-white'
-                                    : 'text-black-500 hover:bg-gray-100'
+                            className={({ isActive: active }) =>
+                                `relative flex-1 flex flex-col items-center justify-center gap-0.5 py-2 rounded-xl text-xs font-medium transition-all duration-200 min-w-0 ${active ? 'bg-gradient-brand text-white shadow-md shadow-primary/25' : 'text-muted-foreground hover:bg-accent'
                                 }`
                             }
                         >
-                            <div className="relative flex items-center gap-1">
-                                <div className="flex-shrink-0 relative">
-                                    {icon}
-
-                                    {label === "Orders" && confirmedCount > 0 && (
-                                        <span className="absolute -top-2 -right-2 min-w-[16px] h-[16px] px-1 flex items-center justify-center text-[9px] font-bold bg-red-500 text-white rounded-full">
-                                            {confirmedCount}
-                                        </span>
-                                    )}
-                                </div>
-
-                                <span className="font-medium truncate text-xs sm:text-sm">
-                                    {label}
-                                </span>
+                            <div className="relative flex-shrink-0 [&>svg]:size-5">
+                                {icon}
+                                {!!badge && (
+                                    <span className="absolute -top-1.5 -right-2.5 min-w-[16px] h-[16px] px-1 flex items-center justify-center text-[9px] font-bold bg-destructive text-destructive-foreground rounded-full">
+                                        {badge}
+                                    </span>
+                                )}
                             </div>
+                            <span className="truncate">{label}</span>
                         </NavLink>
                     ))}
                 </div>
@@ -329,7 +245,6 @@ const CatalogueLayout = () => {
                 isOpen={isExpenseModalOpen}
                 onClose={() => setIsExpenseModalOpen(false)}
                 onSave={data => addExpense(currentUser?.companyId!, data)}
-                theme="orange"
             />
         </div>
     );

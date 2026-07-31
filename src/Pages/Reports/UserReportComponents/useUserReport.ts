@@ -1,46 +1,15 @@
 import { useState, useEffect, useMemo } from 'react';
-import {
-  collection,
-  query,
-  getDocs,
-  doc,
-  getDoc,
-  orderBy,
-  Timestamp,
-} from 'firebase/firestore';
-import { db } from '../../../lib/Firebase';
 import { useAuth } from '../../../context/auth-context';
+import {
+  fetchAllSales,
+  fetchAttendanceForRange,
+  fetchStaffList,
+  type RawAttendance,
+  type RawSale,
+  type StaffMember,
+} from '../../../services/reports/userReport.service';
 
-// ─── Types ─────────────────────────────────────────────────────────────────────
-
-export interface StaffMember {
-  uid: string;
-  name: string;
-  role: string;
-}
-
-interface SaleItem {
-  quantity: number;
-  name?: string;
-  price?: number;
-  effectiveUnitPrice?: number;
-}
-
-interface RawSale {
-  id: string;
-  totalAmount: number;
-  paymentMethods: { cash?: number; upi?: number; card?: number };
-  createdAt: number; // millis
-  items: SaleItem[];
-  salesmanId?: string; // UID of the cashier who made the sale
-}
-
-interface RawAttendance {
-  status: 'Checked In' | 'Checked Out';
-  lastCheckInTime: number | null;
-  totalElapsedTime: number; // milliseconds (not seconds!)
-  log: { checkIn: number; checkOut: number | null }[];
-}
+export type { StaffMember } from '../../../services/reports/userReport.service';
 
 export interface UserReportSummary {
   // Sales
@@ -134,21 +103,10 @@ export default function useUserReport() {
   useEffect(() => {
     if (authLoading || !currentUser?.companyId) return;
 
-    const fetchStaff = async () => {
+    const loadStaff = async () => {
       setStaffLoading(true);
       try {
-        const snap = await getDocs(
-          collection(db, 'companies', currentUser.companyId, 'users'),
-        );
-        const list: StaffMember[] = snap.docs
-          .map((d) => ({
-            uid: d.id,
-            name: d.data().name || 'Unknown',
-            role: d.data().role || 'Salesman',
-          }))
-          // ── Exclude Owner from the dropdown — owners review staff, not themselves
-          .filter((u) => u.role !== 'Owner');
-
+        const list = await fetchStaffList(currentUser.companyId);
         setStaffList(list);
         // Default to first staff member
         setSelectedUserId(list[0]?.uid ?? '');
@@ -160,45 +118,24 @@ export default function useUserReport() {
       }
     };
 
-    fetchStaff();
+    loadStaff();
   }, [authLoading, currentUser]);
 
   // ── 2. Fetch all sales for company once ───────────────────────────────────
   useEffect(() => {
     if (authLoading || !currentUser?.companyId) return;
 
-    const fetchSales = async () => {
+    const loadSales = async () => {
       try {
-        const q = query(
-          collection(db, 'companies', currentUser.companyId, 'sales'),
-          orderBy('createdAt', 'desc'),
-        );
-        const snap = await getDocs(q);
-        const fetched: RawSale[] = snap.docs.map((d) => {
-          const data = d.data();
-          return {
-            id: d.id,
-            totalAmount: data.totalAmount || 0,
-            paymentMethods: data.paymentMethods || {},
-            createdAt:
-              data.createdAt instanceof Timestamp
-                ? data.createdAt.toMillis()
-                : Number(data.createdAt) || Date.now(),
-            items: data.items || [],
-            salesmanId: data.salesmanId || '',
-          };
-        });
+        const fetched = await fetchAllSales(currentUser.companyId);
         setAllSales(fetched);
-        // DEBUG — remove once data is confirmed correct
-        console.log('[useUserReport] total sales fetched:', fetched.length);
-        if (fetched[0]) console.log('[useUserReport] sample sale:', JSON.stringify(fetched[0]));
       } catch (e) {
         console.error('useUserReport: failed to fetch sales', e);
         setError('Failed to load sales data.');
       }
     };
 
-    fetchSales();
+    loadSales();
   }, [authLoading, currentUser]);
 
   // ── 3. Fetch attendance for selected user + applied date range ────────────
@@ -210,51 +147,16 @@ export default function useUserReport() {
     )
       return;
 
-    const fetchAttendance = async () => {
+    const loadAttendance = async () => {
       setDataLoading(true);
       try {
-        // Build list of all YYYY-MM-DD strings in the selected range
-        const dateStrings: string[] = [];
-        const cursor = new Date(appliedFilters.start);
-        const endDay = new Date(appliedFilters.end);
-        cursor.setHours(0, 0, 0, 0);
-        endDay.setHours(0, 0, 0, 0);
-
-        while (cursor <= endDay) {
-          // Use local date string to avoid UTC/IST midnight shift
-          const localDate = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
-          dateStrings.push(localDate);
-          cursor.setDate(cursor.getDate() + 1);
-        }
-
-        // Fetch all attendance docs for the range and merge logs
-        const snaps = await Promise.all(
-          dateStrings.map((dateStr) =>
-            getDoc(
-              doc(db, 'companies', currentUser.companyId, 'attendance', `${selectedUserId}_${dateStr}`)
-            )
-          )
+        const merged = await fetchAttendanceForRange(
+          currentUser.companyId,
+          selectedUserId,
+          appliedFilters.start,
+          appliedFilters.end,
         );
-
-        const merged: RawAttendance = {
-          status: 'Checked Out',
-          lastCheckInTime: null,
-          totalElapsedTime: 0,
-          log: [],
-        };
-
-        let foundAny = false;
-        snaps.forEach((snap) => {
-          if (!snap.exists()) return;
-          foundAny = true;
-          const d = snap.data() as RawAttendance;
-          merged.log.push(...(d.log ?? []));
-          merged.totalElapsedTime += d.totalElapsedTime || 0;
-          if (d.status === 'Checked In') merged.status = 'Checked In';
-          if (d.lastCheckInTime) merged.lastCheckInTime = d.lastCheckInTime;
-        });
-
-        setAttendance(foundAny ? merged : null);
+        setAttendance(merged);
       } catch (e) {
         console.error('useUserReport: failed to fetch attendance', e);
         setAttendance(null);
@@ -263,7 +165,7 @@ export default function useUserReport() {
       }
     };
 
-    fetchAttendance();
+    loadAttendance();
   }, [currentUser, selectedUserId, appliedFilters]);
 
   // ── 4. Compute summary from filtered sales + attendance ───────────────────

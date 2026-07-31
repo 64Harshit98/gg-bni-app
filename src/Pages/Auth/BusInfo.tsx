@@ -322,9 +322,9 @@ const BusinessInfoPage: React.FC = () => {
   };
   if (showLoadingScreen) return <RegistrationLoading />;
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-200">
+    <div className="flex h-screen overflow-hidden bg-muted">
       {/* Left visual (Figma style) */}
-      <div className="hidden lg:block w-1/2 relative overflow-hidden bg-gray-200">
+      <div className="hidden lg:block w-1/2 relative overflow-hidden bg-muted">
         <img
           src={bgMain}
           alt="Registration visual"
@@ -340,8 +340,8 @@ const BusinessInfoPage: React.FC = () => {
       </div>
 
       {/* Right content keeps your original sizing/font logic */}
-      <div className="flex flex-col h-screen overflow-hidden bg-white w-full lg:w-1/2">
-        <div className="flex-shrink-0 bg-white pt-4 pb-2 px-4 shadow-sm z-40 flex justify-center">
+      <div className="flex flex-col h-screen overflow-hidden bg-card w-full lg:w-1/2">
+        <div className="flex-shrink-0 bg-card pt-4 pb-2 px-4 shadow-sm z-40 flex justify-center">
           <div className="w-full max-w-xs">
             <Stepper totalSteps={2} currentStep={2} onStepClick={handleStepClick} />
           </div>
@@ -358,7 +358,7 @@ const BusinessInfoPage: React.FC = () => {
               Clear Form
             </button>
           </div>
-          <div className="bg-white p-3 space-y-2 pt-4 pb-10 w-[100%] mx-auto">
+          <div className="bg-card p-3 space-y-2 pt-4 pb-10 w-[100%] mx-auto">
             <form onSubmit={handleFinishSetup} className="flex flex-col space-y-4 min-h-full">
               {error && (
                 <div className="sticky top-0 z-50 bg-red-50 border border-red-200 text-red-600 text-sm text-center p-3 rounded-md font-medium shadow-sm">
@@ -366,8 +366,8 @@ const BusinessInfoPage: React.FC = () => {
                 </div>
               )}
               <div className="flex flex-col space-y-4">
-                <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
-                  <FiAtSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+                <div className="relative [&_label]:!left-[3rem] [&_label]:bg-card">
+                  <FiAtSign className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10 pointer-events-none" size={20} />
                   <FloatingLabelInput
                     id="businessName"
                     label="Business Name"
@@ -375,7 +375,7 @@ const BusinessInfoPage: React.FC = () => {
                     onChange={(e) => handleChange('businessName', e.target.value)
                     }
                     required
-                    className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
+                    className="pl-12 py-2.5 bg-card border border-[#7D7777A3] shadow-sm"
                   />
                 </div>
 
@@ -383,8 +383,8 @@ const BusinessInfoPage: React.FC = () => {
                   {/* Business Type */}
                   <div className={`${formData.businessType !== "Other" && formData.businessCategory !== "Other" ? "w-full" : ""}`}>
                     {formData.businessType !== "Other" && formData.businessCategory !== "Other" ? (
-                      <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
-                        <FiHome className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+                      <div className="relative [&_label]:!left-[3rem] [&_label]:bg-card">
+                        <FiHome className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10 pointer-events-none" size={20} />
                         <FloatingLabelSelect
                           id="businessType"
                           label="Business Type"
@@ -392,15 +392,15 @@ const BusinessInfoPage: React.FC = () => {
                           onChange={(e) => handleChange('businessType', e.target.value)}
                           options={businessTypeOptions}
                           required
-                          className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
+                          className="pl-12 py-2.5 bg-card border border-[#7D7777A3] shadow-sm"
                         />
                       </div>
                     ) : (
                       <div className={`w-full ${formData.businessType === "Other" ? "flex flex-col md:flex-row gap-4" : ""}`}>
                         {formData.businessType === "Other" ? (
                           <>
-                            <div className="relative w-full md:w-1/2 [&_label]:!left-[3rem] [&_label]:bg-white">
-                              <FiHome className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+                            <div className="relative w-full md:w-1/2 [&_label]:!left-[3rem] [&_label]:bg-card">
+                              <FiHome className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10 pointer-events-none" size={20} />
                               <FloatingLabelSelect
                                 id="businessType"
                                 label="Business Type"
@@ -408,25 +408,25 @@ const BusinessInfoPage: React.FC = () => {
                                 onChange={(e) => handleChange('businessType', e.target.value)}
                                 options={businessTypeOptions}
                                 required
-                                className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
+                                className="pl-12 py-2.5 bg-card border border-[#7D7777A3] shadow-sm"
                               />
                             </div>
 
-                            <div className="relative w-full md:w-1/2 [&_label]:!left-[3rem] [&_label]:bg-white">
-                              <FiHome className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+                            <div className="relative w-full md:w-1/2 [&_label]:!left-[3rem] [&_label]:bg-card">
+                              <FiHome className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10 pointer-events-none" size={20} />
                               <FloatingLabelInput
                                 id="customBusinessType"
                                 label="Specify Business Type"
                                 value={formData.customBusinessType}
                                 onChange={(e) => handleChange('customBusinessType', e.target.value)}
                                 required
-                                className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
+                                className="pl-12 py-2.5 bg-card border border-[#7D7777A3] shadow-sm"
                               />
                             </div>
                           </>
                         ) : (
-                          <div className="relative w-full [&_label]:!left-[3rem] [&_label]:bg-white">
-                            <FiHome className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+                          <div className="relative w-full [&_label]:!left-[3rem] [&_label]:bg-card">
+                            <FiHome className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10 pointer-events-none" size={20} />
                             <FloatingLabelSelect
                               id="businessType"
                               label="Business Type"
@@ -434,7 +434,7 @@ const BusinessInfoPage: React.FC = () => {
                               onChange={(e) => handleChange('businessType', e.target.value)}
                               options={businessTypeOptions}
                               required
-                              className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
+                              className="pl-12 py-2.5 bg-card border border-[#7D7777A3] shadow-sm"
                             />
                           </div>
                         )}
@@ -445,8 +445,8 @@ const BusinessInfoPage: React.FC = () => {
                   {/* Category */}
                   <div className={`${formData.businessType !== "Other" && formData.businessCategory !== "Other" ? "w-full" : "flex flex-col md:flex-row gap-4 w-full"}`}>
                     {formData.businessType !== "Other" && formData.businessCategory !== "Other" ? (
-                      <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
-                        <FiTag className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+                      <div className="relative [&_label]:!left-[3rem] [&_label]:bg-card">
+                        <FiTag className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10 pointer-events-none" size={20} />
                         <FloatingLabelSelect
                           id="businessCategory"
                           label="Category"
@@ -454,13 +454,13 @@ const BusinessInfoPage: React.FC = () => {
                           onChange={(e) => handleChange('businessCategory', e.target.value)}
                           options={businessCategoryOptions}
                           required
-                          className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
+                          className="pl-12 py-2.5 bg-card border border-[#7D7777A3] shadow-sm"
                         />
                       </div>
                     ) : (
                       <div className="flex flex-col md:flex-row gap-4 w-full">
-                        <div className={`relative [&_label]:!left-[3rem] [&_label]:bg-white ${formData.businessCategory === "Other" ? "w-full md:w-1/2" : "flex-1"}`}>
-                          <FiTag className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+                        <div className={`relative [&_label]:!left-[3rem] [&_label]:bg-card ${formData.businessCategory === "Other" ? "w-full md:w-1/2" : "flex-1"}`}>
+                          <FiTag className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10 pointer-events-none" size={20} />
                           <FloatingLabelSelect
                             id="businessCategory"
                             label="Category"
@@ -468,19 +468,19 @@ const BusinessInfoPage: React.FC = () => {
                             onChange={(e) => handleChange('businessCategory', e.target.value)}
                             options={businessCategoryOptions}
                             required
-                            className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
+                            className="pl-12 py-2.5 bg-card border border-[#7D7777A3] shadow-sm"
                           />
                         </div>
                         {formData.businessCategory === "Other" && (
-                          <div className="relative w-full md:w-1/2 [&_label]:!left-[3rem] [&_label]:bg-white">
-                            <FiTag className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+                          <div className="relative w-full md:w-1/2 [&_label]:!left-[3rem] [&_label]:bg-card">
+                            <FiTag className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10 pointer-events-none" size={20} />
                             <FloatingLabelInput
                               id="customBusinessCategory"
                               label="Specify Category"
                               value={formData.customBusinessCategory}
                               onChange={(e) => handleChange('customBusinessCategory', e.target.value)}
                               required
-                              className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
+                              className="pl-12 py-2.5 bg-card border border-[#7D7777A3] shadow-sm"
                             />
                           </div>
                         )}
@@ -490,8 +490,8 @@ const BusinessInfoPage: React.FC = () => {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
-                    <Scale className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+                  <div className="relative [&_label]:!left-[3rem] [&_label]:bg-card">
+                    <Scale className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10 pointer-events-none" size={20} />
                     <FloatingLabelSelect
                       id="gstType"
                       label="GST Registration Type"
@@ -499,12 +499,12 @@ const BusinessInfoPage: React.FC = () => {
                       onChange={(e) => handleChange('gstType', e.target.value)}
                       options={gstTypeOptions}
                       required
-                      className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
+                      className="pl-12 py-2.5 bg-card border border-[#7D7777A3] shadow-sm"
                     />
                   </div>
 
-                  <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
-                    <FiHash className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+                  <div className="relative [&_label]:!left-[3rem] [&_label]:bg-card">
+                    <FiHash className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10 pointer-events-none" size={20} />
                     <FloatingLabelInput
                       id="gstin"
                       label="GSTIN Number"
@@ -514,38 +514,38 @@ const BusinessInfoPage: React.FC = () => {
                       }}
                       required={formData.gstType.startsWith("Regular") || formData.gstType === "Composite"}
                       disabled={formData.gstType === "NA"}
-                      className={`pl-12 py-2.5 border border-[#7D7777A3] shadow-sm bg-white ${formData.gstType === "NA" ? "cursor-not-allowed" : ""
+                      className={`pl-12 py-2.5 border border-[#7D7777A3] shadow-sm bg-card ${formData.gstType === "NA" ? "cursor-not-allowed" : ""
                         }`}
                     />
                   </div>
                 </div>
 
-                <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
-                  <Building2Icon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+                <div className="relative [&_label]:!left-[3rem] [&_label]:bg-card">
+                  <Building2Icon className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10 pointer-events-none" size={20} />
                   <FloatingLabelInput
                     id="streetAddress"
                     label="Street Address / Area"
                     value={formData.streetAddress}
                     onChange={(e) => handleChange('streetAddress', e.target.value)}
                     required
-                    className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
+                    className="pl-12 py-2.5 bg-card border border-[#7D7777A3] shadow-sm"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
-                    <FiMapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+                  <div className="relative [&_label]:!left-[3rem] [&_label]:bg-card">
+                    <FiMapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10 pointer-events-none" size={20} />
                     <FloatingLabelInput
                       id="city"
                       label="City"
                       value={formData.city}
                       onChange={(e) => handleChange('city', e.target.value)}
                       required
-                      className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
+                      className="pl-12 py-2.5 bg-card border border-[#7D7777A3] shadow-sm"
                     />
                   </div>
-                  <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
-                    <PinIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+                  <div className="relative [&_label]:!left-[3rem] [&_label]:bg-card">
+                    <PinIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10 pointer-events-none" size={20} />
                     <FloatingLabelInput
                       id="postalCode"
                       label="Pincode"
@@ -557,13 +557,13 @@ const BusinessInfoPage: React.FC = () => {
                         if (digits.length <= 6) handleChange('postalCode', digits);
                       }}
                       required
-                      className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
+                      className="pl-12 py-2.5 bg-card border border-[#7D7777A3] shadow-sm"
                     />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="relative [&_label]:!left-[3rem] [&_label]:bg-white">
-                    <FiMap className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+                  <div className="relative [&_label]:!left-[3rem] [&_label]:bg-card">
+                    <FiMap className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10 pointer-events-none" size={20} />
                     <FloatingLabelSelect
                       id="state"
                       label="State"
@@ -571,17 +571,17 @@ const BusinessInfoPage: React.FC = () => {
                       onChange={(e) => handleChange('state', e.target.value)}
                       options={indianStates}
                       required
-                      className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
+                      className="pl-12 py-2.5 bg-card border border-[#7D7777A3] shadow-sm"
                     />
                   </div>
                   <div className="relative [&_label]:!left-[3rem] animate-fade-in">
-                    <FiGift className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10 pointer-events-none" size={20} />
+                    <FiGift className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10 pointer-events-none" size={20} />
                     <FloatingLabelInput
                       id="referralCode"
                       label="Referral Code"
                       value={referralCode}
                       onChange={(e) => setReferralCode(e.target.value.toUpperCase())} // Forces uppercase instantly
-                      className="pl-12 py-2.5 bg-white border border-[#7D7777A3] shadow-sm"
+                      className="pl-12 py-2.5 bg-card border border-[#7D7777A3] shadow-sm"
                     />
                   </div>
                 </div>
@@ -595,7 +595,7 @@ const BusinessInfoPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="fixed lg:absolute bottom-0 left-0 lg:left-auto right-0 lg:w-1/2 p-2 h-[110px] bg-gray-100 border-t border-gray-200 z-50 shadow-lg">
+        <div className="fixed lg:absolute bottom-0 left-0 lg:left-auto right-0 lg:w-1/2 p-2 h-[110px] bg-muted border-t border-border z-50 shadow-lg">
           <div className="max-w-md mx-auto space-y-3">
             <CustomButton
               type="submit"

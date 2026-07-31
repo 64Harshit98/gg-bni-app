@@ -15,8 +15,9 @@ import { handleDatePresetChange } from '../../Pages/Reports/PNLReportComponents/
 import DownloadChoiceModal from '../../Pages/Reports/ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
 import BackButton from '../../Components/BackButton';
-import { useExpenses } from '../../Pages/Reports/ExpenseReport/useExpense';
+import { useExpenses } from '@/features/expenses';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import { Spinner } from '../../Components/ui/spinner';
 //import CataShowWrapper from '../../context/CataShowWrapper';
 //import { Cata_Permissions } from '../enum/cata_permissions.enum';
 
@@ -571,7 +572,12 @@ const CatalogueProfitLossReport: React.FC = () => {
   const tableColumns = useMemo(() => getPnlColumns(), []);
 
   if (authLoading || dataLoading)
-    return <div className="p-4 text-center">Loading Report...</div>;
+    return (
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-muted-foreground">
+        <Spinner size="xl" />
+        <p className="text-sm font-medium">Loading Report...</p>
+      </div>
+    );
   if (error)
     return <div className="p-4 text-center text-red-500">Error: {error}</div>;
   if (!currentUser) {
@@ -580,7 +586,7 @@ const CatalogueProfitLossReport: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 p-2">
+    <div className="min-h-screen bg-muted p-2">
       {feedbackModal.isOpen && (
         <Modal
           type={feedbackModal.type}
@@ -602,7 +608,7 @@ const CatalogueProfitLossReport: React.FC = () => {
 
         <BackButton />
         {/* TITLE */}
-        <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
+        <h1 className="flex-1 text-xl text-center font-bold text-foreground">
           Profit & Loss Report
         </h1>
 
@@ -614,7 +620,7 @@ const CatalogueProfitLossReport: React.FC = () => {
 
       {showSearch && (
         <div className="flex justify-center mb-2 px-2">
-          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-[#F97316]">
+          <div className="flex items-center w-full max-w-md border-b-2 border-border focus-within:border-[#F97316]">
 
             <input
               type="text"
@@ -630,7 +636,7 @@ const CatalogueProfitLossReport: React.FC = () => {
                 setSearchQuery('');
                 setShowSearch(false);
               }}
-              className="p-1 text-gray-500 hover:text-black"
+              className="p-1 text-muted-foreground hover:text-foreground"
             >
               <IconClose />
             </button>
@@ -699,12 +705,12 @@ const CatalogueProfitLossReport: React.FC = () => {
       </div>
 
       {/* DETAILS */}
-      <div className="bg-white p-4 rounded-sm shadow-md flex justify-between items-center mt-2">
-        <h2 className="text-lg font-semibold text-gray-700">P&L Details</h2>
+      <div className="bg-card p-4 rounded-sm shadow-md flex justify-between items-center mt-2">
+        <h2 className="text-lg font-semibold text-foreground">P&L Details</h2>
         <div className="flex gap-2">
           <button
             onClick={() => setIsListVisible(!isListVisible)}
-            className="px-4 py-2 bg-slate-200 font-semibold rounded-sm"
+            className="px-4 py-2 bg-muted font-semibold rounded-sm"
           >
             {isListVisible ? 'Hide List' : 'Show List'}
           </button>

@@ -1,6 +1,4 @@
 import { useEffect, useState } from 'react';
-import { collection, query, onSnapshot, Timestamp } from 'firebase/firestore';
-import { db } from '../../../lib/Firebase';
 import {
   type Transaction,
   type TransactionDetail,
@@ -8,6 +6,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/auth-context';
 import { formatDateForInput } from '../SalesReportComponents/salesReport.utils';
+import { subscribeToPnlSales } from '../../../services/reports/pnlReport.service';
 
 export const usePnlReport = (companyId: string | undefined) => {
   const [sales, setSales] = useState<Transaction[]>([]);
@@ -20,39 +19,20 @@ export const usePnlReport = (companyId: string | undefined) => {
       return;
     }
 
-    const salesRef = collection(db, 'companies', companyId, 'sales');
-    const qSales = query(salesRef);
+    setLoading(true);
+    setError(null);
 
-    const unsubscribe = onSnapshot(qSales, (snapshot) => {
-      const processedSales: Transaction[] = snapshot.docs.map((doc) => {
-        const data = doc.data();
-
-        // Calculate directly from the bill's own item data
-        const costOfGoodsSold = (data.items || []).reduce(
-          (sum: number, billItem: any) => {
-            const unitCost = Number(billItem.purchasePrice) || 0;
-            return sum + (unitCost * (billItem.quantity || 0));
-          },
-          0
-        );
-
-        return {
-          id: doc.id,
-          totalAmount: data.totalAmount || 0,
-          createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(),
-          invoiceNumber: data.invoiceNumber || 'N/A',
-          partyName: data.partyName || 'Cash Sale',
-          costOfGoodsSold: costOfGoodsSold,
-          items: data.items || [],
-        };
-      });
-
-      setSales(processedSales);
-      setLoading(false);
-    }, (err) => {
-      console.error(err);
-      setError("Failed to load sales.");
-    });
+    const unsubscribe = subscribeToPnlSales(
+      companyId,
+      (processedSales) => {
+        setSales(processedSales);
+        setLoading(false);
+      },
+      () => {
+        setError('Failed to load sales.');
+        setLoading(false);
+      },
+    );
 
     return () => unsubscribe();
   }, [companyId]);

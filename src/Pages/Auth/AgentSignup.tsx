@@ -17,13 +17,12 @@ const AgentSignup: React.FC = () => {
     const [password, setPassword] = useState('');
     const [phoneNumber, setPhoneNumber] = useState('');
     const [address, setAddress] = useState('');
-    const [isAgency, setIsAgency] = useState(false);
 
     // Document Number States
     const [panNumber, setPanNumber] = useState('');
     const [aadhaarNumber, setAadhaarNumber] = useState('');
 
-    // Separated Optional Business Fields
+    // Business Fields
     const [gstinNumber, setGstinNumber] = useState('');
     const [msmeNumber, setMsmeNumber] = useState('');
 
@@ -41,12 +40,12 @@ const AgentSignup: React.FC = () => {
                 email,
                 password,
                 phoneNumber,
-                isAgency,
+                isAgency: true, // Force this to always be true
                 address,
                 panNumber,
                 aadhaarNumber,
-                gstinNumber: isAgency ? gstinNumber : '',
-                msmeNumber: isAgency ? msmeNumber : ''
+                gstinNumber,
+                msmeNumber
             });
 
             navigate(ROUTES.PARTNER_DASHBOARD);
@@ -63,34 +62,31 @@ const AgentSignup: React.FC = () => {
                 <p className="text-center text-gray-500 mb-6 text-sm md:text-base">Earn recurring commissions by referring businesses.</p>
 
                 <form onSubmit={handleSubmit} className="space-y-5">
-                    {/* Account Type Toggle */}
-                    <div className="flex bg-gray-100 p-1 rounded-sm mb-4">
-                        <button
-                            type="button"
-                            onClick={() => setIsAgency(false)}
-                            className={`flex-1 py-2 text-sm font-bold rounded-sm transition-all ${!isAgency ? 'bg-white shadow-sm text-black' : 'text-gray-500 hover:text-black'}`}
-                        >
-                            Independent Agent
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setIsAgency(true)}
-                            className={`flex-1 py-2 text-sm font-bold rounded-sm transition-all ${isAgency ? 'bg-white shadow-sm text-black' : 'text-gray-500 hover:text-black'}`}
-                        >
-                            Agency (Business)
-                        </button>
-                    </div>
 
-                    {/* Basic Info - Uses Grid for Desktop side-by-side */}
+                    {/* Basic Info */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div className="relative [&_label]:!left-[3rem]">
                             <FiUser className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
-                            <FloatingLabelInput id="name" label={isAgency ? "Agency/Business Name" : "Full Name"} value={name} onChange={(e) => setName(e.target.value)} required className="pl-12 py-3 bg-gray-50 rounded-sm w-full" />
+                            <FloatingLabelInput id="name" label="Agency/Business Name" value={name} onChange={(e) => setName(e.target.value)} required className="pl-12 py-3 bg-gray-50 rounded-sm w-full" />
                         </div>
 
                         <div className="relative [&_label]:!left-[3rem]">
                             <FiPhone className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
-                            <FloatingLabelInput id="phone" type="tel" label="Phone Number" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} required className="pl-12 py-3 bg-gray-50 rounded-sm w-full" />
+                            <FloatingLabelInput
+                                id="phone"
+                                type="tel"
+                                label="Phone Number"
+                                value={phoneNumber}
+                                onChange={(e) => {
+                                    // --- NEW: Strip non-digits and limit to 10 characters ---
+                                    const onlyNums = e.target.value.replace(/\D/g, '');
+                                    if (onlyNums.length <= 10) {
+                                        setPhoneNumber(onlyNums);
+                                    }
+                                }}
+                                required
+                                className="pl-12 py-3 bg-gray-50 rounded-sm w-full"
+                            />
                         </div>
                     </div>
 
@@ -101,10 +97,10 @@ const AgentSignup: React.FC = () => {
 
                     <div className="relative [&_label]:!left-[3rem]">
                         <FiMapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
-                        <FloatingLabelInput id="address" type="text" label={isAgency ? "Registered Business Address" : "Current Residence Address"} value={address} onChange={(e) => setAddress(e.target.value)} required className="pl-12 py-3 bg-gray-50 rounded-sm w-full" />
+                        <FloatingLabelInput id="address" type="text" label="Registered Business Address" value={address} onChange={(e) => setAddress(e.target.value)} required className="pl-12 py-3 bg-gray-50 rounded-sm w-full" />
                     </div>
 
-                    {/* --- IDENTITY VERIFICATION (ALWAYS VISIBLE) --- */}
+                    {/* --- IDENTITY VERIFICATION --- */}
                     <div className="bg-gray-50 p-4 rounded-sm border border-gray-200 space-y-4 mt-2">
                         <h4 className="text-sm font-bold text-gray-800 mb-2 border-b border-gray-200 pb-2">
                             Identity Verification (Required)
@@ -121,26 +117,22 @@ const AgentSignup: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* --- BUSINESS VERIFICATION (AGENCY ONLY) --- */}
-                    {isAgency && (
-                        <div className="bg-blue-50 p-4 rounded-sm border border-blue-100 space-y-4 mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
-                            <h4 className="text-sm font-bold text-blue-900 mb-2 border-b border-blue-200 pb-2">
-                                Business Verification (Optional)
-                            </h4>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="relative [&_label]:!left-[3rem]">
-                                    <FiFileText className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-400 z-10" size={18} />
-                                    {/* Notice 'required' has been removed from here */}
-                                    <FloatingLabelInput id="gstin" type="text" label="GSTIN (Optional)" value={gstinNumber} onChange={(e) => setGstinNumber(e.target.value.toUpperCase())} className="pl-12 py-3 bg-white rounded-sm uppercase w-full border-blue-200 focus:border-blue-500 focus:ring-blue-500" />
-                                </div>
-                                <div className="relative [&_label]:!left-[3rem]">
-                                    <FiFileText className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-400 z-10" size={18} />
-                                    {/* Notice 'required' has been removed from here */}
-                                    <FloatingLabelInput id="msme" type="text" label="MSME Number (Optional)" value={msmeNumber} onChange={(e) => setMsmeNumber(e.target.value.toUpperCase())} className="pl-12 py-3 bg-white rounded-sm uppercase w-full border-blue-200 focus:border-blue-500 focus:ring-blue-500" />
-                                </div>
+                    {/* --- BUSINESS VERIFICATION --- */}
+                    <div className="bg-blue-50 p-4 rounded-sm border border-blue-100 space-y-4 mt-2">
+                        <h4 className="text-sm font-bold text-blue-900 mb-2 border-b border-blue-200 pb-2">
+                            Business Verification (Optional)
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="relative [&_label]:!left-[3rem]">
+                                <FiFileText className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-400 z-10" size={18} />
+                                <FloatingLabelInput id="gstin" type="text" label="GSTIN (Optional)" value={gstinNumber} onChange={(e) => setGstinNumber(e.target.value.toUpperCase())} className="pl-12 py-3 bg-white rounded-sm uppercase w-full border-blue-200 focus:border-blue-500 focus:ring-blue-500" />
+                            </div>
+                            <div className="relative [&_label]:!left-[3rem]">
+                                <FiFileText className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-400 z-10" size={18} />
+                                <FloatingLabelInput id="msme" type="text" label="MSME Number (Optional)" value={msmeNumber} onChange={(e) => setMsmeNumber(e.target.value.toUpperCase())} className="pl-12 py-3 bg-white rounded-sm uppercase w-full border-blue-200 focus:border-blue-500 focus:ring-blue-500" />
                             </div>
                         </div>
-                    )}
+                    </div>
 
                     <div className="relative [&_label]:!left-[3rem] mt-4">
                         <FiLock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />

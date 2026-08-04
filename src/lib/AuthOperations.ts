@@ -12,7 +12,7 @@ import {
   type ConfirmationResult,
 } from 'firebase/auth';
 import type { User } from 'firebase/auth';
-import type { ROLES } from '../enums';
+import { ROLES } from '../enums';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from './Firebase';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
@@ -141,7 +141,7 @@ export const registerAgentWithDetails = async (params: AgentRegistrationParams) 
       name,
       email,
       phoneNumber,
-      role: isAgency ? 'AGENCY' : 'AGENT',
+      role: isAgency ? ROLES.AGENCY : ROLES.AGENT,
       isAgency,
       address,
 

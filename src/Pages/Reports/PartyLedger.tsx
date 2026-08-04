@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import FilterSelect from './SalesReportComponents/FilterSelect';
 import { formatDate, formatDateForInput } from './SalesReportComponents/salesReport.utils';
-import usePartyLedger, { type LedgerTransaction, type PaymentRecord } from './PartyLedger/usePartyLedger';
+import usePartyLedger, { type LedgerTransaction, type PaymentRecord, type PartySummary } from './PartyLedger/usePartyLedger';
 import XLSX from 'xlsx-js-style';
 import ExcelJS from 'exceljs';
 import { Spinner } from '../../constants/Spinner';
@@ -38,6 +38,8 @@ const PartyLedger: React.FC = () => {
         updateOpeningBalanceLocally,
         addOpeningBalance,
         addBulkOpeningBalances,
+        deleteParty,
+        deleteAllParties,
     } = usePartyLedger();
 
     //const { currentUser } = useAuth();
@@ -68,10 +70,49 @@ const PartyLedger: React.FC = () => {
     const bulkFileInputRef = useRef<HTMLInputElement>(null);
     const [isBulkUploading, setIsBulkUploading] = useState(false);
     const [bulkUploadProgress, setBulkUploadProgress] = useState<{ current: number; total: number } | null>(null);
+
+    // NEW: delete-party / delete-all state
+    const [partyToDelete, setPartyToDelete] = useState<PartySummary | null>(null);
+    const [isDeletingParty, setIsDeletingParty] = useState(false);
+    const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
+    const [deleteAllConfirmText, setDeleteAllConfirmText] = useState('');
+    const [isDeletingAll, setIsDeletingAll] = useState(false);
+
     const showToast = (message: string, type: 'success' | 'error' = 'success') => {
         setToast({ message, type });
         setTimeout(() => setToast(null), 3500);
     };
+
+    // NEW: delete a single party (their sales, purchases, opening balances, and master record)
+    const confirmDeleteParty = async () => {
+        if (!partyToDelete) return;
+        setIsDeletingParty(true);
+        try {
+            await deleteParty(partyToDelete);
+            showToast(`${partyToDelete.partyName} deleted.`, 'success');
+            setPartyToDelete(null);
+        } catch (e: any) {
+            showToast(e.message || 'Failed to delete party.', 'error');
+        } finally {
+            setIsDeletingParty(false);
+        }
+    };
+
+    // NEW: wipe every party's data for the company
+    const confirmDeleteAll = async () => {
+        setIsDeletingAll(true);
+        try {
+            await deleteAllParties();
+            showToast('All parties deleted.', 'success');
+            setIsDeleteAllModalOpen(false);
+            setDeleteAllConfirmText('');
+        } catch (e: any) {
+            showToast(e.message || 'Failed to delete all parties.', 'error');
+        } finally {
+            setIsDeletingAll(false);
+        }
+    };
+
     // NEW: Send a combined WhatsApp due-reminder for a party, listing all unpaid invoice numbers
     const handleSendPartyReminder = async (party: typeof partySummaries[number]) => {
         if (!party.partyNumber || party.partyNumber === 'N/A') {
@@ -307,16 +348,17 @@ const PartyLedger: React.FC = () => {
 
                 const partyType: 'Customer' | 'Supplier' = typeVal.startsWith('s') ? 'Supplier' : 'Customer';
 
-                // Skip rows with no balance, or rows that fill BOTH columns (ambiguous)
-                if (dueVal <= 0 && advanceVal <= 0) { skippedCount++; continue; }
+                // ✅ Rows with no balance are now allowed through — they still onboard the
+                // party (name/number/type) into customers/suppliers, just with no opening
+                // due/advance attached. Only reject when BOTH columns are filled (ambiguous).
                 if (dueVal > 0 && advanceVal > 0) { skippedCount++; continue; }
 
                 rowsToImport.push({
                     partyName,
                     partyNumber,
                     partyType,
-                    amount: dueVal > 0 ? dueVal : advanceVal,
-                    balanceType: dueVal > 0 ? 'due' : 'advance',
+                    amount: dueVal > 0 ? dueVal : (advanceVal > 0 ? advanceVal : 0),
+                    balanceType: dueVal > 0 ? 'due' : (advanceVal > 0 ? 'advance' : 'due'),
                     note: narration,
                     date: parseExcelDate(dateVal),
                 });
@@ -332,7 +374,7 @@ const PartyLedger: React.FC = () => {
             });
 
             const noteParts = [
-                skippedCount ? `${skippedCount} skipped (no/ambiguous balance)` : '',
+                skippedCount ? `${skippedCount} skipped (both due & advance filled)` : '',
                 result.duplicates ? `${result.duplicates} skipped as duplicate number` : '',
             ].filter(Boolean).join(', ');
 
@@ -504,6 +546,17 @@ const PartyLedger: React.FC = () => {
                         transaction.update(partyRef, {
                             [balanceField]: increment(-amount),
                         });
+                    }
+
+                    // ✅ NEW: Due OB settle: dueBalance kam karo on the customers/suppliers
+                    // master doc too, so it stays in sync with what bulk-import/opening
+                    // balance writes there — otherwise it would only ever go up.
+                    if (partyNum.length >= 3 && obBalanceType === 'due') {
+                        const collectionName = partyType === 'Customer' ? 'customers' : 'suppliers';
+                        const partyRef = firestoreDoc(db, 'companies', companyId, collectionName, partyNum);
+                        transaction.set(partyRef, {
+                            dueBalance: increment(-amount),
+                        }, { merge: true });
                     }
 
                     const normalizedMethod = method.toLowerCase().replace(/\s+/g, '');
@@ -757,6 +810,62 @@ const PartyLedger: React.FC = () => {
                     </div>
                 </div>
             )}
+
+            {/* NEW: Delete single party confirmation modal */}
+            {partyToDelete && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+                    <div className="bg-white rounded-sm shadow-xl w-full max-w-sm p-5">
+                        <h2 className="text-base font-bold text-gray-800 mb-2">Delete Party?</h2>
+                        <p className="text-sm text-gray-600 mb-4">
+                            This permanently deletes <span className="font-semibold">{partyToDelete.partyName}</span> and all of their sales, purchases, and opening balance records. This cannot be undone.
+                        </p>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => setPartyToDelete(null)}
+                                disabled={isDeletingParty}
+                                className="flex-1 px-3 py-2 text-sm font-semibold text-gray-600 bg-gray-100 rounded-sm hover:bg-gray-200 disabled:opacity-50"
+                            >Cancel</button>
+                            <button
+                                onClick={confirmDeleteParty}
+                                disabled={isDeletingParty}
+                                className="flex-1 px-3 py-2 text-sm font-semibold text-white bg-red-600 rounded-sm hover:bg-red-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                            >{isDeletingParty ? <Spinner /> : 'Delete'}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* NEW: Delete-all-parties confirmation modal (requires typing DELETE) */}
+            {isDeleteAllModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+                    <div className="bg-white rounded-sm shadow-xl w-full max-w-sm p-5">
+                        <h2 className="text-base font-bold text-red-700 mb-2">Delete ALL Parties?</h2>
+                        <p className="text-sm text-gray-600 mb-3">
+                            This permanently deletes every sale, purchase, opening balance, customer, and supplier record for your company. This cannot be undone.
+                        </p>
+                        <p className="text-xs text-gray-500 mb-1">Type <span className="font-mono font-bold">DELETE</span> to confirm:</p>
+                        <input
+                            value={deleteAllConfirmText}
+                            onChange={e => setDeleteAllConfirmText(e.target.value)}
+                            placeholder="DELETE"
+                            className="w-full p-2 border border-gray-300 rounded-sm text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-red-400"
+                        />
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => { setIsDeleteAllModalOpen(false); setDeleteAllConfirmText(''); }}
+                                disabled={isDeletingAll}
+                                className="flex-1 px-3 py-2 text-sm font-semibold text-gray-600 bg-gray-100 rounded-sm hover:bg-gray-200 disabled:opacity-50"
+                            >Cancel</button>
+                            <button
+                                onClick={confirmDeleteAll}
+                                disabled={deleteAllConfirmText !== 'DELETE' || isDeletingAll}
+                                className="flex-1 px-3 py-2 text-sm font-semibold text-white bg-red-600 rounded-sm hover:bg-red-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                            >{isDeletingAll ? <Spinner /> : 'Delete All'}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {toast && (
                 <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-sm shadow-lg text-sm font-semibold text-white transition-all
                 ${toast.type === 'success' ? 'bg-blue-500' : 'bg-red-500'}`}>
@@ -801,6 +910,14 @@ const PartyLedger: React.FC = () => {
                     <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
                         Party Ledger
                     </h1>
+                    {/* NEW: Delete-all trigger, kept small/quiet since it's destructive */}
+                    <button
+                        onClick={() => setIsDeleteAllModalOpen(true)}
+                        className="text-xs font-semibold text-red-500 hover:text-red-700 px-2 py-1"
+                        title="Delete all parties"
+                    >
+                        Delete All
+                    </button>
                 </div>
             )}
             <div className="flex-1 flex flex-col md:flex-row gap-0 px-0">
@@ -953,21 +1070,31 @@ const PartyLedger: React.FC = () => {
                                                         </p>
                                                     </div>
                                                 </div>
-                                                {/* NEW: Remind button — only when party has a due and a valid number */}
-                                                {party.totalDue > 0 && party.partyNumber && party.partyNumber !== 'N/A' && (
-                                                    <div className="mt-2 pt-2 border-t border-slate-100">
+                                                {/* Remind + Delete row */}
+                                                <div className="mt-2 pt-2 border-t border-slate-100 flex gap-2">
+                                                    {party.totalDue > 0 && party.partyNumber && party.partyNumber !== 'N/A' && (
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 handleSendPartyReminder(party);
                                                             }}
                                                             disabled={sendingReminderFor === party.partyNumber}
-                                                            className="w-full py-1.5 text-[11px] font-bold text-white bg-blue-500 rounded-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                                                            className="flex-1 py-1.5 text-[11px] font-bold text-white bg-blue-500 rounded-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
                                                         >
                                                             {sendingReminderFor === party.partyNumber ? <Spinner /> : 'Remind'}
                                                         </button>
-                                                    </div>
-                                                )}
+                                                    )}
+                                                    {/* NEW: per-party delete button */}
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setPartyToDelete(party);
+                                                        }}
+                                                        className="flex-1 py-1.5 text-[11px] font-bold text-red-600 bg-red-50 border border-red-200 rounded-sm hover:bg-red-100 transition-colors"
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                </div>
                                             </CustomCard>
                                         ))}
                                     </>
@@ -985,6 +1112,14 @@ const PartyLedger: React.FC = () => {
                                         <h1 className="flex-1 text-lg text-center font-bold text-gray-800 truncate px-2">
                                             {selectedPartyName} - Ledger
                                         </h1>
+                                        {/* NEW: delete this party from the detail view too */}
+                                        <button
+                                            onClick={() => { if (selectedPartyLedger) setPartyToDelete(selectedPartyLedger); }}
+                                            className="text-xs font-semibold text-red-500 hover:text-red-700 px-2 py-1 whitespace-nowrap"
+                                            title="Delete this party"
+                                        >
+                                            Delete
+                                        </button>
                                     </div>
 
                                     {/* Summary Card */}
@@ -1243,6 +1378,20 @@ const PartyLedger: React.FC = () => {
                                         Download Sample Template
                                     </button>
                                 </div>
+                            </div>
+
+                            {/* NEW: Danger zone — delete all parties (desktop sidebar) */}
+                            <div className="bg-red-50 rounded-sm p-5 border border-red-100 mt-4">
+                                <h2 className="text-sm font-bold text-red-700 mb-1">Danger Zone</h2>
+                                <p className="text-xs text-red-600 mb-3">
+                                    Permanently delete every party, invoice, and opening balance.
+                                </p>
+                                <button
+                                    onClick={() => setIsDeleteAllModalOpen(true)}
+                                    className="w-full bg-white text-red-600 border border-red-200 hover:bg-red-100 py-2 px-4 rounded-sm text-sm font-semibold transition-colors"
+                                >
+                                    Delete All Parties
+                                </button>
                             </div>
                         </div>
                     </div>

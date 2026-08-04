@@ -18,7 +18,6 @@ import BulkQuotePopup from './BulkQuotePopup';
 import { getItemGroupsByCompany, getItemsByCompany } from '../lib/ItemsFirebase';
 import { FaWhatsapp } from 'react-icons/fa';
 import { ensurePendingApprovalEntry } from './hooks/ensureApprovalEntry';
-//port { runTransaction } from 'firebase/firestore';
 
 const ITEMS_PER_BATCH_RENDER = 24;
 
@@ -289,44 +288,6 @@ const SharedProduct: React.FC = () => {
         }, 0);
     }, [cart]);
 
-    // // --- New Firebase Sync Function ---
-    // const generateCatalogueInvoiceNumber = async (companyId: string): Promise<string> => {
-    //     if (!companyId) throw new Error("Missing companyId");
-
-    //     const settingsRef = doc(
-    //         db,
-    //         "companies",
-    //         companyId,
-    //         "settings",
-    //         "catalogue-sales-settings"
-    //     );
-
-    //     return await runTransaction(db, async (transaction) => {
-    //         const snap = await transaction.get(settingsRef);
-
-    //         let prefix = "ORD-";
-    //         let currentNumber = 1001;
-
-    //         if (snap.exists()) {
-    //             const data = snap.data() as CatalogueSalesSettings;
-    //             prefix = data.voucherPrefix || "ORD-";
-    //             currentNumber = data.currentVoucherNumber || 1001;
-    //         }
-
-    //         const invoice = `${prefix}${currentNumber}`;
-
-    //         transaction.set(
-    //             settingsRef,
-    //             {
-    //                 currentVoucherNumber: currentNumber + 1,
-    //                 updatedAt: serverTimestamp(),
-    //             },
-    //             { merge: true }
-    //         );
-
-    //         return invoice;
-    //     });
-    // };
     const syncToUpcoming = async (
         updatedCart: { item: Item; quantity: number }[]
     ) => {

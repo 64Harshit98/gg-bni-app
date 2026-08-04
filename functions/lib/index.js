@@ -219,7 +219,7 @@ exports.getPublicCatalogue = functions.https.onRequest(async (req, res) => {
             res.status(404).send("Store not found");
             return;
         }
-        res.set('Cache-Control', 'public, max-age=60, s-maxage=3600, stale-while-revalidate=600');
+        res.set('Cache-Control', 'public, max-age=0, must-revalidate');
         res.status(200).json(storeDoc.data());
     } catch (error) {
         console.error("Error fetching catalogue:", error);

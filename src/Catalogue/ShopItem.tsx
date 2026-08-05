@@ -782,49 +782,38 @@ const MyShop: React.FC = () => {
     const resolveVariantGroup = (item: Item): string[] => {
         const itemId = String(item.id!);
 
-        const findTrueRoot = (startId: string): Item | null => {
-            const visited = new Set<string>();
-            const queue = [startId];
-            let bestRoot: Item | null = null;
-            let bestCount = -1;
+        // Walk the WHOLE connected component (forward + reverse edges, since
+        // variant links can be one-way) and collect every member — not just
+        // the "best" root's own declared variants array.
+        const visited = new Set<string>();
+        const queue = [itemId];
 
-            while (queue.length > 0) {
-                const currentId = queue.shift()!;
-                if (visited.has(currentId)) continue;
-                visited.add(currentId);
+        while (queue.length > 0) {
+            const currentId = queue.shift()!;
+            if (visited.has(currentId)) continue;
+            visited.add(currentId);
 
-                const currentItem = allItems.find(i => String(i.id) === currentId);
-                if (!currentItem) continue;
+            const currentItem = allItems.find(i => String(i.id) === currentId);
+            if (!currentItem) continue;
 
-                const currentVariants: string[] = ((currentItem as any).variants || []).map(String);
+            const currentVariants: string[] = ((currentItem as any).variants || []).map(String);
+            currentVariants.forEach(vid => { if (!visited.has(vid)) queue.push(vid); });
 
-                if (currentVariants.length > bestCount) {
-                    bestCount = currentVariants.length;
-                    bestRoot = currentItem;
+            allItems.forEach(i => {
+                const iVariants: string[] = ((i as any).variants || []).map(String);
+                if (iVariants.includes(currentId) && !visited.has(String(i.id))) {
+                    queue.push(String(i.id));
                 }
-
-                currentVariants.forEach(vid => { if (!visited.has(vid)) queue.push(vid); });
-
-                allItems.forEach(i => {
-                    const iVariants: string[] = ((i as any).variants || []).map(String);
-                    if (iVariants.includes(currentId) && !visited.has(String(i.id))) {
-                        queue.push(String(i.id));
-                    }
-                });
-            }
-
-            return bestRoot;
-        };
-
-        const trueRoot = findTrueRoot(itemId);
-
-        if (trueRoot) {
-            const rootId = String(trueRoot.id!);
-            const rootVariants: string[] = ((trueRoot as any).variants || []).map(String);
-            return [rootId, ...rootVariants];
+            });
         }
 
-        return [itemId];
+        if (visited.size <= 1) return [itemId];
+
+        // Stable order: always follow the catalogue's own item order, so the
+        // variant chips never reshuffle depending on which variant is open.
+        return allItems
+            .filter(i => visited.has(String(i.id)))
+            .map(i => String(i.id));
     };
 
     const handleOpenEditDrawer = (item: Item) => {

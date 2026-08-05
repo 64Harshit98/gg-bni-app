@@ -116,6 +116,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   const [itemTax, setItemTax] = useState<string>('');
   const [itemAmount, setItemAmount] = useState<string>('');
   const [restockQuantity, setRestockQuantity] = useState<string>('');
+  const [itemDescription, setItemDescription] = useState<string>('');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState<boolean>(false);
   const [itemBarcode, setItemBarcode] = useState<string>('');
@@ -162,6 +163,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     hsnCode: true,
     restockQuantity: true,
     moq: true,
+    description: true,
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -181,6 +183,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         if (parsed.itemTax) setItemTax(parsed.itemTax);
         if (parsed.itemAmount) setItemAmount(parsed.itemAmount);
         if (parsed.restockQuantity) setRestockQuantity(parsed.restockQuantity);
+        if (parsed.itemDescription) setItemDescription(parsed.itemDescription);
         if (parsed.selectedCategories) setSelectedCategories(parsed.selectedCategories);
         if (parsed.itemBarcode) setItemBarcode(parsed.itemBarcode);
         if (parsed.hsnCode) setHsnCode(parsed.hsnCode);
@@ -197,11 +200,11 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   useEffect(() => {
     const draft = {
       itemName, itemMRP, itemSalesPrice, itemPurchasePrice, itemDiscount,
-      PurchaseDiscount, itemTax, itemAmount, restockQuantity, selectedCategories,
+      PurchaseDiscount, itemTax, itemAmount, restockQuantity,itemDescription, selectedCategories,
       itemBarcode, hsnCode, itemUnit, packetSize, moq, imageUrl
     };
     sessionStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
-  }, [itemName, itemMRP, itemSalesPrice, itemPurchasePrice, itemDiscount, PurchaseDiscount, itemTax, itemAmount, restockQuantity, selectedCategories, itemBarcode, hsnCode, itemUnit, packetSize, moq, imageUrl]);
+  }, [itemName, itemMRP, itemSalesPrice, itemPurchasePrice, itemDiscount, PurchaseDiscount, itemTax, itemAmount, restockQuantity, itemDescription, selectedCategories, itemBarcode, hsnCode, itemUnit, packetSize, moq, imageUrl]);
 
   const getUnitLabel = () => {
     if (itemUnit === 'box') return '10 pcs';
@@ -279,6 +282,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     setItemTax('');
     setItemAmount('');
     setRestockQuantity('');
+    setItemDescription('');
     setHsnCode('');
     setItemUnit('pcs');
     setPacketSize('');
@@ -506,6 +510,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         purchasediscount: finalPurchaseDiscount,
         tax: parseFloat(itemTax) || 0,
         hsnSac: hsnCode.trim(),
+        description: itemDescription.trim(),
         itemGroupId: selectedCategories[0] || '',
         itemGroupIds: selectedCategories,
         stock: parseInt(itemAmount, 10) || 0,
@@ -664,6 +669,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         const rowRestock = parseInt(safeGetVal(row, 12)) || 0;
         const rowMoq = parseInt(safeGetVal(row, 13)) || 1;
         const rowImageUrlStr = safeGetVal(row, 14);
+        const rowDescription = safeGetVal(row, 15);
 
         // --- STRICT VALIDATION FIX ---
         // Catches bad data early and increments fail count properly
@@ -756,6 +762,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           if (updateFields.hsnCode) updates.hsnSac = rowHsn;
           if (updateFields.restockQuantity) updates.restockQuantity = rowRestock;
           if (updateFields.moq) updates.moq = rowMoq;
+           if (updateFields.description) updates.description = rowDescription;
 
           try {
             await dbOperations.updateItem(existingItem.id, updates);
@@ -790,6 +797,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
             barcode: finalRowBarcode,
             restockQuantity: rowRestock,
             moq: rowMoq,
+            description: rowDescription || (existingItem ? existingItem.description : ''),
             imageUrl: finalUploadedImageUrl || (existingItem ? existingItem.imageUrl : null),
             isDeleted: false,
           };
@@ -891,6 +899,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       { header: '● Restock Level', note: 'Alert when stock falls below this', type: 'O', width: 15, field: 'restockQuantity' },
       { header: '● MOQ', note: 'Minimum Order Quantity', type: 'O', width: 10, field: 'moq' },
       { header: '● Image URL', note: 'Web link to image (Optional)', type: 'O', width: 25, field: 'imageUrl' },
+      { header: '● Description', note: 'Product details shown on Catalogue page', type: 'O', width: 30, field: 'description' },
     ];
 
     const TYPE_STYLE: Record<string, { bg: string; txt: string }> = {
@@ -907,8 +916,8 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     ];
 
     const sampleRows = [
-      ['Amul Butter 500g', '', 250, 240, 190, 0, 2, 5, '0402', 'Dairy', 50, 10, 1, 'https://example.com/amul.jpg'],
-      ['Parle-G Biscuit', '1002', 10, 10, 7, 0, 0, 0, '', 'Snacks', 200, 20, 10, ''],
+      ['Amul Butter 500g', '', 250, 240, 190, 0, 2, 5, '0402', 'Dairy', 50, 10, 1, 'https://example.com/amul.jpg', 'Fresh Amul butter, 500g pack, ideal for baking and spreads.'],
+      ['Parle-G Biscuit', '1002', 10, 10, 7, 0, 0, 0, '', 'Snacks', 200, 20, 10, '', 'Classic glucose biscuits, pack of 10.'],
     ];
 
     const totalRows = 12;
@@ -1403,6 +1412,20 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                   currentItemBarcode={itemBarcode}
                   onChange={setItemVariants}
                   activeTheme={activeTheme}
+                />
+              </div>
+              {/* --- Description --- */}
+              <div>
+                <div className="flex items-center mb-1">
+                  <label className="text-sm font-medium leading-none block mr-2">Description</label>
+                  <InfoTooltip text="Additional details about the product, shown on the catalogue/e-commerce page." />
+                </div>
+                <textarea
+                  value={itemDescription}
+                  onChange={(e) => setItemDescription(e.target.value)}
+                  rows={3}
+                  className="flex w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 resize-none"
+                  placeholder="e.g. Fresh Amul butter, 500g pack, ideal for baking and spreads."
                 />
               </div>
             </div>

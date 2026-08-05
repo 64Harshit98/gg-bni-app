@@ -5,6 +5,7 @@ import { Spinner } from '../constants/Spinner';
 import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting'
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
+import { FiPackage } from 'react-icons/fi';
 
 // --- ADDED: The exact same price logic from SharedProduct.tsx ---
 const getEffectivePriceInfo = (item: Item) => {
@@ -74,12 +75,19 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
     const [isAdding, setIsAdding] = useState(false);
     const [variantItems, setVariantItems] = useState<Item[]>([]);
     const [variantLoading, setVariantLoading] = useState(false);
+    const [imageBroken, setImageBroken] = useState(false);
+    const [brokenVariantIds, setBrokenVariantIds] = useState<Set<string>>(new Set());
 
     useEffect(() => {
         if (isOpen) {
             setQuantity(initialQuantity || 0);
         }
     }, [isOpen, initialQuantity]);
+    // reset broken-image flags whenever a different item opens in the drawer
+    useEffect(() => {
+        setImageBroken(false);
+        setBrokenVariantIds(new Set());
+    }, [item?.id]);
 
     useEffect(() => {
         const fetchVariants = async () => {
@@ -115,8 +123,8 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
     const { mrp, salePrice, discountPercent, hasDiscount, hasBothPrices } = getEffectivePriceInfo(item);
 
     const hidePriceEnabled = catalogueSettings?.hidePrice === true;
-const approvalEnabled = catalogueSettings?.requireApproval === true;
-const shouldHidePrice = hidePriceEnabled || (approvalEnabled && !isCustomerApproved);
+    const approvalEnabled = catalogueSettings?.requireApproval === true;
+    const shouldHidePrice = hidePriceEnabled || (approvalEnabled && !isCustomerApproved);
 
     const showDiscountBadge =
         !hidePriceEnabled &&
@@ -170,11 +178,16 @@ const shouldHidePrice = hidePriceEnabled || (approvalEnabled && !isCustomerAppro
 
                 <div className="flex flex-col h-full">
                     <div className="w-full flex-[0.9] bg-gray-100 overflow-hidden relative">
-                        {item.imageUrl ? (
-                            <img src={item.imageUrl} alt={item.name} className="w-full h-full object-contain" />
+                        {item.imageUrl && !imageBroken ? (
+                            <img
+                                src={item.imageUrl}
+                                alt={item.name}
+                                className="w-full h-full object-contain"
+                                onError={() => setImageBroken(true)}
+                            />
                         ) : (
                             <div className="w-full h-full flex items-center justify-center text-gray-300">
-                                <ShoppingCart size={48} strokeWidth={1} />
+                                <FiPackage size={48} />
                             </div>
                         )}
                         {showDiscountBadge && (
@@ -266,9 +279,27 @@ const shouldHidePrice = hidePriceEnabled || (approvalEnabled && !isCustomerAppro
                                                             : 'border-gray-200 bg-white text-gray-700 hover:border-[#F97316] hover:bg-[#F97316]/5'
                                                             }`}
                                                     >
-                                                        {v.imageUrl
-                                                            ? <img src={v.imageUrl} alt={v.name} className="w-10 h-10 object-cover rounded-sm" />
-                                                            : <div className={`w-10 h-10 rounded-sm ${isSelected ? 'bg-orange-100' : 'bg-gray-100'}`} />
+                                                        {v.imageUrl && !brokenVariantIds.has(String(v.id))
+                                                            ? (
+                                                                <img
+                                                                    src={v.imageUrl}
+                                                                    alt={v.name}
+                                                                    className="w-10 h-10 object-cover rounded-sm"
+                                                                    onError={() => {
+                                                                        setBrokenVariantIds(prev => {
+                                                                            if (prev.has(String(v.id))) return prev;
+                                                                            const next = new Set(prev);
+                                                                            next.add(String(v.id));
+                                                                            return next;
+                                                                        });
+                                                                    }}
+                                                                />
+                                                            )
+                                                            : (
+                                                                <div className={`w-10 h-10 rounded-sm flex items-center justify-center ${isSelected ? 'bg-orange-100' : 'bg-gray-100'}`}>
+                                                                    <FiPackage size={16} className="text-gray-300" />
+                                                                </div>
+                                                            )
                                                         }
                                                         <span className="text-[9px] font-black max-w-[52px] truncate text-center leading-tight">{v.name}</span>
                                                         {!shouldHidePrice && (

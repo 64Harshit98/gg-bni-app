@@ -69,6 +69,20 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
       return 0; // keep original relative order otherwise
     });
   }, [itemGroups, newItemGroupName]);
+
+  const groupIdToName = useMemo(() => {
+    const map = new Map<string, string>();
+    itemGroups.forEach(g => { if (g.id) map.set(g.id, g.name); });
+    return map;
+  }, [itemGroups]);
+
+  const matchingItems = useMemo(() => {
+    const query = newItemGroupName.trim().toLowerCase();
+    if (!query) return [];
+    return allItems
+      .filter(item => item.name?.toLowerCase().includes(query))
+      .slice(0, 20); // cap results so the list doesn't explode
+  }, [allItems, newItemGroupName]);
   const toTitleCase = (str: string) => {
     return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
   };
@@ -378,7 +392,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
           <div className="flex flex-col gap-2 mb-6">
             <input
               type="text"
-              placeholder="Search or Create a New Group"
+              placeholder="Search Groups or Items, or Create a New Group"
               value={newItemGroupName}
               onChange={(e) => setNewItemGroupName(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleAddItemGroup()}
@@ -392,6 +406,38 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
               Add New Group
             </button>
           </div>
+
+          {matchingItems.length > 0 && (
+            <div className="mb-6">
+              <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">
+                Items Matching "{newItemGroupName.trim()}"
+              </h2>
+              <div className="space-y-2">
+                {matchingItems.map(item => {
+                  const rawGroupId = Array.isArray(item.itemGroupId) ? item.itemGroupId[0] : item.itemGroupId;
+                  const groupName = rawGroupId ? (groupIdToName.get(rawGroupId) || 'Uncategorized') : 'Uncategorized';
+                  const stock = item.stock || 0;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => openEditDrawer(item)}
+                      className="w-full flex items-center justify-between p-3 bg-white rounded-sm shadow-sm border text-left hover:border-blue-400 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        <span className="font-medium text-gray-800 truncate">{item.name}</span>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-md whitespace-nowrap ${getStockBadgeClasses(stock)}`}>
+                          {stock === 0 ? 'Out of stock' : `${stock} in stock`}
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-500 px-2 py-0.5 bg-gray-100 rounded-sm flex-shrink-0 ml-2">
+                        {groupName}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3">Official Item Groups</h2>
 
@@ -611,7 +657,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
                             </button>
                           </div>
                           <div className="flex items-center justify-between text-sm text-gray-600">
-                            <div><span className="font-medium text-gray-700">MRP:</span> ₹{item.mrp ?? 0}</div>
+                            <div><span className="font-medium text-gray-700">{item.mrp ? 'MRP:' : 'SP:'}</span> ₹{item.mrp || item.salesPrice || 0}</div>
                             <div><span className="font-medium text-gray-700">Purchase:</span> ₹{item.purchasePrice ?? 0}</div>
                             <div><span className="font-medium text-gray-700">Value:</span> ₹{value}</div>
                           </div>

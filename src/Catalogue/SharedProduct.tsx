@@ -1124,7 +1124,16 @@ const SharedProduct: React.FC = () => {
             setCart(parsed);
         }
     }, []);
-
+    useEffect(() => {
+        const handlePopState = () => {
+            if (isDetailDrawerOpen) {
+                setIsDetailDrawerOpen(false);
+                setSelectedItemForDetails(null);
+            }
+        };
+        window.addEventListener('popstate', handlePopState);
+        return () => window.removeEventListener('popstate', handlePopState);
+    }, [isDetailDrawerOpen]);
     useEffect(() => {
         setSearchQuery("")
     }, [resolvedGroupId])
@@ -1135,60 +1144,50 @@ const SharedProduct: React.FC = () => {
         // Only consider listed items for public catalogue
         const listedItems = allItems.filter(i => i.isListed === true);
 
-        const findTrueRoot = (startId: string): Item | null => {
-            const visited = new Set<string>();
-            const queue = [startId];
-            let bestRoot: Item | null = null;
-            let bestCount = -1;
+        // Walk the WHOLE connected component (forward + reverse edges, since
+        // variant links can be one-way) and collect every member — not just
+        // the "best" root's own declared variants array.
+        const visited = new Set<string>();
+        const queue = [itemId];
 
-            while (queue.length > 0) {
-                const currentId = queue.shift()!;
-                if (visited.has(currentId)) continue;
-                visited.add(currentId);
+        while (queue.length > 0) {
+            const currentId = queue.shift()!;
+            if (visited.has(currentId)) continue;
+            visited.add(currentId);
 
-                const currentItem = listedItems.find(i => String(i.id) === currentId);
-                if (!currentItem) continue;
+            const currentItem = listedItems.find(i => String(i.id) === currentId);
+            if (!currentItem) continue;
 
-                const currentVariants: string[] = ((currentItem as any).variants || [])
-                    .map(String)
-                    // Only include variants that are listed
-                    .filter((vid: string) => listedItems.some(i => String(i.id) === vid));
-
-                if (currentVariants.length > bestCount) {
-                    bestCount = currentVariants.length;
-                    bestRoot = currentItem;
-                }
-
-                currentVariants.forEach((vid: string) => { if (!visited.has(vid)) queue.push(vid); });
-
-                listedItems.forEach(i => {
-                    const iVariants: string[] = ((i as any).variants || []).map(String);
-                    if (iVariants.includes(currentId) && !visited.has(String(i.id))) {
-                        queue.push(String(i.id));
-                    }
-                });
-            }
-
-            return bestRoot;
-        };
-
-        const trueRoot = findTrueRoot(itemId);
-        if (trueRoot) {
-            const rootId = String(trueRoot.id!);
-            const rootVariants: string[] = ((trueRoot as any).variants || [])
+            const currentVariants: string[] = ((currentItem as any).variants || [])
                 .map(String)
-                // Final filter: only return IDs of listed items
                 .filter((vid: string) => listedItems.some(i => String(i.id) === vid));
-            return [rootId, ...rootVariants];
+
+            currentVariants.forEach((vid: string) => { if (!visited.has(vid)) queue.push(vid); });
+
+            listedItems.forEach(i => {
+                const iVariants: string[] = ((i as any).variants || []).map(String);
+                if (iVariants.includes(currentId) && !visited.has(String(i.id))) {
+                    queue.push(String(i.id));
+                }
+            });
         }
 
-        return [itemId];
+        if (visited.size <= 1) return [itemId];
+
+        // Stable order: always follow the catalogue's own item order, so the
+        // variant chips never reshuffle depending on which variant is open.
+        return listedItems
+            .filter(i => visited.has(String(i.id)))
+            .map(i => String(i.id));
     };
 
     const handleOpenDetailDrawer = (item: Item) => {
         setSelectedItemForDetails(item);
         setVariantGroupIds(resolveVariantGroup(item));
         setIsDetailDrawerOpen(true);
+        // push a dummy history entry so hardware/browser back closes
+        // the drawer first, instead of navigating away from the category page
+        window.history.pushState({ drawerOpen: true }, '');
     };
 
     if (domainResolveError) {
@@ -1776,7 +1775,14 @@ const SharedProduct: React.FC = () => {
                 catalogueSettings={catalogueSettings}
                 item={selectedItemForDetails}
                 isOpen={isDetailDrawerOpen}
-                onClose={() => { setIsDetailDrawerOpen(false); setSelectedItemForDetails(null); }}
+                onClose={() => {
+                    setIsDetailDrawerOpen(false);
+                    setSelectedItemForDetails(null);
+                    // undo the pushState we did on open, so history stack stays clean
+                    if (window.history.state?.drawerOpen) {
+                        window.history.back();
+                    }
+                }}
                 onAddToCart={addToCart}
                 initialQuantity={cart.find(i => i.item.id === selectedItemForDetails?.id)?.quantity || 0}
                 isCustomerApproved={isUserApproved}

@@ -512,6 +512,7 @@ const OrdersPage: React.FC = () => {
     const hasTransportDetails = !!(transportName || grRrNo || grRrDate || vehicleNo || stationFrom || pinCode);
     const [pendingAdjustment, setPendingAdjustment] = useState<{ amount: number } | null>(null);
     const [showAdjustmentPopup, setShowAdjustmentPopup] = useState(false);
+    const [duplicateOrderItemPrompt, setDuplicateOrderItemPrompt] = useState<{ item: Item; existingCount: number } | null>(null); // 👈 NEW
     const [showZeroAmountModal, setShowZeroAmountModal] = useState(false);
     const [pendingZeroOrderId, setPendingZeroOrderId] = useState<string | null>(null);
     const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
@@ -1018,6 +1019,127 @@ const OrdersPage: React.FC = () => {
             ...editingOrder,
             items: updatedItems,
         });
+    };
+
+    // 👇 NEW: Adds a selected item as a fresh line to the order being edited
+    const addSelectedItemToOrder = (selectedItem: Item) => {
+        if (!selectedItem.id || !editingOrder) return;
+
+        const newMrp = Number(selectedItem.mrp || 0);
+        const newSalesPrice = Number(selectedItem.salesPrice || 0);
+        const presetDiscount = Number(selectedItem.discount || 0);
+
+        let finalNetPrice = 0;
+        let calculatedDiscount = 0;
+
+        if (newMrp > 0 && newSalesPrice > 0) {
+            finalNetPrice = newSalesPrice;
+            calculatedDiscount = ((newMrp - newSalesPrice) / newMrp) * 100;
+        } else if (newSalesPrice > 0) {
+            calculatedDiscount = presetDiscount;
+            finalNetPrice = newSalesPrice * (1 - (presetDiscount / 100));
+        } else if (newMrp > 0) {
+            calculatedDiscount = presetDiscount;
+            finalNetPrice = newMrp * (1 - (presetDiscount / 100));
+        }
+
+        const qty = selectedItem.moq && selectedItem.moq > 0 ? selectedItem.moq : 1;
+        const taxRate = Number(selectedItem.tax ?? selectedItem.taxRate ?? 0);
+
+        const savedTaxType = (editingOrder?.items && editingOrder.items.length > 0)
+            ? (editingOrder.items[0].taxType || 'Exclusive')
+            : 'Exclusive';
+
+        const activeTaxType = savedTaxType.toLowerCase();
+
+        const lineBase = finalNetPrice * qty;
+        let lineFinalPrice = lineBase;
+
+        if (taxRate > 0 && (activeTaxType === 'exclusive' || activeTaxType === 'regular')) {
+            lineFinalPrice = lineBase + (lineBase * (taxRate / 100));
+        }
+
+        const newItem: any = {
+            ...selectedItem,
+            id: crypto.randomUUID(),
+            itemId: selectedItem.id,
+            productId: selectedItem.id,
+            name: selectedItem.name,
+            quantity: qty,
+            mrp: newMrp,
+            salesPrice: newSalesPrice,
+            effectiveUnitPrice: Number(finalNetPrice.toFixed(2)),
+            customPrice: Number(finalNetPrice.toFixed(2)),
+            discount: Number(calculatedDiscount.toFixed(2)),
+            discount2: 0,
+            unitMultiplier: selectedItem.unitMultiplier ?? 1,
+            note: "",
+            itemGroupId: selectedItem.itemGroupId,
+            moq: selectedItem.moq ?? 0,
+            tax: taxRate,
+            taxRate: taxRate,
+            taxType: savedTaxType,
+            imageUrl: selectedItem.imageUrl || "",
+            imageBase64: "",
+            unitPrice: Number(finalNetPrice.toFixed(2)),
+            finalPrice: Number(lineFinalPrice.toFixed(2)),
+        };
+
+        const updatedItems = [newItem, ...(editingOrder.items || [])];
+
+        let dynamicTax = 0;
+        let exclusiveTax = 0;
+        const itemsTotal = updatedItems.reduce((sum, item) => {
+            const currentQty = Number(item.quantity || 0);
+            const currentUnitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
+            const rowNet = currentUnitPrice * currentQty;
+
+            const currentTaxRate = Number(item.tax ?? item.taxRate ?? 0);
+            const currentTaxType = (item.taxType || '').toLowerCase();
+
+            if (currentTaxRate > 0) {
+                if (currentTaxType === 'exclusive' || currentTaxType === 'regular') {
+                    const taxAmt = rowNet * (currentTaxRate / 100);
+                    dynamicTax += taxAmt;
+                    exclusiveTax += taxAmt;
+                } else if (currentTaxType === 'inclusive') {
+                    const baseAmount = rowNet / (1 + (currentTaxRate / 100));
+                    dynamicTax += (rowNet - baseAmount);
+                }
+            }
+            return sum + rowNet;
+        }, 0);
+
+        const expensesTotal = (editingOrder.expenses || []).reduce((sum: number, e: any) => sum + (parseFloat(e.amount?.toString()) || 0), 0);
+
+        const rawNewTotal = Math.max(0, itemsTotal + exclusiveTax + expensesTotal - Number(editingOrder.manualDiscount || 0));
+        const finalNewTotal = Math.round(rawNewTotal);
+
+        setEditingOrder({ ...editingOrder, items: updatedItems, totalAmount: finalNewTotal });
+    };
+
+    // 👇 NEW: "Increase Quantity" — bumps the most-recently-added matching line
+    // (new items are always prepended, so the first array match is the last one added)
+    const handleIncreaseExistingOrderItemQuantity = () => {
+        if (!duplicateOrderItemPrompt || !editingOrder) return;
+        const targetProductId = duplicateOrderItemPrompt.item.id;
+
+        const matchItem = (editingOrder.items || []).find(
+            (i) => (i.itemId || i.id) === targetProductId
+        );
+
+        if (matchItem) {
+            handleQuantityChange(matchItem.id, Number(matchItem.quantity || 0) + 1);
+        }
+
+        setDuplicateOrderItemPrompt(null);
+    };
+
+    // 👇 NEW: "Add as New Item" — adds a fresh line regardless of existing matches
+    const handleAddOrderItemAsNew = () => {
+        if (!duplicateOrderItemPrompt) return;
+        addSelectedItemToOrder(duplicateOrderItemPrompt.item);
+        setDuplicateOrderItemPrompt(null);
     };
 
     // useEffect(() => {
@@ -4298,104 +4420,18 @@ const OrdersPage: React.FC = () => {
                                         <SearchableItemInput
                                             items={availableItems}
                                             onItemSelected={(selectedItem) => {
-                                                if (!selectedItem.id) return;
+                                                if (!selectedItem.id || !editingOrder) return;
 
-                                                const newMrp = Number(selectedItem.mrp || 0);
-                                                const newSalesPrice = Number(selectedItem.salesPrice || 0);
-                                                const presetDiscount = Number(selectedItem.discount || 0);
+                                                const existingMatches = (editingOrder.items || []).filter(
+                                                    (i) => (i.itemId || i.id) === selectedItem.id
+                                                );
 
-                                                let finalNetPrice = 0;
-                                                let calculatedDiscount = 0;
-
-                                                // 1. Calculate the exact unit price and discount
-                                                if (newMrp > 0 && newSalesPrice > 0) {
-                                                    finalNetPrice = newSalesPrice;
-                                                    calculatedDiscount = ((newMrp - newSalesPrice) / newMrp) * 100;
-                                                } else if (newSalesPrice > 0) {
-                                                    calculatedDiscount = presetDiscount;
-                                                    finalNetPrice = newSalesPrice * (1 - (presetDiscount / 100));
-                                                } else if (newMrp > 0) {
-                                                    calculatedDiscount = presetDiscount;
-                                                    finalNetPrice = newMrp * (1 - (presetDiscount / 100));
+                                                if (existingMatches.length > 0) {
+                                                    setDuplicateOrderItemPrompt({ item: selectedItem, existingCount: existingMatches.length });
+                                                    return;
                                                 }
 
-                                                const qty = selectedItem.moq && selectedItem.moq > 0 ? selectedItem.moq : 1;
-                                                const taxRate = Number(selectedItem.tax ?? selectedItem.taxRate ?? 0);
-
-                                                // --- FIX: Inherit the Tax Type from the existing order ---
-                                                // Look at the first item in the order to see if this bill is Inclusive or Exclusive
-                                                const savedTaxType = (editingOrder?.items && editingOrder.items.length > 0)
-                                                    ? (editingOrder.items[0].taxType || 'Exclusive')
-                                                    : 'Exclusive';
-
-                                                const activeTaxType = savedTaxType.toLowerCase();
-
-                                                // 2. Calculate the item's line total with exclusive tax if needed
-                                                const lineBase = finalNetPrice * qty;
-                                                let lineFinalPrice = lineBase;
-
-                                                if (taxRate > 0 && (activeTaxType === 'exclusive' || activeTaxType === 'regular')) {
-                                                    lineFinalPrice = lineBase + (lineBase * (taxRate / 100));
-                                                }
-
-                                                const newItem: any = {
-                                                    ...selectedItem,
-                                                    id: crypto.randomUUID(),
-                                                    itemId: selectedItem.id,
-                                                    productId: selectedItem.id,
-                                                    name: selectedItem.name,
-                                                    quantity: qty,
-                                                    mrp: newMrp,
-                                                    salesPrice: newSalesPrice,
-                                                    effectiveUnitPrice: Number(finalNetPrice.toFixed(2)),
-                                                    customPrice: Number(finalNetPrice.toFixed(2)),
-                                                    discount: Number(calculatedDiscount.toFixed(2)),
-                                                    discount2: 0,
-                                                    unitMultiplier: selectedItem.unitMultiplier ?? 1,
-                                                    note: "",
-                                                    itemGroupId: selectedItem.itemGroupId,
-                                                    moq: selectedItem.moq ?? 0,
-                                                    tax: taxRate,
-                                                    taxRate: taxRate,
-                                                    taxType: savedTaxType, // Assign the inherited taxType
-                                                    imageUrl: selectedItem.imageUrl || "",
-                                                    imageBase64: "",
-                                                    unitPrice: Number(finalNetPrice.toFixed(2)),
-                                                    finalPrice: Number(lineFinalPrice.toFixed(2)),
-                                                };
-
-                                                const updatedItems = [newItem, ...(editingOrder.items || [])];
-
-                                                // 3. Recalculate the entire order total, factoring in the new item's tax
-                                                let dynamicTax = 0;
-                                                let exclusiveTax = 0;
-                                                const itemsTotal = updatedItems.reduce((sum, item) => {
-                                                    const currentQty = Number(item.quantity || 0);
-                                                    const currentUnitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
-                                                    const rowNet = currentUnitPrice * currentQty;
-
-                                                    const currentTaxRate = Number(item.tax ?? item.taxRate ?? 0);
-                                                    const currentTaxType = (item.taxType || '').toLowerCase();
-
-                                                    if (currentTaxRate > 0) {
-                                                        if (currentTaxType === 'exclusive' || currentTaxType === 'regular') {
-                                                            const taxAmt = rowNet * (currentTaxRate / 100);
-                                                            dynamicTax += taxAmt;
-                                                            exclusiveTax += taxAmt;
-                                                        } else if (currentTaxType === 'inclusive') {
-                                                            const baseAmount = rowNet / (1 + (currentTaxRate / 100));
-                                                            dynamicTax += (rowNet - baseAmount);
-                                                        }
-                                                    }
-                                                    return sum + rowNet;
-                                                }, 0);
-
-                                                const expensesTotal = (editingOrder.expenses || []).reduce((sum: number, e: any) => sum + (parseFloat(e.amount?.toString()) || 0), 0);
-
-                                                const rawNewTotal = Math.max(0, itemsTotal + exclusiveTax + expensesTotal - Number(editingOrder.manualDiscount || 0));
-                                                const finalNewTotal = Math.round(rawNewTotal);
-
-                                                setEditingOrder({ ...editingOrder, items: updatedItems, totalAmount: finalNewTotal });
+                                                addSelectedItemToOrder(selectedItem);
                                             }}
                                             onSearchChange={setCartSearchQuery}
                                             placeholder="Search item to add..."
@@ -4591,6 +4627,46 @@ const OrdersPage: React.FC = () => {
                     </div>
                 </div>
             )}
+
+            {/* 👇 NEW: Duplicate item popup for the Order Edit modal */}
+            {duplicateOrderItemPrompt && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[2500] p-4">
+                    <div className="bg-white rounded-sm shadow-2xl p-6 w-full max-w-sm text-center">
+                        <div className="mx-auto mb-4 w-12 h-12 rounded-sm flex items-center justify-center bg-blue-100">
+                            <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                        <h3 className="text-lg font-bold text-gray-800 mb-1">Item Already in Order</h3>
+                        <p className="text-sm text-gray-600 mb-6">
+                            "<span className="font-medium">{duplicateOrderItemPrompt.item.name}</span>" is already in this order
+                            {duplicateOrderItemPrompt.existingCount > 1 ? ` (${duplicateOrderItemPrompt.existingCount} times)` : ''}.
+                            What would you like to do?
+                        </p>
+                        <div className="flex flex-col gap-2">
+                            <button
+                                onClick={handleIncreaseExistingOrderItemQuantity}
+                                className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-sm font-semibold hover:bg-blue-700 transition-colors"
+                            >
+                                Increase Quantity
+                            </button>
+                            <button
+                                onClick={handleAddOrderItemAsNew}
+                                className="w-full bg-gray-200 text-gray-800 py-2.5 px-4 rounded-sm font-semibold hover:bg-gray-300 transition-colors"
+                            >
+                                Add as New Item
+                            </button>
+                            <button
+                                onClick={() => setDuplicateOrderItemPrompt(null)}
+                                className="w-full text-xs font-medium text-gray-400 hover:text-gray-600 mt-1"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {selectedOrderForConfirm && (
                 <div className="fixed inset-0 z-[4000] flex items-center justify-center bg-black/50 backdrop-blur-sm">
                     <div className="bg-white w-[340px] rounded-sm shadow-xl border border-slate-200 p-5">

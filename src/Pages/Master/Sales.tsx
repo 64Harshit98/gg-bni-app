@@ -56,6 +56,7 @@ export interface SalesItem extends OriginalSalesItem {
     packetSize?: number | undefined;
     isCustomAmount?: boolean;
     isStagedCalcItem?: boolean;
+     addedAt?: number;   // 👈 NEW: 
 }
 
 // Inside Sales component, add interface and button data
@@ -198,6 +199,7 @@ const Sales: React.FC = () => {
     const [pageIsLoading, setPageIsLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+    const [duplicateItemPrompt, setDuplicateItemPrompt] = useState<{ item: Item; existingCount: number } | null>(null);
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const longPressTimer = useRef<NodeJS.Timeout | null>(null);
 
@@ -912,6 +914,7 @@ const Sales: React.FC = () => {
             unit: (itemToAdd as any).unit || '',
             unitMultiplier: 1,
             packetSize: (itemToAdd as any).packetSize || null,
+            addedAt: Date.now(),
         };
 
         setItems(prev => {
@@ -949,7 +952,49 @@ const Sales: React.FC = () => {
         setShowClearCartConfirm(false);
     };
     const handleItemSelected = (selectedItem: Item | null) => {
-        if (selectedItem) { addItemToCart(selectedItem); setGridSearchQuery(''); }
+        if (!selectedItem) return;
+
+        // Cart mein ye item pehle se hai kya (ek ya zyada baar)?
+        const existingMatches = items.filter(i => i.productId === selectedItem.id);
+
+        if (existingMatches.length > 0) {
+            // Direct add mat karo — pehle user se poocho
+            setDuplicateItemPrompt({ item: selectedItem, existingCount: existingMatches.length });
+            setGridSearchQuery('');
+            return;
+        }
+
+        addItemToCart(selectedItem);
+        setGridSearchQuery('');
+    };
+
+    // User ne "Quantity Badhao" choose kiya
+    const handleIncreaseExistingQuantity = () => {
+        if (!duplicateItemPrompt) return;
+        const targetProductId = duplicateItemPrompt.item.id;
+
+        setItems(prev => {
+            const matches = prev.filter(i => i.productId === targetProductId);
+            if (matches.length === 0) return prev;
+
+            // Sabse "last added" (sabse recent) wala line dhoondo
+            const lastAdded = matches.reduce((latest, current) =>
+                (current.addedAt || 0) > (latest.addedAt || 0) ? current : latest
+            );
+
+            return prev.map(i =>
+                i.id === lastAdded.id ? { ...i, quantity: (i.quantity || 1) + 1 } : i
+            );
+        });
+
+        setDuplicateItemPrompt(null);
+    };
+
+    // User ne "Naya Item Add Karo" choose kiya
+    const handleAddAsNewLine = () => {
+        if (!duplicateItemPrompt) return;
+        addItemToCart(duplicateItemPrompt.item);
+        setDuplicateItemPrompt(null);
     };
     const closeBarcodeLinkModal = () => {
         setIsBarcodeLinkModalOpen(false);
@@ -2751,6 +2796,47 @@ const Sales: React.FC = () => {
                         <div className="flex justify-end gap-4 mt-6">
                             <CustomButton variant={Variant.Outline} onClick={() => setShowClearCartConfirm(false)}>Cancel</CustomButton>
                             <CustomButton variant={Variant.Filled} onClick={handleConfirmClearCart}>Clear</CustomButton>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* 👇 NEW: Duplicate item popup — styled like the shared Modal component */}
+            {duplicateItemPrompt && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[2000] p-4">
+                    <div className="bg-white rounded-sm shadow-2xl p-6 w-full max-w-sm text-center">
+                        {/* Icon */}
+                        <div className="mx-auto mb-4 w-12 h-12 rounded-sm flex items-center justify-center bg-blue-100">
+                            <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+
+                        <h3 className="text-lg font-bold text-gray-800 mb-1">Item Already in Cart</h3>
+                        <p className="text-sm text-gray-600 mb-6">
+                            "<span className="font-medium">{duplicateItemPrompt.item.name}</span>" is already in your cart
+                            {duplicateItemPrompt.existingCount > 1 ? ` (${duplicateItemPrompt.existingCount} times)` : ''}.
+                            What would you like to do?
+                        </p>
+
+                        <div className="flex flex-col gap-2">
+                            <button
+                                onClick={handleIncreaseExistingQuantity}
+                                className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-sm font-semibold hover:bg-blue-700 transition-colors"
+                            >
+                                Increase Quantity
+                            </button>
+                            <button
+                                onClick={handleAddAsNewLine}
+                                className="w-full bg-gray-200 text-gray-800 py-2.5 px-4 rounded-sm font-semibold hover:bg-gray-300 transition-colors"
+                            >
+                                Add as New Item
+                            </button>
+                            <button
+                                onClick={() => setDuplicateItemPrompt(null)}
+                                className="w-full text-xs font-medium text-gray-400 hover:text-gray-600 mt-1"
+                            >
+                                Cancel
+                            </button>
                         </div>
                     </div>
                 </div>

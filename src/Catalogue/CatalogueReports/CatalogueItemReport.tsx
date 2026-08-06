@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import useItemReport from '../../Pages/Reports/ItemReportComponents/useItemReport';
 import type { Item } from '../../constants/models';
 import jsPDF from 'jspdf';
@@ -17,7 +17,8 @@ import FilterSelect from '../../Pages/Reports/ItemReportComponents/FilterSelect'
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import { useAuth } from '../../context/auth-context';
 import { useGodowns, useGodownStock, SHOP_ID } from '../../Pages/hooks/useStockTransfer';
-
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../lib/Firebase';
 // Import your Modal and State
 import { Modal } from '../../constants/Modal'; // Adjust path to where you saved the Modal code
 import { State } from '../../enums';
@@ -26,9 +27,26 @@ import BackButton from '../../Components/BackButton';
 const UNASSIGNED_GROUP_NAME = 'Uncategorized';
 // --- Helper Component ---
 
-const CatalogueItemReport: React.FC = () => {
+const CatalogueItemReport: React.FC = () => {   // (or `const ItemReport: React.FC = () => {`)
   const { currentUser } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
+  const [companyName, setCompanyName] = useState<string>('');
+
+  useEffect(() => {
+    const fetchCompanyName = async () => {
+      if (!currentUser?.companyId) return;
+      try {
+        const companyRef = doc(db, 'companies', currentUser.companyId);
+        const snap = await getDoc(companyRef);
+        if (snap.exists()) {
+          setCompanyName(snap.data().name || snap.data().companyName || '');
+        }
+      } catch (e) {
+        console.error('Failed to fetch company name', e);
+      }
+    };
+    fetchCompanyName();
+  }, [currentUser?.companyId]);
   const [showSearch, setShowSearch] = useState(false);
   const [locationFilter, setLocationFilter] = useState('');
   const {
@@ -281,12 +299,19 @@ const CatalogueItemReport: React.FC = () => {
       // Uses the #F97316 orange from your UI
       doc.setFillColor(249, 115, 22);
       doc.rect(0, 0, pageWidth, 6, 'F');
-
-      // --- 2. HEADER SECTION ---
       doc.setFontSize(22);
       doc.setTextColor(17, 24, 39); // gray-900
       doc.setFont('helvetica', 'bold');
       doc.text('Detailed Item Report', 14, 24);
+
+      // Company name right after the title, same line
+      if (companyName) {
+        const titleWidth = doc.getTextWidth('Detailed Item Report');
+        doc.setFontSize(13);
+        doc.setTextColor(107, 114, 128); // gray-500
+        doc.setFont('helvetica', 'normal');
+        doc.text(`—  ${companyName}`, 14 + titleWidth + 4, 24);
+      }
 
       // Dynamic Subtitle with Date Range & Summary Stats
       doc.setFontSize(10);
@@ -468,8 +493,10 @@ const CatalogueItemReport: React.FC = () => {
       const totalRows = dataStartRow + filteredItems.length; // no footer row — see Change 5
       const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
 
-      // Row 0 – Title
-      aoa[0][0] = 'Detailed Item Report';
+      // Row 0 – Title (Company Name alongside)
+      aoa[0][0] = companyName
+        ? `Detailed Item Report  —  ${companyName}`
+        : 'Detailed Item Report';
 
       // Row 1 – Meta
       aoa[1][0] = `Generated: ${generationDate}   |   Total Items: ${summary.totalItems}   |   Avg Margin: ${Math.round(summary.averageMarginPercentage)}%`;

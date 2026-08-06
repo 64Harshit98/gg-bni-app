@@ -48,6 +48,7 @@ interface PurchaseItem extends Omit<SalesItem, 'finalPrice' | 'effectiveUnitPric
   isEditable?: boolean;
   unitMultiplier?: number;
   unit?: string;
+  addedAt?: number;
 }
 
 interface PurchaseDocumentData {
@@ -136,6 +137,7 @@ const PurchasePage: React.FC = () => {
   const [showPrintQrModal, setShowPrintQrModal] = useState<PurchaseItem[] | null>(null);
   const [editModeData, setEditModeData] = useState<Purchase | null>(null);
   const [_settingsDocId, setSettingsDocId] = useState<string | null>(null);
+   const [duplicateItemPrompt, setDuplicateItemPrompt] = useState<{ item: Item; existingCount: number } | null>(null); // 👈 NEW
 
   // --- Godown assignment (Stock Transfer module) ---
   const { godowns } = useGodowns(currentUser?.companyId);
@@ -387,7 +389,8 @@ const PurchasePage: React.FC = () => {
       purchasediscount2: 0,
       taxRate: resolvedTax,
       stock: itemToAdd.stock || (itemToAdd as any).Stock || 0,
-      isEditable: true
+      isEditable: true,
+      addedAt: Date.now(),
     };
 
     setItems((prevItems) => {
@@ -634,9 +637,44 @@ const PurchasePage: React.FC = () => {
   };
 
   const handleItemSelected = (item: Item | null) => {
-    if (item) {
-      addItemToCart(item);
+    if (!item) return;
+
+    const existingMatches = items.filter(i => i.productId === item.id);
+
+    if (existingMatches.length > 0) {
+      setDuplicateItemPrompt({ item, existingCount: existingMatches.length });
+      return;
     }
+
+    addItemToCart(item);
+  };
+
+  // User chose "Increase Quantity"
+  const handleIncreaseExistingQuantity = () => {
+    if (!duplicateItemPrompt) return;
+    const targetProductId = duplicateItemPrompt.item.id;
+
+    setItems(prev => {
+      const matches = prev.filter(i => i.productId === targetProductId);
+      if (matches.length === 0) return prev;
+
+      const lastAdded = matches.reduce((latest, current) =>
+        (current.addedAt || 0) > (latest.addedAt || 0) ? current : latest
+      );
+
+      return prev.map(i =>
+        i.id === lastAdded.id ? { ...i, quantity: (i.quantity || 1) + 1 } : i
+      );
+    });
+
+    setDuplicateItemPrompt(null);
+  };
+
+  // User chose "Add as New Item"
+  const handleAddAsNewLine = () => {
+    if (!duplicateItemPrompt) return;
+    addItemToCart(duplicateItemPrompt.item);
+    setDuplicateItemPrompt(null);
   };
 
   const handleProceedToPayment = () => {
@@ -2047,6 +2085,45 @@ const PurchasePage: React.FC = () => {
           </div>
         </div>
       )}
+     {/* 👇 NEW: Duplicate item popup */}
+      {duplicateItemPrompt && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[2000] p-4">
+          <div className="bg-white rounded-sm shadow-2xl p-6 w-full max-w-sm text-center">
+            <div className="mx-auto mb-4 w-12 h-12 rounded-sm flex items-center justify-center bg-blue-100">
+              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+            </div>
+            <h3 className="text-lg font-bold text-gray-800 mb-1">Item Already in Cart</h3>
+            <p className="text-sm text-gray-600 mb-6">
+              "<span className="font-medium">{duplicateItemPrompt.item.name}</span>" is already in your cart
+              {duplicateItemPrompt.existingCount > 1 ? ` (${duplicateItemPrompt.existingCount} times)` : ''}.
+              What would you like to do?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={handleIncreaseExistingQuantity}
+                className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-sm font-semibold hover:bg-blue-700 transition-colors"
+              >
+                Increase Quantity
+              </button>
+              <button
+                onClick={handleAddAsNewLine}
+                className="w-full bg-gray-200 text-gray-800 py-2.5 px-4 rounded-sm font-semibold hover:bg-gray-300 transition-colors"
+              >
+                Add as New Item
+              </button>
+              <button
+                onClick={() => setDuplicateItemPrompt(null)}
+                className="w-full text-xs font-medium text-gray-400 hover:text-gray-600 mt-1"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* FULL SCREEN LOADING OVERLAY */}
       {isScanning && (
         <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center backdrop-blur-sm bg-white/70">

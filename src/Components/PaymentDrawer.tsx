@@ -203,6 +203,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const [shippingState, setShippingState] = useState('');
     const [suggestions, setSuggestions] = useState<PartySuggestion[]>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
+    const [activeSearchField, setActiveSearchField] = useState<'name' | 'number'>('number');
     const searchTimeout = useRef<NodeJS.Timeout | null>(null);
 
     const numberInputRef = useRef<HTMLInputElement>(null);
@@ -510,14 +511,12 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const handleInputChange = (value: string, type: 'name' | 'number') => {
         if (type === 'name') {
             setPartyName(value);
-            if (!isSale) {
-                if (searchTimeout.current) clearTimeout(searchTimeout.current);
-                searchTimeout.current = setTimeout(() => { searchParty(value, 'name'); }, 400);
-            } else {
-                setSuggestions([]); setShowSuggestions(false);
-            }
+            setActiveSearchField('name');
+            if (searchTimeout.current) clearTimeout(searchTimeout.current);
+            searchTimeout.current = setTimeout(() => { searchParty(value, 'name'); }, 400);
         } else {
             setPartyNumber(value);
+            setActiveSearchField('number');
             if (isSale) {
                 if (searchTimeout.current) clearTimeout(searchTimeout.current);
                 searchTimeout.current = setTimeout(() => { searchParty(value, 'number'); }, 400);
@@ -755,7 +754,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
 
     const renderSuggestions = () => {
         if (!showSuggestions || suggestions.length === 0) return null;
-        const ref = isSale ? numberInputRef.current : nameInputRef.current;
+        const ref = activeSearchField === 'name' ? nameInputRef.current : numberInputRef.current;
         const rect = ref?.getBoundingClientRect();
         if (!rect) return null;
 
@@ -900,7 +899,10 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                                 if (addressType === 'billing') { handleInputChange(val, 'number'); }
                                                 else { setShippingNumber(val); setIsSameAsBilling(false); }
                                             }}
-                                            onFocus={() => { if (isSale && addressType === 'billing' && partyNumber.length >= 3) searchParty(partyNumber, 'number'); }}
+                                            onFocus={() => {
+                                                setActiveSearchField('number');
+                                                if (isSale && addressType === 'billing' && partyNumber.length >= 3) searchParty(partyNumber, 'number');
+                                            }}
                                             className={`w-full bg-gray-50 p-2 md:p-3 text-xs md:text-sm rounded-xs border ${requireCustomerMobile && !partyNumber && addressType === 'billing' ? 'border-red-300 focus:border-red-500' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none`}
                                             autoComplete="off"
                                         />
@@ -917,7 +919,10 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                                 if (addressType === 'billing') { handleInputChange(e.target.value, 'name'); }
                                                 else { setShippingName(e.target.value); setIsSameAsBilling(false); }
                                             }}
-                                            onFocus={() => { if (!isSale && addressType === 'billing' && partyName.length >= 3) searchParty(partyName, 'name'); }}
+                                            onFocus={() => {
+                                                setActiveSearchField('name');
+                                                if (addressType === 'billing' && partyName.length >= 3) searchParty(partyName, 'name');
+                                            }}
                                             className={`w-full bg-gray-50 p-2 md:p-3 text-xs md:text-sm rounded-xs border ${requireCustomerName && !partyName && addressType === 'billing' ? '' : 'border-gray-200 focus:border-blue-500'} focus:ring-2 focus:ring-blue-100 outline-none`}
                                             autoComplete="off"
                                         />

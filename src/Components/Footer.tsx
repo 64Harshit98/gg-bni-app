@@ -75,6 +75,11 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
             <span className="font-medium">- ₹{totalDiscount.toFixed(2)}</span>
           </div>
         )}
+        {/* Net Sale Price — desktop only */}
+        <div className="hidden md:flex justify-between text-gray-700 border-t border-gray-100 pt-1.5">
+          <span className="font-medium">Net Sale Price</span>
+          <span className="font-semibold">₹{(subtotal - totalDiscount).toFixed(2)}</span>
+        </div>
 
         {showTaxRow && (
           <div className="border-b border-gray-200 pb-2 flex justify-between text-blue-600">

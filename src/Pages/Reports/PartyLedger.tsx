@@ -23,6 +23,8 @@ interface BulkOpeningBalanceRow {
     amount: number;
     balanceType: 'due' | 'advance';
     note: string;
+    address?: string;    // NEW
+    gstNumber?: string;  // NEW
     date?: number;
 }
 const PartyLedger: React.FC = () => {
@@ -338,6 +340,8 @@ const PartyLedger: React.FC = () => {
                 const dueVal = parseFloat(safeGetVal(row, 5) as string) || 0;
                 const advanceVal = parseFloat(safeGetVal(row, 6) as string) || 0;
                 const narration = (safeGetVal(row, 7) as string).trim();
+                const address = (safeGetVal(row, 8) as string).trim();                 // NEW
+                const gstNumber = (safeGetVal(row, 9) as string).trim().toUpperCase(); // NEW
 
                 // ✅ Type must be explicitly "Customer"/"Supplier" — no silent default anymore
                 if (!typeVal || !(typeVal.startsWith('c') || typeVal.startsWith('s'))) { skippedCount++; continue; }
@@ -360,6 +364,8 @@ const PartyLedger: React.FC = () => {
                     amount: dueVal > 0 ? dueVal : (advanceVal > 0 ? advanceVal : 0),
                     balanceType: dueVal > 0 ? 'due' : (advanceVal > 0 ? 'advance' : 'due'),
                     note: narration,
+                    address: address || undefined,       // NEW
+                    gstNumber: gstNumber || undefined,    // NEW
                     date: parseExcelDate(dateVal),
                 });
             }
@@ -415,8 +421,10 @@ const PartyLedger: React.FC = () => {
             { header: '★ Party Name', note: 'Full party name', width: 22 },
             { header: '★ Party Number', note: 'Phone number (Required)', width: 16 },
             { header: '● Due Amount', note: 'They owe you (₹) — leave blank if none', width: 16 },
-            { header: '● Advance Amount', note: 'You owe them (₹) — leave blank if none', width: 16 },
+            { header: '● Advance Amount', note: 'You owe them (₹) — leave both blank to just add the party', width: 16 },
             { header: '● Narration', note: 'Optional note / description', width: 26 },
+       { header: '● Party Address', note: 'Optional — full address', width: 26 },   // NEW
+            { header: '● GST Number', note: 'Optional — GSTIN', width: 18 },             // NEW
         ];
 
         const REQ = { bg: 'FEE2E2', txt: 'DC2626' };
@@ -429,8 +437,8 @@ const PartyLedger: React.FC = () => {
         ];
 
         const sampleRows = [
-            ['01/04/2024', 'Customer', 'Ramesh Traders', '9876543210', 5000, '', 'Pending from last year'],
-            ['15/03/2024', 'Supplier', 'Sharma Distributors', '9123456780', '', 3000, 'Advance paid for stock'],
+            ['01/04/2024', 'Customer', 'Ramesh Traders', '9876543210', 5000, '', 'Pending from last year', 'Shop 12, MG Road, Lucknow', '09ABCDE1234F1Z5'],
+            ['15/03/2024', 'Supplier', 'Sharma Distributors', '9123456780', '', 3000, 'Advance paid for stock', 'Plot 4, Industrial Area, Kanpur', '09XYZAB5678G1Z2'],
         ];
 
         const totalRows = 11;
@@ -1063,6 +1071,13 @@ const PartyLedger: React.FC = () => {
                                                         <p className="text-sm text-slate-500 mt-0.5">
                                                             {party.partyNumber || 'N/A'} <span className="mx-1 text-slate-300">•</span> {party.totalTransactions} Bills
                                                         </p>
+                                                        {/* NEW: address + GST number, only if present */}
+                                                        {party.address && (
+                                                            <p className="text-xs text-slate-400 mt-0.5">{party.address}</p>
+                                                        )}
+                                                        {party.gstNumber && (
+                                                            <p className="text-[11px] text-slate-400 mt-0.5">GSTIN: {party.gstNumber}</p>
+                                                        )}
                                                     </div>
                                                     <div className="text-right">
                                                         <p className={`text-lg font-bold ${party.totalDue > 0 ? 'text-red-600' : 'text-emerald-600'}`}>

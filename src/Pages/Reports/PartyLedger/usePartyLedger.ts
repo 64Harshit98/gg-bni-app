@@ -24,6 +24,8 @@ export interface OpeningBalance {
     dueAmount: number;
     balanceType?: 'due' | 'advance'; // ✅ 'due' = they owe you, 'advance' = you owe them
     note?: string;
+    address?: string;    // NEW
+    gstNumber?: string;  // NEW
     createdAt: number;
     paymentHistory: PaymentRecord[];
 }
@@ -35,6 +37,8 @@ export interface BulkOpeningBalanceRow {
     amount: number;
     balanceType: 'due' | 'advance';
     note?: string;
+    address?: string;    // NEW
+    gstNumber?: string;  // NEW
     date?: number; // millis, optional — defaults to "now" if not in the sheet
 }
 
@@ -61,6 +65,8 @@ export interface PartySummary {
     totalDue: number;
     totalTransactions: number;
     transactions: LedgerTransaction[]; // Changed from 'sales' to 'transactions'
+    address?: string;    // NEW
+    gstNumber?: string;  // NEW
 }
 
 // NEW: given a balanceType + partyType, decide which field on the customers/suppliers
@@ -81,8 +87,8 @@ export default function usePartyLedger() {
     // NEW: lightweight master records for customers/suppliers who may have NO transactions
     // or opening balance yet (e.g. bulk-imported with a zero balance) — without this,
     // such parties would never appear in partySummaries at all.
-    const [customersMaster, setCustomersMaster] = useState<{ name: string; number: string; createdAt?: number }[]>([]);
-    const [suppliersMaster, setSuppliersMaster] = useState<{ name: string; number: string; createdAt?: number }[]>([]);
+    const [customersMaster, setCustomersMaster] = useState<{ name: string; number: string; createdAt?: number; address?: string; gstNumber?: string }[]>([]);
+    const [suppliersMaster, setSuppliersMaster] = useState<{ name: string; number: string; createdAt?: number; address?: string; gstNumber?: string }[]>([]);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -272,12 +278,24 @@ export default function usePartyLedger() {
                 setCustomersMaster(custSnap.docs.map(d => {
                     const data = d.data();
                     const createdAtMillis = data.createdAt instanceof Timestamp ? data.createdAt.toMillis() : undefined;
-                    return { name: data.name || data.partyName || 'Unknown', number: data.number || d.id, createdAt: createdAtMillis };
+                    return {
+                        name: data.name || data.partyName || 'Unknown',
+                        number: data.number || d.id,
+                        createdAt: createdAtMillis,
+                        address: data.address || '',      // NEW
+                        gstNumber: data.gstNumber || '',  // NEW
+                    };
                 }));
                 setSuppliersMaster(supSnap.docs.map(d => {
                     const data = d.data();
                     const createdAtMillis = data.createdAt instanceof Timestamp ? data.createdAt.toMillis() : undefined;
-                    return { name: data.name || data.partyName || 'Unknown', number: data.number || d.id, createdAt: createdAtMillis };
+                    return {
+                        name: data.name || data.partyName || 'Unknown',
+                        number: data.number || d.id,
+                        createdAt: createdAtMillis,
+                        address: data.address || '',      // NEW
+                        gstNumber: data.gstNumber || '',  // NEW
+                    };
                 }));
             } catch (err) {
                 console.error('Error fetching customers/suppliers master records:', err);
@@ -340,13 +358,20 @@ export default function usePartyLedger() {
                 totalDue: 0,
                 totalTransactions: 0,
                 transactions: [],
+                address: c.address || undefined,     // NEW
+                gstNumber: c.gstNumber || undefined, // NEW
             };
         });
         filteredSuppliersMaster.forEach(s => {
             const normalizedNumber = normalizePartyNumber(s.number);
             const key = normalizedNumber || s.name.trim().toLowerCase();
             if (seed[key]) {
-                seed[key] = { ...seed[key], partyType: 'Both' };
+                seed[key] = {
+                    ...seed[key],
+                    partyType: 'Both',
+                    address: seed[key].address || s.address,       // NEW
+                    gstNumber: seed[key].gstNumber || s.gstNumber,  // NEW
+                };
             } else {
                 seed[key] = {
                     partyName: s.name || 'N/A',
@@ -356,6 +381,8 @@ export default function usePartyLedger() {
                     totalDue: 0,
                     totalTransactions: 0,
                     transactions: [],
+                    address: s.address || undefined,     // NEW
+                    gstNumber: s.gstNumber || undefined, // NEW
                 };
             }
         });
@@ -540,7 +567,7 @@ export default function usePartyLedger() {
         const newLocalOBs: OpeningBalance[] = [];
         // ✅ Collect customer/supplier master upserts here, applied to local state once at
         // the end — so the whole imported list shows up immediately, no reload needed.
-        const masterUpserts: { partyType: 'Customer' | 'Supplier'; name: string; number: string; createdAt: number }[] = [];
+        const masterUpserts: { partyType: 'Customer' | 'Supplier'; name: string; number: string; createdAt: number; address?: string; gstNumber?: string }[] = [];
 
         // ✅ Seed a number→name map with parties that already exist, then keep it
         // updated as we go through the sheet so within-file duplicates are caught too
@@ -582,6 +609,8 @@ export default function usePartyLedger() {
                         dueAmount: row.balanceType === 'due' ? row.amount : 0,
                         balanceType: row.balanceType,
                         note: row.note || '',
+                        address: row.address || '',      // NEW
+                        gstNumber: row.gstNumber || '',  // NEW
                         paymentHistory: [],
                         createdAt: createdAtValue,
                     };
@@ -596,6 +625,8 @@ export default function usePartyLedger() {
                         dueAmount: row.balanceType === 'due' ? row.amount : 0,
                         balanceType: row.balanceType,
                         note: row.note || '',
+                        address: row.address || '',      // NEW
+                        gstNumber: row.gstNumber || '',  // NEW
                         createdAt: row.date || Date.now(),
                         paymentHistory: [],
                     });
@@ -620,6 +651,8 @@ export default function usePartyLedger() {
                         number: row.partyNumber,
                         partyType: row.partyType,
                         [balanceField]: increment(row.amount),
+                        ...(row.address ? { address: row.address } : {}),       // NEW
+                        ...(row.gstNumber ? { gstNumber: row.gstNumber } : {}), // NEW
                     };
                     const isNewMasterDoc = !existingSnap.exists() || !existingSnap.data()?.createdAt;
                     if (isNewMasterDoc) {
@@ -630,7 +663,7 @@ export default function usePartyLedger() {
                     const masterCreatedAt = isNewMasterDoc
                         ? rowCreatedAtMillis
                         : (existingSnap.data()?.createdAt instanceof FsTimestamp ? existingSnap.data()!.createdAt.toMillis() : rowCreatedAtMillis);
-                    masterUpserts.push({ partyType: row.partyType, name: row.partyName, number: row.partyNumber, createdAt: masterCreatedAt });
+                    masterUpserts.push({ partyType: row.partyType, name: row.partyName, number: row.partyNumber, createdAt: masterCreatedAt, address: row.address, gstNumber: row.gstNumber });
                 }
                 success++;
             } catch (e) {
@@ -645,9 +678,9 @@ export default function usePartyLedger() {
         }
 
         if (masterUpserts.length > 0) {
-            const applyUpserts = (prev: { name: string; number: string; createdAt?: number }[], upserts: typeof masterUpserts) => {
+            const applyUpserts = (prev: { name: string; number: string; createdAt?: number, address?: string; gstNumber?: string }[], upserts: typeof masterUpserts) => {
                 const map = new Map(prev.map(p => [normalizePartyNumber(p.number), p]));
-                upserts.forEach(u => map.set(normalizePartyNumber(u.number), { name: u.name, number: u.number, createdAt: u.createdAt }));
+                upserts.forEach(u => map.set(normalizePartyNumber(u.number), { name: u.name, number: u.number, createdAt: u.createdAt, address: u.address, gstNumber: u.gstNumber }));
                 return Array.from(map.values());
             };
             const customerUpserts = masterUpserts.filter(u => u.partyType === 'Customer');

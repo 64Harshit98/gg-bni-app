@@ -162,7 +162,7 @@ const SignUpPage: React.FC = () => {
               <FloatingLabelInput
                 id="fullName"
                 type="text"
-                label="Full Name"
+                label="Your Name"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 required

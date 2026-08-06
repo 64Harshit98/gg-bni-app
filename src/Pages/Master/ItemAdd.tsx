@@ -153,6 +153,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   const [showImportModal, setShowImportModal] = useState(false);
   const [importMode, setImportMode] = useState<'create_update' | 'update_only'>('create_update');
   const [updateFields, setUpdateFields] = useState({
+    name: true,
     mrp: true,
     salesPrice: true,
     purchasePrice: true,
@@ -200,7 +201,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   useEffect(() => {
     const draft = {
       itemName, itemMRP, itemSalesPrice, itemPurchasePrice, itemDiscount,
-      PurchaseDiscount, itemTax, itemAmount, restockQuantity,itemDescription, selectedCategories,
+      PurchaseDiscount, itemTax, itemAmount, restockQuantity, itemDescription, selectedCategories,
       itemBarcode, hsnCode, itemUnit, packetSize, moq, imageUrl
     };
     sessionStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
@@ -748,6 +749,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           }
 
           const updates: any = {};
+          if (updateFields.name) updates.name = rawName;
           if (updateFields.mrp) updates.mrp = rowMRP;
           if (updateFields.salesPrice) updates.salesPrice = rowSale;
           if (updateFields.purchasePrice) updates.purchasePrice = rowPurchase;
@@ -762,7 +764,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           if (updateFields.hsnCode) updates.hsnSac = rowHsn;
           if (updateFields.restockQuantity) updates.restockQuantity = rowRestock;
           if (updateFields.moq) updates.moq = rowMoq;
-           if (updateFields.description) updates.description = rowDescription;
+          if (updateFields.description) updates.description = rowDescription;
 
           try {
             await dbOperations.updateItem(existingItem.id, updates);

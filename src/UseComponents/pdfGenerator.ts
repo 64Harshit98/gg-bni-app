@@ -176,8 +176,8 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   const addressBlockHeight = addressLines.length * 4; // Dynamic height based on address lines
 
   const headerHeight = 25 + addressBlockHeight; // Expanded box height
-  const metaHeight = 16;
-
+  const hasBilledBy = !!(data.invoice.billedBy && data.invoice.billedBy.trim() !== '');
+  const metaHeight = hasBilledBy ? 21 : 16; // extra room for "Billed by" line
   const td = data.transportDetails ?? undefined;
   const hasTransport = !!(
     td &&
@@ -406,6 +406,9 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     doc.setFontSize(9);
     doc.text(`Invoice No. :  ${data.invoice.number}`, startX + 2, cursorY + 5);
     doc.text(`Date          :  ${data.invoice.date}`, startX + 2, cursorY + 10);
+    if (hasBilledBy) {
+      doc.text(`Billed by    :  ${data.invoice.billedBy}`, startX + 2, cursorY + 15);
+    }
 
     // UPDATED: Use the specific placeOfSupply string
     const displayPos = data.placeOfSupply || data.billTo.address.split(',').pop()?.trim() || '';

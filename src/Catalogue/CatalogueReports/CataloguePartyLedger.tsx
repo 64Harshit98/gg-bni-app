@@ -32,6 +32,8 @@ type OpeningBalance = {
     dueAmount: number;
     balanceType?: 'due' | 'advance';
     note?: string;
+    address?: string;    // NEW
+    gstNumber?: string;  // NEW
     createdAt: number;
     paymentHistory: PaymentRecord[];
 };
@@ -42,6 +44,8 @@ type BulkOpeningBalanceRow = {
     amount: number;
     balanceType: 'due' | 'advance';
     note: string;
+    address?: string;    // NEW
+    gstNumber?: string;  // NEW
     date?: number;
 };
 import { formatDate, formatDateForInput } from '../../Pages/Reports/SalesReportComponents/salesReport.utils';
@@ -446,6 +450,8 @@ const CataloguePartyLedger: React.FC = () => {
                             dueAmount: data.dueAmount ?? data.amount ?? 0,
                             balanceType: data.balanceType || 'due',
                             note: data.note || '',
+                            address: data.address || '',      // NEW
+                            gstNumber: data.gstNumber || '',  // NEW
                             createdAt: creationMillis,
                             paymentHistory: data.paymentHistory || [],
                         };
@@ -629,9 +635,13 @@ const CataloguePartyLedger: React.FC = () => {
                     totalTransactions: 0,
                     partyType: 'Customer',
                     unpaidItems: [] as { label: string; dueAmount: number }[],
+                    address: ob.address || undefined,      // NEW
+                    gstNumber: ob.gstNumber || undefined,  // NEW
                 });
             }
             const existing = map.get(key);
+            if (!existing.address && ob.address) existing.address = ob.address;       // NEW
+            if (!existing.gstNumber && ob.gstNumber) existing.gstNumber = ob.gstNumber; // NEW
             existing.totalBilled += ob.amount;
             if (ob.balanceType !== 'advance') {
                 existing.totalDue += ob.dueAmount;
@@ -716,6 +726,10 @@ const CataloguePartyLedger: React.FC = () => {
         // Merge matching opening balances as pseudo-transactions
         const obTransactions: LedgerTransaction[] = openingBalances
             .filter(ob => {
+                // Zero-amount OBs exist only so a new party shows up in the party list
+                // (bulk import with no due/advance) — they're not a real transaction to display.
+                if (ob.amount <= 0) return false;
+
                 // ✅ Date filter
                 const start = appliedStartDate ? new Date(appliedStartDate).setHours(0, 0, 0, 0) : 0;
                 const end = appliedEndDate ? new Date(appliedEndDate).setHours(23, 59, 59, 999) : Date.now();
@@ -923,6 +937,8 @@ const CataloguePartyLedger: React.FC = () => {
                 const dueVal = parseFloat(safeGetVal(row, 5) as string) || 0;
                 const advanceVal = parseFloat(safeGetVal(row, 6) as string) || 0;
                 const narration = (safeGetVal(row, 7) as string).trim();
+                const address = (safeGetVal(row, 8) as string).trim();                 // NEW
+                const gstNumber = (safeGetVal(row, 9) as string).trim().toUpperCase(); // NEW
 
                 // ✅ Type must be explicitly "Customer"/"Supplier" — no silent default
                 if (!typeVal || !(typeVal.startsWith('c') || typeVal.startsWith('s'))) { skippedCount++; continue; }
@@ -931,16 +947,19 @@ const CataloguePartyLedger: React.FC = () => {
                 const partyNumberDigits = partyNumber.replace(/\D/g, '');
                 if (!partyNumber || partyNumberDigits.length !== 10) { skippedCount++; continue; }
 
-                const partyType: 'Customer' | 'Supplier' = typeVal.startsWith('s') ? 'Supplier' : 'Customer';
-                if (dueVal <= 0 && advanceVal <= 0) { skippedCount++; continue; }
+                 const partyType: 'Customer' | 'Supplier' = typeVal.startsWith('s') ? 'Supplier' : 'Customer';
+                // Only ambiguous when BOTH are filled. Neither filled is now a valid
+                // "just add this party" row — it shouldn't be rejected.
                 if (dueVal > 0 && advanceVal > 0) { skippedCount++; continue; }
                 rowsToImport.push({
                     partyName,
                     partyNumber,
                     partyType,
-                    amount: dueVal > 0 ? dueVal : advanceVal,
-                    balanceType: dueVal > 0 ? 'due' : 'advance',
+                    amount: dueVal > 0 ? dueVal : (advanceVal > 0 ? advanceVal : 0),
+                    balanceType: dueVal > 0 ? 'due' : (advanceVal > 0 ? 'advance' : 'due'),
                     note: narration,
+                    address: address || undefined,       // NEW
+                    gstNumber: gstNumber || undefined,    // NEW
                     date: parseExcelDate(dateVal),
                 });
             }
@@ -955,7 +974,7 @@ const CataloguePartyLedger: React.FC = () => {
             });
 
             const noteParts = [
-                skippedCount ? `${skippedCount} skipped (no/ambiguous balance)` : '',
+                skippedCount ? `${skippedCount} skipped (missing type/number, or both balances filled)` : '',
                 result.duplicates ? `${result.duplicates} skipped as duplicate number` : '',
             ].filter(Boolean).join(', ');
 
@@ -1019,6 +1038,8 @@ const CataloguePartyLedger: React.FC = () => {
                     dueAmount: row.balanceType === 'due' ? row.amount : 0,
                     balanceType: row.balanceType,
                     note: row.note || '',
+                     address: row.address || '',      // NEW
+                    gstNumber: row.gstNumber || '',  // NEW
                     paymentHistory: [],
                     createdAt: createdAtValue,
                     source: 'catalogue',
@@ -1033,6 +1054,8 @@ const CataloguePartyLedger: React.FC = () => {
                         name: row.partyName,
                         number: row.partyNumber,
                         [balanceField]: fsIncrement(row.amount),
+                    ...(row.address ? { address: row.address } : {}),       // NEW
+                        ...(row.gstNumber ? { gstNumber: row.gstNumber } : {}), // NEW
                     }, { merge: true });
                 }
 
@@ -1045,6 +1068,8 @@ const CataloguePartyLedger: React.FC = () => {
                     dueAmount: row.balanceType === 'due' ? row.amount : 0,
                     balanceType: row.balanceType,
                     note: row.note || '',
+                     address: row.address || '',      // NEW
+                    gstNumber: row.gstNumber || '',  // NEW
                     createdAt: row.date || Date.now(),
                     paymentHistory: [],
                 });
@@ -1084,8 +1109,10 @@ const CataloguePartyLedger: React.FC = () => {
             { header: '★ Party Name', note: 'Full party name', width: 22 },
             { header: '★ Party Number', note: 'Phone number (Required)', width: 16 },
             { header: '● Due Amount', note: 'They owe you (₹) — leave blank if none', width: 16 },
-            { header: '● Advance Amount', note: 'You owe them (₹) — leave blank if none', width: 16 },
+            { header: '● Advance Amount', note: 'You owe them (₹) — leave both blank to just add the party', width: 16 },
             { header: '● Narration', note: 'Optional note / description', width: 26 },
+        { header: '● Party Address', note: 'Optional — full address', width: 26 },   // NEW
+            { header: '● GST Number', note: 'Optional — GSTIN', width: 18 },             // NEW
         ];
 
         const REQ = { bg: 'FEE2E2', txt: 'DC2626' };
@@ -1098,8 +1125,8 @@ const CataloguePartyLedger: React.FC = () => {
         ];
 
         const sampleRows = [
-            ['01/04/2024', 'Customer', 'Ramesh Traders', '9876543210', 5000, '', 'Pending from last year'],
-            ['15/03/2024', 'Supplier', 'Sharma Distributors', '9123456780', '', 3000, 'Advance paid for stock'],
+            ['01/04/2024', 'Customer', 'Ramesh Traders', '9876543210', 5000, '', 'Pending from last year', 'Shop 12, MG Road, Lucknow', '09ABCDE1234F1Z5'],
+            ['15/03/2024', 'Supplier', 'Sharma Distributors', '9123456780', '', 3000, 'Advance paid for stock', 'Plot 4, Industrial Area, Kanpur', '09XYZAB5678G1Z2'],
         ];
 
         const totalRows = 11;
@@ -1470,6 +1497,13 @@ const CataloguePartyLedger: React.FC = () => {
                                                             <p className="text-sm text-slate-500 mt-0.5">
                                                                 {party.partyNumber || 'N/A'} <span className="mx-1 text-slate-300">•</span> {party.totalTransactions} Bills
                                                             </p>
+                                                            {/* NEW: address + GST number, only if present */}
+                                                            {party.address && (
+                                                                <p className="text-xs text-slate-400 mt-0.5">{party.address}</p>
+                                                            )}
+                                                            {party.gstNumber && (
+                                                                <p className="text-[11px] text-slate-400 mt-0.5">GSTIN: {party.gstNumber}</p>
+                                                            )}
                                                         </div>
                                                         <div className="text-right">
                                                             <p className={`text-lg font-bold ${party.totalDue > 0 ? 'text-red-600' : 'text-emerald-600'}`}>

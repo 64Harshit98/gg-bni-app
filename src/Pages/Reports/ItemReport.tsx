@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import useItemReport from './ItemReportComponents/useItemReport';
 import type { Item } from '../../constants/models';
 import jsPDF from 'jspdf';
@@ -16,7 +16,8 @@ import FilterSelect from './ItemReportComponents/FilterSelect';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import { useAuth } from '../../context/auth-context'
 import { useGodowns, useGodownStock, SHOP_ID } from '../hooks/useStockTransfer';
-
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../lib/Firebase';
 // Import your Modal and State
 import { Modal } from '../../constants/Modal'; // Adjust path to where you saved the Modal code
 import { State } from '../../enums';
@@ -27,6 +28,23 @@ const UNASSIGNED_GROUP_NAME = 'Uncategorized';
 const ItemReport: React.FC = () => {
   const { currentUser } = useAuth();
   const [showSearch, setShowSearch] = useState(false);
+  const [companyName, setCompanyName] = useState<string>('');
+
+  useEffect(() => {
+    const fetchCompanyName = async () => {
+      if (!currentUser?.companyId) return;
+      try {
+        const companyRef = doc(db, 'companies', currentUser.companyId);
+        const snap = await getDoc(companyRef);
+        if (snap.exists()) {
+          setCompanyName(snap.data().name || snap.data().companyName || '');
+        }
+      } catch (e) {
+        console.error('Failed to fetch company name', e);
+      }
+    };
+    fetchCompanyName();
+  }, [currentUser?.companyId]);
   const [searchQuery, setSearchQuery] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
   const {
@@ -268,12 +286,19 @@ const ItemReport: React.FC = () => {
       // --- 1. BRAND ACCENT BAR ---
       doc.setFillColor(37, 99, 235); // blue-600
       doc.rect(0, 0, pageWidth, 6, 'F');
-
-      // --- 2. HEADER SECTION ---
       doc.setFontSize(22);
       doc.setTextColor(17, 24, 39); // gray-900
       doc.setFont('helvetica', 'bold');
       doc.text('Detailed Item Report', 14, 24);
+
+      // Company name right after the title, same line
+      if (companyName) {
+        const titleWidth = doc.getTextWidth('Detailed Item Report');
+        doc.setFontSize(13);
+        doc.setTextColor(107, 114, 128); // gray-500
+        doc.setFont('helvetica', 'normal');
+        doc.text(`—  ${companyName}`, 14 + titleWidth + 4, 24);
+      }
 
       // Dynamic Subtitle
       doc.setFontSize(10);
@@ -480,8 +505,10 @@ const ItemReport: React.FC = () => {
       const totalRows = dataStartRow + filteredItems.length; // no footer row — see Change 5
       const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
 
-      // Row 0 – Title
-      aoa[0][0] = 'Detailed Item Report';
+      // Row 0 – Title (Company Name alongside)
+      aoa[0][0] = companyName
+        ? `Detailed Item Report  —  ${companyName}`
+        : 'Detailed Item Report';
 
       // Row 1 – Meta
       aoa[1][0] = `Generated: ${generationDate}   |   ${groupLabel}   |   Total Items: ${summary.totalItems}`;

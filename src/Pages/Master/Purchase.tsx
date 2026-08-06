@@ -22,6 +22,9 @@ import { IconScanCircle } from '../../constants/Icons';
 import { useSmartScanner } from '../../Pages/hooks/SmartScanner';
 import { FiFileText, FiMaximize } from 'react-icons/fi'; // Add to existing react-icons
 import Fuse from 'fuse.js';
+import { useGodowns, SHOP_ID } from '../hooks/useStockTransfer';
+import { PurchaseGodownAssignModal, type AssignableItem, type GodownSplit } from '../../Components/PurchaseGodownAssign';
+import { useLiveItemsStock } from '../hooks/useLiveItemsStock';
 
 // Removes all undefined values from an object before sending to Firestore
 const sanitizeForFirestore = <T extends Record<string, any>>(obj: T): T => {
@@ -134,12 +137,32 @@ const PurchasePage: React.FC = () => {
   const [editModeData, setEditModeData] = useState<Purchase | null>(null);
   const [_settingsDocId, setSettingsDocId] = useState<string | null>(null);
 
+  // --- Godown assignment (Stock Transfer module) ---
+  const { godowns } = useGodowns(currentUser?.companyId);
+  const [isGodownAssignOpen, setIsGodownAssignOpen] = useState(false);
+  const [godownAssignments, setGodownAssignments] = useState<Record<string, GodownSplit[]>>({}); // cartItemId -> destination splits
+
+  const assignableItemsForGodown: AssignableItem[] = useMemo(() => {
+    // One row per cart line (not merged by product) so duplicate entries of the
+    // same item — e.g. added twice in the cart — can be assigned to different
+    // destinations independently, exactly as they appear in the cart.
+    return items.map(item => ({
+      id: item.id,
+      name: item.name,
+      quantity: item.quantity || 1,
+      unit: item.unit,
+    }));
+  }, [items]);
+
 
   useEffect(() => {
     if (!isEditMode) {
       localStorage.setItem('purchase_cart_draft', JSON.stringify(items));
     }
   }, [items, isEditMode]);
+
+  // Keeps availableItems' `stock` field live-synced — see useLiveItemsStock.ts
+  useLiveItemsStock(currentUser?.companyId, setAvailableItems);
 
   useEffect(() => {
     setPageIsLoading(authLoading || loadingPurchaseSettings);
@@ -632,8 +655,19 @@ const PurchasePage: React.FC = () => {
       setModal({ message: "Invoice Number is required.", type: State.ERROR });
       return;
     }
+    if (godowns.length > 0) {
+      setIsGodownAssignOpen(true);
+    } else {
+      setIsDrawerOpen(true);
+    }
+  };
+
+  const handleGodownAssignConfirm = (assignments: Record<string, GodownSplit[]>) => {
+    setGodownAssignments(assignments);
+    setIsGodownAssignOpen(false);
     setIsDrawerOpen(true);
   };
+
   const getParsedInvoiceDate = () => {
     try {
       if (!invoiceDate) return new Date();
@@ -779,29 +813,97 @@ const PurchasePage: React.FC = () => {
         const newPurchaseRef = doc(collection(db, 'companies', companyId, 'purchases'));
         transaction.set(newPurchaseRef, sanitizeForFirestore(purchaseData));
 
-        const stockUpdates = new Map<string, number>();
-        formattedItemsForDB.forEach(item => {
-          const pid = item.id;
-          stockUpdates.set(pid, (stockUpdates.get(pid) || 0) + (item.quantity || 1));
+        // Group by (productId, destination) — the same cart line can itself
+        // be split across multiple destinations, and the same product can
+        // appear as multiple cart lines — so aggregate per destination
+        // across every split of every line, not just per product.
+        const perProductUpdates = new Map<string, { shopQty: number; godownQty: Map<string, number> }>();
+        items.forEach(cartItem => {
+          const pid = cartItem.productId || cartItem.id;
+          const splits = godownAssignments[cartItem.id];
+          const rows: GodownSplit[] = (splits && splits.length > 0)
+            ? splits
+            : [{ godownId: SHOP_ID, quantity: cartItem.quantity || 1 }];
+
+          if (!perProductUpdates.has(pid)) {
+            perProductUpdates.set(pid, { shopQty: 0, godownQty: new Map() });
+          }
+          const entry = perProductUpdates.get(pid)!;
+
+          rows.forEach(({ godownId, quantity }) => {
+            if (!quantity) return;
+            if (godownId === SHOP_ID) {
+              entry.shopQty += quantity;
+            } else {
+              entry.godownQty.set(godownId, (entry.godownQty.get(godownId) || 0) + quantity);
+            }
+          });
         });
 
-        stockUpdates.forEach((qty, pid) => {
+        perProductUpdates.forEach((upd, pid) => {
           const itemRef = doc(db, "companies", companyId, "items", pid);
-          transaction.update(itemRef, {
-            stock: firebaseIncrement(qty),
-            updatedAt: serverTimestamp(),
+          const updatePayload: Record<string, any> = { updatedAt: serverTimestamp() };
+
+          if (upd.shopQty > 0) {
+            updatePayload.stock = firebaseIncrement(upd.shopQty);
+          }
+          upd.godownQty.forEach((qty, godownId) => {
+            updatePayload[`godownStock.${godownId}`] = firebaseIncrement(qty);
+          });
+          transaction.update(itemRef, updatePayload);
+
+          const matchedItem = formattedItemsForDB.find(i => i.id === pid);
+
+          if (upd.shopQty > 0) {
+            const transferRef = doc(collection(db, 'companies', companyId, 'stockTransfers'));
+            transaction.set(transferRef, {
+              itemId: pid,
+              itemName: matchedItem?.name || '',
+              quantity: upd.shopQty,
+              type: 'purchase-in',
+              toGodownId: SHOP_ID,
+              toGodownName: 'Shop',
+              date: getParsedInvoiceDate().getTime(),
+              refInvoice: invoiceNumber.trim(),
+              createdAt: Date.now(),
+            });
+          }
+
+          upd.godownQty.forEach((qty, godownId) => {
+            const godown = godowns.find(g => g.id === godownId);
+            const transferRef = doc(collection(db, 'companies', companyId, 'stockTransfers'));
+            transaction.set(transferRef, {
+              itemId: pid,
+              itemName: matchedItem?.name || '',
+              quantity: qty,
+              type: 'purchase-in',
+              toGodownId: godownId,
+              toGodownName: godown?.name || '',
+              date: getParsedInvoiceDate().getTime(),
+              refInvoice: invoiceNumber.trim(),
+              createdAt: Date.now(),
+            });
           });
         });
       });
-      // ✅ FIX: Update local inventory immediately without requiring refresh
       setAvailableItems(prev => prev.map(item => {
-        const stockDelta = formattedItemsForDB
-          .filter(i => i.id === item.id)
-          .reduce((sum, i) => sum + (i.quantity || 1), 0);
-        if (stockDelta === 0) return item;
-        return { ...item, stock: (item.stock || 0) + stockDelta };
+        const shopDelta = items
+          .filter(i => (i.productId || i.id) === item.id)
+          .reduce((sum, i) => {
+            const splits = godownAssignments[i.id];
+            const rows: GodownSplit[] = (splits && splits.length > 0)
+              ? splits
+              : [{ godownId: SHOP_ID, quantity: i.quantity || 1 }];
+            const shopQty = rows
+              .filter(r => r.godownId === SHOP_ID)
+              .reduce((s, r) => s + (r.quantity || 0), 0);
+            return sum + shopQty;
+          }, 0);
+        if (shopDelta === 0) return item;
+        return { ...item, stock: (item.stock || 0) + shopDelta };
       }));
       setIsDrawerOpen(false);
+      setGodownAssignments({});
       const savedItemsCopy = [...items];
       localStorage.removeItem('purchase_cart_draft');
 
@@ -1837,6 +1939,14 @@ const PurchasePage: React.FC = () => {
           totalMrp={totalMrp}
         />
 
+        <PurchaseGodownAssignModal
+          isOpen={isGodownAssignOpen}
+          items={assignableItemsForGodown}
+          godowns={godowns}
+          onConfirm={handleGodownAssignConfirm}
+          onClose={() => setIsGodownAssignOpen(false)}
+        />
+
         <ItemEditDrawer
           item={selectedItemForEdit}
           isOpen={isItemDrawerOpen}
@@ -2154,6 +2264,14 @@ const PurchasePage: React.FC = () => {
         onTaxModeChange={setBillTaxType}
         isTaxToggleLocked={false}
         totalMrp={totalMrp}
+      />
+
+      <PurchaseGodownAssignModal
+        isOpen={isGodownAssignOpen}
+        items={assignableItemsForGodown}
+        godowns={godowns}
+        onConfirm={handleGodownAssignConfirm}
+        onClose={() => setIsGodownAssignOpen(false)}
       />
 
       <ItemEditDrawer

@@ -39,6 +39,7 @@ const GallaHisaabTool = lazy(() => import('../Pages/Reports/GallaHisaabTool'))
 const ItemSoldReport = lazy(() => import('../Pages/Reports/ItemSoldReport'));
 const ExpenseReport = lazy(() => import('../Pages/Reports/ExpenseReport'));
 import UserReport from '../Pages/Reports/UserReport';
+const StockTransferReport = lazy(() => import('../Pages/Reports/StockTransferReport'));
 
 // --- CATALOGUE MODULE IMPORTS ---
 const CHome = lazy(() => import('../Catalogue/CatalogueHome'));
@@ -68,6 +69,7 @@ const CatlogueManageItems = lazy(() => import('../Catalogue/CatalogueReports/Cat
 const CatlogueSoldReport = lazy(() => import('../Catalogue/CatalogueReports/CatalogueSoldReport'));
 const CatalogueAdditionalServices = lazy(() => import('../Catalogue/CatalogueAdditionalServices'));
 const CatalogueExpenseReport = lazy(() => import('../Catalogue/CatalogueReports/CatalogueExpenseReport'));
+const CatalogueStockTransferReport = lazy(() => import('../Catalogue/CatalogueReports/CatalogueStockTransferReportPage'));
 const PosItemSettingWrapper = (props: any) => (
     <ItemSetting {...props} theme="blue" />
 );
@@ -198,6 +200,7 @@ export const AppRegistry: AppModule[] = [
             { path: ROUTES.ITEM_SOLD_REPORT, component: ItemSoldReport, permission: Permissions.ViewItemReport },
             { path: ROUTES.USER_REPORT, component: UserReport, permission: Permissions.ViewItemReport },
             { path: ROUTES.EXPENSE_REPORT, component: ExpenseReport, permission: Permissions.ViewReports },
+            { path: ROUTES.STOCK_TRANSFER, component: StockTransferReport, permission: Permissions.ViewReports },
         ],
     },
     {
@@ -236,6 +239,7 @@ export const AppRegistry: AppModule[] = [
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_SUPPORT}`, component: Catasupport, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_ADDITIONAL_SERVICES}`, component: CatalogueAdditionalServices, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_EXPENSE_REPORT}`, component: CatalogueExpenseReport, permission: Cata_Permissions.ViewExpenseReport },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_STOCK_TRANSFER}`, component: CatalogueStockTransferReport, permission: Cata_Permissions.ViewReports },
 
         ],
     }

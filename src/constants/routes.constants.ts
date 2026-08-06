@@ -87,6 +87,8 @@ export const ROUTES = {
   USER_REPORT: '/user-report',
   EXPENSE_REPORT: '/expense-report',
   CATALOGUE_EXPENSE_REPORT: 'cata-expense-report',
+  STOCK_TRANSFER: '/stock-transfer',
+  CATALOGUE_STOCK_TRANSFER: 'cata-stock-transfer',
   AGENT_SIGNUP: '/agent-signup',
   PARTNER_DASHBOARD: '/partner-dashboard',
   AGENT_DASHBOARD: '/agent-dashboard'

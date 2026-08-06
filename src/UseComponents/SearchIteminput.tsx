@@ -105,7 +105,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
             if (!aStartsWith && bStartsWith) return 1;
             return lowerA.localeCompare(lowerB);
         });
-    }, [items, throttledQuery]);
+    }, [items, throttledQuery, selectedCategory, itemGroupMap]);
 
     // --- AUTO SCROLL LOGIC ---
     useEffect(() => {

@@ -31,6 +31,7 @@ import { botMasterService } from '../Additional/Whatsapp/WhatsappApi';
 import { PLAN_ALLOWED_FEATURES } from '../Settings/SalesSetting';
 import CalcDisplay from '../../Components/CalcDisplay';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import { useLiveItemsStock } from '../hooks/useLiveItemsStock';
 
 export interface SalesItem extends OriginalSalesItem {
     isEditable: boolean;
@@ -386,6 +387,9 @@ const Sales: React.FC = () => {
         };
         fetchBillSettings();
     }, [currentUser?.companyId]);
+
+    // Keeps availableItems' `stock` field live-synced — see useLiveItemsStock.ts
+    useLiveItemsStock(currentUser?.companyId, setAvailableItems);
 
     useEffect(() => {
         if (!loadingSettings && salesSettings) {
@@ -1552,7 +1556,10 @@ const Sales: React.FC = () => {
                         shippingNumber: completionData.shippingNumber || '',
                         shippingAddress: completionData.shippingAddress || '',
                         shippingGST: completionData.shippingGST || '',
-                        transportDetails: completionData.transportDetails || undefined
+                        transportDetails: completionData.transportDetails || undefined,
+                        gstScheme: finalGstScheme,   // ✅ ADDED
+                        taxType: finalTaxType,       // ✅ ADDED
+                        placeOfSupply: completionData.placeOfSupply || ''   // ✅ ADDED (IGST calc ke liye bhi zaroori)
                     };
 
                     setAvailableItems(prev => prev.map(item => {
@@ -1652,7 +1659,9 @@ const Sales: React.FC = () => {
                 discount2Amount,
                 discount1Percent: d1Pct,   // NEW
                 discount2Percent: d2Pct,   // NEW
-                amount: itemAmount
+                amount: itemAmount,
+                taxAmount: item.taxAmount || 0,
+                taxableAmount: item.taxableAmount || 0
             };
         });
 
@@ -1661,6 +1670,7 @@ const Sales: React.FC = () => {
             enableTriplicate: billSettings.enableTriplicate || false,
             gstScheme: salesSettings?.gstScheme || '',
             taxType: salesSettings?.taxType || '',
+            upiId: billSettings.upiId || '',   //  ADDED: without this, QR never generates
             companyName: businessInfo?.name || 'Your Company',
             companyAddress: businessInfo?.address || 'Your Address',
             companyContact: businessInfo?.phoneNumber || 'Your Phone',
@@ -1780,6 +1790,7 @@ const Sales: React.FC = () => {
 
             if (isSuccess) {
                 setModal({ message: "Invoice sent via WhatsApp!", type: State.SUCCESS });
+                setSavedBillData(null);
                 setTimeout(async () => {
                     try { await deleteObject(storageRef); } catch (e) { console.warn("Could not auto-delete:", e); }
                 }, 60000);

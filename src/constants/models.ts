@@ -43,6 +43,7 @@ export interface Item {
   unitMultiplier?: number;
   moq?: number;
   variants?: string[];
+  godownStock?: Record<string, number>;
 }
 
 export interface ItemGroup {

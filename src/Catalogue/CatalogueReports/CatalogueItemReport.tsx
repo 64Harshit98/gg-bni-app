@@ -16,7 +16,7 @@ import FilterSelect from '../../Pages/Reports/ItemReportComponents/FilterSelect'
 //import { Cata_Permissions } from '../enum/cata_permissions.enum';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import { useAuth } from '../../context/auth-context';
-
+import { useGodowns, useGodownStock, SHOP_ID } from '../../Pages/hooks/useStockTransfer';
 
 // Import your Modal and State
 import { Modal } from '../../constants/Modal'; // Adjust path to where you saved the Modal code
@@ -30,6 +30,7 @@ const CatalogueItemReport: React.FC = () => {
   const { currentUser } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
+  const [locationFilter, setLocationFilter] = useState('');
   const {
     items,
     appliedItemGroupId,
@@ -48,8 +49,37 @@ const CatalogueItemReport: React.FC = () => {
     isDownloadModalOpen,
   } = useItemReport();
 
+  const { godowns } = useGodowns(currentUser?.companyId);
+  const { stockRows } = useGodownStock(currentUser?.companyId, godowns);
+
+  // Per-item, per-location quantity map (Shop + every godown).
+  const stockByItemLocation = useMemo(() => {
+    const map = new Map<string, Map<string, number>>();
+    stockRows.forEach(r => {
+      if (!map.has(r.itemId)) map.set(r.itemId, new Map());
+      const inner = map.get(r.itemId)!;
+      inner.set(r.godownId, (inner.get(r.godownId) || 0) + r.quantity);
+    });
+    return map;
+  }, [stockRows]);
+
+  // Items with `stock` overridden to reflect the selected location
+  // (or the sum across all locations when no location is selected).
+  const itemsWithLocationStock = useMemo(() => {
+    return items.map(item => {
+      const locMap = stockByItemLocation.get(item.id || '');
+      let stock: number;
+      if (locationFilter) {
+        stock = locMap?.get(locationFilter) || 0;
+      } else {
+        stock = locMap ? Array.from(locMap.values()).reduce((s, q) => s + q, 0) : (item.stock || 0);
+      }
+      return { ...item, stock };
+    });
+  }, [items, stockByItemLocation, locationFilter]);
+
   const { filteredItems, summary } = useMemo(() => {
-    let newFilteredItems = items.filter((item) => {
+    let newFilteredItems = itemsWithLocationStock.filter((item) => {
       if (!appliedItemGroupId) return true;
       if (appliedItemGroupId === UNASSIGNED_GROUP_NAME) {
         const hasNoGroup =
@@ -63,6 +93,12 @@ const CatalogueItemReport: React.FC = () => {
           : [];
       return groupIds.includes(appliedItemGroupId);
     });
+
+    // When a specific location is selected, only show items that actually
+    // have stock there — an item with 0 stock at this location shouldn't appear.
+    if (locationFilter) {
+      newFilteredItems = newFilteredItems.filter((item) => (item.stock || 0) > 0);
+    }
 
     //  SEARCH 
     const trimmedQuery = searchQuery.toLowerCase().trim();
@@ -127,7 +163,7 @@ const CatalogueItemReport: React.FC = () => {
         averageMarginPercentage,
       },
     };
-  }, [appliedItemGroupId, sortConfig, items, searchQuery]);
+  }, [appliedItemGroupId, sortConfig, itemsWithLocationStock, searchQuery, locationFilter]);
 
   const handleApplyFilters = () => setAppliedItemGroupId(itemGroupId);
 
@@ -142,35 +178,35 @@ const CatalogueItemReport: React.FC = () => {
     const group = itemGroups.find((g) => g.id === id);
     return group ? group.name : UNASSIGNED_GROUP_NAME;
   };
-  const prepareExportDataForExcel = (item: Item) => {
-    const salePrice = item.salesPrice ||
-      (item.mrp && item.discount ? parseFloat((item.mrp * (1 - item.discount / 100)).toFixed(2)) : item.mrp || 0);
+  // const prepareExportDataForExcel = (item: Item) => {
+  //   const salePrice = item.salesPrice ||
+  //     (item.mrp && item.discount ? parseFloat((item.mrp * (1 - item.discount / 100)).toFixed(2)) : item.mrp || 0);
 
-    return {
-      name: item.name || '-',
-      barcode: item.barcode || '-',
-      itemGroup: item.itemGroupIds?.length
-        ? item.itemGroupIds.map((id) => getGroupName(id)).join(', ')
-        : getGroupName(item.itemGroupId),
-      mrp: item.mrp || 0,
-      purchasePrice: item.purchasePrice || 0,
-      purchaseDiscount: item.purchasediscount || 0,
-      salesPrice: salePrice,
-      discount: item.discount || 0,
-      tax: item.tax || 0,
-      taxRate: item.taxRate || 0,
-      gst: item.gst || 0,
-      hsnSac: item.hsnSac || '-',
-      unit: item.unit || '-',
-      packetSize: item.packetSize || 0,
-      unitMultiplier: item.unitMultiplier || 0,
-      moq: item.moq || 0,
-      stock: item.stock || 0,
-      restockQuantity: item.restockQuantity || 0,
-      description: item.description || '-',
-      isListed: item.isListed ? 'Yes' : 'No',
-    };
-  };
+  //   return {
+  //     name: item.name || '-',
+  //     barcode: item.barcode || '-',
+  //     itemGroup: item.itemGroupIds?.length
+  //       ? item.itemGroupIds.map((id) => getGroupName(id)).join(', ')
+  //       : getGroupName(item.itemGroupId),
+  //     mrp: item.mrp || 0,
+  //     purchasePrice: item.purchasePrice || 0,
+  //     purchaseDiscount: item.purchasediscount || 0,
+  //     salesPrice: salePrice,
+  //     discount: item.discount || 0,
+  //     tax: item.tax || 0,
+  //     taxRate: item.taxRate || 0,
+  //     gst: item.gst || 0,
+  //     hsnSac: item.hsnSac || '-',
+  //     unit: item.unit || '-',
+  //     packetSize: item.packetSize || 0,
+  //     unitMultiplier: item.unitMultiplier || 0,
+  //     moq: item.moq || 0,
+  //     stock: item.stock || 0,
+  //     restockQuantity: item.restockQuantity || 0,
+  //     description: item.description || '-',
+  //     isListed: item.isListed ? 'Yes' : 'No',
+  //   };
+  // };
 
   const downloadAsPdf = async () => {
     try {
@@ -398,35 +434,38 @@ const CatalogueItemReport: React.FC = () => {
       });
 
       const COLS = [
-        { header: '#', width: 6 },
         { header: 'Name', width: 28 },
-        { header: 'Barcode', width: 20 },
-        { header: 'Category', width: 22 },
-        { header: 'MRP (₹)', width: 16 },
-        { header: 'Purchase Price (₹)', width: 22 },
-        { header: 'Sale Price (₹)', width: 18 },
-        { header: 'Discount (%)', width: 16 },
-        { header: 'GST (%)', width: 14 },
-        { header: 'HSN/SAC', width: 16 },
-        { header: 'Unit', width: 12 },
-        { header: 'Stock', width: 12 },
-        { header: 'Listed', width: 12 },
+        { header: 'Barcode', width: 18 },
+        { header: 'MRP (₹)', width: 14 },
+        { header: 'Sale Price (₹)', width: 16 },
+        { header: 'Purchase Price (₹)', width: 16 },
+        { header: 'Sale Disc (%)', width: 14 },
+        { header: 'Purchase Disc (%)', width: 15 },
+        { header: 'Tax (%)', width: 12 },
+        { header: 'HSN/SAC', width: 14 },
+        { header: 'Category', width: 20 },
+        { header: 'Stock', width: 10 },
+        { header: 'Restock Qty', width: 13 },
+        { header: 'MOQ', width: 10 },
+        { header: 'Image URL', width: 25 },
+        { header: 'Description', width: 35 },
       ];
       const colCount = COLS.length;
 
       // Row layout:
-      // 0 → Title (merged)
-      // 1 → Meta (merged)
-      // 2 → blank spacer
-      // 3 → Summary label (merged)
-      // 4 → Summary values
-      // 5 → blank spacer
-      // 6 → Column headers
-      // 7+ → Data rows
-      // Last → Totals footer
+      // 0  → Title (merged)
+      // 1  → Meta (merged)
+      // 2  → blank spacer
+      // 3  → Summary label (merged)
+      // 4  → Summary values
+      // 5  → blank spacer
+      // 6  → Column headers
+      // 7  → blank spacer (REQUIRED: Bulk Import always reads data starting
+      //       2 rows after the header row it detects, so this row must exist)
+      // 8+ → Data rows
 
-      const dataStartRow = 7;
-      const totalRows = dataStartRow + filteredItems.length + 1;
+      const dataStartRow = 8;
+      const totalRows = dataStartRow + filteredItems.length; // no footer row — see Change 5
       const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
 
       // Row 0 – Title
@@ -444,32 +483,36 @@ const CatalogueItemReport: React.FC = () => {
       // Row 6 – Column headers
       COLS.forEach((c, i) => { aoa[6][i] = c.header; });
 
-      // Rows 7+ – Data
+      // Rows 8+ – Data (column order matches Bulk Import parser exactly)
       filteredItems.forEach((item, idx) => {
         const r = dataStartRow + idx;
-        const prepared = prepareExportDataForExcel(item);
-        aoa[r][0] = idx + 1;
-        aoa[r][1] = prepared.name;
-        aoa[r][2] = prepared.barcode;
-        aoa[r][3] = prepared.itemGroup;
-        aoa[r][4] = prepared.mrp;
-        aoa[r][5] = prepared.purchasePrice;
-        aoa[r][6] = prepared.salesPrice;
-        aoa[r][7] = prepared.discount;
-        aoa[r][8] = prepared.gst;
-        aoa[r][9] = prepared.hsnSac;
-        aoa[r][10] = prepared.unit;
-        aoa[r][11] = prepared.stock;
-        aoa[r][12] = prepared.isListed;
+        const salePrice =
+          item.salesPrice ||
+          (item.mrp && item.discount
+            ? parseFloat((item.mrp * (1 - item.discount / 100)).toFixed(2))
+            : item.mrp || 0);
+
+        aoa[r][0] = item.name || '-';                          // Name
+        aoa[r][1] = item.barcode || '-';                        // Barcode
+        aoa[r][2] = item.mrp || 0;                               // MRP
+        aoa[r][3] = salePrice;                                   // Sale Price
+        aoa[r][4] = item.purchasePrice || 0;                     // Cost Price
+        aoa[r][5] = item.discount || 0;                          // Sale Disc %
+        aoa[r][6] = item.purchasediscount || 0;                  // Purchase Disc %
+        aoa[r][7] = item.tax || 0;                                // Tax %
+        aoa[r][8] = item.hsnSac || '-';                            // HSN/SAC
+        aoa[r][9] = item.itemGroupIds?.length                      // Category
+          ? item.itemGroupIds.map((id) => getGroupName(id)).join(', ')
+          : getGroupName(item.itemGroupId);
+        aoa[r][10] = item.stock || 0;                              // Stock
+        aoa[r][11] = item.restockQuantity || 0;                    // Restock Qty
+        aoa[r][12] = item.moq || 1;                                // MOQ
+        aoa[r][13] = (item as any).imageUrl || '';                  // Image URL
+        aoa[r][14] = item.description || '';                        // Description
       });
 
-      // Footer row
-      const footerRow = dataStartRow + filteredItems.length;
-      aoa[footerRow][0] = 'TOTAL / AVERAGE';
-      aoa[footerRow][1] = `${filteredItems.length} items`;
-      aoa[footerRow][4] = Math.round(summary.averageMrp);
-      aoa[footerRow][5] = Math.round(summary.averagePurchasePrice);
-      aoa[footerRow][6] = Math.round(summary.averageSalePrice);
+      // No footer/TOTAL row — a text row at the end would get misread as
+      // an extra invalid item if this file is re-uploaded into Bulk Import.
 
       // ── BUILD WORKSHEET ──────────────────────────────────────────────
       const worksheet = XLSX.utils.aoa_to_sheet(aoa);
@@ -482,8 +525,8 @@ const CatalogueItemReport: React.FC = () => {
         { hpt: 22 }, // 4 summary values
         { hpt: 8 },  // 5 spacer
         { hpt: 28 }, // 6 headers
+        { hpt: 8 },  // 7 spacer (required offset row for Bulk Import)
         ...filteredItems.map(() => ({ hpt: 20 })),
-        { hpt: 24 }, // footer
       ];
 
       worksheet['!merges'] = [
@@ -491,7 +534,6 @@ const CatalogueItemReport: React.FC = () => {
         { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
         { s: { r: 3, c: 0 }, e: { r: 3, c: colCount - 1 } },
         { s: { r: 4, c: 0 }, e: { r: 4, c: colCount - 1 } },
-        { s: { r: footerRow, c: 1 }, e: { r: footerRow, c: 3 } },
       ];
 
       const style = (addr: string, st: any) => {
@@ -534,10 +576,13 @@ const CatalogueItemReport: React.FC = () => {
         style(addr, s(
           { sz: 10, bold: true, color: { rgb: 'FFFFFF' } },
           solidFill('C2410C'),
-          { horizontal: i <= 3 ? 'left' : 'center', vertical: 'center' },
+          { horizontal: i === 0 ? 'left' : 'center', vertical: 'center' },
           allBorders,
         ));
       });
+
+      // Numeric column indices (for right-align + number formatting)
+      const numericCols = new Set([2, 3, 4, 5, 6, 7, 10, 11, 12]);
 
       // Data rows
       filteredItems.forEach((_item, idx) => {
@@ -547,40 +592,41 @@ const CatalogueItemReport: React.FC = () => {
 
         for (let ci = 0; ci < colCount; ci++) {
           const addr = XLSX.utils.encode_cell({ r, c: ci });
-          const isNumeric = ci >= 4 && ci <= 8;
+          const isNumeric = numericCols.has(ci);
           style(addr, s(
             { sz: 9, color: { rgb: '1E293B' } },
             rowBg,
             { horizontal: isNumeric ? 'center' : 'left', vertical: 'center' },
             bblr,
           ));
-          // Format currency columns
-          if ((ci === 4 || ci === 5 || ci === 6) && worksheet[addr]) {
+          // Format currency/numeric columns
+          if (worksheet[addr] && isNumeric) {
+            const isCurrency = [2, 3, 4].includes(ci); // MRP, Sale Price, Cost Price
             worksheet[addr].t = 'n';
-            worksheet[addr].z = '₹#,##0.00';
+            worksheet[addr].z = isCurrency ? '₹#,##0.00' : '#,##0.##';
           }
         }
       });
 
-      // Footer row
-      for (let ci = 0; ci < colCount; ci++) {
-        const addr = XLSX.utils.encode_cell({ r: footerRow, c: ci });
-        style(addr, s(
-          { sz: 10, bold: true, color: { rgb: '1E293B' } },
-          solidFill('FED7AA'),
-          { horizontal: ci <= 3 ? 'left' : 'center', vertical: 'center' },
-          {
-            top: { style: 'medium', color: { rgb: '1E293B' } },
-            bottom: { style: 'medium', color: { rgb: '1E293B' } },
-            left: { style: 'thin', color: { rgb: 'FED7AA' } },
-            right: { style: 'thin', color: { rgb: 'FED7AA' } },
-          },
-        ));
-        if ((ci === 4 || ci === 5 || ci === 6) && worksheet[addr]) {
-          worksheet[addr].t = 'n';
-          worksheet[addr].z = '₹#,##0.00';
-        }
-      }
+      // // Footer row
+      // for (let ci = 0; ci < colCount; ci++) {
+      //   const addr = XLSX.utils.encode_cell({ r: footerRow, c: ci });
+      //   style(addr, s(
+      //     { sz: 10, bold: true, color: { rgb: '1E293B' } },
+      //     solidFill('FED7AA'),
+      //     { horizontal: ci === 0 ? 'left' : 'center', vertical: 'center' },
+      //     {
+      //       top: { style: 'medium', color: { rgb: '1E293B' } },
+      //       bottom: { style: 'medium', color: { rgb: '1E293B' } },
+      //       left: { style: 'thin', color: { rgb: 'FED7AA' } },
+      //       right: { style: 'thin', color: { rgb: 'FED7AA' } },
+      //     },
+      //   ));
+      //   if ((ci === 4 || ci === 5 || ci === 6) && worksheet[addr]) {
+      //     worksheet[addr].t = 'n';
+      //     worksheet[addr].z = '₹#,##0.00';
+      //   }
+      // }
 
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Item Report');
@@ -673,23 +719,38 @@ const CatalogueItemReport: React.FC = () => {
         <h2 className="text-center font-semibold text-gray-700 mb-2">
           FILTERS
         </h2>
-        <div className="flex space-x-3 items-end">
-          <FilterSelect
-            label="Item Group"
-            value={itemGroupId}
-            onChange={(e) => setItemGroupId(e.target.value)}
-          >
-            <option value="">All Groups</option>
-            {itemGroups.map((group) => (
-              <option key={group.id} value={group.id}>
-                {group.name}
-              </option>
-            ))}
-            <option value={UNASSIGNED_GROUP_NAME}>Uncategorized</option>
-          </FilterSelect>
+        <div className="flex flex-col sm:flex-row w-full gap-3 sm:items-end">
+          <div className="flex-1">
+            <FilterSelect
+              label="Item Group"
+              value={itemGroupId}
+              onChange={(e) => setItemGroupId(e.target.value)}
+            >
+              <option value="">All Groups</option>
+              {itemGroups.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
+                </option>
+              ))}
+              <option value={UNASSIGNED_GROUP_NAME}>Uncategorized</option>
+            </FilterSelect>
+          </div>
+          <div className="flex-1">
+            <FilterSelect
+              label="Location"
+              value={locationFilter}
+              onChange={(e) => setLocationFilter(e.target.value)}
+            >
+              <option value="">All Locations</option>
+              <option value={SHOP_ID}>🏪 Shop</option>
+              {godowns.map((g) => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </FilterSelect>
+          </div>
           <button
             onClick={handleApplyFilters}
-            className="px-6 py-2 bg-[#F97316] text-white font-semibold rounded-sm shadow-sm hover:bg-[#F97316] transition"
+            className="w-full sm:w-auto px-6 py-2 bg-[#F97316] text-white font-semibold rounded-sm shadow-sm hover:bg-[#F97316] transition"
           >
             Apply
           </button>

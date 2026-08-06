@@ -6,6 +6,7 @@ import { resolveCompanyLogoBase64 } from "../hooks/useCompanyLogo";
 import { generateA5Invoice } from "../../UseComponents/A5PdfGenerator";
 import { ACTION } from "../../enums/index";
 import QRCode from 'qrcode';
+import { drawWatermark } from "../../Components/pdfWatermark";
 
 export interface CatalogueInvoiceData {
   companyId?: string;
@@ -444,6 +445,8 @@ export const CatalogueBill = async (
     if (isDuplicate) doc.addPage();
     let cursorY = margin;
 
+    drawWatermark(doc, pageWidth, pageHeight);
+
     if (isDuplicate) {
       doc.setFontSize(10); doc.setFont("helvetica", "bold");
       doc.setTextColor(150, 150, 150);
@@ -615,8 +618,8 @@ export const CatalogueBill = async (
       head: [showTaxColumns ? fullTaxHeaders : noTaxHeaders],
       body: tableBody,
       theme: 'grid',
-      styles: { fontSize: 8, cellPadding: 2, textColor, lineColor, lineWidth: 0.1, halign: 'center', valign: 'middle', minCellHeight: 18 },
-      headStyles: { fillColor: [255, 255, 255], textColor, fontStyle: 'bold', lineWidth: 0.1, lineColor },
+      styles: { fontSize: 8, cellPadding: 2, textColor, lineColor, lineWidth: 0.1, halign: 'center', valign: 'middle', minCellHeight: 18, fillColor: false },
+      headStyles: { fillColor: false, textColor, fontStyle: 'bold', lineWidth: 0.1, lineColor },
       // @ts-ignore
       columnStyles: activeColumnStyles as any,
       margin: { left: margin, right: margin },
@@ -753,8 +756,8 @@ export const CatalogueBill = async (
 
       autoTable(doc, {
         startY: finalY + 2, head: taxHeaders, body: taxBody, theme: 'grid',
-        styles: { fontSize: 8, cellPadding: 1, textColor, lineColor, lineWidth: 0.1, halign: 'right' },
-        headStyles: { fillColor: [255, 255, 255], textColor, fontStyle: 'bold', halign: 'right', lineColor, lineWidth: 0.1 },
+        styles: { fontSize: 8, cellPadding: 1, textColor, lineColor, lineWidth: 0.1, halign: 'right', fillColor: false },
+        headStyles: { fillColor: false, textColor, fontStyle: 'bold', halign: 'right', lineColor, lineWidth: 0.1 },
         columnStyles: { 0: { halign: 'left' } },
         tableWidth: contentWidth * 0.65,
         margin: { left: startX },

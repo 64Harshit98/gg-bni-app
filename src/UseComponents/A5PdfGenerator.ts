@@ -2,6 +2,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { ACTION } from "../enums";
 import type { InvoiceData } from "./pdfGenerator";
+import { drawWatermark } from "../Components/pdfWatermark";
 
 const compressBase64Image = (
     base64: string,
@@ -107,6 +108,9 @@ export const generateA5Invoice = async (
         if (isDuplicate) {
             doc.addPage();
         }
+
+        drawWatermark(doc, pageWidth, pageHeight, "SELLAR.IN");
+
         // --- 1. HEADER ---
         const headerHeight = showGstinDetails && data.companyGstin ? 25 : 20;
         doc.setFillColor("#0c3b5e");
@@ -199,7 +203,7 @@ export const generateA5Invoice = async (
             sectionStartY + 11
         );
 
-         const placeLines = doc.splitTextToSize(
+        const placeLines = doc.splitTextToSize(
             `Place : ${data.shipTo?.address || ""}`,
             boxWidth - 6
         );
@@ -255,20 +259,20 @@ export const generateA5Invoice = async (
         // ===== SHIP TO =====
 
         doc.text(
-            data.shipTo?.name ||  "",
+            data.shipTo?.name || "",
             shipX,
             sectionStartY + 10
         );
 
         const shipAddrLines = doc.splitTextToSize(
-            data.shipTo?.address ||  "",
+            data.shipTo?.address || "",
             boxWidth - 8
         );
 
         let shipY = sectionStartY + 10;
 
         doc.text(
-            data.shipTo?.name ||  "",
+            data.shipTo?.name || "",
             shipX,
             shipY
         );
@@ -284,7 +288,7 @@ export const generateA5Invoice = async (
         shipY += (shipAddrLines.length * 3);
 
         doc.text(
-            `Phone : ${data.shipTo?.phone ||  ""}`,
+            `Phone : ${data.shipTo?.phone || ""}`,
             shipX,
             shipY
         );
@@ -412,8 +416,9 @@ export const generateA5Invoice = async (
             margin: { left: 5, right: 5 },
             tableWidth: 'auto',
             rowPageBreak: 'avoid',
+            theme: 'plain',
             headStyles: {
-                fillColor: [255, 255, 255],
+                fillColor: false,
                 textColor: [0, 0, 0],
                 lineColor: [0, 0, 0],
                 lineWidth: 0.2,
@@ -423,6 +428,7 @@ export const generateA5Invoice = async (
                 fontStyle: 'normal'
             },
             bodyStyles: {
+                fillColor: false,
                 lineColor: [0, 0, 0],
                 lineWidth: 0.2,
                 textColor: [0, 0, 0],
@@ -593,10 +599,11 @@ export const generateA5Invoice = async (
                         lineWidth: 0.1,
                         halign: 'right',
                         valign: 'middle',
-                        minCellHeight: 4
+                        minCellHeight: 4,
+                        fillColor: false
                     },
                     headStyles: {
-                        fillColor: [255, 255, 255],
+                        fillColor: false,
                         textColor: [0, 0, 0],
                         fontStyle: 'bold',
                         lineWidth: 0.1,
@@ -616,7 +623,7 @@ export const generateA5Invoice = async (
         // ===== SMART SPACE CALCULATION =====
 
         const footerHeight = 22;
-        
+
         // --- 4. BANK DETAIL ---
         if (!resolvedIsEstimate) {
 
@@ -666,11 +673,12 @@ export const generateA5Invoice = async (
                     cellPadding: 1.5,
                     lineWidth: 0.1,
                     textColor: [0, 0, 0],
-                    lineColor: [0, 0, 0]
+                    lineColor: [0, 0, 0],
+                    fillColor: false
                 },
 
                 headStyles: {
-                    fillColor: [255, 255, 255],
+                    fillColor: false,
                     textColor: [0, 0, 0]
                 },
 
@@ -847,8 +855,8 @@ export const generateA5Invoice = async (
     if (withDuplicate && !resolvedIsEstimate) {
         drawPage(true);
         if ((data as any).enableTriplicate) {
-        drawPage(true);
-    }
+            drawPage(true);
+        }
     }
     // --- PRINT / DOWNLOAD / BLOB ---
     if (action === ACTION.PRINT) {

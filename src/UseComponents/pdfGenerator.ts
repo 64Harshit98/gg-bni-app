@@ -6,6 +6,7 @@ import { db } from '../lib/Firebase';
 import QRCode from 'qrcode';
 import { generateThermalReceipt } from './ThermalpdfGenerator';
 import { generateA5Invoice } from './A5PdfGenerator';
+import { drawWatermark } from '../Components/pdfWatermark';
 
 export interface InvoiceData {
   printFormat?: 'A4' | 'THERMAL58' | 'A5';
@@ -144,11 +145,14 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     }
   }
 
-  // --- NORMALIZATION ---
   const safeScheme = (data.gstScheme && data.gstScheme.trim() !== '') ? data.gstScheme.toUpperCase() : 'NONE';
   const safeTaxType = (data.taxType && data.taxType.trim() !== '') ? data.taxType.toLowerCase() : 'EXCLUSIVE';
-  const showGstinDetails = !isEstimate && safeScheme !== 'NONE' && safeTaxType !== 'EXEMPT' && safeTaxType !== 'NONE';
-  const showTaxColumns = !isEstimate;
+
+  // NEW: exempt (NONE scheme / exempt taxType) bills lose GST columns just like an estimate,
+  // but heading/bank/terms/signature stay normal (SCRUM-1266).
+  const isTaxExempt = safeScheme === 'NONE' || safeTaxType === 'EXEMPT' || safeTaxType === 'NONE';
+  const showGstinDetails = !isEstimate && !isTaxExempt;
+  const showTaxColumns = !isEstimate && !isTaxExempt;
 
   // NEW: Determine IGST based on Place of Supply vs Company State
   const safeCompanyState = (data.companyState || '').trim().toLowerCase();
@@ -346,6 +350,8 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     if (isDuplicate) doc.addPage();
     let cursorY = margin;
 
+    drawWatermark(doc, pageWidth, pageHeight);
+
     // --- ONLY DIFFERENCE: THE "DUPLICATE" STAMP ---
     if (isDuplicate) {
       doc.setFontSize(10);
@@ -501,8 +507,8 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       head: [showTaxColumns ? fullTaxHeaders : noTaxHeaders],
       body: tableBody,
       theme: 'grid',
-      styles: { fontSize: 8, cellPadding: 1, textColor, lineColor, lineWidth: 0.1, halign: 'center', valign: 'middle' },
-      headStyles: { fillColor: [255, 255, 255], textColor, fontStyle: 'bold', lineWidth: 0.1, lineColor },
+      styles: { fontSize: 8, cellPadding: 1, textColor, lineColor, lineWidth: 0.1, halign: 'center', valign: 'middle', fillColor: false },
+      headStyles: { fillColor: false, textColor, fontStyle: 'bold', lineWidth: 0.1, lineColor },
       // @ts-ignore
       columnStyles: activeColumnStyles as any,
       margin: { left: margin, right: margin },
@@ -621,11 +627,9 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       // 4. Render the table
       autoTable(doc, {
         startY: finalY + 2, head: taxHeaders, body: taxBody, theme: 'grid',
-        styles: { fontSize: 8, cellPadding: 1, textColor, lineColor, lineWidth: 0.1, halign: 'right' },
-        headStyles: { fillColor: [255, 255, 255], textColor, fontStyle: 'bold', halign: 'right', lineColor, lineWidth: 0.1 },
-        // Keep the first column left-aligned, right-align the rest
+        styles: { fontSize: 8, cellPadding: 1, textColor, lineColor, lineWidth: 0.1, halign: 'right', fillColor: false },
+        headStyles: { fillColor: false, textColor, fontStyle: 'bold', halign: 'right', lineColor, lineWidth: 0.1 },
         columnStyles: { 0: { halign: 'left' } },
-        // Increased width to 65% to comfortably fit the 7 columns without text wrapping
         tableWidth: contentWidth * 0.65,
         margin: { left: startX },
       });
@@ -688,11 +692,11 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     doc.setTextColor(0); doc.setDrawColor(0);
 
     doc.setFont('helvetica', 'normal');
-let mx = (pageWidth / 2) - ((doc.getTextWidth("Made with ") + doc.getTextWidth("Love") + doc.getTextWidth(" in India")) / 2);
-doc.setTextColor(0, 0, 0);
-doc.text("Made with ", mx, by + 10); mx += doc.getTextWidth("Made with ");
-doc.text("Love", mx, by + 10); mx += doc.getTextWidth("Love");
-doc.text(" in India", mx, by + 10); doc.setTextColor(0);
+    let mx = (pageWidth / 2) - ((doc.getTextWidth("Made with ") + doc.getTextWidth("Love") + doc.getTextWidth(" in India")) / 2);
+    doc.setTextColor(0, 0, 0);
+    doc.text("Made with ", mx, by + 10); mx += doc.getTextWidth("Made with ");
+    doc.text("Love", mx, by + 10); mx += doc.getTextWidth("Love");
+    doc.text(" in India", mx, by + 10); doc.setTextColor(0);
   };
 
   // --- TRIGGER PAGE GENERATION ---

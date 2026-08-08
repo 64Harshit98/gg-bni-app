@@ -15,6 +15,9 @@ import { getDefaultCatalogueSalesSettings } from '../Catalogue/Settings/Catalogu
 import { syncCompanyPermissions } from '../context/Permissions';
 import type { Cata_Permissions } from '../Catalogue/enum/cata_permissions.enum';
 import { getDefaultCataPermissions } from '../Catalogue/Settings/CataloguePermissionSetting';
+import { isMerchantSubdomain } from '../lib/subdomain';
+
+const AUTH_RESOLUTION_TIMEOUT_MS = 8000;
 
 interface AuthState {
   status: 'pending' | 'authenticated' | 'unauthenticated';
@@ -79,10 +82,28 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   useEffect(() => {
+    let settled = false;
+
+    // Safety net: if Firebase's auth handshake (or the Firestore chain below) stalls,
+    // don't leave the whole app stuck behind the pending/loading gate forever.
+    const timeoutId = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        console.error('AUTH_TIMEOUT: onAuthStateChanged did not resolve in time');
+        setAuthState({ status: 'unauthenticated', user: null });
+      }
+    }, AUTH_RESOLUTION_TIMEOUT_MS);
+
+    const commit = (state: AuthState) => {
+      settled = true;
+      clearTimeout(timeoutId);
+      setAuthState(state);
+    };
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
       try {
         if (!firebaseUser) {
-          setAuthState({ status: 'unauthenticated', user: null });
+          commit({ status: 'unauthenticated', user: null });
           return;
         }
 
@@ -119,7 +140,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // 3. Safely reject users with no clear home
         if (!companyId && !isPartner) {
           console.error("AUTH_ERROR: User lacks companyId and is not marked as a partner.");
-          setAuthState({ status: 'unauthenticated', user: null });
+          commit({ status: 'unauthenticated', user: null });
           return;
         }
 
@@ -135,7 +156,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               agentData = agentSnap.data();
             } else {
               console.error("AUTH_ERROR: Partner document missing from database.");
-              setAuthState({ status: 'unauthenticated', user: null });
+              commit({ status: 'unauthenticated', user: null });
               return;
             }
           }
@@ -157,7 +178,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           };
 
           setDbOperations(null);
-          setAuthState({ status: 'authenticated', user: partnerUser });
+          commit({ status: 'authenticated', user: partnerUser });
           return;
         }
 
@@ -177,7 +198,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         if (!companyDoc.exists() || !userDoc.exists()) {
           console.error("AUTH_ERROR: Company or User document missing.");
-          setAuthState({ status: 'unauthenticated', user: null });
+          commit({ status: 'unauthenticated', user: null });
           return;
         }
 
@@ -253,15 +274,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         };
 
         setDbOperations(getFirestoreOperations(companyId!));
-        setAuthState({ status: 'authenticated', user: userData });
+        commit({ status: 'authenticated', user: userData });
 
       } catch (error) {
         console.error("AUTH_CRASH:", error);
-        setAuthState({ status: 'unauthenticated', user: null });
+        commit({ status: 'unauthenticated', user: null });
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      clearTimeout(timeoutId);
+      unsubscribe();
+    };
   }, []);
 
   // Expose these via your AuthContext
@@ -278,7 +302,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     loading: authState.status === 'pending',
   }), [authState]);
 
-  if (authState.status === 'pending') return <Loading />;
+  // The public catalog/checkout routes don't need Firebase auth to render.
+  // Never block them behind auth resolution -- currentUser will simply
+  // update in the background once/if it resolves.
+  if (authState.status === 'pending' && !isMerchantSubdomain()) return <Loading />;
 
   return (
     <AuthContext.Provider value={authValue}>

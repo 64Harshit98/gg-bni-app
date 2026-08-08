@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useAuth } from '../../context/auth-context';
 import { useExpenses, type Expense } from '../../Pages/Reports/ExpenseReport/useExpense';
 import { ExpenseModal } from '../../Components/ExpenseModal';
@@ -13,6 +13,8 @@ import XLSX from 'xlsx-js-style';
 import DownloadChoiceModal from '../../Pages/Reports/ItemReportComponents/DownloadChoiceModal';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import ReportDateFilter from '../../Components/ReportDateFilter';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../lib/Firebase';
 //import type ExpenseReportPage from '../../Pages/Reports/ExpenseReport';
 
 const formatDate = (ms: number) =>
@@ -27,6 +29,24 @@ const CatalogueExpenseReportPage: React.FC = () => {
     const { expenses: posExpenses, loading: posLoading } = useExpenses(companyId, 'pos');
     const loading = catLoading || posLoading;
     const expenses = [...catExpenses, ...posExpenses];
+
+    const [companyName, setCompanyName] = useState<string>('');
+
+    useEffect(() => {
+        const fetchCompanyName = async () => {
+            if (!companyId) return;
+            try {
+                const companyRef = doc(db, 'companies', companyId);
+                const snap = await getDoc(companyRef);
+                if (snap.exists()) {
+                    setCompanyName(snap.data().name || snap.data().companyName || '');
+                }
+            } catch (e) {
+                console.error('Failed to fetch company name', e);
+            }
+        };
+        fetchCompanyName();
+    }, [companyId]);
 
     // --- filters ---
     const today = formatDateForInput(new Date());
@@ -197,8 +217,8 @@ const CatalogueExpenseReportPage: React.FC = () => {
                 alignment: alignment ?? { horizontal: 'center', vertical: 'center', wrapText: true }, border: border ?? {},
             });
             const solidFill = (rgb: string) => ({ patternType: 'solid', fgColor: { rgb } });
-            const allBorders = { top: { style: 'thin', color: { rgb: 'CBD5E1' } }, bottom: { style: 'thin', color: { rgb: 'CBD5E1' } }, left: { style: 'thin', color: { rgb: 'CBD5E1' } }, right: { style: 'thin', color: { rgb: 'CBD5E1' } } };
-            const bblr = { bottom: { style: 'thin', color: { rgb: 'CBD5E1' } }, left: { style: 'thin', color: { rgb: 'CBD5E1' } }, right: { style: 'thin', color: { rgb: 'CBD5E1' } } };
+            const allBorders = { top: { style: 'thin', color: { rgb: 'FED7AA' } }, bottom: { style: 'thin', color: { rgb: 'FED7AA' } }, left: { style: 'thin', color: { rgb: 'FED7AA' } }, right: { style: 'thin', color: { rgb: 'FED7AA' } } };
+            const bblr = { bottom: { style: 'thin', color: { rgb: 'FED7AA' } }, left: { style: 'thin', color: { rgb: 'FED7AA' } }, right: { style: 'thin', color: { rgb: 'FED7AA' } } };
 
             const COLS = [{ header: '#', width: 6 }, { header: 'Date', width: 16 }, { header: 'Title', width: 20 }, { header: 'Description', width: 32 }, { header: 'Amount (₹)', width: 18 }];
             const colCount = COLS.length;
@@ -206,7 +226,9 @@ const CatalogueExpenseReportPage: React.FC = () => {
             const totalRows = dataStartRow + filtered.length + 1;
             const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
 
-            aoa[0][0] = 'Expense Report';
+            aoa[0][0] = companyName
+                ? `Expense Report  —  ${companyName}`
+                : 'Expense Report';
             aoa[1][0] = `Generated: ${formatDate(Date.now())}   |   Period: ${formatDate(appliedFilters.start)} → ${formatDate(appliedFilters.end)}`;
             aoa[3][0] = 'SUMMARY';
             aoa[4][0] = `Total Expenses: ₹${summary.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}   |   Entries: ${summary.count}`;
@@ -224,26 +246,26 @@ const CatalogueExpenseReportPage: React.FC = () => {
             ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } }, { s: { r: 3, c: 0 }, e: { r: 3, c: colCount - 1 } }, { s: { r: 4, c: 0 }, e: { r: 4, c: colCount - 1 } }];
 
             const styleCell = (addr: string, st: any) => { if (!ws[addr]) ws[addr] = { t: 's', v: '' }; ws[addr].s = st; };
-            styleCell('A1', s({ sz: 16, bold: true, color: { rgb: 'FFFFFF' } }, solidFill('2563EB'), { horizontal: 'center', vertical: 'center' }));
-            styleCell('A2', s({ sz: 9, italic: true, color: { rgb: '475569' } }, solidFill('DBEAFE'), { horizontal: 'center', vertical: 'center' }));
-            styleCell('A4', s({ sz: 10, bold: true, color: { rgb: '1D4ED8' } }, solidFill('EFF6FF'), { horizontal: 'left', vertical: 'center' }, allBorders));
-            styleCell('A5', s({ sz: 10, bold: true, color: { rgb: '166534' } }, solidFill('DCFCE7'), { horizontal: 'center', vertical: 'center' }, bblr));
+            styleCell('A1', s({ sz: 16, bold: true, color: { rgb: 'FFFFFF' } }, solidFill('EA580C'), { horizontal: 'center', vertical: 'center' }));
+            styleCell('A2', s({ sz: 9, italic: true, color: { rgb: '7C2D12' } }, solidFill('FFEDD5'), { horizontal: 'center', vertical: 'center' }));
+            styleCell('A4', s({ sz: 10, bold: true, color: { rgb: 'C2410C' } }, solidFill('FFF7ED'), { horizontal: 'left', vertical: 'center' }, allBorders));
+            styleCell('A5', s({ sz: 10, bold: true, color: { rgb: '9A3412' } }, solidFill('FFF7ED'), { horizontal: 'center', vertical: 'center' }, bblr));
             COLS.forEach((_, i) => {
                 const addr = XLSX.utils.encode_cell({ r: 6, c: i });
-                styleCell(addr, s({ sz: 10, bold: true, color: { rgb: 'FFFFFF' } }, solidFill('1E40AF'), { horizontal: i <= 3 ? 'left' : 'center', vertical: 'center' }, allBorders));
+                styleCell(addr, s({ sz: 10, bold: true, color: { rgb: 'FFFFFF' } }, solidFill('C2410C'), { horizontal: i <= 3 ? 'left' : 'center', vertical: 'center' }, allBorders));
             });
             filtered.forEach((_, idx) => {
                 const r = dataStartRow + idx;
                 const isAlt = idx % 2 === 1;
                 for (let ci = 0; ci < colCount; ci++) {
                     const addr = XLSX.utils.encode_cell({ r, c: ci });
-                    styleCell(addr, s({ sz: 9, color: { rgb: '1E293B' } }, solidFill(isAlt ? 'F8FAFC' : 'FFFFFF'), { horizontal: ci === 4 ? 'center' : 'left', vertical: 'center' }, bblr));
+                    styleCell(addr, s({ sz: 9, color: { rgb: '1E293B' } }, solidFill(isAlt ? 'FFF7ED' : 'FFFFFF'), { horizontal: ci === 4 ? 'center' : 'left', vertical: 'center' }, bblr));
                     if (ci === 4 && ws[addr]) { ws[addr].t = 'n'; ws[addr].z = '₹#,##0.00'; }
                 }
             });
             for (let ci = 0; ci < colCount; ci++) {
                 const addr = XLSX.utils.encode_cell({ r: footerRow, c: ci });
-                styleCell(addr, s({ sz: 10, bold: true, color: { rgb: '1E293B' } }, solidFill('E2E8F0'), { horizontal: ci <= 3 ? 'left' : 'center', vertical: 'center' }, { top: { style: 'medium', color: { rgb: '1E293B' } }, bottom: { style: 'medium', color: { rgb: '1E293B' } }, left: { style: 'thin', color: { rgb: 'CBD5E1' } }, right: { style: 'thin', color: { rgb: 'CBD5E1' } } }));
+                styleCell(addr, s({ sz: 10, bold: true, color: { rgb: '1E293B' } }, solidFill('FED7AA'), { horizontal: ci <= 3 ? 'left' : 'center', vertical: 'center' }, { top: { style: 'medium', color: { rgb: '1E293B' } }, bottom: { style: 'medium', color: { rgb: '1E293B' } }, left: { style: 'thin', color: { rgb: 'FED7AA' } }, right: { style: 'thin', color: { rgb: 'FED7AA' } } }));
                 if (ci === 4 && ws[addr]) { ws[addr].t = 'n'; ws[addr].z = '₹#,##0.00'; }
             }
 

@@ -105,10 +105,12 @@ export const CatalogueBill = async (
       companyName: data.companyName,
       companyAddress: data.companyAddress || "",
       companyContact: data.companyPhone || "",
+      companyLogoBase64: data.logoBase64 || "",
       isEstimate: data.isEstimate === true,
-      companyGstType: data.companyGstType,
+      gstScheme: data.companyGstType,
       taxType: data.taxType,
       enableTriplicate: (data as any).enableTriplicate === true,
+      msmeNumber: data.msmeNumber || "",
 
       billTo: {
         name: data.customer?.billing?.name || data.customer?.shipping?.name || "",
@@ -200,7 +202,8 @@ export const CatalogueBill = async (
       },
       companyGstin: data.companyGstin,
       terms: data.termsAndConditions,
-      signatureBase64: data.signatureBase64
+      signatureBase64: data.signatureBase64,
+      upiId: data.upiId || ""
     };
 
     let finalAction: ACTION;

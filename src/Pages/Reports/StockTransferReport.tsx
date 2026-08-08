@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useAuth } from '../../context/auth-context';
 import {
   useGodowns, useStockTransfers, useGodownStock, SHOP_ID,
@@ -17,6 +17,8 @@ import XLSX from 'xlsx-js-style';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import ReportDateFilter from '../../Components/ReportDateFilter';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../lib/Firebase';
 
 type Tab = 'stock' | 'history';
 
@@ -32,11 +34,45 @@ interface StockTransferReportPageProps {
 const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme = 'blue' }) => {
   const { currentUser } = useAuth();
   const companyId = currentUser?.companyId;
+  const [companyName, setCompanyName] = useState<string>('');
+
+  useEffect(() => {
+    const fetchCompanyName = async () => {
+      if (!companyId) return;
+      try {
+        const companyRef = doc(db, 'companies', companyId);
+        const snap = await getDoc(companyRef);
+        if (snap.exists()) {
+          setCompanyName(snap.data().name || snap.data().companyName || '');
+        }
+      } catch (e) {
+        console.error('Failed to fetch company name', e);
+      }
+    };
+    fetchCompanyName();
+  }, [companyId]);
 
   const accentBg = theme === 'orange' ? 'bg-[#F97316]' : 'bg-blue-600';
   const accentBgHover = theme === 'orange' ? 'hover:bg-orange-600' : 'hover:bg-blue-700';
   const accentRing = theme === 'orange' ? 'focus:ring-[#F97316]' : 'focus:ring-blue-500';
   const accentText = theme === 'orange' ? 'text-[#F97316]' : 'text-blue-600';
+
+  // Excel export colors — mirrors the orange/blue theme used in the UI
+  const xlsxColors = theme === 'orange'
+    ? {
+        titleBg: 'EA580C', metaBg: 'FFEDD5', metaText: '7C2D12',
+        summaryLabelText: 'C2410C', summaryLabelBg: 'FFF7ED',
+        summaryValueText: '9A3412', summaryValueBg: 'FFF7ED',
+        headerBg: 'C2410C', footerBg: 'FED7AA',
+        border: 'FED7AA', altRow: 'FFF7ED',
+      }
+    : {
+        titleBg: '2563EB', metaBg: 'DBEAFE', metaText: '475569',
+        summaryLabelText: '1D4ED8', summaryLabelBg: 'EFF6FF',
+        summaryValueText: '166534', summaryValueBg: 'DCFCE7',
+        headerBg: '1E40AF', footerBg: 'E2E8F0',
+        border: 'CBD5E1', altRow: 'F8FAFC',
+      };
 
   const { godowns, loading: godownsLoading, addGodown } = useGodowns(companyId);
   const { stockRows, items, loading: stockLoading } = useGodownStock(companyId, godowns);
@@ -260,8 +296,8 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
         alignment: alignment ?? { horizontal: 'center', vertical: 'center', wrapText: true }, border: border ?? {},
       });
       const solidFill = (rgb: string) => ({ patternType: 'solid', fgColor: { rgb } });
-      const allBorders = { top: { style: 'thin', color: { rgb: 'CBD5E1' } }, bottom: { style: 'thin', color: { rgb: 'CBD5E1' } }, left: { style: 'thin', color: { rgb: 'CBD5E1' } }, right: { style: 'thin', color: { rgb: 'CBD5E1' } } };
-      const bblr = { bottom: { style: 'thin', color: { rgb: 'CBD5E1' } }, left: { style: 'thin', color: { rgb: 'CBD5E1' } }, right: { style: 'thin', color: { rgb: 'CBD5E1' } } };
+      const allBorders = { top: { style: 'thin', color: { rgb: xlsxColors.border } }, bottom: { style: 'thin', color: { rgb: xlsxColors.border } }, left: { style: 'thin', color: { rgb: xlsxColors.border } }, right: { style: 'thin', color: { rgb: xlsxColors.border } } };
+      const bblr = { bottom: { style: 'thin', color: { rgb: xlsxColors.border } }, left: { style: 'thin', color: { rgb: xlsxColors.border } }, right: { style: 'thin', color: { rgb: xlsxColors.border } } };
 
       const isStock = activeTab === 'stock';
       const COLS = isStock
@@ -273,7 +309,9 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
       const totalRows = dataStartRow + rowsData.length + 1;
       const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
 
-      aoa[0][0] = isStock ? 'Godown Stock Report' : 'Stock Transfer History';
+      aoa[0][0] = companyName
+        ? `${isStock ? 'Godown Stock Report' : 'Stock Transfer History'}  —  ${companyName}`
+        : (isStock ? 'Godown Stock Report' : 'Stock Transfer History');
       aoa[1][0] = isStock ? `Generated: ${formatDate(Date.now())}` :
         `Generated: ${formatDate(Date.now())}   |   Period: ${appliedFilters ? formatDate(appliedFilters.start) : ''} → ${appliedFilters ? formatDate(appliedFilters.end) : ''}`;
       aoa[3][0] = 'SUMMARY';
@@ -306,26 +344,26 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
       ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } }, { s: { r: 3, c: 0 }, e: { r: 3, c: colCount - 1 } }, { s: { r: 4, c: 0 }, e: { r: 4, c: colCount - 1 } }];
 
       const styleCell = (addr: string, st: any) => { if (!ws[addr]) ws[addr] = { t: 's', v: '' }; ws[addr].s = st; };
-      styleCell('A1', s({ sz: 16, bold: true, color: { rgb: 'FFFFFF' } }, solidFill('2563EB'), { horizontal: 'center', vertical: 'center' }));
-      styleCell('A2', s({ sz: 9, italic: true, color: { rgb: '475569' } }, solidFill('DBEAFE'), { horizontal: 'center', vertical: 'center' }));
-      styleCell('A4', s({ sz: 10, bold: true, color: { rgb: '1D4ED8' } }, solidFill('EFF6FF'), { horizontal: 'left', vertical: 'center' }, allBorders));
-      styleCell('A5', s({ sz: 10, bold: true, color: { rgb: '166534' } }, solidFill('DCFCE7'), { horizontal: 'center', vertical: 'center' }, bblr));
+      styleCell('A1', s({ sz: 16, bold: true, color: { rgb: 'FFFFFF' } }, solidFill(xlsxColors.titleBg), { horizontal: 'center', vertical: 'center' }));
+      styleCell('A2', s({ sz: 9, italic: true, color: { rgb: xlsxColors.metaText } }, solidFill(xlsxColors.metaBg), { horizontal: 'center', vertical: 'center' }));
+      styleCell('A4', s({ sz: 10, bold: true, color: { rgb: xlsxColors.summaryLabelText } }, solidFill(xlsxColors.summaryLabelBg), { horizontal: 'left', vertical: 'center' }, allBorders));
+      styleCell('A5', s({ sz: 10, bold: true, color: { rgb: xlsxColors.summaryValueText } }, solidFill(xlsxColors.summaryValueBg), { horizontal: 'center', vertical: 'center' }, bblr));
       COLS.forEach((_, i) => {
         const addr = XLSX.utils.encode_cell({ r: 6, c: i });
-        styleCell(addr, s({ sz: 10, bold: true, color: { rgb: 'FFFFFF' } }, solidFill('1E40AF'), { horizontal: i <= 1 ? 'left' : 'center', vertical: 'center' }, allBorders));
+        styleCell(addr, s({ sz: 10, bold: true, color: { rgb: 'FFFFFF' } }, solidFill(xlsxColors.headerBg), { horizontal: i <= 1 ? 'left' : 'center', vertical: 'center' }, allBorders));
       });
       rowsData.forEach((_, idx) => {
         const r = dataStartRow + idx;
         const isAlt = idx % 2 === 1;
         for (let ci = 0; ci < colCount; ci++) {
           const addr = XLSX.utils.encode_cell({ r, c: ci });
-          styleCell(addr, s({ sz: 9, color: { rgb: '1E293B' } }, solidFill(isAlt ? 'F8FAFC' : 'FFFFFF'), { horizontal: ci === qtyColIdx ? 'center' : 'left', vertical: 'center' }, bblr));
+          styleCell(addr, s({ sz: 9, color: { rgb: '1E293B' } }, solidFill(isAlt ? xlsxColors.altRow : 'FFFFFF'), { horizontal: ci === qtyColIdx ? 'center' : 'left', vertical: 'center' }, bblr));
           if (ci === qtyColIdx && ws[addr]) { ws[addr].t = 'n'; }
         }
       });
       for (let ci = 0; ci < colCount; ci++) {
         const addr = XLSX.utils.encode_cell({ r: footerRow, c: ci });
-        styleCell(addr, s({ sz: 10, bold: true, color: { rgb: '1E293B' } }, solidFill('E2E8F0'), { horizontal: ci <= 1 ? 'left' : 'center', vertical: 'center' }, { top: { style: 'medium', color: { rgb: '1E293B' } }, bottom: { style: 'medium', color: { rgb: '1E293B' } }, left: { style: 'thin', color: { rgb: 'CBD5E1' } }, right: { style: 'thin', color: { rgb: 'CBD5E1' } } }));
+        styleCell(addr, s({ sz: 10, bold: true, color: { rgb: '1E293B' } }, solidFill(xlsxColors.footerBg), { horizontal: ci <= 1 ? 'left' : 'center', vertical: 'center' }, { top: { style: 'medium', color: { rgb: '1E293B' } }, bottom: { style: 'medium', color: { rgb: '1E293B' } }, left: { style: 'thin', color: { rgb: xlsxColors.border } }, right: { style: 'thin', color: { rgb: xlsxColors.border } } }));
         if (ci === qtyColIdx && ws[addr]) { ws[addr].t = 'n'; }
       }
 
@@ -446,6 +484,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
           onStartDateChange={handleStartDateChange}
           onEndDateChange={handleEndDateChange}
           onApply={handleApply}
+          theme={theme === 'orange' ? 'catalogue' : undefined}
         />
       )}
 

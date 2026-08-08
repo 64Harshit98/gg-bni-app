@@ -27,7 +27,7 @@ import { Spinner } from '../constants/Spinner';
 import { ROUTES } from '../constants/routes.constants';
 import { Modal, PaymentModal } from '../constants/Modal';
 import ShinyText from '../Components/ShinyText';
-import { generatePdf, generatePdfBlob } from '../UseComponents/pdfGenerator';
+import { generatePdf, generatePdfBlob, compressImage } from '../UseComponents/pdfGenerator';
 import { getFirestoreOperations } from '../lib/ItemsFirebase';
 import { useSalesSettings } from '../context/SettingsContext';
 import { IconChevronDown, IconClose, IconFilter, IconSearch, IconDownload, IconPrint, IconScanCircle } from '../constants/Icons';
@@ -146,6 +146,7 @@ interface Invoice {
 interface PdfData {
   printFormat?: 'A4' | 'THERMAL58';
   enableTriplicate?: boolean;
+  enableItemImages?: boolean; // NEW
   gstScheme: string;
   taxType: string;
   companyName: string;
@@ -750,13 +751,35 @@ const Journal: React.FC = () => {
         taxAmount: item.taxAmount || 0,
         taxableAmount: item.taxableAmount || 0,
         gstPercent: finalTaxRate,
-        taxRate: finalTaxRate
+        taxRate: finalTaxRate,
+        imageBase64: undefined as string | undefined,
       };
     });
+
+    // NEW: POS-Photos — setting ON
+    // NEW: POS-Photos — sirf A4 format ke liye, aur setting ON hone par hi photos fetch karo
+    const resolvedPrintFormat = (forcePosPrint || isPosBasicPlan) ? 'THERMAL58' : (billSettings.posPrintFormat || 'A4');
+    if (billSettings.enableItemImages && resolvedPrintFormat === 'A4') {
+      await Promise.all(populatedItems.map(async (pItem: any, idx: number) => {
+        const original = (invoice.items || [])[idx];
+        const fullItem: any = fetchedItems.find((fi: any) => fi.id === original?.id) || {};
+        const imageUrl = fullItem.image || fullItem.imageUrl || fullItem.thumbnail || fullItem.imageURL;
+        if (imageUrl) {
+          try {
+            const res = await fetch(imageUrl);
+            const blob = await res.blob();
+            pItem.imageBase64 = await compressImage(blob);
+          } catch (e) {
+            console.error('Item image fetch failed for PDF:', e);
+          }
+        }
+      }));
+    }
 
     return {
       printFormat: (forcePosPrint || isPosBasicPlan) ? 'THERMAL58' : (billSettings.posPrintFormat || 'A4'),
       enableTriplicate: billSettings.enableTriplicate || false,
+      enableItemImages: billSettings.enableItemImages || false, // NEW
       gstScheme: salesSettings?.gstScheme || '',
       taxType: invoice.taxType || salesSettings?.taxType || '',
       companyName: businessInfo?.name || '',

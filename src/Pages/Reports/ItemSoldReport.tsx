@@ -4,7 +4,7 @@ import {
     formatDateForInput,
 } from './SalesReportComponents/salesReport.utils';
 import ReportDateFilter from '../../Components/ReportDateFilter';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 import { useAuth } from '../../context/auth-context';
 import useSalesReport from './SalesReportComponents/useSalesReport';
@@ -61,6 +61,23 @@ const ItemsSoldReport: React.FC = () => {
 
     const { currentUser } = useAuth();
     const [itemGroupMap, setItemGroupMap] = useState<Record<string, string>>({});
+    const [companyName, setCompanyName] = useState<string>('');
+
+    useEffect(() => {
+        const fetchCompanyName = async () => {
+            if (!currentUser?.companyId) return;
+            try {
+                const companyRef = doc(db, 'companies', currentUser.companyId);
+                const snap = await getDoc(companyRef);
+                if (snap.exists()) {
+                    setCompanyName(snap.data().name || snap.data().companyName || '');
+                }
+            } catch (e) {
+                console.error('Failed to fetch company name', e);
+            }
+        };
+        fetchCompanyName();
+    }, [currentUser?.companyId]);
 
     useEffect(() => {
         const fetchItemGroups = async () => {
@@ -486,8 +503,10 @@ const ItemsSoldReport: React.FC = () => {
             const totalRows = dataStartRow + aggregatedItems.length + 1;
             const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
 
-            // Row 0 – Title
-            aoa[0][0] = 'Items Sold Report';
+           // Row 0 – Title
+            aoa[0][0] = companyName
+                ? `Items Sold Report  —  ${companyName}`
+                : 'Items Sold Report';
 
             // Row 1 – Meta
             aoa[1][0] = `Generated: ${generationDate}   |   ${periodLabel}   |   Unique Items: ${summary.uniqueItemCount}`;

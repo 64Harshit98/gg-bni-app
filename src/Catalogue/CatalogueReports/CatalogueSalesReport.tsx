@@ -7,6 +7,8 @@ import {
     getDocs,
     Timestamp,
     orderBy, // 'orderBy' is now used
+    doc,
+    getDoc,
 } from 'firebase/firestore';
 import { useAuth } from '../../context/auth-context';
 import { jsPDF } from 'jspdf';
@@ -208,6 +210,23 @@ const OrdersReport: React.FC = () => {
     const [sales, setSales] = useState<OrderRecord[]>([]); // Use OrderRecord
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
+    const [companyName, setCompanyName] = useState<string>('');
+
+    useEffect(() => {
+        const fetchCompanyName = async () => {
+            if (!currentUser?.companyId) return;
+            try {
+                const companyRef = doc(db, 'companies', currentUser.companyId);
+                const snap = await getDoc(companyRef);
+                if (snap.exists()) {
+                    setCompanyName(snap.data().name || snap.data().companyName || '');
+                }
+            } catch (e) {
+                console.error('Failed to fetch company name', e);
+            }
+        };
+        fetchCompanyName();
+    }, [currentUser?.companyId]);
 
     const [datePreset, setDatePreset] = useState<string>('today');
     const [customStartDate, setCustomStartDate] = useState<string>('');
@@ -625,7 +644,9 @@ const OrdersReport: React.FC = () => {
             const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
 
             // Row 0 – Title
-            aoa[0][0] = 'Orders Report';
+            aoa[0][0] = companyName
+                ? `Orders Report  —  ${companyName}`
+                : 'Orders Report';
 
             // Row 1 – Meta
             aoa[1][0] = `Generated: ${generationDate}   |   ${periodLabel}   |   Orders: ${summary.totalTransactions}`;

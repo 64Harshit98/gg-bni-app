@@ -16,7 +16,7 @@ import FilterSelect from '../../Pages/Reports/ItemReportComponents/FilterSelect'
 //import { Cata_Permissions } from '../enum/cata_permissions.enum';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import { useAuth } from '../../context/auth-context';
-import { useGodowns, useGodownStock, SHOP_ID } from '../../Pages/hooks/useStockTransfer';
+import { useGodowns, useGodownStock, SHOP_ID, SHOP_NAME } from '../../Pages/hooks/useStockTransfer';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 // Import your Modal and State
@@ -470,13 +470,16 @@ const CatalogueItemReport: React.FC = () => {   // (or `const ItemReport: React.
         { header: 'HSN/SAC', width: 14 },
         { header: 'Category', width: 20 },
         { header: 'Stock', width: 10 },
+        { header: 'Location', width: 18 },
         { header: 'Restock Qty', width: 13 },
         { header: 'MOQ', width: 10 },
         { header: 'Image URL', width: 25 },
         { header: 'Description', width: 35 },
       ];
       const colCount = COLS.length;
-
+      const exportLocationLabel = locationFilter
+        ? (locationFilter === SHOP_ID ? SHOP_NAME : (godowns.find(g => g.id === locationFilter)?.name || SHOP_NAME))
+        : SHOP_NAME;
       // Row layout:
       // 0  → Title (merged)
       // 1  → Meta (merged)
@@ -532,10 +535,11 @@ const CatalogueItemReport: React.FC = () => {   // (or `const ItemReport: React.
           ? item.itemGroupIds.map((id) => getGroupName(id)).join(', ')
           : getGroupName(item.itemGroupId);
         aoa[r][10] = item.stock || 0;                              // Stock
-        aoa[r][11] = item.restockQuantity || 0;                    // Restock Qty
-        aoa[r][12] = item.moq || 1;                                // MOQ
-        aoa[r][13] = (item as any).imageUrl || '';                  // Image URL
-        aoa[r][14] = item.description || '';                        // Description
+        aoa[r][11] = exportLocationLabel;                          // Location
+        aoa[r][12] = item.restockQuantity || 0;                    // Restock Qty
+        aoa[r][13] = item.moq || 1;                                // MOQ
+        aoa[r][14] = (item as any).imageUrl || '';                  // Image URL
+        aoa[r][15] = item.description || '';                        // Description
       });
 
       // No footer/TOTAL row — a text row at the end would get misread as
@@ -609,7 +613,7 @@ const CatalogueItemReport: React.FC = () => {   // (or `const ItemReport: React.
       });
 
       // Numeric column indices (for right-align + number formatting)
-      const numericCols = new Set([2, 3, 4, 5, 6, 7, 10, 11, 12]);
+      const numericCols = new Set([2, 3, 4, 5, 6, 7, 10, 12, 13]);
 
       // Data rows
       filteredItems.forEach((_item, idx) => {

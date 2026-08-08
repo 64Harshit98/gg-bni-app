@@ -11,6 +11,7 @@ import { Modal } from '../../constants/Modal';
 import { useItemSettings } from '../../context/SettingsContext';
 import { IconScanCircle } from '../../constants/Icons';
 import { collection, query, where, getDocs, limit, doc, runTransaction, getDoc } from 'firebase/firestore';
+import { useGodowns, SHOP_NAME } from '../hooks/useStockTransfer';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import ExcelJS from 'exceljs';
 import { db, storage } from '../../lib/Firebase';
@@ -106,7 +107,8 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   const dbOperations = useDatabase();
   const { currentUser, loading: authLoading } = useAuth();
   const { itemSettings, loadingSettings: loadingItemSettings } = useItemSettings();
-
+// Needed to resolve a Location column value (e.g. "Warehouse A") to a godown id during bulk import.
+  const { godowns } = useGodowns(currentUser?.companyId);
   const [itemName, setItemName] = useState<string>('');
   const [itemMRP, setItemMRP] = useState<string>('');
   const [itemSalesPrice, setItemSalesPrice] = useState<string>('');
@@ -615,7 +617,10 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       let currentGroups = await dbOperations.getItemGroups();
       const groupMap = new Map<string, string>();
       currentGroups.forEach(g => groupMap.set(g.name.toLowerCase().trim(), g.id!));
-
+// Maps a "Location" cell value (godown name) to its godown id.
+      // "Shop" / blank always means item.stock — never a godown.
+      const godownNameMapImport = new Map<string, string>();
+      godowns.forEach(g => godownNameMapImport.set(g.name.toLowerCase().trim(), g.id));
       const allExistingItems = await dbOperations.syncItems();
       const itemMapByBarcode = new Map<string, any>();
       const itemMapByName = new Map<string, any>();
@@ -667,17 +672,23 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         }
 
         const stockVal = parseInt(safeGetVal(row, 11)) || 0;
+        const rowLocationStr = safeGetVal(row, 12);
         const rowRestock = parseInt(safeGetVal(row, 12)) || 0;
         const rowMoq = parseInt(safeGetVal(row, 13)) || 1;
         const rowImageUrlStr = safeGetVal(row, 14);
         const rowDescription = safeGetVal(row, 15);
-
+ // Resolve the Location cell. Blank or "Shop" (case-insensitive) → item.stock.
+        // Otherwise must match an existing godown name exactly (case-insensitive).
+        const trimmedLocation = rowLocationStr.trim().toLowerCase();
+        const isShopLocation = !trimmedLocation || trimmedLocation === SHOP_NAME.toLowerCase();
+        const targetGodownId = !isShopLocation ? godownNameMapImport.get(trimmedLocation) : undefined;
         // --- STRICT VALIDATION FIX ---
         // Catches bad data early and increments fail count properly
         let rowIsValid = true;
         if (rowMRP === 0 && rowSale === 0) rowIsValid = false; // Missing prices
         if (rowMRP > 0 && rowSale > 0 && rowSale > rowMRP) rowIsValid = false; // Invalid pricing
         if (itemSettings.requirePurchasePrice && rowPurchase <= 0) rowIsValid = false;
+        if (trimmedLocation && !isShopLocation && !targetGodownId) rowIsValid = false; // Unknown Location name
 
         // --- NEGATIVE VALUE GUARD ---
         // Reject any row containing negative numeric values
@@ -753,7 +764,16 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           if (updateFields.mrp) updates.mrp = rowMRP;
           if (updateFields.salesPrice) updates.salesPrice = rowSale;
           if (updateFields.purchasePrice) updates.purchasePrice = rowPurchase;
-          if (updateFields.stock) { updates.stock = stockVal; updates.amount = stockVal; }
+          if (updateFields.stock) {
+            if (targetGodownId) {
+              // Godown stock lives in a map — dot-path key updates just that bucket,
+              // leaving Shop stock and other godowns untouched.
+              updates[`godownStock.${targetGodownId}`] = stockVal;
+            } else {
+              updates.stock = stockVal;
+              updates.amount = stockVal;
+            }
+          }
           if (updateFields.category && targetGroupId) {
             updates.itemGroupId = targetGroupId;
             updates.itemGroupIds = [targetGroupId];
@@ -782,7 +802,27 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           } else if (existingItem) {
             finalRowBarcode = existingItem.barcode;
           }
+// Decide where the stockVal quantity actually lands:
+          // - No godown match → Shop (item.stock), same as before this feature.
+          // - Godown match + brand-new item → item.stock starts at 0, all opening
+          //   stock goes into godownStock.
+          // - Godown match + existing item → Shop stock is left completely untouched;
+          //   only that godown's bucket is bumped via a dot-path key.
+          let stockFieldValue = stockVal;
+          let amountFieldValue = stockVal;
+          let includeStockFields = true;
+          const godownUpdatePatch: Record<string, any> = {};
 
+          if (targetGodownId) {
+            if (existingItem) {
+              includeStockFields = false;
+              godownUpdatePatch[`godownStock.${targetGodownId}`] = stockVal;
+            } else {
+              stockFieldValue = 0;
+              amountFieldValue = 0;
+              godownUpdatePatch.godownStock = { [targetGodownId]: stockVal };
+            }
+          }
           const itemData: any = {
             name: rawName,
             mrp: rowMRP,
@@ -794,6 +834,8 @@ const ItemAdd: React.FC<ItemAddProps> = ({
             hsnSac: rowHsn,
             itemGroupId: targetGroupId || '',
             itemGroupIds: targetGroupId ? [targetGroupId] : [],
+            ...(includeStockFields ? { stock: stockFieldValue, amount: amountFieldValue } : {}),
+            ...godownUpdatePatch,
             stock: stockVal,
             amount: stockVal,
             barcode: finalRowBarcode,
@@ -898,6 +940,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       { header: '● HSN Code', note: '6-digit HSN / SAC code', type: 'O', width: 13, field: 'hsnCode' },
       { header: '▲ Category', note: 'Group name – new category auto-created', type: 'L', width: 18, field: 'itemGroupId' },
       { header: '● Stock', note: 'Opening stock quantity', type: 'O', width: 10, field: 'stock' },
+      { header: '▲ Location', note: `"${SHOP_NAME}" or exact godown name  Leave blank for ${SHOP_NAME}`, type: 'L', width: 18, field: 'location' },
       { header: '● Restock Level', note: 'Alert when stock falls below this', type: 'O', width: 15, field: 'restockQuantity' },
       { header: '● MOQ', note: 'Minimum Order Quantity', type: 'O', width: 10, field: 'moq' },
       { header: '● Image URL', note: 'Web link to image (Optional)', type: 'O', width: 25, field: 'imageUrl' },
@@ -918,8 +961,8 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     ];
 
     const sampleRows = [
-      ['Amul Butter 500g', '', 250, 240, 190, 0, 2, 5, '0402', 'Dairy', 50, 10, 1, 'https://example.com/amul.jpg', 'Fresh Amul butter, 500g pack, ideal for baking and spreads.'],
-      ['Parle-G Biscuit', '1002', 10, 10, 7, 0, 0, 0, '', 'Snacks', 200, 20, 10, '', 'Classic glucose biscuits, pack of 10.'],
+      ['Amul Butter 500g', '', 250, 240, 190, 0, 2, 5, '0402', 'Dairy', 50, SHOP_NAME, 10, 1, 'https://example.com/amul.jpg', 'Fresh Amul butter, 500g pack, ideal for baking and spreads.'],
+      ['Parle-G Biscuit', '1002', 10, 10, 7, 0, 0, 0, '', 'Snacks', 200, '', 20, 10, '', 'Classic glucose biscuits, pack of 10.'],
     ];
 
     const totalRows = 12;

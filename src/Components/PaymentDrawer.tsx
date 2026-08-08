@@ -7,6 +7,7 @@ import { State } from '../enums';
 import { db } from '../lib/Firebase';
 import {
     doc,
+    getDoc,
     setDoc,
     serverTimestamp,
     increment as firebaseIncrement,
@@ -676,6 +677,13 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             if (currentUser?.companyId && identifier) {
                 const partyDocRef = doc(db, 'companies', currentUser.companyId, collectionName, identifier);
 
+                // ✅ NEW: check if this party doc already has a createdAt. Stamp it ONLY the
+                // first time (new doc, or an old doc that never got one) — never on repeat
+                // bills — so date-range filtering in Party Ledger / Customer Report works
+                // correctly for every party, whether they were made via billing or Opening
+                // Balance.
+                const existingPartySnap = await getDoc(partyDocRef);
+                const needsCreatedAt = !existingPartySnap.exists() || !existingPartySnap.data()?.createdAt;
                 const partyData: any = {
                     name: safePartyName,
                     number: safePartyNumber,
@@ -690,7 +698,9 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     shippingState: shippingState,
                     updatedAt: serverTimestamp(),
                 };
-
+                if (needsCreatedAt) {
+                    partyData.createdAt = serverTimestamp();
+                }
                 Object.keys(partyData).forEach(key => {
                     if (partyData[key] === undefined) delete partyData[key];
                 });

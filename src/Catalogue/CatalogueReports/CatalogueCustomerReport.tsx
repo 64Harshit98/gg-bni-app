@@ -18,7 +18,7 @@ import useCustomerReport from '../hooks/useCustomerReport';
 //import CataShowWrapper from '../../context/CataShowWrapper';
 //import { Cata_Permissions } from '../enum/cata_permissions.enum';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
-import { collection, onSnapshot, query } from 'firebase/firestore';
+import { collection, onSnapshot, query, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 import BackButton from '../../Components/BackButton';
 
@@ -63,6 +63,23 @@ const CatalogueCustomerReport: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [customerCreditMap, setCustomerCreditMap] = useState<Record<string, number>>({});
+  const [companyName, setCompanyName] = useState<string>('');
+
+  useEffect(() => {
+    const fetchCompanyName = async () => {
+      if (!currentUser?.companyId) return;
+      try {
+        const companyRef = doc(db, 'companies', currentUser.companyId);
+        const snap = await getDoc(companyRef);
+        if (snap.exists()) {
+          setCompanyName(snap.data().name || snap.data().companyName || '');
+        }
+      } catch (e) {
+        console.error('Failed to fetch company name', e);
+      }
+    };
+    fetchCompanyName();
+  }, [currentUser?.companyId]);
   // const [obAdvanceMap, setObAdvanceMap] = useState<Record<string, number>>({});
   const [sortConfig, setSortConfig] = useState<{
     key: keyof CustomerRowWithCredit;
@@ -322,7 +339,9 @@ const CatalogueCustomerReport: React.FC = () => {
       const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
 
       // Row 0 – Title
-      aoa[0][0] = 'Customer Report';
+      aoa[0][0] = companyName
+        ? `Customer Report  —  ${companyName}`
+        : 'Customer Report';
 
       // Row 1 – Meta
       aoa[1][0] = `Generated: ${generationDate}   |   Total Customers: ${metrics.totalCustomers}   |   Total Bills: ${metrics.totalBills}`;

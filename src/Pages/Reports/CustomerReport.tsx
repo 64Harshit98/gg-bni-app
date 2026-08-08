@@ -53,10 +53,15 @@ const CustomerReport: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [customerCreditMap, setCustomerCreditMap] = useState<Record<string, number>>({});
+  // ✅ NEW: full list of known customers (name + number + createdAt) from the
+  // customers master collection — used to seed rows below so a customer never
+  // disappears from the report just because all their bills were deleted.
+  const [customersList, setCustomersList] = useState<{ number: string; name: string; createdAt?: number }[]>([]);
 
   useEffect(() => {
     if (!currentUser?.companyId) {
       setCustomerCreditMap({});
+      setCustomersList([]);
       return;
     }
 
@@ -65,18 +70,23 @@ const CustomerReport: React.FC = () => {
       query(customersRef),
       (snapshot) => {
         const nextMap: Record<string, number> = {};
+        const nextList: { number: string; name: string; createdAt?: number }[] = [];
         snapshot.forEach((docSnap) => {
           const data = docSnap.data() as Record<string, unknown>;
           const credit = Number(data.creditBalance || 0);
           const numberKey = String(data.number || '').trim();
           const nameKey = String(data.name || '').trim().toLowerCase();
+          const displayName = String(data.name || '').trim();
+          const createdAtMillis = (data.createdAt as any)?.toMillis ? (data.createdAt as any).toMillis() : undefined;
 
           if (numberKey) nextMap[`num:${numberKey}`] = Number.isFinite(credit) ? credit : 0;
           if (nameKey) nextMap[`name:${nameKey}`] = Number.isFinite(credit) ? credit : 0;
+          if (displayName) nextList.push({ number: numberKey, name: displayName, createdAt: createdAtMillis });
         });
         setCustomerCreditMap(nextMap);
+        setCustomersList(nextList);
       },
-      () => setCustomerCreditMap({}),
+      () => { setCustomerCreditMap({}); setCustomersList([]); },
     );
 
     return unsubscribe;
@@ -110,6 +120,30 @@ const CustomerReport: React.FC = () => {
 
     /* ---------- CUSTOMER AGGREGATION ---------- */
     const map = new Map<string, CustomerRowWithCredit>();
+
+    // ✅ NEW: seed every known customer whose createdAt falls inside the applied
+    // date range, at zero — so a customer whose only bill(s) were deleted from the
+    // Journal still shows up here with 0 bills/sales, instead of disappearing.
+    // Strict date filtering: a customer with no createdAt is excluded, same as
+    // every other date-scoped record here.
+    const filteredCustomersForSeed = customersList.filter((c) => {
+      if (!appliedFilters || c.createdAt === undefined) return false;
+      return c.createdAt >= start && c.createdAt <= end;
+    });
+
+    filteredCustomersForSeed.forEach((c) => {
+      if (!c.name || map.has(c.name)) return;
+      map.set(c.name, {
+        id: `${c.name}-${c.number || 'N/A'}`,
+        customerName: c.name,
+        customerNumber: c.number || 'N/A',
+        totalBills: 0,
+        totalSales: 0,
+        totalDue: 0,
+        creditNote: 0,
+        sortKey: 'customerName',
+      });
+    });
 
     newFilteredSales.forEach((sale) => {
       const key = sale.partyName;
@@ -202,7 +236,7 @@ const CustomerReport: React.FC = () => {
         averageSalePerCustomer,
       },
     };
-  }, [sales, appliedFilters, searchQuery, customerCreditMap, sortConfig]);
+  }, [sales, appliedFilters, searchQuery, customerCreditMap, sortConfig, customersList]);
 
   const handleApplyFilters = () => {
     const start = new Date(startDate);

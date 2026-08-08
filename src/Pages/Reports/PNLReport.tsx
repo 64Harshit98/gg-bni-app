@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import XLSX from 'xlsx-js-style';
@@ -17,6 +17,8 @@ import { Modal } from '../../constants/Modal';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import BackButton from '../../Components/BackButton';
 import { useExpenses } from './ExpenseReport/useExpense';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../lib/Firebase';
 
 const PnlReportPage: React.FC = () => {
   const {
@@ -45,6 +47,24 @@ const PnlReportPage: React.FC = () => {
   const { expenses: posExpenses } = useExpenses(currentUser?.companyId, 'pos');
   const { expenses: catExpenses } = useExpenses(currentUser?.companyId, 'catalogue');
   const expenses = [...posExpenses, ...catExpenses];
+
+  const [companyName, setCompanyName] = useState<string>('');
+
+  useEffect(() => {
+    const fetchCompanyName = async () => {
+      if (!currentUser?.companyId) return;
+      try {
+        const companyRef = doc(db, 'companies', currentUser.companyId);
+        const snap = await getDoc(companyRef);
+        if (snap.exists()) {
+          setCompanyName(snap.data().name || snap.data().companyName || '');
+        }
+      } catch (e) {
+        console.error('Failed to fetch company name', e);
+      }
+    };
+    fetchCompanyName();
+  }, [currentUser?.companyId]);
 
   /* ---------- LOCAL STATES (ADDED) ---------- */
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
@@ -456,7 +476,9 @@ const PnlReportPage: React.FC = () => {
       const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
 
       // Row 0 – Title
-      aoa[0][0] = 'Profit & Loss Report';
+      aoa[0][0] = companyName
+        ? `Profit & Loss Report  —  ${companyName}`
+        : 'Profit & Loss Report';
 
       // Row 1 – Meta
       aoa[1][0] = `Generated: ${generationDate}   |   ${periodLabel}   |   Transactions: ${filteredTransactions.length}`;

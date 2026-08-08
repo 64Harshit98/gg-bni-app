@@ -25,7 +25,7 @@ import QRCode from 'react-qr-code';
 import { FiSend } from 'react-icons/fi';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage } from '../../lib/Firebase';
-import { generatePdfBlob, generatePdf } from '../../UseComponents/pdfGenerator';
+import { generatePdfBlob, generatePdf, compressImage } from '../../UseComponents/pdfGenerator';
 import { getFirestoreOperations } from '../../lib/ItemsFirebase';
 import { botMasterService } from '../Additional/Whatsapp/WhatsappApi';
 import { PLAN_ALLOWED_FEATURES } from '../Settings/SalesSetting';
@@ -56,7 +56,7 @@ export interface SalesItem extends OriginalSalesItem {
     packetSize?: number | undefined;
     isCustomAmount?: boolean;
     isStagedCalcItem?: boolean;
-     addedAt?: number;   // 👈 NEW: 
+    addedAt?: number;   // 👈 NEW: 
 }
 
 // Inside Sales component, add interface and button data
@@ -1665,9 +1665,23 @@ const Sales: React.FC = () => {
         ]);
         const billSettings = billSettingsSnap.exists() ? billSettingsSnap.data() : {};
 
-        const populatedItems = (invoice.items || []).map((item: any, index: number) => {
+        const populatedItems = await Promise.all((invoice.items || []).map(async (item: any, index: number) => {
             const fullItem = fetchedItems.find((fi: any) => fi.id === item.productId || fi.id === item.id);
             const finalTaxRate = item.taxRate || item.tax || fullItem?.tax || 0;
+            // NEW: POS-Photos — sirf A4 format ke liye item image fetch + compress karo
+            let imageBase64: string | undefined = undefined;
+            if (billSettings.enableItemImages && (billSettings.posPrintFormat || 'A4') === 'A4') {
+                const imageUrl = (fullItem as any)?.image || (fullItem as any)?.imageUrl || (fullItem as any)?.thumbnail || (fullItem as any)?.imageURL;
+                if (imageUrl) {
+                    try {
+                        const res = await fetch(imageUrl);
+                        const blob = await res.blob();
+                        imageBase64 = await compressImage(blob);
+                    } catch (e) {
+                        console.error('Item image fetch failed for PDF:', e);
+                    }
+                }
+            }
             const itemAmount = (item.finalPrice !== undefined && item.finalPrice !== null) ? item.finalPrice : (item.mrp * item.quantity);
             // --- Discount 1 + Discount 2 ko ₹ amount mein nikalna (Journal.tsx jaisa) ---
             const qty = Number(item.quantity) || 1;
@@ -1706,13 +1720,15 @@ const Sales: React.FC = () => {
                 discount2Percent: d2Pct,   // NEW
                 amount: itemAmount,
                 taxAmount: item.taxAmount || 0,
-                taxableAmount: item.taxableAmount || 0
+                taxableAmount: item.taxableAmount || 0,
+                imageBase64,
             };
-        });
+        }));
 
         return {
             printFormat: billSettings.posPrintFormat || 'A4',
             enableTriplicate: billSettings.enableTriplicate || false,
+            enableItemImages: billSettings.enableItemImages || false, // NEW
             gstScheme: salesSettings?.gstScheme || '',
             taxType: salesSettings?.taxType || '',
             upiId: billSettings.upiId || '',   //  ADDED: without this, QR never generates

@@ -18,6 +18,7 @@ export interface BillSettingsData {
     whatsappExtraMessage?: string;
     enableTriplicate?: boolean;
     discountDisplayFormat?: 'amount' | 'percentage';
+    enableItemImages?: boolean;
 }
 
 interface BusinessInfoData {
@@ -66,6 +67,7 @@ const BillSettings: React.FC = () => {
         whatsappExtraMessage: '',
         enableTriplicate: false,
         discountDisplayFormat: 'amount',
+        enableItemImages: false,
     });
 
     const formatAddress = (addr: any): string => {
@@ -126,6 +128,7 @@ const BillSettings: React.FC = () => {
                     whatsappExtraMessage: sData.posWhatsappExtraMessage || '',
                     enableTriplicate: sData.enableTriplicate || false,
                     discountDisplayFormat: sData.discountDisplayFormat || 'amount',
+                    enableItemImages: sData.enableItemImages || false,
                 };
 
                 setSettings(loadedSettings);
@@ -186,6 +189,7 @@ const BillSettings: React.FC = () => {
                 posWhatsappExtraMessage: settings.whatsappExtraMessage,
                 enableTriplicate: settings.enableTriplicate || false,
                 discountDisplayFormat: settings.discountDisplayFormat || 'amount',
+                enableItemImages: settings.enableItemImages || false,
 
                 // ✅ Always sync from businessInfo so these stay fresh
                 companyGstin: businessInfo.gstin,
@@ -461,6 +465,27 @@ const BillSettings: React.FC = () => {
                                 <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:bg-blue-600 transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div>
                             </label>
                         </div>
+                        {/* NEW: Item Images toggle */}
+                        <div className="mt-5 pt-5 border-t border-gray-100 flex items-center justify-between">
+                            <div>
+                                <span className="block text-sm font-medium text-gray-900">Show Item Photos on Bill</span>
+                                <span className="block text-xs text-gray-500">
+                                    When enabled, each item's photo is printed alongside its row on A4 bills. Helps staff pack orders correctly.
+                                </span>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-4">
+                                <input
+                                    type="checkbox"
+                                    checked={!!settings.enableItemImages}
+                                    onChange={(e) =>
+                                        setSettings(prev => ({ ...prev, enableItemImages: e.target.checked }))
+                                    }
+                                    className="sr-only peer"
+                                />
+                                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:bg-blue-600 transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div>
+                            </label>
+                        </div>
+
                         {/* NEW: Discount 1 + Discount 2 display format */}
                         <div className="mt-5 pt-5 border-t border-gray-100">
                             <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">

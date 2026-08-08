@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import ReportDateFilter from '../../Components/ReportDateFilter';
 import {
   formatDate,
@@ -21,9 +21,28 @@ import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { Modal } from '../../constants/Modal';
 import { useAuth } from '../../context/auth-context';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../lib/Firebase';
 
 const SalesReport: React.FC = () => {
   const { currentUser } = useAuth();
+  const [companyName, setCompanyName] = useState<string>('');
+
+  useEffect(() => {
+    const fetchCompanyName = async () => {
+      if (!currentUser?.companyId) return;
+      try {
+        const companyRef = doc(db, 'companies', currentUser.companyId);
+        const snap = await getDoc(companyRef);
+        if (snap.exists()) {
+          setCompanyName(snap.data().name || snap.data().companyName || '');
+        }
+      } catch (e) {
+        console.error('Failed to fetch company name', e);
+      }
+    };
+    fetchCompanyName();
+  }, [currentUser?.companyId]);
 
   const {
     setDatePreset,
@@ -441,7 +460,9 @@ const SalesReport: React.FC = () => {
       const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
 
       // Row 0 – Title
-      aoa[0][0] = 'Sales Report';
+      aoa[0][0] = companyName
+        ? `Sales Report  —  ${companyName}`
+        : 'Sales Report';
 
       // Row 1 – Meta
       aoa[1][0] = `Generated: ${generationDate}   |   ${periodText}`;

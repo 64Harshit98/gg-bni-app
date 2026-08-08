@@ -15,7 +15,7 @@ import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import FilterSelect from './ItemReportComponents/FilterSelect';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import { useAuth } from '../../context/auth-context'
-import { useGodowns, useGodownStock, SHOP_ID } from '../hooks/useStockTransfer';
+import { useGodowns, useGodownStock, SHOP_ID, SHOP_NAME } from '../hooks/useStockTransfer';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 // Import your Modal and State
@@ -482,13 +482,20 @@ const ItemReport: React.FC = () => {
         { header: 'HSN/SAC', width: 14 },
         { header: 'Category', width: 20 },
         { header: 'Stock', width: 10 },
+        { header: 'Location', width: 18 },
         { header: 'Restock Qty', width: 13 },
         { header: 'MOQ', width: 10 },
         { header: 'Image URL', width: 25 },
         { header: 'Description', width: 35 },
       ];
       const colCount = COLS.length;
-
+// Same label the Location column shows for this row's Stock figure.
+      // With a specific location filter applied, that's the filtered godown/Shop name;
+      // with no filter, Stock is a sum across all locations, so it's labelled Shop by default
+      // (matches Bulk Import's own "blank = Shop" convention on re-upload).
+      const exportLocationLabel = locationFilter
+        ? (locationFilter === SHOP_ID ? SHOP_NAME : (godowns.find(g => g.id === locationFilter)?.name || SHOP_NAME))
+        : SHOP_NAME;
       // Row layout:
       // 0  → Title (merged)
       // 1  → Meta (merged)
@@ -542,10 +549,11 @@ const ItemReport: React.FC = () => {
         aoa[r][8] = (item as any).hsnSac || '-';                 // HSN/SAC
         aoa[r][9] = getGroupName(item.itemGroupId);              // Item Group
         aoa[r][10] = item.stock || 0;                            // Stock
-        aoa[r][11] = item.restockQuantity || 0;                  // Restock Qty
-        aoa[r][12] = (item as any).moq || 1;                     // MOQ
-        aoa[r][13] = (item as any).imageUrl || '';                // Image URL
-        aoa[r][14] = (item as any).description || '';
+        aoa[r][11] = exportLocationLabel;                        // Location
+        aoa[r][12] = item.restockQuantity || 0;                  // Restock Qty
+        aoa[r][13] = (item as any).moq || 1;                     // MOQ
+        aoa[r][14] = (item as any).imageUrl || '';                // Image URL
+        aoa[r][15] = (item as any).description || '';
       });
 
       // No footer/TOTAL row — a text row at the end would get misread as
@@ -621,7 +629,7 @@ const ItemReport: React.FC = () => {
       });
 
       // Numeric column indices (for right-align + number formatting)
-      const numericCols = new Set([2, 3, 4, 5, 6, 7, 10, 11, 12]);
+      const numericCols = new Set([2, 3, 4, 5, 6, 7, 10, 12, 13]);
 
       // Data rows
       filteredItems.forEach((item, idx) => {

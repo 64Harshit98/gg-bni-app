@@ -41,7 +41,13 @@ export interface GodownStockRow {
   unit?: string;
   quantity: number;
 }
-
+// One row per item being moved in this transfer.
+export interface TransferItemInput {
+  itemId: string;
+  itemName: string;
+  unit?: string;
+  quantity: number;
+}
 // Pseudo-godown-id representing the shop's own sellable (POS) inventory.
 // This is what Sales/POS deducts from — never a real godown document.
 export const SHOP_ID = '__shop__';
@@ -120,19 +126,12 @@ export function useStockTransfers(companyId: string | undefined) {
     return unsub;
   }, [companyId]);
 
-  /**
-   * Manually move stock of one item from one godown to another.
-   * Validates that enough quantity exists in the source godown.
-   */
   const transferStock = async (companyId: string, payload: {
-    itemId: string;
-    itemName: string;
-    unit?: string;
+    items: TransferItemInput[];
     fromGodownId: string;
     fromGodownName: string;
     toGodownId: string;
     toGodownName: string;
-    quantity: number;
     date: number;
     remarks?: string;
   }) => {
@@ -142,66 +141,71 @@ export function useStockTransfers(companyId: string | undefined) {
     if (payload.fromGodownId === payload.toGodownId) {
       throw new Error('Source and destination cannot be the same.');
     }
-    if (!payload.quantity || payload.quantity <= 0) {
-      throw new Error('Enter a valid quantity.');
+    if (!payload.items.length) {
+      throw new Error('Add at least one item to transfer.');
+    }
+    for (const it of payload.items) {
+      if (!it.quantity || it.quantity <= 0) {
+        throw new Error(`Enter a valid quantity for ${it.itemName}.`);
+      }
     }
 
     await runTransaction(db, async (tx) => {
-      const itemRef = doc(db, 'companies', companyId, 'items', payload.itemId);
-      const itemSnap = await tx.get(itemRef);
-      if (!itemSnap.exists()) throw new Error('Item not found.');
+      // Firestore transactions require ALL reads to happen before ANY writes,
+      // so every item doc is fetched first, then all updates/sets are queued.
+      const itemRefs = payload.items.map(it => doc(db, 'companies', companyId, 'items', it.itemId));
+      const itemSnaps = await Promise.all(itemRefs.map(ref => tx.get(ref)));
 
-      const data = itemSnap.data() as ItemDoc;
-      const godownStock = { ...(data.godownStock || {}) };
-      const shopQty = data.stock || 0;
+      itemSnaps.forEach((itemSnap, idx) => {
+        const it = payload.items[idx];
+        if (!itemSnap.exists()) throw new Error(`Item not found: ${it.itemName}`);
 
-      // Shop inventory lives on item.stock; godown inventory lives on godownStock.<id>.
-      // The two are independent totals now — never derived from one another.
-      const fromQty = isFromShop ? shopQty : (godownStock[payload.fromGodownId] || 0);
+        const data = itemSnap.data() as ItemDoc;
+        const godownStock = { ...(data.godownStock || {}) };
+        const shopQty = data.stock || 0;
 
-      if (fromQty < payload.quantity) {
-        throw new Error(`Insufficient stock in ${payload.fromGodownName}. Available: ${fromQty}`);
-      }
+        const fromQty = isFromShop ? shopQty : (godownStock[payload.fromGodownId] || 0);
 
-      const updatePayload: Record<string, any> = {
-        // Critical: syncItems()/listenToItems() only re-fetch items whose
-        // updatedAt changed since last sync. Without this, a transfer updates
-        // Firestore correctly but local caches keep showing stale stock
-        // indefinitely (until some other write happens to touch this item).
-        updatedAt: serverTimestamp(),
-      };
+        if (fromQty < it.quantity) {
+          throw new Error(`Insufficient stock of ${it.itemName} in ${payload.fromGodownName}. Available: ${fromQty}`);
+        }
 
-      // Decrement source
-      if (isFromShop) {
-        updatePayload.stock = shopQty - payload.quantity;
-      } else {
-        updatePayload[`godownStock.${payload.fromGodownId}`] = fromQty - payload.quantity;
-      }
+        const updatePayload: Record<string, any> = {
+          updatedAt: serverTimestamp(),
+        };
 
-      // Increment destination
-      if (isToShop) {
-        updatePayload.stock = shopQty + payload.quantity;
-      } else {
-        const toQty = godownStock[payload.toGodownId] || 0;
-        updatePayload[`godownStock.${payload.toGodownId}`] = toQty + payload.quantity;
-      }
+        if (isFromShop) {
+          updatePayload.stock = shopQty - it.quantity;
+        } else {
+          updatePayload[`godownStock.${payload.fromGodownId}`] = fromQty - it.quantity;
+        }
 
-      tx.update(itemRef, updatePayload);
+        if (isToShop) {
+          updatePayload.stock = shopQty + it.quantity;
+        } else {
+          const toQty = godownStock[payload.toGodownId] || 0;
+          updatePayload[`godownStock.${payload.toGodownId}`] = toQty + it.quantity;
+        }
 
-      const transferRef = doc(collection(db, 'companies', companyId, 'stockTransfers'));
-      tx.set(transferRef, {
-        itemId: payload.itemId,
-        itemName: payload.itemName,
-        unit: payload.unit || '',
-        quantity: payload.quantity,
-        type: 'transfer',
-        fromGodownId: payload.fromGodownId,
-        fromGodownName: payload.fromGodownName,
-        toGodownId: payload.toGodownId,
-        toGodownName: payload.toGodownName,
-        date: payload.date,
-        remarks: payload.remarks || '',
-        createdAt: Date.now(),
+        tx.update(itemRefs[idx], updatePayload);
+
+        // One history record per item — keeps History tab, PDF and Excel
+        // export logic untouched since each row still has a single itemId/quantity.
+        const transferRef = doc(collection(db, 'companies', companyId, 'stockTransfers'));
+        tx.set(transferRef, {
+          itemId: it.itemId,
+          itemName: it.itemName,
+          unit: it.unit || '',
+          quantity: it.quantity,
+          type: 'transfer',
+          fromGodownId: payload.fromGodownId,
+          fromGodownName: payload.fromGodownName,
+          toGodownId: payload.toGodownId,
+          toGodownName: payload.toGodownName,
+          date: payload.date,
+          remarks: payload.remarks || '',
+          createdAt: Date.now(),
+        });
       });
     });
   };

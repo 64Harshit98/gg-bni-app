@@ -330,9 +330,9 @@ export default function usePartyLedger() {
 
         const allItems = [...transactions, ...obAsTransactions];
 
-        // ✅ Filter master records by the same applied date range as everything else —
-        // a party record with no verifiable createdAt is excluded from this zero-balance
-        // seed (it'll still show up normally if it has real transactions in range).
+       // ✅ Strict date filtering — every party (billing-created or Opening-Balance-created)
+        // now gets a proper createdAt stamp from PaymentDrawer/addOpeningBalance, so this
+        // filters exactly by the applied date range with no exceptions.
         const filteredCustomersMaster = customersMaster.filter(c => {
             if (!appliedFilters || c.createdAt === undefined) return false;
             return c.createdAt >= appliedFilters.start && c.createdAt <= appliedFilters.end;

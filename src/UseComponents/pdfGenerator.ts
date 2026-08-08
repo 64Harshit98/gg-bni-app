@@ -11,6 +11,7 @@ import { drawWatermark } from '../Components/pdfWatermark';
 export interface InvoiceData {
   printFormat?: 'A4' | 'THERMAL58' | 'A5';
   enableTriplicate?: boolean;
+  enableItemImages?: boolean;
   gstScheme?: string;
   taxType?: string;
   companyGstType?: string;
@@ -97,7 +98,12 @@ export interface InvoiceData {
 
 export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | ACTION.PRINT | ACTION.BLOB = ACTION.DOWNLOAD, withDuplicate: boolean = false): Promise<Blob | void> => {
   const isEstimate = (data as any).isEstimate === true;
-
+if (data.printFormat !== 'A4') {
+    data.items = data.items.map(item => {
+      const { imageBase64, ...rest } = item as any;
+      return rest;
+    });
+  }
   if (data.printFormat === 'THERMAL58') {
     return generateThermalReceipt(data, action);
   }
@@ -153,7 +159,8 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   const isTaxExempt = safeScheme === 'NONE' || safeTaxType === 'EXEMPT' || safeTaxType === 'NONE';
   const showGstinDetails = !isEstimate && !isTaxExempt;
   const showTaxColumns = !isEstimate && !isTaxExempt;
-
+  // NEW: POS-Photos toggle
+  const showImages = data.enableItemImages === true;
   // NEW: Determine IGST based on Place of Supply vs Company State
   const safeCompanyState = (data.companyState || '').trim().toLowerCase();
   const safePos = (data.placeOfSupply || '').trim().toLowerCase();
@@ -298,17 +305,21 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
 
     // Unified Columns
     if (!showTaxColumns) {
-      return [
+      const row: any[] = [
         item.sno, item.name, item.hsn || (item as any).hsnSac || '', qty, item.unit || 'PCS',
         mrp.toFixed(2), itemDiscDisplay, billDisc.toFixed(2), finalAmount.toFixed(2)
       ];
+      if (showImages) row.splice(1, 0, ''); // NEW: blank cell — actual photo didDrawCell se draw hogi
+      return row;
     }
 
-    return [
+    const row: any[] = [
       item.sno, item.name, item.hsn || (item as any).hsnSac || '', qty, item.unit || 'PCS',
       mrp.toFixed(2), itemDiscDisplay, billDisc.toFixed(2), taxableAmt.toFixed(2),
       `${taxRate}%`, taxAmt.toFixed(2), finalAmount.toFixed(2)
     ];
+    if (showImages) row.splice(1, 0, ''); // NEW
+    return row;
   });
 
   const advance = Number(data.advance) || 0;
@@ -495,26 +506,56 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     }
     cursorY += partyHeight;
 
-    const fullTaxHeaders = isIgst
-      ? ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Bill Disc.', 'Subtotal', 'IGST', 'IGST Amt', 'Amount']
-      : ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Bill Disc.', 'Subtotal', 'GST', 'GST Amt', 'Amount'];
+    const fullTaxHeaders = showImages
+      ? (isIgst
+        ? ['S.N.', 'Image', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Bill Disc.', 'Subtotal', 'IGST', 'IGST Amt', 'Amount']
+        : ['S.N.', 'Image', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Bill Disc.', 'Subtotal', 'GST', 'GST Amt', 'Amount'])
+      : (isIgst
+        ? ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Bill Disc.', 'Subtotal', 'IGST', 'IGST Amt', 'Amount']
+        : ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Bill Disc.', 'Subtotal', 'GST', 'GST Amt', 'Amount']);
 
-    const noTaxHeaders = ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Bill Disc.', 'Amount'];
+    const noTaxHeaders = showImages
+      ? ['S.N.', 'Image', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Bill Disc.', 'Amount']
+      : ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Bill Disc.', 'Amount'];
 
-    const activeColumnStyles = showTaxColumns
-      ? { 0: { cellWidth: 8 }, 1: { cellWidth: 'auto', halign: 'left' }, 2: { cellWidth: 12 }, 11: { cellWidth: 18, halign: 'right' } }
-      : { 0: { cellWidth: 8 }, 1: { cellWidth: 'auto', halign: 'left' }, 2: { cellWidth: 15 }, 8: { cellWidth: 20, halign: 'right' } };
+    // NEW: image column ke wajah se baaki columns ka index +1 shift hota hai
+    const activeColumnStyles = showImages
+      ? (showTaxColumns
+        ? { 0: { cellWidth: 8 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto', halign: 'left' }, 3: { cellWidth: 12 }, 12: { cellWidth: 18, halign: 'right' } }
+        : { 0: { cellWidth: 8 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto', halign: 'left' }, 3: { cellWidth: 15 }, 9: { cellWidth: 20, halign: 'right' } })
+      : (showTaxColumns
+        ? { 0: { cellWidth: 8 }, 1: { cellWidth: 'auto', halign: 'left' }, 2: { cellWidth: 12 }, 11: { cellWidth: 18, halign: 'right' } }
+        : { 0: { cellWidth: 8 }, 1: { cellWidth: 'auto', halign: 'left' }, 2: { cellWidth: 15 }, 8: { cellWidth: 20, halign: 'right' } });
 
     autoTable(doc, {
       startY: cursorY,
       head: [showTaxColumns ? fullTaxHeaders : noTaxHeaders],
       body: tableBody,
       theme: 'grid',
-      styles: { fontSize: 8, cellPadding: 1, textColor, lineColor, lineWidth: 0.1, halign: 'center', valign: 'middle', fillColor: false },
+      styles: {
+        fontSize: 8, cellPadding: 1, textColor, lineColor, lineWidth: 0.1, halign: 'center', valign: 'middle', fillColor: false,
+        ...(showImages ? { minCellHeight: 16 } : {}) // NEW: photo fit karne ke liye row height
+      },
       headStyles: { fillColor: false, textColor, fontStyle: 'bold', lineWidth: 0.1, lineColor },
       // @ts-ignore
       columnStyles: activeColumnStyles as any,
       margin: { left: margin, right: margin },
+      // NEW: har item ki photo "Image" column (index 1) me draw karo
+      ...(showImages ? {
+        didDrawCell: (hookData: any) => {
+          if (hookData.column.index === 1 && hookData.section === 'body') {
+            const item = data.items[hookData.row.index];
+            const imgSize = 12;
+            const x = hookData.cell.x + (hookData.cell.width - imgSize) / 2;
+            const y = hookData.cell.y + (hookData.cell.height - imgSize) / 2;
+            if (item?.imageBase64 && item.imageBase64.startsWith('data:image')) {
+              try {
+                doc.addImage(item.imageBase64, item.imageBase64.includes('png') ? 'PNG' : 'JPEG', x, y, imgSize, imgSize, undefined, 'FAST');
+              } catch (e) { /* skip broken image */ }
+            }
+          }
+        }
+      } : {}),
     });
     // @ts-ignore
     let finalY = doc.lastAutoTable.finalY;
@@ -768,7 +809,7 @@ const convertNumberToWords = (amount: number): string => {
 
   return str.trim();
 };
-const compressImage = (
+export const compressImage = (
   blob: Blob,
   quality: number = 0.5
 ): Promise<string> => {

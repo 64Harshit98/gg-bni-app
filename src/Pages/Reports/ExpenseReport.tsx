@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useAuth } from '../../context/auth-context';
 import { useExpenses, type Expense } from './ExpenseReport/useExpense';
 import { ExpenseModal } from '../../Components/ExpenseModal';
@@ -13,6 +13,8 @@ import XLSX from 'xlsx-js-style';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import ReportDateFilter from '../../Components/ReportDateFilter';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../lib/Firebase';
 
 const formatDate = (ms: number) =>
     new Date(ms).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -27,6 +29,23 @@ const ExpenseReportPage: React.FC = () => {
     const loading = posLoading || catLoading;
     const expenses = [...posExpenses, ...catExpenses];
 
+    const [companyName, setCompanyName] = useState<string>('');
+
+    useEffect(() => {
+        const fetchCompanyName = async () => {
+            if (!companyId) return;
+            try {
+                const companyRef = doc(db, 'companies', companyId);
+                const snap = await getDoc(companyRef);
+                if (snap.exists()) {
+                    setCompanyName(snap.data().name || snap.data().companyName || '');
+                }
+            } catch (e) {
+                console.error('Failed to fetch company name', e);
+            }
+        };
+        fetchCompanyName();
+    }, [companyId]);
     // --- filters ---
     const today = formatDateForInput(new Date());
     const [startDate, setStartDate] = useState(today);
@@ -208,7 +227,9 @@ const ExpenseReportPage: React.FC = () => {
             const totalRows = dataStartRow + filtered.length + 1;
             const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
 
-            aoa[0][0] = 'Expense Report';
+            aoa[0][0] = companyName
+                ? `Expense Report  —  ${companyName}`
+                : 'Expense Report';
             aoa[1][0] = `Generated: ${formatDate(Date.now())}   |   Period: ${formatDate(appliedFilters.start)} → ${formatDate(appliedFilters.end)}`;
             aoa[3][0] = 'SUMMARY';
             aoa[4][0] = `Total Expenses: ₹${summary.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}   |   Entries: ${summary.count}`;

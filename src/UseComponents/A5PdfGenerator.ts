@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import QRCode from "qrcode";
 import { ACTION } from "../enums";
 import type { InvoiceData } from "./pdfGenerator";
 import { drawWatermark } from "../Components/pdfWatermark";
@@ -103,25 +104,64 @@ export const generateA5Invoice = async (
             }
         }
     }
+    // --- QR CODE (same UPI QR as A4) ---
+    let qrBase64: string | null = null;
+    if (data.upiId) {
+        const upiString = `upi://pay?pa=${data.upiId}&pn=${encodeURIComponent(data.companyName)}&cu=INR`;
+        try {
+            qrBase64 = await QRCode.toDataURL(upiString, { width: 80, margin: 0, errorCorrectionLevel: "L" });
+        } catch (err) {
+            console.error("Failed to generate QR code", err);
+        }
+    }
     // ================= DRAW PAGE HELPER =================
     const drawPage = (isDuplicate: boolean = false) => {
         if (isDuplicate) {
             doc.addPage();
         }
 
-        drawWatermark(doc, pageWidth, pageHeight, "SELLAR.IN");
+        drawWatermark(doc, pageWidth, pageHeight, "SELLAR.IN", { fontSize: 50, centerYOffset: 6 });
 
-        // --- 1. HEADER ---
-        const headerHeight = showGstinDetails && data.companyGstin ? 25 : 20;
-        doc.setFillColor("#0c3b5e");
-        doc.rect(0, 0, pageWidth, headerHeight, "F");
+        // --- 1. HEADER (colour fill removed, wrapped in a border box — same plain style as A4) ---
+        const headerHeight = showGstinDetails && data.companyGstin ? 26 : 24;
+
+        // Border box around the whole header
+        doc.setDrawColor(0, 0, 0);
+        doc.rect(5, 2, pageWidth - 10, headerHeight - 2);
+
         if (isDuplicate) {
             doc.setFontSize(9);
             doc.setFont("helvetica", "bold");
-            doc.setTextColor(200, 200, 200);
-            doc.text("DUPLICATE", pageWidth / 2, 5, { align: "center" });
+            doc.setTextColor(150, 150, 150);
+            doc.text("DUPLICATE", pageWidth / 2, 6, { align: "center" });
         }
-        doc.setTextColor("#ffffff");
+
+        // QR code — left side (same as A4)
+        if (qrBase64 && !resolvedIsEstimate) {
+            doc.addImage(qrBase64, "JPEG", 7, 4, 18, 18, undefined, "FAST");
+            doc.setFontSize(6);
+            doc.setTextColor("#000000");
+            doc.text("Scan to Pay", 16, 24, { align: "center" });
+        }
+
+        // MSME number — top right, above the logo (same placement as A4)
+        if (!resolvedIsEstimate) {
+            doc.setFontSize(7);
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor("#000000");
+            doc.text(`Msme No : ${data.msmeNumber || ""}`, pageWidth - 7, 6, { align: "right" });
+        }
+
+        // Company logo — right side, below MSME number (same as A4)
+        if (data.companyLogoBase64) {
+            try {
+                doc.addImage(data.companyLogoBase64, "JPEG", pageWidth - 25, 8, 18, 14, undefined, "FAST");
+            } catch (e) {
+                console.error("A5 logo render error", e);
+            }
+        }
+
+        doc.setTextColor("#000000");
         doc.setFont("helvetica", "bold");
         doc.setFontSize(22);
         doc.text(data.companyName || "Giftinguru.com", pageWidth / 2, 13, { align: "center" });
@@ -146,13 +186,13 @@ export const generateA5Invoice = async (
 
         if (resolvedIsEstimate) {
             doc.setFontSize(10);
-            doc.setTextColor("#ffffff");
+            doc.setTextColor("#000000");
             doc.text("ESTIMATE", pageWidth / 2, 18, { align: "center" });
         }
 
         // --- 2. META INFO ROW ---
 
-        let cursorY = headerHeight + 5;
+        let cursorY = headerHeight + 3;
 
         doc.setTextColor("#000000");
         doc.setFont("helvetica", "normal");
@@ -485,8 +525,10 @@ export const generateA5Invoice = async (
                     styles: {
                         halign: "right",
                         fontStyle: "bold",
-                        textColor: [255, 255, 255],
-                        fontSize: 10
+                        textColor: [0, 0, 0],
+                        fontSize: 10,
+                        lineWidth: 0.2,
+                        lineColor: [0, 0, 0]
                     }
                 },
                 {
@@ -494,11 +536,25 @@ export const generateA5Invoice = async (
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2
                     }),
-                    styles: { halign: "right", fontStyle: "bold", fontSize: 10 }
+                    styles: {
+                        halign: "right",
+                        fontStyle: "bold",
+                        fontSize: 10,
+                        textColor: [0, 0, 0],
+                        lineWidth: 0.2,
+                        lineColor: [0, 0, 0]
+                    }
                 }
             ]],
 
             showFoot: "lastPage",
+
+            footStyles: {
+                fillColor: false,
+                lineWidth: 0.2,
+                lineColor: [0, 0, 0],
+                minCellHeight: 8
+            },
 
             didDrawCell: (hookData) => {
                 if (!hasImages) return;
@@ -622,7 +678,7 @@ export const generateA5Invoice = async (
         }
         // ===== SMART SPACE CALCULATION =====
 
-        const footerHeight = 22;
+        const footerHeight = 18;
 
         // --- 4. BANK DETAIL ---
         if (!resolvedIsEstimate) {
@@ -632,7 +688,7 @@ export const generateA5Invoice = async (
             autoTable(doc, {
                 startY: finalY,
                 margin: { left: paymentX },
-                tableWidth: 60,
+                tableWidth: 56,
 
                 theme: "grid",
 
@@ -660,7 +716,7 @@ export const generateA5Invoice = async (
                     ],
                     [
                         {
-                            content: `IFSC : ${data.bankDetails?.ifsc || ""}`,
+                            content: `IFSC : ${data.bankDetails?.ifscCode || ""}`,
                             colSpan: 2,
                             styles: {
                                 halign: "left"
@@ -669,25 +725,28 @@ export const generateA5Invoice = async (
                     ]
                 ],
                 styles: {
-                    fontSize: 7,
-                    cellPadding: 1.5,
+                    fontSize: 6,
+                    cellPadding: 1,
                     lineWidth: 0.1,
                     textColor: [0, 0, 0],
                     lineColor: [0, 0, 0],
+                    minCellHeight: 4,
                     fillColor: false
                 },
 
                 headStyles: {
                     fillColor: false,
-                    textColor: [0, 0, 0]
+                    textColor: [0, 0, 0],
+                    fontSize: 6,
+                    fontStyle: 'bold'
                 },
 
                 columnStyles: {
                     0: {
-                        cellWidth: 32
+                        cellWidth: 28
                     },
                     1: {
-                        cellWidth: 34
+                        cellWidth: 28
                     }
                 }
             });
@@ -702,97 +761,72 @@ export const generateA5Invoice = async (
                 ) + 4;
         }
 
-        // --- 5. TERMS & CONDITIONS ---
+        // --- 5 & 6. TERMS & CONDITIONS (left) + AUTHORISED SIGNATURE (right) — side by side ---
         if (!resolvedIsEstimate) {
 
             const footerY = pageHeight - footerHeight;
 
-            const signAreaTop = footerY - 18;
-
             const splitTerms = doc.splitTextToSize(
                 data.terms || "",
-                rightMargin - 5
+                pageWidth - 45
             );
 
-            const termsHeight =
-                6 + (splitTerms.length * 3.5);
+            const termsBlockHeight = 10 + (splitTerms.length * 3.5);
+            const signBlockHeight = 18; // space needed for signature image + label
 
-            const desiredTermsY =
-                signAreaTop -
-                termsHeight -
-                4;
+            const blockHeight = Math.max(termsBlockHeight, signBlockHeight);
+            const desiredBlockTopY = footerY - blockHeight - 4;
 
-            if (desiredTermsY > finalY) {
-                finalY = desiredTermsY;
+            if (desiredBlockTopY > finalY) {
+                finalY = desiredBlockTopY;
             }
 
-            const termsBlockHeight =
-                10 + (splitTerms.length * 3.5);
-
-            const footerTopY =
-                pageHeight - footerHeight;
-
-            if (
-                finalY +
-                termsBlockHeight >
-                footerTopY - 8
-            ) {
+            if (finalY + blockHeight > footerY - 4) {
                 doc.addPage();
                 finalY = 20;
             }
 
-            finalY += 4;
+            const blockTopY = finalY + 4;
 
+            // Terms & Conditions — left side
             doc.setFontSize(11);
             doc.setTextColor(0, 0, 0);
-            doc.text("Terms & Conditions", 5, finalY);
-
-            finalY += 6;
+            doc.text("Terms & Conditions", 5, blockTopY);
 
             doc.setFontSize(8);
             doc.setTextColor(80, 80, 80);
+            doc.text(splitTerms, 5, blockTopY + 6);
 
-            doc.text(splitTerms, 5, finalY);
-
-            finalY += (splitTerms.length * 3.5) + 2;
-
-            doc.setDrawColor(200, 200, 200);
-            doc.line(5, finalY, rightMargin, finalY);
-        }
-        // --- 6. AUTHORISED SIGNATURE ---
-        if (!resolvedIsEstimate) {
-            const footerY = pageHeight - footerHeight;
-            const signTextY = footerY - 4;
+            // Authorised Signature — right end, terms block gets full left-half width
             const signImageY = footerY - 14;
+            const signTextY = footerY - 4;
 
             if (data.signatureBase64) {
-                doc.addImage(data.signatureBase64, "JPEG", rightMargin - 30, signImageY, 30, 10, undefined, "FAST");
+                doc.addImage(data.signatureBase64, "JPEG", rightMargin - 28, signImageY, 28, 10, undefined, "FAST");
             }
 
             doc.setFontSize(9);
+            doc.setTextColor(0, 0, 0);
             doc.text("Authorised Sign", rightMargin, signTextY, { align: "right" });
+
+            finalY = footerY - 4;
         }
 
-        // --- 7. FOOTER ---
+        // --- 7. FOOTER (colour fill removed — same plain style as A4) ---
         const footerY = pageHeight - footerHeight;
 
-        doc.setFillColor("#0c3b5e");
-        doc.rect(0, footerY, pageWidth, footerHeight, "F");
+        doc.setDrawColor(200, 200, 200);
+        doc.line(5, footerY, rightMargin, footerY);
 
-        doc.setTextColor("#ffffff");
+        doc.setTextColor("#000000");
         doc.setFontSize(8);
 
-        // Left side Footer (DYNAMIC)
         const footeraddressLines = doc.splitTextToSize(data.companyAddress || "", 70);
         doc.text(footeraddressLines, 10, footerY + 6);
 
-        const addressEndY = footerY + 6 + (footeraddressLines.length * 4);
+        const addressEndY = footerY + 6 + (footeraddressLines.length * 3.2);
 
-        doc.text(`Contact No. - ${data.companyContact || ""}`, 10, addressEndY + 2);
-
-        if (data.companyGstin) {
-            doc.text(`GSTIN - ${data.companyGstin}`, 10, addressEndY + 6);
-        }
+        doc.text(`Contact No. - ${data.companyContact || ""}`, 10, addressEndY + 1);
 
         // ===== BRANDING =====
         const pbText = "Powered by ";
@@ -806,14 +840,14 @@ export const generateA5Invoice = async (
 
         let brandingX = rightMargin - (pbWidth + linkWidth);
 
-        doc.setTextColor(255, 255, 255);
+        doc.setTextColor(0, 0, 0);
         doc.text(pbText, brandingX, footerY + 8);
         brandingX += pbWidth;
 
-        doc.setTextColor(120, 190, 255);
+        doc.setTextColor(0, 102, 204);
         doc.text(linkText, brandingX, footerY + 8);
 
-        doc.setDrawColor(120, 190, 255);
+        doc.setDrawColor(0, 102, 204);
         doc.line(brandingX, footerY + 8.5, brandingX + linkWidth, footerY + 8.5);
 
         doc.link(brandingX, footerY + 5, linkWidth, 4, { url: "https://www.sellar.in" });
@@ -833,20 +867,20 @@ export const generateA5Invoice = async (
         const indiaTextWidth = w1 + w2 + w3;
 
         let indiaX = rightMargin - indiaTextWidth;
-        const indiaY = footerY + 13.5;
+        const indiaY = footerY + 11.5;
 
-        doc.setTextColor(255, 255, 255);
+        doc.setTextColor(0, 0, 0);
         doc.text(part1, indiaX, indiaY);
 
         indiaX += w1;
-        doc.setTextColor(255, 255, 255);
+        doc.setTextColor(0, 0, 0);
         doc.text(part2, indiaX, indiaY);
 
         indiaX += w2;
-        doc.setTextColor(255, 255, 255);
+        doc.setTextColor(0, 0, 0);
         doc.text(part3, indiaX, indiaY);
 
-        doc.setTextColor(255, 255, 255);
+        doc.setTextColor(0, 0, 0);
 
     }; // end drawPage
 

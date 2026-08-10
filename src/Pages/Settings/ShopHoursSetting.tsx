@@ -23,14 +23,12 @@ const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ checked, onChange, activeCo
       className="sr-only"
     />
     <div
-      className={`w-11 h-6 rounded-full transition-colors duration-200 ${
-        checked ? activeColor : 'bg-gray-300'
-      }`}
+      className={`w-11 h-6 rounded-full transition-colors duration-200 ${checked ? activeColor : 'bg-gray-300'
+        }`}
     >
       <div
-        className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${
-          checked ? 'translate-x-5' : 'translate-x-0'
-        }`}
+        className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${checked ? 'translate-x-5' : 'translate-x-0'
+          }`}
       />
     </div>
   </label>
@@ -41,11 +39,10 @@ const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ checked, onChange, activeCo
 // ---------------------------------------------------------------------------
 const StatusPill: React.FC<{ enabled: boolean }> = ({ enabled }) => (
   <span
-    className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-sm ${
-      enabled
+    className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-sm ${enabled
         ? 'bg-green-100 text-green-700'
         : 'bg-gray-100 text-gray-500'
-    }`}
+      }`}
   >
     <span className={`w-1.5 h-1.5 rounded-sm ${enabled ? 'bg-green-500' : 'bg-gray-400'}`} />
     {enabled ? 'Active' : 'Disabled'}
@@ -74,7 +71,7 @@ interface ShopHoursSettingPageProps {
 
 const ShopHoursSettingPage: React.FC<ShopHoursSettingPageProps> = ({ theme = 'blue' }) => {
   const { currentUser } = useAuth();
-   const accent = theme === 'orange'
+  const accent = theme === 'orange'
     ? 'bg-[#F97316] hover:bg-orange-600 focus:ring-orange-400'
     : 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500';
   const focusRing = theme === 'orange' ? 'focus:ring-[#F97316]' : 'focus:ring-blue-500';
@@ -178,6 +175,9 @@ const ShopHoursSettingPage: React.FC<ShopHoursSettingPageProps> = ({ theme = 'bl
             />
           </div>
         </div>
+        <p className="text-xs text-gray-400 mt-3 leading-relaxed">
+          A reminder will pop up at closing time, and again every 15 minutes if snoozed. If no action is taken, the shop will lock automatically after 1 hour.
+        </p>
       </div>
 
       {/* Status Card */}

@@ -693,7 +693,7 @@ const PurchasePage: React.FC = () => {
       setModal({ message: "Invoice Number is required.", type: State.ERROR });
       return;
     }
-    if (godowns.length > 0) {
+    if (purchaseSettings?.enableGodownAssignment && godowns.length > 0) {
       setIsGodownAssignOpen(true);
     } else {
       setIsDrawerOpen(true);
@@ -1981,6 +1981,7 @@ const PurchasePage: React.FC = () => {
           isOpen={isGodownAssignOpen}
           items={assignableItemsForGodown}
           godowns={godowns}
+          companyId={currentUser?.companyId} // 👈 NEW
           onConfirm={handleGodownAssignConfirm}
           onClose={() => setIsGodownAssignOpen(false)}
         />
@@ -2344,12 +2345,13 @@ const PurchasePage: React.FC = () => {
       />
 
       <PurchaseGodownAssignModal
-        isOpen={isGodownAssignOpen}
-        items={assignableItemsForGodown}
-        godowns={godowns}
-        onConfirm={handleGodownAssignConfirm}
-        onClose={() => setIsGodownAssignOpen(false)}
-      />
+          isOpen={isGodownAssignOpen}
+          items={assignableItemsForGodown}
+          godowns={godowns}
+          companyId={currentUser?.companyId} // 👈 NEW
+          onConfirm={handleGodownAssignConfirm}
+          onClose={() => setIsGodownAssignOpen(false)}
+        />
 
       <ItemEditDrawer
         item={selectedItemForEdit}

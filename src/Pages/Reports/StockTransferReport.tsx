@@ -38,19 +38,25 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
 
   useEffect(() => {
     const fetchCompanyName = async () => {
-      if (!companyId) return;
+      if (!currentUser?.companyId) return;
       try {
-        const companyRef = doc(db, 'companies', companyId);
-        const snap = await getDoc(companyRef);
+        const businessInfoRef = doc(
+          db,
+          'companies',
+          currentUser.companyId,
+          'business_info',
+          currentUser.companyId,
+        );
+        const snap = await getDoc(businessInfoRef);
         if (snap.exists()) {
-          setCompanyName(snap.data().name || snap.data().companyName || '');
+          setCompanyName(snap.data().businessName || '');
         }
       } catch (e) {
         console.error('Failed to fetch company name', e);
       }
     };
     fetchCompanyName();
-  }, [companyId]);
+  }, [currentUser?.companyId]);
 
   const accentBg = theme === 'orange' ? 'bg-[#F97316]' : 'bg-blue-600';
   const accentBgHover = theme === 'orange' ? 'hover:bg-orange-600' : 'hover:bg-blue-700';
@@ -203,7 +209,9 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
       const ph = doc.internal.pageSize.getHeight();
       doc.setFillColor(37, 99, 235); doc.rect(0, 0, pw, 6, 'F');
       doc.setFontSize(22); doc.setFont('helvetica', 'bold'); doc.setTextColor(17, 24, 39);
-      doc.text(activeTab === 'stock' ? 'Godown Stock Report' : 'Stock Transfer History', 14, 24);
+      const baseTitle = activeTab === 'stock' ? 'Godown Stock Report' : 'Stock Transfer History';
+      const reportTitle = companyName ? `${baseTitle} — ${companyName}` : baseTitle;
+      doc.text(reportTitle, 14, 24);
       doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(107, 114, 128);
       const subtitle = activeTab === 'stock'
         ? `Generated: ${formatDate(Date.now())}`

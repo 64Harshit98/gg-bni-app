@@ -31,10 +31,16 @@ const PurchaseReport: React.FC = () => {
     const fetchCompanyName = async () => {
       if (!currentUser?.companyId) return;
       try {
-        const companyRef = doc(db, 'companies', currentUser.companyId);
-        const snap = await getDoc(companyRef);
+        const businessInfoRef = doc(
+          db,
+          'companies',
+          currentUser.companyId,
+          'business_info',
+          currentUser.companyId,
+        );
+        const snap = await getDoc(businessInfoRef);
         if (snap.exists()) {
-          setCompanyName(snap.data().name || snap.data().companyName || '');
+          setCompanyName(snap.data().businessName || '');
         }
       } catch (e) {
         console.error('Failed to fetch company name', e);
@@ -281,7 +287,10 @@ const PurchaseReport: React.FC = () => {
       doc.setFontSize(22);
       doc.setTextColor(17, 24, 39); // gray-900
       doc.setFont('helvetica', 'bold');
-      doc.text('Purchase Report', 14, 24);
+      const reportTitle = companyName
+        ? `Purchase Report — ${companyName}`
+        : 'Purchase Report';
+      doc.text(reportTitle, 14, 24);
 
       doc.setFontSize(10);
       doc.setTextColor(107, 114, 128); // gray-500

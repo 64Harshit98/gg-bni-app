@@ -16,7 +16,7 @@ import { type CustomerRow } from './CustomerReportComponents/customerReport.util
 import useCustomerReport from './CustomerReportComponents/useCustomerReport';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import BackButton from '../../Components/BackButton';
-import { collection, onSnapshot, query } from 'firebase/firestore';
+import { collection, onSnapshot, query, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 
 type CustomerRowWithCredit = CustomerRow & {
@@ -53,6 +53,33 @@ const CustomerReport: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [customerCreditMap, setCustomerCreditMap] = useState<Record<string, number>>({});
+  const [companyName, setCompanyName] = useState<string>('');
+
+  useEffect(() => {
+    const fetchCompanyName = async () => {
+      console.log('[CompanyName] companyId:', currentUser?.companyId);
+      if (!currentUser?.companyId) return;
+      try {
+        const businessInfoRef = doc(
+          db,
+          'companies',
+          currentUser.companyId,
+          'business_info',
+          currentUser.companyId,
+        );
+        const snap = await getDoc(businessInfoRef);
+        console.log('[CompanyName] doc exists:', snap.exists());
+        console.log('[CompanyName] full doc data:', snap.data());
+        console.log('[CompanyName] businessName field:', snap.data()?.businessName);
+        if (snap.exists()) {
+          setCompanyName(snap.data().businessName || '');
+        }
+      } catch (e) {
+        console.error('[CompanyName] Failed to fetch:', e);
+      }
+    };
+    fetchCompanyName();
+  }, [currentUser?.companyId]);
   // ✅ NEW: full list of known customers (name + number + createdAt) from the
   // customers master collection — used to seed rows below so a customer never
   // disappears from the report just because all their bills were deleted.
@@ -320,7 +347,9 @@ const CustomerReport: React.FC = () => {
       const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
 
       // Row 0 – Title
-      aoa[0][0] = 'Customer Report';
+      aoa[0][0] = companyName
+        ? `Customer Report  —  ${companyName}`
+        : 'Customer Report';
 
       // Row 1 – Meta
       aoa[1][0] = `Generated: ${generationDate}   |   ${periodLabel}   |   Customers: ${summary.totalCustomers}`;
@@ -549,7 +578,10 @@ const CustomerReport: React.FC = () => {
       doc.setFontSize(22);
       doc.setTextColor(17, 24, 39); // gray-900
       doc.setFont('helvetica', 'bold');
-      doc.text('Customer Report', 14, 24);
+      const reportTitle = companyName
+        ? `Customer Report — ${companyName}`
+        : 'Customer Report';
+      doc.text(reportTitle, 14, 24);
 
       // Dynamic Subtitle with Date Range
       doc.setFontSize(10);

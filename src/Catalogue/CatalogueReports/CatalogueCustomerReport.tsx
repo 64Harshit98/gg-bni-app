@@ -66,20 +66,26 @@ const CatalogueCustomerReport: React.FC = () => {
   const [companyName, setCompanyName] = useState<string>('');
 
   useEffect(() => {
-    const fetchCompanyName = async () => {
-      if (!currentUser?.companyId) return;
-      try {
-        const companyRef = doc(db, 'companies', currentUser.companyId);
-        const snap = await getDoc(companyRef);
-        if (snap.exists()) {
-          setCompanyName(snap.data().name || snap.data().companyName || '');
-        }
-      } catch (e) {
-        console.error('Failed to fetch company name', e);
-      }
-    };
-    fetchCompanyName();
-  }, [currentUser?.companyId]);
+        const fetchCompanyName = async () => {
+            if (!currentUser?.companyId) return;
+            try {
+                const businessInfoRef = doc(
+                    db,
+                    'companies',
+                    currentUser.companyId,
+                    'business_info',
+                    currentUser.companyId,
+                );
+                const snap = await getDoc(businessInfoRef);
+                if (snap.exists()) {
+                    setCompanyName(snap.data().businessName || '');
+                }
+            } catch (e) {
+                console.error('Failed to fetch company name', e);
+            }
+        };
+        fetchCompanyName();
+    }, [currentUser?.companyId]);
   // const [obAdvanceMap, setObAdvanceMap] = useState<Record<string, number>>({});
   const [sortConfig, setSortConfig] = useState<{
     key: keyof CustomerRowWithCredit;
@@ -581,7 +587,10 @@ const CatalogueCustomerReport: React.FC = () => {
       doc.setFontSize(22);
       doc.setTextColor(17, 24, 39); // gray-900
       doc.setFont('helvetica', 'bold');
-      doc.text('Customer Report', 14, 24);
+      const reportTitle = companyName
+  ? `Customer Report — ${companyName}`
+  : 'Customer Report';
+doc.text(reportTitle, 14, 24);
 
       // Dynamic Subtitle with Date Range
       doc.setFontSize(10);

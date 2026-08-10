@@ -12,6 +12,7 @@ import { IconClose, IconSearch } from '../../constants/Icons';
 import { getItemColumns } from '../../constants/TableColoumns';
 import DownloadChoiceModal from '../../Pages/Reports/ItemReportComponents/DownloadChoiceModal';
 import FilterSelect from '../../Pages/Reports/ItemReportComponents/FilterSelect';
+import ReportDateFilter from '../../Components/ReportDateFilter';
 //import CataShowWrapper from '../../context/CataShowWrapper';
 //import { Cata_Permissions } from '../enum/cata_permissions.enum';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
@@ -23,6 +24,7 @@ import { db } from '../../lib/Firebase';
 import { Modal } from '../../constants/Modal'; // Adjust path to where you saved the Modal code
 import { State } from '../../enums';
 import BackButton from '../../Components/BackButton';
+import { useStockLedger } from '../../Pages/hooks/useStockLedger';
 
 const UNASSIGNED_GROUP_NAME = 'Uncategorized';
 // --- Helper Component ---
@@ -36,10 +38,16 @@ const CatalogueItemReport: React.FC = () => {   // (or `const ItemReport: React.
     const fetchCompanyName = async () => {
       if (!currentUser?.companyId) return;
       try {
-        const companyRef = doc(db, 'companies', currentUser.companyId);
-        const snap = await getDoc(companyRef);
+        const businessInfoRef = doc(
+          db,
+          'companies',
+          currentUser.companyId,
+          'business_info',
+          currentUser.companyId,
+        );
+        const snap = await getDoc(businessInfoRef);
         if (snap.exists()) {
-          setCompanyName(snap.data().name || snap.data().companyName || '');
+          setCompanyName(snap.data().businessName || '');
         }
       } catch (e) {
         console.error('Failed to fetch company name', e);
@@ -49,6 +57,10 @@ const CatalogueItemReport: React.FC = () => {   // (or `const ItemReport: React.
   }, [currentUser?.companyId]);
   const [showSearch, setShowSearch] = useState(false);
   const [locationFilter, setLocationFilter] = useState('');
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [fromDate, setFromDate] = useState<string>(todayStr);
+  const [toDate, setToDate] = useState<string>(todayStr);
+  const [datePreset, setDatePreset] = useState<string>('today');
   const {
     items,
     appliedItemGroupId,
@@ -69,6 +81,7 @@ const CatalogueItemReport: React.FC = () => {   // (or `const ItemReport: React.
 
   const { godowns } = useGodowns(currentUser?.companyId);
   const { stockRows } = useGodownStock(currentUser?.companyId, godowns);
+  const { ledgerMap } = useStockLedger(currentUser?.companyId, fromDate, toDate, locationFilter);
 
   // Per-item, per-location quantity map (Shop + every godown).
   const stockByItemLocation = useMemo(() => {
@@ -92,9 +105,17 @@ const CatalogueItemReport: React.FC = () => {   // (or `const ItemReport: React.
       } else {
         stock = locMap ? Array.from(locMap.values()).reduce((s, q) => s + q, 0) : (item.stock || 0);
       }
-      return { ...item, stock };
+
+      const agg = ledgerMap.get(item.id || '') || { in: 0, out: 0 };
+      const stockIn = agg.in;
+      const stockOut = agg.out;
+      const closingBalance = stock;
+      const openingBalance = closingBalance - stockIn + stockOut;
+      const valueOfItem = stock * (item.purchasePrice || 0);
+
+      return { ...item, stock, stockIn, stockOut, openingBalance, closingBalance, valueOfItem };
     });
-  }, [items, stockByItemLocation, locationFilter]);
+  }, [items, stockByItemLocation, locationFilter, ledgerMap]);
 
   const { filteredItems, summary } = useMemo(() => {
     let newFilteredItems = itemsWithLocationStock.filter((item) => {
@@ -184,6 +205,42 @@ const CatalogueItemReport: React.FC = () => {   // (or `const ItemReport: React.
   }, [appliedItemGroupId, sortConfig, itemsWithLocationStock, searchQuery, locationFilter]);
 
   const handleApplyFilters = () => setAppliedItemGroupId(itemGroupId);
+
+  const getPresetRange = (preset: string): { from: string; to: string } => {
+    const today = new Date().toISOString().slice(0, 10);
+    switch (preset) {
+      case 'today':
+        return { from: today, to: today };
+      case 'yesterday': {
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        const ds = d.toISOString().slice(0, 10);
+        return { from: ds, to: ds };
+      }
+      case 'last7': {
+        const d = new Date();
+        d.setDate(d.getDate() - 6);
+        return { from: d.toISOString().slice(0, 10), to: today };
+      }
+      case 'last30': {
+        const d = new Date();
+        d.setDate(d.getDate() - 29);
+        return { from: d.toISOString().slice(0, 10), to: today };
+      }
+      default:
+        // 'custom' — leave whatever the user typed in the date inputs
+        return { from: fromDate, to: toDate };
+    }
+  };
+
+  const handleDatePresetChange = (preset: string) => {
+    setDatePreset(preset);
+    if (preset !== 'custom') {
+      const { from, to } = getPresetRange(preset);
+      setFromDate(from);
+      setToDate(to);
+    }
+  };
 
   const handleSort = (key: keyof Item) => {
     const direction =
@@ -302,7 +359,10 @@ const CatalogueItemReport: React.FC = () => {   // (or `const ItemReport: React.
       doc.setFontSize(22);
       doc.setTextColor(17, 24, 39); // gray-900
       doc.setFont('helvetica', 'bold');
-      doc.text('Detailed Item Report', 14, 24);
+      const reportTitle = companyName
+  ? `Detailed Item Report — ${companyName}`
+  : 'Detailed Item Report';
+doc.text(reportTitle, 14, 24);
 
       // Company name right after the title, same line
       if (companyName) {
@@ -325,7 +385,11 @@ const CatalogueItemReport: React.FC = () => {   // (or `const ItemReport: React.
       });
 
       // Combining your requested summary stats with the date/period formatting
-      let subtitleText = `Generated: ${generationDate}   |   Total Items: ${summary.totalItems}   |   Avg Margin: ${Math.round(summary.averageMarginPercentage)}%`;
+      const periodText = fromDate === toDate
+        ? `Period: ${new Date(fromDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}`
+        : `Period: ${new Date(fromDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })} to ${new Date(toDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}`;
+
+      let subtitleText = `Generated: ${generationDate}   |   ${periodText}   |   Total Items: ${summary.totalItems}   |   Avg Margin: ${Math.round(summary.averageMarginPercentage)}%`;
       doc.text(subtitleText, 14, 31);
 
       // --- 3. AUTOTABLE GENERATION ---
@@ -475,6 +539,11 @@ const CatalogueItemReport: React.FC = () => {   // (or `const ItemReport: React.
         { header: 'MOQ', width: 10 },
         { header: 'Image URL', width: 25 },
         { header: 'Description', width: 35 },
+        { header: 'Opening Bal.', width: 14 },
+        { header: 'Stock In', width: 12 },
+        { header: 'Stock Out', width: 12 },
+        { header: 'Closing Bal.', width: 14 },
+        { header: 'Value (₹)', width: 15 },
       ];
       const colCount = COLS.length;
       const exportLocationLabel = locationFilter
@@ -501,8 +570,12 @@ const CatalogueItemReport: React.FC = () => {   // (or `const ItemReport: React.
         ? `Detailed Item Report  —  ${companyName}`
         : 'Detailed Item Report';
 
+      const periodText = fromDate === toDate
+        ? `Period: ${new Date(fromDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}`
+        : `Period: ${new Date(fromDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })} to ${new Date(toDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}`;
+
       // Row 1 – Meta
-      aoa[1][0] = `Generated: ${generationDate}   |   Total Items: ${summary.totalItems}   |   Avg Margin: ${Math.round(summary.averageMarginPercentage)}%`;
+      aoa[1][0] = `Generated: ${generationDate}   |   ${periodText}   |   Total Items: ${summary.totalItems}   |   Avg Margin: ${Math.round(summary.averageMarginPercentage)}%`;
 
       // Row 3 – Summary label
       aoa[3][0] = 'SUMMARY';
@@ -539,7 +612,12 @@ const CatalogueItemReport: React.FC = () => {   // (or `const ItemReport: React.
         aoa[r][12] = item.restockQuantity || 0;                    // Restock Qty
         aoa[r][13] = item.moq || 1;                                // MOQ
         aoa[r][14] = (item as any).imageUrl || '';                  // Image URL
-        aoa[r][15] = item.description || '';                        // Description
+        aoa[r][15] = item.description || '';
+        aoa[r][16] = item.openingBalance || 0;                      // Opening Bal.
+        aoa[r][17] = item.stockIn || 0;                            // Stock In
+        aoa[r][18] = item.stockOut || 0;                           // Stock Out
+        aoa[r][19] = item.closingBalance || 0;                      // Closing Bal.
+        aoa[r][20] = item.valueOfItem || 0;                        // Value (₹)
       });
 
       // No footer/TOTAL row — a text row at the end would get misread as
@@ -612,8 +690,7 @@ const CatalogueItemReport: React.FC = () => {   // (or `const ItemReport: React.
         ));
       });
 
-      // Numeric column indices (for right-align + number formatting)
-      const numericCols = new Set([2, 3, 4, 5, 6, 7, 10, 12, 13]);
+      const numericCols = new Set([2, 3, 4, 5, 6, 7, 10, 12, 13, 16, 17, 18, 19, 20]);
 
       // Data rows
       filteredItems.forEach((_item, idx) => {
@@ -781,12 +858,23 @@ const CatalogueItemReport: React.FC = () => {   // (or `const ItemReport: React.
           </div>
           <button
             onClick={handleApplyFilters}
-            className="w-full sm:w-auto px-6 py-2 bg-[#F97316] text-white font-semibold rounded-sm shadow-sm hover:bg-[#F97316] transition"
+            className="w-full sm:w-[28%] py-2 bg-[#F97316] text-white font-semibold rounded-md shadow-sm hover:bg-orange-600 transition"
           >
             Apply
           </button>
         </div>
       </div>
+
+      <ReportDateFilter
+        datePreset={datePreset}
+        startDate={fromDate}
+        endDate={toDate}
+        onPresetChange={handleDatePresetChange}
+        onStartDateChange={(value) => { setDatePreset('custom'); setFromDate(value); }}
+        onEndDateChange={(value) => { setDatePreset('custom'); setToDate(value); }}
+        onApply={handleApplyFilters}
+        theme="catalogue"
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-2">
         <CustomCard

@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
 import { SHOP_ID, SHOP_NAME, type Godown } from '../Pages/hooks/useStockTransfer';
+import { GodownModal } from './GodownModal'; 
+import { db } from '../lib/Firebase'; 
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 export interface AssignableItem {
   id: string;
@@ -17,6 +20,7 @@ interface Props {
   isOpen: boolean;
   items: AssignableItem[];
   godowns: Godown[];
+  companyId?: string;
   onConfirm: (assignments: Record<string, GodownSplit[]>) => void; // { [cartItemId]: split[] }
   onClose: () => void;
 }
@@ -31,10 +35,17 @@ const genId = () => Math.random().toString(36).slice(2, 10);
  * modal's split-row pattern. Shop and godown inventory are tracked
  * completely separately: only Shop stock is ever deducted by Sales/POS.
  */
-export const PurchaseGodownAssignModal = ({ isOpen, items, godowns, onConfirm, onClose }: Props) => {
+export const PurchaseGodownAssignModal = ({ isOpen, items, godowns, companyId, onConfirm, onClose }: Props) => {
   // rowId -> split, grouped per item id
   const [splitsByItem, setSplitsByItem] = useState<Record<string, (GodownSplit & { rowId: string })[]>>({});
   const [error, setError] = useState('');
+
+  // 👈 NEW — godowns created from inside this modal, before the parent's
+  // realtime godowns list catches up. Merged into every lookup below so
+  // the new godown is selectable immediately.
+  const [localGodowns, setLocalGodowns] = useState<Godown[]>([]);
+  const [isAddGodownOpen, setIsAddGodownOpen] = useState(false);
+  const allGodowns = [...godowns, ...localGodowns.filter(lg => !godowns.some(g => g.id === lg.id))];
 
   useEffect(() => {
     if (isOpen) {
@@ -97,7 +108,24 @@ export const PurchaseGodownAssignModal = ({ isOpen, items, godowns, onConfirm, o
     }));
   };
 
-  const godownName = (id: string) => id === SHOP_ID ? SHOP_NAME : (godowns.find(g => g.id === id)?.name || '');
+  const godownName = (id: string) => id === SHOP_ID ? SHOP_NAME : (allGodowns.find(g => g.id === id)?.name || ''); // 👈 CHANGED: godowns -> allGodowns
+
+  // 👈 NEW
+  const handleCreateGodown = async (data: { name: string; location?: string }) => {
+    if (!companyId) {
+      setError('Cannot add godown: missing company information.');
+      return;
+    }
+    const godownsRef = collection(db, 'companies', companyId, 'godowns');
+    const docRef = await addDoc(godownsRef, {
+      name: data.name,
+      location: data.location || '',
+      createdAt: serverTimestamp(),
+    });
+    const newGodown: Godown = { id: docRef.id, name: data.name, location: data.location || '' } as Godown;
+    setLocalGodowns(prev => [...prev, newGodown]);
+    setIsAddGodownOpen(false);
+  };
 
   const handleConfirm = () => {
     // Validate: every row has a destination, quantities are positive, and
@@ -137,14 +165,22 @@ export const PurchaseGodownAssignModal = ({ isOpen, items, godowns, onConfirm, o
   return (
     <div className="fixed inset-0 z-[8000] flex items-center justify-center bg-black/40 px-4">
       <div className="bg-white w-full max-w-lg rounded-sm shadow-xl p-5 max-h-[85vh] flex flex-col">
-        <h2 className="text-lg font-bold text-gray-800 mb-1">Assign Godowns</h2>
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <h2 className="text-lg font-bold text-gray-800">Assign Godowns</h2>
+          <button
+            onClick={() => setIsAddGodownOpen(true)}
+            className="text-xs font-semibold text-blue-600 hover:text-blue-700 border border-blue-200 bg-blue-50 px-2.5 py-1 rounded-sm whitespace-nowrap flex-shrink-0"
+          >
+            + Add Godown
+          </button>
+        </div>
         <p className="text-xs text-gray-500 mb-4">
           Choose where each item is being stocked — split the purchased quantity across Shop and one or more godowns if needed. "Shop" is your regular sellable inventory — the same stock used for Sales/POS.
         </p>
 
-        {godowns.length === 0 && (
+        {allGodowns.length === 0 && (
           <div className="text-sm text-gray-500 bg-gray-50 border border-gray-200 rounded-sm p-4 mb-4">
-            No godowns set up yet. You can create one from the Stock Transfer report, or continue and everything will go to Shop.
+            No godowns set up yet. Tap "+ Add Godown" below to create one, or continue and everything will go to Shop.
           </div>
         )}
 
@@ -159,7 +195,7 @@ export const PurchaseGodownAssignModal = ({ isOpen, items, godowns, onConfirm, o
                     <p className="text-sm font-medium text-gray-800 truncate">{item.name}</p>
                     <p className="text-xs text-gray-400">Total Qty: {item.quantity} {item.unit || ''}</p>
                   </div>
-                  {godowns.length > 0 && (
+                  {allGodowns.length > 0 && (
                     <button
                       onClick={() => addSplitRow(item.id)}
                       disabled={remaining <= 0}
@@ -179,7 +215,7 @@ export const PurchaseGodownAssignModal = ({ isOpen, items, godowns, onConfirm, o
                         className="flex-1 border rounded-sm p-1.5 text-xs bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value={SHOP_ID}>🏪 {SHOP_NAME}</option>
-                        {godowns.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                        {allGodowns.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                       </select>
                       <input
                         type="number"
@@ -232,6 +268,14 @@ export const PurchaseGodownAssignModal = ({ isOpen, items, godowns, onConfirm, o
           </button>
         </div>
       </div>
+
+      {/* 👈 NEW — lets the user create a godown without leaving this modal */}
+      <GodownModal
+        isOpen={isAddGodownOpen}
+        onClose={() => setIsAddGodownOpen(false)}
+        onSave={handleCreateGodown}
+        theme="blue"
+      />
     </div>
   );
 };

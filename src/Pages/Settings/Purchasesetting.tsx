@@ -32,6 +32,7 @@ export interface PurchaseSettings {
     requireSupplierMobile: boolean;
     cartInsertionOrder?: 'top' | 'bottom';
     cardViewWithPhoto?: boolean;
+    enableGodownAssignment?: boolean;
 }
 
 export const getDefaultPurchaseSettings = (companyId: string): PurchaseSettings => ({
@@ -52,6 +53,7 @@ export const getDefaultPurchaseSettings = (companyId: string): PurchaseSettings 
     requireSupplierMobile: false,
     cartInsertionOrder: 'top',
     cardViewWithPhoto: true,
+    enableGodownAssignment: true,
 });
 
 interface CardProps {
@@ -419,6 +421,14 @@ const PurchaseSettingsPage: React.FC = () => {
                                 checked={settings.enableDiscount2 ?? false}
                                 onChange={(checked) => handleCheckboxChange('enableDiscount2', checked)}
                                 tooltip="Adds a compounding second discount field (Disc2%) in the purchase cart, on top of the existing item discount."
+                            />
+                            <ToggleRow
+                                id="godown-assignment"
+                                label="Enable Godown Assignment"
+                                description="Show the Assign Godown modal after Pay Now."
+                                checked={settings.enableGodownAssignment ?? true}
+                                onChange={(checked) => handleCheckboxChange('enableGodownAssignment', checked)}
+                                tooltip="When enabled, tapping Pay Now opens a modal to split purchased quantity across godowns. When disabled, the modal is skipped and all purchased stock is added directly to the Shop."
                             />
                         </SettingsCard>
 

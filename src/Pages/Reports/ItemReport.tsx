@@ -13,6 +13,7 @@ import { IconClose, IconSearch } from '../../constants/Icons';
 import { getItemColumns } from '../../constants/TableColoumns';
 import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
 import FilterSelect from './ItemReportComponents/FilterSelect';
+import ReportDateFilter from '../../Components/ReportDateFilter';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import { useAuth } from '../../context/auth-context'
 import { useGodowns, useGodownStock, SHOP_ID, SHOP_NAME } from '../hooks/useStockTransfer';
@@ -21,6 +22,7 @@ import { db } from '../../lib/Firebase';
 // Import your Modal and State
 import { Modal } from '../../constants/Modal'; // Adjust path to where you saved the Modal code
 import { State } from '../../enums';
+import { useStockLedger } from '../hooks/useStockLedger';
 
 const UNASSIGNED_GROUP_NAME = 'Uncategorized';
 // --- Helper Component ---
@@ -34,10 +36,16 @@ const ItemReport: React.FC = () => {
     const fetchCompanyName = async () => {
       if (!currentUser?.companyId) return;
       try {
-        const companyRef = doc(db, 'companies', currentUser.companyId);
-        const snap = await getDoc(companyRef);
+        const businessInfoRef = doc(
+          db,
+          'companies',
+          currentUser.companyId,
+          'business_info',
+          currentUser.companyId,
+        );
+        const snap = await getDoc(businessInfoRef);
         if (snap.exists()) {
-          setCompanyName(snap.data().name || snap.data().companyName || '');
+          setCompanyName(snap.data().businessName || '');
         }
       } catch (e) {
         console.error('Failed to fetch company name', e);
@@ -47,6 +55,10 @@ const ItemReport: React.FC = () => {
   }, [currentUser?.companyId]);
   const [searchQuery, setSearchQuery] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [fromDate, setFromDate] = useState<string>(todayStr);
+  const [toDate, setToDate] = useState<string>(todayStr);
+  const [datePreset, setDatePreset] = useState<string>('today');
   const {
     items,
     appliedItemGroupId,
@@ -67,6 +79,7 @@ const ItemReport: React.FC = () => {
 
   const { godowns } = useGodowns(currentUser?.companyId);
   const { stockRows } = useGodownStock(currentUser?.companyId, godowns);
+  const { ledgerMap } = useStockLedger(currentUser?.companyId, fromDate, toDate, locationFilter);
 
   // Per-item, per-location quantity map (Shop + every godown).
   const stockByItemLocation = useMemo(() => {
@@ -90,9 +103,17 @@ const ItemReport: React.FC = () => {
       } else {
         stock = locMap ? Array.from(locMap.values()).reduce((s, q) => s + q, 0) : (item.stock || 0);
       }
-      return { ...item, stock };
+
+      const agg = ledgerMap.get(item.id || '') || { in: 0, out: 0 };
+      const stockIn = agg.in;
+      const stockOut = agg.out;
+      const closingBalance = stock;
+      const openingBalance = closingBalance - stockIn + stockOut;
+      const valueOfItem = stock * (item.purchasePrice || 0);
+
+      return { ...item, stock, stockIn, stockOut, openingBalance, closingBalance, valueOfItem };
     });
-  }, [items, stockByItemLocation, locationFilter]);
+  }, [items, stockByItemLocation, locationFilter, ledgerMap]);
 
   const { filteredItems, summary } = useMemo(() => {
     const newFilteredItems = itemsWithLocationStock.filter((item) => {
@@ -160,6 +181,42 @@ const ItemReport: React.FC = () => {
 
   const handleApplyFilters = () => setAppliedItemGroupId(itemGroupId);
 
+  const getPresetRange = (preset: string): { from: string; to: string } => {
+    const today = new Date().toISOString().slice(0, 10);
+    switch (preset) {
+      case 'today':
+        return { from: today, to: today };
+      case 'yesterday': {
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        const ds = d.toISOString().slice(0, 10);
+        return { from: ds, to: ds };
+      }
+      case 'last7': {
+        const d = new Date();
+        d.setDate(d.getDate() - 6);
+        return { from: d.toISOString().slice(0, 10), to: today };
+      }
+      case 'last30': {
+        const d = new Date();
+        d.setDate(d.getDate() - 29);
+        return { from: d.toISOString().slice(0, 10), to: today };
+      }
+      default:
+        // 'custom' — leave whatever the user typed in the date inputs
+        return { from: fromDate, to: toDate };
+    }
+  };
+
+  const handleDatePresetChange = (preset: string) => {
+    setDatePreset(preset);
+    if (preset !== 'custom') {
+      const { from, to } = getPresetRange(preset);
+      setFromDate(from);
+      setToDate(to);
+    }
+  };
+
   const handleSort = (key: keyof Item) => {
     const direction =
       sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';
@@ -183,7 +240,6 @@ const ItemReport: React.FC = () => {
       stock: item.stock || 0,
       barcode: item.barcode || '-',
       restockQuantity: item.restockQuantity || 0,
-      description: (item as any).description || '-',
     };
   };
   // const prepareExportDataForExcel = (item: Item) => {
@@ -286,19 +342,15 @@ const ItemReport: React.FC = () => {
       // --- 1. BRAND ACCENT BAR ---
       doc.setFillColor(37, 99, 235); // blue-600
       doc.rect(0, 0, pageWidth, 6, 'F');
+
+      // --- 2. HEADER SECTION ---
       doc.setFontSize(22);
       doc.setTextColor(17, 24, 39); // gray-900
       doc.setFont('helvetica', 'bold');
-      doc.text('Detailed Item Report', 14, 24);
-
-      // Company name right after the title, same line
-      if (companyName) {
-        const titleWidth = doc.getTextWidth('Detailed Item Report');
-        doc.setFontSize(13);
-        doc.setTextColor(107, 114, 128); // gray-500
-        doc.setFont('helvetica', 'normal');
-        doc.text(`—  ${companyName}`, 14 + titleWidth + 4, 24);
-      }
+      const reportTitle = companyName
+        ? `Detailed Item Report — ${companyName}`
+        : 'Detailed Item Report';
+      doc.text(reportTitle, 14, 24);
 
       // Dynamic Subtitle
       doc.setFontSize(10);
@@ -309,7 +361,11 @@ const ItemReport: React.FC = () => {
         year: 'numeric', month: 'short', day: 'numeric',
       });
 
-      const subtitleText = `Generated: ${generationDate}   |   Total Items: ${summary.totalItems}   |   Avg Margin: ${Math.round(summary.averageMarginPercentage)}%`;
+      const periodText = fromDate === toDate
+        ? `Period: ${new Date(fromDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}`
+        : `Period: ${new Date(fromDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })} to ${new Date(toDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}`;
+
+      const subtitleText = `Generated: ${generationDate}   |   ${periodText}   |   Total Items: ${summary.totalItems}   |   Avg Margin: ${Math.round(summary.averageMarginPercentage)}%`;
       doc.text(subtitleText, 14, 31);
 
       // --- 3. DYNAMIC DATA PREPARATION ---
@@ -354,8 +410,6 @@ const ItemReport: React.FC = () => {
           columnStyles[index] = { cellWidth: 28 };
         } else if (key === 'restockQuantity') {
           columnStyles[index] = { cellWidth: 30, halign: 'right' };
-        } else if (key === 'description') {
-          columnStyles[index] = { cellWidth: 45 };
         } else if (numericColumns.includes(key)) {
           columnStyles[index] = { halign: 'right' };
         }
@@ -487,9 +541,14 @@ const ItemReport: React.FC = () => {
         { header: 'MOQ', width: 10 },
         { header: 'Image URL', width: 25 },
         { header: 'Description', width: 35 },
+        { header: 'Opening Bal.', width: 14 },
+        { header: 'Stock In', width: 12 },
+        { header: 'Stock Out', width: 12 },
+        { header: 'Closing Bal.', width: 14 },
+        { header: 'Value (₹)', width: 15 },
       ];
       const colCount = COLS.length;
-// Same label the Location column shows for this row's Stock figure.
+      // Same label the Location column shows for this row's Stock figure.
       // With a specific location filter applied, that's the filtered godown/Shop name;
       // with no filter, Stock is a sum across all locations, so it's labelled Shop by default
       // (matches Bulk Import's own "blank = Shop" convention on re-upload).
@@ -517,8 +576,12 @@ const ItemReport: React.FC = () => {
         ? `Detailed Item Report  —  ${companyName}`
         : 'Detailed Item Report';
 
+      const periodText = fromDate === toDate
+        ? `Period: ${new Date(fromDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}`
+        : `Period: ${new Date(fromDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })} to ${new Date(toDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}`;
+
       // Row 1 – Meta
-      aoa[1][0] = `Generated: ${generationDate}   |   ${groupLabel}   |   Total Items: ${summary.totalItems}`;
+      aoa[1][0] = `Generated: ${generationDate}   |   ${periodText}   |   ${groupLabel}   |   Total Items: ${summary.totalItems}`;
 
       // Row 3 – Summary label
       aoa[3][0] = 'SUMMARY';
@@ -554,6 +617,11 @@ const ItemReport: React.FC = () => {
         aoa[r][13] = (item as any).moq || 1;                     // MOQ
         aoa[r][14] = (item as any).imageUrl || '';                // Image URL
         aoa[r][15] = (item as any).description || '';
+        aoa[r][16] = (item as any).openingBalance ?? 0;             // Opening Balance
+        aoa[r][17] = (item as any).stockIn ?? 0;                    // Stock In
+        aoa[r][18] = (item as any).stockOut ?? 0;                   // Stock Out
+        aoa[r][19] = (item as any).closingBalance ?? item.stock ?? 0; // Closing Balance
+        aoa[r][20] = (item as any).valueOfItem ?? 0;                // Value
       });
 
       // No footer/TOTAL row — a text row at the end would get misread as
@@ -790,6 +858,17 @@ const ItemReport: React.FC = () => {
           </button>
         </div>
       </div>
+
+      <ReportDateFilter
+        datePreset={datePreset}
+        startDate={fromDate}
+        endDate={toDate}
+        onPresetChange={handleDatePresetChange}
+        onStartDateChange={(value) => { setDatePreset('custom'); setFromDate(value); }}
+        onEndDateChange={(value) => { setDatePreset('custom'); setToDate(value); }}
+        onApply={handleApplyFilters}
+        theme="pos"
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-2">
         <CustomCard

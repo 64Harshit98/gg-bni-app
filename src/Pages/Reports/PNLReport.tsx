@@ -54,10 +54,16 @@ const PnlReportPage: React.FC = () => {
     const fetchCompanyName = async () => {
       if (!currentUser?.companyId) return;
       try {
-        const companyRef = doc(db, 'companies', currentUser.companyId);
-        const snap = await getDoc(companyRef);
+        const businessInfoRef = doc(
+          db,
+          'companies',
+          currentUser.companyId,
+          'business_info',
+          currentUser.companyId,
+        );
+        const snap = await getDoc(businessInfoRef);
         if (snap.exists()) {
-          setCompanyName(snap.data().name || snap.data().companyName || '');
+          setCompanyName(snap.data().businessName || '');
         }
       } catch (e) {
         console.error('Failed to fetch company name', e);
@@ -261,10 +267,13 @@ const PnlReportPage: React.FC = () => {
       doc.rect(0, 0, pageWidth, 6, 'F');
 
       // --- 2. HEADER SECTION ---
-      doc.setFontSize(22);
+       doc.setFontSize(22);
       doc.setTextColor(17, 24, 39); // gray-900
       doc.setFont('helvetica', 'bold');
-      doc.text('Profit & Loss Report', 14, 24);
+      const reportTitle = companyName
+        ? `Profit & Loss Report — ${companyName}`
+        : 'Profit & Loss Report';
+      doc.text(reportTitle, 14, 24);
 
       // Dynamic Subtitle with Date Range
       doc.setFontSize(10);

@@ -34,19 +34,25 @@ const CatalogueExpenseReportPage: React.FC = () => {
 
     useEffect(() => {
         const fetchCompanyName = async () => {
-            if (!companyId) return;
+            if (!currentUser?.companyId) return;
             try {
-                const companyRef = doc(db, 'companies', companyId);
-                const snap = await getDoc(companyRef);
+                const businessInfoRef = doc(
+                    db,
+                    'companies',
+                    currentUser.companyId,
+                    'business_info',
+                    currentUser.companyId,
+                );
+                const snap = await getDoc(businessInfoRef);
                 if (snap.exists()) {
-                    setCompanyName(snap.data().name || snap.data().companyName || '');
+                    setCompanyName(snap.data().businessName || '');
                 }
             } catch (e) {
                 console.error('Failed to fetch company name', e);
             }
         };
         fetchCompanyName();
-    }, [companyId]);
+    }, [currentUser?.companyId]);
 
     // --- filters ---
     const today = formatDateForInput(new Date());
@@ -143,7 +149,10 @@ const CatalogueExpenseReportPage: React.FC = () => {
             const ph = doc.internal.pageSize.getHeight();
             doc.setFillColor(249, 115, 22); doc.rect(0, 0, pw, 6, 'F');
             doc.setFontSize(22); doc.setFont('helvetica', 'bold'); doc.setTextColor(17, 24, 39);
-            doc.text('Expense Report', 14, 24);
+            const reportTitle = companyName
+                ? `Expense Report — ${companyName}`
+                : 'Expense Report';
+            doc.text(reportTitle, 14, 24);
             doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(107, 114, 128);
             doc.text(`Generated: ${formatDate(Date.now())}   |   Period: ${formatDate(appliedFilters.start)} to ${formatDate(appliedFilters.end)}`, 14, 31);
             // ===== GENERATION TAG (drawn first, reserves space for logo) =====

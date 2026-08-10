@@ -64,20 +64,26 @@ const ItemsSoldReport: React.FC = () => {
     const [companyName, setCompanyName] = useState<string>('');
 
     useEffect(() => {
-        const fetchCompanyName = async () => {
-            if (!currentUser?.companyId) return;
-            try {
-                const companyRef = doc(db, 'companies', currentUser.companyId);
-                const snap = await getDoc(companyRef);
-                if (snap.exists()) {
-                    setCompanyName(snap.data().name || snap.data().companyName || '');
-                }
-            } catch (e) {
-                console.error('Failed to fetch company name', e);
-            }
-        };
-        fetchCompanyName();
-    }, [currentUser?.companyId]);
+    const fetchCompanyName = async () => {
+      if (!currentUser?.companyId) return;
+      try {
+        const businessInfoRef = doc(
+          db,
+          'companies',
+          currentUser.companyId,
+          'business_info',
+          currentUser.companyId,
+        );
+        const snap = await getDoc(businessInfoRef);
+        if (snap.exists()) {
+          setCompanyName(snap.data().businessName || '');
+        }
+      } catch (e) {
+        console.error('Failed to fetch company name', e);
+      }
+    };
+    fetchCompanyName();
+  }, [currentUser?.companyId]);
 
     useEffect(() => {
         const fetchItemGroups = async () => {
@@ -342,7 +348,10 @@ const ItemsSoldReport: React.FC = () => {
             doc.setFontSize(22);
             doc.setTextColor(17, 24, 39);
             doc.setFont('helvetica', 'bold');
-            doc.text('Items Sold Report', 14, 24);
+            const reportTitle = companyName
+                ? `Items Sold Report — ${companyName}`
+                : 'Items Sold Report';
+            doc.text(reportTitle, 14, 24);
 
             // ===== SUBTITLE =====
             doc.setFontSize(10);

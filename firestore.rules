@@ -33,6 +33,11 @@ service cloud.firestore {
       allow read: if request.auth != null && resource.data.agentId == request.auth.uid;
     }
 
+    match /manualLeads/{leadId} {
+      allow create: if request.auth != null && request.resource.data.agencyId == request.auth.uid;
+      allow read, update, delete: if request.auth != null && resource.data.agencyId == request.auth.uid;
+    }
+
     // --- Public Leads (Sign Up) ---
     match /leads/{leadId} {
       allow create, update: if true; 

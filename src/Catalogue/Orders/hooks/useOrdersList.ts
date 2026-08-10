@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import type { Order, OrderStatus } from '../orders.types';
 import { ORDER_STATUSES, SAMPLE_ORDERS } from '../orders.types';
-import { getDateRange } from '../orders.utils';
+import { getDateRange } from '../../../lib/dateRange';
 import { useOrdersData } from './useOrdersData';
 
 const DATE_FILTERS = [

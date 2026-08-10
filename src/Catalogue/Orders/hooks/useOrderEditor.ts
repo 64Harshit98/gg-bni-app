@@ -102,6 +102,7 @@ export const useOrderEditor = ({
     const [showAdjustmentPopup, setShowAdjustmentPopup] = useState(false);
     const [showZeroAmountModal, setShowZeroAmountModal] = useState(false);
     const [pendingZeroOrderId, setPendingZeroOrderId] = useState<string | null>(null);
+    const [duplicateOrderItemPrompt, setDuplicateOrderItemPrompt] = useState<{ item: Item; existingCount: number } | null>(null);
     const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
     const [selectedItemForEdit, setSelectedItemForEdit] = useState<any>(null);
 
@@ -358,7 +359,7 @@ export const useOrderEditor = ({
 
     // ─── Add-new-item handler (SearchableItemInput's onItemSelected inside the
     // edit modal) — moved verbatim from the inline JSX handler. ──────────────
-    const handleAddItem = (selectedItem: Item) => {
+    const addSelectedItemToOrder = (selectedItem: Item) => {
         if (!selectedItem.id || !editingOrder) return;
 
         const newMrp = Number(selectedItem.mrp || 0);
@@ -438,6 +439,50 @@ export const useOrderEditor = ({
         ).total;
 
         setEditingOrder({ ...editingOrder, items: updatedItems, totalAmount: finalNewTotal });
+    };
+
+    // ─── Duplicate-item guard in front of addSelectedItemToOrder — restored
+    // (was dropped during the refactor extraction). If the item being added
+    // already exists in the order, prompt instead of silently adding a
+    // second line. ───────────────────────────────────────────────────────
+    const handleAddItem = (selectedItem: Item) => {
+        if (!selectedItem.id || !editingOrder) return;
+
+        const existingMatches = (editingOrder.items || []).filter(
+            (i) => (i.itemId || i.id) === selectedItem.id
+        );
+
+        if (existingMatches.length > 0) {
+            setDuplicateOrderItemPrompt({ item: selectedItem, existingCount: existingMatches.length });
+            return;
+        }
+
+        addSelectedItemToOrder(selectedItem);
+    };
+
+    // ─── "Increase Quantity" — bumps the most-recently-added matching line
+    // (new items are always prepended, so the first array match is the last
+    // one added). ────────────────────────────────────────────────────────
+    const handleIncreaseExistingOrderItemQuantity = () => {
+        if (!duplicateOrderItemPrompt || !editingOrder) return;
+        const targetProductId = duplicateOrderItemPrompt.item.id;
+
+        const matchItem = (editingOrder.items || []).find(
+            (i) => (i.itemId || i.id) === targetProductId
+        );
+
+        if (matchItem) {
+            handleQuantityChange(matchItem.id, Number(matchItem.quantity || 0) + 1);
+        }
+
+        setDuplicateOrderItemPrompt(null);
+    };
+
+    // ─── "Add as New Item" — adds a fresh line regardless of existing matches.
+    const handleAddOrderItemAsNew = () => {
+        if (!duplicateOrderItemPrompt) return;
+        addSelectedItemToOrder(duplicateOrderItemPrompt.item);
+        setDuplicateOrderItemPrompt(null);
     };
 
     // ─── Expense add/edit/remove handlers — moved verbatim from the inline
@@ -987,6 +1032,7 @@ export const useOrderEditor = ({
         showAdjustmentPopup, setShowAdjustmentPopup,
         showZeroAmountModal, setShowZeroAmountModal,
         pendingZeroOrderId, setPendingZeroOrderId,
+        duplicateOrderItemPrompt, setDuplicateOrderItemPrompt,
         isEditDrawerOpen, setIsEditDrawerOpen,
         selectedItemForEdit, setSelectedItemForEdit,
         liveMoqMap,
@@ -1000,6 +1046,8 @@ export const useOrderEditor = ({
         handleDiscount2Change,
         handleDeleteItem,
         handleAddItem,
+        handleIncreaseExistingOrderItemQuantity,
+        handleAddOrderItemAsNew,
         handleAddExpense,
         handleExpenseNameChange,
         handleExpenseAmountChange,

@@ -16,7 +16,122 @@ const db = admin.firestore();
 
 // Initialize Vision API Client
 const client = new vision.ImageAnnotatorClient();
+const COLUMN_KEYWORDS = {
+    SLNO: /^(SL|SR)\.?$|^NO\.?$/i,
+    DESCRIPTION: /^(DESCRIPTION|PARTICULARS?|NAME|PRODUCT|SERVICE|ITEMS?)$/i,
+    HSN: /^(HSN|SAC)$/i,
+    QTY: /^(QTY|QUANTITY)$/i,
+    RATE: /^(RATE|PRICE|MRP)$/i,
+    DISCOUNT: /^DISC(OUNT)?%?$/i,
+    TAX: /^(TAX|GST|IGST|CGST|SGST|VAT)$/i,
+    AMOUNT: /^(AMOUNT|AMT|TOTAL|NET\s*AMT)$/i,
+};
 
+// Looks at one row's words and tries to identify it as the table header row.
+// Returns the matched column keys with their X center, or null if not a header.
+function detectHeaderBands(row) {
+    const matches = [];
+    row.items.forEach(word => {
+        const cleaned = word.text.replace(/[.:]/g, '');
+        for (const [key, regex] of Object.entries(COLUMN_KEYWORDS)) {
+            if (regex.test(cleaned)) {
+                matches.push({ key, x: word.x });
+                break;
+            }
+        }
+    });
+    const keys = new Set(matches.map(m => m.key));
+    // Require the essential trio before trusting this as a real header row
+    if (!keys.has('QTY') || !keys.has('RATE') || !keys.has('AMOUNT')) return null;
+
+    // If SL+NO matched as two separate words, they'll collapse to one SLNO band (fine)
+    const byKey = {};
+    matches.forEach(m => {
+        byKey[m.key] = m.x;
+    });
+
+    const bands = Object.entries(byKey)
+        .map(([key, x]) => ({ key, x }))
+        .sort((a, b) => a.x - b.x);
+
+    // Band boundary = midpoint between each pair of consecutive header columns
+    return bands.map((b, i) => ({
+        key: b.key,
+        xStart: i === 0 ? -Infinity : (bands[i - 1].x + b.x) / 2,
+        xEnd: i === bands.length - 1 ? Infinity : (b.x + bands[i + 1].x) / 2,
+    }));
+}
+
+// Assigns every word in a row to its column band based on X position,
+// returning one text string per column key.
+function mapRowToBands(row, bands) {
+    const out = {};
+    bands.forEach(b => { out[b.key] = []; });
+    row.items.forEach(word => {
+        const band = bands.find(b => word.x >= b.xStart && word.x < b.xEnd);
+        if (band) out[band.key].push(word.text);
+    });
+    const result = {};
+    Object.entries(out).forEach(([key, words]) => {
+        result[key] = words.join(' ').trim();
+    });
+    return result;
+}
+
+const NON_ITEM_LINE_BLACKLIST =
+    /TOTAL|TAXABLE|PAYABLE|DISCOUNT\s*@|NOTE\s*[:.-]|THANK\s*YOU|AUTHORIZED|PHONE\s*[:.]|GSTIN\s*[:.]|INVOICE\s*(NO|DATE)|DUE\s*DATE|BILL\s*TO|SHIP\s*TO/i;
+
+function firstNumber(str) {
+    if (!str) return 0;
+    const cleaned = str.replace(/,/g, '').replace(/[|lI]/g, '1');
+    const m = cleaned.match(/[0-9]+(?:\.[0-9]+)?/);
+    return m ? parseFloat(m[0]) : 0;
+}
+
+// Converts header-mapped rows into final items, merging any continuation rows
+// (rows with no valid AMOUNT — e.g. a wrapped description or a tax-detail line)
+// into the item row that precedes them.
+function buildItemsFromBands(rows, bands) {
+    const items = [];
+    let currentItem = null;
+
+    rows.forEach(row => {
+        const rawLineText = row.items.map(i => i.text).join(' ');
+        if (NON_ITEM_LINE_BLACKLIST.test(rawLineText)) return;
+
+        const mapped = mapRowToBands(row, bands);
+        const amount = firstNumber(mapped.AMOUNT);
+        const isPrimaryRow = amount > 0 && firstNumber(mapped.QTY) > 0;
+
+        if (isPrimaryRow) {
+            const quantity = firstNumber(mapped.QTY);
+            const rate = firstNumber(mapped.RATE);
+            let discountPercentage = mapped.DISCOUNT ? firstNumber(mapped.DISCOUNT) : 0;
+            if (!mapped.DISCOUNT && rate > 0 && quantity > 0) {
+                const netPerUnit = amount / quantity;
+                discountPercentage = Math.round(((rate - netPerUnit) / rate) * 100 * 100) / 100;
+                if (!isFinite(discountPercentage) || discountPercentage < 0 || discountPercentage > 95) {
+                    discountPercentage = 0;
+                }
+            }
+            currentItem = {
+                name: (mapped.DESCRIPTION || 'Unknown Item').trim(),
+                quantity,
+                unit: 'PCS',
+                purchasePrice: rate,
+                discountPercentage,
+                totalAmount: amount,
+            };
+            items.push(currentItem);
+        } else if (currentItem && mapped.DESCRIPTION) {
+            // Continuation line (e.g. "100% bleach / Piece" under a previous full row) —
+            // its numbers are already captured in currentItem, we just enrich the name.
+            currentItem.name = `${currentItem.name} ${mapped.DESCRIPTION}`.trim();
+        }
+    });
+
+    return items.map(it => ({ ...it, id: undefined }));
+}
 exports.scanSmartInvoice = functions.https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'You must be logged in to scan documents.');
@@ -88,20 +203,39 @@ exports.scanSmartInvoice = functions.https.onCall(async (data, context) => {
         // 1. Sort all rows top-to-bottom on the page
         rows.sort((a, b) => a.yCenter - b.yCenter);
 
-        // 2. Sort words within each row left-to-right, then join them with spaces
-        const finalLines = rows.map(row => {
-            row.items.sort((a, b) => a.x - b.x);
-            return row.items.map(i => i.text).join(' ');
-        });
+        // 2. Sort words within each row left-to-right
+        rows.forEach(row => row.items.sort((a, b) => a.x - b.x));
 
-        // Combine all the mathematically perfect rows back into a single text block
+        // Keep the flattened text for logging/debugging/fallback
+        const finalLines = rows.map(row => row.items.map(i => i.text).join(' '));
         const perfectlyFormattedText = finalLines.join('\n');
-
         console.log("GLOBAL RECONSTRUCTION:\n", perfectlyFormattedText);
+
+        // 3. Find the header row and build column bands from its real X positions
+        let bands = null;
+        let headerRowIndex = -1;
+        for (let i = 0; i < rows.length; i++) {
+            const detected = detectHeaderBands(rows[i]);
+            if (detected) {
+                bands = detected;
+                headerRowIndex = i;
+                break;
+            }
+        }
+
+        let structuredItems = [];
+        if (bands) {
+            const itemRows = rows.slice(headerRowIndex + 1);
+            structuredItems = buildItemsFromBands(itemRows, bands);
+            console.log("STRUCTURED ITEMS (coordinate-based):", structuredItems);
+        } else {
+            console.log("No header row detected via coordinates — items will be empty, frontend fallback patterns can still run on `text`.");
+        }
 
         return {
             success: true,
-            text: perfectlyFormattedText
+            text: perfectlyFormattedText,
+            items: structuredItems
         };
 
     } catch (error) {

@@ -6,7 +6,7 @@ import { CustomCard } from '../../../Components/CustomCard';
 import { Spinner } from '../../../constants/Spinner';
 import { IconEdit } from '../../../constants/Icons';
 import type { Order, OrderStatus } from '../orders.types';
-import { formatAmount } from '../orders.utils';
+import { formatAmount } from '../../../lib/format';
 import { computeOrderTotals, isTaxEnabled as computeIsTaxEnabled } from '../orders.calculations';
 
 interface OrderCardProps {

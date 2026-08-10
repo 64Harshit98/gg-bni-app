@@ -7,7 +7,7 @@ import { ROUTES } from '../../../constants/routes.constants';
 import { State } from '../../../enums';
 import type { Item } from '../../../constants/models';
 import type { Order } from '../orders.types';
-import { formatAmount } from '../orders.utils';
+import { formatAmount } from '../../../lib/format';
 
 interface OrderEditModalProps {
     editingOrder: Order;

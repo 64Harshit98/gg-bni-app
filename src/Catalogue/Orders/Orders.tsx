@@ -22,24 +22,8 @@ import { TutorialStep } from '../../Components/TutorialStep';
 import useTutorial from '../../Catalogue/hooks/useTutorial';
 import { completeTutorial } from '../../Catalogue/hooks/useCompleteTutorial';
 import { ORDER_STATUSES } from './orders.types';
-import { useOrdersList } from './hooks/useOrdersList';
-import { useOrderEditor } from './hooks/useOrderEditor';
-import { useOrderStatus } from './hooks/useOrderStatus';
-import { useOrderPayment } from './hooks/useOrderPayment';
-import { useOrderDeletion } from './hooks/useOrderDeletion';
-import { usePendingRequestCount } from './hooks/usePendingRequestCount';
-import { OrderListFilters } from './components/OrderListFilters';
-import { OrderEditModal } from './components/OrderEditModal';
-import { TransportDetailsModal } from './components/TransportDetailsModal';
-import { ZeroAmountConfirmModal } from './components/ZeroAmountConfirmModal';
-import { AdjustmentConfirmModal } from './components/AdjustmentConfirmModal';
-import { StatusConfirmModal } from './components/StatusConfirmModal';
-import { DeleteConfirmModal } from './components/DeleteConfirmModal';
-import { useOrderCommunication } from './hooks/useOrderCommunication';
-import { OrderActionSheet } from './components/OrderActionSheet';
-import { PrintSubMenuModal } from './components/PrintSubMenuModal';
-import { QrCodeModal } from './components/QrCodeModal';
-import { OrderCard } from './components/OrderCard';
+import { useOrdersList, useOrderEditor, useOrderStatus, useOrderPayment, useOrderDeletion, usePendingRequestCount, useOrderCommunication } from './hooks';
+import { OrderListFilters, OrderEditModal, TransportDetailsModal, ZeroAmountConfirmModal, AdjustmentConfirmModal, StatusConfirmModal, DeleteConfirmModal, OrderActionSheet, PrintSubMenuModal, QrCodeModal, OrderCard, DuplicateItemPromptModal } from './components';
 
 // ─── Total tutorial steps for Orders ────────────────────────────────────────
 const TOTAL_STEPS = 5;
@@ -188,6 +172,7 @@ const OrdersPage: React.FC = () => {
         showAdjustmentPopup, setShowAdjustmentPopup,
         showZeroAmountModal, setShowZeroAmountModal,
         pendingZeroOrderId, setPendingZeroOrderId,
+        duplicateOrderItemPrompt, setDuplicateOrderItemPrompt,
         isEditDrawerOpen, setIsEditDrawerOpen,
         selectedItemForEdit, setSelectedItemForEdit,
         openEditor,
@@ -199,6 +184,8 @@ const OrdersPage: React.FC = () => {
         handleDiscount2Change,
         handleDeleteItem,
         handleAddItem,
+        handleIncreaseExistingOrderItemQuantity,
+        handleAddOrderItemAsNew,
         handleAddExpense,
         handleExpenseNameChange,
         handleExpenseAmountChange,
@@ -717,6 +704,16 @@ const OrdersPage: React.FC = () => {
                     handleRefund={handleRefund}
                     setShowAdjustmentPopup={setShowAdjustmentPopup}
                     setPendingAdjustment={setPendingAdjustment}
+                />
+            )}
+
+            {/* Duplicate Item Prompt */}
+            {duplicateOrderItemPrompt && (
+                <DuplicateItemPromptModal
+                    duplicateOrderItemPrompt={duplicateOrderItemPrompt}
+                    setDuplicateOrderItemPrompt={setDuplicateOrderItemPrompt}
+                    handleIncreaseExistingOrderItemQuantity={handleIncreaseExistingOrderItemQuantity}
+                    handleAddOrderItemAsNew={handleAddOrderItemAsNew}
                 />
             )}
         </div>

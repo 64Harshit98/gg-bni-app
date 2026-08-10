@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/auth-context';
 import { auth, db } from '../lib/Firebase';
-import { doc, collection, query, where, getDocs, getDoc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, collection, query, where, getDocs, getDoc, updateDoc, addDoc, deleteDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
-import { FiCopy, FiShare2, FiUsers, FiTrendingUp, FiList, FiPhone, FiLogOut, FiAward, FiClock, FiCheckCircle } from 'react-icons/fi';
+import { FiCopy, FiShare2, FiUsers, FiTrendingUp, FiList, FiPhone, FiLogOut, FiAward, FiClock, FiCheckCircle, FiPlus, FiTrash2, FiX, FiEdit2, FiMessageSquare, FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import { CustomButton } from '../Components/CustomButton';
 import { ROLES, Variant } from '../enums';
 import { Spinner } from '../constants/Spinner';
@@ -28,6 +28,38 @@ interface LeadData {
     daysRemaining: number;
 }
 
+const MANUAL_LEAD_STATUSES = ['New', 'Contacted', 'Interested', 'Converted', 'Lost'] as const;
+type ManualLeadStatus = typeof MANUAL_LEAD_STATUSES[number];
+
+const LEAD_SOURCES = ['Referral', 'Cold Call', 'Walk-in', 'Online', 'Other'] as const;
+type LeadSource = typeof LEAD_SOURCES[number];
+
+interface RemarkEntry {
+    text: string;
+    createdAt: string; // ISO string
+}
+
+interface ManualLeadData {
+    id: string;
+    name: string;
+    phoneNumber: string;
+    email?: string;
+    notes?: string;
+    status: ManualLeadStatus;
+    source?: LeadSource;
+    followUpDate?: string;
+    address?: string;
+    remarks?: RemarkEntry[];
+}
+
+const manualLeadStatusStyles: Record<ManualLeadStatus, string> = {
+    New: 'text-blue-600 border-blue-200 bg-blue-50',
+    Contacted: 'text-orange-600 border-orange-200 bg-orange-50',
+    Interested: 'text-purple-600 border-purple-200 bg-purple-50',
+    Converted: 'text-emerald-600 border-emerald-200 bg-emerald-50',
+    Lost: 'text-gray-500 border-gray-200 bg-gray-50',
+};
+
 interface CommissionRecord {
     id: string;
     companyName: string;
@@ -48,17 +80,38 @@ interface PayoutRequest {
 const PartnerDashboard: React.FC = () => {
     const [agentData, setAgentData] = useState<AgentData | null>(null);
     const [leads, setLeads] = useState<LeadData[]>([]);
+    const [manualLeads, setManualLeads] = useState<ManualLeadData[]>([]);
     const [commissions, setCommissions] = useState<CommissionRecord[]>([]);
     const [payouts, setPayouts] = useState<PayoutRequest[]>([]);
 
     const [loading, setLoading] = useState(true);
     const [copied, setCopied] = useState(false);
 
+    // Leads tab
+    const [leadsTab, setLeadsTab] = useState<'signups' | 'myLeads'>('signups');
+
     // Modal States
     const [showUpiModal, setShowUpiModal] = useState(false);
     const [upiInput, setUpiInput] = useState('');
     const [isSavingUpi, setIsSavingUpi] = useState(false);
     const [isRequesting, setIsRequesting] = useState(false);
+
+    // Manual Lead Add Form (inline, not a modal)
+    const [showAddForm, setShowAddForm] = useState(false);
+    const emptyLeadForm = { name: '', phoneNumber: '', email: '', address: '', notes: '', source: '' as LeadSource | '', followUpDate: '', status: 'New' as ManualLeadStatus };
+    const [leadForm, setLeadForm] = useState(emptyLeadForm);
+    const [isSavingLead, setIsSavingLead] = useState(false);
+    const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+    // Manual Lead Edit Form (inline)
+    const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
+    const [editForm, setEditForm] = useState(emptyLeadForm);
+    const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+    // Remarks history panel
+    const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null);
+    const [remarkText, setRemarkText] = useState('');
+    const [isAddingRemark, setIsAddingRemark] = useState(false);
 
     const { currentUser } = useAuth();
     const isAgency = currentUser?.role === ROLES.AGENCY;
@@ -104,6 +157,29 @@ const PartnerDashboard: React.FC = () => {
                         });
                     });
                     setLeads(fetchedLeads);
+
+                    // 2b. Fetch Manually-Added Leads
+                    const manualLeadsRef = collection(db, 'manualLeads');
+                    const manualQ = query(manualLeadsRef, where('agencyId', '==', currentUser.uid));
+                    const manualSnapshot = await getDocs(manualQ);
+
+                    const fetchedManualLeads: ManualLeadData[] = [];
+                    manualSnapshot.forEach((docSnap) => {
+                        const data = docSnap.data();
+                        fetchedManualLeads.push({
+                            id: docSnap.id,
+                            name: data.name || 'Unknown',
+                            phoneNumber: data.phoneNumber || 'N/A',
+                            email: data.email || '',
+                            notes: data.notes || '',
+                            status: (data.status as ManualLeadStatus) || 'New',
+                            source: data.source || undefined,
+                            followUpDate: data.followUpDate || undefined,
+                            address: data.address || undefined,
+                            remarks: Array.isArray(data.remarks) ? data.remarks : [],
+                        });
+                    });
+                    setManualLeads(fetchedManualLeads);
                 }
 
                 // 3. Fetch Commission History
@@ -221,6 +297,156 @@ const PartnerDashboard: React.FC = () => {
             alert("Failed to save UPI ID. Please try again.");
         } finally {
             setIsSavingUpi(false);
+        }
+    };
+
+    const handleAddLead = async () => {
+        if (!leadForm.name.trim() || !leadForm.phoneNumber.trim() || !currentUser?.uid) return;
+
+        setIsSavingLead(true);
+        try {
+            const docRef = await addDoc(collection(db, 'manualLeads'), {
+                agencyId: currentUser.uid,
+                name: leadForm.name.trim(),
+                phoneNumber: leadForm.phoneNumber.trim(),
+                email: leadForm.email.trim(),
+                address: leadForm.address.trim(),
+                notes: leadForm.notes.trim(),
+                source: leadForm.source || null,
+                followUpDate: leadForm.followUpDate || null,
+                status: leadForm.status,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+            });
+
+            setManualLeads(prev => [
+                {
+                    id: docRef.id,
+                    name: leadForm.name.trim(),
+                    phoneNumber: leadForm.phoneNumber.trim(),
+                    email: leadForm.email.trim(),
+                    address: leadForm.address.trim(),
+                    notes: leadForm.notes.trim(),
+                    source: leadForm.source || undefined,
+                    followUpDate: leadForm.followUpDate || undefined,
+                    status: leadForm.status,
+                },
+                ...prev,
+            ]);
+
+            setLeadForm(emptyLeadForm);
+            setShowAddForm(false);
+        } catch (error) {
+            console.error("Error adding lead:", error);
+            alert("Failed to add lead. Please try again.");
+        } finally {
+            setIsSavingLead(false);
+        }
+    };
+
+    const handleUpdateLeadStatus = async (leadId: string, status: ManualLeadStatus) => {
+        const prevLeads = manualLeads;
+        setManualLeads(prev => prev.map(l => l.id === leadId ? { ...l, status } : l));
+
+        try {
+            await updateDoc(doc(db, 'manualLeads', leadId), { status, updatedAt: serverTimestamp() });
+        } catch (error) {
+            console.error("Error updating lead status:", error);
+            alert("Failed to update lead status. Please try again.");
+            setManualLeads(prevLeads);
+        }
+    };
+
+    const handleDeleteLead = async (leadId: string) => {
+        const prevLeads = manualLeads;
+        setConfirmDeleteId(null);
+        setManualLeads(prev => prev.filter(l => l.id !== leadId));
+
+        try {
+            await deleteDoc(doc(db, 'manualLeads', leadId));
+        } catch (error) {
+            console.error("Error deleting lead:", error);
+            alert("Failed to remove lead. Please try again.");
+            setManualLeads(prevLeads);
+        }
+    };
+
+    const startEditLead = (lead: ManualLeadData) => {
+        setExpandedLeadId(null);
+        setConfirmDeleteId(null);
+        setEditForm({
+            name: lead.name,
+            phoneNumber: lead.phoneNumber === 'N/A' ? '' : lead.phoneNumber,
+            email: lead.email || '',
+            address: lead.address || '',
+            notes: lead.notes || '',
+            source: lead.source || '',
+            followUpDate: lead.followUpDate || '',
+            status: lead.status,
+        });
+        setEditingLeadId(lead.id);
+    };
+
+    const handleSaveEditLead = async (leadId: string) => {
+        if (!editForm.name.trim() || !editForm.phoneNumber.trim()) return;
+
+        setIsSavingEdit(true);
+        try {
+            await updateDoc(doc(db, 'manualLeads', leadId), {
+                name: editForm.name.trim(),
+                phoneNumber: editForm.phoneNumber.trim(),
+                email: editForm.email.trim(),
+                address: editForm.address.trim(),
+                notes: editForm.notes.trim(),
+                source: editForm.source || null,
+                followUpDate: editForm.followUpDate || null,
+                status: editForm.status,
+                updatedAt: serverTimestamp(),
+            });
+
+            setManualLeads(prev => prev.map(l => l.id === leadId ? {
+                ...l,
+                name: editForm.name.trim(),
+                phoneNumber: editForm.phoneNumber.trim(),
+                email: editForm.email.trim(),
+                address: editForm.address.trim(),
+                notes: editForm.notes.trim(),
+                source: editForm.source || undefined,
+                followUpDate: editForm.followUpDate || undefined,
+                status: editForm.status,
+            } : l));
+
+            setEditingLeadId(null);
+        } catch (error) {
+            console.error("Error updating lead:", error);
+            alert("Failed to update lead. Please try again.");
+        } finally {
+            setIsSavingEdit(false);
+        }
+    };
+
+    const handleAddRemark = async (leadId: string) => {
+        if (!remarkText.trim()) return;
+
+        const remark: RemarkEntry = { text: remarkText.trim(), createdAt: new Date().toISOString() };
+
+        setIsAddingRemark(true);
+        try {
+            await updateDoc(doc(db, 'manualLeads', leadId), {
+                remarks: arrayUnion(remark),
+                updatedAt: serverTimestamp(),
+            });
+
+            setManualLeads(prev => prev.map(l => l.id === leadId
+                ? { ...l, remarks: [remark, ...(l.remarks || [])] }
+                : l));
+
+            setRemarkText('');
+        } catch (error) {
+            console.error("Error adding remark:", error);
+            alert("Failed to add remark. Please try again.");
+        } finally {
+            setIsAddingRemark(false);
         }
     };
 
@@ -392,57 +618,395 @@ const PartnerDashboard: React.FC = () => {
                     {/* RIGHT COLUMN: Agency Leads */}
                     {isAgency && (
                         <div className={`lg:col-span-2 bg-white rounded-xs shadow-sm border ${theme.cardBorder} flex flex-col`}>
-                            <div className={`p-5 sm:p-6 border-b border-gray-100 ${theme.gradient} flex justify-between items-center rounded-t-xl`}>
-                                <h3 className={`text-lg font-bold ${theme.headerText}`}>Active Leads</h3>
-                                <span className={`text-xs font-bold px-2.5 py-1 rounded-xs bg-white/20 ${theme.headerText}`}>
-                                    {leads.length} Signups
-                                </span>
+                            <div className={`p-5 sm:p-6 border-b border-gray-100 ${theme.gradient} rounded-t-xl`}>
+                                <div className="flex justify-between items-center">
+                                    <h3 className={`text-lg font-bold ${theme.headerText}`}>Leads</h3>
+                                    {leadsTab === 'myLeads' && (
+                                        <button
+                                            onClick={() => setShowAddForm(prev => !prev)}
+                                            className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xs bg-white shadow-sm hover:shadow transition-all ${theme.textMain}`}
+                                        >
+                                            {showAddForm ? <FiX size={14} /> : <FiPlus size={14} />} {showAddForm ? 'Close' : 'Add Lead'}
+                                        </button>
+                                    )}
+                                </div>
+                                {/* Tab Toggle */}
+                                <div className="inline-flex p-1 mt-4 rounded-xs bg-black/20 gap-1">
+                                    <button
+                                        onClick={() => setLeadsTab('signups')}
+                                        className={`text-xs font-bold px-4 py-2 rounded-xs transition-all ${leadsTab === 'signups' ? `bg-white shadow-sm ${theme.textMain}` : 'text-white hover:bg-white/10'}`}
+                                    >
+                                        Signups ({leads.length})
+                                    </button>
+                                    <button
+                                        onClick={() => setLeadsTab('myLeads')}
+                                        className={`text-xs font-bold px-4 py-2 rounded-xs transition-all ${leadsTab === 'myLeads' ? `bg-white shadow-sm ${theme.textMain}` : 'text-white hover:bg-white/10'}`}
+                                    >
+                                        My Leads ({manualLeads.length})
+                                    </button>
+                                </div>
                             </div>
 
                             <div className="p-4 sm:p-6">
-                                {leads.length === 0 ? (
-                                    <div className="text-center text-gray-500 py-8 border border-dashed border-gray-300 rounded-xs w-full">
-                                        No leads yet. Share your code to get started!
-                                    </div>
-                                ) : (
-                                    <div className="flex flex-col gap-y-4 w-full mt-2">
-                                        {leads.map((lead) => (
-                                            <div key={lead.id} className="bg-white rounded-xs border border-slate-200 p-3 pt-4 sm:p-4 shadow-sm hover:shadow-md transition relative flex items-center justify-between gap-2 w-full">
-                                                <div className="absolute -top-2.5 left-3">
-                                                    <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider whitespace-nowrap shadow-sm bg-white ${lead.status === 'Trial'
-                                                        ? 'text-orange-600 border-orange-200'
-                                                        : 'text-emerald-600 border-emerald-200'
-                                                        }`}>
-                                                        {lead.status}
-                                                    </span>
-                                                </div>
-
-                                                <div className="min-w-0 flex-1 pr-2">
-                                                    <p className="text-sm sm:text-base font-bold text-slate-800 truncate" title={lead.name}>{lead.name}</p>
-                                                    <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 truncate">{lead.ownerPhoneNumber}</p>
-                                                </div>
-
-                                                <div className="flex items-center gap-3 sm:gap-5 shrink-0">
-                                                    <div className="flex items-baseline gap-1.5 text-right">
-                                                        <p className={`text-lg sm:text-xl font-bold leading-none ${lead.status === 'Trial' ? 'text-orange-500' : 'text-slate-800'}`}>
-                                                            {lead.daysRemaining}
-                                                        </p>
-                                                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wide mt-1">Days Left</p>
+                                {leadsTab === 'signups' && (
+                                    leads.length === 0 ? (
+                                        <div className="text-center text-gray-500 py-8 border border-dashed border-gray-300 rounded-xs w-full">
+                                            No leads yet. Share your code to get started!
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col gap-y-4 w-full mt-2">
+                                            {leads.map((lead) => (
+                                                <div key={lead.id} className="bg-white rounded-xs border border-slate-200 p-3 pt-4 sm:p-4 shadow-sm hover:shadow-md transition relative flex items-center justify-between gap-2 w-full">
+                                                    <div className="absolute -top-2.5 left-3">
+                                                        <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider whitespace-nowrap shadow-sm bg-white ${lead.status === 'Trial'
+                                                            ? 'text-orange-600 border-orange-200'
+                                                            : 'text-emerald-600 border-emerald-200'
+                                                            }`}>
+                                                            {lead.status}
+                                                        </span>
                                                     </div>
 
-                                                    {lead.ownerPhoneNumber !== 'N/A' && (
-                                                        <a
-                                                            href={`tel:${lead.ownerPhoneNumber}`}
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            className={`px-2.5 py-2 sm:px-4 sm:py-2 text-sm font-bold rounded-xs focus:outline-none transition-colors flex items-center justify-center ${theme.btnPrimary}`}
-                                                        >
-                                                            <FiPhone size={14} />
-                                                            <span className="hidden sm:inline ml-1.5">Call</span>
-                                                        </a>
-                                                    )}
+                                                    <div className="min-w-0 flex-1 pr-2">
+                                                        <p className="text-sm sm:text-base font-bold text-slate-800 truncate" title={lead.name}>{lead.name}</p>
+                                                        <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 truncate">{lead.ownerPhoneNumber}</p>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-3 sm:gap-5 shrink-0">
+                                                        <div className="flex items-baseline gap-1.5 text-right">
+                                                            <p className={`text-lg sm:text-xl font-bold leading-none ${lead.status === 'Trial' ? 'text-orange-500' : 'text-slate-800'}`}>
+                                                                {lead.daysRemaining}
+                                                            </p>
+                                                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wide mt-1">Days Left</p>
+                                                        </div>
+
+                                                        {lead.ownerPhoneNumber !== 'N/A' && (
+                                                            <a
+                                                                href={`tel:${lead.ownerPhoneNumber}`}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                className={`px-2.5 py-2 sm:px-4 sm:py-2 text-sm font-bold rounded-xs focus:outline-none transition-colors flex items-center justify-center ${theme.btnPrimary}`}
+                                                            >
+                                                                <FiPhone size={14} />
+                                                                <span className="hidden sm:inline ml-1.5">Call</span>
+                                                            </a>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )
+                                )}
+
+                                {leadsTab === 'myLeads' && (
+                                    <div className="w-full">
+                                        {/* Inline Add Lead Form */}
+                                        {showAddForm && (
+                                            <div className="border border-slate-200 rounded-xs p-4 mb-4 bg-slate-50">
+                                                <h4 className="text-sm font-bold text-slate-700 mb-3">New Lead Details</h4>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                    <input
+                                                        type="text"
+                                                        value={leadForm.name}
+                                                        onChange={(e) => setLeadForm(prev => ({ ...prev, name: e.target.value }))}
+                                                        placeholder="Business / Contact name *"
+                                                        className="w-full border border-gray-300 p-2.5 rounded-xs focus:ring-2 focus:ring-black outline-none transition font-medium text-sm"
+                                                    />
+                                                    <input
+                                                        type="tel"
+                                                        value={leadForm.phoneNumber}
+                                                        onChange={(e) => setLeadForm(prev => ({ ...prev, phoneNumber: e.target.value }))}
+                                                        placeholder="Phone number *"
+                                                        className="w-full border border-gray-300 p-2.5 rounded-xs focus:ring-2 focus:ring-black outline-none transition font-medium text-sm"
+                                                    />
+                                                    <input
+                                                        type="email"
+                                                        value={leadForm.email}
+                                                        onChange={(e) => setLeadForm(prev => ({ ...prev, email: e.target.value }))}
+                                                        placeholder="Email (optional)"
+                                                        className="w-full border border-gray-300 p-2.5 rounded-xs focus:ring-2 focus:ring-black outline-none transition font-medium text-sm"
+                                                    />
+                                                    <input
+                                                        type="text"
+                                                        value={leadForm.address}
+                                                        onChange={(e) => setLeadForm(prev => ({ ...prev, address: e.target.value }))}
+                                                        placeholder="Address / location (optional)"
+                                                        className="w-full border border-gray-300 p-2.5 rounded-xs focus:ring-2 focus:ring-black outline-none transition font-medium text-sm"
+                                                    />
+                                                    <select
+                                                        value={leadForm.source}
+                                                        onChange={(e) => setLeadForm(prev => ({ ...prev, source: e.target.value as LeadSource }))}
+                                                        className="w-full border border-gray-300 p-2.5 rounded-xs focus:ring-2 focus:ring-black outline-none transition font-medium text-sm text-gray-700"
+                                                    >
+                                                        <option value="">Lead source (optional)</option>
+                                                        {LEAD_SOURCES.map((s) => (
+                                                            <option key={s} value={s}>{s}</option>
+                                                        ))}
+                                                    </select>
+                                                    <input
+                                                        type="date"
+                                                        value={leadForm.followUpDate}
+                                                        onChange={(e) => setLeadForm(prev => ({ ...prev, followUpDate: e.target.value }))}
+                                                        title="Follow-up date"
+                                                        className="w-full border border-gray-300 p-2.5 rounded-xs focus:ring-2 focus:ring-black outline-none transition font-medium text-sm text-gray-700"
+                                                    />
+                                                    <select
+                                                        value={leadForm.status}
+                                                        onChange={(e) => setLeadForm(prev => ({ ...prev, status: e.target.value as ManualLeadStatus }))}
+                                                        className="w-full border border-gray-300 p-2.5 rounded-xs focus:ring-2 focus:ring-black outline-none transition font-medium text-sm text-gray-700"
+                                                    >
+                                                        {MANUAL_LEAD_STATUSES.map((s) => (
+                                                            <option key={s} value={s}>{s}</option>
+                                                        ))}
+                                                    </select>
+                                                    <textarea
+                                                        value={leadForm.notes}
+                                                        onChange={(e) => setLeadForm(prev => ({ ...prev, notes: e.target.value }))}
+                                                        placeholder="Notes (optional)"
+                                                        rows={1}
+                                                        className="w-full border border-gray-300 p-2.5 rounded-xs focus:ring-2 focus:ring-black outline-none transition font-medium text-sm resize-none sm:col-span-2"
+                                                    />
+                                                </div>
+
+                                                <div className="flex justify-end gap-2 mt-3">
+                                                    <button
+                                                        onClick={() => { setShowAddForm(false); setLeadForm(emptyLeadForm); }}
+                                                        disabled={isSavingLead}
+                                                        className="px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-200 rounded-xs transition"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                    <button
+                                                        onClick={handleAddLead}
+                                                        disabled={isSavingLead || !leadForm.name.trim() || !leadForm.phoneNumber.trim()}
+                                                        className={`px-4 py-2 text-sm font-bold rounded-xs disabled:!bg-gray-400 flex items-center justify-center min-w-[100px] transition shadow-sm ${theme.btnPrimary}`}
+                                                    >
+                                                        {isSavingLead ? 'Saving...' : 'Save Lead'}
+                                                    </button>
                                                 </div>
                                             </div>
-                                        ))}
+                                        )}
+
+                                        {manualLeads.length === 0 ? (
+                                            <div className="text-center text-gray-500 py-8 border border-dashed border-gray-300 rounded-xs w-full">
+                                                No leads added yet. Click "Add Lead" to track your own prospects.
+                                            </div>
+                                        ) : (
+                                            <div className="flex flex-col gap-y-4 w-full mt-2">
+                                                {manualLeads.map((lead) => (
+                                                    <div key={lead.id} className="bg-white rounded-xs border border-slate-200 shadow-sm hover:shadow-md transition relative w-full">
+                                                        {editingLeadId === lead.id ? (
+                                                            /* --- Inline Edit Form --- */
+                                                            <div className="p-4 bg-slate-50 rounded-xs">
+                                                                <h4 className="text-sm font-bold text-slate-700 mb-3">Edit Lead</h4>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                                    <input
+                                                                        type="text"
+                                                                        value={editForm.name}
+                                                                        onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                                                                        placeholder="Business / Contact name *"
+                                                                        className="w-full border border-gray-300 p-2.5 rounded-xs focus:ring-2 focus:ring-black outline-none transition font-medium text-sm"
+                                                                    />
+                                                                    <input
+                                                                        type="tel"
+                                                                        value={editForm.phoneNumber}
+                                                                        onChange={(e) => setEditForm(prev => ({ ...prev, phoneNumber: e.target.value }))}
+                                                                        placeholder="Phone number *"
+                                                                        className="w-full border border-gray-300 p-2.5 rounded-xs focus:ring-2 focus:ring-black outline-none transition font-medium text-sm"
+                                                                    />
+                                                                    <input
+                                                                        type="email"
+                                                                        value={editForm.email}
+                                                                        onChange={(e) => setEditForm(prev => ({ ...prev, email: e.target.value }))}
+                                                                        placeholder="Email (optional)"
+                                                                        className="w-full border border-gray-300 p-2.5 rounded-xs focus:ring-2 focus:ring-black outline-none transition font-medium text-sm"
+                                                                    />
+                                                                    <input
+                                                                        type="text"
+                                                                        value={editForm.address}
+                                                                        onChange={(e) => setEditForm(prev => ({ ...prev, address: e.target.value }))}
+                                                                        placeholder="Address / location (optional)"
+                                                                        className="w-full border border-gray-300 p-2.5 rounded-xs focus:ring-2 focus:ring-black outline-none transition font-medium text-sm"
+                                                                    />
+                                                                    <select
+                                                                        value={editForm.source}
+                                                                        onChange={(e) => setEditForm(prev => ({ ...prev, source: e.target.value as LeadSource }))}
+                                                                        className="w-full border border-gray-300 p-2.5 rounded-xs focus:ring-2 focus:ring-black outline-none transition font-medium text-sm text-gray-700"
+                                                                    >
+                                                                        <option value="">Lead source (optional)</option>
+                                                                        {LEAD_SOURCES.map((s) => (
+                                                                            <option key={s} value={s}>{s}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                    <input
+                                                                        type="date"
+                                                                        value={editForm.followUpDate}
+                                                                        onChange={(e) => setEditForm(prev => ({ ...prev, followUpDate: e.target.value }))}
+                                                                        title="Follow-up date"
+                                                                        className="w-full border border-gray-300 p-2.5 rounded-xs focus:ring-2 focus:ring-black outline-none transition font-medium text-sm text-gray-700"
+                                                                    />
+                                                                    <select
+                                                                        value={editForm.status}
+                                                                        onChange={(e) => setEditForm(prev => ({ ...prev, status: e.target.value as ManualLeadStatus }))}
+                                                                        className="w-full border border-gray-300 p-2.5 rounded-xs focus:ring-2 focus:ring-black outline-none transition font-medium text-sm text-gray-700"
+                                                                    >
+                                                                        {MANUAL_LEAD_STATUSES.map((s) => (
+                                                                            <option key={s} value={s}>{s}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                    <textarea
+                                                                        value={editForm.notes}
+                                                                        onChange={(e) => setEditForm(prev => ({ ...prev, notes: e.target.value }))}
+                                                                        placeholder="Notes (optional)"
+                                                                        rows={1}
+                                                                        className="w-full border border-gray-300 p-2.5 rounded-xs focus:ring-2 focus:ring-black outline-none transition font-medium text-sm resize-none sm:col-span-2"
+                                                                    />
+                                                                </div>
+
+                                                                <div className="flex justify-end gap-2 mt-3">
+                                                                    <button
+                                                                        onClick={() => setEditingLeadId(null)}
+                                                                        disabled={isSavingEdit}
+                                                                        className="px-4 py-2 text-sm font-bold text-gray-600 hover:bg-gray-200 rounded-xs transition"
+                                                                    >
+                                                                        Cancel
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => handleSaveEditLead(lead.id)}
+                                                                        disabled={isSavingEdit || !editForm.name.trim() || !editForm.phoneNumber.trim()}
+                                                                        className={`px-4 py-2 text-sm font-bold rounded-xs disabled:!bg-gray-400 flex items-center justify-center min-w-[100px] transition shadow-sm ${theme.btnPrimary}`}
+                                                                    >
+                                                                        {isSavingEdit ? 'Saving...' : 'Save Changes'}
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            /* --- Normal Row --- */
+                                                            <div className="p-3 pt-4 sm:p-4 flex items-center justify-between gap-2 w-full">
+                                                                <div className="absolute -top-2.5 left-3">
+                                                                    <select
+                                                                        value={lead.status}
+                                                                        onChange={(e) => handleUpdateLeadStatus(lead.id, e.target.value as ManualLeadStatus)}
+                                                                        className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider whitespace-nowrap shadow-sm cursor-pointer outline-none ${manualLeadStatusStyles[lead.status]}`}
+                                                                    >
+                                                                        {MANUAL_LEAD_STATUSES.map((s) => (
+                                                                            <option key={s} value={s}>{s}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                </div>
+
+                                                                <div className="min-w-0 flex-1 pr-2">
+                                                                    <p className="text-sm sm:text-base font-bold text-slate-800 truncate" title={lead.name}>{lead.name}</p>
+                                                                    <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 truncate">{lead.phoneNumber}{lead.email ? ` · ${lead.email}` : ''}</p>
+                                                                    {lead.address && <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5 truncate" title={lead.address}>{lead.address}</p>}
+                                                                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                                                        {lead.source && (
+                                                                            <span className="text-[9px] font-bold uppercase tracking-wide text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">{lead.source}</span>
+                                                                        )}
+                                                                        {lead.followUpDate && (
+                                                                            <span className="text-[9px] font-bold uppercase tracking-wide text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">Follow-up: {lead.followUpDate}</span>
+                                                                        )}
+                                                                    </div>
+                                                                    {lead.notes && <p className="text-[11px] sm:text-xs text-slate-400 mt-1 truncate" title={lead.notes}>{lead.notes}</p>}
+                                                                </div>
+
+                                                                <div className="flex items-center gap-2 shrink-0">
+                                                                    {confirmDeleteId === lead.id ? (
+                                                                        <>
+                                                                            <button
+                                                                                onClick={() => handleDeleteLead(lead.id)}
+                                                                                className="px-2.5 py-2 text-xs font-bold rounded-xs bg-red-500 text-white hover:bg-red-600 transition-colors"
+                                                                            >
+                                                                                Confirm
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={() => setConfirmDeleteId(null)}
+                                                                                className="px-2.5 py-2 text-xs font-bold rounded-xs border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+                                                                            >
+                                                                                Cancel
+                                                                            </button>
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            {lead.phoneNumber !== 'N/A' && (
+                                                                                <a
+                                                                                    href={`tel:${lead.phoneNumber}`}
+                                                                                    onClick={(e) => e.stopPropagation()}
+                                                                                    className={`px-2.5 py-2 sm:px-4 sm:py-2 text-sm font-bold rounded-xs focus:outline-none transition-colors flex items-center justify-center ${theme.btnPrimary}`}
+                                                                                >
+                                                                                    <FiPhone size={14} />
+                                                                                    <span className="hidden sm:inline ml-1.5">Call</span>
+                                                                                </a>
+                                                                            )}
+                                                                            <button
+                                                                                onClick={() => setExpandedLeadId(prev => prev === lead.id ? null : lead.id)}
+                                                                                className={`px-2.5 py-2 text-sm font-bold rounded-xs border transition-colors flex items-center justify-center gap-1 ${expandedLeadId === lead.id ? 'border-slate-400 bg-slate-100 text-slate-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                                                                                title="Remarks"
+                                                                            >
+                                                                                <FiMessageSquare size={14} />
+                                                                                {lead.remarks && lead.remarks.length > 0 && (
+                                                                                    <span className="text-[10px] font-bold">{lead.remarks.length}</span>
+                                                                                )}
+                                                                                {expandedLeadId === lead.id ? <FiChevronUp size={12} /> : <FiChevronDown size={12} />}
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={() => startEditLead(lead)}
+                                                                                className="px-2.5 py-2 text-sm font-bold rounded-xs border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors flex items-center justify-center"
+                                                                                title="Edit lead"
+                                                                            >
+                                                                                <FiEdit2 size={14} />
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={() => setConfirmDeleteId(lead.id)}
+                                                                                className="px-2.5 py-2 text-sm font-bold rounded-xs border border-red-200 text-red-500 hover:bg-red-50 transition-colors flex items-center justify-center"
+                                                                            >
+                                                                                <FiTrash2 size={14} />
+                                                                            </button>
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* --- Remarks History Panel --- */}
+                                                        {editingLeadId !== lead.id && expandedLeadId === lead.id && (
+                                                            <div className="border-t border-slate-100 p-3 sm:p-4 bg-slate-50/60">
+                                                                <div className="flex gap-2 mb-3">
+                                                                    <input
+                                                                        type="text"
+                                                                        value={remarkText}
+                                                                        onChange={(e) => setRemarkText(e.target.value)}
+                                                                        onKeyDown={(e) => { if (e.key === 'Enter') handleAddRemark(lead.id); }}
+                                                                        placeholder="Add a remark..."
+                                                                        className="flex-1 border border-gray-300 p-2 rounded-xs focus:ring-2 focus:ring-black outline-none transition font-medium text-xs sm:text-sm"
+                                                                    />
+                                                                    <button
+                                                                        onClick={() => handleAddRemark(lead.id)}
+                                                                        disabled={isAddingRemark || !remarkText.trim()}
+                                                                        className={`px-3 py-2 text-xs font-bold rounded-xs disabled:!bg-gray-400 transition shadow-sm ${theme.btnPrimary}`}
+                                                                    >
+                                                                        {isAddingRemark ? 'Adding...' : 'Add'}
+                                                                    </button>
+                                                                </div>
+
+                                                                {(!lead.remarks || lead.remarks.length === 0) ? (
+                                                                    <p className="text-xs text-slate-400 text-center py-2">No remarks yet.</p>
+                                                                ) : (
+                                                                    <div className="flex flex-col gap-2 max-h-48 overflow-y-auto pr-1">
+                                                                        {lead.remarks.map((remark, idx) => (
+                                                                            <div key={idx} className="bg-white border border-slate-200 rounded-xs px-3 py-2">
+                                                                                <p className="text-xs sm:text-sm text-slate-700">{remark.text}</p>
+                                                                                <p className="text-[10px] text-slate-400 mt-1 font-medium">
+                                                                                    {new Date(remark.createdAt).toLocaleString()}
+                                                                                </p>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>

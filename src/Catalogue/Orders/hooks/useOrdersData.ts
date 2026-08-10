@@ -9,7 +9,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
 import type { Order } from '../orders.types';
-import { formatDate } from '../orders.utils';
+import { formatDate } from '../../../lib/format';
 
 export const useOrdersData = (
     companyId?: string,

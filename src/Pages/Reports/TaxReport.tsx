@@ -2,7 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
-import { IconClose, IconDownload } from '../../constants/Icons';
+import { IconDownload } from '../../constants/Icons';
+import BackButton from '../../Components/BackButton';
 import FilterSelect from './SalesReportComponents/FilterSelect';
 import useTaxReport from './TaxReportComponents/useTaxReport';
 import { handleDatePresetChange, handleApplyFilters } from './TaxReportComponents/taxReport.utils';
@@ -76,49 +77,56 @@ const TaxReport: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 p-2 pb-16 text-gray-800">
-      <div className="flex items-center justify-between pb-3 border-b bg-white p-3 rounded-xl shadow-sm mb-4">
-        <h1 className="text-xl font-bold tracking-tight text-gray-900">Unified Reporting Vault</h1>
-        <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-full"><IconClose width={20} height={20} /></button>
+      <div className="flex items-center justify-between pb-3 border-b bg-white p-3 rounded-sm shadow-sm mb-4">
+        <BackButton className="rounded-full" onClick={() => navigate(-1)} />
+        <h1 className="flex-1 text-center text-xl font-bold tracking-tight text-gray-900">Unified Reporting Vault</h1>
+        <div className="w-9" />
       </div>
 
-      <div className="bg-white p-3 rounded-xl shadow-sm mb-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <FilterSelect label="Period" value={datePreset} onChange={(e) => handleDatePresetChange(e.target.value, setDatePreset, setCustomStartDate, setCustomEndDate)}>
-          <option value="thisMonth">This Month</option>
-          <option value="lastMonth">Last Month</option>
-          <option value="quarter">Last Quarter</option>
-          <option value="custom">Custom Range</option>
-        </FilterSelect>
-        <div className="grid grid-cols-2 gap-2">
-          <input type="date" value={customStartDate} onChange={(e) => { setCustomStartDate(e.target.value); setDatePreset('custom'); }} className="p-2 border rounded-md text-sm" />
-          <input type="date" value={customEndDate} onChange={(e) => { setCustomEndDate(e.target.value); setDatePreset('custom'); }} className="p-2 border rounded-md text-sm" />
+      <div className="bg-white p-3 rounded-sm shadow-sm mb-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center">
+          <div className="w-full md:w-56">
+            <FilterSelect value={datePreset} onChange={(e) => handleDatePresetChange(e.target.value, setDatePreset, setCustomStartDate, setCustomEndDate)}>
+              <option value="thisMonth">This Month</option>
+              <option value="lastMonth">Last Month</option>
+              <option value="quarter">Last Quarter</option>
+              <option value="custom">Custom Range</option>
+            </FilterSelect>
+          </div>
+          <div className="grid grid-cols-2 gap-2 md:flex md:flex-1 md:gap-3">
+            <input type="date" value={customStartDate} onChange={(e) => { setCustomStartDate(e.target.value); setDatePreset('custom'); }} className="p-2 border rounded-sm text-sm md:flex-1" />
+            <input type="date" value={customEndDate} onChange={(e) => { setCustomEndDate(e.target.value); setDatePreset('custom'); }} className="p-2 border rounded-sm text-sm md:flex-1" />
+          </div>
         </div>
-        <button onClick={() => handleApplyFilters(customStartDate, customEndDate, setAppliedFilters)} className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md transition shadow-sm">Apply Scope</button>
+        <div className="mt-3">
+          <button onClick={() => handleApplyFilters(customStartDate, customEndDate, setAppliedFilters)} className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-sm transition shadow-sm">Apply</button>
+        </div>
       </div>
 
-      <div className="flex overflow-x-auto gap-1 border-b mb-4 bg-white p-1.5 rounded-xl shadow-sm scrollbar-none">
+      <div className="flex overflow-x-auto gap-1 border-b mb-4 bg-white p-1.5 rounded-sm shadow-sm scrollbar-none">
         {availableTabs.map((tab) => (
           <button
             key={tab} onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 text-xs font-bold rounded-lg uppercase tracking-wider transition whitespace-nowrap ${activeTab === tab ? 'bg-blue-600 text-white shadow' : 'text-gray-500 hover:bg-gray-100'}`}
+            className={`px-4 py-2 text-xs font-bold rounded-sm uppercase tracking-wider transition whitespace-nowrap ${activeTab === tab ? 'bg-blue-600 text-white shadow' : 'text-gray-500 hover:bg-gray-100'}`}
           >
             {tab}
           </button>
         ))}
       </div>
 
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+      <div className="bg-white p-4 rounded-sm shadow-sm border border-gray-100">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-sm font-extrabold uppercase tracking-wider text-gray-500">{activeTab} Details</h2>
 
           <div className="relative">
             <button
               onClick={() => setDownloadMenuOpen((v) => !v)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-semibold hover:bg-green-700 shadow transition"
+              className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white rounded-sm text-xs font-semibold hover:bg-green-700 shadow transition"
             >
               <IconDownload width={14} height={14} /> Download Excel Export
             </button>
             {downloadMenuOpen && (
-              <div className="absolute right-0 mt-1 w-64 bg-white border rounded-lg shadow-lg z-100 overflow-hidden">
+              <div className="absolute right-0 mt-1 w-64 bg-white border rounded-sm shadow-lg z-100 overflow-hidden">
                 {downloadOptions.map((opt) => (
                   <button
                     key={opt.key}
@@ -134,11 +142,29 @@ const TaxReport: React.FC = () => {
         </div>
 
         {activeTab === 'SUMMARY' && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <CustomCard variant={CardVariant.Summary} title="Sales Turnover" value={`₹${metrics.salesTurnover.toLocaleString('en-IN')}`} />
-            {gstScheme !== 'None' && <CustomCard variant={CardVariant.Summary} title={gstScheme === 'Composition' ? 'ITC (Blocked)' : 'Input Credit'} value={`₹${metrics.totalItc.toLocaleString('en-IN')}`} className={gstScheme === 'Composition' ? 'opacity-40' : ''} />}
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <CustomCard variant={CardVariant.Summary} title="Sales Turnover" value={`₹${metrics.salesTurnover.toLocaleString('en-IN')}`} />
+              <CustomCard variant={CardVariant.Summary} title="Purchase Turnover" value={`₹${metrics.purchaseTurnover.toLocaleString('en-IN')}`} />
+              {gstScheme !== 'None' && (
+                <CustomCard
+                  variant={CardVariant.Summary}
+                  title="Tax Amount"
+                  value={`₹${(metrics.igstOut + metrics.cgstOut + metrics.sgstOut).toLocaleString('en-IN')}`}
+                />
+              )}
+              {gstScheme !== 'None' && (
+                <CustomCard
+                  variant={CardVariant.Summary}
+                  title={gstScheme === 'Composition' ? 'ITC (Blocked)' : 'Input Credit'}
+                  value={`₹${metrics.totalItc.toLocaleString('en-IN')}`}
+                  className={gstScheme === 'Composition' ? 'opacity-40' : ''}
+                />
+              )}
+            </div>
+
             {gstScheme !== 'None' && (
-              <div className="bg-green-50 border border-green-100 rounded-xl p-4 flex flex-col justify-center items-center">
+              <div className="bg-green-50 border border-green-100 rounded-sm p-4 flex flex-col justify-center items-center">
                 <span className="text-xs font-extrabold text-green-800 uppercase">Net Liability Payable</span>
                 <span className="text-2xl font-black text-green-700 mt-1">₹{Math.max(0, metrics.netPayable).toLocaleString('en-IN')}</span>
               </div>

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import FilterSelect from './SalesReportComponents/FilterSelect';
 import { formatDate, formatDateForInput } from './SalesReportComponents/salesReport.utils';
-import usePartyLedger, { type LedgerTransaction, type PaymentRecord, type PartySummary } from './PartyLedger/usePartyLedger';
+import usePartyLedger, { type LedgerTransaction, type PaymentRecord, type PartySummary, normalizePartyNumber } from './PartyLedger/usePartyLedger';
 import XLSX from 'xlsx-js-style';
 import ExcelJS from 'exceljs';
 import { Spinner } from '../../constants/Spinner';
@@ -423,7 +423,7 @@ const PartyLedger: React.FC = () => {
             { header: '● Due Amount', note: 'They owe you (₹) — leave blank if none', width: 16 },
             { header: '● Advance Amount', note: 'You owe them (₹) — leave both blank to just add the party', width: 16 },
             { header: '● Narration', note: 'Optional note / description', width: 26 },
-       { header: '● Party Address', note: 'Optional — full address', width: 26 },   // NEW
+            { header: '● Party Address', note: 'Optional — full address', width: 26 },   // NEW
             { header: '● GST Number', note: 'Optional — GSTIN', width: 18 },             // NEW
         ];
 
@@ -1047,7 +1047,7 @@ const PartyLedger: React.FC = () => {
 
                                         {showTransactionList && filteredParties.map((party) => (
                                             <CustomCard
-                                                key={party.partyName}
+                                                key={`${normalizePartyNumber(party.partyNumber) || party.partyName}-${party.partyType}`}
                                                 onClick={() => { setSelectedPartyName(party.partyNumber || party.partyName); setShowTransactionList(false); }}
                                                 className="cursor-pointer transition-shadow hover:shadow-md p-3.5 bg-white"
                                             >
@@ -1125,7 +1125,7 @@ const PartyLedger: React.FC = () => {
                                     <div className="flex items-center justify-between pb-2 mb-2">
                                         <BackButton onClick={() => { setSelectedPartyName(null); setExpandedBillId(null); setShowTransactionList(false); }} />
                                         <h1 className="flex-1 text-lg text-center font-bold text-gray-800 truncate px-2">
-                                            {selectedPartyName} - Ledger
+                                            {selectedPartyLedger?.partyName || selectedPartyName} - Ledger
                                         </h1>
                                         {/* NEW: delete this party from the detail view too */}
                                         <button

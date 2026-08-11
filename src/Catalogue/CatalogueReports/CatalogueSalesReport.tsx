@@ -234,7 +234,7 @@ const OrdersReport: React.FC = () => {
         fetchCompanyName();
     }, [currentUser?.companyId]);
 
-    const [datePreset, setDatePreset] = useState<string>('today');
+    const [datePreset, setDatePreset] = useState<string>('last30');
     const [customStartDate, setCustomStartDate] = useState<string>('');
     const [customEndDate, setCustomEndDate] = useState<string>('');
     const [appliedFilters, setAppliedFilters] = useState<{ start: number; end: number } | null>(null);
@@ -251,7 +251,10 @@ const OrdersReport: React.FC = () => {
 
     useEffect(() => {
         const today = new Date();
-        const startDateStr = formatDateForInput(today);
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+
+        const startDateStr = formatDateForInput(thirtyDaysAgo);
         const endDateStr = formatDateForInput(today);
         setCustomStartDate(startDateStr);
         setCustomEndDate(endDateStr);

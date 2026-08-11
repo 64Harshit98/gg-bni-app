@@ -99,7 +99,7 @@ export const usePnlReport = (companyId: string | undefined) => {
 export function usePnlStates() {
   const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
-  const [datePreset, setDatePreset] = useState<string>('today');
+  const [datePreset, setDatePreset] = useState<string>('last30');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [appliedFilters, setAppliedFilters] = useState({ start: '', end: '' });

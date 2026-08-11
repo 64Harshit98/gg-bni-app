@@ -62,6 +62,12 @@ import { botMasterService } from '../../Pages/Additional/Whatsapp/WhatsappApi';
 import { ROUTES } from '../../constants/routes.constants';
 import { Spinner } from '../../constants/Spinner';
 
+const normalizePartyNumber = (num?: string): string => {
+    if (!num) return '';
+    const digits = num.toString().replace(/\D/g, '');
+    return digits.length >= 10 ? digits.slice(-10) : digits;
+};
+
 const useOrdersData = (companyId?: string) => {
     const [Orders, setOrders] = React.useState<any[]>([]);
 
@@ -577,7 +583,7 @@ const CataloguePartyLedger: React.FC = () => {
                 || order.billingDetails?.phone
                 || order.shippingDetails?.phone;
 
-            const number = (rawNumber || '').toString().trim();
+            const number = normalizePartyNumber(rawNumber);
             const key = number
                 ? number
                 : `NO_PHONE_${name.toLowerCase().replace(/\s+/g, '_')}`;
@@ -622,14 +628,15 @@ const CataloguePartyLedger: React.FC = () => {
             const end = appliedEndDate ? new Date(appliedEndDate).setHours(23, 59, 59, 999) : Date.now();
             if (ob.createdAt < start || ob.createdAt > end) return; // ← skip if outside range
 
-            const key = ob.partyNumber?.trim()
-                ? ob.partyNumber.trim()
+            const normalizedObNumber = normalizePartyNumber(ob.partyNumber);
+            const key = normalizedObNumber
+                ? normalizedObNumber
                 : `NO_PHONE_${ob.partyName.toLowerCase().replace(/\s+/g, '_')}`;
 
             if (!map.has(key)) {
                 map.set(key, {
                     partyName: ob.partyName,
-                    partyNumber: ob.partyNumber,
+                    partyNumber: normalizedObNumber || ob.partyNumber,
                     totalBilled: 0,
                     totalDue: 0,
                     totalTransactions: 0,
@@ -679,14 +686,14 @@ const CataloguePartyLedger: React.FC = () => {
 
         const transactions = dateFilteredOrders
             .filter((order: any) => {
-                const orderPhone = (
+                const orderPhone = normalizePartyNumber(
                     order.userLoginPhone
                     || order.billingDetails?.phone
                     || order.shippingDetails?.phone
                     || ''
-                ).toString().trim();
+                );
 
-                const selectedPhone = (selectedPartyNumber || '').toString().trim();
+                const selectedPhone = normalizePartyNumber(selectedPartyNumber || '');
 
                 // ✅ Phone number hai toh sirf number se match karo (name ignore)
                 if (selectedPhone) {
@@ -735,8 +742,8 @@ const CataloguePartyLedger: React.FC = () => {
                 const end = appliedEndDate ? new Date(appliedEndDate).setHours(23, 59, 59, 999) : Date.now();
                 if (ob.createdAt < start || ob.createdAt > end) return false;
 
-                const selectedPhone = (selectedPartyNumber || '').toString().trim();
-                if (selectedPhone) return ob.partyNumber?.trim() === selectedPhone;
+                const selectedPhone = normalizePartyNumber(selectedPartyNumber || '');
+                if (selectedPhone) return normalizePartyNumber(ob.partyNumber) === selectedPhone;
                 return ob.partyName === selectedPartyName;
             })
             .map(ob => ({
@@ -947,7 +954,7 @@ const CataloguePartyLedger: React.FC = () => {
                 const partyNumberDigits = partyNumber.replace(/\D/g, '');
                 if (!partyNumber || partyNumberDigits.length !== 10) { skippedCount++; continue; }
 
-                 const partyType: 'Customer' | 'Supplier' = typeVal.startsWith('s') ? 'Supplier' : 'Customer';
+                const partyType: 'Customer' | 'Supplier' = typeVal.startsWith('s') ? 'Supplier' : 'Customer';
                 // Only ambiguous when BOTH are filled. Neither filled is now a valid
                 // "just add this party" row — it shouldn't be rejected.
                 if (dueVal > 0 && advanceVal > 0) { skippedCount++; continue; }
@@ -1038,7 +1045,7 @@ const CataloguePartyLedger: React.FC = () => {
                     dueAmount: row.balanceType === 'due' ? row.amount : 0,
                     balanceType: row.balanceType,
                     note: row.note || '',
-                     address: row.address || '',      // NEW
+                    address: row.address || '',      // NEW
                     gstNumber: row.gstNumber || '',  // NEW
                     paymentHistory: [],
                     createdAt: createdAtValue,
@@ -1054,7 +1061,7 @@ const CataloguePartyLedger: React.FC = () => {
                         name: row.partyName,
                         number: row.partyNumber,
                         [balanceField]: fsIncrement(row.amount),
-                    ...(row.address ? { address: row.address } : {}),       // NEW
+                        ...(row.address ? { address: row.address } : {}),       // NEW
                         ...(row.gstNumber ? { gstNumber: row.gstNumber } : {}), // NEW
                     }, { merge: true });
                 }
@@ -1068,7 +1075,7 @@ const CataloguePartyLedger: React.FC = () => {
                     dueAmount: row.balanceType === 'due' ? row.amount : 0,
                     balanceType: row.balanceType,
                     note: row.note || '',
-                     address: row.address || '',      // NEW
+                    address: row.address || '',      // NEW
                     gstNumber: row.gstNumber || '',  // NEW
                     createdAt: row.date || Date.now(),
                     paymentHistory: [],
@@ -1111,7 +1118,7 @@ const CataloguePartyLedger: React.FC = () => {
             { header: '● Due Amount', note: 'They owe you (₹) — leave blank if none', width: 16 },
             { header: '● Advance Amount', note: 'You owe them (₹) — leave both blank to just add the party', width: 16 },
             { header: '● Narration', note: 'Optional note / description', width: 26 },
-        { header: '● Party Address', note: 'Optional — full address', width: 26 },   // NEW
+            { header: '● Party Address', note: 'Optional — full address', width: 26 },   // NEW
             { header: '● GST Number', note: 'Optional — GSTIN', width: 18 },             // NEW
         ];
 

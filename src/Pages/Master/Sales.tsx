@@ -1833,9 +1833,9 @@ const Sales: React.FC = () => {
             const fileUrl = await getDownloadURL(storageRef);
             // --- NEW: Fetch the extra message from bill settings ---
             const billSettingsSnap = await getDoc(doc(db, 'companies', currentUser.companyId, 'settings', 'bill'));
-            const extraMsg = billSettingsSnap.exists() && billSettingsSnap.data().whatsappExtraMessage
-                ? `\n\n${billSettingsSnap.data().whatsappExtraMessage}`
-                : '';
+            const billSettingsData = billSettingsSnap.exists() ? billSettingsSnap.data() : {};
+            const resolvedExtraMessage = billSettingsData.posWhatsappExtraMessage || '';
+            const extraMsg = resolvedExtraMessage ? `\n\n${resolvedExtraMessage}` : '';
             // -------------------------------------------------------
 
             // Append the extraMsg to the end of your standard message

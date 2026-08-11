@@ -34,15 +34,16 @@ export interface AggregatedItem {
 
 const ItemsSoldReport: React.FC = () => {
 
-    const [datePreset, setDatePreset] = useState<DatePreset>(DatePreset.TODAY);
+    const [datePreset, setDatePreset] = useState<DatePreset>(DatePreset.LAST_30_DAYS);
     const [customStartDate, setCustomStartDate] = useState<string>('');
     const [customEndDate, setCustomEndDate] = useState<string>('');
 
     useEffect(() => {
-        if (datePreset === DatePreset.TODAY) {
+        if (datePreset === DatePreset.LAST_30_DAYS) {
             const start = new Date();
             const end = new Date();
 
+            start.setDate(start.getDate() - 29);
             start.setHours(0, 0, 0, 0);
             end.setHours(23, 59, 59, 999);
 

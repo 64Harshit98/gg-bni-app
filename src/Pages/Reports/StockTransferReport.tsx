@@ -89,14 +89,19 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
 
   // --- filters (only used for History tab) ---
   const today = formatDateForInput(new Date());
-  const [startDate, setStartDate] = useState(today);
+  const last30Start = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 29);
+    return formatDateForInput(d);
+  })();
+  const [startDate, setStartDate] = useState(last30Start);
   const [endDate, setEndDate] = useState(today);
   const [appliedFilters, setAppliedFilters] = useState<{ start: number; end: number } | null>(() => {
-    const s = new Date(); s.setHours(0, 0, 0, 0);
+    const s = new Date(); s.setDate(s.getDate() - 29); s.setHours(0, 0, 0, 0);
     const e = new Date(); e.setHours(23, 59, 59, 999);
     return { start: s.getTime(), end: e.getTime() };
   });
-  const [datePreset, setDatePreset] = useState('today');
+  const [datePreset, setDatePreset] = useState('last30');
 
   // --- ui state ---
   const [showSearch, setShowSearch] = useState(false);

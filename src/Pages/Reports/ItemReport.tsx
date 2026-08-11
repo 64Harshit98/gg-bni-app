@@ -56,9 +56,14 @@ const ItemReport: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
   const todayStr = new Date().toISOString().slice(0, 10);
-  const [fromDate, setFromDate] = useState<string>(todayStr);
+  const last30StartStr = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 29);
+    return d.toISOString().slice(0, 10);
+  })();
+  const [fromDate, setFromDate] = useState<string>(last30StartStr);
   const [toDate, setToDate] = useState<string>(todayStr);
-  const [datePreset, setDatePreset] = useState<string>('today');
+  const [datePreset, setDatePreset] = useState<string>('last30');
   const {
     items,
     appliedItemGroupId,

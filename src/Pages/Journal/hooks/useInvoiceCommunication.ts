@@ -350,9 +350,9 @@ export const useInvoiceCommunication = ({
 
       const fileUrl = await getDownloadURL(storageRef);
 
-      const extraMsg = billSettingsSnap.exists() && billSettingsSnap.data().whatsappExtraMessage
-        ? `\n\n${billSettingsSnap.data().whatsappExtraMessage}`
-        : '';
+      const billSettingsData = billSettingsSnap.exists() ? billSettingsSnap.data() : {};
+      const resolvedExtraMessage = billSettingsData.posWhatsappExtraMessage || '';
+      const extraMsg = resolvedExtraMessage ? `\n\n${resolvedExtraMessage}` : '';
 
       // Append the extraMsg to the end of your standard message
       const message = `Hello ${invoice.partyName},\n\nHere is your invoice #${invoice.invoiceNumber}.\nAmount: ${invoice.amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}\n\nThank you!${extraMsg}`;

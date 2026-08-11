@@ -62,7 +62,7 @@ export const usePnlReport = (companyId: string | undefined) => {
 export function usePnlStates() {
   const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
-  const [datePreset, setDatePreset] = useState<string>('today');
+  const [datePreset, setDatePreset] = useState<string>('last30');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [appliedFilters, setAppliedFilters] = useState({ start: '', end: '' });
@@ -74,12 +74,16 @@ export function usePnlStates() {
 
   useEffect(() => {
     const today = new Date();
-    const formattedToday = formatDateForInput(today);
-    setStartDate(formattedToday);
-    setEndDate(formattedToday);
-    const startTimestamp = new Date(formattedToday);
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+
+    const formattedStart = formatDateForInput(thirtyDaysAgo);
+    const formattedEnd = formatDateForInput(today);
+    setStartDate(formattedStart);
+    setEndDate(formattedEnd);
+    const startTimestamp = new Date(formattedStart);
     startTimestamp.setHours(0, 0, 0, 0);
-    const endTimestamp = new Date(formattedToday);
+    const endTimestamp = new Date(formattedEnd);
     endTimestamp.setHours(23, 59, 59, 999);
     setAppliedFilters({
       start: startTimestamp.toISOString(),

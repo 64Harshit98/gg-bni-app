@@ -15,7 +15,7 @@ export default function useCustomerReport() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [datePreset, setDatePreset] = useState('today');
+  const [datePreset, setDatePreset] = useState('last30');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [appliedFilters, setAppliedFilters] = useState({ start: '', end: '' });
@@ -30,16 +30,20 @@ export default function useCustomerReport() {
 
   useEffect(() => {
     const today = new Date();
-    const formatted = formatDateForInput(today);
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
 
-    const start = new Date(formatted);
+    const formattedStart = formatDateForInput(thirtyDaysAgo);
+    const formattedEnd = formatDateForInput(today);
+
+    const start = new Date(formattedStart);
     start.setHours(0, 0, 0, 0);
 
-    const end = new Date(formatted);
+    const end = new Date(formattedEnd);
     end.setHours(23, 59, 59, 999);
 
-    setStartDate(formatted);
-    setEndDate(formatted);
+    setStartDate(formattedStart);
+    setEndDate(formattedEnd);
     setAppliedFilters({
       start: start.toISOString(),
       end: end.toISOString(),

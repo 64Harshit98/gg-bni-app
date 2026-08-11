@@ -16,7 +16,7 @@ export default function useSalesReport() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [datePreset, setDatePreset] = useState<string>('today');
+  const [datePreset, setDatePreset] = useState<string>('last30');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
   const [appliedFilters, setAppliedFilters] = useState<{
@@ -31,7 +31,10 @@ export default function useSalesReport() {
 
   useEffect(() => {
     const today = new Date();
-    const startDateStr = formatDateForInput(today);
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+
+    const startDateStr = formatDateForInput(thirtyDaysAgo);
     const endDateStr = formatDateForInput(today);
     setCustomStartDate(startDateStr);
     setCustomEndDate(endDateStr);

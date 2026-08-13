@@ -11,6 +11,7 @@
     "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "preview": "vite preview",
+    "test": "vitest run",
     "deploy:all": "npm run build && firebase deploy",
     "commit": "cz",
     "prepare": "husky",
@@ -100,7 +101,8 @@
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.30.1",
     "vite": "^6.3.5",
-    "vite-tsconfig-paths": "^5.1.4"
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^4.1.10"
   },
   "config": {
     "commitizen": {

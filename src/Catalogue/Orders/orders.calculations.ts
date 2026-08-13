@@ -1,26 +1,17 @@
 import type { OrderItem } from './orders.types';
+import { calculateLineTax, isTaxEnabled as sharedIsTaxEnabled, type LineTax } from '../../shared/calculations/itemCalculations';
 
-// Whether tax should be applied at all, based on the company's sales settings.
-// (Transcribed verbatim from the 9 call sites that used to compute this inline —
-// see implementation.md Stage 2 notes.)
-export const isTaxEnabled = (salesSettings: any): boolean => {
-    return (
-        salesSettings?.gstScheme?.toLowerCase() === 'regular' &&
-        salesSettings?.taxType?.toUpperCase() !== 'NONE'
-    );
-};
+// Re-exported from the shared calc layer — this formula was verified
+// identical to Sales.tsx's equivalent gate before being promoted to
+// src/shared/calculations/itemCalculations.ts. See implementation.md §2.4.
+export const isTaxEnabled = sharedIsTaxEnabled;
 
-export interface LineTax {
-    taxableAmount: number; // the item's value with tax excluded
-    taxAmount: number;
-    finalPrice: number;    // taxableAmount + taxAmount — the line total actually charged
-}
+export type { LineTax };
 
-// Per-item tax split. Correctly handles all three tax types, including
-// 'inclusive' (where the stored unit price already contains tax and the tax
-// portion must be backed out, not added on top). Modeled on the save-time
-// formula in the pre-refactor Orders.tsx, which was the one occurrence of
-// this formula that already got 'inclusive' right.
+// Per-item tax split, same signature/behavior as before. Now a thin wrapper
+// around the shared shared/calculations/itemCalculations.ts formula (which
+// takes lineTotal directly) — kept as unitPrice*quantity here so every
+// existing call site in this Orders module needs no changes.
 export const computeLineTax = (
     unitPrice: number,
     quantity: number,
@@ -28,29 +19,7 @@ export const computeLineTax = (
     taxRate: number,
     taxEnabled: boolean
 ): LineTax => {
-    const lineTotal = unitPrice * quantity;
-    const effectiveTaxRate = taxEnabled ? taxRate : 0;
-    const normalizedType = (taxType || '').toLowerCase();
-
-    if (effectiveTaxRate > 0 && normalizedType === 'inclusive') {
-        const taxableAmount = lineTotal / (1 + effectiveTaxRate / 100);
-        return {
-            taxableAmount,
-            taxAmount: lineTotal - taxableAmount,
-            finalPrice: lineTotal,
-        };
-    }
-
-    if (effectiveTaxRate > 0 && (normalizedType === 'exclusive' || normalizedType === 'regular')) {
-        const taxAmount = lineTotal * (effectiveTaxRate / 100);
-        return {
-            taxableAmount: lineTotal,
-            taxAmount,
-            finalPrice: lineTotal + taxAmount,
-        };
-    }
-
-    return { taxableAmount: lineTotal, taxAmount: 0, finalPrice: lineTotal };
+    return calculateLineTax(unitPrice * quantity, taxType, taxRate, taxEnabled);
 };
 
 // Resolves the per-unit price used everywhere in Orders for a line item,

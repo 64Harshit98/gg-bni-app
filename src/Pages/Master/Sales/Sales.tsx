@@ -1,63 +1,35 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth, useDatabase } from '../../context/auth-context';
-import type { Item, SalesItem as OriginalSalesItem } from '../../constants/models';
-import { ROUTES } from '../../constants/routes.constants';
-import { db } from '../../lib/Firebase';
-import { collection, serverTimestamp, doc, increment as firebaseIncrement, runTransaction, getDocs, query, where, getDoc, onSnapshot } from 'firebase/firestore';
-import SearchableItemInput from '../../UseComponents/SearchIteminput';
-import BarcodeScanner from '../../UseComponents/BarcodeScanner';
-import PaymentDrawer, { type PaymentCompletionData } from '../../Components/PaymentDrawer';
-import { peekNextInvoiceNumber } from '../../UseComponents/InvoiceCounter';
-import { Modal } from '../../constants/Modal';
-import { Permissions, ROLES, State, Variant, ACTION } from '../../enums';
-import { CustomButton } from '../../Components';
-import type { User } from '../../Role/permission';
-import { useSalesSettings } from '../../context/SettingsContext';
-import { Spinner } from '../../constants/Spinner';
-import { ItemEditDrawer } from '../../Components/ItemDrawer';
-import { GenericCartList } from '../../Components/CartItem';
-import BarcodeLinkModal from '../../Components/BarcodeLinkModal';
+import { useAuth, useDatabase } from '../../../context/auth-context';
+import { ROUTES } from '../../../constants/routes.constants';
+import SearchableItemInput from '../../../UseComponents/SearchIteminput';
+import BarcodeScanner from '../../../UseComponents/BarcodeScanner';
+import PaymentDrawer from '../../../Components/PaymentDrawer';
+import { Modal } from '../../../constants/Modal';
+import { Permissions, ROLES, State, Variant } from '../../../enums';
+import { CustomButton } from '../../../Components';
+import { useSalesSettings } from '../../../context/SettingsContext';
+import { Spinner } from '../../../constants/Spinner';
+import { ItemEditDrawer } from '../../../Components/ItemDrawer';
+import { GenericCartList } from '../../../Components/CartItem';
+import BarcodeLinkModal from '../../../Components/BarcodeLinkModal';
 import { FiTrash2, FiX, FiEdit, FiCamera, FiDelete, FiSearch, FiMenu } from 'react-icons/fi';
-import { GenericBillFooter } from '../../Components/Footer';
-import { IconScanCircle, IconPrint } from '../../constants/Icons';
+import { GenericBillFooter } from '../../../Components/Footer';
+import { IconScanCircle, IconPrint } from '../../../constants/Icons';
 import QRCode from 'react-qr-code';
 import { FiSend } from 'react-icons/fi';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { storage } from '../../lib/Firebase';
-import { generatePdfBlob, generatePdf, compressImage } from '../../UseComponents/pdfGenerator';
-import { getFirestoreOperations } from '../../lib/ItemsFirebase';
-import { botMasterService } from '../Additional/Whatsapp/WhatsappApi';
-import { PLAN_ALLOWED_FEATURES } from '../Settings/SalesSetting';
-import CalcDisplay from '../../Components/CalcDisplay';
-import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
-import { useLiveItemsStock } from '../hooks/useLiveItemsStock';
+import CalcDisplay from '../../../Components/CalcDisplay';
+import type { SalesItem } from './sales.types';
+import { applyRounding, calculateSaleTotals } from './sales.calculations';
+import {
+    useSalesCalculator,
+    useSalesCart,
+    useSalesCatalogueAndSettings,
+    useSalesCommunication,
+    useSalesPayment,
+} from './hooks';
 
-export interface SalesItem extends OriginalSalesItem {
-    isEditable: boolean;
-    customPrice?: number | string;
-    discount2?: number;
-    taxableAmount?: number;
-    taxAmount?: number;
-    taxRate?: number;
-    taxType?: 'inclusive' | 'exclusive' | 'none';
-    purchasePrice: number;
-    tax: number;
-    itemGroupId: string;
-    salesPrice: number;
-    stock: number;
-    amount: number;
-    barcode: string;
-    restockQuantity: number;
-    productId: string;
-    unit?: string;
-    unitMultiplier?: number;
-    moq?: number;
-    packetSize?: number | undefined;
-    isCustomAmount?: boolean;
-    isStagedCalcItem?: boolean;
-    addedAt?: number;   // 👈 NEW: 
-}
+export type { SalesItem };
 
 // Inside Sales component, add interface and button data
 interface CalcKey {
@@ -107,117 +79,99 @@ const calcKeys: CalcKey[][] = [
     ]
 ];
 
-export const applyRounding = (amount: number, isRoundingEnabled: boolean, interval: number = 1): number => {
-    if (!isRoundingEnabled || !interval || interval <= 0) {
-        return parseFloat(amount.toFixed(2));
-    }
-    const rounded = Math.round(amount / interval) * interval;
-    return parseFloat(rounded.toFixed(2));
-};
-
-const toCurrency = (num: number) => {
-    return Math.round((num + Number.EPSILON) * 100) / 100;
-};
-
-
 const Sales: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const { currentUser, loading: authLoading, hasPermission } = useAuth();
     const dbOperations = useDatabase();
-    // 👇 1. GRAB RAW SETTINGS FROM DB 👇
     const { salesSettings: rawSettings, loadingSettings } = useSalesSettings();
 
-    // 👇 2. INSTANTLY ENFORCE PLAN LIMITS 👇
-    const salesSettings = useMemo(() => {
-        if (!rawSettings) return null;
-
-        // Get the active plan using your exact data structure
-        const activePlan = currentUser?.Subscription?.pack?.toLowerCase() || 'pos_basic';
-        const allowedFeatures = PLAN_ALLOWED_FEATURES[activePlan] || PLAN_ALLOWED_FEATURES['pos_basic'];
-
-        // If their saved view isn't allowed, force them to the first allowed view (e.g. 'calculator' for basic)
-        const validView = allowedFeatures.allowedViews?.includes(rawSettings.salesViewType || 'list')
-            ? rawSettings.salesViewType
-            : allowedFeatures.allowedViews[0];
-
-        return {
-            ...rawSettings,
-            salesViewType: validView,
-        };
-    }, [rawSettings, currentUser?.Subscription?.pack]);
     const invoiceToEdit = location.state?.invoiceData;
     const isEditMode = location.state?.isEditMode === true && !!invoiceToEdit;
-    const [barcodeToLink, setBarcodeToLink] = useState<string | null>(null);
-    const [isBarcodeLinkModalOpen, setIsBarcodeLinkModalOpen] = useState(false);
-    const [isLinkingBarcode, setIsLinkingBarcode] = useState(false);
-    const [sortOrder, setSortOrder] = useState<'az' | 'za' | 'price_asc' | 'price_desc'>('az');
+
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
-    const [savedBillData, setSavedBillData] = useState<{ id: string, number: string, invoiceData?: any } | null>(null);
-    const [sendingPdf, setSendingPdf] = useState(false);
-    const [printingPdf, setPrintingPdf] = useState(false);
-    const [showPrintSubMenu, setShowPrintSubMenu] = useState(false);
-    const [enableTriplicate, setEnableTriplicate] = useState(false);
-    const [isSearchOpen, setIsSearchOpen] = useState(false);
-    const [isSortOpen, setIsSortOpen] = useState(false);
-    const [invoiceNumber, setInvoiceNumber] = useState<string>('');
-    const isInvoiceNumberManuallyEdited = useRef(false);
-    const [invoiceDate, setInvoiceDate] = useState<string>(() => {
-        // In edit mode, use the original invoice's date
-        if (location.state?.isEditMode === true && location.state?.invoiceData?.createdAt) {
-            const original = new Date(location.state.invoiceData.createdAt);
-            if (!isNaN(original.getTime())) {
-                const yyyy = original.getFullYear();
-                const mm = String(original.getMonth() + 1).padStart(2, '0');
-                const dd = String(original.getDate()).padStart(2, '0');
-                return `${yyyy}-${mm}-${dd}`;
-            }
-        }
-        const today = new Date();
-        const yyyy = today.getFullYear();
-        const mm = String(today.getMonth() + 1).padStart(2, '0');
-        const dd = String(today.getDate()).padStart(2, '0');
-        return `${yyyy}-${mm}-${dd}`;
+
+    const {
+        salesSettings,
+        activeTaxMode, setActiveTaxMode,
+        invoiceNumber, setInvoiceNumber,
+        isInvoiceNumberManuallyEdited,
+        invoiceDate, setInvoiceDate,
+        availableItems, setAvailableItems,
+        pageIsLoading,
+        error,
+        workers,
+        selectedWorker, setSelectedWorker,
+        settingsDocId,
+        itemGroupMap,
+    } = useSalesCatalogueAndSettings({
+        currentUser,
+        authLoading,
+        dbOperations,
+        rawSettings,
+        loadingSettings,
+        isEditMode,
+        invoiceToEdit,
     });
 
-    const [items, setItems] = useState<SalesItem[]>(() => {
-        if (isEditMode) return [];
-        try {
-            const savedDraft = sessionStorage.getItem('sales_cart_draft');
-            const parsedDraft = savedDraft ? JSON.parse(savedDraft) : [];
-            return parsedDraft;
-        } catch (e) {
-            return [];
-        }
+    const {
+        items, setItems,
+        longPressTimer,
+        cartListRef,
+        isDiscountLocked,
+        discountInfo,
+        isPriceLocked,
+        priceInfo,
+        duplicateItemPrompt, setDuplicateItemPrompt,
+        isScannerOpen, setIsScannerOpen,
+        barcodeToLink,
+        isBarcodeLinkModalOpen,
+        isLinkingBarcode,
+        selectedCategory, setSelectedCategory,
+        gridSearchQuery, setGridSearchQuery,
+        setCartSearchQuery,
+        sortOrder, setSortOrder,
+        selectedItemForEdit,
+        isItemDrawerOpen,
+        showClearCartConfirm, setShowClearCartConfirm,
+        categories,
+        sortedGridItems,
+        displayItems,
+        addItemToCart,
+        handleClearCart,
+        handleConfirmClearCart,
+        handleItemSelected,
+        handleIncreaseExistingQuantity,
+        handleAddAsNewLine,
+        closeBarcodeLinkModal,
+        handleLinkScannedBarcode,
+        handleBarcodeScanned,
+        handleQuantityChange,
+        handleDeleteItem,
+        handleDiscountPressStart,
+        handleDiscountPressEnd,
+        handleDiscountClick,
+        handlePricePressStart,
+        handlePricePressEnd,
+        handlePriceClick,
+        handleDiscountChange,
+        handleDiscount2Change,
+        handleCustomPriceChange,
+        handleCustomPriceBlur,
+        handleOpenEditDrawer,
+        handleCloseEditDrawer,
+        handleSaveSuccess,
+    } = useSalesCart({
+        salesSettings,
+        loadingSettings,
+        isEditMode,
+        invoiceToEdit,
+        pageIsLoading,
+        availableItems,
+        setAvailableItems,
+        dbOperations,
+        setModal,
     });
-
-    // --- Active Tax Mode State ---
-    // This drives the entire calculation logic now
-    const [activeTaxMode, setActiveTaxMode] = useState<'inclusive' | 'exclusive' | 'exempt'>('exclusive');
-
-    const [availableItems, setAvailableItems] = useState<Item[]>([]);
-    const [pageIsLoading, setPageIsLoading] = useState<boolean>(true);
-    const [error, setError] = useState<string | null>(null);
-    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-    const [duplicateItemPrompt, setDuplicateItemPrompt] = useState<{ item: Item; existingCount: number } | null>(null);
-    const [isScannerOpen, setIsScannerOpen] = useState(false);
-    const longPressTimer = useRef<NodeJS.Timeout | null>(null);
-
-    const [isDiscountLocked, setIsDiscountLocked] = useState(true);
-    const [discountInfo, setDiscountInfo] = useState<string | null>(null);
-    const [isPriceLocked, setIsPriceLocked] = useState(true);
-    const [priceInfo, setPriceInfo] = useState<string | null>(null);
-
-    const [workers, setWorkers] = useState<User[]>([]);
-    const [selectedWorker, setSelectedWorker] = useState<User | null>(null);
-    const [settingsDocId, setSettingsDocId] = useState<string | null>(null);
-
-    const [selectedCategory, setSelectedCategory] = useState<string>('All');
-    const [listSelectedCategory] = useState<string>('All');
-    const [gridSearchQuery, setGridSearchQuery] = useState<string>('');
-    const [itemGroupMap, setItemGroupMap] = useState<Record<string, string>>({});
-    const [cartSearchQuery, setCartSearchQuery] = useState<string>('');
-    const [isFooterExpanded, setIsFooterExpanded] = useState(false);
 
     const userRole = currentUser?.role || '';
     const isManager = userRole === ROLES.MANAGER || userRole === ROLES.OWNER;
@@ -228,1669 +182,93 @@ const Sales: React.FC = () => {
     const isCardImageView = isCardView && (salesSettings?.cardViewWithPhoto !== false);
     const isCalculatorView = salesSettings?.salesViewType === 'calculator';
     const showTaxRow = (activeTaxMode !== 'exempt');
-    const [calcInput, setCalcInput] = useState<string>('');
-    const [stagedCalcInput, setStagedCalcInput] = useState<string>('');
 
-    // If the cart gets completely cleared (e.g., successful payment), forget the staged equation
-    useEffect(() => {
-        if (items.length === 0) {
-            setStagedCalcInput('');
-        }
-    }, [items.length]);
-
-    const handlePointerDown = (key: CalcKey) => {
-        if (key.value === 'Backspace') {
-            longPressTimer.current = setTimeout(() => {
-                handleKeypadPress({ ...key, value: 'Clear' }); // Triggers the Clear logic after 1.5s
-                longPressTimer.current = null;
-            }, 1000);
-        }
-    };
-
-    const handlePointerUp = (key: CalcKey) => {
-        if (key.value === 'Backspace') {
-            if (longPressTimer.current) {
-                clearTimeout(longPressTimer.current); // Cancel the long press
-                handleKeypadPress(key); // Execute normal short press (Backspace)
-                longPressTimer.current = null;
-            }
-        } else {
-            handleKeypadPress(key); // Normal keys execute on click/up
-        }
-    };
-
-    const handlePointerLeave = (key: CalcKey) => {
-        if (key.value === 'Backspace' && longPressTimer.current) {
-            clearTimeout(longPressTimer.current);
-            longPressTimer.current = null;
-        }
-    };
-    // Logic: Always pre-select based on settings, but allow override.
-    useEffect(() => {
-        if (loadingSettings) return;
-
-        if (isEditMode && invoiceToEdit?.taxType) {
-            const savedType = invoiceToEdit.taxType;
-            if (savedType === 'none') setActiveTaxMode('exempt');
-            else if (savedType === 'inclusive' || savedType === 'exclusive') setActiveTaxMode(savedType);
-        } else if (salesSettings) {
-            // 1. Check session storage first
-            const savedTaxMode = sessionStorage.getItem('sales_tax_mode_draft');
-            if (!isEditMode && (savedTaxMode === 'inclusive' || savedTaxMode === 'exclusive' || savedTaxMode === 'exempt')) {
-                setActiveTaxMode(savedTaxMode);
-            }
-            // 2. Fallback to pre-select based on Settings
-            else if (salesSettings.gstScheme === 'none' || salesSettings.gstScheme === 'composition') {
-                setActiveTaxMode('exempt');
-            } else {
-                setActiveTaxMode(salesSettings.taxType as any || 'exclusive');
-            }
-        }
-    }, [loadingSettings, salesSettings, isEditMode, invoiceToEdit]);
-
-    // ... (Data Fetching - Unchanged) ...
-    useEffect(() => {
-        const findSettingsDocId = async () => {
-            if (currentUser?.companyId) {
-                const settingsQuery = query(collection(db, 'companies', currentUser.companyId, 'settings'), where('settingType', '==', 'sales'));
-                const settingsSnapshot = await getDocs(settingsQuery);
-                if (!settingsSnapshot.empty) setSettingsDocId(settingsSnapshot.docs[0].id);
-            }
-        };
-        findSettingsDocId();
-
-        if (authLoading || !currentUser || !dbOperations || loadingSettings) {
-            setPageIsLoading(authLoading || loadingSettings);
-            return;
-        }
-
-        // --- REAL-TIME INVOICE LISTENER (Multi-tab Fix) ---
-        let unsubscribeCounter: () => void = () => { };
-
-        if (!isEditMode && currentUser?.companyId) {
-            const counterRef = doc(db, 'companies', currentUser.companyId, 'counters', 'invoiceCounter');
-            const settingsRef = doc(db, 'companies', currentUser.companyId, 'settings', 'sales-settings');
-
-            unsubscribeCounter = onSnapshot(counterRef, async (docSnap) => {
-                if (isInvoiceNumberManuallyEdited.current) return;
-                const settingsSnap = await getDoc(settingsRef);
-                const prefix = settingsSnap.exists() ? (settingsSnap.data().voucherPrefix || 'INV') : 'INV';
-
-                if (docSnap.exists()) {
-                    const nextNum = docSnap.data().currentNumber || 1;
-                    setInvoiceNumber(`${prefix}-${nextNum}`);
-                } else {
-                    setInvoiceNumber(`${prefix}-1`);
-                }
-            });
-        }
-
-        const fetchData = async () => {
-            try {
-                setPageIsLoading(true);
-                setError(null);
-                const fetchedItems = await dbOperations.syncItems();
-                setAvailableItems(fetchedItems);
-
-                // If in edit mode, we use the saved number, NOT the live counter
-                if (isEditMode && invoiceToEdit?.invoiceNumber) {
-                    setInvoiceNumber(invoiceToEdit.invoiceNumber);
-                }
-
-                const fetchedWorkers = await dbOperations.getWorkers();
-                setWorkers(fetchedWorkers);
-                let groupMap: Record<string, string> = {};
-                if (currentUser?.companyId) {
-                    try {
-                        const groupsRef = collection(db, 'companies', currentUser.companyId, 'itemGroups');
-                        const groupsSnap = await getDocs(groupsRef);
-                        groupsSnap.docs.forEach(doc => { const data = doc.data(); groupMap[doc.id] = data.name || data.groupName || 'Unknown Group'; });
-                    } catch (e) { console.error(e); }
-                }
-                setItemGroupMap(groupMap);
-                if (isEditMode) {
-                    const originalSalesman = fetchedWorkers.find(u => u.uid === invoiceToEdit?.salesmanId);
-                    setSelectedWorker(originalSalesman || null);
-                } else {
-                    const savedSalesmanUid = sessionStorage.getItem('sales_salesman_draft');
-                    if (savedSalesmanUid) {
-                        const savedWorker = fetchedWorkers.find(u => u.uid === savedSalesmanUid);
-                        setSelectedWorker(savedWorker || null);
-                    } else {
-                        const currentUserAsWorker = fetchedWorkers.find(u => u.uid === currentUser.uid);
-                        setSelectedWorker(currentUserAsWorker || null);
-                    }
-                }
-            } catch (err) {
-                console.error(err);
-                setError('Failed to load initial page data.');
-            } finally {
-                setPageIsLoading(false);
-            }
-        };
-
-        fetchData();
-
-        // Cleanup the listener when the component unmounts
-        return () => unsubscribeCounter();
-
-    }, [authLoading, currentUser, dbOperations, isEditMode, invoiceToEdit, loadingSettings]);
-
-    useEffect(() => {
-        const fetchBillSettings = async () => {
-            if (!currentUser?.companyId) return;
-            try {
-                const billSettingsRef = doc(db, 'companies', currentUser.companyId, 'settings', 'bill');
-                const snap = await getDoc(billSettingsRef);
-                if (snap.exists()) setEnableTriplicate(!!snap.data().enableTriplicate);
-            } catch (err) {
-                console.error('Error fetching bill settings for triplicate flag:', err);
-            }
-        };
-        fetchBillSettings();
-    }, [currentUser?.companyId]);
-
-    // Keeps availableItems' `stock` field live-synced — see useLiveItemsStock.ts
-    useLiveItemsStock(currentUser?.companyId, setAvailableItems);
-
-    useEffect(() => {
-        if (!loadingSettings && salesSettings) {
-            setIsDiscountLocked(salesSettings.lockDiscountEntry ?? false);
-            setIsPriceLocked(salesSettings.lockSalePriceEntry ?? false);
-        }
-    }, [loadingSettings, salesSettings?.lockDiscountEntry, salesSettings?.lockSalePriceEntry]);
-
-    // ... (Edit Mode Init - Unchanged) ...
-    useEffect(() => {
-        if (isEditMode && invoiceToEdit?.items) {
-            const nonEditableItems = invoiceToEdit.items.map((item: any) => ({
-                ...item,
-                id: crypto.randomUUID(),
-                productId: item.id,
-                isEditable: true,
-                customPrice: item.effectiveUnitPrice,
-                quantity: item.quantity || 1,
-                mrp: item.mrp || 0,
-                discount: item.discount || 0,
-                discount2: item.discount2 || 0,
-                taxableAmount: item.taxableAmount,
-                taxAmount: item.taxAmount,
-                taxRate: item.taxRate,
-                taxType: item.taxType,
-                finalPrice: item.finalPrice,
-                effectiveUnitPrice: item.effectiveUnitPrice,
-                discountPercentage: item.discountPercentage,
-                purchasePrice: item.purchasePrice || 0,
-                tax: Number(item.tax ?? item.taxRate ?? 0),
-                itemGroupId: item.itemGroupId || '',
-                stock: item.stock ?? item.Stock ?? 0,
-                amount: item.amount || 0,
-                barcode: item.barcode || '',
-                restockQuantity: item.restockQuantity || 0,
-                unit: item.unit || '',                     // ADDED
-                unitMultiplier: 1,  // ADDED
-                packetSize: item.packetSize || null,
-            }));
-            setItems(nonEditableItems);
-        }
-    }, [isEditMode, invoiceToEdit]);
-
-    useEffect(() => {
-        if (!isEditMode && !pageIsLoading) {
-            sessionStorage.setItem('sales_cart_draft', JSON.stringify(items));
-        }
-    }, [items, isEditMode, pageIsLoading]);
-
-    useEffect(() => {
-        if (!isEditMode && activeTaxMode && !pageIsLoading) {
-            sessionStorage.setItem('sales_tax_mode_draft', activeTaxMode);
-        }
-    }, [activeTaxMode, isEditMode, pageIsLoading]);
-
-    useEffect(() => {
-        if (!isEditMode && !pageIsLoading) {
-            if (selectedWorker) {
-                sessionStorage.setItem('sales_salesman_draft', selectedWorker.uid);
-            } else {
-                sessionStorage.removeItem('sales_salesman_draft');
-            }
-        }
-    }, [selectedWorker, isEditMode, pageIsLoading]);
-
-    const categories = useMemo(() => {
-        const groups = new Set(availableItems.map(i => i.itemGroupId || 'uncategorized'));
-        return ['All', ...Array.from(groups).sort()];
-    }, [availableItems]);
-
-    const sortedGridItems = useMemo(() => {
-        const filtered = availableItems.filter(item => {
-            const itemGroupId = item.itemGroupId || 'uncategorized';
-            const matchesCategory = selectedCategory === 'All' || itemGroupId === selectedCategory;
-            const matchesSearch = gridSearchQuery === '' || item.name.toLowerCase().includes(gridSearchQuery.toLowerCase()) || item.barcode?.includes(gridSearchQuery);
-            return matchesCategory && matchesSearch;
-        });
-
-        const sortFn = (a: Item, b: Item) => {
-            switch (sortOrder) {
-                case 'az': return a.name.localeCompare(b.name);
-                case 'za': return b.name.localeCompare(a.name);
-                case 'price_asc': return (a.salesPrice || a.mrp || 0) - (b.salesPrice || b.mrp || 0);
-                case 'price_desc': return (b.salesPrice || b.mrp || 0) - (a.salesPrice || a.mrp || 0);
-                default: return 0;
-            }
-        };
-
-        return [...filtered].sort(sortFn);
-
-    }, [availableItems, selectedCategory, gridSearchQuery, items, sortOrder]);
+    const [isSearchOpen, setIsSearchOpen] = useState(false);
+    const [isSortOpen, setIsSortOpen] = useState(false);
+    const [isFooterExpanded, setIsFooterExpanded] = useState(false);
 
     const gstSchemeDisplay = salesSettings?.gstScheme;
 
-    const { subtotal, totalDiscount, taxAmount, finalAmount, totalQuantity, totalMrp } = useMemo(() => {
-        let accumulatorSubtotal = 0;
-        let accumulatorTaxable = 0;
-        let accumulatorTax = 0;
-        let accumulatorQuantity = 0;
-        let accumulatorMrp = 0;
-
-        const taxRate = salesSettings?.defaultTaxRate ?? 0;
-        const isRoundingEnabled = salesSettings?.enableRounding ?? true;
-        const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
-
-        // Determine Effective Tax Mode
-        // Determine Effective Tax Mode
-        let effectiveTaxMode = 'none';
-
-        // Removed "&& isTaxEnabled" so it only relies on the GST scheme and the dropdown
-        if (gstSchemeDisplay?.toLowerCase() === 'regular') {
-            effectiveTaxMode = activeTaxMode === 'exempt' ? 'none' : activeTaxMode;
-        } else {
-            effectiveTaxMode = 'none';
-        }
-
-
-        items.forEach(cartItem => {
-            const currentQuantity = cartItem.quantity || 1;
-            accumulatorQuantity += currentQuantity;
-            const basePrice = (cartItem.mrp > 0) ? cartItem.mrp : (cartItem.salesPrice || 0);
-            accumulatorMrp += basePrice * currentQuantity;
-
-            let baseForSubtotal = (cartItem.mrp > 0) ? cartItem.mrp : (cartItem.salesPrice || 0);
-            const itemSpecificTaxRate = cartItem.tax !== undefined ? Number(cartItem.tax) : taxRate;
-
-            if (effectiveTaxMode === 'inclusive' && itemSpecificTaxRate > 0) {
-                baseForSubtotal = baseForSubtotal / (1 + (itemSpecificTaxRate / 100));
-            }
-
-            accumulatorSubtotal += baseForSubtotal * currentQuantity;
-
-            const baseForDiscount = (cartItem.mrp > 0) ? cartItem.mrp : (cartItem.salesPrice || 0);
-            let effectiveUnitPrice = 0;
-            if (cartItem.customPrice !== undefined && cartItem.customPrice !== null && cartItem.customPrice !== '') {
-                effectiveUnitPrice = parseFloat(String(cartItem.customPrice));
-            } else {
-                const priceAfterDiscount1 = baseForDiscount * (1 - (cartItem.discount || 0) / 100);
-                effectiveUnitPrice = priceAfterDiscount1 * (1 - (cartItem.discount2 || 0) / 100);
-            }
-
-            effectiveUnitPrice = applyRounding(effectiveUnitPrice, isRoundingEnabled, roundingInterval);
-            const lineTotal = toCurrency(effectiveUnitPrice * currentQuantity);
-
-            // 3. Tax Calculation
-            let lineBaseAmount = 0;
-            let lineTaxAmount = 0;
-
-            if (effectiveTaxMode !== 'none' && itemSpecificTaxRate > 0) {
-                if (effectiveTaxMode === 'inclusive') {
-                    lineBaseAmount = toCurrency(lineTotal / (1 + (itemSpecificTaxRate / 100)));
-                    lineTaxAmount = toCurrency(lineTotal - lineBaseAmount);
-                } else {
-                    lineBaseAmount = lineTotal;
-                    lineTaxAmount = toCurrency(lineTotal * (itemSpecificTaxRate / 100));
-                }
-            } else {
-                lineBaseAmount = lineTotal;
-                lineTaxAmount = 0;
-            }
-
-            accumulatorTaxable += lineBaseAmount;
-            accumulatorTax += lineTaxAmount;
-        });
-
-        const finalTaxable = toCurrency(accumulatorTaxable);
-        const finalTax = toCurrency(accumulatorTax);
-        const rawFinalAmount = toCurrency(finalTaxable + finalTax);
-
-        let totalDiscountValue = 0;
-
-        if (effectiveTaxMode === 'none') {
-            totalDiscountValue = toCurrency(accumulatorSubtotal - rawFinalAmount);
-        } else {
-            totalDiscountValue = toCurrency(accumulatorSubtotal - finalTaxable);
-        }
-
-        const finalPayableAmount = Math.round(rawFinalAmount);
-        const roundOffAmount = toCurrency(finalPayableAmount - rawFinalAmount);
-
-
-        return {
-            subtotal: accumulatorSubtotal,
-            totalDiscount: totalDiscountValue > 0 ? totalDiscountValue : 0,
-            roundOff: roundOffAmount,
-            taxableAmount: finalTaxable,
-            taxAmount: finalTax,
-            finalAmount: finalPayableAmount,
-            totalQuantity: accumulatorQuantity,
-            totalMrp: accumulatorMrp
-        };
-    }, [items, salesSettings, activeTaxMode, gstSchemeDisplay]);
+    const { subtotal, totalDiscount, taxAmount, finalAmount, totalQuantity, totalMrp } = useMemo(
+        () => calculateSaleTotals(items, salesSettings, activeTaxMode, gstSchemeDisplay),
+        [items, salesSettings, activeTaxMode, gstSchemeDisplay]
+    );
 
     const amountToPayNow = useMemo(() => finalAmount, [finalAmount]);
-    // Helper to evaluate the current string (e.g., "100*2" -> 200)
 
-    const displayRef = useRef<HTMLTextAreaElement>(null);
-    const cartListRef = useRef<HTMLDivElement>(null);
-    // Injects a number exactly where the user tapped
-    const insertAtCursor = (val: string) => {
-        const input = displayRef.current;
-        if (!input) {
-            setCalcInput(prev => prev + val);
-            return;
-        }
-
-        // Capture cursor position *before* the state updates
-        const start = input.selectionStart ?? 0;
-        const end = input.selectionEnd ?? 0;
-        // Detect if the user is typing at the very end of the visible text
-        const isAtEnd = start === (input.value?.length || 0);
-
-        setCalcInput(prev => {
-            const currentInput = prev || '';
-
-            // If typing rapidly at the end, safely append. Otherwise, insert at cursor.
-            const newVal = isAtEnd
-                ? currentInput + val
-                : currentInput.slice(0, start) + val + currentInput.slice(end);
-
-            setTimeout(() => {
-                input.focus();
-                const newPos = isAtEnd ? newVal.length : start + val.length;
-                input.setSelectionRange(newPos, newPos);
-            }, 0);
-
-            return newVal;
-        });
-    };
-
-    // Deletes the number exactly where the user tapped
-    const deleteAtCursor = () => {
-        const input = displayRef.current;
-        if (!input) return;
-
-        const start = input.selectionStart ?? 0;
-        const end = input.selectionEnd ?? 0;
-        const isAtEnd = start === (input.value?.length || 0);
-
-        setCalcInput(prev => {
-            if (!prev) return prev;
-
-            let newVal;
-            let newPos;
-
-            // If rapid-firing backspace at the end of the string
-            if (isAtEnd) {
-                newVal = prev.slice(0, -1);
-                newPos = newVal.length;
-            } else if (start === end && start > 0) {
-                newVal = prev.slice(0, start - 1) + prev.slice(end);
-                newPos = start - 1;
-            } else if (start !== end) {
-                newVal = prev.slice(0, start) + prev.slice(end);
-                newPos = start;
-            } else {
-                return prev; // Nothing to delete
-            }
-
-            setTimeout(() => {
-                input.focus();
-                input.setSelectionRange(newPos, newPos);
-            }, 0);
-
-            return newVal;
-        });
-    };
-
-    const generateSafeId = () => {
-        if (typeof window.crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-            return crypto.randomUUID();
-        }
-        // Fallback for mobile HTTP testing
-        return 'id-' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
-    };
-    // Evaluates expressions like "23*5", "36-5", "45*5-10", "36" 
-    // NO percentage handling here — that's done in parseFullEquation
-    const evaluateSegmentNoPercent = (expr: string): number => {
-        // Split by - to handle flat subtraction
-        // But careful: "23*5-10" → base="23*5", subtract=10
-        const subtractParts = expr.split('-');
-
-        // First part may have multiplication
-        let result = evaluateMultiplication(subtractParts[0]);
-
-        // Remaining parts are subtracted flat
-        for (let i = 1; i < subtractParts.length; i++) {
-            const val = evaluateMultiplication(subtractParts[i]);
-            if (!isNaN(val)) result -= val;
-        }
-
-        return result;
-    };
-
-    // Evaluates "23*5" or "100" — multiplication only
-    const evaluateMultiplication = (expr: string): number => {
-        const parts = expr.trim().split('*');
-        let result = 1;
-        let hasValid = false;
-
-        parts.forEach(p => {
-            const n = parseFloat(p.trim());
-            if (!isNaN(n)) {
-                result *= n;
-                hasValid = true;
-            }
-        });
-
-        return hasValid ? result : NaN;
-    };
-    // Parses the entire string on the screen to calculate live totals and generate items
-    const parseFullEquation = (equation: string): { items: SalesItem[], total: number } => {
-        if (!equation.trim()) return { items: [], total: 0 };
-
-        // Split ONLY on + as separator (never treat + as addition)
-        const segments = equation.split('+').map(s => s.trim()).filter(Boolean);
-
-        const newItems: SalesItem[] = [];
-        let grandTotal = 0;
-
-        segments.forEach((segment) => {
-            if (!segment.trim()) return;
-
-            let segmentValue = 0;
-
-            // Each segment can be:
-            // "115"        → flat amount
-            // "23*5"       → multiply
-            // "36-5"       → flat subtract
-            // "45*5-10"    → multiply then flat subtract
-            // "20-2%"      → multiply/flat then percentage discount
-            // "45*3-10%"   → multiply then percentage discount
-
-            // Step 1: Check for percentage discount at the END (e.g. "45*3-10%")
-            const percentDiscountMatch = segment.match(/^(.+)-(\d+(?:\.\d+)?)%$/);
-
-            if (percentDiscountMatch) {
-                const baseExpr = percentDiscountMatch[1].trim();  // "45*3" or "20"
-                const discountPct = parseFloat(percentDiscountMatch[2]); // 10 or 2
-
-                // Evaluate base expression (may have * and -)
-                // First handle multiplication, then subtraction
-                let baseValue = evaluateSegmentNoPercent(baseExpr);
-                if (!isNaN(baseValue)) {
-                    segmentValue = baseValue * (1 - discountPct / 100);
-                }
-            } else {
-                // No percentage — evaluate as flat expression with * and -
-                segmentValue = evaluateSegmentNoPercent(segment);
-            }
-
-            if (!isNaN(segmentValue) && segmentValue !== 0) {
-                newItems.push({
-                    id: generateSafeId(),
-                    productId: `${generateSafeId()}`,
-                    name: segment.replace('*', ' x '),
-                    mrp: segmentValue,
-                    salesPrice: segmentValue,
-                    customPrice: segmentValue,
-                    quantity: 1,
-                    discount: 0,
-                    discount2: 0,
-                    isEditable: true,
-                    purchasePrice: 0,
-                    tax: salesSettings?.defaultTaxRate || 0,
-                    itemGroupId: 'calculator',
-                    stock: 0,
-                    amount: segmentValue,
-                    barcode: '',
-                    restockQuantity: 0,
-                    unit: 'Bill',
-                    unitMultiplier: 1,
-                    packetSize: 1,
-                    isCustomAmount: true,
-                    isStagedCalcItem: false,
-                });
-
-                grandTotal += segmentValue;
-            }
-        });
-
-        return { items: newItems, total: grandTotal };
-    };
-
-    // Live preview data
-    const parsedData = parseFullEquation(calcInput);
-    const liveTotal = finalAmount + parsedData.total;
-    const liveItemCount = items.length + parsedData.items.length;
-
-
-    const handleKeypadPress = (key: CalcKey) => {
-        const { value, type } = key;
-        if (type === 'function') {
-            if (value === 'Backspace') {
-                deleteAtCursor(); // <-- UPDATED
-            } else if (value === 'Clear') {
-                if (calcInput === '') {
-                    if (items.length > 0 && window.confirm("Are you sure you want to clear the entire bill?")) setItems([]);
-                } else {
-                    setCalcInput('');
-                }
-            }
-        } else {
-            // Operator (+, *) or Number
-            insertAtCursor(value); // <-- UPDATED
-        }
-    };
-
-    const handleCheckoutClick = () => {
-        if (calcInput.trim()) {
-            // Flag the items as 'staged' so we can remove them if the drawer is canceled
-            const stagedItems = parsedData.items.map(i => ({ ...i, isStagedCalcItem: true }));
-
-            setStagedCalcInput(calcInput); // Remember the equation
-
-            setItems(prev => {
-                const insertionOrder = salesSettings?.cartInsertionOrder || 'top';
-                return insertionOrder === 'top' ? [...stagedItems, ...prev] : [...prev, ...stagedItems];
-            });
-            setCalcInput(''); // Clear screen
-        }
-
-        setTimeout(() => {
-            if (items.length > 0 || parsedData.items.length > 0) {
-                setIsDrawerOpen(true);
-            } else {
-                setModal({ message: 'Please add at least one item.', type: State.INFO });
-            }
-        }, 10);
-    };
-
-    useEffect(() => {
-        if (!isCalculatorView) return;
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (document.activeElement === displayRef.current) {
-                if (e.key === 'Enter' || e.key === '=') {
-                    e.preventDefault();
-                    handleCheckoutClick();
-                } else if (e.key.toLowerCase() === 'c' || e.key === 'Escape') {
-                    e.preventDefault();
-                    if (calcInput === '') {
-                        if (items.length > 0 && window.confirm("Are you sure you want to clear the bill?")) setItems([]);
-                    } else {
-                        setCalcInput('');
-                    }
-                }
-                return;
-            }
-            const key = e.key;
-            if (/^[0-9*.\-+]$/.test(key)) {
-                setCalcInput(prev => prev + key);
-            } else if (key === 'Enter' || key === '=') {
-                e.preventDefault();
-                handleCheckoutClick();
-            } else if (key === 'Backspace') {
-                setCalcInput(prev => prev.slice(0, -1));
-            } else if (key.toLowerCase() === 'c' || key === 'Escape') {
-                if (calcInput === '') {
-                    if (items.length > 0 && window.confirm("Are you sure you want to clear the bill?")) setItems([]);
-                } else {
-                    setCalcInput('');
-                }
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isCalculatorView, calcInput, items.length]);
-
-    const addItemToCart = (itemToAdd: Item) => {
-        if (!itemToAdd || !itemToAdd.id) {
-            setModal({ message: "Cannot add invalid item.", type: State.ERROR });
-            return;
-        }
-
-        const itemTaxExtracted = Number(itemToAdd.tax ?? (itemToAdd as any).taxRate ?? salesSettings?.defaultTaxRate ?? 0);
-
-        const mrp = Number(itemToAdd.mrp || 0);
-        const salesPrice = Number(itemToAdd.salesPrice || 0);
-        const presetDiscount = Number(itemToAdd.discount || 0);
-        const initialMoq = Number((itemToAdd as any).moq || 1);
-
-        let finalNetPrice = 0;
-        let calculatedDiscount = 0;
-
-        // --- NEW 3-TIER LOGIC ---
-        if (mrp > 0 && salesPrice > 0) {
-            // Case 1: Both exist. Ignore DB discount. Calculate diff.
-            finalNetPrice = salesPrice;
-            calculatedDiscount = ((mrp - salesPrice) / mrp) * 100;
-        } else if (salesPrice > 0) {
-            // Case 2: Only Sales Price exists. Apply DB discount.
-            calculatedDiscount = presetDiscount;
-            finalNetPrice = salesPrice * (1 - (presetDiscount / 100));
-        } else if (mrp > 0) {
-            // Case 3: Only MRP exists. Apply DB discount.
-            calculatedDiscount = presetDiscount;
-            finalNetPrice = mrp * (1 - (presetDiscount / 100));
-        }
-
-        const isRoundingEnabled = salesSettings?.enableRounding ?? true;
-        const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
-        finalNetPrice = applyRounding(finalNetPrice, isRoundingEnabled, roundingInterval);
-
-        const newSalesItem: SalesItem = {
-            ...itemToAdd,
-            id: crypto.randomUUID(),
-            productId: itemToAdd.id!,
-            quantity: Math.max(1, initialMoq),
-            discount: calculatedDiscount,
-            discount2: 0,
-            customPrice: finalNetPrice,
-            isEditable: true,
-            purchasePrice: itemToAdd.purchasePrice || 0,
-            tax: itemTaxExtracted,
-            itemGroupId: itemToAdd.itemGroupId || '',
-            stock: itemToAdd.stock || (itemToAdd as any).Stock || 0,
-            amount: itemToAdd.amount || 0,
-            barcode: itemToAdd.barcode || '',
-            restockQuantity: itemToAdd.restockQuantity || 0,
-            unit: (itemToAdd as any).unit || '',
-            unitMultiplier: 1,
-            packetSize: (itemToAdd as any).packetSize || null,
-            addedAt: Date.now(),
-        };
-
-        setItems(prev => {
-            const insertionOrder = salesSettings?.cartInsertionOrder || 'top';
-            const newList = insertionOrder === 'top' ? [newSalesItem, ...prev] : [...prev, newSalesItem];
-
-            setTimeout(() => {
-                if (cartListRef.current) {
-                    if (insertionOrder === 'bottom') {
-                        cartListRef.current.scrollTo({ top: cartListRef.current.scrollHeight, behavior: 'smooth' });
-                    } else {
-                        cartListRef.current.scrollTo({ top: 0, behavior: 'smooth' });
-                    }
-                }
-            }, 50);
-
-            return newList;
-        });
-    };
-
-    const [showClearCartConfirm, setShowClearCartConfirm] = useState(false);
-
-    const handleClearCart = () => {
-        if (items.length > 0) {
-            setModal({
-                message: 'Are you sure you want to remove all items from the cart?',
-                type: State.ERROR,
-            });
-            setShowClearCartConfirm(true);
-        }
-    };
-    const handleConfirmClearCart = () => {
-        setItems([]);
-        setCartSearchQuery('');
-        setShowClearCartConfirm(false);
-    };
-    const handleItemSelected = (selectedItem: Item | null) => {
-        if (!selectedItem) return;
-
-        // Cart mein ye item pehle se hai kya (ek ya zyada baar)?
-        const existingMatches = items.filter(i => i.productId === selectedItem.id);
-
-        if (existingMatches.length > 0) {
-            // Direct add mat karo — pehle user se poocho
-            setDuplicateItemPrompt({ item: selectedItem, existingCount: existingMatches.length });
-            setGridSearchQuery('');
-            return;
-        }
-
-        addItemToCart(selectedItem);
-        setGridSearchQuery('');
-    };
-
-    // User ne "Quantity Badhao" choose kiya
-    const handleIncreaseExistingQuantity = () => {
-        if (!duplicateItemPrompt) return;
-        const targetProductId = duplicateItemPrompt.item.id;
-
-        setItems(prev => {
-            const matches = prev.filter(i => i.productId === targetProductId);
-            if (matches.length === 0) return prev;
-
-            // Sabse "last added" (sabse recent) wala line dhoondo
-            const lastAdded = matches.reduce((latest, current) =>
-                (current.addedAt || 0) > (latest.addedAt || 0) ? current : latest
-            );
-
-            return prev.map(i =>
-                i.id === lastAdded.id ? { ...i, quantity: (i.quantity || 1) + 1 } : i
-            );
-        });
-
-        setDuplicateItemPrompt(null);
-    };
-
-    // User ne "Naya Item Add Karo" choose kiya
-    const handleAddAsNewLine = () => {
-        if (!duplicateItemPrompt) return;
-        addItemToCart(duplicateItemPrompt.item);
-        setDuplicateItemPrompt(null);
-    };
-    const closeBarcodeLinkModal = () => {
-        setIsBarcodeLinkModalOpen(false);
-        setBarcodeToLink(null);
-    };
-
-    const handleLinkScannedBarcode = async (selectedItem: Item) => {
-        if (!barcodeToLink || !dbOperations) return;
-        if (!selectedItem.id) {
-            setModal({ message: 'Selected item is invalid. Please try another item.', type: State.ERROR });
-            return;
-        }
-        setIsLinkingBarcode(true);
-        try {
-            await dbOperations.updateItem(selectedItem.id, { barcode: barcodeToLink });
-            const updatedItem: Item = { ...selectedItem, barcode: barcodeToLink };
-            setAvailableItems(prev => {
-                const exists = prev.some(item => item.id === selectedItem.id);
-                if (!exists) return [...prev, updatedItem];
-                return prev.map(item => item.id === selectedItem.id ? { ...item, barcode: barcodeToLink } : item);
-            });
-            addItemToCart(updatedItem);
-            closeBarcodeLinkModal();
-            setModal({ message: `Barcode linked to "${selectedItem.name}".`, type: State.SUCCESS });
-        } catch (err) {
-            console.error('Failed to link barcode:', err);
-            setModal({ message: 'Failed to link barcode. Please try again.', type: State.ERROR });
-        } finally {
-            setIsLinkingBarcode(false);
-        }
-    };
-    const handleBarcodeScanned = async (barcode: string) => {
-        setIsScannerOpen(false);
-        if (!dbOperations) return;
-
-        const cleanBarcode = barcode.trim();
-
-        try {
-            // Explicitly type the variable to accept Item, undefined (from .find), or null (from DB)
-            let itemToAdd: Item | null | undefined = availableItems.find(item => item.barcode === cleanBarcode);
-
-            // Fallback to the database if it's not in local state
-            if (!itemToAdd) {
-                itemToAdd = await dbOperations.getItemByBarcode(cleanBarcode);
-            }
-
-            if (itemToAdd) {
-                addItemToCart(itemToAdd);
-
-                // Only add to availableItems if it came from the DB fallback
-                setAvailableItems(prev => {
-                    const exists = prev.find(p => p.id === itemToAdd!.id);
-                    return exists ? prev : [...prev, itemToAdd!];
-                });
-            } else {
-                const hasAnyItemWithoutBarcode = availableItems.some(item => !(item.barcode || '').trim());
-                if (!hasAnyItemWithoutBarcode) {
-                    setModal({
-                        message: `Item not found for barcode: "${cleanBarcode}"`,
-                        type: State.ERROR
-                    });
-                    return;
-                }
-                setBarcodeToLink(cleanBarcode);
-                setIsBarcodeLinkModalOpen(true);
-            }
-        } catch (e) {
-            console.error(e);
-            setModal({ message: 'Scan error occurred.', type: State.ERROR });
-        }
-    };
-    const handleQuantityChange = (id: string, newQuantity: number) => { setItems(prev => prev.map(item => item.id === id ? { ...item, quantity: Math.max(0, newQuantity) } : item)); };
-    const handleDeleteItem = (id: string) => { setItems(prev => prev.filter(item => item.id !== id)); };
-    const handleDiscountPressStart = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); longPressTimer.current = setTimeout(() => setIsDiscountLocked(false), 500); };
-    const handleDiscountPressEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
-    const handleDiscountClick = () => { if (salesSettings?.lockDiscountEntry || isDiscountLocked) { setDiscountInfo("Cannot edit discount"); setTimeout(() => setDiscountInfo(null), 3000); } };
-    const handlePricePressStart = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); longPressTimer.current = setTimeout(() => setIsPriceLocked(false), 500); };
-    const handlePricePressEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
-    const handlePriceClick = () => { if (salesSettings?.lockSalePriceEntry || isPriceLocked) { setPriceInfo("Cannot edit sale price"); setTimeout(() => setPriceInfo(null), 1000); } };
-    const handleDiscountChange = (id: string, v: number | string) => {
-        const n = typeof v === 'string' ? parseFloat(v) : v;
-        const safeDiscount = isNaN(n) ? 0 : Math.min(100, Math.max(0, n));
-        setItems(prev => prev.map(i => {
-            if (i.id === id) {
-                // FIXED: Base price is MRP if it exists, otherwise Sales Price
-                const basePrice = (i.mrp > 0) ? i.mrp : (i.salesPrice || 0);
-                const safeDiscount2 = i.discount2 || 0;
-                const priceAfterFirstDiscount = basePrice * (1 - safeDiscount / 100);
-                let newPrice = priceAfterFirstDiscount * (1 - safeDiscount2 / 100);
-                const isRoundingEnabled = salesSettings?.enableRounding ?? true;
-                const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
-                newPrice = applyRounding(newPrice, isRoundingEnabled, roundingInterval);
-                return { ...i, discount: safeDiscount, customPrice: newPrice };
-            }
-            return i;
-        }));
-    };
-    const handleDiscount2Change = (id: string, v: number | string) => {
-        const n = typeof v === 'string' ? parseFloat(v) : v;
-        const safeDiscount2 = isNaN(n) ? 0 : n;
-        setItems(prev => prev.map(i => {
-            if (i.id === id) {
-                const basePrice = (i.mrp > 0) ? i.mrp : (i.salesPrice || 0);
-                const safeDiscount1 = i.discount || 0;
-                const priceAfterFirstDiscount = basePrice * (1 - safeDiscount1 / 100);
-                let newPrice = priceAfterFirstDiscount * (1 - safeDiscount2 / 100);
-                const isRoundingEnabled = salesSettings?.enableRounding ?? true;
-                const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
-                newPrice = applyRounding(newPrice, isRoundingEnabled, roundingInterval);
-                return { ...i, discount2: safeDiscount2, customPrice: newPrice };
-            }
-            return i;
-        }));
-    };
-    const handleCustomPriceChange = (id: string, v: string) => { if (v === '' || /^[0-9]*\.?[0-9]*$/.test(v)) setItems(prev => prev.map(i => i.id === id ? { ...i, customPrice: v } : i)); };
-    const handleCustomPriceBlur = (id: string) => {
-        setItems(prev => prev.map(i => {
-            if (i.id === id && typeof i.customPrice === 'string') {
-                const n = parseFloat(i.customPrice);
-                if (i.customPrice === '' || isNaN(n)) return { ...i, customPrice: undefined };
-                let d = 0;
-
-                // FIXED: Base price is MRP if it exists, otherwise Sales Price
-                const basePrice = (i.mrp > 0) ? i.mrp : (i.salesPrice || 0);
-
-                if (basePrice > 0) d = ((basePrice - n) / basePrice) * 100;
-                return { ...i, customPrice: n, discount: parseFloat(d.toFixed(2)) };
-            }
-            return i;
-        }));
-    };
-    const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
-    const [isItemDrawerOpen, setIsItemDrawerOpen] = useState(false);
-    const handleOpenEditDrawer = (item: Item) => { setSelectedItemForEdit(item); setIsItemDrawerOpen(true); };
-    const handleCloseEditDrawer = () => { setIsItemDrawerOpen(false); setTimeout(() => setSelectedItemForEdit(null), 300); };
-    const handleSaveSuccess = (updatedItemData: Partial<Item>) => {
-        setAvailableItems(prevItems => prevItems.map(item =>
-            item.id === selectedItemForEdit?.id ? { ...item, ...updatedItemData, id: item.id } as Item : item
-        ));
-
-        const updateForCart: Partial<SalesItem> = { ...updatedItemData };
-        if ((updateForCart as any).Stock !== undefined) {
-            updateForCart.stock = (updateForCart as any).Stock;
-            delete (updateForCart as any).Stock;
-        }
-
-        Object.keys(updateForCart).forEach(key => {
-            if (updateForCart[key as keyof typeof updateForCart] === undefined) {
-                delete updateForCart[key as keyof typeof updateForCart];
-            }
-        });
-
-        setItems(prevCartItems => prevCartItems.map(cartItem => {
-            if (cartItem.productId === selectedItemForEdit?.id || cartItem.id === selectedItemForEdit?.id) {
-                const mergedItem = { ...cartItem, ...updateForCart } as SalesItem;
-
-                const mrp = Number(mergedItem.mrp || 0);
-                const salesPrice = Number(mergedItem.salesPrice || 0);
-                const presetDiscount = Number(mergedItem.discount || 0);
-                const existingDiscount2 = Number(mergedItem.discount2 || 0);
-
-                let finalNetPrice = 0;
-                let calculatedDiscount = 0;
-
-                // --- NEW 3-TIER LOGIC ---
-                if (mrp > 0 && salesPrice > 0) {
-                    finalNetPrice = salesPrice;
-                    calculatedDiscount = ((mrp - salesPrice) / mrp) * 100;
-                } else if (salesPrice > 0) {
-                    calculatedDiscount = presetDiscount;
-                    finalNetPrice = salesPrice * (1 - (presetDiscount / 100));
-                } else if (mrp > 0) {
-                    calculatedDiscount = presetDiscount;
-                    finalNetPrice = mrp * (1 - (presetDiscount / 100));
-                }
-                // Apply existing discount2 on top, compounding it
-                finalNetPrice = finalNetPrice * (1 - (existingDiscount2 / 100));
-                const isRoundingEnabled = salesSettings?.enableRounding ?? true;
-                const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
-                finalNetPrice = applyRounding(finalNetPrice, isRoundingEnabled, roundingInterval);
-
-                mergedItem.customPrice = finalNetPrice;
-                mergedItem.discount = parseFloat(calculatedDiscount.toFixed(2)); // Make sure discount updates!
-                mergedItem.discount2 = existingDiscount2;
-                return mergedItem;
-            }
-            return cartItem;
-        }));
-    };
-    const displayItems = useMemo(() => {
-        const base = listSelectedCategory === 'All'
-            ? items
-            : items.filter(item => (item.itemGroupId || 'Others') === listSelectedCategory);
-
-        const q = cartSearchQuery.trim().toLowerCase();
-        if (!q) return base;
-
-        // 👈 NEW: same "search bumps result to top" behavior as the Orders page search
-        return [...base].sort((a, b) => {
-            const aMatch = (a.name || '').toLowerCase().includes(q);
-            const bMatch = (b.name || '').toLowerCase().includes(q);
-            if (aMatch && !bMatch) return -1;
-            if (!aMatch && bMatch) return 1;
-            return 0; // keep original relative order otherwise
-        });
-    }, [items, listSelectedCategory, cartSearchQuery]);
-
-    const handleProceedToPayment = () => {
-        if (items.length === 0) {
-            setModal({ message: 'Please add at least one item.', type: State.INFO });
-            return;
-        }
-        if (salesSettings?.enableSalesmanSelection && !selectedWorker) {
-            setModal({ message: 'Please select a salesman.', type: State.ERROR });
-            return;
-        }
-
-        // --- NEW: MRP PRICE VALIDATION ---
-        const invalidMrpItems: string[] = [];
-        items.filter(i => !i.isCustomAmount).forEach(item => {
-            const mrp = Number(item.mrp) || 0;
-
-            // Only check if the item actually has an MRP set in the database
-            if (mrp > 0) {
-                let effectiveUnitPrice = 0;
-                if (item.customPrice !== undefined && item.customPrice !== null && item.customPrice !== '') {
-                    effectiveUnitPrice = parseFloat(String(item.customPrice));
-                } else {
-                    const currentDiscount = Number(item.discount) || 0;
-                    effectiveUnitPrice = mrp * (1 - currentDiscount / 100);
-                }
-
-                // If the user's custom price is higher than the MRP, flag it
-                if (effectiveUnitPrice > mrp) {
-                    invalidMrpItems.push(`${item.name} (Max: ₹${mrp})`);
-                }
-            }
-        });
-
-        // Block the payment drawer from opening and show an error
-        if (invalidMrpItems.length > 0) {
-            setModal({
-                message: `Selling price cannot exceed MRP for: ${invalidMrpItems.join(', ')}`,
-                type: State.ERROR
-            });
-            return;
-        }
-        // ---------------------------------
-
-        if (!(salesSettings as any)?.allowNegativeStock) {
-            // Build a map of quantities already committed in the ORIGINAL invoice
-            const originalQuantities = new Map<string, number>();
-            if (isEditMode && invoiceToEdit?.items) {
-                (invoiceToEdit.items as any[]).forEach((oldItem) => {
-                    const pid = oldItem.productId || oldItem.id;
-                    const oldQty = oldItem.quantity || 1;
-                    originalQuantities.set(pid, (originalQuantities.get(pid) || 0) + oldQty);
-                });
-            }
-            const stockNeeds = new Map<string, number>();
-            items.filter(i => i.isEditable).forEach(i => {
-                const pid = i.productId;
-                const requiredStock = i.quantity || 1; // Multiplier removed. 1:1 mapping.
-                stockNeeds.set(pid, (stockNeeds.get(pid) || 0) + requiredStock);
-            });
-            const invalidItems: string[] = [];
-            stockNeeds.forEach((needed, pid) => {
-                const avail = availableItems.find(a => a.id === pid);
-                const currentStock = avail?.stock ?? 0;
-                // Add back the original committed quantity — those units are already deducted
-                const alreadyCommitted = originalQuantities.get(pid) || 0;
-                const effectiveAvailable = currentStock + alreadyCommitted;
-                if (effectiveAvailable < needed) {
-                    invalidItems.push(`${avail?.name} (Avail:${effectiveAvailable}, Need:${needed})`);
-                }
-            });
-            if (invalidItems.length > 0) { setModal({ message: `Insufficient stock: ${invalidItems.join(', ')}`, type: State.ERROR }); return; }
-        }
-
-        setIsDrawerOpen(true);
-    };
-
-    const [isSaving, setIsSaving] = useState(false);
-    const handleSavePayment = async (completionData: PaymentCompletionData) => {
-        if (isSaving) return; // Exit if already saving
-        setIsSaving(true);
-        if (!currentUser?.companyId) return;
-
-        if (salesSettings?.requireCustomerName && !completionData.partyName?.trim()) {
-            setModal({ message: "Customer Name is required.", type: State.ERROR });
-            setIsSaving(false);
-            return;
-        }
-        if (salesSettings?.requireCustomerMobile && !completionData.partyNumber?.trim()) {
-            setModal({ message: "Customer Mobile Number is required.", type: State.ERROR });
-            setIsSaving(false);
-            return;
-        }
-
-        const companyId = currentUser.companyId;
-        const salesman = salesSettings?.enableSalesmanSelection ? selectedWorker : workers.find(w => w.uid === currentUser.uid);
-        const finalSalesman = salesman || { uid: currentUser.uid, name: currentUser.uid || 'Current User' };
-
-        let finalGstScheme = salesSettings?.gstScheme || 'none';
-        let finalTaxType = activeTaxMode === 'exempt' ? 'none' : activeTaxMode;
-
-        const currentTaxRate = salesSettings?.defaultTaxRate ?? 0;
-        const isRoundingEnabled = salesSettings?.enableRounding ?? true;
-        const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
-
-        // --- NEW VARIABLES FOR PROPORTIONAL TAX ---
-        const finalInvoiceTotal = completionData.finalAmount;
-        const totalInvoiceDiscount = totalDiscount + (completionData.discount || 0);
-
-        // Calculate proportional scale: (Total Before Drawer Discount - Drawer Discount) / Total Before Drawer Discount
-        const billRatio = finalAmount > 0 ? Math.max(0, (finalAmount - (completionData.discount || 0)) / finalAmount) : 1;
-
-        const getParsedInvoiceDate = () => {
-            try {
-                if (!invoiceDate) return new Date();
-                const parts = invoiceDate.split('-');
-                if (parts.length === 3) {
-                    const year = parseInt(parts[0], 10);
-                    const month = parseInt(parts[1], 10) - 1;
-                    const day = parseInt(parts[2], 10);
-                    if (isEditMode && invoiceToEdit?.createdAt) {
-                        const originalDate = new Date(invoiceToEdit.createdAt);
-                        if (!isNaN(originalDate.getTime())) {
-                            originalDate.setFullYear(year);
-                            originalDate.setMonth(month);
-                            originalDate.setDate(day);
-                            return originalDate; // keeps original HH:MM:SS
-                        }
-                    }
-                    const finalDate = new Date();
-                    finalDate.setFullYear(year);
-                    finalDate.setMonth(month);
-                    finalDate.setDate(day);
-                    return finalDate;
-                }
-            } catch (e) {
-                console.error("Date parsing error", e);
-            }
-            return new Date();
-        };
-
-        const formatItemsForDB = (itemsToFormat: SalesItem[]) => {
-            return itemsToFormat.map(({ isEditable, customPrice, ...item }) => {
-                const currentDiscount = Number(item.discount) || 0;
-                const currentDiscount2 = Number(item.discount2) || 0;
-                const currentQuantity = Number(item.quantity) || 1;
-
-                let effectiveUnitPrice = 0;
-                if (customPrice !== undefined && customPrice !== null && customPrice !== '') {
-                    effectiveUnitPrice = parseFloat(String(customPrice));
-                } else {
-                    const basePrice = (item.mrp && item.mrp > 0) ? item.mrp : (item.salesPrice || 0);
-                    const priceAfterDiscount1 = basePrice * (1 - currentDiscount / 100);
-                    effectiveUnitPrice = priceAfterDiscount1 * (1 - currentDiscount2 / 100);
-                }
-
-                effectiveUnitPrice = applyRounding(effectiveUnitPrice, isRoundingEnabled, roundingInterval);
-                effectiveUnitPrice = toCurrency(effectiveUnitPrice);
-
-                const lineTotal = toCurrency(effectiveUnitPrice * currentQuantity);
-
-                // MATCH UI EXACTLY: Rely purely on finalGstScheme and finalTaxType
-                let effectiveTaxMode = 'none';
-                if (finalGstScheme === 'regular') {
-                    effectiveTaxMode = finalTaxType === 'exempt' ? 'none' : finalTaxType;
-                }
-
-                // Extract tax safely
-                const rawTax = item.tax ?? item.taxRate ?? currentTaxRate;
-                const itemSpecificTaxRate = isNaN(Number(rawTax)) ? 0 : Number(rawTax);
-
-                let itemTaxableBase = 0, itemTaxAmount = 0, itemFinalPrice = 0;
-
-                if (effectiveTaxMode !== 'none' && itemSpecificTaxRate > 0) {
-                    if (effectiveTaxMode === 'inclusive') {
-                        itemFinalPrice = lineTotal;
-                        itemTaxableBase = toCurrency(lineTotal / (1 + (itemSpecificTaxRate / 100)));
-                        itemTaxAmount = toCurrency(lineTotal - itemTaxableBase);
-                    } else {
-                        itemTaxableBase = lineTotal;
-                        itemTaxAmount = toCurrency(lineTotal * (itemSpecificTaxRate / 100));
-                        itemFinalPrice = toCurrency(itemTaxableBase + itemTaxAmount);
-                    }
-                } else {
-                    itemTaxableBase = lineTotal;
-                    itemFinalPrice = lineTotal;
-                }
-
-                // APPLY PROPORTIONAL DISCOUNT TO THE TAX VALUES ONLY
-                const scaledTaxableBase = toCurrency(itemTaxableBase * billRatio);
-                const scaledTaxAmount = toCurrency(itemTaxAmount * billRatio);
-
-                return {
-                    ...item,
-                    id: item.productId || item.id,
-                    quantity: currentQuantity,
-                    discount: currentDiscount,
-                    discount2: currentDiscount2,
-                    effectiveUnitPrice: effectiveUnitPrice,
-                    finalPrice: itemFinalPrice,
-                    unit: item.unit || '',
-                    unitMultiplier: 1,
-                    packetSize: item.packetSize || null,
-                    taxableAmount: scaledTaxableBase,
-                    taxAmount: scaledTaxAmount,
-                    taxRate: itemSpecificTaxRate,     // FIX: Forces the DB to save the actual percentage!
-                    taxType: finalTaxType,
-                    discountPercentage: currentDiscount,
-                };
-            });
-        };
-
-        const sanitizeForFirestore = (obj: any): any => {
-            if (Array.isArray(obj)) return obj.map(sanitizeForFirestore);
-            if (obj !== null && typeof obj === 'object' && !(obj instanceof Date)) {
-                const cleaned: any = {};
-                for (const [key, value] of Object.entries(obj)) {
-                    if (value === undefined) cleaned[key] = null;
-                    else if (typeof value === 'number' && isNaN(value)) cleaned[key] = 0;
-                    else cleaned[key] = sanitizeForFirestore(value);
-                }
-                return cleaned;
-            }
-            return obj;
-        };
-
-        // 2. Generate finalized items WITH the proportional discount applied
-        const finalizedItems = formatItemsForDB(items);
-
-        // 3. Re-calculate total Tax and Taxable Amount from the finalized items
-        const newTaxableAmount = toCurrency(finalizedItems.reduce((acc, item) => acc + item.taxableAmount, 0));
-        const newTaxAmount = toCurrency(finalizedItems.reduce((acc, item) => acc + item.taxAmount, 0));
-
-        // 4. Calculate perfect roundOff to ensure Database matches UI exactly
-        const totalExpenseAmount = completionData.expenses?.reduce((sum, e) => sum + (Number(e.amount) || 0), 0) || 0;
-
-        // 4. Calculate perfect roundOff to ensure Database matches UI exactly
-        const rawInvoiceTotal = newTaxableAmount + newTaxAmount + totalExpenseAmount;
-        const finalRoundOff = toCurrency(finalInvoiceTotal - rawInvoiceTotal);
-
-        const saveOperation = async (transaction: any, isNew: boolean, existingId?: string) => {
-            const customDate = getParsedInvoiceDate();
-            const saleData: any = {
-                items: finalizedItems,
-                subtotal,
-                discount: totalInvoiceDiscount,
-                manualDiscount: completionData.discount || 0,
-                revDiscount: completionData.revDiscount || 0,
-                roundOff: finalRoundOff,
-                taxableAmount: newTaxableAmount,
-                taxAmount: newTaxAmount,
-                gstScheme: finalGstScheme,
-                taxType: finalTaxType,
-                totalAmount: finalInvoiceTotal,
-                paymentMethods: completionData.paymentDetails,
-                partyName: completionData.partyName,
-                partyNumber: completionData.partyNumber,
-                partyAddress: completionData.partyAddress || '',
-                partyGstin: completionData.partyGST || '',
-                placeOfSupply: completionData.placeOfSupply || '',    // <-- ADD THIS
-                shippingState: completionData.shippingState || '',
-                salesmanId: finalSalesman.uid,
-                salesmanName: finalSalesman.name,
-                updatedAt: serverTimestamp(),
-                shippingName: completionData.shippingName || '',
-                shippingNumber: completionData.shippingNumber || '',
-                shippingAddress: completionData.shippingAddress || '',
-                shippingGST: completionData.shippingGST || '',
-                expenses: completionData.expenses || [],
-                narration: completionData.narration || '',
-                transportDetails: completionData.transportDetails || null,
-            };
-
-            if (isNew) {
-                const counterRef = doc(db, 'companies', companyId, 'counters', 'invoiceCounter');
-                const settingsRef = doc(db, 'companies', companyId, 'settings', 'sales-settings');
-
-                const [counterDoc, settingsDoc] = await Promise.all([
-                    transaction.get(counterRef),
-                    transaction.get(settingsRef)
-                ]);
-
-                const prefix = settingsDoc.exists() ? (settingsDoc.data().voucherPrefix || 'INV') : 'INV';
-                const nextNumber = counterDoc.exists() ? (counterDoc.data().currentNumber || 1) : 1;
-                const finalInvNo = isInvoiceNumberManuallyEdited.current ? invoiceNumber : `${prefix}-${nextNumber}`;
-
-                saleData.createdAt = customDate;
-                saleData.invoiceNumber = finalInvNo;
-                saleData.userId = currentUser.uid;
-                saleData.companyId = companyId;
-                saleData.voucherName = salesSettings?.voucherName ?? 'Sales';
-
-                const newSaleRef = doc(collection(db, "companies", companyId, "sales"));
-                transaction.set(newSaleRef, sanitizeForFirestore(saleData));
-
-                if (!isInvoiceNumberManuallyEdited.current) {
-                    transaction.set(counterRef, { currentNumber: nextNumber + 1 }, { merge: true });
-                }
-                return { id: newSaleRef.id, number: finalInvNo };
-
-            } else if (existingId) {
-                const invoiceRef = doc(db, "companies", companyId, "sales", existingId);
-                saleData.createdAt = customDate;
-                saleData.invoiceNumber = invoiceNumber;
-                transaction.update(invoiceRef, sanitizeForFirestore(saleData));
-                return { id: existingId, number: invoiceNumber };
-            }
-            return null;
-        };
-
-        try {
-            if (isEditMode && invoiceToEdit?.id) {
-                await runTransaction(db, async (transaction) => {
-                    await saveOperation(transaction, false, invoiceToEdit.id);
-
-                    const oldQuantities = new Map<string, number>();
-                    (invoiceToEdit.items || []).forEach((oldItem: any) => {
-                        const pid = oldItem.productId || oldItem.id;
-                        const oldQty = oldItem.quantity || 1;
-                        oldQuantities.set(pid, (oldQuantities.get(pid) || 0) + oldQty);
-                    });
-
-                    const newQuantities = new Map<string, number>();
-                    items.forEach(newItem => {
-                        const pid = newItem.productId || newItem.id;
-                        if (pid) {
-                            const newQty = newItem.quantity || 1;
-                            newQuantities.set(pid, (newQuantities.get(pid) || 0) + newQty);
-                        }
-                    });
-
-                    const allProductIds = new Set([...oldQuantities.keys(), ...newQuantities.keys()]);
-
-                    allProductIds.forEach(pid => {
-                        const oldTotal = oldQuantities.get(pid) || 0;
-                        const newTotal = newQuantities.get(pid) || 0;
-                        const difference = newTotal - oldTotal;
-
-                        if (difference !== 0) {
-                            const itemRef = doc(db, "companies", companyId, "items", pid);
-                            transaction.update(itemRef, {
-                                stock: firebaseIncrement(-difference),
-                                updatedAt: serverTimestamp()
-                            });
-                        }
-                    });
-                });
-
-                setAvailableItems(prev => prev.map(item => {
-                    const oldQty = (invoiceToEdit.items || [])
-                        .filter((i: any) => (i.productId || i.id) === item.id)
-                        .reduce((sum: number, i: any) => sum + (i.quantity || 1), 0);
-                    const newQty = items
-                        .filter(i => (i.productId || i.id) === item.id && !i.isCustomAmount)
-                        .reduce((sum, i) => sum + (i.quantity || 1), 0);
-                    const delta = newQty - oldQty;
-                    if (delta === 0) return item;
-                    return { ...item, stock: Math.max(0, (item.stock || 0) - delta) };
-                }));
-                showSuccessModal("Invoice Updated", ROUTES.JOURNAL);
-
-            } else {
-                let result: any = null;
-                await runTransaction(db, async (transaction) => {
-                    result = await saveOperation(transaction, true);
-
-                    items.forEach(i => {
-                        const pid = i.productId || i.id;
-                        if (pid && !i.isCustomAmount) {
-                            const itemRef = doc(db, "companies", companyId, "items", pid);
-                            const totalToDeduct = i.quantity || 1;
-                            transaction.update(itemRef, { stock: firebaseIncrement(-totalToDeduct), updatedAt: serverTimestamp() });
-                        }
-                    });
-
-                    if (settingsDocId) {
-                        const settingsRef = doc(db, "companies", companyId, "settings", settingsDocId);
-                        transaction.update(settingsRef, { currentVoucherNumber: firebaseIncrement(1) });
-                    }
-                });
-
-                if (result) {
-                    const invoiceData = {
-                        id: result.id,
-                        invoiceNumber: result.number,
-                        amount: finalInvoiceTotal,
-                        partyName: completionData.partyName || 'Cash',
-                        partyNumber: completionData.partyNumber || '',
-                        partyAddress: completionData.partyAddress || '',
-                        partyGstin: completionData.partyGST || '',
-                        createdAt: getParsedInvoiceDate(),
-                        manualDiscount: completionData.discount || 0,
-                        salesmanName: finalSalesman.name,
-                        items: finalizedItems,
-                        expenses: completionData.expenses || [],
-                        paymentMethods: completionData.paymentDetails,
-                        dueAmount: completionData.paymentDetails?.due || 0,
-                        shippingName: completionData.shippingName || '',
-                        shippingNumber: completionData.shippingNumber || '',
-                        shippingAddress: completionData.shippingAddress || '',
-                        shippingGST: completionData.shippingGST || '',
-                        transportDetails: completionData.transportDetails || undefined,
-                        gstScheme: finalGstScheme,   // ✅ ADDED
-                        taxType: finalTaxType,       // ✅ ADDED
-                        placeOfSupply: completionData.placeOfSupply || ''   // ✅ ADDED (IGST calc ke liye bhi zaroori)
-                    };
-
-                    setAvailableItems(prev => prev.map(item => {
-                        const stockDelta = items
-                            .filter(i => (i.productId || i.id) === item.id && !i.isCustomAmount)
-                            .reduce((sum, i) => sum + (i.quantity || 1), 0);
-                        if (stockDelta === 0) return item;
-                        return { ...item, stock: Math.max(0, (item.stock || 0) - stockDelta) };
-                    }));
-
-                    setIsDrawerOpen(false);
-                    setSavedBillData({ id: result.id, number: result.number, invoiceData: invoiceData });
-                    sessionStorage.removeItem('sales_cart_draft');
-                    sessionStorage.removeItem('sales_tax_mode_draft');
-                    sessionStorage.removeItem('sales_salesman_draft');
-                    setItems([]);
-                    setStagedCalcInput('');
-                    setCalcInput('');
-                    const nextNum = await peekNextInvoiceNumber(currentUser.companyId);
-                    isInvoiceNumberManuallyEdited.current = false;
-                    setInvoiceNumber(nextNum);
-                }
-            }
-        } catch (e: any) {
-            console.error("Save error:", e?.code, e?.message);
-
-            if (e?.code === 'unavailable' || e?.message?.includes('network-request-failed')) {
-                setModal({
-                    message: 'Network lost while saving. Please check your connection and try again.',
-                    type: State.ERROR
-                });
-            } else if (e?.code === 'permission-denied') {
-                setModal({
-                    message: 'You do not have permission to complete this action.',
-                    type: State.ERROR
-                });
-            } else if (e?.code === 'aborted') {
-                setModal({
-                    message: 'Transaction conflict. Please try again.',
-                    type: State.ERROR
-                });
-            } else {
-                setModal({ message: 'Failed to save invoice. Please refresh the page and try again.', type: State.ERROR });
-            }
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const preparePdfData = async (invoice: any) => {
-        if (!currentUser?.companyId) return null;
-        const dbOps = getFirestoreOperations(currentUser.companyId);
-        const [businessInfo, fetchedItems, billSettingsSnap, companyLogoBase64] = await Promise.all([
-            dbOps.getBusinessInfo(),
-            dbOps.syncItems(),
-            getDoc(doc(db, 'companies', currentUser.companyId, 'settings', 'bill')),
-            resolveCompanyLogoBase64(currentUser.companyId)
-        ]);
-        const billSettings = billSettingsSnap.exists() ? billSettingsSnap.data() : {};
-
-        const populatedItems = await Promise.all((invoice.items || []).map(async (item: any, index: number) => {
-            const fullItem = fetchedItems.find((fi: any) => fi.id === item.productId || fi.id === item.id);
-            const finalTaxRate = item.taxRate || item.tax || fullItem?.tax || 0;
-            // NEW: POS-Photos — sirf A4 format ke liye item image fetch + compress karo
-            let imageBase64: string | undefined = undefined;
-            if (billSettings.enableItemImages && (billSettings.posPrintFormat || 'A4') === 'A4') {
-                const imageUrl = (fullItem as any)?.image || (fullItem as any)?.imageUrl || (fullItem as any)?.thumbnail || (fullItem as any)?.imageURL;
-                if (imageUrl) {
-                    try {
-                        const res = await fetch(imageUrl);
-                        const blob = await res.blob();
-                        imageBase64 = await compressImage(blob);
-                    } catch (e) {
-                        console.error('Item image fetch failed for PDF:', e);
-                    }
-                }
-            }
-            const itemAmount = (item.finalPrice !== undefined && item.finalPrice !== null) ? item.finalPrice : (item.mrp * item.quantity);
-            // --- Discount 1 + Discount 2 ko ₹ amount mein nikalna (Journal.tsx jaisa) ---
-            const qty = Number(item.quantity) || 1;
-            const actualMrp = Number(item.mrp) || 0;
-            const basePrice = actualMrp > 0 ? actualMrp : (Number(item.salesPrice) || 0);
-
-            const d1Pct = Number(item.discount || item.discountPercentage) || 0;
-            const d2Pct = Number(item.discount2) || 0;
-
-            const priceAfterD1 = basePrice * (1 - d1Pct / 100);
-            const priceAfterD2 = priceAfterD1 * (1 - d2Pct / 100);
-
-            const discount1Amount = (basePrice - priceAfterD1) * qty;
-            let discount2Amount = (priceAfterD1 - priceAfterD2) * qty;
-
-            // Agar discount2 % missing hai, actual amount se back-calculate karo
-            if (d2Pct === 0 && itemAmount > 0) {
-                const totalDiscountAmt = (basePrice * qty) - itemAmount;
-                discount2Amount = Math.max(0, totalDiscountAmt - discount1Amount);
-            }
-
-            let absoluteDiscount = (basePrice * qty) - itemAmount;
-            if (absoluteDiscount < 0) absoluteDiscount = 0;
-            return {
-                sno: index + 1,
-                name: item.name,
-                quantity: item.quantity,
-                unit: fullItem?.unit || item.unit || "Pcs",
-                listPrice: item.mrp,
-                gstPercent: finalTaxRate,
-                hsn: fullItem?.hsnSac || item.hsnSac || "N/A",
-                discountAmount: absoluteDiscount,
-                discount1Amount,
-                discount2Amount,
-                discount1Percent: d1Pct,   // NEW
-                discount2Percent: d2Pct,   // NEW
-                amount: itemAmount,
-                taxAmount: item.taxAmount || 0,
-                taxableAmount: item.taxableAmount || 0,
-                imageBase64,
-            };
-        }));
-
-        return {
-            printFormat: billSettings.posPrintFormat || 'A4',
-            enableTriplicate: billSettings.enableTriplicate || false,
-            enableItemImages: billSettings.enableItemImages || false, // NEW
-            gstScheme: salesSettings?.gstScheme || '',
-            taxType: salesSettings?.taxType || '',
-            upiId: billSettings.upiId || '',   //  ADDED: without this, QR never generates
-            companyName: businessInfo?.name || 'Your Company',
-            companyAddress: businessInfo?.address || 'Your Address',
-            companyContact: businessInfo?.phoneNumber || 'Your Phone',
-            companyEmail: businessInfo?.email || '',
-            companyLogoBase64: companyLogoBase64 || undefined,
-            signatureBase64: billSettings.signatureBase64 || '',
-            companyGstin: billSettings.companyGstin || businessInfo?.gstin || '',
-            msmeNumber: billSettings.msmeNumber || '',
-            panNumber: billSettings.panNumber || '',
-            companyState: businessInfo?.state || '',
-            billDiscount: invoice.manualDiscount || 0,
-            discountDisplayFormat: billSettings?.discountDisplayFormat || 'amount',
-            billTo: { name: invoice.partyName, address: invoice.partyAddress || '', phone: invoice.partyNumber || '', gstin: invoice.partyGstin || '' },
-            shipTo: {
-                name: invoice.shippingName || '',
-                address: invoice.shippingAddress || '',
-                phone: invoice.shippingNumber || '',
-                gstin: invoice.shippingGST || '',
-            },
-            transportDetails: invoice.transportDetails || undefined,
-            invoice: {
-                number: invoice.invoiceNumber,
-                date: new Date(invoice.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: 'numeric', hour12: true }),
-                billedBy: salesSettings?.enableSalesmanSelection ? (invoice.salesmanName || 'N/A') : '',
-                roNumber: '',
-            },
-            items: populatedItems,
-            terms: billSettings.posTermsAndConditions || billSettings.termsAndConditions || 'Goods once sold will not be taken back.',
-            finalAmount: invoice.amount,
-            expenses: invoice.expenses || [],
-            advance: (() => {
-                const pm = invoice.paymentMethods || {};
-                const total = Object.entries(pm)
-                    .filter(([k]) => k !== 'due')
-                    .reduce((s, [, v]) => s + (Number(v) || 0), 0);
-                return total > 0 ? total : 0;
-            })(),
-            due: invoice.dueAmount || 0,
-            previousBalance: await (async () => {
-                if (!currentUser?.companyId || !invoice.partyNumber) return 0;
-                try {
-                    const { getDocs, collection, query, where } = await import('firebase/firestore');
-                    const salesRef = collection(db, 'companies', currentUser.companyId, 'sales');
-                    const snap = await getDocs(query(salesRef, where('partyNumber', '==', invoice.partyNumber)));
-                    let total = 0;
-                    snap.forEach(d => {
-                        if (d.id !== invoice.id) {
-                            total += Number(d.data().paymentMethods?.due ?? 0);
-                        }
-                    });
-                    const obRef = collection(db, 'companies', currentUser.companyId, 'openingBalances');
-                    const obSnap = await getDocs(query(obRef, where('partyNumber', '==', invoice.partyNumber)));
-                    obSnap.forEach(d => {
-                        const data = d.data();
-                        if ((data.balanceType ?? 'due') === 'due') {
-                            total += Number(data.dueAmount ?? data.amount ?? 0);
-                        }
-                    });
-                    return total;
-                } catch { return 0; }
-            })(),
-            bankDetails: {
-                accountName: billSettings.accountName || businessInfo?.accountHolderName,
-                accountNumber: billSettings.accountNumber || businessInfo?.accountNumber,
-                bankName: billSettings.bankName || businessInfo?.bankName,
-                ifsc: billSettings.ifscCode || '',
-            }
-        };
-    };
-
-    const handleSendWhatsapp = async (invoice: any) => {
-        if (!invoice.partyNumber) {
-            setModal({ message: "Customer phone number is missing.", type: State.ERROR });
-            return;
-        }
-        setSendingPdf(true);
-        try {
-            if (!currentUser?.companyId || !currentUser?.uid) throw new Error("User context missing.");
-
-            const businessDocRef = doc(db, 'companies', currentUser.companyId, 'business_info', currentUser.companyId);
-            const businessSnap = await getDoc(businessDocRef);
-            const { botMasterToken, whatsappNumber } = businessSnap.data() || {};
-
-            if (!botMasterToken || !whatsappNumber) {
-                setSendingPdf(false);
-                navigate(ROUTES.WHATSAPP_PLAN);
-                return;
-            }
-
-            const dataForPdf = await preparePdfData(invoice);
-            if (!dataForPdf) throw new Error("Failed to prepare invoice data.");
-            const pdfBlob = await generatePdfBlob(dataForPdf);
-
-            const safeNum = invoice.invoiceNumber.replace(/[\/\\?%*:|"<>]/g, '-');
-            const cleanName = `${safeNum}.pdf`;
-            const storageRef = ref(storage, cleanName);
-            await uploadBytes(storageRef, pdfBlob);
-
-            const fileUrl = await getDownloadURL(storageRef);
-            // --- NEW: Fetch the extra message from bill settings ---
-            const billSettingsSnap = await getDoc(doc(db, 'companies', currentUser.companyId, 'settings', 'bill'));
-            const billSettingsData = billSettingsSnap.exists() ? billSettingsSnap.data() : {};
-            const resolvedExtraMessage = billSettingsData.posWhatsappExtraMessage || '';
-            const extraMsg = resolvedExtraMessage ? `\n\n${resolvedExtraMessage}` : '';
-            // -------------------------------------------------------
-
-            // Append the extraMsg to the end of your standard message
-            const message = `Hello ${invoice.partyName},\n\nHere is your invoice #${invoice.invoiceNumber}.\nAmount: ${invoice.amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}\n\nThank you!${extraMsg}`;
-            const response = await botMasterService.sendPdfFromUrl(botMasterToken, whatsappNumber, invoice.partyNumber, message, fileUrl, cleanName);
-
-            let isSuccess = false;
-            if (Array.isArray(response) && response.length > 0) {
-                if (response[0].status === 'sent' || response[0].status === 'delivered') isSuccess = true;
-            } else if (response?.status === 'sent' || response?.status === 'success' || response?.status === 200) {
-                isSuccess = true;
-            }
-
-            if (isSuccess) {
-                setModal({ message: "Invoice sent via WhatsApp!", type: State.SUCCESS });
-                setSavedBillData(null);
-                setTimeout(async () => {
-                    try { await deleteObject(storageRef); } catch (e) { console.warn("Could not auto-delete:", e); }
-                }, 60000);
-            } else {
-                throw new Error("API reported failure.");
-            }
-        } catch (err: any) {
-            console.error("WhatsApp Send Error:", err?.code, err?.message);
-            setModal({ message: "Failed to send invoice via WhatsApp. Please try again.", type: State.ERROR });
-        } finally {
-            setSendingPdf(false);
-        }
-    };
-    const handlePrintAction = async (invoice: any, withDuplicate: boolean = false) => {
-        setShowPrintSubMenu(false);
-        setPrintingPdf(true);
-        try {
-            const dataForPdf = await preparePdfData(invoice);
-            if (dataForPdf) {
-                await generatePdf(dataForPdf, ACTION.PRINT, withDuplicate);
-            } else {
-                throw new Error("Could not prepare PDF data");
-            }
-        } catch (err) {
-            console.error('Failed to print PDF:', err);
-            setModal({ message: 'Failed to print invoice. Please try again.', type: State.ERROR });
-        } finally {
-            setPrintingPdf(false);
-        }
-    };
-    const showSuccessModal = (message: string, navigateTo?: string) => {
-        sessionStorage.removeItem('sales_cart_draft');
-        sessionStorage.removeItem('sales_tax_mode_draft');
-        sessionStorage.removeItem('sales_salesman_draft');
-        setIsDrawerOpen(false);
-        setModal({ message, type: State.SUCCESS });
-        setTimeout(() => { setModal(null); if (navigateTo) navigate(navigateTo); else if (!salesSettings?.copyVoucherAfterSaving) setItems([]); }, 1500);
-    };
-    const handleCloseQrModal = () => { setSavedBillData(null); };
+    const {
+        savedBillData, setSavedBillData,
+        sendingPdf,
+        printingPdf,
+        showPrintSubMenu, setShowPrintSubMenu,
+        enableTriplicate,
+        isDrawerOpen, setIsDrawerOpen,
+        handleSendWhatsapp,
+        handlePrintAction,
+        showSuccessModal,
+        handleCloseQrModal,
+    } = useSalesCommunication({
+        currentUser,
+        salesSettings,
+        setModal,
+        navigate,
+        setItems,
+    });
+
+    const {
+        calcInput, setCalcInput,
+        stagedCalcInput, setStagedCalcInput,
+        displayRef,
+        handlePointerDown,
+        handlePointerUp,
+        handlePointerLeave,
+        liveTotal,
+        liveItemCount,
+        handleKeypadPress,
+        handleCheckoutClick,
+    } = useSalesCalculator({
+        items,
+        setItems,
+        salesSettings,
+        setModal,
+        isCalculatorView,
+        setIsDrawerOpen,
+        longPressTimer,
+        finalAmount,
+    });
+
+    const {
+        handleProceedToPayment,
+        handleSavePayment,
+    } = useSalesPayment({
+        currentUser,
+        companyId: currentUser?.companyId,
+        salesSettings,
+        activeTaxMode,
+        items,
+        setItems,
+        availableItems,
+        setAvailableItems,
+        selectedWorker,
+        workers,
+        isEditMode,
+        invoiceToEdit,
+        invoiceDate,
+        invoiceNumber,
+        setInvoiceNumber,
+        isInvoiceNumberManuallyEdited,
+        settingsDocId,
+        subtotal,
+        totalDiscount,
+        finalAmount,
+        setModal,
+        setStagedCalcInput,
+        setCalcInput,
+        isDrawerOpen,
+        setIsDrawerOpen,
+        setSavedBillData,
+        showSuccessModal,
+    });
 
     if (pageIsLoading) return <div className="flex items-center justify-center h-screen"><Spinner /> <p className="ml-2">Loading...</p></div>;
     if (error) return <div className="flex flex-col items-center justify-center h-screen text-red-600"><p>{error}</p><button onClick={() => navigate(-1)} className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Go Back</button></div>;

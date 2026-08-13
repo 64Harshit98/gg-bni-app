@@ -284,6 +284,28 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         }
     }, [isSameAsBilling, partyName, partyNumber, partyAddress, partyGST, partyState]);
 
+    // --- LOCK BACKGROUND SCROLL WHILE DRAWER IS OPEN ---
+    useEffect(() => {
+        if (!isOpen) return;
+
+        const scrollY = window.scrollY;
+        document.body.style.position = 'fixed';
+        document.body.style.top = `-${scrollY}px`;
+        document.body.style.left = '0';
+        document.body.style.right = '0';
+        document.body.style.width = '100%';
+        document.body.style.overflow = 'hidden';
+
+        return () => {
+            document.body.style.position = '';
+            document.body.style.top = '';
+            document.body.style.left = '';
+            document.body.style.right = '';
+            document.body.style.width = '';
+            document.body.style.overflow = '';
+            window.scrollTo(0, scrollY);
+        };
+    }, [isOpen]);
     // --- LIFECYCLE: MOUNT / SYNC INITIAL DATA & CACHE ---
     useEffect(() => {
         if (!isOpen) return;
@@ -796,7 +818,11 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     if (!isOpen) return null;
 
     return createPortal(
-        <div className="fixed inset-0 z-[99] flex items-end justify-center sm:items-center" onClick={onClose}>
+        <div
+            className="fixed inset-0 z-[99] flex items-end justify-center sm:items-center overscroll-none"
+            onClick={onClose}
+            onTouchMove={(e) => e.preventDefault()}
+        >
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" />
 
             {modal && <div className="absolute z-[10000]"><Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} /></div>}

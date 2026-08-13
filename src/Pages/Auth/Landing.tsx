@@ -171,7 +171,7 @@ const LoginPage: React.FC = () => {
               {/* --- NEW: Referral Signup Link (Mobile) --- */}
               <div className="mt-4 text-center">
                 <p className="text-sm text-gray-600">
-                  Want to become an Agent ?{''}
+                  Want to become a Partner ?{''}
                   <Link
                     to={ROUTES.AGENT_SIGNUP || '/agent-signup'}
                     className="font-semibold text-blue-600 hover:underline"
@@ -282,7 +282,7 @@ const LoginPage: React.FC = () => {
                     {/* --- NEW: Referral Signup Link (Desktop) --- */}
                     <div className="mt-4 text-center">
                       <p className="text-sm text-gray-600">
-                        Want to become an Agent ?{''}
+                        Want to become an Partner ?{''}
                         <Link
                           to={ROUTES.AGENT_SIGNUP || '/agent-signup'}
                           className="font-semibold text-blue-600 hover:underline"

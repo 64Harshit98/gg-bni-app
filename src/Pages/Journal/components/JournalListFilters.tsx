@@ -7,6 +7,8 @@ import { TutorialStep } from '../../../Components/TutorialStep';
 import { Permissions } from '../../../enums/permissions.enum';
 import ShowWrapper from '../../../context/ShowWrapper';
 import NotificationBell from '../../../Components/NotificationBell';
+import { ROUTES } from '../../../constants/routes.constants';
+import { useNavigate } from 'react-router-dom';
 
 interface JournalListFiltersProps {
   // tutorial
@@ -82,6 +84,7 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
   setActiveTab,
   totalUnpaidAmount,
 }) => {
+  const navigate = useNavigate();
   return (
     <>
       {/* Row 1: Title + Filter icon */}
@@ -91,6 +94,13 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
           ref={filterRef}
           className="absolute top-4 right-4 flex items-center gap-2 z-30"
         >
+          <button
+            onClick={() => navigate(ROUTES.PARTY_LEDGER)}
+            className="hidden sm:inline-block text-xs font-bold text-black bg-white border border-gray-300 rounded-sm px-2 py-2.5 hover:bg-blue-100 transition-colors whitespace-nowrap"
+          >
+            Party Ledger
+          </button>
+
           <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
             <div className="border border-slate-300 rounded-sm bg-gray-100 shadow-sm flex items-center justify-center">
               <NotificationBell />
@@ -237,6 +247,14 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
             </div>
           )}
         </div>
+      </div>
+
+      {/* Party Ledger strip - mobile only, reduced width */}
+      <div
+        onClick={() => navigate(ROUTES.PARTY_LEDGER)}
+        className="sm:hidden mx-8 mt-1 mb-1 py-2 text-center text-sm font-bold text-black bg-white border border-gray-300 rounded-sm cursor-pointer hover:bg-blue-100 transition-colors"
+      >
+        Party Ledger
       </div>
 
       {/* Step 4 — Sales / Purchase toggle */}

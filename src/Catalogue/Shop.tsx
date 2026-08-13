@@ -14,8 +14,6 @@ import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName';
 import SubdomainClaimModal from '../Components/SubDomainModal';
 import SearchableItemInput from '../UseComponents/SearchIteminput';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import ShowWrapper from '../context/ShowWrapper';
 import { Cata_Permissions } from './enum/cata_permissions.enum';
 
@@ -370,6 +368,14 @@ const OrderingPage: React.FC = () => {
         setIsGeneratingPDF(true);
 
         try {
+            // Deferred to keep jsPDF/jspdf-autotable out of the storefront's
+            // initial bundle — only fetched when a customer actually clicks
+            // "Download Catalogue PDF".
+            const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+                import('jspdf'),
+                import('jspdf-autotable'),
+            ]);
+
             const doc = new jsPDF();
 
             // --- Document Header ---

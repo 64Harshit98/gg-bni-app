@@ -1,83 +1,24 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Trash2, Check, ChevronUp, X } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
-import Footer from './Footer';
-import { doc, getDoc, setDoc, serverTimestamp, collection, onSnapshot, query, where, increment, runTransaction, getDocs } from 'firebase/firestore';
-import { db } from '../lib/Firebase';
-import { FiPackage } from 'react-icons/fi';
-import LeadPopUp from './PopUp';
+import Footer from '../Footer';
+import LeadPopUp from '../PopUp';
 import { FaWhatsapp } from 'react-icons/fa';
-import { indianStates } from '../Components/IndianStates';
-
-interface CartItem {
-    id: string | number
-    name: string
-    category: string
-    groupId?: string
-    mrp: number
-    salesPrice: number
-    quantity: number
-    image: string
-    note: string
-    imageUrl?: string
-    moq?: number
-    unit?: string
-    unitMultiplier?: number
-    tax?: number
-}
-
-interface CatalogueSalesSettings {
-    minimumOrderValue: number;
-    voucherPrefix?: string;
-    currentVoucherNumber?: number;
-    hidePrice?: boolean;
-    requireApproval?: boolean;
-    gstScheme?: string;
-    taxType?: string;
-}
-
-interface Address {
-    name: string;
-    phone: string;
-    city: string;
-    state: string;
-    address: string;
-    gstin?: string
-}
-
-const useBusinessName = (effectiveCompanyId?: string) => {
-    const [businessName, setBusinessName] = useState<string>('');
-    const [socialLinks, setSocialLinks] = useState<any>({});
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        if (!effectiveCompanyId) {
-            setLoading(false);
-            return;
-        }
-        const fetchBusinessInfo = async () => {
-            try {
-                const docRef = doc(db, 'companies', effectiveCompanyId, 'business_info', effectiveCompanyId);
-                const docSnap = await getDoc(docRef);
-
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    setBusinessName(data.businessName || 'Catalogue');
-                    setSocialLinks(data);
-                } else {
-                    setBusinessName('Catalogue');
-                }
-            } catch (err) {
-                setBusinessName('Catalogue');
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchBusinessInfo();
-    }, [effectiveCompanyId]);
-
-    return { businessName, loading, socialLinks };
-};
+import { FiPackage } from 'react-icons/fi';
+import { indianStates } from '../../Components/IndianStates';
+import type { Address } from './checkOut.types';
+import {
+    deriveTaxContext,
+    computeCartTotals,
+    isMinimumOrderValueMet,
+} from './checkOut.calculations';
+import {
+    useBusinessInfo,
+    useCart,
+    useCheckoutSettings,
+    useDomainResolution,
+    usePlaceOrder,
+} from './hooks';
 
 const CartPage: React.FC = () => {
     const navigate = useNavigate();
@@ -85,78 +26,14 @@ const CartPage: React.FC = () => {
 
     const [step, setStep] = useState<number>(1);
     const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
-    const [isPlacing, setIsPlacing] = useState(false);
     const [showAlert, setShowAlert] = useState(false);
 
-    // 1. States for subdomain resolution
-    const [resolvedCompanyId, setResolvedCompanyId] = useState<string | null>(null);
-    const [domainResolveError, setDomainResolveError] = useState(false);
-    const [isResolvingDomain, setIsResolvingDomain] = useState(true);
+    const { subdomain, effectiveCompanyId, domainResolveError, isResolvingDomain } = useDomainResolution(pathId);
 
-    // 2. Safely extract the subdomain
-    const hostname = window.location.hostname;
-    const parts = hostname.split('.');
+    const { companyName, socialLinks, whatsappLink } = useBusinessInfo(effectiveCompanyId);
 
-    const subdomain = useMemo(() => {
-        return (
-            parts.length >= 3 &&
-            !['www', 'app'].includes(parts[0].toLowerCase()) &&
-            !hostname.includes('localhost')
-        ) ? parts[0] : null;
-    }, [hostname, parts]);
+    const { salesSettings, leadStatus } = useCheckoutSettings(effectiveCompanyId);
 
-    // 3. Resolve the subdomain string into the true Firestore Document ID
-    useEffect(() => {
-        const resolveDomain = async () => {
-            if (subdomain) {
-                try {
-                    const companiesRef = collection(db, 'companies');
-                    const q = query(companiesRef, where('domainAliases', 'array-contains', subdomain));
-                    const snap = await getDocs(q);
-
-                    if (!snap.empty) {
-                        const companyDoc = snap.docs[0];
-                        const data = companyDoc.data();
-
-                        // Redirect logic: Preserve the pathname so they stay on the Cart page!
-                        if (data.subdomain && data.subdomain !== subdomain) {
-                            window.location.replace(`https://${data.subdomain}.sellar.in${window.location.pathname}`);
-                            return;
-                        }
-
-                        setResolvedCompanyId(companyDoc.id);
-                    } else {
-                        setDomainResolveError(true);
-                    }
-                } catch (error) {
-                    console.error("Error resolving subdomain:", error);
-                    setDomainResolveError(true);
-                }
-            } else if (pathId) {
-                setResolvedCompanyId(pathId);
-            } else {
-                setDomainResolveError(true);
-            }
-            setIsResolvingDomain(false);
-        };
-
-        resolveDomain();
-    }, [subdomain, pathId]);
-
-    // 4. Point the effective ID to the newly resolved state
-    const effectiveCompanyId = resolvedCompanyId;
-
-    const { businessName: companyName, socialLinks } = useBusinessName(effectiveCompanyId || "");
-    const whatsappLink = useMemo(() => {
-        const rawNumber = socialLinks?.whatsappNumber || socialLinks?.phoneNumber || '';
-        const digits = rawNumber.replace(/\D/g, '');
-        if (!digits) return null;
-        const fullNumber = digits.length === 10 ? `91${digits}` : digits;
-        const message = encodeURIComponent(`Hi, I'm interested in your products at ${companyName}.`);
-        return `https://wa.me/${fullNumber}?text=${message}`;
-    }, [socialLinks, companyName]);
-
-    const [salesSettings, setSalesSettings] = useState<CatalogueSalesSettings | null>(null);
     const getSavedLead = () => {
         try {
             const leadData = JSON.parse(localStorage.getItem("leadData") || "{}");
@@ -178,425 +55,48 @@ const CartPage: React.FC = () => {
         return { name: lead.name, phone: lead.phone, city: '', state: '', address: '', gstin: '' };
     });
     const [isSameAsShipping, setIsSameAsShipping] = useState<boolean>(false);
-    const [cartItems, setCartItems] = useState<CartItem[]>([]);
     const [movError, setMovError] = useState<string | null>(null);
-    const [orderSuccess, setOrderSuccess] = useState(false);
-    const [placedOrderId, setPlacedOrderId] = useState<string | null>(null);
-    const [leadStatus, setLeadStatus] = useState<"approved" | "pending" | "declined" | null>(null);
     const [approvalError, setApprovalError] = useState<string | null>(null);
     const [specialInstruction, setSpecialInstruction] = useState("");
 
-    const syncToUpcoming = async (updatedCart: CartItem[]) => {
-        if (!effectiveCompanyId || updatedCart.length === 0) return;
+    const { cartItems, setCartItems, updateItemNote, updateQuantity, removeFromCart } = useCart(effectiveCompanyId, salesSettings);
 
-        const leadSubmittedCheck = localStorage.getItem("leadSubmitted") === "true";
-        if (!leadSubmittedCheck) return;
-
-        try {
-            const userKey = localStorage.getItem("upcoming_user_key");
-            if (!userKey) return;
-
-            const orderRef = doc(
-                db,
-                "companies",
-                effectiveCompanyId,
-                "Orders",
-                `upcoming_${userKey}`
-            );
-
-            const snap = await getDoc(orderRef);
-            if (!snap.exists()) return;
-
-            const itemsForFirebase = updatedCart.map(item => ({
-                id: String(item.id),
-                docId: String(item.id),
-                name: item.name,
-                quantity: item.quantity,
-                mrp: item.mrp,
-                salesPrice: item.salesPrice,
-                unit: item.unit,
-                unitMultiplier: item.unitMultiplier || 1,
-                finalPrice: item.salesPrice * item.quantity,
-            }));
-
-            const rawTotalAmount = itemsForFirebase.reduce(
-                (acc, curr) => acc + curr.finalPrice,
-                0
-            );
-
-            // Round the final total
-            const roundedTotalAmount = Math.round(rawTotalAmount);
-            // Calculate the exact round off difference
-            const roundOffAmt = Number((roundedTotalAmount - rawTotalAmount).toFixed(2));
-
-            await setDoc(
-                orderRef,
-                {
-                    items: itemsForFirebase,
-                    totalAmount: roundedTotalAmount, // Save rounded amount
-                    roundOff: roundOffAmt,           // Save round off difference
-                    updatedAt: serverTimestamp(),
-                },
-                { merge: true }
-            );
-
-        } catch (err) {
-            console.error("CartPage syncToUpcoming error:", err);
-        }
-    };
     useEffect(() => {
         if (movError) {
             window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
         }
     }, [movError]);
 
-    useEffect(() => {
-        const savedCart = localStorage.getItem('temp_cart');
-        console.log("Saved:", savedCart)
-        if (savedCart) {
-            try {
-                const parsedCart = JSON.parse(savedCart);
-                const formattedItems: CartItem[] = parsedCart.map((entry: any) => ({
-                    id: entry.item.id,
-                    name: entry.item.name,
-                    category: entry.item.groupId || entry.item.groupid || entry.item.category || 'Product',
-                    groupId: entry.item.groupId || entry.item.groupid || '',
-                    mrp: entry.item.mrp || 0,
-                    salesPrice: entry.item.salesPrice || entry.item.mrp || 0,
-                    quantity: entry.quantity,
-                    imageUrl: entry.item.imageUrl || '',
-                    moq: entry.item.moq || 1,
-                    tax: entry.item.tax || 0,
-                    note: '',
-                    unit: entry.item.unit ?? "pcs",
-                    unitMultiplier: entry.item.unitMultiplier ?? entry.item.multiplier ?? 1,
-                }));
-                setCartItems(formattedItems);
-            } catch (error) {
-                console.error(error);
-            }
-        }
-    }, []);
-
-    useEffect(() => {
-        if (!effectiveCompanyId) return;
-
-        const fetchSalesSettings = async () => {
-            try {
-                const ref = doc(
-                    db,
-                    "companies",
-                    effectiveCompanyId,
-                    "settings",
-                    "catalogue-sales-settings"
-                );
-
-                const snap = await getDoc(ref);
-
-                if (snap.exists()) {
-                    setSalesSettings(snap.data() as CatalogueSalesSettings);
-                } else {
-                    setSalesSettings({ minimumOrderValue: 0 });
-                }
-            } catch (err) {
-                console.error("Failed to load MOV:", err);
-                setSalesSettings({ minimumOrderValue: 0 });
-            }
-        };
-
-        fetchSalesSettings();
-    }, [effectiveCompanyId]);
-
-    useEffect(() => {
-        if (!effectiveCompanyId) return;
-
-        const leadData = JSON.parse(
-            localStorage.getItem("leadData") || "{}"
-        );
-
-        const phone = (leadData.number || "")
-            .replace(/\D/g, "")
-            .trim();
-
-        if (!phone) {
-            setLeadStatus(null);
-            return;
-        }
-
-        const q = query(
-            collection(db, "companies", effectiveCompanyId, "AuthorizedUser"),
-            where("customerNumber", "==", phone)
-        );
-
-        const unsubscribe = onSnapshot(q, (snap) => {
-            if (snap.empty) {
-                setLeadStatus(null);
-            } else {
-                setLeadStatus(snap.docs[0].data().status || "pending");
-            }
-        });
-
-        return () => unsubscribe();
-    }, [effectiveCompanyId]);
-
-    const updateItemNote = (id: string | number, note: string) => {
-        setCartItems(prev => prev.map(item => item.id === id ? { ...item, note } : item));
-    };
-
     // 1. Evaluate the master tax logic
-    const scheme = salesSettings?.gstScheme?.toLowerCase() || 'regular';
-    const taxType = salesSettings?.taxType?.toLowerCase() || 'inclusive';
+    const { scheme, taxType, applyExclusiveTax } = deriveTaxContext(salesSettings);
 
     // 2. Calculate Subtotal & Tax safely handling both scenarios
-    let totalTaxAmount = 0;
-    let baseSubtotal = 0;
+    const { baseSubtotal, totalTaxAmount, subtotal, totalPay } = computeCartTotals(cartItems, scheme, taxType);
 
-    const applyExclusiveTax = scheme === 'regular' && taxType === 'exclusive';
-
-    const subtotal = cartItems.reduce((acc, item) => {
-        const qty = item.quantity;
-        const price = item.salesPrice;
-        const taxRate = item.tax || 0;
-
-        let itemBaseAmount = 0;
-        let itemTaxAmount = 0;
-        let itemTotalAmount = 0;
-
-        if (scheme === 'regular') {
-            if (taxType === 'exclusive') {
-                // EXCLUSIVE: Tax is calculated on top of the base price
-                itemBaseAmount = price * qty;
-                itemTaxAmount = itemBaseAmount * (taxRate / 100);
-                itemTotalAmount = itemBaseAmount + itemTaxAmount;
-            } else {
-                // INCLUSIVE: Tax is already inside the price, we extract it
-                itemTotalAmount = price * qty;
-                itemBaseAmount = itemTotalAmount / (1 + (taxRate / 100));
-                itemTaxAmount = itemTotalAmount - itemBaseAmount;
-            }
-        } else {
-            // EXEMPT / COMPOSITION: No tax to display or calculate
-            itemBaseAmount = price * qty;
-            itemTaxAmount = 0;
-            itemTotalAmount = itemBaseAmount;
-        }
-
-        baseSubtotal += itemBaseAmount;
-        totalTaxAmount += itemTaxAmount;
-
-        return acc + itemTotalAmount;
-    }, 0);
-
-    const totalPay = Math.round(subtotal);
-
-    const isMovValid = () => {
-        if (!salesSettings) return true;
-        return totalPay >= (salesSettings.minimumOrderValue || 0);
-    };
+    const isMovValid = () => isMinimumOrderValueMet(salesSettings, totalPay);
 
     const isUserApproved = leadStatus === "approved";
     const hidePriceEnabled = salesSettings?.hidePrice === true;
     const approvalEnabled = salesSettings?.requireApproval === true;
     const shouldShowPrice = !hidePriceEnabled && (!approvalEnabled || isUserApproved);
 
-    const placeOrder = async () => {
-        // Immediate lock to prevent double-clicks
-        if (isPlacing || cartItems.length === 0) return;
-
-        // Basic address validation
-        const billingValid = billing.name?.trim() && billing.phone?.length === 10 && billing.address?.trim() && billing.city?.trim() && billing.state?.trim();
-        const shippingValid = isSameAsShipping ? billingValid : (shipping.name?.trim() && shipping.phone?.length === 10 && shipping.address?.trim()) && shipping.city?.trim() && shipping.state?.trim();
-
-        if (!billingValid || !shippingValid) {
-            setShowAlert(true);
-            return;
-        }
-
-        setIsPlacing(true);
-
-        try {
-            const settingsRef = doc(db, "companies", effectiveCompanyId!, "settings", "catalogue-sales-settings");
-            const ordersRef = collection(db, 'companies', effectiveCompanyId!, 'Orders');
-
-            // ATOMIC TRANSACTION: Only one place where the number increases
-            // ATOMIC TRANSACTION: Create order, increment voucher, deduct stock
-            const finalInvoiceNumber = await runTransaction(db, async (transaction) => {
-                const settingsSnap = await transaction.get(settingsRef);
-
-                // 1. READ ALL ITEMS FIRST (Firestore Transaction Rule)
-                const itemRefs = cartItems.map(item => doc(db, 'companies', effectiveCompanyId!, 'items', String(item.id)));
-                const itemSnaps = await Promise.all(itemRefs.map(ref => transaction.get(ref)));
-
-                let prefix = "SLS-";
-                let currentNumber = 1001;
-
-                if (settingsSnap.exists()) {
-                    const sData = settingsSnap.data();
-                    prefix = sData.voucherPrefix || "SLS-";
-                    currentNumber = sData.currentVoucherNumber || 1001;
-                }
-
-                const invoice = `${prefix}${currentNumber}`;
-                const newOrderDoc = doc(ordersRef);
-                const leadData = JSON.parse(localStorage.getItem("leadData") || "{}");
-                const fallbackPhone = (leadData.number || "").replace(/\D/g, "").trim();
-                // 2. WRITE: Create the final order
-                const roundOffAmt = Number((totalPay - subtotal).toFixed(2)); // Calculate round off
-
-                transaction.set(newOrderDoc, {
-                    orderId: invoice,
-                    invoiceNumber: invoice,
-                    status: 'Confirmed',
-                    isLead: false,
-                    userName: billing.name || leadData.name || "",
-                    userLoginPhone: billing.phone || fallbackPhone || "",
-                    totalAmount: totalPay, // This is already Math.round(subtotal)
-                    roundOff: roundOffAmt, // <-- ADD THIS TO BALANCE THE PDF
-                    totalTax: Number(totalTaxAmount.toFixed(2)),
-                    baseAmount: Number(baseSubtotal.toFixed(2)),
-                    createdAt: serverTimestamp(),
-                    updatedAt: serverTimestamp(),
-                    specialInstruction: specialInstruction || "",
-                    items: cartItems.map(i => {
-                        const originalUnitPrice = Number(i.salesPrice);
-                        const qty = Number(i.quantity);
-                        const taxRate = Number(i.tax || 0);
-
-                        let lineBaseAmount = originalUnitPrice * qty;
-                        let lineTaxAmount = 0;
-                        let lineFinalAmount = lineBaseAmount;
-
-                        if (applyExclusiveTax) {
-                            lineTaxAmount = lineBaseAmount * (taxRate / 100);
-                            lineFinalAmount = lineBaseAmount + lineTaxAmount;
-                        }
-
-                        let itemTaxTypeToSave = 'Inclusive';
-                        if (scheme === 'exempt' || scheme === 'composition') {
-                            itemTaxTypeToSave = scheme.charAt(0).toUpperCase() + scheme.slice(1);
-                        } else if (taxType === 'exclusive') {
-                            itemTaxTypeToSave = 'Exclusive';
-                        }
-
-                        return {
-                            id: String(i.id),
-                            itemId: String(i.id),
-                            groupId: i.groupId || i.category,
-                            name: i.name,
-                            quantity: qty,
-                            mrp: Number(i.mrp),
-                            salesPrice: originalUnitPrice,
-                            effectiveUnitPrice: originalUnitPrice,
-                            tax: taxRate,
-                            taxRate: taxRate,
-                            taxType: itemTaxTypeToSave,
-                            // 👇 FIX: Wrap these 3 in toFixed(2) to clean up decimals in DB
-                            taxableAmount: Number((applyExclusiveTax ? lineBaseAmount : (lineBaseAmount / (1 + (taxRate / 100)))).toFixed(2)),
-                            taxAmount: Number((applyExclusiveTax ? lineTaxAmount : (lineBaseAmount - (lineBaseAmount / (1 + (taxRate / 100))))).toFixed(2)),
-                            finalPrice: Number(lineFinalAmount.toFixed(2)),
-                            note: i.note,
-                            image: i.imageUrl || "",
-                            unit: i.unit || "pcs",
-                            unitMultiplier: i.unitMultiplier || 1
-                        };
-                    }),
-                    billingDetails: billing,
-                    shippingDetails: isSameAsShipping ? billing : shipping,
-                    orderedBy: localStorage.getItem("upcoming_user_key"),
-                });
-
-                // 3. WRITE: Increment the counter
-                transaction.update(settingsRef, {
-                    currentVoucherNumber: increment(1),
-                    updatedAt: serverTimestamp()
-                });
-
-                // 4. WRITE: Deduct the stock for each item (Using raw quantity)
-                itemSnaps.forEach((snap, index) => {
-                    if (snap.exists()) {
-                        const currentStock = Number(snap.data().stock || 0);
-                        const deductQty = Number(cartItems[index].quantity);
-
-                        transaction.update(snap.ref, {
-                            // 👇 FIX: Allow negative stock numbers
-                            stock: currentStock - deductQty,
-                            updatedAt: serverTimestamp()
-                        });
-                    }
-                });
-
-                return invoice;
-            });
-
-            // SUCCESS CLEANUP
-            localStorage.removeItem('temp_cart');
-            const upcomingUserKey = localStorage.getItem("upcoming_user_key");
-            if (upcomingUserKey && effectiveCompanyId) {
-                try {
-                    const { deleteDoc, doc: firestoreDoc } = await import('firebase/firestore');
-                    const draftRef = firestoreDoc(db, "companies", effectiveCompanyId, "Orders", `upcoming_${upcomingUserKey}`);
-                    await deleteDoc(draftRef);
-                } catch (err) {
-                    console.warn("Could not delete upcoming draft:", err);
-                }
-            }
-            localStorage.removeItem("upcoming_user_key");
-            // localStorage.removeItem("leadSubmitted");
-            // localStorage.removeItem("leadData");
-            setPlacedOrderId(finalInvoiceNumber);
-            setOrderSuccess(true);
-
-            // Tell MyShop to decrease the stock in the UI (Zero Firebase Reads!)
-            cartItems.forEach(item => {
-                window.dispatchEvent(new CustomEvent('local_stock_update', {
-                    detail: {
-                        itemId: String(item.id),
-                        delta: -Number(item.quantity)
-                    }
-                }));
-            });
-
-            setCartItems([]);
-
-        } catch (e) {
-            console.error("Critical Transaction Error:", e);
-            alert("Failed to place order. No numbers were skipped.");
-        } finally {
-            setIsPlacing(false);
-        }
-    };
-
-    const updateQuantity = (id: string | number, delta: number) => {
-        const updatedItems = cartItems
-            .map(item => {
-                if (item.id === id) {
-                    const moqQty = item.moq || 1;
-                    let newQty = item.quantity + delta;
-                    newQty = Math.max(moqQty, newQty);
-                    return { ...item, quantity: newQty };
-                }
-                return item;
-            })
-            .filter(item => item.quantity > 0);
-
-        setCartItems(updatedItems);
-        localStorage.setItem('temp_cart', JSON.stringify(updatedItems.map(i => ({
-            item: { ...i },
-            quantity: i.quantity
-        }))));
-        syncToUpcoming(updatedItems);
-    };
-
-    const removeFromCart = (id: string | number) => {
-        const updatedCart = cartItems.filter(item => item.id !== id);
-        setCartItems(updatedCart);
-        localStorage.setItem('temp_cart', JSON.stringify(updatedCart.map(i => ({
-            item: { ...i },
-            quantity: i.quantity
-        }))));
-
-        syncToUpcoming(updatedCart);
-    };
+    const { isPlacing, orderSuccess, placedOrderId, placeOrder } = usePlaceOrder({
+        effectiveCompanyId,
+        billing,
+        shipping,
+        isSameAsShipping,
+        cartItems,
+        setCartItems,
+        specialInstruction,
+        scheme,
+        taxType,
+        applyExclusiveTax,
+        totalPay,
+        subtotal,
+        totalTaxAmount,
+        baseSubtotal,
+        setShowAlert,
+    });
 
     useEffect(() => {
         if (isSameAsShipping) {

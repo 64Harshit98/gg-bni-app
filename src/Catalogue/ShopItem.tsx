@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { ShoppingCart, X, Minus, Plus, Trash2, Send, Pin, Download, Loader2 } from 'lucide-react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting';
 import { ROUTES } from '../constants/routes.constants';
 import { useAuth, useDatabase } from '../context/auth-context';
@@ -350,6 +348,14 @@ const MyShop: React.FC = () => {
         setIsGeneratingPDF(true);
 
         try {
+            // Deferred to keep jsPDF/jspdf-autotable out of the storefront's
+            // initial bundle — only fetched when a customer actually clicks
+            // "Download Catalogue PDF".
+            const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+                import('jspdf'),
+                import('jspdf-autotable'),
+            ]);
+
             const doc = new jsPDF();
 
             // --- Document Header ---

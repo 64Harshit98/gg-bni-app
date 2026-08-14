@@ -20,6 +20,7 @@ const ResetPasswordPage = lazy(() => import('../Pages/Auth/ResetPassword'));
 const DownloadBill = lazy(() => import('../Pages/Auth/DownloadBill'));
 const SubscriptionPage = lazy(() => import('../Pages/Account/SubscriptionPage'));
 const SuperAdminCompanies = lazy(() => import('../Pages/Account/SuperAdmin'));
+const SuperAdminCoupons = lazy(() => import('../Pages/Account/SuperAdminCoupons'));
 const SharedProduct = lazy(() => import('../Catalogue/SharedProduct'));
 const Catalogue = lazy(() => import('../Catalogue/SharedCatalouge'));
 const CartPage = lazy(() => import('../Catalogue/CheckOut'));
@@ -98,6 +99,7 @@ const router = createBrowserRouter(
               { path: ROUTES.FORGOT_PASSWORD, element: <ForgotPasswordPage />, handle: { isPublic: true } },
               { path: ROUTES.RESET_PASSWORD, element: <ResetPasswordPage />, handle: { isPublic: true } },
               { path: ROUTES.SUPER_ADMIN, element: <SuperAdminCompanies /> },
+              { path: ROUTES.SUPER_ADMIN_COUPONS, element: <SuperAdminCoupons /> },
               { path: ROUTES.SUBSCRIPTION_PAGE, element: <SubscriptionPage />, handle: { isPublic: false } },
               { path: ROUTES.SUPER_ADMINHUB, element: <SuperAdminHub /> },
               { path: ROUTES.SUPPORT_TICKET, element: <SuperAdminSupportTicket /> },
@@ -121,6 +123,7 @@ const router = createBrowserRouter(
                   { path: ROUTES.FORGOT_PASSWORD, element: <ForgotPasswordPage />, handle: { isPublic: true } },
                   { path: ROUTES.RESET_PASSWORD, element: <ResetPasswordPage />, handle: { isPublic: true } },
                   { path: ROUTES.SUPER_ADMIN, element: <SuperAdminCompanies /> },
+                  { path: ROUTES.SUPER_ADMIN_COUPONS, element: <SuperAdminCoupons /> },
                   { path: ROUTES.SUBSCRIPTION_PAGE, element: <SubscriptionPage />, handle: { isPublic: false } },
                   { path: ROUTES.SUPER_ADMINHUB, element: <SuperAdminHub /> },
                   { path: ROUTES.SUPPORT_TICKET, element: <SuperAdminSupportTicket /> },

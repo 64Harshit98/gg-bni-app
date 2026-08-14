@@ -44,11 +44,11 @@ const Masters = () => {
                 <span className="text-lg font-medium">Items Setting</span>
                 <span className="text-xl text-gray-500">→</span>
               </Link>
+              <Link to={ROUTES.PERMSETTING} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline">
+                <span className="text-lg font-medium">Permission Setting</span>
+                <span className="text-xl text-gray-500">→</span>
+              </Link>
             </ShowWrapper>
-            <Link to={ROUTES.PERMSETTING} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline">
-              <span className="text-lg font-medium">Permission Setting</span>
-              <span className="text-xl text-gray-500">→</span>
-            </Link>
             <ShowWrapper requiredPermission={Permissions.ViewPurchaseReport}>
               <Link to={ROUTES.BILLSETTING} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline">
                 <span className="text-lg font-medium">Bill Setting</span>
@@ -63,14 +63,14 @@ const Masters = () => {
               </Link> */}
             </ShowWrapper>
             {currentUser?.role === ROLES.OWNER && (
-  <button
-    onClick={() => setShopHoursOpen(true)}
-    className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg w-full text-left"
-  >
-    <span className="text-lg font-medium">Shop Timing</span>
-    <span className="text-xl text-gray-500">→</span>
-  </button>
-)}
+              <button
+                onClick={() => setShopHoursOpen(true)}
+                className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg w-full text-left"
+              >
+                <span className="text-lg font-medium">Shop Timing</span>
+                <span className="text-xl text-gray-500">→</span>
+              </button>
+            )}
           </div>
         ) : (
           <div className="bg-white p-6 rounded-sm shadow-md mt-6 min-h-[200px] flex justify-center items-center text-gray-500 italic">

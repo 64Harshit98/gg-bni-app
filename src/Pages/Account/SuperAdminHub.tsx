@@ -69,6 +69,18 @@ const tiles = [
         iconClass: 'bg-purple-50 text-purple-500',
         textClass: 'text-purple-600',
     },
+    {
+        label: 'Coupon Codes',
+        description: 'Create and manage subscription discount coupons',
+        route: ROUTES.SUPER_ADMIN_COUPONS,
+        icon: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-7 h-7">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 8.25H7.5a2.25 2.25 0 00-2.25 2.25v9a2.25 2.25 0 002.25 2.25h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25H15m0-3l-3-3m0 0l-3 3m3-3v11.25" />
+            </svg>
+        ),
+        iconClass: 'bg-teal-50 text-teal-600',
+        textClass: 'text-teal-600',
+    },
 
 ];
 

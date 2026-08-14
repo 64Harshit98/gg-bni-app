@@ -81,14 +81,17 @@ const MainLayout = () => {
       try {
         const ref = doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial');
         const snap = await getDoc(ref);
-        const done = snap.exists() && snap.data()?.floatingTutorialDone;
+        const settings = snap.exists() ? snap.data() : {};
+        const dashboardDone = !!settings?.dashboardTutorialDone;
+        const floatingDone = !!settings?.floatingTutorialDone;
 
-        if (!done && window.innerWidth < 768) {
+        // Wait for the dashboard tutorial to finish before showing the floating one
+        if (dashboardDone && !floatingDone && window.innerWidth < 768) {
           setTutorialStep(0);
         }
       } catch (e) {
         console.error('Error fetching floating tutorial:', e);
-        if (window.innerWidth < 768) setTutorialStep(0);
+        // don't force-show on error — avoids overlapping with dashboard tutorial
       }
     };
 

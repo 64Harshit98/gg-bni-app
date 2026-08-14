@@ -531,7 +531,7 @@ const EditProfilePage: React.FC = () => {
     setSubmitError(null);
     setSubmitSuccess(null);
 
-     // GSTIN can be edited but never fully removed once it has been saved
+    // GSTIN can be edited but never fully removed once it has been saved
     if (profile.gstin && profile.gstin.trim() !== '' && (!formData.gstin || formData.gstin.trim() === '')) {
       setSubmitError('GSTIN cannot be removed once added. You can only edit/update it.');
       return;
@@ -651,8 +651,10 @@ const EditProfilePage: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 py-3 pb-24">
 
         {/* ── Page Header ── */}
-        <div className="flex items-center justify-between mb-1">
-          <BackButton />
+        <div className="relative flex items-center justify-center mb-1">
+          <div className="absolute left-0">
+            <BackButton />
+          </div>
           <h1 className="text-xl font-bold text-slate-900 m-0">Edit Profile</h1>
         </div>
 

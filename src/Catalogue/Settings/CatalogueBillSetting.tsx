@@ -249,7 +249,7 @@ const CatalogueBillSettings: React.FC = () => {
             <div className="flex items-center bg-white border-b border-gray-200 sticky top-0 z-10">
                 <BackButton className='ml-3' />
                 <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-                    <h1 className="text-2xl font-bold text-gray-900">Invoice Configuration</h1>
+                    <h1 className="text-2xl font-bold text-gray-900">Bill Settings</h1>
                     <p className="text-sm text-gray-500 mt-1">Manage details printed on your bills.</p>
                 </div>
             </div>
@@ -486,7 +486,7 @@ const CatalogueBillSettings: React.FC = () => {
                                     Print Triplicate
                                 </span>
                                 <span className="block text-xs text-gray-500">
-                                    When enabled, "Bill + Duplicate" prints 3 copies (1 Original + 2 Duplicate).
+                                    Prints 1 original + 2 stamped "DUPLICATE" copies instead of just 1.
                                 </span>
                             </div>
                             <label className="relative inline-flex items-center cursor-pointer">

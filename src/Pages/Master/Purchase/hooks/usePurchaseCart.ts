@@ -12,6 +12,7 @@ interface UsePurchaseCartParams {
     availableItems: Item[];
     setAvailableItems: React.Dispatch<React.SetStateAction<Item[]>>;
     setModal: (modal: { message: string; type: State } | null) => void;
+     companyId?: string;
 }
 
 // Owns item/cart management — moved verbatim from Purchase.tsx: the
@@ -50,6 +51,7 @@ export const usePurchaseCart = ({
     availableItems,
     setAvailableItems,
     setModal,
+    companyId,
 }: UsePurchaseCartParams) => {
     const cartListRef = useRef<HTMLDivElement>(null);
 
@@ -66,10 +68,10 @@ export const usePurchaseCart = ({
     const [showClearCartConfirm, setShowClearCartConfirm] = useState(false);
 
     useEffect(() => {
-        if (!isEditMode) {
-            localStorage.setItem('purchase_cart_draft', JSON.stringify(items));
-        }
-    }, [items, isEditMode]);
+       if (!isEditMode && companyId) {
+        localStorage.setItem(`purchase_cart_draft_${companyId}`, JSON.stringify(items));
+    }
+}, [items, isEditMode, companyId]);
 
     const cartItemsAdapter = useMemo(() => {
         const mapped = items.map(item => ({

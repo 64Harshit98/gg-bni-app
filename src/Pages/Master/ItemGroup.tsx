@@ -5,13 +5,13 @@ import { useDatabase } from '../../context/auth-context';
 import { CustomButton } from '../../Components';
 import { Variant } from '../../enums';
 import { Spinner } from '../../constants/Spinner';
-import { FiEdit2, FiTrash2 } from 'react-icons/fi';
+import { FiTrash2 } from 'react-icons/fi';
+import { IconEdit } from '../../constants/Icons';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
 
 // --- Icon Components ---
-const EditIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4Z"></path></svg>;
 const DeleteIcon = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>;
 
 export interface SharedItemGroupProps {
@@ -477,7 +477,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
                         </div>
                         {group.name.toLowerCase().trim() !== "uncategorized" && (
                           <div className="flex gap-2 flex-shrink-0">
-                            <button onClick={() => handleEditClick(group)} className={`text-gray-500 ${theme.primaryHoverText}`} aria-label={`Edit ${group.name}`}><EditIcon /></button>
+                            <button onClick={() => handleEditClick(group)} className={`text-gray-500 ${theme.primaryHoverText}`} aria-label={`Edit ${group.name}`}><IconEdit width={20} height={20} /></button>
                             <button
                               onClick={() => setDeleteTargetGroup(group)}
                               className="transition-colors p-1 rounded text-gray-500 hover:text-red-600"
@@ -644,7 +644,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
                         <div key={item.id} className="bg-white rounded-lg shadow-sm px-3 py-3 space-y-2 border">
                           <div className="flex items-center gap-3">
                             <button onClick={() => openEditDrawer(item)} className={`${theme.editIconText} ${theme.editIconHoverText}`}>
-                              <FiEdit2 size={18} />
+                              <IconEdit width={18} height={18} />
                             </button>
                             <div className="flex items-center gap-2 flex-1 min-w-0">
                               <span className="font-semibold text-gray-800 truncate">{item.name}</span>

@@ -20,12 +20,14 @@ import { ROLES } from '../enums';
 import ShopClosingReminderModal from '../Components/ShopClosingReminderModal';
 import ShowWrapper from '../context/ShowWrapper';
 import { Cata_Permissions } from '../Catalogue/enum/cata_permissions.enum';
+import { TutorialStep } from '../Components/TutorialStep';
 
 const CatalogueLayout = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const { currentUser } = useAuth();
     const scrollRef = useRef<HTMLDivElement>(null);
+    const [tutorialStep, setTutorialStep] = useState(-1);
     useOrderSound(currentUser?.companyId);
     const confirmedCount = useConfirmedOrdersCount(currentUser?.companyId);
 
@@ -65,7 +67,51 @@ const CatalogueLayout = () => {
             setReminderDismissed(false);
         }
     }, [isOwner, needsReset, currentUser?.companyId]);
+useEffect(() => {
+        const checkTutorial = async () => {
+            if (!currentUser?.companyId) return;
+            try {
+                const ref = doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial');
+                const snap = await getDoc(ref);
+                const settings = snap.exists() ? snap.data() : {};
+                const catalogueDone = !!settings?.catalogueTutorialDone;
+                const floatingDone = !!settings?.catalogueFloatingTutorialDone;
 
+                if (catalogueDone && !floatingDone && window.innerWidth < 768) {
+                    setTutorialStep(0);
+                }
+            } catch (e) {
+                console.error('Error fetching catalogue floating tutorial:', e);
+            }
+        };
+
+        checkTutorial();
+        window.addEventListener("catalogue_tutorial_done", checkTutorial);
+        return () => window.removeEventListener("catalogue_tutorial_done", checkTutorial);
+    }, [currentUser]);
+
+    const saveFloatingDone = async () => {
+        if (!currentUser?.companyId) return;
+        try {
+            await setDoc(
+                doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial'),
+                { catalogueFloatingTutorialDone: true },
+                { merge: true }
+            );
+        } catch (e) {
+            console.error('Error saving catalogue floating tutorial:', e);
+        }
+    };
+
+    const handleTutorialNext = async () => {
+        await saveFloatingDone();
+        setTutorialStep(-1);
+    };
+
+    const handleTutorialSkip = async () => {
+        await saveFloatingDone();
+        setTutorialStep(-1);
+    };
     const handleConfirmClose = async () => {
         if (currentUser?.companyId) {
             const ref = doc(db, 'companies', currentUser.companyId, 'settings', 'shop-hours');
@@ -284,9 +330,19 @@ const CatalogueLayout = () => {
                     >
                         <Share2 size={20} />
                     </button>
-                    <FloatingButton>
-                        <MobileActions />
-                    </FloatingButton>
+                    <TutorialStep
+                        step={0}
+                        currentStep={tutorialStep}
+                        text="Tap here to quickly add Items, view Requests, and more!"
+                        onNext={handleTutorialNext}
+                        onSkip={handleTutorialSkip}
+                        isLast={true}
+                        position="top"
+                    >
+                        <FloatingButton>
+                            <MobileActions />
+                        </FloatingButton>
+                    </TutorialStep>
                 </div>
             </main>
 

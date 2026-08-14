@@ -51,9 +51,9 @@ export const getDefaultPurchaseSettings = (companyId: string): PurchaseSettings 
     purchaseViewType: 'list',
     requireSupplierName: true,
     requireSupplierMobile: false,
-    cartInsertionOrder: 'top',
+    cartInsertionOrder: 'bottom',
     cardViewWithPhoto: true,
-    enableGodownAssignment: true,
+    enableGodownAssignment: false,
 });
 
 interface CardProps {

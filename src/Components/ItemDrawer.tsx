@@ -928,8 +928,8 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                     disabled={isSaving}
                                     className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
-                                    <option value="">Uncategorized</option>
                                     <option value="ADD_NEW_GROUP" className="font-semibold bg-gray-100">+ Add New Group</option>
+                                    <option value="">Uncategorized</option>
                                     {itemGroups.map((group) => (
                                         <option key={group.id} value={group.id}>
                                             {group.name}
@@ -986,8 +986,8 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                             className="flex-1 min-w-0 h-10 rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
                                             disabled={isSaving}
                                         >
-                                            <option value="">Add more</option>
                                             <option value="ADD_NEW_GROUP" className="font-semibold bg-gray-100">+ Add New Group</option>
+                                            {/* <option value="">Add more</option> */}
                                             {itemGroups
                                                 .filter(g => !selectedCategories.includes(g.id!))
                                                 .map(g => (

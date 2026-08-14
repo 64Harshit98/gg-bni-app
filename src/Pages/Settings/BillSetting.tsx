@@ -231,7 +231,7 @@ const BillSettings: React.FC = () => {
             <div className="flex items-center bg-white border-b border-gray-200 sticky top-0 z-10">
                 <BackButton className='ml-3' />
                 <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-                    <h1 className="text-2xl font-bold text-gray-900">Invoice Configuration</h1>
+                    <h1 className="text-2xl font-bold text-gray-900">Bill Settings</h1>
                     <p className="text-sm text-gray-500 mt-1">Manage details printed on your bills.</p>
                 </div>
             </div>
@@ -450,7 +450,7 @@ const BillSettings: React.FC = () => {
                             <div>
                                 <span className="block text-sm font-medium text-gray-900">Print Triplicate Copies</span>
                                 <span className="block text-xs text-gray-500">
-                                    When enabled, "Print (Bill + Duplicate)" prints 1 original + 2 "DUPLICATE" stamped copies instead of 1.
+                                    Prints 1 original + 2 stamped "DUPLICATE" copies instead of just 1.
                                 </span>
                             </div>
                             <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-4">
@@ -470,7 +470,7 @@ const BillSettings: React.FC = () => {
                             <div>
                                 <span className="block text-sm font-medium text-gray-900">Show Item Photos on Bill</span>
                                 <span className="block text-xs text-gray-500">
-                                    When enabled, each item's photo is printed alongside its row on A4 bills. Helps staff pack orders correctly.
+                                    Prints each item's photo next to its row on A4 bills.
                                 </span>
                             </div>
                             <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-4">

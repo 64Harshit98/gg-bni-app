@@ -3,6 +3,8 @@ const axios = require("axios");
 const cors = require("cors")({ origin: true });
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const crypto = require("crypto");
+const Razorpay = require("razorpay");
 
 const SUPER_ADMIN_UIDS = [
     "6vwZ1HRqX7VSnh5KP4JW0TKeuZm2",
@@ -639,3 +641,283 @@ exports.getPublicItem = functions
             res.status(500).json({ error: "Internal Server Error" });
         }
     });
+
+// =========================================================
+// Razorpay Subscription Payments + Coupons
+// =========================================================
+
+// 365-day validity, INR, matches the yearly prices shown on SubscriptionPage.tsx
+const PLAN_PRICING = {
+    pos_basic: 999,
+    pos_pro: 2999,
+    catalogue_pro: 4999,
+    enterprise: 7999,
+};
+const PLAN_DAYS = 365;
+const TAX_RATE = 0.18; // 18% GST, applied on every plan after any coupon discount
+
+// Applies GST to the post-discount amount. Rounded to the nearest rupee.
+function applyTax(taxableAmount) {
+    const taxAmount = Math.round(taxableAmount * TAX_RATE);
+    return { taxableAmount, taxAmount, finalAmount: taxableAmount + taxAmount };
+}
+
+function getRazorpayInstance() {
+    const keyId = process.env.RAZORPAY_KEY_ID;
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    if (!keyId || !keySecret) {
+        throw new functions.https.HttpsError("failed-precondition", "Payment gateway is not configured.");
+    }
+    return new Razorpay({ key_id: keyId, key_secret: keySecret });
+}
+
+// Read-only: looks up a coupon and computes the discount for a given plan/company, without writing anything.
+async function resolveCoupon(codeRaw, planId, companyId, baseAmount) {
+    const code = String(codeRaw || "").trim().toUpperCase();
+    if (!code) return { valid: false, message: "Enter a coupon code." };
+
+    const couponRef = db.doc(`coupons/${code}`);
+    const couponSnap = await couponRef.get();
+    if (!couponSnap.exists) return { valid: false, message: "Invalid coupon code." };
+
+    const coupon = couponSnap.data();
+    const now = new Date();
+
+    if (coupon.isActive === false) return { valid: false, message: "This coupon is no longer active." };
+
+    const validFrom = coupon.validFrom && coupon.validFrom.toDate ? coupon.validFrom.toDate() : null;
+    if (validFrom && now < validFrom) return { valid: false, message: "This coupon is not active yet." };
+
+    const validTill = coupon.validTill && coupon.validTill.toDate ? coupon.validTill.toDate() : null;
+    if (validTill && now > validTill) return { valid: false, message: "This coupon has expired." };
+
+    if (Array.isArray(coupon.applicablePlans) && coupon.applicablePlans.length > 0 && !coupon.applicablePlans.includes(planId)) {
+        return { valid: false, message: "This coupon is not valid for the selected plan." };
+    }
+
+    if (typeof coupon.maxRedemptions === "number" && (coupon.redemptionCount || 0) >= coupon.maxRedemptions) {
+        return { valid: false, message: "This coupon has reached its usage limit." };
+    }
+
+    if (typeof coupon.minAmount === "number" && baseAmount < coupon.minAmount) {
+        return { valid: false, message: `This coupon requires a minimum order of ₹${coupon.minAmount}.` };
+    }
+
+    const redemptionRef = db.doc(`couponRedemptions/${code}_${companyId}`);
+    const redemptionSnap = await redemptionRef.get();
+    if (redemptionSnap.exists) return { valid: false, message: "You have already used this coupon." };
+
+    let discountAmount = 0;
+    if (coupon.discountType === "percent") {
+        discountAmount = Math.round((baseAmount * Number(coupon.discountValue || 0)) / 100);
+    } else {
+        discountAmount = Math.round(Number(coupon.discountValue || 0));
+    }
+    discountAmount = Math.max(0, Math.min(discountAmount, baseAmount - 1));
+    const taxableAmount = baseAmount - discountAmount;
+
+    return { valid: true, message: "Coupon applied.", code, discountAmount, taxableAmount, couponRef, coupon };
+}
+
+exports.validateCoupon = functions.https.onCall(async (data, context) => {
+    if (!context.auth || !context.auth.token.companyId) {
+        throw new functions.https.HttpsError("unauthenticated", "Must be logged in.");
+    }
+    const { code, planId } = data;
+    const baseAmount = PLAN_PRICING[planId];
+    if (!baseAmount) throw new functions.https.HttpsError("invalid-argument", "Unknown plan.");
+
+    const result = await resolveCoupon(code, planId, context.auth.token.companyId, baseAmount);
+    const discountAmount = result.valid ? result.discountAmount : 0;
+    const tax = applyTax(result.valid ? result.taxableAmount : baseAmount);
+    return {
+        valid: result.valid,
+        message: result.message,
+        baseAmount,
+        discountAmount,
+        taxRate: TAX_RATE,
+        taxAmount: tax.taxAmount,
+        finalAmount: tax.finalAmount,
+    };
+});
+
+exports.createRazorpayOrder = functions.https.onCall(async (data, context) => {
+    if (!context.auth || !context.auth.token.companyId) {
+        throw new functions.https.HttpsError("unauthenticated", "Must be logged in.");
+    }
+    const { planId, couponCode } = data;
+    const baseAmount = PLAN_PRICING[planId];
+    if (!baseAmount) throw new functions.https.HttpsError("invalid-argument", "Unknown plan.");
+
+    const companyId = context.auth.token.companyId;
+    let taxableAmount = baseAmount;
+    let discountAmount = 0;
+    let appliedCode = null;
+
+    if (couponCode) {
+        const result = await resolveCoupon(couponCode, planId, companyId, baseAmount);
+        if (!result.valid) throw new functions.https.HttpsError("failed-precondition", result.message);
+        taxableAmount = result.taxableAmount;
+        discountAmount = result.discountAmount;
+        appliedCode = result.code;
+    }
+
+    const tax = applyTax(taxableAmount);
+
+    try {
+        const razorpay = getRazorpayInstance();
+        const order = await razorpay.orders.create({
+            amount: tax.finalAmount * 100,
+            currency: "INR",
+            receipt: `sub_${companyId}_${Date.now()}`,
+            notes: { companyId, planId, couponCode: appliedCode || "" },
+        });
+
+        await db.doc(`paymentOrders/${order.id}`).set({
+            companyId,
+            uid: context.auth.uid,
+            planId,
+            planDays: PLAN_DAYS,
+            baseAmount,
+            discountAmount,
+            taxRate: TAX_RATE,
+            taxAmount: tax.taxAmount,
+            finalAmount: tax.finalAmount,
+            couponCode: appliedCode,
+            status: "created",
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        return {
+            orderId: order.id,
+            amount: tax.finalAmount,
+            baseAmount,
+            discountAmount,
+            taxAmount: tax.taxAmount,
+            currency: "INR",
+            keyId: process.env.RAZORPAY_KEY_ID,
+        };
+    } catch (error) {
+        console.error("Error creating Razorpay order:", error);
+        throw new functions.https.HttpsError("internal", "Failed to create payment order.");
+    }
+});
+
+exports.verifyRazorpayPayment = functions.https.onCall(async (data, context) => {
+    if (!context.auth || !context.auth.token.companyId) {
+        throw new functions.https.HttpsError("unauthenticated", "Must be logged in.");
+    }
+    const { orderId, paymentId, signature } = data;
+    if (!orderId || !paymentId || !signature) {
+        throw new functions.https.HttpsError("invalid-argument", "Missing payment verification details.");
+    }
+
+    const companyId = context.auth.token.companyId;
+    const orderRef = db.doc(`paymentOrders/${orderId}`);
+    const orderSnap = await orderRef.get();
+    if (!orderSnap.exists) throw new functions.https.HttpsError("not-found", "Order not found.");
+
+    const order = orderSnap.data();
+    if (order.companyId !== companyId) {
+        throw new functions.https.HttpsError("permission-denied", "This order does not belong to your company.");
+    }
+    if (order.status === "paid") {
+        return { status: "success", message: "Payment already verified." };
+    }
+
+    const expectedSignature = crypto
+        .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+        .update(`${orderId}|${paymentId}`)
+        .digest("hex");
+
+    if (expectedSignature !== signature) {
+        await orderRef.update({ status: "failed" });
+        throw new functions.https.HttpsError("permission-denied", "Payment verification failed.");
+    }
+
+    try {
+        await db.runTransaction(async (tx) => {
+            const companyRef = db.doc(`companies/${companyId}`);
+
+            // --- All reads first (Firestore transactions require every read before any write) ---
+            const [companySnap, freshOrderSnap] = await Promise.all([tx.get(companyRef), tx.get(orderRef)]);
+            if (!companySnap.exists) throw new functions.https.HttpsError("not-found", "Company not found.");
+            const freshOrder = freshOrderSnap.data();
+            if (freshOrder.status === "paid") return; // already processed by a concurrent call
+
+            const companyData = companySnap.data() || {};
+            const referral = companyData.referralDetails;
+
+            let redemptionRef = null;
+            let redemptionSnap = null;
+            if (freshOrder.couponCode) {
+                redemptionRef = db.doc(`couponRedemptions/${freshOrder.couponCode}_${companyId}`);
+                redemptionSnap = await tx.get(redemptionRef);
+            }
+
+            let referrerCompanyRef = null;
+            let referrerSnap = null;
+            if (referral && referral.referrerId && freshOrder.finalAmount > 0 && referral.referrerType === "company") {
+                referrerCompanyRef = db.doc(`companies/${referral.referrerId}`);
+                referrerSnap = await tx.get(referrerCompanyRef);
+            }
+
+            // --- All writes after ---
+            const currentExpiry = companyData.expiryDate && companyData.expiryDate.toDate ? companyData.expiryDate.toDate() : new Date();
+            const baseDate = currentExpiry > new Date() ? currentExpiry : new Date();
+            const newExpiryDate = new Date(baseDate);
+            newExpiryDate.setDate(newExpiryDate.getDate() + freshOrder.planDays);
+
+            tx.update(companyRef, {
+                expiryDate: admin.firestore.Timestamp.fromDate(newExpiryDate),
+                pack: freshOrder.planId,
+                validity: "active",
+                isTrial: false,
+            });
+
+            tx.update(orderRef, {
+                status: "paid",
+                razorpayPaymentId: paymentId,
+                paidAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+
+            if (freshOrder.couponCode && redemptionRef && !redemptionSnap.exists) {
+                const couponRef = db.doc(`coupons/${freshOrder.couponCode}`);
+                tx.update(couponRef, { redemptionCount: admin.firestore.FieldValue.increment(1) });
+                tx.set(redemptionRef, {
+                    code: freshOrder.couponCode,
+                    companyId,
+                    orderId,
+                    discountApplied: freshOrder.discountAmount,
+                    redeemedAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+            }
+
+            if (referral && referral.referrerId && freshOrder.finalAmount > 0) {
+                if (referral.referrerType === "agent" || referral.referrerType === "agency") {
+                    const commissionAmount = freshOrder.finalAmount * 0.10;
+                    const agentRef = db.doc(`agents/${referral.referrerId}`);
+                    tx.update(agentRef, {
+                        unpaidBalance: admin.firestore.FieldValue.increment(commissionAmount),
+                        totalEarned: admin.firestore.FieldValue.increment(commissionAmount),
+                    });
+                } else if (referrerCompanyRef && referrerSnap && referrerSnap.exists) {
+                    const refData = referrerSnap.data() || {};
+                    const refCurrentExpiry = refData.expiryDate && refData.expiryDate.toDate ? refData.expiryDate.toDate() : new Date();
+                    const refBaseDate = refCurrentExpiry > new Date() ? refCurrentExpiry : new Date();
+                    const refNewExpiry = new Date(refBaseDate);
+                    refNewExpiry.setDate(refNewExpiry.getDate() + 30);
+                    tx.update(referrerCompanyRef, {
+                        expiryDate: admin.firestore.Timestamp.fromDate(refNewExpiry),
+                    });
+                }
+            }
+        });
+
+        return { status: "success", message: "Payment verified and subscription activated." };
+    } catch (error) {
+        console.error("Error verifying Razorpay payment:", error);
+        if (error instanceof functions.https.HttpsError) throw error;
+        throw new functions.https.HttpsError("internal", "Failed to activate subscription.");
+    }
+});

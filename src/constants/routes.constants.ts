@@ -80,6 +80,7 @@ export const ROUTES = {
   CATA_SUPPORT: 'support',
   SUPER_ADMINHUB: '/super-admin',
   SUPER_ADMIN: '/super-admin/companies',
+  SUPER_ADMIN_COUPONS: '/super-admin/coupons',
   SUPPORT_TICKET: '/super-admin/support',
   APP_LEADS: '/leads',
   WEBSITE_QUERY: '/super-admin/website-leads',

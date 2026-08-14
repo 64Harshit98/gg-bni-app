@@ -7,6 +7,8 @@ import { doc, getDoc } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { logoutUser } from '../../lib/AuthOperations';
 import { ROUTES } from '../../constants/routes.constants';
+import { validateCoupon, createRazorpayOrder, verifyRazorpayPayment } from '../../lib/PaymentOperations';
+import { loadRazorpayCheckoutScript, openRazorpayCheckout } from '../../lib/Razorpay';
 
 // --- HELPER: Feature Descriptions ---
 const FEATURE_DESCRIPTIONS: Record<string, string> = {
@@ -154,7 +156,7 @@ const POS_TIERS = [
 
 const CATALOGUE_TIERS = [
     {
-        id: 'cat_premium',
+        id: PLANS.CATALOGUE_PRO,
         name: 'Premium',
         price: { monthly: '₹499', yearly: '₹4,999' },
         originalPrice: { monthly: '₹799', yearly: '₹7,999' },
@@ -232,6 +234,103 @@ const SubscriptionPage: React.FC = () => {
 
     const [isContactModalOpen, setIsContactModalOpen] = useState(false);
     const [selectedPlan, setSelectedPlan] = useState('');
+
+    // --- Checkout modal state ---
+    const [checkoutTier, setCheckoutTier] = useState<{ id: string; name: string; price: number } | null>(null);
+    const [couponInput, setCouponInput] = useState('');
+    const [couponApplying, setCouponApplying] = useState(false);
+    const [couponError, setCouponError] = useState('');
+    const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discountAmount: number; taxAmount: number; finalAmount: number } | null>(null);
+    const [paying, setPaying] = useState(false);
+    const [payError, setPayError] = useState('');
+
+    const TAX_RATE = 0.18; // 18% GST, applied on every plan — kept in sync with functions/lib/index.js
+
+    const yearlyPriceToNumber = (price: string) => Number(price.replace(/[^\d]/g, '')) || 0;
+
+    const checkoutBreakdown = useMemo(() => {
+        if (!checkoutTier) return null;
+        if (appliedCoupon) {
+            return {
+                discountAmount: appliedCoupon.discountAmount,
+                taxAmount: appliedCoupon.taxAmount,
+                total: appliedCoupon.finalAmount,
+            };
+        }
+        const taxAmount = Math.round(checkoutTier.price * TAX_RATE);
+        return { discountAmount: 0, taxAmount, total: checkoutTier.price + taxAmount };
+    }, [checkoutTier, appliedCoupon]);
+
+    const openCheckout = (tier: { id: string; name: string; price: { yearly: string } }) => {
+        setCheckoutTier({ id: tier.id, name: tier.name, price: yearlyPriceToNumber(tier.price.yearly) });
+        setCouponInput('');
+        setCouponError('');
+        setAppliedCoupon(null);
+        setPayError('');
+    };
+
+    const handleApplyCoupon = async () => {
+        if (!checkoutTier || !couponInput.trim()) return;
+        setCouponApplying(true);
+        setCouponError('');
+        try {
+            const result = await validateCoupon(couponInput.trim(), checkoutTier.id);
+            if (!result.valid) {
+                setCouponError(result.message);
+                setAppliedCoupon(null);
+            } else {
+                setAppliedCoupon({
+                    code: couponInput.trim().toUpperCase(),
+                    discountAmount: result.discountAmount,
+                    taxAmount: result.taxAmount,
+                    finalAmount: result.finalAmount,
+                });
+            }
+        } catch (err: any) {
+            setCouponError(err.message || 'Failed to validate coupon.');
+            setAppliedCoupon(null);
+        } finally {
+            setCouponApplying(false);
+        }
+    };
+
+    const handlePayNow = async () => {
+        if (!checkoutTier) return;
+        setPaying(true);
+        setPayError('');
+        try {
+            const scriptLoaded = await loadRazorpayCheckoutScript();
+            if (!scriptLoaded) throw new Error('Could not load the payment gateway. Check your connection and try again.');
+
+            const order = await createRazorpayOrder(checkoutTier.id, appliedCoupon?.code);
+
+            openRazorpayCheckout({
+                keyId: order.keyId,
+                orderId: order.orderId,
+                amount: order.amount,
+                currency: order.currency,
+                name: 'Subscription',
+                description: checkoutTier.name,
+                prefill: { name: (currentUser as any)?.name, email: userEmail },
+                onSuccess: async (response) => {
+                    try {
+                        await verifyRazorpayPayment(response.razorpay_order_id, response.razorpay_payment_id, response.razorpay_signature);
+                        setCheckoutTier(null);
+                        alert('Payment successful! Your subscription is now active.');
+                        window.location.reload();
+                    } catch (err: any) {
+                        setPayError(err.message || 'Payment was received but activation failed. Please contact support.');
+                    } finally {
+                        setPaying(false);
+                    }
+                },
+                onDismiss: () => setPaying(false),
+            });
+        } catch (err: any) {
+            setPayError(err.message || 'Failed to start payment.');
+            setPaying(false);
+        }
+    };
 
     const allFeatures = useMemo(() => {
         if (activeTab === 'pos') {
@@ -397,10 +496,7 @@ const SubscriptionPage: React.FC = () => {
                                                 </span>
                                             </div>
                                             <button
-                                                onClick={() => {
-                                                    setSelectedPlan(tier.name);
-                                                    setIsContactModalOpen(true);
-                                                }}
+                                                onClick={() => openCheckout(tier)}
                                                 className={`mt-3 w-full py-1.5 rounded-sm text-xs sm:text-sm font-bold transition-colors ${tier.recommended
                                                     ? activeTab === 'pos' ? 'bg-blue-600 text-white hover:bg-gray-800' : activeTab === 'catalogue' ? 'bg-[#F97316] text-white hover:bg-sky-700' : 'bg-yellow-400 text-black hover:bg-yellow-500'
                                                     : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
@@ -471,6 +567,97 @@ const SubscriptionPage: React.FC = () => {
                     </div>
                 </div>
             </div>
+            {checkoutTier && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-2xl max-w-md w-full p-6">
+                        <h3 className="text-lg font-bold text-gray-900 mb-1">Checkout</h3>
+                        <p className="text-gray-500 text-sm mb-4">{checkoutTier.name} — billed yearly</p>
+
+                        <div className="bg-gray-50 rounded-md p-4 mb-4">
+                            <div className="flex justify-between text-sm text-gray-600 mb-1">
+                                <span>Plan price</span>
+                                <span>₹{checkoutTier.price.toLocaleString('en-IN')}</span>
+                            </div>
+                            {appliedCoupon && (
+                                <div className="flex justify-between text-sm text-green-600 mb-1">
+                                    <span>Coupon ({appliedCoupon.code})</span>
+                                    <span>-₹{appliedCoupon.discountAmount.toLocaleString('en-IN')}</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between text-sm text-gray-600 mb-1">
+                                <span>GST (18%)</span>
+                                <span>+₹{(checkoutBreakdown?.taxAmount ?? 0).toLocaleString('en-IN')}</span>
+                            </div>
+                            <div className="flex justify-between text-base font-bold text-gray-900 pt-2 mt-2 border-t border-gray-200">
+                                <span>Total</span>
+                                <span>₹{(checkoutBreakdown?.total ?? checkoutTier.price).toLocaleString('en-IN')}</span>
+                            </div>
+                        </div>
+
+                        <div className="mb-4">
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">
+                                Coupon Code
+                            </label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={couponInput}
+                                    onChange={(e) => { setCouponInput(e.target.value.toUpperCase()); setAppliedCoupon(null); setCouponError(''); }}
+                                    placeholder="Enter code"
+                                    disabled={!!appliedCoupon}
+                                    className="flex-1 text-sm bg-white border border-gray-200 rounded-sm px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+                                />
+                                {appliedCoupon ? (
+                                    <button
+                                        onClick={() => { setAppliedCoupon(null); setCouponInput(''); }}
+                                        className="px-4 py-2 text-sm font-semibold rounded-sm border border-gray-300 text-gray-700 hover:bg-gray-50"
+                                    >
+                                        Remove
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={handleApplyCoupon}
+                                        disabled={couponApplying || !couponInput.trim()}
+                                        className="px-4 py-2 text-sm font-semibold rounded-sm bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50"
+                                    >
+                                        {couponApplying ? 'Checking…' : 'Apply'}
+                                    </button>
+                                )}
+                            </div>
+                            {couponError && <p className="text-xs text-red-500 mt-1">{couponError}</p>}
+                        </div>
+
+                        {payError && <p className="text-sm text-red-500 mb-3">{payError}</p>}
+
+                        <button
+                            onClick={handlePayNow}
+                            disabled={paying}
+                            className="w-full py-2.5 bg-blue-600 text-white rounded-md font-semibold hover:bg-blue-700 transition-colors disabled:opacity-60"
+                        >
+                            {paying ? 'Processing…' : `Pay ₹${(checkoutBreakdown?.total ?? checkoutTier.price).toLocaleString('en-IN')}`}
+                        </button>
+
+                        <div className="flex justify-between items-center mt-3">
+                            <button
+                                onClick={() => {
+                                    setSelectedPlan(checkoutTier.name);
+                                    setCheckoutTier(null);
+                                    setIsContactModalOpen(true);
+                                }}
+                                className="text-xs text-gray-500 hover:text-gray-700 underline"
+                            >
+                                Prefer to pay offline? Contact admin instead
+                            </button>
+                            <button
+                                onClick={() => setCheckoutTier(null)}
+                                className="text-xs text-gray-500 hover:text-gray-700"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {isContactModalOpen && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-lg shadow-2xl max-w-md w-full p-6">

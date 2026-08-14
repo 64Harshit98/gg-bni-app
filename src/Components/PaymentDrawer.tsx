@@ -189,7 +189,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const [partyNumber, setPartyNumber] = useState('');
     const [partyAddress, setPartyAddress] = useState('');
     const [partyGST, setPartyGST] = useState('');
-    const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
+    //const [isDetailsExpanded, setIsDetailsExpanded] = useState(false);
     const [discount, setDiscount] = useState(0);
     const [discountPercent, setDiscountPercent] = useState(0);
     const [partyCredit, setPartyCredit] = useState(0);
@@ -221,9 +221,12 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
 
     const [expenses, setExpenses] = useState<{ id: number; name: string; amount: number | '' }[]>([]);
     const [narration, setNarration] = useState('');
-    const [isNarrationExpanded, setIsNarrationExpanded] = useState(false);
+    //const [isNarrationExpanded, setIsNarrationExpanded] = useState(false);
 
     const [showTransportModal, setShowTransportModal] = useState(false);
+    const [showGstAddressModal, setShowGstAddressModal] = useState(false);
+    const [showNarrationModal, setShowNarrationModal] = useState(false);
+    const [showExpenseModal, setShowExpenseModal] = useState(false);
     const [transportName, setTransportName] = useState('');
     const [grRrNo, setGrRrNo] = useState('');
     const [grRrDate, setGrRrDate] = useState('');
@@ -439,8 +442,9 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         setVehicleNo(finalTransport.vehicleNo || '');
         setStationFrom(finalTransport.stationFrom || '');
         setPinCode(finalTransport.pinCode || '');
-        setIsNarrationExpanded(!!finalNarration);
-        setIsDetailsExpanded(!!(finalAddress || finalGST || finalState));
+        setShowGstAddressModal(false);
+        setShowNarrationModal(false);
+        setShowExpenseModal(false);
 
         if (isSale && finalNumber) searchParty(finalNumber, 'number');
         if (!isSale && finalName) searchParty(finalName, 'name');
@@ -970,17 +974,17 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                 {!isCalculator && (
                                     <div className="pt-1 md:pt-2 flex flex-col gap-1.5 md:gap-1 w-full">
                                         <div className="flex items-center justify-between w-full">
-                                            <div onClick={() => setIsDetailsExpanded(!isDetailsExpanded)} className="flex items-center justify-start cursor-pointer text-blue-600 hover:text-blue-700 transition-colors text-[10px] md:text-xs font-semibold select-none">
-                                                <span>{isDetailsExpanded ? '-' : '+'} GST & Address</span>
+                                            <div onClick={() => setShowGstAddressModal(true)} className="flex items-center justify-start cursor-pointer text-blue-600 hover:text-blue-700 transition-colors text-[10px] md:text-xs font-semibold select-none">
+                                                <span>{(addressType === 'billing' ? (partyGST || partyAddress || partyState) : (shippingGST || shippingAddress || shippingState)) ? '✓ GST & Address' : '+ GST & Address'}</span>
                                             </div>
                                             {isSale && enableNarration && (
-                                                <div onClick={() => setIsNarrationExpanded(!isNarrationExpanded)} className="flex items-center justify-start cursor-pointer text-gray-500 hover:text-gray-700 transition-colors text-[10px] md:text-xs font-semibold select-none">
-                                                    <span>{isNarrationExpanded ? '- ' : '+'} Narration</span>
+                                                <div onClick={() => setShowNarrationModal(true)} className="flex items-center justify-start cursor-pointer text-gray-500 hover:text-gray-700 transition-colors text-[10px] md:text-xs font-semibold select-none">
+                                                    <span>{narration ? '✓ Narration' : '+ Narration'}</span>
                                                 </div>
                                             )}
                                             {isSale && enableExtraExpense && (
-                                                <div onClick={() => setExpenses(prev => [...prev, { id: Date.now(), name: '', amount: '' }])} className="flex items-center justify-end cursor-pointer text-orange-600 hover:text-orange-700 transition-colors text-[10px] md:text-xs font-semibold select-none">
-                                                    <span>+ Expense</span>
+                                                <div onClick={() => setShowExpenseModal(true)} className="flex items-center justify-end cursor-pointer text-orange-600 hover:text-orange-700 transition-colors text-[10px] md:text-xs font-semibold select-none">
+                                                    <span>{expenses.length > 0 ? '✓ Expense' : '+ Expense'}</span>
                                                 </div>
                                             )}
                                             {enableTransportDetails && (
@@ -988,37 +992,97 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                                     <span>{hasTransportDetails ? '✓ Transport Details' : '+ Transport Details'}</span>
                                                 </div>
                                             )}
-                                        </div>
-
-                                        {isDetailsExpanded && (
-                                            <div className="flex flex-col gap-2 md:gap-3 mt-1.5 md:mt-3 animate-in slide-in-from-top-2 fade-in duration-200">
-                                                <input type="text" placeholder="GST Number" maxLength={15} value={addressType === 'billing' ? partyGST : shippingGST} onChange={(e) => { if (addressType === 'billing') { setPartyGST(e.target.value); } else { setShippingGST(e.target.value); setIsSameAsBilling(false); } }} className="w-full p-2 text-xs md:text-sm rounded-xs border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none" />
-                                                <div className="flex gap-2 w-full">
-                                                    <input type="text" placeholder="Full Address" value={addressType === 'billing' ? partyAddress : shippingAddress} onChange={(e) => { if (addressType === 'billing') { setPartyAddress(e.target.value); } else { setShippingAddress(e.target.value); setIsSameAsBilling(false); } }} className="flex-1 p-2 text-xs md:text-sm rounded-xs border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none" />
-                                                    <select value={addressType === 'billing' ? partyState : shippingState} onChange={(e) => { if (addressType === 'billing') { setPartyState(e.target.value); } else { setShippingState(e.target.value); setIsSameAsBilling(false); } }} className="w-1/3 p-2 text-xs md:text-sm rounded-xs border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none">
-                                                        <option value="">State</option>
-                                                        {INDIAN_STATES.map(state => (<option key={state} value={state}>{state}</option>))}
-                                                    </select>
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {expenses.length > 0 && (
-                                            <div className="flex flex-col gap-1.5 md:gap-2 mt-1.5 md:mt-3 animate-in slide-in-from-top-2 fade-in duration-200">
-                                                {expenses.map((expense) => (
-                                                    <div key={expense.id} className="flex items-center gap-1.5 md:gap-2 p-1.5 min-w-0 bg-orange-50 rounded-xs border border-orange-100">
-                                                        <input type="text" placeholder="Expense Name" value={expense.name} onChange={(e) => setExpenses(prev => prev.map(ex => ex.id === expense.id ? { ...ex, name: e.target.value } : ex))} className="flex-1 min-w-0 p-2 text-xs md:text-sm rounded-xs border border-orange-200 bg-white focus:border-orange-500 outline-none" />
-                                                        <input type="number" placeholder="Amt (₹)" value={expense.amount} onChange={(e) => setExpenses(prev => prev.map(ex => ex.id === expense.id ? { ...ex, amount: parseFloat(e.target.value) || '' } : ex))} className="w-20 min-w-0 md:w-28 p-2 text-xs md:text-sm rounded-xs border border-orange-200 bg-white focus:border-orange-500 outline-none" />
-                                                        <button onClick={() => setExpenses(prev => prev.filter(ex => ex.id !== expense.id))} className="p-1 md:p-1.5 rounded-full bg-orange-100 hover:bg-red-100 text-orange-400 hover:text-red-500 transition-colors flex-shrink-0"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button>
+                                            {showGstAddressModal && (
+                                                <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4" onClick={() => setShowGstAddressModal(false)}>
+                                                    <div className="absolute inset-0 bg-black/50" />
+                                                    <div className="relative w-full max-w-md bg-white rounded-sm shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                                                        <div className="bg-blue-500 px-4 py-2.5 flex items-center justify-between">
+                                                            <h3 className="text-white font-semibold text-sm">GST & Address</h3>
+                                                            <button onClick={() => setShowGstAddressModal(false)} className="text-white hover:text-orange-100">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                                                            </button>
+                                                        </div>
+                                                        <div className="p-4 space-y-3">
+                                                            <div>
+                                                                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">GST Number</label>
+                                                                <input type="text" placeholder="GST Number" maxLength={15} value={addressType === 'billing' ? partyGST : shippingGST} onChange={(e) => { if (addressType === 'billing') { setPartyGST(e.target.value); } else { setShippingGST(e.target.value); setIsSameAsBilling(false); } }} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none" />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Full Address</label>
+                                                                <input type="text" placeholder="Full Address" value={addressType === 'billing' ? partyAddress : shippingAddress} onChange={(e) => { if (addressType === 'billing') { setPartyAddress(e.target.value); } else { setShippingAddress(e.target.value); setIsSameAsBilling(false); } }} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none" />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">State</label>
+                                                                <select value={addressType === 'billing' ? partyState : shippingState} onChange={(e) => { if (addressType === 'billing') { setPartyState(e.target.value); } else { setShippingState(e.target.value); setIsSameAsBilling(false); } }} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none">
+                                                                    <option value="">State</option>
+                                                                    {INDIAN_STATES.map(state => (<option key={state} value={state}>{state}</option>))}
+                                                                </select>
+                                                            </div>
+                                                            <button onClick={() => setShowGstAddressModal(false)} className="w-full py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-sm font-bold text-sm transition-colors">
+                                                                OK
+                                                            </button>
+                                                        </div>
                                                     </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                        {isNarrationExpanded && (
-                                            <div className="mt-1.5 md:mt-2 animate-in slide-in-from-top-2 fade-in duration-200">
-                                                <textarea placeholder="Enter narration or remarks..." value={narration} onChange={(e) => setNarration(e.target.value)} className="w-full p-2 text-xs md:text-sm rounded-xs border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none resize-none" rows={2} />
-                                            </div>
-                                        )}
+                                                </div>
+                                            )}
+                                            {showNarrationModal && (
+                                                <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4" onClick={() => setShowNarrationModal(false)}>
+                                                    <div className="absolute inset-0 bg-black/50" />
+                                                    <div className="relative w-full max-w-md bg-white rounded-sm shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                                                        <div className="bg-blue-500 px-4 py-2.5 flex items-center justify-between">
+                                                            <h3 className="text-white font-semibold text-sm">Narration</h3>
+                                                            <button onClick={() => setShowNarrationModal(false)} className="text-white hover:text-orange-100">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                                                            </button>
+                                                        </div>
+                                                        <div className="p-4 space-y-3">
+                                                            <textarea placeholder="Enter narration or remarks..." value={narration} onChange={(e) => setNarration(e.target.value)} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none resize-none" rows={4} autoFocus />
+                                                            <div className="flex gap-2 pt-1">
+                                                                {narration && (
+                                                                    <button onClick={() => setNarration('')} className="px-4 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-sm transition-colors">
+                                                                        Clear
+                                                                    </button>
+                                                                )}
+                                                                <button onClick={() => setShowNarrationModal(false)} className="flex-1 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-sm font-bold text-sm transition-colors">
+                                                                    OK
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {showExpenseModal && (
+                                                <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4" onClick={() => setShowExpenseModal(false)}>
+                                                    <div className="absolute inset-0 bg-black/50" />
+                                                    <div className="relative w-full max-w-md bg-white rounded-sm shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                                                        <div className="bg-blue-500 px-4 py-2.5 flex items-center justify-between">
+                                                            <h3 className="text-white font-semibold text-sm">Expense Details</h3>
+                                                            <button onClick={() => setShowExpenseModal(false)} className="text-white hover:text-orange-100">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                                                            </button>
+                                                        </div>
+                                                        <div className="p-4 space-y-3 max-h-[60vh] overflow-y-auto">
+                                                            {expenses.length === 0 && (
+                                                                <p className="text-xs text-gray-400 text-center py-2">No expenses added yet.</p>
+                                                            )}
+                                                            {expenses.map((expense) => (
+                                                                <div key={expense.id} className="flex items-center gap-1.5 md:gap-2 p-1.5 min-w-0 bg-orange-50 rounded-xs border border-orange-100">
+                                                                    <input type="text" placeholder="Expense Name" value={expense.name} onChange={(e) => setExpenses(prev => prev.map(ex => ex.id === expense.id ? { ...ex, name: e.target.value } : ex))} className="flex-1 min-w-0 p-2 text-xs md:text-sm rounded-xs border border-orange-200 bg-white focus:border-orange-500 outline-none" />
+                                                                    <input type="number" placeholder="Amt (₹)" value={expense.amount} onChange={(e) => setExpenses(prev => prev.map(ex => ex.id === expense.id ? { ...ex, amount: parseFloat(e.target.value) || '' } : ex))} className="w-20 min-w-0 md:w-28 p-2 text-xs md:text-sm rounded-xs border border-orange-200 bg-white focus:border-orange-500 outline-none" />
+                                                                    <button onClick={() => setExpenses(prev => prev.filter(ex => ex.id !== expense.id))} className="p-1 md:p-1.5 rounded-full bg-orange-100 hover:bg-red-100 text-orange-400 hover:text-red-500 transition-colors flex-shrink-0"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg></button>
+                                                                </div>
+                                                            ))}
+                                                            <button onClick={() => setExpenses(prev => [...prev, { id: Date.now(), name: '', amount: '' }])} className="w-full py-2 text-xs font-semibold text-orange-600 hover:bg-orange-50 rounded-sm border border-dashed border-orange-200 transition-colors">
+                                                                + Add Another Expense
+                                                            </button>
+                                                            <button onClick={() => setShowExpenseModal(false)} className="w-full py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-sm font-bold text-sm transition-colors">
+                                                                OK
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
                             </div>

@@ -93,7 +93,7 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     lockTaxToggle: false,
     enableRounding: false,
     roundingInterval: 1,
-    cartInsertionOrder: 'top',
+    cartInsertionOrder: 'bottom',
     hideMrp: false,
     enableItemWiseDiscount: true,
     enableDiscount2: false,

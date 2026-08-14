@@ -53,15 +53,15 @@ const PurchasePage: React.FC = () => {
   // reasoning. Behavior is unchanged from the original single-component
   // version — only which file declares this particular useState call.
   const [items, setItems] = useState<PurchaseItem[]>(() => {
-    if (isEditMode) return [];
+    if (isEditMode || !currentUser?.companyId) return [];
     try {
-      const savedDraft = localStorage.getItem('purchase_cart_draft');
+      const savedDraft = localStorage.getItem(`purchase_cart_draft_${currentUser.companyId}`); // 👈 company-scoped
       return savedDraft ? JSON.parse(savedDraft) : [];
     } catch (e) {
       console.error("Error parsing purchase draft", e);
       return [];
     }
-  });
+});
 
   const {
     availableItems, setAvailableItems,
@@ -119,6 +119,7 @@ const PurchasePage: React.FC = () => {
     availableItems,
     setAvailableItems,
     setModal,
+    companyId: currentUser?.companyId, // 👈 ADD
   });
 
   const {

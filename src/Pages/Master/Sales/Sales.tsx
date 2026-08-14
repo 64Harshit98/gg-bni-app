@@ -171,6 +171,7 @@ const Sales: React.FC = () => {
         setAvailableItems,
         dbOperations,
         setModal,
+        companyId: currentUser?.companyId,
     });
 
     const userRole = currentUser?.role || '';

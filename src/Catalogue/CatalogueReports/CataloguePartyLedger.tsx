@@ -151,7 +151,16 @@ const CataloguePartyLedger: React.FC = () => {
     const bulkFileInputRef = useRef<HTMLInputElement>(null);
     const [isBulkUploading, setIsBulkUploading] = useState(false);
     const [bulkUploadProgress, setBulkUploadProgress] = useState<{ current: number; total: number } | null>(null);
+     const [showBulkImport, setShowBulkImport] = useState(false);
 
+    // NEW: delete-all-parties state
+    const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
+    const [deleteAllConfirmText, setDeleteAllConfirmText] = useState('');
+    const [isDeletingAll, setIsDeletingAll] = useState(false);
+
+    // NEW: delete-single-party state
+    const [partyToDelete, setPartyToDelete] = useState<{ partyName: string; partyNumber: string } | null>(null);
+    const [isDeletingParty, setIsDeletingParty] = useState(false);
     const showToast = (message: string, type: 'success' | 'error' = 'success') => {
         setToast({ message, type });
         setTimeout(() => setToast(null), 3500);
@@ -1094,6 +1103,81 @@ const CataloguePartyLedger: React.FC = () => {
         return { success, failed, duplicates };
     };
 
+    // NEW: wipe every Order and catalogue-sourced opening balance for this company
+    const confirmDeleteAll = async () => {
+        if (!currentUser?.companyId) return;
+        setIsDeletingAll(true);
+        try {
+            const { collection: col, getDocs, writeBatch } = await import('firebase/firestore');
+            const companyId = currentUser.companyId;
+
+            const ordersSnap = await getDocs(col(db, 'companies', companyId, 'Orders'));
+            const obSnap = await getDocs(col(db, 'companies', companyId, 'openingBalances'));
+            const catalogueObDocs = obSnap.docs.filter(d => d.data().source === 'catalogue');
+
+            const allDocs = [...ordersSnap.docs, ...catalogueObDocs];
+            const BATCH_LIMIT = 450;
+            for (let i = 0; i < allDocs.length; i += BATCH_LIMIT) {
+                const batch = writeBatch(db);
+                allDocs.slice(i, i + BATCH_LIMIT).forEach(d => batch.delete(d.ref));
+                await batch.commit();
+            }
+
+            setOpeningBalances([]);
+            setSelectedPartyName(null);
+            setSelectedPartyNumber('');
+            setIsDeleteAllModalOpen(false);
+            setDeleteAllConfirmText('');
+            showToast('All parties deleted.', 'success');
+        } catch (e: any) {
+            showToast(e.message || 'Failed to delete all parties.', 'error');
+        } finally {
+            setIsDeletingAll(false);
+        }
+    };
+
+   // NEW: delete one party's Orders + catalogue opening balances
+    const confirmDeleteParty = async () => {
+        if (!partyToDelete || !currentUser?.companyId) return;
+        setIsDeletingParty(true);
+        try {
+            const { collection: col, getDocs, writeBatch } = await import('firebase/firestore');
+            const companyId = currentUser.companyId;
+            const targetPhone = normalizePartyNumber(partyToDelete.partyNumber);
+
+            const ordersSnap = await getDocs(col(db, 'companies', companyId, 'Orders'));
+            const matchingOrderDocs = ordersSnap.docs.filter(d => {
+                const data = d.data();
+                const phone = normalizePartyNumber(data.userLoginPhone || data.billingDetails?.phone || data.shippingDetails?.phone || '');
+                if (targetPhone) return phone === targetPhone;
+                const name = data.userName || data.billingDetails?.name || data.shippingDetails?.name || 'Unknown';
+                return name === partyToDelete.partyName;
+            });
+
+            const obSnap = await getDocs(col(db, 'companies', companyId, 'openingBalances'));
+            const matchingObDocs = obSnap.docs.filter(d => {
+                const data = d.data();
+                if (data.source !== 'catalogue') return false;
+                const phone = normalizePartyNumber(data.partyNumber || '');
+                if (targetPhone) return phone === targetPhone;
+                return data.partyName === partyToDelete.partyName;
+            });
+
+            const allDocs = [...matchingOrderDocs, ...matchingObDocs];
+            const batch = writeBatch(db);
+            allDocs.forEach(d => batch.delete(d.ref));
+            await batch.commit();
+
+            setOpeningBalances(prev => prev.filter(ob => !matchingObDocs.some(d => d.id === ob.id)));
+            showToast(`${partyToDelete.partyName} deleted.`, 'success');
+            setPartyToDelete(null);
+        } catch (e: any) {
+            showToast(e.message || 'Failed to delete party.', 'error');
+        } finally {
+            setIsDeletingParty(false);
+        }
+    };
+
     const handleDownloadBulkSample = () => {
         const s = (font: any, fill?: any, alignment?: any, border?: any) => ({
             font: { name: 'Arial', ...font },
@@ -1318,6 +1402,59 @@ const CataloguePartyLedger: React.FC = () => {
                 </div>
             )
             }
+            {/* NEW: Delete single party confirmation modal */}
+            {partyToDelete && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+                    <div className="bg-white rounded-sm shadow-xl w-full max-w-sm p-5">
+                        <h2 className="text-base font-bold text-gray-800 mb-2">Delete Party?</h2>
+                        <p className="text-sm text-gray-600 mb-4">
+                            This permanently deletes <span className="font-semibold">{partyToDelete.partyName}</span> and all of their orders and opening balance records. This cannot be undone.
+                        </p>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => setPartyToDelete(null)}
+                                disabled={isDeletingParty}
+                                className="flex-1 px-3 py-2 text-sm font-semibold text-gray-600 bg-gray-100 rounded-sm hover:bg-gray-200 disabled:opacity-50"
+                            >Cancel</button>
+                            <button
+                                onClick={confirmDeleteParty}
+                                disabled={isDeletingParty}
+                                className="flex-1 px-3 py-2 text-sm font-semibold text-white bg-red-600 rounded-sm hover:bg-red-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                            >{isDeletingParty ? <Spinner /> : 'Delete'}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* NEW: Delete-all-parties confirmation modal (requires typing DELETE) */}
+            {isDeleteAllModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+                    <div className="bg-white rounded-sm shadow-xl w-full max-w-sm p-5">
+                        <h2 className="text-base font-bold text-red-700 mb-2">Delete ALL Parties?</h2>
+                        <p className="text-sm text-gray-600 mb-3">
+                            This permanently deletes every order and opening balance record for your catalogue. This cannot be undone.
+                        </p>
+                        <p className="text-xs text-gray-500 mb-1">Type <span className="font-mono font-bold">DELETE</span> to confirm:</p>
+                        <input
+                            value={deleteAllConfirmText}
+                            onChange={e => setDeleteAllConfirmText(e.target.value)}
+                            placeholder="DELETE"
+                            className="w-full p-2 border border-gray-300 rounded-sm text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-red-400"
+                        />
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => { setIsDeleteAllModalOpen(false); setDeleteAllConfirmText(''); }}
+                                disabled={isDeletingAll}
+                                className="flex-1 px-3 py-2 text-sm font-semibold text-gray-600 bg-gray-100 rounded-sm hover:bg-gray-200 disabled:opacity-50"
+                            >Cancel</button>
+                            <button
+                                onClick={confirmDeleteAll}
+                                disabled={deleteAllConfirmText !== 'DELETE' || isDeletingAll}
+                                className="flex-1 px-3 py-2 text-sm font-semibold text-white bg-red-600 rounded-sm hover:bg-red-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                            >{isDeletingAll ? <Spinner /> : 'Delete All'}</button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {
                 toast && (
                     <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-md shadow-lg text-sm font-semibold text-white transition-all
@@ -1365,7 +1502,13 @@ const CataloguePartyLedger: React.FC = () => {
                     <div className="flex items-center justify-between pb-4 border-b border-gray-200 mb-3">
                         <BackButton className="mt-2 ml-3" />
                         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">Party Ledger</h1>
-                        <div className="w-10 mt-2 mr-3" />
+                        <button
+                            onClick={() => setIsDeleteAllModalOpen(true)}
+                            className="text-xs font-semibold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 px-3 py-1.5 rounded-sm transition-colors mt-2 mr-3"
+                            title="Delete all parties"
+                        >
+                            Delete All
+                        </button>
                     </div>
                 )
             }
@@ -1375,28 +1518,38 @@ const CataloguePartyLedger: React.FC = () => {
                 {/* LEFT: main column */}
                 <div className="flex-1 w-full md:w-[65%]">
 
-                    {/* MOBILE-ONLY compact bulk import bar */}
+                    {/* MOBILE-ONLY bulk import — collapsed by default, single-row toggle */}
                     {!selectedPartyName && (
-                        <div className="md:hidden bg-orange-50 border border-orange-100 rounded-sm p-3 mb-3 mx-3">
-                            <h3 className="text-sm font-bold text-orange-800 mb-1">Bulk Import</h3>
-                            <p className="text-xs text-orange-600 mb-2">Upload an Excel sheet of old dues/advances as opening balances.</p>
-                            <div className="flex flex-col gap-2">
-                                <button
-                                    onClick={() => bulkFileInputRef.current?.click()}
-                                    disabled={isBulkUploading}
-                                    className="w-full bg-orange-500 text-white py-2 px-3 rounded-sm text-sm font-semibold hover:bg-orange-600 disabled:bg-gray-400 flex items-center justify-center gap-2"
-                                >
-                                    {isBulkUploading ? <Spinner /> : 'Upload Excel File'}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={handleDownloadBulkSample}
-                                    disabled={isBulkUploading}
-                                    className="text-sm text-orange-600 underline text-center"
-                                >
-                                    Download Sample Template
-                                </button>
-                            </div>
+                        <div className="md:hidden bg-white border border-gray-200 rounded-sm mb-3 mx-3 overflow-hidden">
+                            <button
+                                onClick={() => setShowBulkImport(prev => !prev)}
+                                className="w-full relative flex items-center justify-center px-3 py-2.5 text-sm font-bold text-orange-600 hover:bg-orange-50 transition-colors"
+                            >
+                                <span>Bulk Upload</span>
+                                <span className={`absolute right-3 inline-block transition-transform duration-200 ${showBulkImport ? 'rotate-180' : ''}`}>▼</span>
+                            </button>
+                            {showBulkImport && (
+                                <div className="bg-orange-50 border-t border-orange-100 p-3">
+                                    <p className="text-xs text-orange-600 mb-2">Upload an Excel sheet of old dues/advances as opening balances.</p>
+                                    <div className="flex flex-col gap-2">
+                                        <button
+                                            onClick={() => bulkFileInputRef.current?.click()}
+                                            disabled={isBulkUploading}
+                                            className="w-full bg-orange-500 text-white py-2 px-3 rounded-sm text-sm font-semibold hover:bg-orange-600 disabled:bg-gray-400 flex items-center justify-center gap-2"
+                                        >
+                                            {isBulkUploading ? <Spinner /> : 'Upload Excel File'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleDownloadBulkSample}
+                                            disabled={isBulkUploading}
+                                            className="text-sm text-orange-600 underline text-center"
+                                        >
+                                            Download Sample Template
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -1518,21 +1671,31 @@ const CataloguePartyLedger: React.FC = () => {
                                                             </p>
                                                         </div>
                                                     </div>
-                                                    {/* NEW: Remind button — only when party has a due and a valid number */}
-                                                    {party.totalDue > 0 && party.partyNumber && party.partyNumber.trim() !== '' && (
-                                                        <div className="mt-2 pt-2 border-t border-slate-100">
+                                                    {/* Remind + Delete row */}
+                                                    <div className="mt-2 pt-2 border-t border-slate-100 flex gap-2">
+                                                        {party.totalDue > 0 && party.partyNumber && party.partyNumber.trim() !== '' && (
                                                             <button
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     handleSendPartyReminder(party);
                                                                 }}
                                                                 disabled={sendingReminderFor === party.partyNumber}
-                                                                className="w-full py-1.5 text-[11px] font-bold text-white bg-orange-500 rounded-sm hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                                                                className="flex-1 py-1.5 text-[11px] font-bold text-white bg-orange-500 rounded-sm hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
                                                             >
                                                                 {sendingReminderFor === party.partyNumber ? <Spinner /> : 'Remind'}
                                                             </button>
-                                                        </div>
-                                                    )}
+                                                        )}
+                                                        {/* NEW: per-party delete button */}
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setPartyToDelete({ partyName: party.partyName, partyNumber: party.partyNumber });
+                                                            }}
+                                                            className="flex-1 py-1.5 text-[11px] font-bold text-red-600 bg-red-50 border border-red-200 rounded-sm hover:bg-red-100 transition-colors"
+                                                        >
+                                                            Delete
+                                                        </button>
+                                                    </div>
                                                 </CustomCard>
                                             ))}
                                         </>

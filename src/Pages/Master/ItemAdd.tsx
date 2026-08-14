@@ -18,7 +18,7 @@ import { db, storage } from '../../lib/Firebase';
 import imageCompression from 'browser-image-compression';
 import ReactCrop, { type Crop, centerCrop, makeAspectCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
-import { InfoTooltip } from '../../Components/InfoToolTip';
+//import { InfoTooltip } from '../../Components/InfoToolTip';
 import { VariantPicker } from '../../Components/VariantPicker';
 
 interface ItemAddProps {
@@ -107,7 +107,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   const dbOperations = useDatabase();
   const { currentUser, loading: authLoading } = useAuth();
   const { itemSettings, loadingSettings: loadingItemSettings } = useItemSettings();
-// Needed to resolve a Location column value (e.g. "Warehouse A") to a godown id during bulk import.
+  // Needed to resolve a Location column value (e.g. "Warehouse A") to a godown id during bulk import.
   const { godowns } = useGodowns(currentUser?.companyId);
   const [itemName, setItemName] = useState<string>('');
   const [itemMRP, setItemMRP] = useState<string>('');
@@ -617,7 +617,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       let currentGroups = await dbOperations.getItemGroups();
       const groupMap = new Map<string, string>();
       currentGroups.forEach(g => groupMap.set(g.name.toLowerCase().trim(), g.id!));
-// Maps a "Location" cell value (godown name) to its godown id.
+      // Maps a "Location" cell value (godown name) to its godown id.
       // "Shop" / blank always means item.stock — never a godown.
       const godownNameMapImport = new Map<string, string>();
       godowns.forEach(g => godownNameMapImport.set(g.name.toLowerCase().trim(), g.id));
@@ -677,7 +677,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         const rowMoq = parseInt(safeGetVal(row, 13)) || 1;
         const rowImageUrlStr = safeGetVal(row, 14);
         const rowDescription = safeGetVal(row, 15);
- // Resolve the Location cell. Blank or "Shop" (case-insensitive) → item.stock.
+        // Resolve the Location cell. Blank or "Shop" (case-insensitive) → item.stock.
         // Otherwise must match an existing godown name exactly (case-insensitive).
         const trimmedLocation = rowLocationStr.trim().toLowerCase();
         const isShopLocation = !trimmedLocation || trimmedLocation === SHOP_NAME.toLowerCase();
@@ -802,7 +802,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           } else if (existingItem) {
             finalRowBarcode = existingItem.barcode;
           }
-// Decide where the stockVal quantity actually lands:
+          // Decide where the stockVal quantity actually lands:
           // - No godown match → Shop (item.stock), same as before this feature.
           // - Godown match + brand-new item → item.stock starts at 0, all opening
           //   stock goes into godownStock.
@@ -1179,7 +1179,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       <div className="flex-1 flex flex-col md:flex-row relative min-h-0">
 
         {/* LEFT PANEL */}
-        <div className="flex-1 h-full overflow-y-auto w-full md:w-[65%] bg-gray-100 md:bg-gray-50 md:border-r border-gray-200 pt-24 pb-10 px-4 md:pt-6 md:px-6 md:pb-6">
+        <div className="flex-1 h-full overflow-y-auto w-full md:w-[65%] bg-gray-100 md:bg-gray-50 md:border-r border-gray-200 pt-32 pb-10 px-4 md:pt-6 md:px-6 md:pb-6">
 
           {error && <div className="mb-4 text-center p-3 bg-red-100 text-red-700 rounded-sm">{error}</div>}
 
@@ -1207,7 +1207,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
             <h2 className="text-lg font-bold text-gray-800 mb-4 md:mb-6 md:border-b md:pb-2">Add a Single Item</h2>
 
             <div className="mb-6 flex flex-col md:flex-row gap-4 items-start">
-              <div className="w-32 h-32 flex-shrink-0 border-2 border-dashed border-gray-300 rounded-lg overflow-hidden bg-gray-50 flex items-center justify-center relative cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => imageInputRef.current?.click()}>
+              <div className="w-full h-28 md:w-32 md:h-32 flex-shrink-0 border-2 border-dashed border-gray-300 rounded-lg overflow-hidden bg-gray-50 flex items-center justify-center relative cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => imageInputRef.current?.click()}>
                 {isImageCompressing ? (
                   <div className="flex flex-col items-center"><Spinner /><span className="text-[10px] mt-2 text-gray-500">Compressing...</span></div>
                 ) : imagePreview ? (
@@ -1231,8 +1231,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
               {/* --- Name Row (Full Width) --- */}
               <div>
                 <div className="flex items-center mb-1">
-                  <label className="text-sm font-medium leading-none block after:content-['*'] after:ml-0.5 after:text-red-500 mr-2">Item Name</label>
-                  <InfoTooltip text="The name of the product being added." />
+                  <label className="text-xs font-medium leading-none block after:content-['*'] after:ml-0.5 after:text-red-500 mr-2">Item Name</label>
                 </div>
                 <input type="text" value={itemName} onChange={(e) => setItemName(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50" placeholder="e.g. Apple" />
               </div>
@@ -1243,8 +1242,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <div className="flex items-center mb-1">
-                    <label className="text-sm font-medium leading-none block mr-2">{`MRP (${getUnitLabel()})`}</label>
-                    <InfoTooltip text="Maximum Retail Price printed on the product." />
+                    <label className="text-xs font-medium leading-none block mr-2">{`MRP (${getUnitLabel()})`}</label>
                   </div>
                   <input type="number" value={itemMRP} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemMRP(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0.00" />
                   <p className="text-[10px] text-gray-400 mt-1">Required if Sale Price is empty</p>
@@ -1252,8 +1250,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                 {/* --- Barcode --- */}
                 <div>
                   <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requireBarcode ? reqClasses : ''} mr-2`}>Barcode</label>
-                    <InfoTooltip text="Unique identifier for scanning the product." />
+                    <label className={`text-xs font-medium leading-none block ${itemSettings?.requireBarcode ? reqClasses : ''} mr-2`}>Barcode</label>
                   </div>
                   <div className="flex gap-2">
                     <input type="text" value={itemBarcode} onChange={(e) => setItemBarcode(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50" placeholder="Scan or Type" />
@@ -1268,16 +1265,14 @@ const ItemAdd: React.FC<ItemAddProps> = ({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <div className="flex items-center mb-1">
-                    <label className="text-sm font-medium leading-none block after:content-['*'] after:text-red-500 mr-2">{`Sales Price (${getUnitLabel()})`}</label>
-                    <InfoTooltip text="The price you are selling this item for." />
+                    <label className="text-xs font-medium leading-none block after:content-['*'] after:text-red-500 mr-2">{`Sales Price (${getUnitLabel()})`}</label>
                   </div>
                   <input type="number" value={itemSalesPrice} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemSalesPrice(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0.00" />
                   <p className="text-[10px] text-gray-400 mt-1">Required if MRP is empty</p>
                 </div>
                 <div>
                   <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requirePurchasePrice ? reqClasses : ''} mr-2`}>Purchase Price</label>
-                    <InfoTooltip text="The price you paid to acquire this item." />
+                    <label className={`text-xs font-medium leading-none block ${itemSettings?.requirePurchasePrice ? reqClasses : ''} mr-2`}>Purchase Price</label>
                   </div>
                   <input type="number" value={itemPurchasePrice} onChange={(e) => setItemPurchasePrice(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0.00" />
                 </div>
@@ -1287,15 +1282,13 @@ const ItemAdd: React.FC<ItemAddProps> = ({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requireSaleDiscount ? reqClasses : ''} mr-2`}>Sale Disc (%)</label>
-                    <InfoTooltip text="Default discount percentage given to customers." />
+                    <label className={`text-xs font-medium leading-none block ${itemSettings?.requireSaleDiscount ? reqClasses : ''} mr-2`}>Sale Disc (%)</label>
                   </div>
                   <input type="number" value={itemDiscount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemDiscount(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0" />
                 </div>
                 <div>
                   <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requirePurchaseDiscount ? reqClasses : ''} mr-2`}>Purchase Disc (%)</label>
-                    <InfoTooltip text="Discount percentage received from the supplier." />
+                    <label className={`text-xs font-medium leading-none block ${itemSettings?.requirePurchaseDiscount ? reqClasses : ''} mr-2`}>Purchase Disc (%)</label>
                   </div>
                   <input type="number" value={PurchaseDiscount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setPurchaseDiscount(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0" />
                 </div>
@@ -1305,15 +1298,13 @@ const ItemAdd: React.FC<ItemAddProps> = ({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requireTax ? reqClasses : ''} mr-2`}>Tax (%)</label>
-                    <InfoTooltip text="Applicable tax percentage for this item." />
+                    <label className={`text-xs font-medium leading-none block ${itemSettings?.requireTax ? reqClasses : ''} mr-2`}>Tax (%)</label>
                   </div>
                   <input type="number" value={itemTax} onChange={(e) => setItemTax(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0" />
                 </div>
                 <div>
                   <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requireHsnCode ? reqClasses : ''} mr-2`}>HSN Code</label>
-                    <InfoTooltip text="Harmonized System Nomenclature code for taxation." />
+                    <label className={`text-xs font-medium leading-none block ${itemSettings?.requireHsnCode ? reqClasses : ''} mr-2`}>HSN Code</label>
                   </div>
                   <input type="text" value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="e.g. 123456" />
                 </div>
@@ -1323,15 +1314,13 @@ const ItemAdd: React.FC<ItemAddProps> = ({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requireStock ? reqClasses : ''} mr-2`}>Stock</label>
-                    <InfoTooltip text="Current available quantity in your inventory." />
+                    <label className={`text-xs font-medium leading-none block ${itemSettings?.requireStock ? reqClasses : ''} mr-2`}>Stock</label>
                   </div>
                   <input type="number" value={itemAmount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemAmount(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0" />
                 </div>
                 <div>
                   <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requireRestockQuantity ? reqClasses : ''} mr-2`}>Restock Level</label>
-                    <InfoTooltip text="Minimum stock level to trigger a reorder alert." />
+                    <label className={`text-xs font-medium leading-none block ${itemSettings?.requireRestockQuantity ? reqClasses : ''} mr-2`}>Restock Level</label>
                   </div>
                   <input type="number" onWheel={(e) => (e.target as HTMLInputElement).blur()} value={restockQuantity} onChange={(e) => setRestockQuantity(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="0" />
                 </div>
@@ -1341,15 +1330,13 @@ const ItemAdd: React.FC<ItemAddProps> = ({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium leading-none block ${itemSettings?.requireMoq ? reqClasses : ''} mr-2`}>MOQ</label>
-                    <InfoTooltip text="Minimum Item Quantity to be ordered." />
+                    <label className={`text-xs font-medium leading-none block ${itemSettings?.requireMoq ? reqClasses : ''} mr-2`}>MOQ</label>
                   </div>
                   <input type="number" value={moq} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setMoq(e.target.value)} className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500" placeholder="1" />
                 </div>
                 <div>
                   <div className="flex items-center mb-1">
-                    <label className={`text-sm font-medium leading-none block ${(itemSettings as any)?.requireUnit ? reqClasses : ''} mr-2`}>Unit</label>
-                    <InfoTooltip text="Measurement unit (e.g., pieces, box, kg)." />
+                    <label className={`text-xs font-medium leading-none block ${(itemSettings as any)?.requireUnit ? reqClasses : ''} mr-2`}>Unit</label>
                   </div>
                   <div className="flex gap-2">
                     <select value={itemUnit} onChange={(e) => { setItemUnit(e.target.value); if (e.target.value !== 'pkt') setPacketSize(''); }} className={`flex h-10 rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${itemUnit === 'pkt' ? 'w-1/2' : 'w-full'}`}>
@@ -1361,10 +1348,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
               </div>
               <div>
                 <div className="flex items-center mb-1">
-                  <label className={`text-sm font-medium text-gray-600 ${(itemSettings as any)?.requireCategory ? reqClasses : ''} mr-2`}>
-                    Category
-                  </label>
-                  <InfoTooltip text="Select a primary category. Add more as catalogue-only tags below." />
+                  <label className={`text-xs font-medium text-gray-600 ${(itemSettings as any)?.requireCategory ? reqClasses : ''} mr-2`}>Category</label>
                 </div>
 
                 {/* Primary category dropdown — always visible */}
@@ -1448,8 +1432,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
               {/* --- Variants --- */}
               <div>
                 <div className="flex items-center mb-1">
-                  <label className="text-sm font-medium leading-none block mr-2">Variants</label>
-                  <InfoTooltip text="Link other items as variants (e.g. different sizes or colors)." />
+                  <label className="text-xs font-medium leading-none block mr-2">Variants</label>
                 </div>
                 <VariantPicker
                   allItems={allItems}
@@ -1462,8 +1445,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
               {/* --- Description --- */}
               <div>
                 <div className="flex items-center mb-1">
-                  <label className="text-sm font-medium leading-none block mr-2">Description</label>
-                  <InfoTooltip text="Additional details about the product, shown on the catalogue/e-commerce page." />
+                  <label className="text-xs font-medium leading-none block mr-2">Description</label>
                 </div>
                 <textarea
                   value={itemDescription}

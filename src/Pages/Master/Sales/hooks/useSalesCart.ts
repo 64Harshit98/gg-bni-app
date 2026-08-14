@@ -14,6 +14,7 @@ interface UseSalesCartParams {
     setAvailableItems: React.Dispatch<React.SetStateAction<Item[]>>;
     dbOperations: any;
     setModal: (modal: { message: string; type: State } | null) => void;
+    companyId?: string; // 👈 NEW — needed to scope the cart draft per company
 }
 
 // Owns item/cart management — moved verbatim from Sales.tsx: the `items`
@@ -37,11 +38,14 @@ export const useSalesCart = ({
     setAvailableItems,
     dbOperations,
     setModal,
+companyId, // 👈 NEW
 }: UseSalesCartParams) => {
+    const draftKey = companyId ? `sales_cart_draft_${companyId}` : null; // 👈 NEW
+
     const [items, setItems] = useState<SalesItem[]>(() => {
-        if (isEditMode) return [];
+        if (isEditMode || !draftKey) return []; // 👈 companyId aane tak draft mat uthao
         try {
-            const savedDraft = sessionStorage.getItem('sales_cart_draft');
+            const savedDraft = sessionStorage.getItem(draftKey);
             const parsedDraft = savedDraft ? JSON.parse(savedDraft) : [];
             return parsedDraft;
         } catch (e) {
@@ -118,10 +122,10 @@ export const useSalesCart = ({
     }, [isEditMode, invoiceToEdit]);
 
     useEffect(() => {
-        if (!isEditMode && !pageIsLoading) {
-            sessionStorage.setItem('sales_cart_draft', JSON.stringify(items));
-        }
-    }, [items, isEditMode, pageIsLoading]);
+    if (!isEditMode && !pageIsLoading && draftKey) {
+        sessionStorage.setItem(draftKey, JSON.stringify(items));
+    }
+}, [items, isEditMode, pageIsLoading, draftKey]);
 
     const categories = useMemo(() => {
         const groups = new Set(availableItems.map(i => i.itemGroupId || 'uncategorized'));

@@ -117,7 +117,7 @@ export const usePurchasePayment = ({
             setModal({ message: "Invoice Number is required.", type: State.ERROR });
             return;
         }
-        if (purchaseSettings?.enableGodownAssignment && godowns.length > 0) {
+        if (purchaseSettings?.enableGodownAssignment) {
             setIsGodownAssignOpen(true);
         } else {
             setIsDrawerOpen(true);

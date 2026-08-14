@@ -72,6 +72,7 @@ const PartyLedger: React.FC = () => {
     const bulkFileInputRef = useRef<HTMLInputElement>(null);
     const [isBulkUploading, setIsBulkUploading] = useState(false);
     const [bulkUploadProgress, setBulkUploadProgress] = useState<{ current: number; total: number } | null>(null);
+    const [showBulkImport, setShowBulkImport] = useState(false); 
 
     // NEW: delete-party / delete-all state
     const [partyToDelete, setPartyToDelete] = useState<PartySummary | null>(null);
@@ -920,12 +921,12 @@ const PartyLedger: React.FC = () => {
                     </h1>
                     {/* NEW: Delete-all trigger, kept small/quiet since it's destructive */}
                     <button
-                        onClick={() => setIsDeleteAllModalOpen(true)}
-                        className="text-xs font-semibold text-red-500 hover:text-red-700 px-2 py-1"
-                        title="Delete all parties"
-                    >
-                        Delete All
-                    </button>
+    onClick={() => setIsDeleteAllModalOpen(true)}
+    className="text-xs font-semibold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 px-3 py-1.5 rounded-sm transition-colors"
+    title="Delete all parties"
+>
+    Delete All
+</button>
                 </div>
             )}
             <div className="flex-1 flex flex-col md:flex-row gap-0 px-0">
@@ -933,28 +934,38 @@ const PartyLedger: React.FC = () => {
                 {/* LEFT: main column */}
                 <div className="flex-1 w-full md:w-[65%]">
 
-                    {/* MOBILE-ONLY compact bulk import bar (shows above filters, hidden on desktop) */}
+{/* MOBILE-ONLY bulk import — collapsed by default, single-row toggle */}
                     {!selectedPartyName && (
-                        <div className="md:hidden bg-blue-50 border border-blue-100 rounded-sm p-3 mb-3 mx-3">
-                            <h3 className="text-sm font-bold text-blue-800 mb-1">Bulk Import</h3>
-                            <p className="text-xs text-blue-600 mb-2">Upload an Excel sheet of old dues/advances as opening balances.</p>
-                            <div className="flex flex-col gap-2">
-                                <button
-                                    onClick={() => bulkFileInputRef.current?.click()}
-                                    disabled={isBulkUploading}
-                                    className="w-full bg-blue-600 text-white py-2 px-3 rounded-sm text-sm font-semibold hover:bg-blue-700 disabled:bg-gray-400 flex items-center justify-center gap-2"
-                                >
-                                    {isBulkUploading ? <Spinner /> : 'Upload Excel File'}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={handleDownloadBulkSample}
-                                    disabled={isBulkUploading}
-                                    className="text-sm text-blue-600 underline text-center"
-                                >
-                                    Download Sample Template
-                                </button>
-                            </div>
+                        <div className="md:hidden bg-white border border-gray-200 rounded-sm mb-3 mx-3 overflow-hidden">
+                            <button
+                                onClick={() => setShowBulkImport(prev => !prev)}
+                                className="w-full relative flex items-center justify-center px-3 py-2.5 text-sm font-bold text-blue-600 hover:bg-blue-50 transition-colors"
+                            >
+                                <span>Bulk Upload</span>
+                                <span className={`absolute right-3 inline-block transition-transform duration-200 ${showBulkImport ? 'rotate-180' : ''}`}>▼</span>
+                            </button>
+                            {showBulkImport && (
+                                <div className="bg-blue-50 border-t border-blue-100 p-3">
+                                    <p className="text-xs text-blue-600 mb-2">Upload an Excel sheet of old dues/advances as opening balances.</p>
+                                    <div className="flex flex-col gap-2">
+                                        <button
+                                            onClick={() => bulkFileInputRef.current?.click()}
+                                            disabled={isBulkUploading}
+                                            className="w-full bg-blue-600 text-white py-2 px-3 rounded-sm text-sm font-semibold hover:bg-blue-700 disabled:bg-gray-400 flex items-center justify-center gap-2"
+                                        >
+                                            {isBulkUploading ? <Spinner /> : 'Upload Excel File'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleDownloadBulkSample}
+                                            disabled={isBulkUploading}
+                                            className="text-sm text-blue-600 underline text-center"
+                                        >
+                                            Download Sample Template
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
                     {/* FILTERS & SEARCH (Hidden when viewing detail) */}

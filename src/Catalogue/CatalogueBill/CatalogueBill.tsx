@@ -448,7 +448,7 @@ export const CatalogueBill = async (
     if (isDuplicate) doc.addPage();
     let cursorY = margin;
 
-    drawWatermark(doc, pageWidth, pageHeight);
+    // watermark moved out — stamped globally after generation
 
     if (isDuplicate) {
       doc.setFontSize(10); doc.setFont("helvetica", "bold");
@@ -836,7 +836,11 @@ export const CatalogueBill = async (
       renderPage(true);
     }
   }
-
+  const totalPages = (doc as any).getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    drawWatermark(doc, pageWidth, pageHeight);
+  }
   if (action === "print") {
     doc.autoPrint();
     window.open(doc.output("bloburl"), "_blank");
@@ -1065,7 +1069,7 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
     accountNumber: invoiceData.accountNumber || billSettings.accountNumber || "",
     ifscCode: invoiceData.ifscCode || billSettings.ifscCode || "",
     upiId: billSettings.upiId || companyData.upiId || "",
-    termsAndConditions: billSettings.catalogueTermsAndConditions || invoiceData.termsAndConditions || "",
+    termsAndConditions: billSettings.catalogueTermsAndConditions || invoiceData.termsAndConditions || '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
     signatureBase64: billSettings.signatureBase64 || "",
     enableTriplicate: billSettings.enableTriplicate || false,
     discountDisplayMode: billSettings.discountDisplayFormat || invoiceData.discountDisplayFormat || 'amount',

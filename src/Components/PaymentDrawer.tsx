@@ -163,7 +163,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     enableShippingDetails = false,
     enableExtraExpense = false,
     enableNarration = false,
-    enableCustomerDetails = true,
+    enableCustomerDetails = false,
     enableTransportDetails = false,
     initialTransportDetails,
     initialPartyAddress,
@@ -213,7 +213,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const longPressTimer = useRef<NodeJS.Timeout | null>(null);
     const [discountInfo, setDiscountInfo] = useState<string | null>(null);
     const [addressType, setAddressType] = useState<'billing' | 'shipping'>('billing');
-    const [isSameAsBilling, setIsSameAsBilling] = useState(false);
+    const [isSameAsBilling, setIsSameAsBilling] = useState(true);
     const [shippingName, setShippingName] = useState('');
     const [shippingNumber, setShippingNumber] = useState('');
     const [shippingAddress, setShippingAddress] = useState('');
@@ -340,7 +340,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         let finalShippingAddress = initialShippingAddress || '';
         let finalShippingGST = initialShippingGST || '';
         let finalShippingState = initialShippingState || '';
-        let finalIsSameAsBilling = false;
+        let finalIsSameAsBilling = true; // default linked to billing
         let finalExpenses = initialExpenses && initialExpenses.length > 0
             ? initialExpenses.map((e, index) => ({ id: Date.now() + index, name: e.name, amount: e.amount }))
             : [];
@@ -352,6 +352,11 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         // In edit mode, always prefer the prop value
         if (initialPartyName || initialPartyNumber) {
             // Edit mode: use prop directly, ignore session storage
+            // If this bill already had distinct shipping details saved earlier, keep them unlinked.
+            // Otherwise default to "same as billing" so the box isn't empty.
+            const hasDistinctShipping = !!(initialShippingName || initialShippingNumber || initialShippingAddress || initialShippingGST);
+            finalIsSameAsBilling = !hasDistinctShipping;
+
             if (initialTransportDetails) {
                 finalTransport = initialTransportDetails;
             }
@@ -408,7 +413,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 finalShippingAddress = sessionStorage.getItem(SESSION_STORAGE_SHIPPING_ADDRESS_KEY) || '';
                 finalShippingGST = sessionStorage.getItem(SESSION_STORAGE_SHIPPING_GST_KEY) || '';
                 finalShippingState = sessionStorage.getItem(SESSION_STORAGE_SHIPPING_STATE_KEY) || '';
-                finalIsSameAsBilling = sessionStorage.getItem(SESSION_STORAGE_SAME_AS_BILLING_KEY) === 'true';
+                const savedSameAsBilling = sessionStorage.getItem(SESSION_STORAGE_SAME_AS_BILLING_KEY);
+                finalIsSameAsBilling = savedSameAsBilling !== null ? savedSameAsBilling === 'true' : true;
                 finalNarration = sessionStorage.getItem(SESSION_STORAGE_NARRATION_KEY) || '';
 
                 const savedExpenses = sessionStorage.getItem(SESSION_STORAGE_EXPENSES_KEY);

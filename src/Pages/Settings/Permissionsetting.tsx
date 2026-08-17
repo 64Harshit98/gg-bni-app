@@ -251,6 +251,15 @@ const ManagePermissionsPage: React.FC = () => {
 
     const [isResetOpen, setIsResetOpen] = useState(false);
 
+    // NEW: tooltip state for tap-based info icons (mobile-safe)
+const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+
+useEffect(() => {
+    if (!activeTooltip) return;
+    const closeTooltip = () => setActiveTooltip(null);
+    document.addEventListener('click', closeTooltip);
+    return () => document.removeEventListener('click', closeTooltip);
+}, [activeTooltip]);
     const handleResetPermissions = () => {
         const defaults = getDefaultPermissions(selectedRole);
         setRolePermissions(prev => ({
@@ -459,13 +468,23 @@ const ManagePermissionsPage: React.FC = () => {
                                                         {permission}
                                                     </span>
                                                     {PERMISSION_DESCRIPTIONS[permission] && (
-                                                        <div className="relative group">
-                                                            <span className="flex items-center justify-center w-3 h-3 rounded-full border border-gray-500 text-gray-500 text-[8px] cursor-default select-none">
+                                                        <div className="relative">
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                    setActiveTooltip(prev => prev === permission ? null : permission);
+                                                                }}
+                                                                className="flex items-center justify-center w-4 h-4 rounded-full border border-gray-500 text-gray-500 text-[8px] cursor-pointer select-none"
+                                                            >
                                                                 i
-                                                            </span>
-                                                            <div className="absolute left-5 top-1/2 -translate-y-1/2 z-50 hidden group-hover:block w-52 bg-white border border-gray-400 rounded-md shadow-md px-3 py-2 text-[11px] text-gray-500 leading-snug pointer-events-none">
-                                                                {PERMISSION_DESCRIPTIONS[permission]}
-                                                            </div>
+                                                            </button>
+                                                            {activeTooltip === permission && (
+                                                                <div className="absolute right-0 sm:left-5 sm:right-auto top-full sm:top-1/2 mt-2 sm:mt-0 sm:-translate-y-1/2 z-50 w-48 max-w-[70vw] bg-white border border-gray-400 rounded-md shadow-lg px-3 py-2 text-[11px] text-gray-500 leading-snug">
+                                                                    {PERMISSION_DESCRIPTIONS[permission]}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     )}
                                                     {isLockedByPlan && (

@@ -13,6 +13,7 @@ import { useAuth } from '../../context/auth-context';
 //import { Cata_Permissions } from '../enum/cata_permissions.enum';
 //import CataShowWrapper from '../../context/CataShowWrapper';
 import { InfoTooltip } from '../../Components/InfoToolTip';
+import { ResetSettingsButton } from '../../Components/ResetSettingsButton';
 import BackButton from '../../Components/BackButton';
 import {
   PackageX,
@@ -352,7 +353,30 @@ const CatalogueSalesSettings: React.FC = () => {
       <main className="flex-grow min-h-0 p-3 sm:p-4 md:p-5 bg-gray-50 w-full overflow-y-auto box-border pb-44 md:pb-24">
         <form onSubmit={handleSave} className="max-w-5xl mx-auto space-y-5">
 
-          <SettingsCard title="Pricing & Tax" icon={<Percent size={18} />}>
+          <SettingsCard
+            title="Pricing & Tax"
+            icon={<Percent size={18} />}
+            action={
+              <ResetSettingsButton<CatalogueSalesSettings>
+                defaults={getDefaultCatalogueSalesSettings(currentUser?.companyId ?? '')}
+                onReset={(defaults) =>
+                  setSettings((prev) =>
+                    prev
+                      ? {
+                        ...defaults,
+                        // Preserve tax/GST settings — Reset to Default should NOT touch these
+                        gstScheme: prev.gstScheme,
+                        taxType: prev.taxType,
+                        lockTaxToggle: prev.lockTaxToggle,
+                        enableRounding: prev.enableRounding,
+                        roundingInterval: prev.roundingInterval,
+                      }
+                      : defaults
+                  )
+                }
+              />
+            }
+          >
             <div className="space-y-3">
               <ToggleRow
                 id="item-discount"

@@ -74,9 +74,7 @@ export const generateA5Invoice = async (
     const isExplicitEstimate = isEstimate || (data as any).isEstimate === true;
     const resolvedIsEstimate = isExplicitEstimate ||
         (safeScheme !== 'COMPOSITION' && (safeTaxType === 'NONE' || safeTaxType === 'EXEMPT' || safeScheme === 'NONE' || safeScheme === 'EXEMPT'));
-    // Hide GST details if Unregistered, None, or Exempt
     const showGstinDetails = !resolvedIsEstimate && safeScheme !== 'UNREGISTERED' && safeScheme !== 'NONE' && safeScheme !== '' && safeTaxType !== 'EXEMPT' && safeTaxType !== 'NONE';
-
     // Tax math is enabled if Composition OR (Regular + Not Exempt)
     // const isTaxEnabled = !resolvedIsEstimate && safeScheme !== 'UNREGISTERED' && safeScheme !== 'NONE' && safeScheme !== '' && (safeScheme === 'COMPOSITION' || (safeTaxType !== 'EXEMPT' && safeTaxType !== 'NONE'));
 
@@ -120,7 +118,7 @@ export const generateA5Invoice = async (
             doc.addPage();
         }
 
-        drawWatermark(doc, pageWidth, pageHeight, "SELLAR.IN", { fontSize: 50, centerYOffset: 6 });
+        // watermark moved out — stamped globally after generation
 
         // --- 1. HEADER (colour fill removed, wrapped in a border box — same plain style as A4) ---
         const headerHeight = showGstinDetails && data.companyGstin ? 26 : 24;
@@ -892,6 +890,13 @@ export const generateA5Invoice = async (
             drawPage(true);
         }
     }
+
+    const totalPages = (doc as any).getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        drawWatermark(doc, pageWidth, pageHeight, "SELLAR.IN", { fontSize: 50, centerYOffset: 6 });
+    }
+
     // --- PRINT / DOWNLOAD / BLOB ---
     if (action === ACTION.PRINT) {
         doc.autoPrint();

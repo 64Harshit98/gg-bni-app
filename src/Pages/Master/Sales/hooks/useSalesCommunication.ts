@@ -146,7 +146,8 @@ export const useSalesCommunication = ({
                 roNumber: '',
             },
             items: populatedItems,
-            terms: billSettings.posTermsAndConditions || billSettings.termsAndConditions || 'Goods once sold will not be taken back.',
+            terms: billSettings.posTermsAndConditions || billSettings.termsAndConditions
+  || '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
             finalAmount: invoice.amount,
             expenses: invoice.expenses || [],
             advance: (() => {

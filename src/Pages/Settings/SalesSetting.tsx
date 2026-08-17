@@ -91,7 +91,7 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     gstScheme: 'none',
     taxType: 'inclusive',
     lockTaxToggle: false,
-    enableRounding: false,
+    enableRounding: true,
     roundingInterval: 1,
     cartInsertionOrder: 'bottom',
     hideMrp: false,
@@ -112,6 +112,7 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     enableExtraExpense: false,
     enableNarration: false,
     enableTransportDetails: false,
+    enableCustomerInfoToggle: true, // ✅ ON by default so POS & CALC both show it consistently
 });
 
 interface CardProps {
@@ -252,7 +253,15 @@ const SalesSettingsPage: React.FC = () => {
             }
         }
     }, [settings?.gstScheme, settings?.taxType]);
-
+useEffect(() => {
+        if (settings && !settings.enableCustomerInfoToggle) {
+            if (settings.requireCustomerName || settings.requireCustomerMobile) {
+                setSettings(prev => prev
+                    ? ({ ...prev, requireCustomerName: false, requireCustomerMobile: false })
+                    : null);
+            }
+        }
+    }, [settings?.enableCustomerInfoToggle]);
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
 
@@ -458,7 +467,21 @@ const SalesSettingsPage: React.FC = () => {
                                 action={
                                     <ResetSettingsButton<SalesSettings>
                                         defaults={getDefaultSalesSettings(currentUser?.companyId ?? '')}
-                                        onReset={setSettings}
+                                        onReset={(defaults) =>
+                                            setSettings((prev) =>
+                                                prev
+                                                    ? {
+                                                        ...defaults,
+                                                        // Preserve tax/GST settings — Reset to Default should NOT touch these
+                                                        gstScheme: prev.gstScheme,
+                                                        taxType: prev.taxType,
+                                                        lockTaxToggle: prev.lockTaxToggle,
+                                                        enableRounding: prev.enableRounding,
+                                                        roundingInterval: prev.roundingInterval,
+                                                    }
+                                                    : defaults
+                                            )
+                                        }
                                     />
                                 }
                             >
@@ -784,8 +807,8 @@ const SalesSettingsPage: React.FC = () => {
                                     tooltip="Toggles the customer information capture section during checkout."
                                     icon={<ShieldCheck size={18} />}
                                 />
-                                <ToggleRow id="req-customer" label="Require Customer Name" description="Force customer name before save." checked={settings.requireCustomerName ?? false} onChange={(checked) => handleCheckboxChange('requireCustomerName', checked)} tooltip="Force entering customer name before saving invoice." icon={<User size={18} />} />
-                                <ToggleRow id="req-mobile" label="Require Customer Mobile" description="Force customer mobile before save." checked={settings.requireCustomerMobile ?? false} onChange={(checked) => handleCheckboxChange('requireCustomerMobile', checked)} tooltip="Force entering customer mobile before saving invoice." icon={<Phone size={18} />} />
+                                <ToggleRow id="req-customer" label="Require Customer Name" description="Force customer name before save." checked={settings.requireCustomerName ?? false} onChange={(checked) => handleCheckboxChange('requireCustomerName', checked)} tooltip="Force entering customer name before saving invoice." icon={<User size={18} />} disabled={!settings.enableCustomerInfoToggle} />
+                                <ToggleRow id="req-mobile" label="Require Customer Mobile" description="Force customer mobile before save." checked={settings.requireCustomerMobile ?? false} onChange={(checked) => handleCheckboxChange('requireCustomerMobile', checked)} tooltip="Force entering customer mobile before saving invoice." icon={<Phone size={18} />} disabled={!settings.enableCustomerInfoToggle} />
                             </SettingsCard>
                         </div>
                     </div>

@@ -5,6 +5,7 @@ import {
   doc,
   getDoc,
   setDoc,
+  updateDoc,
   runTransaction,
 } from 'firebase/firestore';
 import { useAuth } from '../../context/auth-context';
@@ -37,6 +38,55 @@ const Journal: React.FC = () => {
     tutorialRefs.current[index] = el;
   };
   const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
+  const [transportPopupInvoice, setTransportPopupInvoice] = useState<Invoice | null>(null);
+  const [transportForm, setTransportForm] = useState({
+    transportName: '', grRrNo: '', grRrDate: '', vehicleNo: '', stationFrom: '', pinCode: ''
+  });
+  const [savingTransport, setSavingTransport] = useState(false);
+
+  // Prefill form whenever popup opens for an invoice
+  useEffect(() => {
+    if (transportPopupInvoice) {
+      const t = (transportPopupInvoice as any).transportDetails || {};
+      setTransportForm({
+        transportName: t.transportName || '',
+        grRrNo: t.grRrNo || '',
+        grRrDate: t.grRrDate || '',
+        vehicleNo: t.vehicleNo || '',
+        stationFrom: t.stationFrom || '',
+        pinCode: t.pinCode || '',
+      });
+    }
+  }, [transportPopupInvoice]);
+
+  const handleSaveTransport = async () => {
+    if (!transportPopupInvoice || !currentUser?.companyId) return;
+    setSavingTransport(true);
+    try {
+      const invoiceRef = doc(
+        db,
+        'companies',
+        currentUser.companyId,
+        transportPopupInvoice.type === 'Credit' ? 'sales' : 'purchases',
+        transportPopupInvoice.id
+      );
+      await updateDoc(invoiceRef, {
+        transportDetails: {
+          transportName: transportForm.transportName.trim(),
+          grRrNo: transportForm.grRrNo.trim(),
+          grRrDate: transportForm.grRrDate.trim(),
+          vehicleNo: transportForm.vehicleNo.trim(),
+          stationFrom: transportForm.stationFrom.trim(),
+          pinCode: transportForm.pinCode.trim(),
+        },
+      });
+      setTransportPopupInvoice(null);
+    } catch (e) {
+      setModal({ message: 'Failed to update transport details.', type: State.ERROR });
+    } finally {
+      setSavingTransport(false);
+    }
+  };
 
   const { salesSettings } = useSalesSettings();
 
@@ -276,7 +326,9 @@ const Journal: React.FC = () => {
 
         // --- Button visibility logic ---
         const hasProPermission = (currentUser as any)?.permissions?.includes(Permissions.HiddenProFeatures);
+        const hasTransportInfo = !!(invoice as any).transportDetails && Object.values((invoice as any).transportDetails).some(Boolean);
         const visibleButtonsCount =
+          (hasTransportInfo ? 1 : 0) +                                         // Transport
           (invoice.status === 'Unpaid' ? 1 : 0) +                              // Settle
           (invoice.status === 'Unpaid' && invoice.partyNumber ? 1 : 0) +       // Remind
           (invoice.status === 'Paid' ? 1 : 0) +                                // Delete
@@ -594,12 +646,21 @@ const Journal: React.FC = () => {
                   </div>
                 )}
 
-                <div className={`grid gap-1.5 mt-2 pt-4 border-t border-slate-200 ${visibleButtonsCount === 1 ? 'grid-cols-1' :
+                <div className={`grid gap-0.5 mt-2 pt-4 border-t border-slate-200 ${visibleButtonsCount === 1 ? 'grid-cols-1' :
                   visibleButtonsCount === 2 ? 'grid-cols-2' :
                     visibleButtonsCount === 3 ? 'grid-cols-3' :
                       visibleButtonsCount === 4 ? 'grid-cols-4' :
-                        'grid-cols-5'
+                        visibleButtonsCount === 5 ? 'grid-cols-5' :
+                          'grid-cols-6'
                   }`}>
+                  {hasTransportInfo && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setTransportPopupInvoice(invoice); }}
+                      className="py-1.5 text-[11px] font-bold text-white bg-blue-500 rounded-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors flex items-center justify-center gap-1"
+                    >
+                      Transport
+                    </button>
+                  )}
                   {invoice.status === 'Unpaid' && (<button onClick={(e) => { e.stopPropagation(); openPaymentModal(invoice); }} className="py-2 text-[11px] font-bold text-white bg-emerald-500 rounded-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors text-center">Settle</button>)}
                   {invoice.status === 'Unpaid' && invoice.partyNumber && (
                     <button
@@ -702,6 +763,69 @@ const Journal: React.FC = () => {
           setShowQrModal={setShowQrModal}
           companyId={currentUser?.companyId}
         />
+      )}
+
+      {transportPopupInvoice && (
+        <div
+          className="fixed inset-0 z-[10001] flex items-center justify-center p-4"
+          onClick={() => setTransportPopupInvoice(null)}
+        >
+          <div className="absolute inset-0 bg-black/50" />
+          <div
+            className="relative w-full max-w-md bg-white rounded-sm shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-blue-600 px-4 py-2.5 flex items-center justify-between">
+              <h3 className="text-white font-semibold text-sm">Transport Details</h3>
+              <button onClick={() => setTransportPopupInvoice(null)} className="text-white hover:text-blue-100">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Transport Name</label>
+                  <input type="text" value={transportForm.transportName} onChange={(e) => setTransportForm(f => ({ ...f, transportName: e.target.value }))} placeholder="e.g. DP World Express Logistic" className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">GR/RR No.</label>
+                  <input type="text" value={transportForm.grRrNo} onChange={(e) => setTransportForm(f => ({ ...f, grRrNo: e.target.value }))} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">GR/RR Date</label>
+                  <input type="date" value={transportForm.grRrDate} onChange={(e) => setTransportForm(f => ({ ...f, grRrDate: e.target.value }))} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Vehicle No.</label>
+                  <input type="text" value={transportForm.vehicleNo} onChange={(e) => setTransportForm(f => ({ ...f, vehicleNo: e.target.value }))} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">PIN Code</label>
+                  <input type="text" maxLength={6} value={transportForm.pinCode} onChange={(e) => setTransportForm(f => ({ ...f, pinCode: e.target.value.replace(/\D/g, '').slice(0, 6) }))} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Station / From Place</label>
+                  <input type="text" value={transportForm.stationFrom} onChange={(e) => setTransportForm(f => ({ ...f, stationFrom: e.target.value }))} className="w-full p-2 text-sm rounded-sm border border-gray-200 bg-gray-50 focus:border-blue-500 outline-none" />
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={() => setTransportPopupInvoice(null)}
+                  className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50 rounded-sm transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveTransport}
+                  disabled={savingTransport}
+                  className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-sm font-bold text-sm transition-colors disabled:opacity-50"
+                >
+                  {savingTransport ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Subscription expiry badge */}

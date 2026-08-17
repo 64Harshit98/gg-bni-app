@@ -15,6 +15,7 @@ import { registerUserWithDetails } from '../../lib/AuthOperations';
 import { saveLeadProgress } from '../../lib/Lead';
 import { auth } from '../../lib/Firebase';
 import RegistrationLoading from '../Loading/BusinessInfoPage';
+import { useAuth } from '../../context/auth-context';
 
 const LOCAL_STORAGE_KEY = 'sellar_onboarding_data';
 
@@ -91,6 +92,8 @@ const BusinessInfoPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showLoadingScreen, setShowLoadingScreen] = useState(false);
+  const [awaitingAuth, setAwaitingAuth] = useState(false);
+  const { currentUser, loading: authLoading } = useAuth();
 
   const [formData, setFormData] = useState({
     businessName: '',
@@ -221,7 +224,15 @@ const BusinessInfoPage: React.FC = () => {
       })
     );
   }, [formData, isHydrated]);
+useEffect(() => {
+    if (!awaitingAuth) return;
+    if (authLoading) return;
 
+    if (currentUser) {
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
+      navigate(ROUTES.HOME);
+    }
+  }, [awaitingAuth, authLoading, currentUser, navigate]);
 
   const handleFinishSetup = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -304,8 +315,7 @@ const BusinessInfoPage: React.FC = () => {
         plan: 'Enterprise Trial'
       });
 
-      localStorage.removeItem(LOCAL_STORAGE_KEY);
-      navigate(ROUTES.HOME);
+      setAwaitingAuth(true);
 
     } catch (err: any) {
       console.error('Registration failed:', err);

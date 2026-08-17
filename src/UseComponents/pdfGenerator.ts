@@ -98,7 +98,7 @@ export interface InvoiceData {
 
 export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | ACTION.PRINT | ACTION.BLOB = ACTION.DOWNLOAD, withDuplicate: boolean = false): Promise<Blob | void> => {
   const isEstimate = (data as any).isEstimate === true;
-if (data.printFormat !== 'A4') {
+  if (data.printFormat !== 'A4') {
     data.items = data.items.map(item => {
       const { imageBase64, ...rest } = item as any;
       return rest;
@@ -361,7 +361,7 @@ if (data.printFormat !== 'A4') {
     if (isDuplicate) doc.addPage();
     let cursorY = margin;
 
-    drawWatermark(doc, pageWidth, pageHeight);
+    // watermark moved out of here — stamped globally after all pages exist
 
     // --- ONLY DIFFERENCE: THE "DUPLICATE" STAMP ---
     if (isDuplicate) {
@@ -752,6 +752,13 @@ if (data.printFormat !== 'A4') {
     if (data.enableTriplicate) {
       renderPage(true);
     }
+  }
+
+  // --- STAMP WATERMARK ON EVERY PAGE (handles pages auto-created by autoTable/overflow) ---
+  const totalPages = (doc as any).getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    drawWatermark(doc, pageWidth, pageHeight);
   }
 
   // --- OUTPUT ---

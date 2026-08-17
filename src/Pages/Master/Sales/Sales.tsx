@@ -956,6 +956,7 @@ const Sales: React.FC = () => {
                     totalTax={taxAmount}
                     onPaymentComplete={handleSavePayment}
                     isPartyNameEditable={!isEditMode}
+                    enableCustomerDetails={salesSettings?.enableCustomerInfoToggle ?? true}
                     originalBillTotal={calculatedOriginalTotal}
                     initialPartyName={isEditMode ? invoiceToEdit?.partyName : ''}
                     initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : ''}
@@ -1393,6 +1394,7 @@ const Sales: React.FC = () => {
                 initialDiscount={invoiceToEdit?.manualDiscount}
                 allowDueBilling={salesSettings?.allowDueBilling ?? false}
                 isPartyNameEditable={!isEditMode}
+                enableCustomerDetails={salesSettings?.enableCustomerInfoToggle ?? true}
                 initialPartyName={isEditMode ? invoiceToEdit?.partyName : ''}
                 initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : ''}
                 initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined}

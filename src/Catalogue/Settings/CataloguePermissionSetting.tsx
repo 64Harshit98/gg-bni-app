@@ -24,6 +24,8 @@ export const getDefaultCataPermissions = (role: string): Cata_Permissions[] => {
                 Cata_Permissions.ViewReports,
                 Cata_Permissions.ManageItems,
                 Cata_Permissions.ViewEditButton,
+                Cata_Permissions.ViewShop,
+                Cata_Permissions.ViewShopItems,
             ];
         case ROLES.SALESMAN:
             return [
@@ -46,6 +48,7 @@ const cataPermissionGroups = {
             Cata_Permissions.ViewCatalogueHidebutton,
             Cata_Permissions.ViewCatalogueSalesbarchart,
             Cata_Permissions.ViewTopSoldItems,
+            Cata_Permissions.ViewNotification, // moved out of "ungrouped"
         ].filter(Boolean),
     },
     orders: {
@@ -60,51 +63,121 @@ const cataPermissionGroups = {
         ].filter(Boolean),
     },
     reports: {
-        title: 'Reports',
+        title: 'Reports & Insights',
         permissions: [
             Cata_Permissions.ViewReports,
             Cata_Permissions.ViewItemReport,
             Cata_Permissions.ViewSalesReport,
             Cata_Permissions.ViewItemSoldReport,
             Cata_Permissions.ViewCustomerReport,
-            Cata_Permissions.ViewUserReport,
-            Cata_Permissions.ViewPartyLedger,
-            Cata_Permissions.ViewTaxReport,
             Cata_Permissions.ViewPNLReport,
             Cata_Permissions.ViewExpenseReport,
+            //Cata_Permissions.ViewUserReport,
+            //Cata_Permissions.ViewTaxReport,
         ].filter(Boolean),
     },
-    management: {
-        title: 'Management & Settings',
+    // NEW — pulled out of "reports"/"management": these are financial/account
+    // records, not performance reports or generic settings.
+    accounts: {
+        title: 'Accounts & Finance',
         permissions: [
             Cata_Permissions.ViewCatalogueAccounts,
+            Cata_Permissions.ViewPartyLedger,
+        ].filter(Boolean),
+    },
+    // NEW — split out of the old "management" catch-all
+    itemMaster: {
+        title: 'Item & Master Management',
+        permissions: [
             Cata_Permissions.ManageItems,
-            Cata_Permissions.ManageEditProfile,
+            Cata_Permissions.ManageItemSettings,
             Cata_Permissions.ManageMasters,
+        ].filter(Boolean),
+    },
+    salesBilling: {
+        title: 'Sales & Billing Settings',
+        permissions: [
             Cata_Permissions.ManageSalesSettings,
             Cata_Permissions.ManageBillSettings,
-            Cata_Permissions.ManageItemSettings,
-            Cata_Permissions.ManageUserSettings,
-            Cata_Permissions.ManagePermissions,
         ].filter(Boolean),
-    }
+    },
+    userAccess: {
+        title: 'User, Profile & Access',
+        permissions: [
+            Cata_Permissions.ManageEditProfile,
+            //Cata_Permissions.ManageUserSettings,
+            //Cata_Permissions.ManagePermissions,
+        ].filter(Boolean),
+    },
 };
 
 // --- DESCRIPTIONS (Tooltips) ---
 const CATA_PERMISSION_DESCRIPTIONS: Partial<Record<Cata_Permissions, string>> = {
+    // Dashboard & Widgets
     [Cata_Permissions.ViewCatalogueDashboard]: 'Access the main catalogue dashboard.',
+    [Cata_Permissions.ViewCatalogueFilter]: 'Use filters to narrow down catalogue data.',
     [Cata_Permissions.ViewCatalogueHidebutton]: 'Toggle visibility of sensitive data on the dashboard.',
-    [Cata_Permissions.ViewPNLReport]: 'Access the profit & loss report (contains sensitive financial data).',
-    [Cata_Permissions.ManagePermissions]: 'Configure role-based permissions — high privilege action.',
+    [Cata_Permissions.ViewCatalogueSalesbarchart]: 'View the sales bar chart widget on the dashboard.',
+    [Cata_Permissions.ViewTopSoldItems]: 'View the list of top-selling items.',
+    [Cata_Permissions.ViewNotification]: 'Receive and view catalogue-related notifications.',
+
+    // Orders, Shop & Requests
+    [Cata_Permissions.ViewCatalogueOrders]: 'View the list of orders placed through the catalogue.',
+    [Cata_Permissions.ViewOrdersReturn]: 'View and manage returned orders.',
+    [Cata_Permissions.ViewCatalogueRequests]: 'View incoming catalogue requests.',
+    [Cata_Permissions.ViewShop]: 'View the shop section of the catalogue.',
+    [Cata_Permissions.ViewShopItems]: 'View items listed in the shop.',
     [Cata_Permissions.ViewEditButton]: 'Allow editing of existing catalogue orders or entries.',
+
+    // Reports & Insights
+    [Cata_Permissions.ViewReports]: 'Access the reports section and its settings.',
+    [Cata_Permissions.ViewItemReport]: 'View item-wise stock and performance reports.',
+    [Cata_Permissions.ViewSalesReport]: 'View overall sales performance reports.',
+    [Cata_Permissions.ViewItemSoldReport]: 'View reports on items sold over a period.',
+    [Cata_Permissions.ViewCustomerReport]: 'View reports summarizing customer activity.',
+    [Cata_Permissions.ViewPNLReport]: 'Access the profit & loss report (contains sensitive financial data).',
+    [Cata_Permissions.ViewExpenseReport]: 'View reports on business expenses.',
+    [Cata_Permissions.ViewUserReport]: 'View reports on user/staff activity.',
+    [Cata_Permissions.ViewTaxReport]: 'View tax collected and payable reports.',
+
+    // Accounts & Finance
+    [Cata_Permissions.ViewCatalogueAccounts]: 'View company account details linked to the catalogue.',
+    [Cata_Permissions.ViewPartyLedger]: 'View the transaction ledger for each party/customer.',
+
+    // Item & Master Management
+    [Cata_Permissions.ManageItems]: 'Add, edit, or remove items in the catalogue.',
+    [Cata_Permissions.ManageItemSettings]: 'Configure item-related settings like pricing rules and units.',
+    [Cata_Permissions.ManageMasters]: 'Manage master data such as categories, units, and brands.',
+
+    // Sales & Billing Settings
+    [Cata_Permissions.ManageSalesSettings]: 'Configure sales-related settings and defaults.',
+    [Cata_Permissions.ManageBillSettings]: 'Configure billing format and invoice settings.',
+
+    // User, Profile & Access
+    [Cata_Permissions.ManageEditProfile]: 'Edit personal or company profile details.',
+    [Cata_Permissions.ManageUserSettings]: 'Manage staff accounts and their basic settings.',
+    [Cata_Permissions.ManagePermissions]: 'Configure role-based permissions — high privilege action.',
 };
+// --- DISPLAY LABELS (UI text override, enum value stays same for DB) ---
+const CATA_PERMISSION_LABELS: Partial<Record<Cata_Permissions, string>> = {
+    [Cata_Permissions.ViewReports]: 'ViewReports & Settings',
+    [Cata_Permissions.ViewShop]: 'View Catalog',
+    [Cata_Permissions.ViewShopItems]: 'View Catalog Item',
+};
+// Yeh permissions kabhi bhi UI me nahi dikhani (na kisi group me, na "Other Permissions" me)
+const HIDDEN_CATA_PERMISSIONS = new Set<Cata_Permissions>([
+    Cata_Permissions.ViewTaxReport,
+    Cata_Permissions.ViewUserReport,
+    Cata_Permissions.ManageUserSettings,
+    Cata_Permissions.ManagePermissions,
+]);
 
 const getUngroupedPermissions = (allPermissions: Cata_Permissions[]): Cata_Permissions[] => {
     const grouped = new Set<Cata_Permissions>();
     Object.values(cataPermissionGroups).forEach(group => {
         group.permissions.forEach(perm => grouped.add(perm as Cata_Permissions));
     });
-    return allPermissions.filter(perm => !grouped.has(perm));
+    return allPermissions.filter(perm => !grouped.has(perm) && !HIDDEN_CATA_PERMISSIONS.has(perm));
 };
 
 const CataloguePermissionSetting: React.FC = () => {
@@ -362,7 +435,7 @@ const PermissionCheckbox = ({
             </div>
             <div className="flex items-center gap-1.5">
                 <span className="text-sm text-gray-600 select-none font-medium">
-                    {permission}
+                    {CATA_PERMISSION_LABELS[permission] || permission}
                 </span>
                 {CATA_PERMISSION_DESCRIPTIONS[permission] && (
                     <div className="relative group">

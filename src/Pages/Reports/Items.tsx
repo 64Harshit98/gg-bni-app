@@ -9,7 +9,7 @@ const Reports = () => {
     return (
         <div className="flex flex-col w-full bg-gray-100 overflow-hidden font-poppins">
             <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
-                <BackButton/>
+                <BackButton />
                 <h1 className="text-2xl font-bold text-gray-800 m-0 flex-grow text-center">
                     Item Reports
                 </h1>
@@ -27,7 +27,7 @@ const Reports = () => {
                             <span className="text-xl text-gray-500">→</span>
                         </Link>
                     </ShowWrapper>
-                    <ShowWrapper requiredPermission={Permissions.ViewItemReport}>
+                    <ShowWrapper requiredPermission={Permissions.ManageItems}>
                         <Link
                             to={ROUTES.MANAGE_ITEMS}
                             className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"

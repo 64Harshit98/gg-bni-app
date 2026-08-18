@@ -25,43 +25,49 @@ const Masters = () => {
       <div className="flex-grow p-4 overflow-y-auto bg-gray-100">
         {isDefaultMastersView ? (
           <div className="grid grid-cols-2 gap-3">
-            <Link to={ROUTES.SALESETTING} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline">
-              <span className="text-lg font-medium">Sales Setting</span>
-              <span className="text-xl text-gray-500">→</span>
-            </Link>
-            <ShowWrapper requiredPermission={Permissions.ViewPurchaseReport}>
+            <ShowWrapper requiredPermission={Permissions.ManageSalesSetting}>
+              <Link to={ROUTES.SALESETTING} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline">
+                <span className="text-lg font-medium">Sales Setting</span>
+                <span className="text-xl text-gray-500">→</span>
+              </Link>
+            </ShowWrapper>
+            <ShowWrapper requiredPermission={Permissions.ManagePurchaseSetting}>
               <Link to={ROUTES.PURCHASESETTING} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline">
                 <span className="text-lg font-medium">Purchase Setting</span>
                 <span className="text-xl text-gray-500">→</span>
               </Link>
             </ShowWrapper>
-            <Link to={ROUTES.USERSETTING} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline">
-              <span className="text-lg font-medium">Users (Salesman, Admin)</span>
-              <span className="text-xl text-gray-500">→</span>
-            </Link>
-            <ShowWrapper requiredPermission={Permissions.ViewPNLReport}>
+            {currentUser?.role === ROLES.OWNER && (
+              <Link to={ROUTES.USERSETTING} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline">
+                <span className="text-lg font-medium">Users (Salesman, Admin)</span>
+                <span className="text-xl text-gray-500">→</span>
+              </Link>
+            )}
+            <ShowWrapper requiredPermission={Permissions.ManageItemSetting}>
               <Link to={ROUTES.ITEMSETTING} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline">
                 <span className="text-lg font-medium">Items Setting</span>
                 <span className="text-xl text-gray-500">→</span>
               </Link>
+            </ShowWrapper>
+            {currentUser?.role === ROLES.OWNER && (
               <Link to={ROUTES.PERMSETTING} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline">
                 <span className="text-lg font-medium">Permission Setting</span>
                 <span className="text-xl text-gray-500">→</span>
               </Link>
-            </ShowWrapper>
-            <ShowWrapper requiredPermission={Permissions.ViewPurchaseReport}>
+            )}
+            <ShowWrapper requiredPermission={Permissions.ManageBillSetting}>
               <Link to={ROUTES.BILLSETTING} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline">
                 <span className="text-lg font-medium">Bill Setting</span>
                 <span className="text-xl text-gray-500">→</span>
               </Link>
-              {/* <Link
+            </ShowWrapper>
+            {/* <Link
                 to={ROUTES.BARCODESETTING}
                 className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-4 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
               >
                 <span className="text-lg font-medium">Barcode / Label Setting</span>
                 <span className="text-xl text-gray-500">→</span>
               </Link> */}
-            </ShowWrapper>
             {currentUser?.role === ROLES.OWNER && (
               <button
                 onClick={() => setShopHoursOpen(true)}

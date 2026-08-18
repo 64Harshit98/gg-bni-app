@@ -57,7 +57,7 @@ const Reports = () => {
                 <span className="text-xl text-gray-500">→</span>
               </Link>
             </ShowWrapper>
-            <ShowWrapper requiredPermission={Permissions.ViewPNLReport}>
+            <ShowWrapper requiredPermission={Permissions.ViewExpenseReport}>
               <Link
                 to={ROUTES.EXPENSE_REPORT}
                 className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
@@ -66,7 +66,7 @@ const Reports = () => {
                 <span className="text-xl text-gray-500">→</span>
               </Link>
             </ShowWrapper>
-            <ShowWrapper requiredPermission={Permissions.ViewPNLReport}>
+            <ShowWrapper requiredPermission={Permissions.ViewStockTransferReport}>
               <Link
                 to={ROUTES.STOCK_TRANSFER}
                 className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
@@ -75,7 +75,7 @@ const Reports = () => {
                 <span className="text-xl text-gray-500">→</span>
               </Link>
             </ShowWrapper>
-            <ShowWrapper requiredPermission={Permissions.ViewPNLReport}>
+            <ShowWrapper requiredPermission={Permissions.ViewCustomerReport}>
               <Link
                 to={ROUTES.CUSTOMER_REPORT}
                 className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
@@ -84,7 +84,7 @@ const Reports = () => {
                 <span className="text-xl text-gray-500">→</span>
               </Link>
             </ShowWrapper>
-            <ShowWrapper requiredPermission={Permissions.ViewPNLReport}>
+            <ShowWrapper requiredPermission={Permissions.ViewPartyLedger}>
               <Link
                 to={ROUTES.PARTY_LEDGER}
                 className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
@@ -93,7 +93,7 @@ const Reports = () => {
                 <span className="text-xl text-gray-500">→</span>
               </Link>
             </ShowWrapper>
-            <ShowWrapper requiredPermission={Permissions.ViewPNLReport}>
+            <ShowWrapper requiredPermission={Permissions.ViewTaxReport}>
               <Link
                 to={ROUTES.TAX_REPORT}
                 className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"

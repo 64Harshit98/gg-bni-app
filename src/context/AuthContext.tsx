@@ -235,7 +235,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
           }
 
-          rolePermissions = await syncCompanyPermissions(companyId!, uData.role, dbPerms);
+          rolePermissions = await syncCompanyPermissions(companyId!, uData.role, dbPerms, permSnap.exists());
 
           // --- FETCH CATALOGUE PERMISSIONS (THIS WAS MISSING) ---
           const cataDocRef = doc(db, 'companies', companyId!, 'cata_permissions', uData.role);
@@ -272,7 +272,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             expiryDate: expiryDate
           }
         };
-
+        console.log(`[DEBUG] Final permissions for ${userData.role}:`, userData.permissions);
         setDbOperations(getFirestoreOperations(companyId!));
         commit({ status: 'authenticated', user: userData });
 

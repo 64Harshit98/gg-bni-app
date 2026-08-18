@@ -137,7 +137,9 @@ const MainLayout = () => {
 
   const MobileActionButtons = () => (
     <>
-      <Button variant="outline" className="w-full mb-2 rounded-sm bg-white" onClick={() => navigate(ROUTES.SALES)}>Add Sales</Button>
+      <ShowWrapper requiredPermission={Permissions.CreateSales}>
+        <Button variant="outline" className="w-full mb-2 rounded-sm bg-white" onClick={() => navigate(ROUTES.SALES)}>Add Sales</Button>
+      </ShowWrapper>
       <ShowWrapper requiredPermission={Permissions.CreatePurchase}>
         <Button variant="outline" className="w-full mb-2 rounded-sm bg-white" onClick={() => navigate(ROUTES.PURCHASE)}>Add Purchase</Button>
       </ShowWrapper>
@@ -190,7 +192,9 @@ const MainLayout = () => {
             <div className="border-t border-slate-200" />
             <p className="px-4 pt-4 pb-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">Quick Actions</p>
           </div>
-          <Link to={ROUTES.SALES} className={sidebarLinkClass(ROUTES.SALES)}><span className="text-lg">+</span><span>Add Sales</span></Link>
+          <ShowWrapper requiredPermission={Permissions.CreateSales}>
+            <Link to={ROUTES.SALES} className={sidebarLinkClass(ROUTES.SALES)}><span className="text-lg">+</span><span>Add Sales</span></Link>
+          </ShowWrapper>
           <ShowWrapper requiredPermission={Permissions.CreatePurchase}>
             <Link to={ROUTES.PURCHASE} className={sidebarLinkClass(ROUTES.PURCHASE)}><span className="text-lg">+</span><span>Add Purchase</span></Link>
           </ShowWrapper>

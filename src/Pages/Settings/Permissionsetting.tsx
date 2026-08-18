@@ -40,11 +40,11 @@ export const DEFAULT_PERMISSIONS_MAP = {
         Permissions.ViewDashboard,
         Permissions.ViewAttendance,
         Permissions.ViewAccount,
+        Permissions.ManageItems,
         Permissions.Viewrestockcard,
         Permissions.ViewTransactions,
         Permissions.PrintQR,
-        Permissions.ManageItems,
-        Permissions.ManageItemGroup,
+        //Permissions.ManageItemGroup,
         Permissions.CreateSales,
         Permissions.CreateSalesReturn,
         Permissions.CreatePurchase,
@@ -77,6 +77,12 @@ const PERMISSION_DESCRIPTIONS: Partial<Record<Permissions, string>> = {
     [Permissions.ViewPNLReport]: 'Access the profit & loss report — contains sensitive financial data.',
     [Permissions.ViewPurchaseReport]: 'Access the purchase history report.',
     [Permissions.ViewItemReport]: 'Access per-item sales and stock reports.',
+    [Permissions.ViewItemSoldReport]: 'View reports on items sold over a period.',
+    [Permissions.ViewCustomerReport]: 'View reports summarizing customer activity.',
+    [Permissions.ViewExpenseReport]: 'View reports on business expenses.',
+    [Permissions.ViewPartyLedger]: 'View the transaction ledger for each party/customer.',
+    [Permissions.ViewTaxReport]: 'View tax collected and payable reports.',
+    [Permissions.ViewStockTransferReport]: 'View reports on stock transferred between locations.',
     [Permissions.CreatePurchase]: 'Create new purchase/stock-in orders from suppliers.',
     [Permissions.CreatePurchaseReturn]: 'Process returns on supplier purchases.',
     [Permissions.ManageItems]: 'Add, edit, and delete inventory items.',
@@ -101,6 +107,10 @@ const PERMISSION_DESCRIPTIONS: Partial<Record<Permissions, string>> = {
     [Permissions.RoundingOff]: 'Automatically round off the final bill amount.',
     [Permissions.LockDiscountPrice]: 'Prevent cashiers from manually editing discounted prices.',
     [Permissions.AllowDueBilling]: 'Allow saving a sale with a pending/due payment.',
+};
+const PERMISSION_LABELS: Partial<Record<Permissions, string>> = {
+    [Permissions.ViewReports]: 'View Reports and Settings',
+    [Permissions.ViewCatalogue]: 'Access Catalogue',
 };
 export const getDefaultPermissions = (role: string): Permissions[] => {
     // @ts-ignore - allows string indexing if ROLES enum types mismatch slightly
@@ -153,7 +163,7 @@ const permissionGroups = {
         permissions: [
             Permissions.CreateSales,
             Permissions.CreateSalesReturn,
-            Permissions.SalesmanwiseBilling,
+            //Permissions.SalesmanwiseBilling,
         ],
     },
     purchases: {
@@ -167,70 +177,98 @@ const permissionGroups = {
         title: 'Inventory Management',
         permissions: [
             Permissions.ManageItems,
-            Permissions.ManageItemGroup,
+            //Permissions.ManageItemGroup,
             Permissions.ViewCatalogue,
         ],
     },
     reports: {
-        title: 'Reports',
+        title: 'Report and Insight',
         permissions: [
             Permissions.ViewReports,
             Permissions.ViewSalesReport,
             Permissions.ViewPNLReport,
             Permissions.ViewPurchaseReport,
             Permissions.ViewItemReport,
+            Permissions.ViewItemSoldReport,
+            Permissions.ViewCustomerReport,
+            Permissions.ViewExpenseReport,
+            Permissions.ViewPartyLedger,
+            Permissions.ViewTaxReport,
+            Permissions.ViewStockTransferReport,
         ],
     },
-    Settings: {
-        title: 'Settings',
+    settingsAccess: {
+        title: 'Settings Access',
         permissions: [
-            Permissions.SetPermissions,
-            Permissions.ManageUsers,
+            Permissions.ManageSalesSetting,
+            Permissions.ManagePurchaseSetting,
+            Permissions.ManageItemSetting,
+            Permissions.ManageBillSetting,
         ],
     },
 
     Account: {
-        title: 'Account',
+        title: 'Account & Management',
         permissions: [
             Permissions.ManageEditProfile,
             Permissions.ViewAddons,
+            //Permissions.CreateUsers,
         ],
     },
-    billing: {
-        title: 'Billing & POS Behaviour',
-        permissions: [
-            Permissions.ItemwiseDiscount,
-            Permissions.RoundingOff,
-            Permissions.LockDiscountPrice,
-            Permissions.AllowDueBilling,
-            Permissions.ChangeViewtype,
-            Permissions.ViewDownloadPDF,
-            Permissions.ViewEditReturn,
-            Permissions.ViewPurchaseTransactions,
-        ],
-    },
-    stockControl: {
-        title: 'Stock Control',
-        permissions: [
-            Permissions.AllownegativeStock,
-            Permissions.PurchaseTaxtype,
-        ],
-    },
-    userManagement: {
-        title: 'User Management',
-        permissions: [
-            Permissions.CreateUsers,
-            Permissions.ViewPaymentmethods,
-            Permissions.ViewFilterbutton,
-            Permissions.ViewAccount,
-            Permissions.PrintQR,
-            Permissions.ViewTransactions,
-        ],
-    },
+    // billing: {
+    //     title: 'Billing & POS Behaviour',
+    //     permissions: [
+    //         Permissions.ItemwiseDiscount,
+    //         Permissions.RoundingOff,
+    //         Permissions.LockDiscountPrice,
+    //         Permissions.AllowDueBilling,
+    //         //Permissions.ChangeViewtype,
+    //         //Permissions.ViewDownloadPDF,
+    //         Permissions.ViewEditReturn,
+    //         //Permissions.ViewPurchaseTransactions,
+    //     ],
+    // },
+    // stockControl: {
+    //     title: 'Stock Control',
+    //     permissions: [
+    //         Permissions.AllownegativeStock,
+    //         Permissions.PurchaseTaxtype,
+    //     ],
+    // },
+    // userManagement: {
+    //     title: 'User Management',
+    //     permissions: [
+    //         //Permissions.ViewPaymentmethods,
+    //         //Permissions.ViewFilterbutton,
+    //         Permissions.ViewAccount,
+    //         //Permissions.PrintQR,
+    //         //Permissions.ViewTransactions,
+    //     ],
+    // },
 };
 const HIDDEN_FROM_UI_PERMISSIONS = [
     Permissions.HiddenProFeatures,
     Permissions.ViewPartnerDashboard,
+    Permissions.SetPermissions,
+    Permissions.ManageUsers,
+    Permissions.ViewTransactions,
+    Permissions.ViewFilterbutton,
+    Permissions.PrintQR,
+    Permissions.ViewPaymentmethods,
+    Permissions.AllownegativeStock,
+    Permissions.PurchaseTaxtype,
+    Permissions.ViewDownloadPDF,
+    Permissions.ViewPurchaseTransactions,
+    Permissions.SalesmanwiseBilling,
+    Permissions.ChangeViewtype,
+    Permissions.ViewEditReturn,
+    Permissions.LockDiscountPrice,
+    Permissions.AllowDueBilling,
+    Permissions.ItemwiseDiscount,
+    Permissions.RoundingOff,
+    Permissions.ViewAccount,
+    Permissions.CreateUsers,
+    Permissions.ManageItemGroup,
 ];
 const getUngroupedPermissions = (allPermissions: Permissions[]): Permissions[] => {
     const grouped = new Set<Permissions>();
@@ -361,6 +399,7 @@ const ManagePermissionsPage: React.FC = () => {
 
             const docRef = doc(db, 'companies', currentUser.companyId, 'permissions', role);
             await setDoc(docRef, { allowedPermissions: permissionsToSave }, { merge: true });
+            console.log(`[DEBUG] Saved permissions for ${role}:`, permissionsToSave);
 
             setSuccessMessage(`Permissions for ${role} updated successfully!`);
             setTimeout(() => setSuccessMessage(null), 3000);
@@ -456,7 +495,7 @@ const ManagePermissionsPage: React.FC = () => {
                                                 </div>
                                                 <div className="flex items-center gap-1.5">
                                                     <span className="text-sm text-gray-600 select-none font-medium">
-                                                        {permission}
+                                                        {PERMISSION_LABELS[permission] || permission}
                                                     </span>
                                                     {PERMISSION_DESCRIPTIONS[permission] && (
                                                         <div className="relative group">
@@ -504,9 +543,9 @@ const ManagePermissionsPage: React.FC = () => {
                                                     />
                                                     <svg className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 peer-checked:opacity-100" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" width="12" height="12"><polyline points="20 6 9 17 4 12"></polyline></svg>
                                                 </div>
-                                                <div className="flex items-center gap-1.5">
+                                                                                                <div className="flex items-center gap-1.5">
                                                     <span className="text-sm text-gray-600 select-none font-medium">
-                                                        {permission}
+                                                        {PERMISSION_LABELS[permission] || permission}
                                                     </span>
                                                     {PERMISSION_DESCRIPTIONS[permission] && (
                                                         <div className="relative group">

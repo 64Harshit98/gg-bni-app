@@ -129,9 +129,14 @@ const CatalogueExpenseReportPage: React.FC = () => {
         let list = expenses.filter(e =>
             e.date >= appliedFilters.start && e.date <= appliedFilters.end
         );
-        if (searchQuery) list = list.filter(e =>
-            e.description.toLowerCase().includes(searchQuery.toLowerCase())
-        );
+        if (searchQuery) {
+            const q = searchQuery.toLowerCase();
+            list = list.filter(e =>
+                e.title.toLowerCase().includes(q) ||
+                e.description.toLowerCase().includes(q) ||
+                e.amount.toString().includes(q)
+            );
+        }
 
         list.sort((a, b) => {
             const dir = sortConfig.direction === 'asc' ? 1 : -1;
@@ -339,7 +344,7 @@ const CatalogueExpenseReportPage: React.FC = () => {
             {showSearch && (
                 <div className="flex justify-center mb-2 px-2">
                     <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-[#F97316]">
-                        <input type="text" placeholder="Search by description..." autoFocus
+                        <input type="text" placeholder="Search by title, description, amount..." autoFocus
                             className="flex-1 text-base font-light p-2 outline-none bg-transparent text-center"
                             value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
                         <button onClick={() => { setSearchQuery(''); setShowSearch(false); }} className="p-1 text-gray-500 hover:text-black">

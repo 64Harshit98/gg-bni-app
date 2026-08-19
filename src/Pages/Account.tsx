@@ -220,14 +220,14 @@ const Account: React.FC = () => {
         </div>
       )}
 
-      <div className="bg-gray-100 p-2 border-b border-gray-300 mb-4 flex items-center justify-between">
-        <div className="w-10" />
+      <div className="grid grid-cols-3 items-center bg-gray-100 p-2 border-b border-gray-300 mb-4">
+        <div />
 
         <h1 className="text-2xl font-bold text-center text-slate-800">Account</h1>
 
         {/* Notification Bell */}
         <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-          <div className="relative border border-slate-300 rounded-sm bg-gray-100 shadow-sm">
+          <div className="relative border border-slate-300 rounded-sm bg-gray-100 shadow-sm justify-self-end">
             <NotificationBell />
           </div>
         </ShowWrapper>

@@ -94,12 +94,14 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
           ref={filterRef}
           className="absolute top-4 right-4 flex items-center gap-2 z-30"
         >
-          <button
-            onClick={() => navigate(ROUTES.PARTY_LEDGER)}
-            className="hidden sm:inline-block text-xs font-bold text-black bg-white border border-gray-300 rounded-sm px-2 py-2.5 hover:bg-blue-100 transition-colors whitespace-nowrap"
-          >
-            Party Ledger
-          </button>
+          <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+  <button
+    onClick={() => navigate(ROUTES.PARTY_LEDGER)}
+    className="hidden sm:inline-block text-xs font-bold text-black bg-white border border-gray-300 rounded-sm px-2 py-2.5 hover:bg-blue-100 transition-colors whitespace-nowrap"
+  >
+    Party Ledger
+  </button>
+</ShowWrapper>
 
           <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
             <div className="border border-slate-300 rounded-sm bg-gray-100 shadow-sm flex items-center justify-center">
@@ -250,12 +252,14 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
       </div>
 
       {/* Party Ledger strip - mobile only, reduced width */}
-      <div
-        onClick={() => navigate(ROUTES.PARTY_LEDGER)}
-        className="sm:hidden mx-8 mt-1 mb-1 py-2 text-center text-sm font-bold text-black bg-white border border-gray-300 rounded-sm cursor-pointer hover:bg-blue-100 transition-colors"
-      >
-        Party Ledger
-      </div>
+<ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+  <div
+    onClick={() => navigate(ROUTES.PARTY_LEDGER)}
+    className="sm:hidden mx-8 mt-1 mb-1 py-2 text-center text-sm font-bold text-black bg-white border border-gray-300 rounded-sm cursor-pointer hover:bg-blue-100 transition-colors"
+  >
+    Party Ledger
+  </div>
+</ShowWrapper>
 
       {/* Step 4 — Sales / Purchase toggle */}
       <TutorialStep

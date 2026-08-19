@@ -92,7 +92,9 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
         e.preventDefault();
 
         if (!companyId) return alert("Company not found");
-
+        if (formData.number.length !== 10) {
+            return alert("Please enter a valid 10-digit phone number");
+        }
         setLoading(true);
 
         try {

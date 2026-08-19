@@ -77,14 +77,22 @@ export const ExpenseModal = ({ isOpen, onClose, onSave, theme = 'blue' }: Props)
         />
 
         {/* Amount */}
-        <label className="block text-sm font-medium text-gray-600 mb-1">Amount (₹)</label>
-        <input
-          type="number"
-          placeholder="0"
-          value={amount}
-          onChange={e => setAmount(e.target.value)}
-          className={`w-full border rounded-sm p-2 text-sm mb-3 bg-gray-50 focus:outline-none focus:ring-2 ${focusRing}`}
-        />
+        {/* Amount */}
+<label className="block text-sm font-medium text-gray-600 mb-1">Amount (₹)</label>
+<input
+  type="text"
+  inputMode="decimal"
+  placeholder="0"
+  value={amount}
+  onChange={e => {
+    const val = e.target.value;
+    // allow empty, or digits with at most one decimal point
+    if (val === '' || /^\d*\.?\d*$/.test(val)) {
+      setAmount(val);
+    }
+  }}
+  className={`w-full border rounded-sm p-2 text-sm mb-3 bg-gray-50 focus:outline-none focus:ring-2 ${focusRing}`}
+/>
 
         {/* Date */}
         <label className="block text-sm font-medium text-gray-600 mb-1">Date</label>

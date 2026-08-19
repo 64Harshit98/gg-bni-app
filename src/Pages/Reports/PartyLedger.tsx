@@ -72,7 +72,7 @@ const PartyLedger: React.FC = () => {
     const bulkFileInputRef = useRef<HTMLInputElement>(null);
     const [isBulkUploading, setIsBulkUploading] = useState(false);
     const [bulkUploadProgress, setBulkUploadProgress] = useState<{ current: number; total: number } | null>(null);
-    const [showBulkImport, setShowBulkImport] = useState(false); 
+    const [showBulkImport, setShowBulkImport] = useState(false);
 
     // NEW: delete-party / delete-all state
     const [partyToDelete, setPartyToDelete] = useState<PartySummary | null>(null);
@@ -921,12 +921,12 @@ const PartyLedger: React.FC = () => {
                     </h1>
                     {/* NEW: Delete-all trigger, kept small/quiet since it's destructive */}
                     <button
-    onClick={() => setIsDeleteAllModalOpen(true)}
-    className="text-xs font-semibold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 px-3 py-1.5 rounded-sm transition-colors"
-    title="Delete all parties"
->
-    Delete All
-</button>
+                        onClick={() => setIsDeleteAllModalOpen(true)}
+                        className="md:hidden text-xs font-semibold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 px-3 py-1.5 rounded-sm transition-colors"
+                        title="Delete all parties"
+                    >
+                        Delete All
+                    </button>
                 </div>
             )}
             <div className="flex-1 flex flex-col md:flex-row gap-0 px-0">
@@ -934,7 +934,7 @@ const PartyLedger: React.FC = () => {
                 {/* LEFT: main column */}
                 <div className="flex-1 w-full md:w-[65%]">
 
-{/* MOBILE-ONLY bulk import — collapsed by default, single-row toggle */}
+                    {/* MOBILE-ONLY bulk import — collapsed by default, single-row toggle */}
                     {!selectedPartyName && (
                         <div className="md:hidden bg-white border border-gray-200 rounded-sm mb-3 mx-3 overflow-hidden">
                             <button

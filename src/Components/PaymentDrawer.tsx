@@ -636,6 +636,11 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             return key.toLowerCase().includes('due') ? acc + (value || 0) : acc;
         }, 0);
 
+                if (partyNumber.trim().length > 0 && partyNumber.trim().length !== 10) {
+            setModal({ message: `${partyLabel} Phone Number must be exactly 10 digits.`, type: State.ERROR });
+            return;
+        }
+
         if (mode === 'sale' && dueAmount > 0 && !partyNumber.trim()) {
             setModal({ message: `${partyLabel} Phone Number is required for Due Billing.`, type: State.ERROR });
             return;

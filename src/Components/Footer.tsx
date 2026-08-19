@@ -3,6 +3,9 @@ import { CustomButton } from './index';
 import { Variant } from '../enums';
 import { IconChevronDown } from '../constants/Icons';
 
+const formatINR = (value: number) =>
+  value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 interface GenericBillFooterProps {
   isExpanded: boolean;
   onToggleExpand: () => void;
@@ -66,25 +69,25 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
 
         <div className="flex justify-between text-gray-600 pt-1">
           <span> MRP Subtotal</span>
-          <span className="font-medium">₹{subtotal.toFixed(2)}</span>
+          <span className="font-medium">₹{formatINR(subtotal)}</span>
         </div>
 
         {totalDiscount > 0 && (
           <div className="flex justify-between text-green-600">
             <span>Discount</span>
-            <span className="font-medium">- ₹{totalDiscount.toFixed(2)}</span>
+            <span className="font-medium">- ₹{formatINR(totalDiscount)}</span>
           </div>
         )}
         {/* Net Sale Price — desktop only */}
         <div className="hidden md:flex justify-between text-gray-700 border-t border-gray-100 pt-1.5">
           <span className="font-medium">Net Sale Price</span>
-          <span className="font-semibold">₹{(subtotal - totalDiscount).toFixed(2)}</span>
+          <span className="font-semibold">₹{formatINR(subtotal - totalDiscount)}</span>
         </div>
 
         {showTaxRow && (
           <div className="border-b border-gray-200 pb-2 flex justify-between text-blue-600">
             <span>{taxLabel}</span>
-            <span className="font-medium">+ ₹{taxAmount.toFixed(2)}</span>
+            <span className="font-medium">+ ₹{formatINR(taxAmount)}</span>
           </div>
         )}
       </div>
@@ -94,7 +97,7 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
         <div className="flex justify-between items-end mb-1">
           <span className="text-gray-500 text-sm font-medium pb-1">Grand Total</span>
           <span className="text-2xl font-extrabold text-gray-900 tracking-tight">
-            ₹{finalAmount.toFixed(2)}
+            ₹{formatINR(finalAmount)}
           </span>
         </div>
 

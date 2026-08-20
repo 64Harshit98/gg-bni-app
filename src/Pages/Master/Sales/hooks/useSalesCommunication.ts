@@ -146,8 +146,11 @@ export const useSalesCommunication = ({
                 roNumber: '',
             },
             items: populatedItems,
-            terms: billSettings.posTermsAndConditions || billSettings.termsAndConditions
-  || '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
+            // Strictly from Bill Settings — no hardcoded fallback text.
+            // settings/bill is auto-provisioned with real defaults the first
+            // time any user from the company loads the app (see
+            // SettingsContext.tsx), so this is reliably populated by print time.
+            terms: billSettings.posTermsAndConditions || '',
             finalAmount: invoice.amount,
             expenses: invoice.expenses || [],
             advance: (() => {

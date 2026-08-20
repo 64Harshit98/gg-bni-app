@@ -54,7 +54,7 @@ import { useAuth } from '../../context/auth-context';
 import { CustomCard } from '../../Components/CustomCard';
 import { IconChevronDown } from '../../constants/Icons';
 import { db } from '../../lib/Firebase';
-import { collection, query, onSnapshot, orderBy, where, doc, getDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, orderBy, where, doc, getDoc, getDocs, Timestamp } from 'firebase/firestore';
 import BackButton from '../../Components/BackButton';
 import { PaymentModal } from '../../constants/Modal';
 import { useNavigate } from 'react-router-dom';
@@ -165,6 +165,39 @@ const CataloguePartyLedger: React.FC = () => {
         setToast({ message, type });
         setTimeout(() => setToast(null), 3500);
     };
+
+    // NEW: full customers master list (name/number/createdAt/address/gstNumber),
+    // fetched once per company — mirrors the Sales-side Party Ledger's pattern
+    // (src/Pages/Reports/PartyLedger/usePartyLedger.ts). Lets a customer whose
+    // only order was deleted still show up in the ledger, as long as their
+    // customers-collection record was created inside the selected date range —
+    // previously the party list here was built purely from live Orders, so a
+    // customer with zero remaining orders had no way to appear at all.
+    const [customersMaster, setCustomersMaster] = useState<{ name: string; number: string; createdAt?: number; address?: string; gstNumber?: string }[]>([]);
+
+    useEffect(() => {
+        if (!currentUser?.companyId) return;
+        const fetchCustomersMaster = async () => {
+            try {
+                const custRef = collection(db, 'companies', currentUser.companyId, 'customers');
+                const custSnap = await getDocs(custRef);
+                setCustomersMaster(custSnap.docs.map(d => {
+                    const data = d.data();
+                    const createdAtMillis = data.createdAt instanceof Timestamp ? data.createdAt.toMillis() : undefined;
+                    return {
+                        name: data.name || 'Unknown',
+                        number: data.number || d.id,
+                        createdAt: createdAtMillis,
+                        address: data.address || '',
+                        gstNumber: data.gstNumber || '',
+                    };
+                }));
+            } catch (err) {
+                console.error('Error fetching customers master:', err);
+            }
+        };
+        fetchCustomersMaster();
+    }, [currentUser?.companyId]);
 
     useEffect(() => {
         const fetchAvailableCredit = async () => {
@@ -583,6 +616,33 @@ const CataloguePartyLedger: React.FC = () => {
     // ─── PARTY LIST (from date-filtered orders) ───────────────────────────────
     const filteredParties = useMemo(() => {
         const map = new Map();
+
+        // NEW: seed the map with every known customer whose master-record
+        // createdAt falls inside the applied date range, at zero — so a
+        // customer with no remaining orders in range (e.g. their only order
+        // was deleted) still shows up, matching the Sales-side Party Ledger.
+        // Orders processed below fill in on top of this seed using the same
+        // key, so nothing gets double-counted.
+        const seedStart = appliedStartDate ? new Date(appliedStartDate).setHours(0, 0, 0, 0) : 0;
+        const seedEnd = appliedEndDate ? new Date(appliedEndDate).setHours(23, 59, 59, 999) : Date.now();
+        customersMaster
+            .filter(c => c.createdAt !== undefined && c.createdAt >= seedStart && c.createdAt <= seedEnd)
+            .forEach(c => {
+                const normalizedNumber = normalizePartyNumber(c.number);
+                const key = normalizedNumber || c.name.trim().toLowerCase();
+                map.set(key, {
+                    partyName: c.name || 'N/A',
+                    partyNumber: normalizedNumber || c.number || 'N/A',
+                    totalBilled: 0,
+                    totalDue: 0,
+                    totalTransactions: 0,
+                    partyType: 'Customer',
+                    unpaidItems: [] as { label: string; dueAmount: number }[],
+                    address: c.address || undefined,
+                    gstNumber: c.gstNumber || undefined,
+                });
+            });
+
         dateFilteredOrders.forEach((order: any) => {
             const name = order.userName
                 || order.billingDetails?.name
@@ -687,7 +747,7 @@ const CataloguePartyLedger: React.FC = () => {
 
             return matchesSearch && matchesStatus;
         });
-    }, [dateFilteredOrders, searchQuery, localPaidOverrides, statusFilter, openingBalances, appliedStartDate, appliedEndDate]);
+    }, [dateFilteredOrders, searchQuery, localPaidOverrides, statusFilter, openingBalances, appliedStartDate, appliedEndDate, customersMaster]);
 
     // ─── DETAIL LEDGER (uses same date-filtered orders) ───────────────────────
     const selectedPartyLedger = useMemo(() => {

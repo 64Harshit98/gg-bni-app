@@ -111,8 +111,11 @@ const DownloadBill: React.FC = () => {
           // Items
           items: populatedItems,
 
-          // Terms & Bank
-          terms: billSettings.termsAndConditions || 'Goods once sold will not be taken back.',
+          // Terms & Bank — strictly from Bill Settings, no hardcoded fallback.
+          // settings/bill is auto-provisioned with real defaults the first
+          // time any user from the company loads the app (see
+          // SettingsContext.tsx), so this is reliably populated by print time.
+          terms: billSettings.posTermsAndConditions || '',
           bankDetails: {
             accountName: businessInfo?.accountHolderName || billSettings.accountName,
             accountNumber: businessInfo?.accountNumber || billSettings.accountNumber,

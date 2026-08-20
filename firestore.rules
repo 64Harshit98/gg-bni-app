@@ -127,8 +127,21 @@ service cloud.firestore {
 
       // 2. Orders: Public needs to CREATE, READ, and DELETE (for upcoming orders)
       match /Orders/{orderId} {
-        allow create, read, delete: if true; 
-        allow update: if true; 
+        allow create, read, delete: if true;
+        allow update: if true;
+      }
+
+      // 2b. Customers: same collection Sales writes to (staff-side, already
+      // covered by isCompanyMember via the catch-all below). Checkout is a
+      // public, unauthenticated storefront just like Orders/items above, so
+      // it needs the same public create/update here to upsert its own
+      // customer record when an order is placed. Delete stays restricted to
+      // company members — a public checkout has no reason to delete a
+      // customer record.
+      match /customers/{customerId} {
+        allow read: if true;
+        allow create, update: if true;
+        allow delete: if isCompanyMember(companyId);
       }
 
       // 3. Catalogue Settings: Ensure this is EXACTLY like this

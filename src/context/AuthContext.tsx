@@ -24,6 +24,20 @@ interface AuthState {
   user: User | null;
 }
 
+// Provisions default Catalogue permission docs for EVERY role, not just
+// whichever role happens to be logging in. `ensureCataPermissionsExist`
+// below only ever creates a doc for the CURRENT user's own role, so a
+// brand-new company only ever got `cata_permissions/Owner` — Manager and
+// Salesman stayed missing until a user with that role actually logged in
+// (or someone manually visited the Permissions settings page). Called once
+// for the Owner's login below, since the Owner is the one who sets up a new
+// company and should see all three roles' defaults ready immediately.
+export const ensureAllCataPermissionsExist = async (companyId: string): Promise<void> => {
+  await Promise.all(
+    [ROLES.OWNER, ROLES.MANAGER, ROLES.SALESMAN].map((role) => ensureCataPermissionsExist(companyId, role))
+  );
+};
+
 export const ensureCataPermissionsExist = async (companyId: string, role: string): Promise<Cata_Permissions[]> => {
   const cataDocRef = doc(db, 'companies', companyId, 'cata_permissions', role);
   const cataSnap = await getDoc(cataDocRef);
@@ -250,6 +264,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const packAllowed = getPackPermissions(resolvedPlan) || [];
         const finalCorePermissions = rolePermissions.filter(p => packAllowed.includes(p));
         cataloguePermissions = await ensureCataPermissionsExist(companyId!, uData.role);
+        // Owner is the one who sets up a new company — provision Manager/
+        // Salesman defaults too while we're here, instead of leaving them
+        // missing until a user with that role logs in for the first time.
+        if (uData.role === ROLES.OWNER) {
+          ensureAllCataPermissionsExist(companyId!).catch(err =>
+            console.error('Failed to provision default catalogue permissions for all roles', err)
+          );
+        }
         // --- MERGE BOTH SETS OF PERMISSIONS ---
         const finalPermissions = [...finalCorePermissions, ...cataloguePermissions] as any[];
 

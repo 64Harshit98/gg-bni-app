@@ -303,14 +303,18 @@ const DashboardContent = () => {
           if (Array.isArray(d.items)) {
             d.items.forEach((item: any) => {
               const name = item.name || item.itemName;
-              const id = item.id || item.itemId || item.sku || name;
-              if (id && name) {
-                const qty = parseNum(item.quantity || item.qty || 1);
-                let val = parseNum(item.finalPrice || item.totalAmount || item.total || item.amount);
-                if (val === 0) { const price = parseNum(item.mrp || item.price || item.rate || item.sellingPrice || 0); val = price * qty; }
-                if (!itemMap[id]) itemMap[id] = { amount: 0, count: 0, latestName: name };
-                itemMap[id].amount += val; itemMap[id].count += qty;
-              }
+              if (!name) return;
+              // Group by normalized name, not item.id/itemId/sku — those fields
+              // aren't populated consistently across every entry path a line can
+              // be created from (catalog pick, quick-calculator, custom price),
+              // so grouping by id was splitting one product's units/amount
+              // across multiple map entries instead of summing them together.
+              const key = String(name).trim().toLowerCase();
+              const qty = parseNum(item.quantity || item.qty || 1);
+              let val = parseNum(item.finalPrice || item.totalAmount || item.total || item.amount);
+              if (val === 0) { const price = parseNum(item.mrp || item.price || item.rate || item.sellingPrice || 0); val = price * qty; }
+              if (!itemMap[key]) itemMap[key] = { amount: 0, count: 0, latestName: name };
+              itemMap[key].amount += val; itemMap[key].count += qty;
             });
           }
         }
@@ -349,12 +353,17 @@ const DashboardContent = () => {
       }
 
       const toList = (map: any) => Object.entries(map).map(([key, v]: [string, any]) => ({ name: v.latestName ?? key, amount: v.amount, quantity: v.count })).sort((a, b) => b.amount - a.amount).slice(0, 5);
+      // Unlike toList(), this isn't sliced to 5 — TopSoldItemsCard needs the
+      // full set so it can independently pick its own top 5 by amount OR by
+      // quantity when the user toggles view. Slicing here first would lock
+      // the "Qty" view to whichever 5 items happened to lead by amount.
+      const toFullList = (map: any) => Object.entries(map).map(([key, v]: [string, any]) => ({ name: v.latestName ?? key, amount: v.amount, quantity: v.count }));
       const topSalesmen = Object.entries(salesmanMap)
         .map(([name, v]: [string, any]) => ({ name, amount: v.amount, quantity: v.count }))
         .sort((a, b) => b.amount - a.amount)
         .slice(0, 5);
 
-      const finalData = { totalSales: currentTotalSales, totalOrders: currentOrderCount, percentageChange, salesByDate: chartData, paymentMethods: toList(paymentMap), topItems: toList(itemMap), topCustomers: toList(customerMap), topSalesmen, lastUpdated: Date.now(), cacheStart: filters.startDate, cacheEnd: filters.endDate };
+      const finalData = { totalSales: currentTotalSales, totalOrders: currentOrderCount, percentageChange, salesByDate: chartData, paymentMethods: toList(paymentMap), topItems: toFullList(itemMap), topCustomers: toList(customerMap), topSalesmen, lastUpdated: Date.now(), cacheStart: filters.startDate, cacheEnd: filters.endDate };
       setData(finalData);
       localStorage.setItem(CACHE_KEY, JSON.stringify(finalData));
     } catch (e) { console.error(e); } finally { setLoading(false); }

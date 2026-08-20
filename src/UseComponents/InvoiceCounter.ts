@@ -5,7 +5,7 @@ import { doc, runTransaction, DocumentReference, getDoc } from 'firebase/firesto
  * Returns Indian Financial Year string for internal tracking only.
  * Not shown in the invoice number — just used to detect year change.
  */
-const getFinancialYear = (date: Date = new Date()): string => {
+export const getFinancialYear = (date: Date = new Date()): string => {
     const year = date.getFullYear();
     const month = date.getMonth(); // Jan=0 ... Apr=3
     if (month >= 3) {

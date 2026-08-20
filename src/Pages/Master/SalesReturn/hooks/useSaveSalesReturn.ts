@@ -155,8 +155,15 @@ export const useSaveSalesReturn = ({
             // 3. HANDLE STOCK (EXCHANGE)
             exchangeItems.forEach(exchangeItem => {
                 const existingItem = Array.from(originalItemsMap.values()).find(i => i.id === exchangeItem.originalItemId);
+                // Only merge into the existing line if it's genuinely the same price — a
+                // partial exchange (e.g. 1 of 3 units swapped for a different net price)
+                // must NOT be folded into the remaining units' line, or the new price is
+                // silently discarded and the whole quantity ends up billed at the old
+                // rate. When the price differs, keep it as its own distinct line instead.
+                const priceMatchesExisting = existingItem &&
+                    Math.abs(Number(existingItem._effectiveUnitPrice ?? existingItem.unitPrice ?? 0) - Number(exchangeItem.unitPrice)) < 0.01;
 
-                if (existingItem) {
+                if (existingItem && priceMatchesExisting) {
                     existingItem.quantity = Number(existingItem.quantity) + Number(exchangeItem.quantity);
                 } else {
                     const itemMaster = availableItems.find(i => i.id === exchangeItem.originalItemId);
@@ -166,7 +173,14 @@ export const useSaveSalesReturn = ({
                     const itemTaxRate = (itemMaster?.tax !== undefined) ? Number(itemMaster.tax) : currentTaxRate;
                     const { lineBase, lineTax } = calculateExchangeLineTax(lineTotal, itemTaxRate, effectiveTaxMode);
 
-                    originalItemsMap.set(exchangeItem.originalItemId, {
+                    // Distinct map key when an existing (different-priced) line for this
+                    // same product is already present, so this new-priced batch gets its
+                    // own line instead of overwriting/merging into it.
+                    const lineKey = existingItem
+                        ? `${exchangeItem.originalItemId}::${exchangeItem.id}`
+                        : exchangeItem.originalItemId;
+
+                    originalItemsMap.set(lineKey, {
                         id: exchangeItem.originalItemId,
                         name: exchangeItem.name,
                         mrp: exchangeItem.mrp,
@@ -301,11 +315,19 @@ export const useSaveSalesReturn = ({
         if (modeOfReturn === 'Exchange' && exchangeItems.length == 0) return setModal({ type: State.ERROR, message: 'No exchange items selected.' });
         if (itemsToReturn.length === 0 && exchangeItems.length === 0) return setModal({ type: State.ERROR, message: 'No items selected.' });
 
-        // --- SCRUM-973 FIX: Block at the UI level ---
         const isCreditNote = modeOfReturn === 'Credit Note' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Credit Note');
         const isCashRefund = modeOfReturn === 'Cash Refund' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Cash Refund');
 
-        if ((isCreditNote || isCashRefund) && isDueSale && finalBalance > 0) {
+        // A standalone Credit Note/Cash Refund (no exchange) is still blocked on a
+        // due sale — that's a real return with nothing new bought, so cash/credit
+        // shouldn't move while the original sale is still unpaid. But an EXCHANGE's
+        // balance (return value vs exchange value) must always be offered as
+        // Credit Note or Cash Refund regardless of the original sale's paid status
+        // — it's the difference on the new, replacing purchase, not a payout
+        // against the old unpaid one. (Product decision: previously this was
+        // blocked here too via a "SCRUM-973" fix that also zeroed the balance
+        // itself in calculateReturnTotals — removed there for the same reason.)
+        if (modeOfReturn !== 'Exchange' && (isCreditNote || isCashRefund) && isDueSale && finalBalance > 0) {
             return setModal({ type: State.ERROR, message: 'Credit Note / Cash Refund cannot be issued for a sale with pending dues. Please choose Exchange.' });
         }
         if (isCreditNote && finalBalance > 0 && partyNumber.trim().length < 3) {

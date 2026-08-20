@@ -56,6 +56,8 @@ interface ItemDetailDrawerProps {
     companyId?: string;
     onVariantSelect?: (item: Item) => void;
     variantGroupIds?: string[];
+    onNotifyRequest?: (item: Item) => void;
+    notified?: boolean;
 }
 
 export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
@@ -70,6 +72,8 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
     onVariantSelect,
     variantGroupIds = [],
     isCustomerApproved = false,
+    onNotifyRequest,
+    notified = false,
 }) => {
     const [quantity, setQuantity] = useState(initialQuantity || 0);
     const [isAdding, setIsAdding] = useState(false);
@@ -132,9 +136,15 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
         priceMode !== 'mrp' &&
         hasDiscount;
 
-    const isOutOfStock =
-        catalogueSettings?.allowNegativeInventory === false &&
-        (item.stock || 0) <= 0;
+    // Must match the card's check exactly (SharedProduct.tsx): a MISSING
+    // allowNegativeInventory setting defaults to "don't allow negative stock",
+    // same as the card's `!catalogueSettings?.allowNegativeInventory`. The
+    // previous `=== false` strict check treated an unset/undefined setting as
+    // "negative inventory allowed", so this drawer showed an active "Add to
+    // Cart" for an item the card correctly flagged out of stock.
+    const isActuallyOutOfStock = (item.stock || 0) <= 0;
+    const isOutOfStock = !catalogueSettings?.allowNegativeInventory && isActuallyOutOfStock;
+    const showNotifyButton = catalogueSettings?.enableOutOfStockNotification && isActuallyOutOfStock;
 
     const updateQuantity = (delta: number) => {
         const newQty = quantity + delta;
@@ -339,6 +349,19 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
                                     </button>
                                 </div>
                             </div>
+                        ) : showNotifyButton ? (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (!notified) onNotifyRequest?.(item);
+                                }}
+                                className={`w-full py-3.5 rounded-sm font-black text-[10px] uppercase tracking-[0.2em] shadow-lg flex items-center justify-center gap-2 active:scale-[0.97] transition-all mt-4 mb-4 ${notified
+                                    ? "bg-green-600 text-white cursor-default"
+                                    : "bg-orange-400 text-white"
+                                    }`}
+                            >
+                                {notified ? '✓ We will notify you' : '🔔 Notify Me'}
+                            </button>
                         ) : (
                             <button
                                 disabled={isOutOfStock}

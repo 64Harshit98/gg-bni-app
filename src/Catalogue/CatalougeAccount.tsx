@@ -388,7 +388,7 @@ const Account: React.FC = () => {
                                 <Link
                                     to={`${ROUTES.CHOME}/${ROUTES.CATA_SUPPORT}`}
                                     className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-border border-gray-200 text-gray-800 hover:shadow-lg">
-                                    <span className="text-lg font-medium">Supports</span>
+                                    <span className="text-lg font-medium">Support</span>
                                     <span className="text-xl text-gray-600">→</span>
                                 </Link>
                             </TutorialStep>

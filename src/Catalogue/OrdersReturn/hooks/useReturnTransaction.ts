@@ -240,24 +240,28 @@ export const useReturnTransaction = ({
         );
       }
 
-      // --- NEW FIX: Add Credit/Refund amounts to paymentMethods for OrdersPage badges ---
+      // Credit/refund issued by THIS return/exchange still reduces what's due on
+      // the bill (below), and is separately tracked via creditNoteAmount/
+      // refundAmount (root-level firebaseIncrement, further down). It must NOT
+      // also be written into paymentMethods['CREDIT NOTE']/['CASH REFUND'] — that
+      // field is for amounts actually PAID via the settle-payment drawer
+      // (useOrderPayment.ts). Writing the issuance there too double-counts the
+      // same event once the customer later settles the remaining due using that
+      // credit (issuance + settlement both landing in the same badge total).
       let creditAmountToAdd = 0;
       let refundAmountToAdd = 0;
 
       if (finalBalance > 0) {
         if (modeOfReturn === 'Credit Note' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Credit Note')) {
           creditAmountToAdd = finalBalance;
-          updatedPaymentMethods['CREDIT NOTE'] = (updatedPaymentMethods['CREDIT NOTE'] || 0) + finalBalance;
         } else if (modeOfReturn === 'Cash Refund' || (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Cash Refund')) {
           refundAmountToAdd = finalBalance;
-          updatedPaymentMethods['CASH REFUND'] = (updatedPaymentMethods['CASH REFUND'] || 0) + finalBalance;
         }
       }
 
-
       const paid = Object.entries(updatedPaymentMethods)
         .filter(([k]) => k !== 'due')
-        .reduce((sum, [, v]) => sum + Number(v), 0);
+        .reduce((sum, [, v]) => sum + Number(v), 0) + creditAmountToAdd + refundAmountToAdd;
 
       updatedPaymentMethods.due = Math.max(0, updatedFinalAmount - paid);
 
@@ -402,7 +406,14 @@ export const useReturnTransaction = ({
       modeOfReturn === 'Cash Refund' ||
       (modeOfReturn === 'Exchange' && exchangeBalanceAction === 'Cash Refund');
 
-    if ((isCreditNote || isCashRefund) && isDueSale && finalBalance > 0) {
+    // A standalone Credit Note/Cash Refund (no exchange) is still blocked on a
+    // due order — that's a real return with nothing new bought, so cash/credit
+    // shouldn't move while the order is still unpaid. But an EXCHANGE's balance
+    // must always be offered as Credit Note or Cash Refund regardless of the
+    // order's paid status — it's the difference on the new, replacing items,
+    // not a payout against the old unpaid ones. (Matches the same scoping
+    // applied to the Sales-return module's handleProcessReturn.)
+    if (modeOfReturn !== 'Exchange' && (isCreditNote || isCashRefund) && isDueSale && finalBalance > 0) {
       return setModal({
         type: State.ERROR,
         message: 'Credit Note / Cash Refund cannot be issued for an unpaid order. Please choose Exchange.'

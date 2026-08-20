@@ -7,16 +7,19 @@ import { type PurchaseSettings, getDefaultPurchaseSettings } from '../Pages/Sett
 import { type ItemSettings, getDefaultItemSettings } from '../Pages/Settings/ItemSetting';
 import { ROLES } from '../enums';
 import { type CatalogueSalesSettings, getDefaultCatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting';
+import { type RawBillSettings, getDefaultBillSettings } from '../Pages/Settings/BillSetting';
 
 interface SettingsContextType {
     salesSettings: SalesSettings | null;
     purchaseSettings: PurchaseSettings | null;
     itemSettings: ItemSettings | null;
     catalogueSettings: CatalogueSalesSettings | null;
+    billSettings: RawBillSettings | null;
     loadingCatalogueSettings: boolean;
     loadingSalesSettings: boolean;
     loadingPurchaseSettings: boolean;
     loadingItemSettings: boolean;
+    loadingBillSettings: boolean;
     isLoadingSettings: boolean;
 }
 
@@ -35,6 +38,9 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
 
     const [catalogueSettings, setCatalogueSettings] = useState<CatalogueSalesSettings | null>(null);
     const [loadingCatalogueSettings, setLoadingCatalogueSettings] = useState(true);
+
+    const [billSettings, setBillSettings] = useState<RawBillSettings | null>(null);
+    const [loadingBillSettings, setLoadingBillSettings] = useState(true);
 
     useEffect(() => {
         if (!currentUser?.companyId) {
@@ -195,17 +201,69 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
         return () => unsubscribeItem();
     }, [currentUser?.companyId]);
 
-    const isLoadingSettings = loadingSalesSettings || loadingPurchaseSettings || loadingItemSettings || loadingCatalogueSettings;
+    // --- FETCH BILL SETTINGS ---
+    // Unlike the other four settings docs above (which are provisioned by the
+    // registerCompanyAndUser Cloud Function at signup, so they always exist —
+    // this effect only ever needs to heal missing KEYS on them), settings/bill
+    // is never created at signup. So when the doc doesn't exist at all, this
+    // one also persists the defaults immediately (not just holds them in
+    // memory) — the first time any user from the company loads the app, the
+    // doc gets created for real. That means by the time anyone reaches print
+    // (which requires being logged in, i.e. this effect having already run),
+    // settings/bill reliably exists with real values — so
+    // CatalogueBill.tsx/pdfGenerator.ts no longer need a hardcoded
+    // terms-and-conditions fallback string of their own.
+    useEffect(() => {
+        if (!currentUser?.companyId) {
+            setLoadingBillSettings(false);
+            setBillSettings(null);
+            return;
+        }
+
+        setLoadingBillSettings(true);
+        const companyId = currentUser.companyId;
+        const docRef = doc(db, 'companies', companyId, 'settings', 'bill');
+
+        const unsubscribeBill = onSnapshot(docRef, (docSnap) => {
+            const defaultSettings = getDefaultBillSettings(companyId);
+
+            if (docSnap.exists()) {
+                const dbSettings = docSnap.data();
+                const mergedSettings = { ...defaultSettings, ...dbSettings };
+
+                const missingKeys = Object.keys(defaultSettings).filter(key => !(key in dbSettings));
+                if (missingKeys.length > 0) {
+                    setDoc(docRef, mergedSettings, { merge: true }).catch(err => console.error('Failed to sync missing bill settings:', err));
+                }
+
+                setBillSettings(mergedSettings as RawBillSettings);
+            } else {
+                setDoc(docRef, defaultSettings).catch(err => console.error('Failed to create default bill settings:', err));
+                setBillSettings(defaultSettings);
+            }
+            setLoadingBillSettings(false);
+        }, (error) => {
+            console.error('Error fetching Bill Settings:', error);
+            setBillSettings(getDefaultBillSettings(companyId));
+            setLoadingBillSettings(false);
+        });
+
+        return () => unsubscribeBill();
+    }, [currentUser?.companyId]);
+
+    const isLoadingSettings = loadingSalesSettings || loadingPurchaseSettings || loadingItemSettings || loadingCatalogueSettings || loadingBillSettings;
 
     const contextValue = {
         salesSettings,
         purchaseSettings,
         itemSettings,
         catalogueSettings,
+        billSettings,
         loadingCatalogueSettings,
         loadingSalesSettings,
         loadingPurchaseSettings,
         loadingItemSettings,
+        loadingBillSettings,
         isLoadingSettings
     };
 
@@ -249,6 +307,14 @@ export const useItemSettings = () => {
         throw new Error('useItemSettings must be used within a SettingsProvider');
     }
     return { itemSettings: context.itemSettings, loadingSettings: context.loadingItemSettings };
+};
+
+export const useBillSettings = () => {
+    const context = useContext(SettingsContext);
+    if (context === undefined) {
+        throw new Error('useBillSettings must be used within a SettingsProvider');
+    }
+    return { billSettings: context.billSettings, loadingSettings: context.loadingBillSettings };
 };
 
 export const useIsLoadingSettings = () => {

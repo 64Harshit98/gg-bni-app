@@ -68,6 +68,7 @@ export interface CatalogueInvoiceData {
     tax?: number;
     gst?: number;
     taxRate?: number;
+    taxType?: string;
     mrp?: number;
     salesPrice?: number;
     unit?: string;
@@ -330,6 +331,20 @@ export const CatalogueBill = async (
     // If not Regular, force tax rate to 0 internally for math
     let taxRate = isRegular ? Number(item.tax ?? item.gst ?? item.taxRate ?? 0) : 0;
 
+    // Prefer the item's OWN recorded tax mode (Orders items always carry a
+    // per-line taxType, set at checkout/edit-save time) over the bill-level
+    // `safeTaxType`, which falls back to the company's CURRENT sales settings
+    // when the order predates having its own taxType saved. Using the live
+    // setting here silently re-taxes old bills under today's rules — e.g. an
+    // order whose items were genuinely Exclusive (tax added on top, shown via
+    // separate IGST columns) gets treated as Inclusive if the company has
+    // since switched its default, dropping the entire tax amount from the
+    // printed total.
+    const itemTaxTypeRaw = String((item as any).taxType || '').toUpperCase();
+    const rowTaxType = (itemTaxTypeRaw === 'INCLUSIVE' || itemTaxTypeRaw === 'EXCLUSIVE')
+      ? itemTaxTypeRaw
+      : safeTaxType;
+
     // --- Split discount into disc1 amount + disc2 amount (chained: MRP -> disc1 -> disc2) ---
     const disc1Pct = Number((item as any).discount || 0);
     const disc2Pct = Number((item as any).discount2 || 0);
@@ -350,32 +365,43 @@ export const CatalogueBill = async (
     let billDisc = sumPostDiscountAmounts > 0 ? (rowGross / sumPostDiscountAmounts) * totalBillDiscount : 0;
     if (billDisc < 0) billDisc = 0;
 
-    let rowNet = rowGross - billDisc;
-
+    // Tax is computed on the FULL (undiscounted) line amount, matching how the
+    // order's persisted total is calculated at checkout/edit-save time (tax on
+    // the full price; the bill discount is subtracted once, after tax, at the
+    // invoice level below — never baked into the taxable base per line). Doing
+    // it the other way (discount applied before tax, per line) silently lets
+    // the discount shrink GST too, producing a printed TOTAL lower than the
+    // order's actual saved total. Verified algebraically against a real order:
+    // itemsBase=24001.905, tax=1253.095, discount=255 -> saved total 25000;
+    // this formula reproduces 25000 exactly, the old one landed at 24986.
     let taxableAmt = 0;
     let taxAmt = 0;
     let finalAmount = 0;
 
     if (taxRate === 0) {
-      taxableAmt = rowNet;
+      taxableAmt = rowGross;
       finalAmount = taxableAmt;
     } else {
-      if (safeTaxType === "EXCLUSIVE") {
-        taxableAmt = rowNet;
-        taxAmt = rowNet * (taxRate / 100);
-        finalAmount = rowNet + taxAmt;
+      if (rowTaxType === "EXCLUSIVE") {
+        taxableAmt = rowGross;
+        taxAmt = rowGross * (taxRate / 100);
+        finalAmount = rowGross + taxAmt;
       } else {
         // Inclusive: Back-calculate
-        finalAmount = rowNet;
+        finalAmount = rowGross;
         taxableAmt = finalAmount / (1 + (taxRate / 100));
         taxAmt = finalAmount - taxableAmt;
       }
     }
 
+    // Row's own share of the bill discount, netted out for display only — the
+    // tax figures above are intentionally unaffected by it.
+    const rowAmountAfterDiscount = finalAmount - billDisc;
+
     totalQty += qty;
     totalTaxable += taxableAmt;
     totalTaxAmt += taxAmt;
-    grossTotal += finalAmount;
+    grossTotal += finalAmount; // pre-discount; totalBillDiscount subtracted once below
 
     if (isRegular && taxRate > 0) {
       const rateKey = taxRate.toString();
@@ -410,13 +436,13 @@ export const CatalogueBill = async (
 
     if (!showTaxColumns) {
       return [
-        index + 1, "", itemNameCell, qty, unitText, mrp.toFixed(2), discDisplay, ...(hasBillDiscount ? [billDisc.toFixed(2)] : []), finalAmount.toFixed(2)
+        index + 1, "", itemNameCell, qty, unitText, mrp.toFixed(2), discDisplay, ...(hasBillDiscount ? [billDisc.toFixed(2)] : []), rowAmountAfterDiscount.toFixed(2)
       ];
     }
 
     return [
       index + 1, "", itemNameCell, qty, unitText, mrp.toFixed(2), discDisplay, ...(hasBillDiscount ? [billDisc.toFixed(2)] : []), taxableAmt.toFixed(2),
-      printTaxRate, printTaxAmt, finalAmount.toFixed(2)
+      printTaxRate, printTaxAmt, rowAmountAfterDiscount.toFixed(2)
     ];
   });
 
@@ -429,10 +455,13 @@ export const CatalogueBill = async (
     totalExtraExpenses = Number(data.extraExpenseAmount) || 0;
   }
 
-  // pureCalculated exactly mirrors the math including prorated discounts and exclusive tax
-  const pureCalculated = grossTotal + totalExtraExpenses;
+  // grossTotal is the pre-discount sum of taxed line amounts; the bill discount
+  // is subtracted once here, after tax — matching the canonical order-total
+  // formula (checkOut.calculations.ts / orders.calculations.ts) — instead of
+  // being applied per-line before tax, which used to make the printed TOTAL
+  // come out lower than the order's actual saved totalAmount.
+  const pureCalculated = grossTotal - totalBillDiscount + totalExtraExpenses;
 
-  // STRICT OVERRIDE: Trust the PDF's internal math, NOT the DB's pre-tax grandTotal
   let invoiceTotal = Math.round(pureCalculated);
   const roundOffAmt = invoiceTotal - pureCalculated;
 
@@ -946,9 +975,6 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
     none: "Unregistered"
   };
 
-  const gstTypeFromSales =
-    gstTypeMap[salesSettings?.gstScheme] || "";
-
   if (invoiceData.companyId) {
     try {
       const businessRef = doc(
@@ -1002,7 +1028,16 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
     invoiceData.billingDetails?.state;
 
   // --- STRICT MATH FIX: Calculate true post-tax total ---
-  const taxType = invoiceData.taxType || salesSettings?.taxType || 'exclusive';
+  // Matches Sales' own PDF generator exactly (src/UseComponents/pdfGenerator.ts:913-914):
+  // `taxType: invoiceData.taxType || 'exclusive'`, `gstScheme: invoiceData.gstScheme || 'regular'`
+  // — NO live-settings fallback at all, ever. Once a bill is saved, its tax
+  // scheme is locked; the company's current settings are irrelevant to it.
+  // The previous `|| salesSettings?.gstScheme` fallback here was exactly the
+  // kind of live-settings leak this is supposed to prevent — removed so this
+  // can never reintroduce it, matching Sales' proven-correct shape byte for
+  // byte instead of trying to out-guess edge cases with extra fallbacks.
+  const scheme = (invoiceData.gstScheme || 'regular').toLowerCase();
+  const taxType = invoiceData.taxType || 'exclusive';
   const totalBillDiscount = Number(invoiceData.manualDiscount || invoiceData.billDiscount || 0);
   const sumPostDiscountAmounts = (invoiceData.items || []).reduce((sum: number, item: any) => {
     const mrp = Number(item.mrp || 0);
@@ -1028,8 +1063,12 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
     let finalRowAmount = rowNet;
     const itemTaxRate = Number(item.tax ?? item.taxRate ?? 0);
 
-    // 👉 If exclusive, add tax on top of the row net
-    if (taxType === 'exclusive' && itemTaxRate > 0) {
+    // 👉 If exclusive, add tax on top of the row net — but ONLY under a
+    // Regular scheme. A Composition/Exempt/None order can still have
+    // taxType: 'exclusive' saved on it (that field reflects the company's
+    // generic tax-mode setting, independent of scheme), so checking taxType
+    // alone was silently adding tax back onto Composition orders here.
+    if (scheme === 'regular' && taxType === 'exclusive' && itemTaxRate > 0) {
       finalRowAmount = rowNet + (rowNet * (itemTaxRate / 100));
     }
 
@@ -1059,7 +1098,11 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
     companyPhone: companyData.phone || "",
     companyState: companyData.state || "",
     placeOfSupply: determinedPlaceOfSupply || "",
-    companyGstType: salesSettings?.gstScheme === "none" ? "" : (gstTypeFromSales || companyData.gstType || ""),
+    // Derived purely from `scheme` (the order's own saved gstScheme, never
+    // live settings — see the comment above `scheme`'s declaration). An
+    // order created under Composition always prints as Composition, even if
+    // the company has since switched to Regular.
+    companyGstType: scheme === "none" ? "" : (gstTypeMap[scheme] || companyData.gstType || ""),
     taxType: taxType,
     companyGstin: invoiceData.companyGstin || companyData.gstin || billSettings.companyGstin || "",
     msmeNumber: invoiceData.msmeNumber || billSettings.msmeNumber || "",
@@ -1069,7 +1112,11 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
     accountNumber: invoiceData.accountNumber || billSettings.accountNumber || "",
     ifscCode: invoiceData.ifscCode || billSettings.ifscCode || "",
     upiId: billSettings.upiId || companyData.upiId || "",
-    termsAndConditions: billSettings.catalogueTermsAndConditions || invoiceData.termsAndConditions || '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
+    // Strictly from Bill Settings — no hardcoded fallback text. settings/bill
+    // is now auto-provisioned with real defaults the first time any user from
+    // the company loads the app (see SettingsContext.tsx), so by the time
+    // anyone reaches print, this field is reliably populated.
+    termsAndConditions: billSettings.catalogueTermsAndConditions || '',
     signatureBase64: billSettings.signatureBase64 || "",
     enableTriplicate: billSettings.enableTriplicate || false,
     discountDisplayMode: billSettings.discountDisplayFormat || invoiceData.discountDisplayFormat || 'amount',

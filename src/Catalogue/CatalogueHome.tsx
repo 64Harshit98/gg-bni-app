@@ -225,25 +225,12 @@ const displayData = isTutorialActive ? sampleData : data;
                         }
 
                         // 2. Calculate Total Sales Amount irrespective of status
-                        // Note: Using o.totalAmount here so even unpaid/upcoming orders show their value. 
-                        // If you only want actual cash received, change this back to (o.paidAmount || 0) - (o.refundAmount || 0)
-                        // 2. Calculate Total Sales Amount irrespective of status
+                        // Read the total exactly as it was saved on the order (checkout/edit
+                        // time), same as OrderCard — never recomputed from the company's
+                        // *current* tax settings, which can drift from what was true when the
+                        // bill was actually made.
                         if (status === 'Upcoming') return;
-                        let effectiveAmount = 0;
-
-                        if (Array.isArray(o.items) && o.items.length > 0) {
-                            // Dynamically calculate the total from items for absolute accuracy
-                            const itemsTotal = o.items.reduce((sum: number, item: any) => {
-                                return sum + ((item.finalPrice || 0));
-                            }, 0);
-
-                            // Apply any order-level discounts as a percentage
-                            const discountPercent = Number(o.discount) || 0;
-                            effectiveAmount = itemsTotal - (itemsTotal * (discountPercent / 100));
-                        } else {
-                            // Fallback if no items exist
-                            effectiveAmount = Number(o.totalAmount) || Number(o.grandTotal) || 0;
-                        }
+                        const effectiveAmount = Number(o.totalAmount) || Number(o.grandTotal) || 0;
 
                         totalSalesAmount += effectiveAmount;
                         totalSalesCount += 1;
@@ -254,14 +241,25 @@ const displayData = isTutorialActive ? sampleData : data;
                         }
 
                         // 3. Calculate Item Stats irrespective of status
+                        // Uses item.finalPrice as saved at checkout/edit time — the
+                        // tax-INCLUSIVE line total, matching the order's displayed total
+                        // (Order.totalAmount) and the "Completed Sales" figure above.
                         if (Array.isArray(o.items)) {
                             o.items.forEach((item: any) => {
-                                if (!item.id || !item.name) return;
-                                const cur = itemStats.get(item.id) || { name: item.name, totalQuantity: 0, totalAmount: 0 };
-                                itemStats.set(item.id, {
+                                // Group by the stable catalog product id (itemId), not item.id —
+                                // items added to an order via the edit modal get a fresh random
+                                // item.id each time (see useOrderEditor.ts's addSelectedItemToOrder),
+                                // so keying by item.id alone was splitting one product's totals
+                                // across multiple entries instead of summing them.
+                                const key = item.itemId || item.id;
+                                if (!key || !item.name) return;
+                                const quantity = Number(item.quantity || 0);
+                                const finalPrice = Number(item.finalPrice ?? item.taxableAmount ?? 0);
+                                const cur = itemStats.get(key) || { name: item.name, totalQuantity: 0, totalAmount: 0 };
+                                itemStats.set(key, {
                                     name: item.name,
-                                    totalQuantity: cur.totalQuantity + (item.quantity || 0),
-                                    totalAmount: cur.totalAmount + ((item.finalPrice || 0)),
+                                    totalQuantity: cur.totalQuantity + quantity,
+                                    totalAmount: cur.totalAmount + finalPrice,
                                 });
                             });
                         }
@@ -270,7 +268,11 @@ const displayData = isTutorialActive ? sampleData : data;
                     const chartData: ChartDataPoint[] = Object.entries(salesByDate).map(([date, v]) => ({
                         date, sales: v.sales, bills: v.bills,
                     }));
-                    const allItems: TopItem[] = Array.from(itemStats.entries()).map(([id, v]) => ({ id, ...v }));
+                    const allItems: TopItem[] = Array.from(itemStats.entries()).map(([id, v]) => ({
+                        id,
+                        ...v,
+                        totalAmount: Math.round(v.totalAmount),
+                    }));
                     const topByQuantity = [...allItems].sort((a, b) => b.totalQuantity - a.totalQuantity).slice(0, 5);
                     const topByAmount = [...allItems].sort((a, b) => b.totalAmount - a.totalAmount).slice(0, 5);
 

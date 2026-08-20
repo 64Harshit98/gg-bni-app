@@ -9,12 +9,10 @@ import {
 import { db } from '../../../lib/Firebase';
 import { State } from '../../../enums';
 import type { Order } from '../orders.types';
-import { computeOrderTotals, isTaxEnabled as computeIsTaxEnabled } from '../orders.calculations';
 
 interface UseOrderPaymentParams {
     currentUser: any;
     companyId: string | undefined;
-    salesSettings: any;
     setModal: (modal: { message: string; type: State } | null) => void;
     setEnableItemWiseDiscount: (v: boolean) => void;
     setEnableDiscount2: (v: boolean) => void;
@@ -27,7 +25,6 @@ interface UseOrderPaymentParams {
 // <PaymentModal> render).
 export const useOrderPayment = ({
     currentUser,
-    salesSettings,
     setModal,
     setEnableItemWiseDiscount,
     setEnableDiscount2,
@@ -85,22 +82,15 @@ export const useOrderPayment = ({
         fetchCredit();
     }, [showPaymentModal, currentUser?.companyId]);
 
-    // Payment due — same canonical formula as the edit modal and card
-    // preview, kept at 2-decimal precision (not whole-rupee rounded)
-    // since that's what this drawer showed before.
+    // Payment due — read directly off the order as saved (checkout/edit-save
+    // time), never recomputed from the company's *current* tax settings, so
+    // the due amount can't drift from what the bill actually says.
     const { updatedTotal, currentDue, alreadyPaid } = useMemo(() => {
         if (!showPaymentModal) {
             return { updatedTotal: 0, currentDue: 0, alreadyPaid: 0 };
         }
 
-        const discTotal = Number(showPaymentModal.manualDiscount || 0);
-        const paymentTotals = computeOrderTotals(
-            showPaymentModal.items,
-            showPaymentModal.expenses,
-            discTotal,
-            computeIsTaxEnabled(salesSettings)
-        );
-        const updatedTotal = Number(Math.max(0, paymentTotals.raw).toFixed(2));
+        const updatedTotal = Number(showPaymentModal.totalAmount) || 0;
 
         // Current paid
         const alreadyPaid = Number(showPaymentModal.paidAmount || 0);
@@ -109,7 +99,7 @@ export const useOrderPayment = ({
         const currentDue = Number(Math.max(0, updatedTotal - alreadyPaid).toFixed(2));
 
         return { updatedTotal, currentDue, alreadyPaid };
-    }, [showPaymentModal, salesSettings]);
+    }, [showPaymentModal]);
 
     const onSubmit = async (_inv: any, amount: number, method: string) => {
         try {

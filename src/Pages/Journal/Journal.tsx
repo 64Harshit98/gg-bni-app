@@ -405,7 +405,13 @@ const Journal: React.FC = () => {
                           : (item.quantity > 0 ? (item.finalPrice / item.quantity) : 0);
 
                     // --- Collect ALL returned qty for this item across all return entries ---
-                    const returnedEntries: { qty: number; modeOfReturn: string; returnedAt: any }[] = [];
+                    // Same-item exchanges re-add a line with the SAME id as the one that
+                    // was just returned, so matching purely by id (as below) can pair a
+                    // return record with the wrong (new-price) current line. Carrying the
+                    // return record's own recorded `amount` (its true value at return time)
+                    // and using that instead of recomputing from the current item's price
+                    // keeps the struck-through row honest even when the id collides.
+                    const returnedEntries: { qty: number; modeOfReturn: string; returnedAt: any; amount?: number }[] = [];
                     (invoice.returnHistory || []).forEach((h: any) => {
                       (h.returnedItems || []).forEach((r: any) => {
                         if (r.originalItemId === item.id || r.originalItemId === (item as any).productId) {
@@ -413,6 +419,7 @@ const Journal: React.FC = () => {
                             qty: Number(r.quantity) || Number(r.qty) || 0,
                             modeOfReturn: h.modeOfReturn || '',
                             returnedAt: h.returnedAt,
+                            amount: r.amount !== undefined ? Number(r.amount) || 0 : undefined,
                           });
                         }
                       });
@@ -478,7 +485,10 @@ const Journal: React.FC = () => {
                                 </div>
                               </div>
                               <div className="text-right">
-                                <p className="font-semibold line-through">{renderPriceRow(entry.qty)}</p>
+                                <p className="font-semibold line-through">
+                                  {(entry.amount !== undefined ? entry.amount : netUnitPrice * entry.qty)
+                                    .toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                                </p>
                                 <p className="text-xs">Qty: {entry.qty}</p>
                               </div>
                             </div>

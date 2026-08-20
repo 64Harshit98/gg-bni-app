@@ -7,13 +7,11 @@ import { Spinner } from '../../../constants/Spinner';
 import { IconEdit } from '../../../constants/Icons';
 import type { Order, OrderStatus } from '../orders.types';
 import { formatAmount } from '../../../lib/format';
-import { computeOrderTotals, isTaxEnabled as computeIsTaxEnabled } from '../orders.calculations';
 
 interface OrderCardProps {
     order: Order;
     expandedorderId: string | null;
     handleOrderClick: (uiKey: string) => void;
-    salesSettings: any;
     openEditor: (order: Order) => void;
     setSelectedOrderForAction: (order: Order | null) => void;
     pdfLoadingOrderId: string | null;
@@ -30,7 +28,6 @@ export const OrderCard: React.FC<OrderCardProps> = ({
     order: Order,
     expandedorderId,
     handleOrderClick,
-    salesSettings,
     openEditor,
     setSelectedOrderForAction,
     pdfLoadingOrderId,
@@ -53,19 +50,22 @@ export const OrderCard: React.FC<OrderCardProps> = ({
     const isExpanded = expandedorderId === Order.id;
     const isUpcomingStatus = Order.status === 'Upcoming';
 
-    // Still needed below for per-item display math (returned-item
-    // unit price reversal) inside the expanded card body.
-    const isTaxEnabled = computeIsTaxEnabled(salesSettings);
+    // Total is read from the order document as saved at checkout/edit time —
+    // never recomputed from the company's *current* tax settings, so this
+    // can't drift from what the bill actually said when it was created.
+    const total = Number(Order.totalAmount) || 0;
 
-    // Card preview total — now sourced from the same canonical
-    // formula used by the edit modal, so this always agrees with it.
-    const cardTotals = computeOrderTotals(
-        Order.items,
-        Order.expenses,
-        Number(Order.manualDiscount || 0),
-        isTaxEnabled
-    );
-    const total = cardTotals.total;
+    // Tax only ever applies under a Regular GST scheme with Inclusive/Exclusive
+    // tax — never under Composition or Exempt/None, where GST isn't charged at
+    // all. Orders without a persisted gstScheme (older orders, saved before
+    // that field existed) fall back to showing tax whenever a nonzero amount
+    // was recorded, since we can't tell what scheme was actually in effect.
+    const orderGstScheme = (Order.gstScheme || '').toLowerCase();
+    const orderTaxType = (Order.taxType || '').toLowerCase();
+    const isTaxableScheme = Order.gstScheme
+        ? (orderGstScheme === 'regular' && (orderTaxType === 'inclusive' || orderTaxType === 'exclusive'))
+        : true;
+    const showTaxRow = isTaxableScheme && Number(Order.totalTax || 0) > 0;
 
     let paid = Number(Order.paidAmount || 0);
     let due = Math.max(0, total - paid);
@@ -251,7 +251,9 @@ export const OrderCard: React.FC<OrderCardProps> = ({
 
                                 // 👇 1. NEW LOGIC: Extract Base Price for UI Math
                                 const rawUnitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
-                                const taxRate = isTaxEnabled ? Number(item.tax ?? item.taxRate ?? 0) : 0;
+                                // Tax rate/type as saved on the item at checkout/edit time — not gated
+                                // by the company's current tax toggle, which may have changed since.
+                                const taxRate = Number(item.tax ?? item.taxRate ?? 0);
                                 const taxType = (item.taxType || '').toLowerCase();
 
                                 let displayUnitPrice = rawUnitPrice;
@@ -445,7 +447,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                                             ))}
                                         </div>
                                     )}
-                                    {Number(Order.totalTax || 0) > 0 && (
+                                    {showTaxRow && (
                                         <div className="px-2 pt-0.5 flex justify-between items-center border-t">
                                             <span className="text-[8px] font-bold text-slate-500 uppercase tracking-wide">
                                                 Tax

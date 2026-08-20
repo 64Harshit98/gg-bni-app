@@ -16,6 +16,11 @@ import type { PaymentCompletionData } from '../../../../Components/PaymentDrawer
 import { calculateFinalizedSaleItems, toCurrency } from '../sales.calculations';
 import type { SalesInvoice, SalesItem } from '../sales.types';
 
+// Firestore document IDs can't contain '/' (and a few other characters are
+// unsafe) — an invoice number like "INV/2024/001" would otherwise throw when
+// used directly as a doc ID for the uniqueness-registry check below.
+const toRegistryKey = (invoiceNumber: string) => encodeURIComponent(invoiceNumber);
+
 interface UseSalesPaymentParams {
     currentUser: any;
     companyId: string | undefined;
@@ -303,7 +308,23 @@ export const useSalesPayment = ({
 
                 const prefix = settingsDoc.exists() ? (settingsDoc.data().voucherPrefix || 'INV') : 'INV';
                 const nextNumber = counterDoc.exists() ? (counterDoc.data().currentNumber || 1) : 1;
-                const finalInvNo = isInvoiceNumberManuallyEdited.current ? invoiceNumber : `${prefix}-${nextNumber}`;
+                const finalInvNo = (isInvoiceNumberManuallyEdited.current ? invoiceNumber : `${prefix}-${nextNumber}`).trim();
+
+                if (!finalInvNo) {
+                    throw new Error('EMPTY_INVOICE_NUMBER');
+                }
+
+                // Strict, transaction-atomic uniqueness check. The registry doc's ID
+                // IS the invoice number, so two tabs racing to save the same number
+                // (auto-generated OR hand-typed) can never both win: Firestore
+                // serializes transactions that read+write the same document, and
+                // whichever one commits second sees the registry entry the first one
+                // just created and aborts here — instead of silently duplicating it.
+                const registryRef = doc(db, 'companies', resolvedCompanyId, 'salesInvoiceRegistry', toRegistryKey(finalInvNo));
+                const registrySnap = await transaction.get(registryRef);
+                if (registrySnap.exists()) {
+                    throw new Error(`INVOICE_NUMBER_TAKEN:${finalInvNo}`);
+                }
 
                 saleData.createdAt = customDate;
                 saleData.invoiceNumber = finalInvNo;
@@ -313,6 +334,7 @@ export const useSalesPayment = ({
 
                 const newSaleRef = doc(collection(db, "companies", resolvedCompanyId, "sales"));
                 transaction.set(newSaleRef, sanitizeForFirestore(saleData));
+                transaction.set(registryRef, { saleId: newSaleRef.id, createdAt: serverTimestamp() });
 
                 if (!isInvoiceNumberManuallyEdited.current) {
                     transaction.set(counterRef, { currentNumber: nextNumber + 1 }, { merge: true });
@@ -321,10 +343,28 @@ export const useSalesPayment = ({
 
             } else if (existingId) {
                 const invoiceRef = doc(db, "companies", resolvedCompanyId, "sales", existingId);
+                const finalInvNo = invoiceNumber.trim();
+
+                if (!finalInvNo) {
+                    throw new Error('EMPTY_INVOICE_NUMBER');
+                }
+
+                // Only touch the registry if the number actually changed during this
+                // edit — re-saving with the same number it already owns must not
+                // trip the "already taken" check against itself.
+                if (finalInvNo !== invoiceToEdit?.invoiceNumber) {
+                    const registryRef = doc(db, 'companies', resolvedCompanyId, 'salesInvoiceRegistry', toRegistryKey(finalInvNo));
+                    const registrySnap = await transaction.get(registryRef);
+                    if (registrySnap.exists()) {
+                        throw new Error(`INVOICE_NUMBER_TAKEN:${finalInvNo}`);
+                    }
+                    transaction.set(registryRef, { saleId: existingId, createdAt: serverTimestamp() });
+                }
+
                 saleData.createdAt = customDate;
-                saleData.invoiceNumber = invoiceNumber;
+                saleData.invoiceNumber = finalInvNo;
                 transaction.update(invoiceRef, sanitizeForFirestore(saleData));
-                return { id: existingId, number: invoiceNumber };
+                return { id: existingId, number: finalInvNo };
             }
             return null;
         };
@@ -450,7 +490,18 @@ export const useSalesPayment = ({
         } catch (e: any) {
             console.error("Save error:", e?.code, e?.message);
 
-            if (e?.code === 'unavailable' || e?.message?.includes('network-request-failed')) {
+            if (typeof e?.message === 'string' && e.message.startsWith('INVOICE_NUMBER_TAKEN:')) {
+                const takenNumber = e.message.split(':')[1];
+                setModal({
+                    message: `Invoice number ${takenNumber} is already in use. Please choose a different number.`,
+                    type: State.ERROR
+                });
+            } else if (e?.message === 'EMPTY_INVOICE_NUMBER') {
+                setModal({
+                    message: 'Please enter an invoice number.',
+                    type: State.ERROR
+                });
+            } else if (e?.code === 'unavailable' || e?.message?.includes('network-request-failed')) {
                 setModal({
                     message: 'Network lost while saving. Please check your connection and try again.',
                     type: State.ERROR

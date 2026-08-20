@@ -200,9 +200,40 @@ export const generateA5Invoice = async (
 
         const sectionStartY = cursorY;
 
-        const sectionHeight = 26;
         const totalWidth = pageWidth - 10;
         const boxWidth = totalWidth / 3;
+
+        const invoiceX = 7;
+        const billX = 7 + boxWidth;
+        const shipX = 7 + (boxWidth * 2);
+
+        // Pre-wrap every address FIRST, before drawing anything, so the box
+        // height can be sized to fit whatever comes out — a long address (or a
+        // long "Place" line, which is itself the shipping address) used to
+        // overflow the old fixed 26mm box straight through the border and into
+        // the row below, since jsPDF's rect() only draws a border, it doesn't
+        // clip text to it.
+        const placeLines = doc.splitTextToSize(
+            `Place : ${data.shipTo?.address || ""}`,
+            boxWidth - 6
+        );
+        const billAddrLines = doc.splitTextToSize(
+            data.billTo?.address || "",
+            boxWidth - 8
+        );
+        const shipAddrLines = doc.splitTextToSize(
+            data.shipTo?.address || "",
+            boxWidth - 8
+        );
+
+        // Bottom Y (relative to sectionStartY) each column's content actually
+        // reaches, mirroring the same line-height/offset math the text-drawing
+        // code below uses (each wrapped line ≈ 3mm at this font size).
+        const invoiceBottom = 14 + (placeLines.length * 3);
+        const billBottom = 14 + (billAddrLines.length * 3) + (showGstinDetails && data.billTo?.gstin ? 3.5 : 0);
+        const shipBottom = 14 + (shipAddrLines.length * 3) + (showGstinDetails ? 3.5 : 0);
+
+        const sectionHeight = Math.max(26, Math.max(invoiceBottom, billBottom, shipBottom) + 3);
 
         // boxes
         doc.rect(5, sectionStartY, boxWidth, sectionHeight);
@@ -221,10 +252,6 @@ export const generateA5Invoice = async (
         doc.setFont("helvetica", "normal");
         doc.setFontSize(7);
 
-        const invoiceX = 7;
-        const billX = 7 + boxWidth;
-        const shipX = 7 + (boxWidth * 2);
-
         // ===== INVOICE DETAILS =====
 
         doc.setFont("helvetica", "bold");
@@ -241,11 +268,6 @@ export const generateA5Invoice = async (
             sectionStartY + 11
         );
 
-        const placeLines = doc.splitTextToSize(
-            `Place : ${data.shipTo?.address || ""}`,
-            boxWidth - 6
-        );
-
         doc.text(
             placeLines,
             invoiceX,
@@ -254,11 +276,6 @@ export const generateA5Invoice = async (
 
 
         // ===== BILL TO =====
-
-        const billAddrLines = doc.splitTextToSize(
-            data.billTo?.address || "",
-            boxWidth - 8
-        );
 
         let billY = sectionStartY + 10;
 
@@ -295,17 +312,6 @@ export const generateA5Invoice = async (
         }
 
         // ===== SHIP TO =====
-
-        doc.text(
-            data.shipTo?.name || "",
-            shipX,
-            sectionStartY + 10
-        );
-
-        const shipAddrLines = doc.splitTextToSize(
-            data.shipTo?.address || "",
-            boxWidth - 8
-        );
 
         let shipY = sectionStartY + 10;
 

@@ -216,6 +216,13 @@ const SubscriptionPage: React.FC = () => {
     const isPlanActive = subData?.isActive || false;
     const expiryDate = subData?.expiryDate;
 
+    // The page the user arrived from may no longer be allowed under their
+    // (possibly just-changed) plan, so send them to their plan's own
+    // dashboard instead of blindly going back through browser history —
+    // mirrors the redirect PermissionWrapper itself uses for isCatalogueOnly.
+    const isCatalogueOnly = currentPack === PLANS.CATALOGUE_PRO || currentPack === PLANS.CALC_CATALOG;
+    const dashboardRoute = isCatalogueOnly ? ROUTES.CHOME : ROUTES.HOME;
+
     const [userEmail, setUserEmail] = useState<string>('');
     useEffect(() => {
         const fetchEmail = async () => {
@@ -226,12 +233,7 @@ const SubscriptionPage: React.FC = () => {
         };
         fetchEmail();
     }, [currentUser]);
-    const showActiveView = isPlanActive && (
-        currentPack === PLANS.ENTERPRISE ||
-        currentPack === PLANS.POS_PRO ||
-        currentPack === 'pro' ||
-        currentPack === 'enterprise'
-    );
+    const showActiveView = isPlanActive;
     const currentTiers = activeTab === 'pos' ? POS_TIERS : activeTab === 'catalogue' ? CATALOGUE_TIERS : BOTH_TIERS;
 
     const [isContactModalOpen, setIsContactModalOpen] = useState(false);
@@ -245,6 +247,11 @@ const SubscriptionPage: React.FC = () => {
     const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discountAmount: number; taxAmount: number; finalAmount: number } | null>(null);
     const [paying, setPaying] = useState(false);
     const [payError, setPayError] = useState('');
+    const [confirmPlanSwitch, setConfirmPlanSwitch] = useState(false);
+
+    const ALL_TIERS = useMemo(() => [...POS_TIERS, ...CATALOGUE_TIERS, ...BOTH_TIERS], []);
+    const currentPlanName = ALL_TIERS.find(t => t.id === currentPack)?.name || currentPack;
+    const isSwitchingPlan = isPlanActive && !!checkoutTier && checkoutTier.id !== currentPack;
 
     const TAX_RATE = 0.18; // 18% GST, applied on every plan — kept in sync with functions/lib/index.js
 
@@ -269,6 +276,7 @@ const SubscriptionPage: React.FC = () => {
         setCouponError('');
         setAppliedCoupon(null);
         setPayError('');
+        setConfirmPlanSwitch(false);
     };
 
     const handleApplyCoupon = async () => {
@@ -419,7 +427,7 @@ const SubscriptionPage: React.FC = () => {
             <div className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-20">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex justify-between h-16 items-center">
-                        <BackButton />
+                        <BackButton to={dashboardRoute} />
                         <h1 className="text-xl font-bold text-gray-800">Subscription</h1>
                         <div className="flex items-center gap-2">
                             <button
@@ -469,12 +477,18 @@ const SubscriptionPage: React.FC = () => {
                                     <th className="p-2 sm:p-4 text-left w-1/3 bg-gray-50 border-b border-gray-200 align-bottom">
                                         <span className="text-gray-500 font-medium text-xs sm:text-sm uppercase tracking-wider">Features</span>
                                     </th>
-                                    {currentTiers.map(tier => (
+                                    {currentTiers.map(tier => {
+                                        const isCurrentTier = isPlanActive && tier.id === currentPack;
+                                        return (
                                         <th
                                             key={tier.id}
-                                            className={`pt-6 pb-4 px-2 text-center border-b border-gray-200 relative ${tier.recommended ? 'bg-yellow-50' : 'bg-white'}`}
+                                            className={`pt-6 pb-4 px-2 text-center border-b relative ${isCurrentTier ? 'bg-green-50 border-green-200' : tier.recommended ? 'bg-yellow-50 border-gray-200' : 'bg-white border-gray-200'}`}
                                         >
-                                            {tier.recommended && (
+                                            {isCurrentTier ? (
+                                                <span className="absolute top-2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-green-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wide whitespace-nowrap">
+                                                    Current Plan
+                                                </span>
+                                            ) : tier.recommended && (
                                                 <span className="absolute top-2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-yellow-400 text-yellow-900 text-[9px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wide whitespace-nowrap">
                                                     {activeTab === 'catalogue' ? 'Best Seller' : 'Recommended'}
                                                 </span>
@@ -502,15 +516,19 @@ const SubscriptionPage: React.FC = () => {
                                             </div>
                                             <button
                                                 onClick={() => openCheckout(tier)}
-                                                className={`mt-3 w-full py-1.5 rounded-sm text-xs sm:text-sm font-bold transition-colors ${tier.recommended
-                                                    ? activeTab === 'pos' ? 'bg-blue-600 text-white hover:bg-gray-800' : activeTab === 'catalogue' ? 'bg-[#F97316] text-white hover:bg-sky-700' : 'bg-yellow-400 text-black hover:bg-yellow-500'
-                                                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                                                disabled={isCurrentTier}
+                                                className={`mt-3 w-full py-1.5 rounded-sm text-xs sm:text-sm font-bold transition-colors ${isCurrentTier
+                                                    ? 'bg-green-100 text-green-700 cursor-default'
+                                                    : tier.recommended
+                                                        ? activeTab === 'pos' ? 'bg-blue-600 text-white hover:bg-gray-800' : activeTab === 'catalogue' ? 'bg-[#F97316] text-white hover:bg-sky-700' : 'bg-yellow-400 text-black hover:bg-yellow-500'
+                                                        : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
                                                     }`}
                                             >
-                                                Choose
+                                                {isCurrentTier ? 'Current Plan' : 'Choose'}
                                             </button>
                                         </th>
-                                    ))}
+                                        );
+                                    })}
                                 </tr>
                             </thead>
 
@@ -632,11 +650,28 @@ const SubscriptionPage: React.FC = () => {
                             {couponError && <p className="text-xs text-red-500 mt-1">{couponError}</p>}
                         </div>
 
+                        {isSwitchingPlan && (
+                            <div className="mb-4 p-3 rounded-md bg-amber-50 border border-amber-200">
+                                <p className="text-sm text-amber-800 mb-2">
+                                    You have an active <span className="font-semibold">{currentPlanName}</span> plan. Paying for <span className="font-semibold">{checkoutTier.name}</span> will replace it — your current plan will no longer be active.
+                                </p>
+                                <label className="flex items-start gap-2 text-xs text-amber-900 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={confirmPlanSwitch}
+                                        onChange={(e) => setConfirmPlanSwitch(e.target.checked)}
+                                        className="mt-0.5"
+                                    />
+                                    I understand this will replace my current plan.
+                                </label>
+                            </div>
+                        )}
+
                         {payError && <p className="text-sm text-red-500 mb-3">{payError}</p>}
 
                         <button
                             onClick={handlePayNow}
-                            disabled={paying}
+                            disabled={paying || (isSwitchingPlan && !confirmPlanSwitch)}
                             className="w-full py-2.5 bg-blue-600 text-white rounded-md font-semibold hover:bg-blue-700 transition-colors disabled:opacity-60"
                         >
                             {paying ? 'Processing…' : `Pay ₹${(checkoutBreakdown?.total ?? checkoutTier.price).toLocaleString('en-IN')}`}

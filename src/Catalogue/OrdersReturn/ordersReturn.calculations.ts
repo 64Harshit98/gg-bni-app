@@ -252,17 +252,18 @@ export const computeReturnSummary = (
     fb = totalReturnValue;
   }
 
-  const paidSoFar = Object.entries(selectedSale?.paymentMethods || {})
-    .filter(([key]) => key !== 'due')
-    .reduce((sum, [, val]) => sum + (Number(val) || 0), 0);
-
-  const cappedFb = fb > 0 ? Math.min(fb, paidSoFar) : fb;
-
+  // fb is the true return/exchange difference — never capped to what was
+  // actually paid on the original order. A Credit Note is a book adjustment,
+  // not a cash outflow, so it must always reflect the real amount regardless
+  // of the order's paid status. (Matches the same fix applied to the
+  // Sales-return module's calculateReturnTotals — this cap zeroed the
+  // balance, and with it the Credit Note/Cash Refund choice, for any
+  // unpaid/due order.)
   return {
     totalReturnGross: trg,
     totalReturnValue,
     totalExchangeValue: tev,
-    finalBalance: Math.round(cappedFb * 100) / 100,
+    finalBalance: Math.round(fb * 100) / 100,
     discountDeducted: dd
   };
 };

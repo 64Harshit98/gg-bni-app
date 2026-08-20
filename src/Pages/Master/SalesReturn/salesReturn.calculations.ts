@@ -172,21 +172,21 @@ export const calculateReturnTotals = (
 
   const totalReturnValue = returnGross + returnExclusiveTax;
   const totalExchangeVal = exchangeGross + exchangeExclusiveTax;
+  // The true return/exchange difference — a Credit Note is a book adjustment,
+  // not a cash outflow, so it must never be capped to what was actually paid
+  // on the original sale. (A prior "SCRUM-973" fix capped this to
+  // min(finalBalance, paidAmountOnSale), which zeroed the balance — and with
+  // it, the Credit Note/Cash Refund choice — for any sale that was unpaid at
+  // the time of the exchange. Removed per product decision: Credit Due must
+  // always reflect the real difference, chooseable as Credit Note or Cash
+  // Refund regardless of the original sale's paid status.)
   const finalBalance = totalReturnValue - totalExchangeVal;
-
-  const paidAmountOnSale = Object.entries(selectedSale?.paymentMethods || {})
-    .filter(([key]) => key !== 'due')
-    .reduce((sum, [, val]) => sum + (Number(val) || 0), 0);
-
-  const cappedFinalBalance = finalBalance > 0
-    ? Math.min(finalBalance, paidAmountOnSale)
-    : finalBalance;
 
   return {
     totalReturnGross: returnGross,
     totalReturnValue,
     totalExchangeValue: totalExchangeVal,
-    finalBalance: Math.round(cappedFinalBalance),
+    finalBalance: Math.round(finalBalance),
     discountDeducted,
     totalMrp: Math.abs(exchangeMrpTotal - returnMrpTotal),
     totalTax: Math.abs(exchangeTaxAmount - returnTaxAmount) // <-- Export the absolute tax difference

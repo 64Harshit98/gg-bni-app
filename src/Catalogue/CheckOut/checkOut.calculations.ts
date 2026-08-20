@@ -30,12 +30,16 @@ import type { CartItem, CatalogueSalesSettings } from './checkOut.types';
 //    CheckOut uses `item.salesPrice` directly everywhere (both in the live
 //    cart totals and in the save-time line builder) with no such chain.
 //
-// 4. DUPLICATED DIVISION IN buildOrderLineItems: for the inclusive branch,
-//    `lineBaseAmount / (1 + taxRate / 100)` is computed twice independently
-//    (once inline for taxableAmount, once again inline for taxAmount)
-//    instead of being computed once and reused the way computeCartTotals
-//    does it. Not a behavior bug (same result), just redundant — preserved
-//    verbatim, not refactored.
+// 4. FIXED: buildOrderLineItems used to compute inclusive-mode tax
+//    (`lineBaseAmount / (1 + taxRate / 100)`) whenever `applyExclusiveTax`
+//    was false — including when scheme was 'exempt'/'composition', which
+//    has no tax at all. Unlike computeCartTotals above (which explicitly
+//    branches on `scheme === 'regular'` first), buildOrderLineItems never
+//    checked scheme, so a Composition-scheme order with items carrying a
+//    nonzero catalog tax rate got a phantom tax amount extracted and saved
+//    — the checkout screen showed ₹0 tax (computeCartTotals gated
+//    correctly) but the saved order didn't. Fixed by adding the same
+//    `scheme === 'regular'` gate; non-regular schemes now save taxAmount=0.
 //
 // 5. FIXED (was the biggest divergence): buildUpcomingSyncPayload() (used
 //    by the "syncToUpcoming" draft-order writer that fires on every
@@ -186,10 +190,26 @@ export const buildOrderLineItems = (
         let lineBaseAmount = originalUnitPrice * qty;
         let lineTaxAmount = 0;
         let lineFinalAmount = lineBaseAmount;
+        let lineTaxableAmount = lineBaseAmount;
 
-        if (applyExclusiveTax) {
-            lineTaxAmount = lineBaseAmount * (taxRate / 100);
-            lineFinalAmount = lineBaseAmount + lineTaxAmount;
+        // Tax only ever applies under scheme === 'regular' — Composition/Exempt
+        // must save zero tax, matching computeCartTotals' live-UI branching
+        // above. Without this gate, the "inclusive" fallback below would
+        // extract a phantom tax amount from the price using the item's own
+        // catalog tax rate even when the bill's scheme has no tax at all —
+        // the checkout screen showed ₹0 tax (computeCartTotals gates
+        // correctly), but the saved order ended up with a nonzero taxAmount.
+        if (scheme === 'regular') {
+            if (applyExclusiveTax) {
+                lineTaxAmount = lineBaseAmount * (taxRate / 100);
+                lineFinalAmount = lineBaseAmount + lineTaxAmount;
+                lineTaxableAmount = lineBaseAmount;
+            } else {
+                // Inclusive: tax is already inside the price, extract it
+                lineFinalAmount = lineBaseAmount;
+                lineTaxableAmount = lineBaseAmount / (1 + (taxRate / 100));
+                lineTaxAmount = lineBaseAmount - lineTaxableAmount;
+            }
         }
 
         let itemTaxTypeToSave = 'Inclusive';
@@ -212,8 +232,8 @@ export const buildOrderLineItems = (
             taxRate: taxRate,
             taxType: itemTaxTypeToSave,
             // 👇 FIX: Wrap these 3 in toFixed(2) to clean up decimals in DB
-            taxableAmount: Number((applyExclusiveTax ? lineBaseAmount : (lineBaseAmount / (1 + (taxRate / 100)))).toFixed(2)),
-            taxAmount: Number((applyExclusiveTax ? lineTaxAmount : (lineBaseAmount - (lineBaseAmount / (1 + (taxRate / 100))))).toFixed(2)),
+            taxableAmount: Number(lineTaxableAmount.toFixed(2)),
+            taxAmount: Number(lineTaxAmount.toFixed(2)),
             finalPrice: Number(lineFinalAmount.toFixed(2)),
             note: i.note,
             image: i.imageUrl || "",
@@ -221,6 +241,45 @@ export const buildOrderLineItems = (
             unitMultiplier: i.unitMultiplier || 1
         };
     });
+};
+
+export interface OrderLevelTotals {
+    itemsBase: number;
+    tax: number;
+    expenses: number;
+    discount: number;
+    raw: number;
+    total: number;
+    roundOff: number;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// SAVE-TIME ORDER-LEVEL TOTAL
+// Aggregates the already-computed per-line taxableAmount/taxAmount from
+// buildOrderLineItems (itemsBase + tax + expenses - discount, rounded and
+// clamped at 0) — the exact same aggregation shape as Orders'
+// computeOrderTotals (orders.calculations.ts), so an order's persisted
+// totalAmount/totalTax can never drift from what the edit-save flow would
+// compute for the same items later. Used by usePlaceOrder so the order
+// document is saved complete and correct at checkout time, the same way
+// Sales saves its invoice totals once at payment time.
+// ─────────────────────────────────────────────────────────────────────────
+export const computeOrderLevelTotals = (
+    items: OrderLineItem[],
+    expenses: { amount: number | string }[] | undefined,
+    discount: number
+): OrderLevelTotals => {
+    const itemsBase = items.reduce((sum, i) => sum + i.taxableAmount, 0);
+    const tax = items.reduce((sum, i) => sum + i.taxAmount, 0);
+    const expensesTotal = (expenses || []).reduce(
+        (sum, e) => sum + (parseFloat(String(e.amount)) || 0),
+        0
+    );
+    const raw = itemsBase + tax + expensesTotal - discount;
+    const total = Math.round(Math.max(0, raw));
+    const roundOff = Number((total - raw).toFixed(2));
+
+    return { itemsBase, tax, expenses: expensesTotal, discount, raw, total, roundOff };
 };
 
 export interface UpcomingSyncItem {

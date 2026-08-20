@@ -209,7 +209,7 @@ const CataloguePermissionSetting: React.FC = () => {
                 console.error("Failed to auto-sync Owner permissions", err);
             }
 
-            // 2. FETCH SALESMAN & MANAGER FOR UI
+            // 2. FETCH SALESMAN & MANAGER FOR UI (auto-provisioning defaults if missing)
             const rolesToManage = [ROLES.SALESMAN, ROLES.MANAGER];
             const newMap: Record<string, Cata_Permissions[]> = {};
 
@@ -220,7 +220,21 @@ const CataloguePermissionSetting: React.FC = () => {
                 if (snap.exists()) {
                     newMap[role] = snap.data().allowedPermissions || [];
                 } else {
-                    newMap[role] = [];
+                    // Doc missing (e.g. no user with this role has logged in yet,
+                    // so AuthContext's ensureCataPermissionsExist never ran for it).
+                    // Auto-provision it with role defaults so it isn't silently
+                    // left out of `cata_permissions`, matching the Owner auto-sync above.
+                    const defaults = getDefaultCataPermissions(role);
+                    try {
+                        await setDoc(docRef, {
+                            allowedPermissions: defaults,
+                            role: role,
+                            companyId: companyId
+                        }, { merge: true });
+                    } catch (err) {
+                        console.error(`Failed to auto-provision default ${role} permissions`, err);
+                    }
+                    newMap[role] = defaults;
                 }
             }
 

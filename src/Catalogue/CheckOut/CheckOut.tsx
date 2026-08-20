@@ -71,7 +71,7 @@ const CartPage: React.FC = () => {
     const { scheme, taxType, applyExclusiveTax } = deriveTaxContext(salesSettings);
 
     // 2. Calculate Subtotal & Tax safely handling both scenarios
-    const { baseSubtotal, totalTaxAmount, subtotal, totalPay } = computeCartTotals(cartItems, scheme, taxType);
+    const { baseSubtotal, totalTaxAmount, totalPay } = computeCartTotals(cartItems, scheme, taxType);
 
     const isMovValid = () => isMinimumOrderValueMet(salesSettings, totalPay);
 
@@ -91,10 +91,6 @@ const CartPage: React.FC = () => {
         scheme,
         taxType,
         applyExclusiveTax,
-        totalPay,
-        subtotal,
-        totalTaxAmount,
-        baseSubtotal,
         setShowAlert,
     });
 

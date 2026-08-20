@@ -18,6 +18,8 @@ import BulkQuotePopup from './BulkQuotePopup';
 import { getItemGroupsByCompany, getItemsByCompany } from '../lib/ItemsFirebase';
 import { FaWhatsapp } from 'react-icons/fa';
 import { ensurePendingApprovalEntry } from './hooks/ensureApprovalEntry';
+import { deriveTaxContext, buildUpcomingSyncPayload } from './CheckOut/checkOut.calculations';
+import type { CartItem } from './CheckOut/checkOut.types';
 
 const ITEMS_PER_BATCH_RENDER = 24;
 
@@ -320,25 +322,45 @@ const SharedProduct: React.FC = () => {
 
             const loginName = currentUser?.name || "Guest User";
 
-            const itemsForFirebase = updatedCart.map(c => {
-                const multiplier = c.item.unitMultiplier ?? 1;
+            // Apply the same tax-aware calculation the real checkout flow uses
+            // (buildUpcomingSyncPayload) so this draft's total matches what
+            // placeOrder() will actually charge once the customer checks out —
+            // previously this summed raw discounted price * qty with no tax
+            // split at all, understating the total whenever tax is exclusive.
+            const { scheme, taxType } = deriveTaxContext(catalogueSettings);
+            const cartItemsForTax: CartItem[] = updatedCart.map(c => {
                 const { salePrice, mrp } = getEffectivePriceInfo(c.item);
-
                 return {
-                    id: String(c.item.id),
-                    docId: c.item.firestoreDocId || c.item.id,
+                    id: c.item.id ?? '',
                     name: c.item.name,
-                    quantity: c.quantity,
-
-                    mrp: mrp,
+                    category: '',
+                    mrp,
                     salesPrice: salePrice,
-
+                    quantity: c.quantity,
+                    image: '',
+                    note: '',
                     unit: c.item.unit,
-                    unitMultiplier: multiplier,
-
-                    finalPrice: salePrice * c.quantity
+                    unitMultiplier: c.item.unitMultiplier ?? 1,
+                    tax: c.item.tax,
                 };
             });
+            const { itemsForFirebase: taxedItems, totalAmount: computedTotalAmount } =
+                buildUpcomingSyncPayload(cartItemsForTax, scheme, taxType);
+
+            const itemsForFirebase = updatedCart.map((c, idx) => ({
+                id: String(c.item.id),
+                docId: c.item.firestoreDocId || c.item.id,
+                name: c.item.name,
+                quantity: c.quantity,
+
+                mrp: taxedItems[idx].mrp,
+                salesPrice: taxedItems[idx].salesPrice,
+
+                unit: c.item.unit,
+                unitMultiplier: c.item.unitMultiplier ?? 1,
+
+                finalPrice: taxedItems[idx].finalPrice,
+            }));
 
             const orderRef = doc(
                 db,
@@ -381,7 +403,7 @@ const SharedProduct: React.FC = () => {
                     }
                     return clean;
                 }),
-                totalAmount: itemsForFirebase.reduce((acc: number, curr) => acc + curr.finalPrice, 0),
+                totalAmount: computedTotalAmount,
                 paidAmount: 0,
                 updatedAt: serverTimestamp(),
             };
@@ -1786,6 +1808,8 @@ const SharedProduct: React.FC = () => {
                 onAddToCart={addToCart}
                 initialQuantity={cart.find(i => i.item.id === selectedItemForDetails?.id)?.quantity || 0}
                 isCustomerApproved={isUserApproved}
+                onNotifyRequest={handleNotifyRequest}
+                notified={selectedItemForDetails ? !!notifiedItems[selectedItemForDetails.id!] : false}
                 onRequireLead={() => {
                     setForceLeadOpen(true);
                 }}

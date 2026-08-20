@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { ChevronLeft } from 'lucide-react'
 import { collection, doc, updateDoc, deleteDoc, onSnapshot, getDoc } from "firebase/firestore";
 import { db } from '../lib/Firebase';
@@ -53,6 +53,7 @@ type PersonalizationType = {
 
 function RequestPage() {
     const navigate = useNavigate()
+    const location = useLocation()
     const { currentUser } = useAuth();
     const companyId = currentUser?.companyId;
     const [requireApproval, setRequireApproval] = useState<boolean>(false);
@@ -69,9 +70,14 @@ function RequestPage() {
     const [isFilterOpen, setIsFilterOpen] = useState(false)
     const [completedFilter, setCompletedFilter] = useState<'all' | 'approved' | 'declined'>('all')
     const [isDateFilterOpen, setIsDateFilterOpen] = useState(false)
-    const [activeDateFilter, setActiveDateFilter] = useState<string>('today')
-    const [customStartDate, setCustomStartDate] = useState<string>('')
-    const [customEndDate, setCustomEndDate] = useState<string>('')
+    // "View All Requests" on the Orders page hands over its own active date
+    // filter as route state, so arriving from there shows the same time
+    // frame instead of silently resetting to this page's own 'today'
+    // default — the badge count, the click-through, and the landed-on page
+    // all agree with each other now.
+    const [activeDateFilter, setActiveDateFilter] = useState<string>(location.state?.activeDateFilter || 'today')
+    const [customStartDate, setCustomStartDate] = useState<string>(location.state?.customDateRange?.start || '')
+    const [customEndDate, setCustomEndDate] = useState<string>(location.state?.customDateRange?.end || '')
     const dateFilterRef = useRef<HTMLDivElement>(null)
     const [replyOpen, setReplyOpen] = useState<Record<string, boolean>>({})
     const [replyMessage, setReplyMessage] = useState<Record<string, string>>({})

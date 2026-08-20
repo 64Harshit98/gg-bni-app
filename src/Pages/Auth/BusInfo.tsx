@@ -263,10 +263,14 @@ useEffect(() => {
         createdAt: new Date(),
       };
 
+      const planExpiryDate = new Date();
+      planExpiryDate.setDate(planExpiryDate.getDate() + 28);
+      planExpiryDate.setHours(23, 59, 59, 999);
+
       const planPayload = {
         pack: PLANS.ENTERPRISE,
         validity: 'active',
-        expiryDate: new Date(new Date().setDate(new Date().getDate() + 28)),
+        expiryDate: planExpiryDate,
         isTrial: true
       };
 

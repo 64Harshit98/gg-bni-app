@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { doc, collection, serverTimestamp, increment, runTransaction } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
 import type { CartItem, Address } from '../checkOut.types';
-import { computeOrderRoundOff, buildOrderLineItems } from '../checkOut.calculations';
+import { buildOrderLineItems, computeOrderLevelTotals } from '../checkOut.calculations';
 
 interface UsePlaceOrderParams {
     effectiveCompanyId: string | null;
@@ -15,10 +15,6 @@ interface UsePlaceOrderParams {
     scheme: string;
     taxType: string;
     applyExclusiveTax: boolean;
-    totalPay: number;
-    subtotal: number;
-    totalTaxAmount: number;
-    baseSubtotal: number;
     setShowAlert: (show: boolean) => void;
 }
 
@@ -37,10 +33,6 @@ export const usePlaceOrder = ({
     scheme,
     taxType,
     applyExclusiveTax,
-    totalPay,
-    subtotal,
-    totalTaxAmount,
-    baseSubtotal,
     setShowAlert,
 }: UsePlaceOrderParams) => {
     const [isPlacing, setIsPlacing] = useState(false);
@@ -88,8 +80,45 @@ export const usePlaceOrder = ({
                 const newOrderDoc = doc(ordersRef);
                 const leadData = JSON.parse(localStorage.getItem("leadData") || "{}");
                 const fallbackPhone = (leadData.number || "").replace(/\D/g, "").trim();
-                // 2. WRITE: Create the final order
-                const roundOffAmt = computeOrderRoundOff(totalPay, subtotal); // Calculate round off
+
+                // 2. WRITE: Create the final order — the full bill snapshot (items,
+                // tax breakdown, scheme/taxType, discount, expenses) is computed
+                // once here, exactly as Sales computes and saves its invoice at
+                // payment time. Every other screen reads these persisted fields
+                // instead of recomputing from the company's *current* settings, so
+                // this order's numbers stay fixed unless the bill is itself edited.
+                const orderItems = buildOrderLineItems(cartItems, scheme, taxType, applyExclusiveTax);
+                const orderTotals = computeOrderLevelTotals(orderItems, [], 0);
+
+                // Upsert a standalone customer master record — same collection/path
+                // Sales writes to (companies/{id}/customers/{phone}), covered by a
+                // dedicated public-write rule in firestore.rules since checkout is
+                // an unauthenticated storefront. This way the customer's details
+                // survive even if this order is later deleted — deleting an order
+                // only ever removes the order doc itself, never the customer doc.
+                const customerPhone = (billing.phone || fallbackPhone || "").replace(/\D/g, "").slice(-10);
+                const customerIdentifier = customerPhone || billing.name?.trim();
+                if (customerIdentifier) {
+                    const customerRef = doc(db, 'companies', effectiveCompanyId!, 'customers', customerIdentifier);
+                    const customerSnap = await transaction.get(customerRef);
+                    const customerData: Record<string, any> = {
+                        name: billing.name || leadData.name || "",
+                        number: customerPhone || "",
+                        companyId: effectiveCompanyId,
+                        address: billing.address || "",
+                        state: billing.state || "",
+                        gstNumber: billing.gstin || "",
+                        updatedAt: serverTimestamp(),
+                        lastOrderAt: serverTimestamp(),
+                    };
+                    if (!customerSnap.exists() || !customerSnap.data()?.createdAt) {
+                        customerData.createdAt = serverTimestamp();
+                    }
+                    Object.keys(customerData).forEach(key => {
+                        if (customerData[key] === undefined) delete customerData[key];
+                    });
+                    transaction.set(customerRef, customerData, { merge: true });
+                }
 
                 transaction.set(newOrderDoc, {
                     orderId: invoice,
@@ -98,14 +127,18 @@ export const usePlaceOrder = ({
                     isLead: false,
                     userName: billing.name || leadData.name || "",
                     userLoginPhone: billing.phone || fallbackPhone || "",
-                    totalAmount: totalPay, // This is already Math.round(subtotal)
-                    roundOff: roundOffAmt, // <-- ADD THIS TO BALANCE THE PDF
-                    totalTax: Number(totalTaxAmount.toFixed(2)),
-                    baseAmount: Number(baseSubtotal.toFixed(2)),
+                    totalAmount: orderTotals.total,
+                    roundOff: orderTotals.roundOff,
+                    totalTax: Number(orderTotals.tax.toFixed(2)),
+                    baseAmount: Number(orderTotals.itemsBase.toFixed(2)),
+                    manualDiscount: 0,
+                    expenses: [],
+                    gstScheme: scheme,
+                    taxType: taxType,
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp(),
                     specialInstruction: specialInstruction || "",
-                    items: buildOrderLineItems(cartItems, scheme, taxType, applyExclusiveTax),
+                    items: orderItems,
                     billingDetails: billing,
                     shippingDetails: isSameAsShipping ? billing : shipping,
                     orderedBy: localStorage.getItem("upcoming_user_key"),

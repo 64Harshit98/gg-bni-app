@@ -21,6 +21,51 @@ export interface BillSettingsData {
     enableItemImages?: boolean;
 }
 
+// The raw shape persisted at companies/{companyId}/settings/bill — a single
+// doc shared by this page (pos*-prefixed fields) and
+// src/Catalogue/Settings/CatalogueBillSetting.tsx (catalogue*-prefixed
+// fields), plus a few unprefixed fields both pages read/write directly.
+export interface RawBillSettings {
+    companyId: string;
+    settingType: 'bill';
+    upiId: string;
+    signatureBase64: string;
+    enableTriplicate: boolean;
+    discountDisplayFormat: 'amount' | 'percentage';
+    enableItemImages: boolean;
+    posTermsAndConditions: string;
+    posPrintFormat: 'A4' | 'A5' | 'THERMAL58';
+    posWhatsappExtraMessage: string;
+    catalogueTermsAndConditions: string;
+    cataloguePrintFormat: 'A4' | 'A5' | 'THERMAL58';
+    catalogueWhatsappExtraMessage: string;
+}
+
+const DEFAULT_TERMS_AND_CONDITIONS =
+    '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.';
+
+// Same shape SettingsContext.tsx's other getDefault*Settings functions use —
+// a plain object keyed by companyId, persisted the first time any user from
+// that company loads the app (see SettingsContext.tsx), so consumers that
+// read settings/bill directly (e.g. CatalogueBill.tsx's PDF generator) can
+// trust the doc always has real values instead of needing their own
+// hardcoded fallback text.
+export const getDefaultBillSettings = (companyId: string): RawBillSettings => ({
+    companyId,
+    settingType: 'bill',
+    upiId: '',
+    signatureBase64: '',
+    enableTriplicate: false,
+    discountDisplayFormat: 'amount',
+    enableItemImages: false,
+    posTermsAndConditions: DEFAULT_TERMS_AND_CONDITIONS,
+    posPrintFormat: 'A4',
+    posWhatsappExtraMessage: '',
+    catalogueTermsAndConditions: DEFAULT_TERMS_AND_CONDITIONS,
+    cataloguePrintFormat: 'A4',
+    catalogueWhatsappExtraMessage: '',
+});
+
 interface BusinessInfoData {
     companyName: string;
     address: string;

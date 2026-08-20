@@ -10,7 +10,7 @@ import { db } from '../../../../lib/Firebase';
 import type { Item } from '../../../../constants/models';
 import { State } from '../../../../enums';
 import { ROUTES } from '../../../../constants/routes.constants';
-import { incrementPurchaseCounter, peekNextPurchaseNumber } from '../../../../UseComponents/InvoiceCounter';
+import { getFinancialYear, peekNextPurchaseNumber } from '../../../../UseComponents/InvoiceCounter';
 import type { PaymentCompletionData } from '../../../../Components/PaymentDrawer';
 import { SHOP_ID } from '../../../hooks/useStockTransfer';
 import type { Godown } from '../../../hooks/useStockTransfer';
@@ -26,6 +26,11 @@ const sanitizeForFirestore = <T extends Record<string, any>>(obj: T): T => {
         Object.entries(obj).filter(([_, v]) => v !== undefined)
     ) as T;
 };
+
+// Firestore document IDs can't contain '/' (and a few other characters are
+// unsafe) — an invoice number like "PUR/2024/001" would otherwise throw when
+// used directly as a doc ID for the uniqueness-registry check below.
+const toRegistryKey = (invoiceNumber: string) => encodeURIComponent(invoiceNumber);
 
 interface UsePurchasePaymentParams {
     currentUser: any;
@@ -182,21 +187,53 @@ export const usePurchasePayment = ({
     ) => {
         if (!currentUser?.companyId) return;
         const companyId = currentUser.companyId;
-        const currentAutoNum = await peekNextPurchaseNumber(companyId);
-
-        if (invoiceNumber.trim() === currentAutoNum) {
-            // Only increment if they actually used the suggested number!
-            await incrementPurchaseCounter(companyId);
-        }
+        const typedInvoiceNumber = invoiceNumber.trim();
 
         try {
-            const finalInvoiceNumber = invoiceNumber.trim();
-
-
             const manualDiscount = completionData.discount || 0;
             const finalTotalAmount = Math.max(0, finalAmount - manualDiscount);
+            let finalInvoiceNumber = '';
 
             await runTransaction(db, async (transaction) => {
+                // Counter peek + uniqueness check + increment + document write all
+                // happen inside this ONE transaction now (previously the counter
+                // peek/increment were two separate, disconnected calls that both
+                // completed before this transaction even started — so two tabs
+                // saving around the same time could each peek the same suggested
+                // number and both bake it into their purchase doc, since neither
+                // the increment nor this write ever re-checked what was actually
+                // saved). The registry doc's ID IS the invoice number, so a second
+                // transaction racing to use the same number — auto-suggested OR
+                // hand-typed — always loses this get()+exists() check once the
+                // first transaction commits, instead of silently duplicating it.
+                const counterRef = doc(db, 'companies', companyId, 'counters', 'purchaseCounter');
+                const settingsRef = doc(db, 'companies', companyId, 'settings', 'purchase-settings');
+                const [counterDoc, settingsDoc] = await Promise.all([
+                    transaction.get(counterRef),
+                    transaction.get(settingsRef),
+                ]);
+
+                const prefix = settingsDoc.exists() ? (settingsDoc.data().voucherPrefix || 'INV') : 'INV';
+                const currentFY = getFinancialYear();
+                let nextNumber = 1;
+                if (counterDoc.exists()) {
+                    const counterData = counterDoc.data();
+                    nextNumber = counterData.financialYear === currentFY ? (counterData.currentNumber || 1) : 1;
+                }
+                const suggestedNumber = `${prefix}-${nextNumber}`;
+                const usedSuggestedNumber = typedInvoiceNumber === suggestedNumber;
+                finalInvoiceNumber = typedInvoiceNumber || suggestedNumber;
+
+                if (!finalInvoiceNumber) {
+                    throw new Error('EMPTY_INVOICE_NUMBER');
+                }
+
+                const registryRef = doc(db, 'companies', companyId, 'purchaseInvoiceRegistry', toRegistryKey(finalInvoiceNumber));
+                const registrySnap = await transaction.get(registryRef);
+                if (registrySnap.exists()) {
+                    throw new Error(`INVOICE_NUMBER_TAKEN:${finalInvoiceNumber}`);
+                }
+
                 const purchaseData: Omit<PurchaseDocumentData, 'id'> = {
                     userId: currentUser.uid,
                     partyName: completionData.partyName.trim(),
@@ -222,6 +259,11 @@ export const usePurchasePayment = ({
 
                 const newPurchaseRef = doc(collection(db, 'companies', companyId, 'purchases'));
                 transaction.set(newPurchaseRef, sanitizeForFirestore(purchaseData));
+                transaction.set(registryRef, { purchaseId: newPurchaseRef.id, createdAt: serverTimestamp() });
+
+                if (usedSuggestedNumber) {
+                    transaction.set(counterRef, { currentNumber: nextNumber + 1, financialYear: currentFY }, { merge: false });
+                }
 
                 // Group by (productId, destination) — the same cart line can itself
                 // be split across multiple destinations, and the same product can
@@ -274,7 +316,7 @@ export const usePurchasePayment = ({
                             toGodownId: SHOP_ID,
                             toGodownName: 'Shop',
                             date: getParsedInvoiceDate().getTime(),
-                            refInvoice: invoiceNumber.trim(),
+                            refInvoice: finalInvoiceNumber,
                             createdAt: Date.now(),
                         });
                     }
@@ -290,7 +332,7 @@ export const usePurchasePayment = ({
                             toGodownId: godownId,
                             toGodownName: godown?.name || '',
                             date: getParsedInvoiceDate().getTime(),
-                            refInvoice: invoiceNumber.trim(),
+                            refInvoice: finalInvoiceNumber,
                             createdAt: Date.now(),
                         });
                     });
@@ -330,7 +372,12 @@ export const usePurchasePayment = ({
             }
         } catch (err: any) {
             console.error('Error saving purchase:', err?.code, err?.message);
-            if (err?.code === 'unavailable' || err?.message?.includes('network-request-failed')) {
+            if (typeof err?.message === 'string' && err.message.startsWith('INVOICE_NUMBER_TAKEN:')) {
+                const takenNumber = err.message.split(':')[1];
+                setModal({ message: `Invoice number ${takenNumber} is already in use. Please choose a different number.`, type: State.ERROR });
+            } else if (err?.message === 'EMPTY_INVOICE_NUMBER') {
+                setModal({ message: 'Please enter an invoice number.', type: State.ERROR });
+            } else if (err?.code === 'unavailable' || err?.message?.includes('network-request-failed')) {
                 setModal({ message: 'Network lost during save. Please check your connection and try again.', type: State.ERROR });
             } else if (err?.message?.includes('undefined') || err?.message?.includes('invalid data')) {
                 setModal({ message: 'Save failed due to invalid data. Please refresh and try again.', type: State.ERROR });
@@ -371,6 +418,22 @@ export const usePurchasePayment = ({
                 );
                 const allItemIds = new Set([...originalItemsMap.keys(), ...currentItemsMap.keys()]);
 
+                const finalInvoiceNumber = invoiceNumber.trim();
+                if (!finalInvoiceNumber) {
+                    throw new Error('EMPTY_INVOICE_NUMBER');
+                }
+                // Only touch the registry if the number actually changed during this
+                // edit — re-saving with the same number it already owns must not
+                // trip the "already taken" check against itself.
+                if (finalInvoiceNumber !== purchaseDoc.data().invoiceNumber) {
+                    const registryRef = doc(db, 'companies', companyId, 'purchaseInvoiceRegistry', toRegistryKey(finalInvoiceNumber));
+                    const registrySnap = await transaction.get(registryRef);
+                    if (registrySnap.exists()) {
+                        throw new Error(`INVOICE_NUMBER_TAKEN:${finalInvoiceNumber}`);
+                    }
+                    transaction.set(registryRef, { purchaseId, createdAt: serverTimestamp() });
+                }
+
                 allItemIds.forEach(id => {
                     const oldQty = originalItemsMap.get(id) || 0;
                     const newQty = currentItemsMap.get(id) || 0;
@@ -389,7 +452,7 @@ export const usePurchasePayment = ({
                     partyNumber: completionData.partyNumber.trim(),
                     partyAddress: completionData.partyAddress || '',
                     partyGstin: completionData.partyGST || '',
-                    invoiceNumber: invoiceNumber.trim(),
+                    invoiceNumber: finalInvoiceNumber,
                     items: formattedItemsForDB,
                     subtotal: subtotal,
                     totalDiscount: totalDiscount,
@@ -423,7 +486,12 @@ export const usePurchasePayment = ({
             showSuccessModal('Purchase updated successfully!', ROUTES.JOURNAL);
         } catch (err: any) {
             console.error('Error updating purchase:', err?.code, err?.message);
-            if (err?.code === 'unavailable' || err?.message?.includes('network-request-failed')) {
+            if (typeof err?.message === 'string' && err.message.startsWith('INVOICE_NUMBER_TAKEN:')) {
+                const takenNumber = err.message.split(':')[1];
+                setModal({ message: `Invoice number ${takenNumber} is already in use. Please choose a different number.`, type: State.ERROR });
+            } else if (err?.message === 'EMPTY_INVOICE_NUMBER') {
+                setModal({ message: 'Please enter an invoice number.', type: State.ERROR });
+            } else if (err?.code === 'unavailable' || err?.message?.includes('network-request-failed')) {
                 setModal({ message: 'Network lost during update. Please check your connection and try again.', type: State.ERROR });
             } else if (err?.message?.includes('undefined') || err?.message?.includes('invalid data')) {
                 setModal({ message: 'Update failed due to invalid data. Please refresh and try again.', type: State.ERROR });

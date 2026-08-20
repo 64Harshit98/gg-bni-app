@@ -368,6 +368,7 @@ exports.approveManualPayment = functions.https.onCall(async (data, context) => {
         const baseDate = currentExpiry > new Date() ? currentExpiry : new Date();
         const newExpiryDate = new Date(baseDate);
         newExpiryDate.setDate(newExpiryDate.getDate() + planDays);
+        newExpiryDate.setHours(23, 59, 59, 999);
 
         batch.update(companyRef, {
             expiryDate: admin.firestore.Timestamp.fromDate(newExpiryDate),
@@ -393,6 +394,7 @@ exports.approveManualPayment = functions.https.onCall(async (data, context) => {
                     const refBaseDate = refCurrentExpiry > new Date() ? refCurrentExpiry : new Date();
                     const refNewExpiry = new Date(refBaseDate);
                     refNewExpiry.setDate(refNewExpiry.getDate() + 30);
+                    refNewExpiry.setHours(23, 59, 59, 999);
 
                     batch.update(referrerCompanyRef, {
                         expiryDate: admin.firestore.Timestamp.fromDate(refNewExpiry)
@@ -529,6 +531,7 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data) => {
 
         const trialDate = new Date();
         trialDate.setDate(trialDate.getDate() + 3);
+        trialDate.setHours(23, 59, 59, 999);
 
         const batch = db.batch();
         batch.set(db.doc(`companies/${newCompanyId}`), {
@@ -867,6 +870,7 @@ exports.verifyRazorpayPayment = functions.https.onCall(async (data, context) => 
             const baseDate = currentExpiry > new Date() ? currentExpiry : new Date();
             const newExpiryDate = new Date(baseDate);
             newExpiryDate.setDate(newExpiryDate.getDate() + freshOrder.planDays);
+            newExpiryDate.setHours(23, 59, 59, 999);
 
             tx.update(companyRef, {
                 expiryDate: admin.firestore.Timestamp.fromDate(newExpiryDate),
@@ -907,6 +911,7 @@ exports.verifyRazorpayPayment = functions.https.onCall(async (data, context) => 
                     const refBaseDate = refCurrentExpiry > new Date() ? refCurrentExpiry : new Date();
                     const refNewExpiry = new Date(refBaseDate);
                     refNewExpiry.setDate(refNewExpiry.getDate() + 30);
+                    refNewExpiry.setHours(23, 59, 59, 999);
                     tx.update(referrerCompanyRef, {
                         expiryDate: admin.firestore.Timestamp.fromDate(refNewExpiry),
                     });

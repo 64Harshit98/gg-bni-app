@@ -100,9 +100,27 @@ export const useSalesCatalogueAndSettings = ({
             if (savedType === 'none') setActiveTaxMode('exempt');
             else if (savedType === 'inclusive' || savedType === 'exclusive') setActiveTaxMode(savedType);
         } else if (salesSettings) {
-            // 1. Check session storage first
+            // 1. Check session storage first — but only trust it while a bill is
+            // actually in progress (cart has items). Settings sync live across tabs
+            // (SettingsContext's onSnapshot), but this draft used to be honored
+            // unconditionally, so any tab that had ever opened the Sales page (even
+            // with an empty cart) would keep re-applying its old tax-mode draft
+            // forever and never pick up a setting changed from another tab. Gating
+            // on an in-progress cart keeps the "survive an accidental refresh
+            // mid-bill" behavior while letting an idle/empty page always follow the
+            // live setting.
             const savedTaxMode = sessionStorage.getItem('sales_tax_mode_draft');
-            if (!isEditMode && (savedTaxMode === 'inclusive' || savedTaxMode === 'exclusive' || savedTaxMode === 'exempt')) {
+            let hasCartItems = false;
+            try {
+                hasCartItems = JSON.parse(sessionStorage.getItem('sales_cart_draft') || '[]').length > 0;
+            } catch {
+                hasCartItems = false;
+            }
+            if (
+                !isEditMode &&
+                hasCartItems &&
+                (savedTaxMode === 'inclusive' || savedTaxMode === 'exclusive' || savedTaxMode === 'exempt')
+            ) {
                 setActiveTaxMode(savedTaxMode);
             }
             // 2. Fallback to pre-select based on Settings
@@ -207,7 +225,21 @@ export const useSalesCatalogueAndSettings = ({
 
     useEffect(() => {
         if (!isEditMode && activeTaxMode && !pageIsLoading) {
-            sessionStorage.setItem('sales_tax_mode_draft', activeTaxMode);
+            // Only persist the draft while a bill is actually in progress — an idle
+            // page with an empty cart has nothing worth protecting from a refresh,
+            // and saving it here regardless was what caused the cross-tab "stuck on
+            // old setting" bug (see the restore effect above for the full story).
+            let hasCartItems = false;
+            try {
+                hasCartItems = JSON.parse(sessionStorage.getItem('sales_cart_draft') || '[]').length > 0;
+            } catch {
+                hasCartItems = false;
+            }
+            if (hasCartItems) {
+                sessionStorage.setItem('sales_tax_mode_draft', activeTaxMode);
+            } else {
+                sessionStorage.removeItem('sales_tax_mode_draft');
+            }
         }
     }, [activeTaxMode, isEditMode, pageIsLoading]);
 

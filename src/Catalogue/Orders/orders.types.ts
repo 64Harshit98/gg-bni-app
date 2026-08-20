@@ -83,6 +83,11 @@ export interface Order {
     isLead?: boolean;
     totalTax?: number;      // <-- ADD THIS
     baseAmount?: number;
+    // Bill-level tax context as it was at checkout/edit-save time — read by
+    // display screens instead of the company's *current* settings, so an
+    // order's numbers never reinterpret themselves after settings change.
+    gstScheme?: string;
+    taxType?: string;
     transportDetails?: {
         transportName: string;
         grRrNo: string;

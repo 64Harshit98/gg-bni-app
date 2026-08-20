@@ -63,6 +63,14 @@ const CatalogueCustomerReport: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [customerCreditMap, setCustomerCreditMap] = useState<Record<string, number>>({});
+  // NEW: full customers master list (name/number/createdAt) — lets a customer
+  // whose only order was deleted still show up in the report, as long as
+  // their customers-collection record was created inside the applied date
+  // range. Mirrors the same fix already applied to the Catalogue Party
+  // Ledger (CataloguePartyLedger.tsx), which had the identical gap: rows
+  // were built purely from live Orders, so zero remaining orders meant zero
+  // way to appear.
+  const [customersMasterList, setCustomersMasterList] = useState<{ name: string; number: string; createdAt?: number }[]>([]);
   const [companyName, setCompanyName] = useState<string>('');
 
   useEffect(() => {
@@ -106,6 +114,7 @@ const CatalogueCustomerReport: React.FC = () => {
       query(customersRef),
       (snapshot) => {
         const nextMap: Record<string, number> = {};
+        const nextMasterList: { name: string; number: string; createdAt?: number }[] = [];
         snapshot.forEach((docSnap) => {
           const data = docSnap.data() as Record<string, unknown>;
           const credit = Number(data.creditBalance || 0);
@@ -114,10 +123,18 @@ const CatalogueCustomerReport: React.FC = () => {
 
           if (numberKey) nextMap[`num:${numberKey}`] = Number.isFinite(credit) ? credit : 0;
           if (nameKey) nextMap[`name:${nameKey}`] = Number.isFinite(credit) ? credit : 0;
+
+          const createdAtValue = data.createdAt as { toMillis?: () => number } | undefined;
+          nextMasterList.push({
+            name: String(data.name || 'Unknown'),
+            number: numberKey || docSnap.id,
+            createdAt: typeof createdAtValue?.toMillis === 'function' ? createdAtValue.toMillis() : undefined,
+          });
         });
         setCustomerCreditMap(nextMap);
+        setCustomersMasterList(nextMasterList);
       },
-      () => setCustomerCreditMap({}),
+      () => { setCustomerCreditMap({}); setCustomersMasterList([]); },
     );
 
     return unsubscribe;
@@ -160,6 +177,28 @@ const CatalogueCustomerReport: React.FC = () => {
   /* ---------- CUSTOMER AGGREGATION ---------- */
   const customerRows: CustomerRowWithCredit[] = useMemo(() => {
     const map = new Map<string, CustomerRowWithCredit>();
+
+    // NEW: seed the map with every known customer whose master-record
+    // createdAt falls inside the applied date range, at zero — so a customer
+    // with no remaining orders in range (e.g. their only order was deleted)
+    // still shows up. Orders processed below fill in on top of this seed
+    // using the same key, so nothing gets double-counted.
+    const seedStart = appliedFilters.start ? new Date(appliedFilters.start).getTime() : 0;
+    const seedEnd = appliedFilters.end ? new Date(appliedFilters.end).getTime() : Infinity;
+    customersMasterList
+      .filter(c => c.createdAt !== undefined && c.createdAt >= seedStart && c.createdAt <= seedEnd)
+      .forEach(c => {
+        const key = `${c.name}-${c.number}`;
+        map.set(key, {
+          id: key,
+          customerName: c.name,
+          customerNumber: c.number || 'N/A',
+          totalBills: 0,
+          totalSales: 0,
+          totalDue: 0,
+          creditNote: 0,
+        });
+      });
 
     filteredSales.forEach((sale) => {
       const key = `${sale.partyName}-${sale.partyNumber}`;
@@ -228,7 +267,7 @@ const CatalogueCustomerReport: React.FC = () => {
     });
 
     return result;
-  }, [filteredSales, searchQuery, customerCreditMap, sortConfig]);
+  }, [filteredSales, searchQuery, customerCreditMap, sortConfig, customersMasterList, appliedFilters]);
 
   /* ---------- SUMMARY METRICS ---------- */
   const metrics = useMemo(() => {

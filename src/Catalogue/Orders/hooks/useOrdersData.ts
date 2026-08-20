@@ -46,6 +46,16 @@ export const useOrdersData = (
             totalAmount: Number(data.totalAmount || 0),
             totalTax: Number(data.totalTax || 0),      // <-- ADD THIS
             baseAmount: Number(data.baseAmount || 0),
+            // Bill-level scheme/tax mode as saved at checkout/edit time — this
+            // mapping used to silently drop these two fields entirely (they're
+            // genuinely saved in Firestore, just never carried into the
+            // in-memory Order object), so every downstream reader — the PDF
+            // print pipeline included — saw them as undefined regardless of
+            // what the database actually had, and fell back to defaults that
+            // happened to match whatever the company's current live settings
+            // implied.
+            gstScheme: data.gstScheme || '',
+            taxType: data.taxType || '',
             paidAmount: Number(data.paidAmount || 0),
             creditNoteAmount: Number(data.creditNoteAmount || 0),
             refundAmount: Number(data.refundAmount || 0),

@@ -25,7 +25,8 @@ export const BASIC_ALLOWED_PERMISSIONS = [
     Permissions.ViewPaymentmethods,
     Permissions.ViewReports,
     Permissions.ViewSalesReport,
-    Permissions.CreateUsers
+    Permissions.CreateUsers,
+    Permissions.ViewAccount,
 ];
 
 export const DEFAULT_PERMISSIONS_MAP = {
@@ -290,14 +291,14 @@ const ManagePermissionsPage: React.FC = () => {
     const [isResetOpen, setIsResetOpen] = useState(false);
 
     // NEW: tooltip state for tap-based info icons (mobile-safe)
-const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+    const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
 
-useEffect(() => {
-    if (!activeTooltip) return;
-    const closeTooltip = () => setActiveTooltip(null);
-    document.addEventListener('click', closeTooltip);
-    return () => document.removeEventListener('click', closeTooltip);
-}, [activeTooltip]);
+    useEffect(() => {
+        if (!activeTooltip) return;
+        const closeTooltip = () => setActiveTooltip(null);
+        document.addEventListener('click', closeTooltip);
+        return () => document.removeEventListener('click', closeTooltip);
+    }, [activeTooltip]);
     const handleResetPermissions = () => {
         const defaults = getDefaultPermissions(selectedRole);
         setRolePermissions(prev => ({
@@ -562,7 +563,7 @@ useEffect(() => {
                                                     />
                                                     <svg className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 peer-checked:opacity-100" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" width="12" height="12"><polyline points="20 6 9 17 4 12"></polyline></svg>
                                                 </div>
-                                                                                                <div className="flex items-center gap-1.5">
+                                                <div className="flex items-center gap-1.5">
                                                     <span className="text-sm text-gray-600 select-none font-medium">
                                                         {PERMISSION_LABELS[permission] || permission}
                                                     </span>

@@ -60,7 +60,6 @@ const OrdersPage: React.FC = () => {
     const [availableItems, setAvailableItems] = useState<Item[]>([]);
 
     const { currentUser } = useAuth();
-    const pendingRequestCount = usePendingRequestCount(currentUser?.companyId);
     // ─── Tutorial state (mirrors Journal.tsx pattern) ─────────────────────────
     const [tutorialStep, setTutorialStep] = useState(0);
     const next = (n: number) => setTutorialStep(n <= TOTAL_STEPS ? n : 0);
@@ -101,6 +100,7 @@ const OrdersPage: React.FC = () => {
         setActiveStatusTab,
         statusCounts,
         activeDateFilter,
+        dateRange,
         customDateRange,
         setCustomDateRange,
         dateFilters,
@@ -121,6 +121,11 @@ const OrdersPage: React.FC = () => {
         isTutorialActive,
         tutorialStep,
     });
+
+    // Same date range currently applied to the Orders list itself, so the
+    // "Customer Requests" badge count always agrees with what filtering the
+    // Requests page to that same range would show.
+    const pendingRequestCount = usePendingRequestCount(currentUser?.companyId, dateRange.start, dateRange.end);
 
     // ─── Autoscroll: whenever tutorialStep changes, scroll that element into view
     useEffect(() => {
@@ -226,7 +231,6 @@ const OrdersPage: React.FC = () => {
     } = useOrderPayment({
         currentUser,
         companyId: currentUser?.companyId,
-        salesSettings,
         setModal,
         setEnableItemWiseDiscount,
         setEnableDiscount2,
@@ -481,7 +485,14 @@ const OrdersPage: React.FC = () => {
                 setCustomDateRange={setCustomDateRange}
                 handleApplyCustomDate={handleApplyCustomDate}
                 pendingRequestCount={pendingRequestCount}
-                onRequestsClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`)}
+                onRequestsClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`, {
+                    state: {
+                        activeDateFilter,
+                        startDate: dateRange.start ? dateRange.start.toISOString() : undefined,
+                        endDate: dateRange.end ? dateRange.end.toISOString() : undefined,
+                        customDateRange,
+                    }
+                })}
                 orderStatuses={ORDER_STATUSES}
                 activeStatusTab={activeStatusTab}
                 setActiveStatusTab={setActiveStatusTab}
@@ -506,7 +517,6 @@ const OrdersPage: React.FC = () => {
                                     order={order}
                                     expandedorderId={expandedorderId}
                                     handleOrderClick={handleOrderClick}
-                                    salesSettings={salesSettings}
                                     openEditor={openEditor}
                                     setSelectedOrderForAction={setSelectedOrderForAction}
                                     pdfLoadingOrderId={pdfLoadingOrderId}

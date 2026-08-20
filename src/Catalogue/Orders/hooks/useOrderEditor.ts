@@ -391,12 +391,13 @@ export const useOrderEditor = ({
             : 'Exclusive';
 
         const activeTaxType = savedTaxType.toLowerCase();
+        const editorTaxEnabled = computeIsTaxEnabled(salesSettings);
 
         // 2. Calculate the item's line total with exclusive tax if needed
         const lineBase = finalNetPrice * qty;
         let lineFinalPrice = lineBase;
 
-        if (taxRate > 0 && (activeTaxType === 'exclusive' || activeTaxType === 'regular')) {
+        if (editorTaxEnabled && taxRate > 0 && (activeTaxType === 'exclusive' || activeTaxType === 'regular')) {
             lineFinalPrice = lineBase + (lineBase * (taxRate / 100));
         }
 
@@ -428,14 +429,14 @@ export const useOrderEditor = ({
 
         const updatedItems = [newItem, ...(editingOrder.items || [])];
 
-        // 3. Recalculate the entire order total, factoring in the new item's tax.
-        // Note: never gated on isTaxEnabled in the original — preserved via
-        // taxEnabled=true unconditionally.
+        // 3. Recalculate the entire order total, factoring in the new item's tax,
+        // gated on the company's actual current tax-enabled setting (editing is
+        // exactly when it's correct to apply the setting active right now).
         const finalNewTotal = computeOrderTotals(
             updatedItems,
             editingOrder.expenses || [],
             Number(editingOrder.manualDiscount || 0),
-            true
+            computeIsTaxEnabled(salesSettings)
         ).total;
 
         setEditingOrder({ ...editingOrder, items: updatedItems, totalAmount: finalNewTotal });
@@ -580,14 +581,11 @@ export const useOrderEditor = ({
             return item;
         });
 
-        // Note: this recompute was never gated on the company's isTaxEnabled
-        // setting in the original code (always taxes items that carry a
-        // taxRate) — preserved as-is by passing taxEnabled=true unconditionally.
         const saveSuccessTotals = computeOrderTotals(
             updatedItems,
             editingOrder.expenses || [],
             Number(editingOrder.manualDiscount || 0),
-            true
+            computeIsTaxEnabled(salesSettings)
         );
         const dynamicTax = saveSuccessTotals.tax;
         const rawNewTotal = Math.max(0, saveSuccessTotals.raw);
@@ -616,6 +614,8 @@ export const useOrderEditor = ({
                 totalAmount: finalNewTotal,
                 roundOff: roundOffAmt, // 👇 FIX: Save round off to DB
                 totalTax: dynamicTax,
+                gstScheme: salesSettings?.gstScheme ?? null,
+                taxType: salesSettings?.taxType ?? null,
                 updatedAt: serverTimestamp(),
             });
         }
@@ -700,12 +700,10 @@ export const useOrderEditor = ({
                     const unitPrice = resolveUnitPrice(safeItem);
                     const taxRate = Number(safeItem.tax ?? safeItem.taxRate ?? 0);
 
-                    // Recalculate exact item-level tax amounts. Note: unlike the order
-                    // total, this per-item breakdown was never gated on the company's
-                    // isTaxEnabled setting in the original code — preserved as-is here
-                    // (passing taxEnabled=true unconditionally) rather than silently
-                    // changing what gets persisted per item.
-                    const { taxableAmount, taxAmount, finalPrice } = computeLineTax(unitPrice, qty, safeItem.taxType, taxRate, true);
+                    // Recalculate exact item-level tax amounts, gated on the company's
+                    // actual current tax-enabled setting — editing is exactly the
+                    // moment settings are allowed to take effect on this bill.
+                    const { taxableAmount, taxAmount, finalPrice } = computeLineTax(unitPrice, qty, safeItem.taxType, taxRate, isTaxEnabled);
 
                     // Save the updated breakdown to the item object
                     safeItem.taxableAmount = Number(taxableAmount.toFixed(2));
@@ -727,6 +725,8 @@ export const useOrderEditor = ({
                     totalAmount: newTotal,
                     totalTax: newTotalTax,
                     manualDiscount: editDiscount,
+                    gstScheme: salesSettings?.gstScheme ?? null,
+                    taxType: salesSettings?.taxType ?? null,
                     expenses: editExpenses.map(({ id, name, amount }) => ({ id, name, amount: parseFloat(amount.toString()) || 0 })),
                     billingDetails: editingOrder.billingDetails || null,
                     shippingDetails: editingOrder.shippingDetails || null,
@@ -870,13 +870,11 @@ export const useOrderEditor = ({
         if (!editingOrder || !currentUser?.companyId || !pendingAdjustment) return;
         try {
             const liveOrder = Orders.find(o => o.id === editingOrder.id);
-            // Note: never gated on isTaxEnabled in the original — preserved via
-            // taxEnabled=true unconditionally.
             const adjustmentTotals = computeOrderTotals(
                 editingOrder.items || [],
                 editingOrder.expenses || [],
                 Number(editingOrder.manualDiscount || 0),
-                true
+                computeIsTaxEnabled(salesSettings)
             );
             const dynamicTax = adjustmentTotals.tax;
             const totalAmt = adjustmentTotals.total;
@@ -909,6 +907,8 @@ export const useOrderEditor = ({
                     items: safeItems,
                     totalAmount: totalAmt,
                     totalTax: dynamicTax,
+                    gstScheme: salesSettings?.gstScheme ?? null,
+                    taxType: salesSettings?.taxType ?? null,
                     expenses: editExpenses.map(({ id, name, amount }) => ({ id, name, amount: parseFloat(amount.toString()) || 0 })),
                     manualDiscount: editDiscount,
                     paidAmount: updatedPaidAmt,
@@ -952,13 +952,11 @@ export const useOrderEditor = ({
         if (!editingOrder || !currentUser?.companyId || !pendingAdjustment) return;
         try {
             const liveOrder = Orders.find(o => o.id === editingOrder.id);
-            // Note: never gated on isTaxEnabled in the original — preserved via
-            // taxEnabled=true unconditionally.
             const adjustmentTotals = computeOrderTotals(
                 editingOrder.items || [],
                 editingOrder.expenses || [],
                 Number(editingOrder.manualDiscount || 0),
-                true
+                computeIsTaxEnabled(salesSettings)
             );
             const dynamicTax = adjustmentTotals.tax;
             const totalAmt = adjustmentTotals.total;
@@ -991,6 +989,8 @@ export const useOrderEditor = ({
                     items: safeItems,
                     totalAmount: totalAmt,
                     totalTax: dynamicTax,
+                    gstScheme: salesSettings?.gstScheme ?? null,
+                    taxType: salesSettings?.taxType ?? null,
                     expenses: editExpenses.map(({ id, name, amount }) => ({ id, name, amount: parseFloat(amount.toString()) || 0 })),
                     manualDiscount: editDiscount,
                     paidAmount: updatedPaidAmt,

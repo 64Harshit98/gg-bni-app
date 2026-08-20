@@ -32,6 +32,7 @@ interface BillItem {
     qty: number;
     unitMultiplier: number;
     tax: number;
+    taxType?: string;
     mrp: number;
     price: number;
     total: number;
@@ -82,6 +83,7 @@ const buildBillItems = async (
             qty: item.quantity,
             unitMultiplier: item.unitMultiplier ?? 1,
             tax: item.tax ?? 0,
+            taxType: item.taxType,
             mrp: mrp,
             price: actualPrice,
             total: actualPrice * item.quantity,
@@ -227,6 +229,14 @@ const buildRawBillData = ({
             orderId: order.orderId,
             date: order.time,
         },
+
+        // Bill-level scheme/tax mode as saved on the order at checkout/edit
+        // time — without these, prepareCatalogueBillData (CatalogueBill.tsx)
+        // has no choice but to fall back to the company's CURRENT live sales
+        // settings, so a Composition-scheme order printed after the company
+        // switches to Regular would silently reprint as Regular.
+        gstScheme: order.gstScheme || "",
+        taxType: order.taxType || "",
 
         items,
 

@@ -343,6 +343,7 @@ const PurchaseReport: React.FC = () => {
             '',
           ],
         ],
+        showFoot: 'lastPage',
         theme: 'plain',
         styles: {
           font: 'helvetica',

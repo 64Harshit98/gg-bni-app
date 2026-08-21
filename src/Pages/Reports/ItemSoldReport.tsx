@@ -389,6 +389,7 @@ const ItemsSoldReport: React.FC = () => {
                         summary.totalValueSold.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
                     ]
                 ],
+                showFoot: 'lastPage',
                 theme: 'plain',
                 styles: {
                     font: 'helvetica',

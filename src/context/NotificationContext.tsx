@@ -14,14 +14,25 @@ interface Notification {
   createdAt?: any;
 }
 
+// Minimal projection of the last 7 days of Orders, kept here so other
+// hooks (order sound, confirmed-count badge, etc.) can derive what they
+// need from this one shared listener instead of opening their own.
+export interface RecentOrderSummary {
+  id: string;
+  status: string;
+  createdAt: Date | null;
+}
+
 interface NotificationContextType {
   notifications: Notification[];
   markAsRead: (id: string) => void;
+  recentOrders: RecentOrderSummary[];
 }
 
 const NotificationContext = createContext<NotificationContextType>({
   notifications: [],
   markAsRead: () => { },
+  recentOrders: [],
 });
 
 const NOTIFICATION_SEEN_ORDERS_KEY = "seenOrderNotifications";
@@ -29,6 +40,7 @@ const NOTIFICATION_SEEN_ORDERS_KEY = "seenOrderNotifications";
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentUser } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [recentOrders, setRecentOrders] = useState<RecentOrderSummary[]>([]);
 
   // Refs for Global Order Tracking & Audio
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -85,6 +97,17 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     );
 
     const unsub = onSnapshot(q, (snapshot) => {
+      setRecentOrders(
+        snapshot.docs.map((d) => {
+          const data = d.data();
+          return {
+            id: d.id,
+            status: data.status || 'Upcoming',
+            createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : null,
+          };
+        })
+      );
+
       // On first load, just record what we already have so we don't spam notifications
       if (isInitialLoadRef.current) {
         snapshot.docs.forEach(doc => seenOrdersRef.current.add(doc.id));
@@ -232,7 +255,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   );
 
   return (
-    <NotificationContext.Provider value={{ notifications, markAsRead }}>
+    <NotificationContext.Provider value={{ notifications, markAsRead, recentOrders }}>
       {children}
     </NotificationContext.Provider>
   );

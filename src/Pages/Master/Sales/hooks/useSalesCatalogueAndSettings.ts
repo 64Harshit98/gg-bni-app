@@ -124,7 +124,14 @@ export const useSalesCatalogueAndSettings = ({
                 setActiveTaxMode(savedTaxMode);
             }
             // 2. Fallback to pre-select based on Settings
-            else if (salesSettings.gstScheme === 'none' || salesSettings.gstScheme === 'composition') {
+            else if (
+                salesSettings.gstScheme === 'none' ||
+                salesSettings.gstScheme === 'composition' ||
+                // Calculator view is quick ad-hoc billing (raw amounts typed
+                // in, no per-item tax breakdown) — it should never default to
+                // Inclusive/Exclusive regardless of the company's GST scheme.
+                salesSettings.salesViewType === 'calculator'
+            ) {
                 setActiveTaxMode('exempt');
             } else {
                 setActiveTaxMode(salesSettings.taxType as any || 'exclusive');

@@ -61,7 +61,7 @@ const PurchasePage: React.FC = () => {
       console.error("Error parsing purchase draft", e);
       return [];
     }
-});
+  });
 
   const {
     availableItems, setAvailableItems,
@@ -1023,7 +1023,7 @@ const PurchasePage: React.FC = () => {
           </div>
         </div>
       )}
-     {/* 👇 NEW: Duplicate item popup */}
+      {/* 👇 NEW: Duplicate item popup */}
       {duplicateItemPrompt && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[2000] p-4">
           <div className="bg-white rounded-sm shadow-2xl p-6 w-full max-w-sm text-center">
@@ -1102,6 +1102,7 @@ const PurchasePage: React.FC = () => {
               <button
                 onClick={() => {
                   setShowScannerModal(false);
+                  setIsScannerOpen(true); // <-- Add this line to trigger the scanner
                 }}
                 className="flex flex-col items-center justify-center p-6 border-2 border-gray-100 rounded-sm hover:border-blue-500 hover:bg-blue-50 transition-all group"
               >
@@ -1283,13 +1284,13 @@ const PurchasePage: React.FC = () => {
       />
 
       <PurchaseGodownAssignModal
-          isOpen={isGodownAssignOpen}
-          items={assignableItemsForGodown}
-          godowns={godowns}
-          companyId={currentUser?.companyId} // 👈 NEW
-          onConfirm={handleGodownAssignConfirm}
-          onClose={() => setIsGodownAssignOpen(false)}
-        />
+        isOpen={isGodownAssignOpen}
+        items={assignableItemsForGodown}
+        godowns={godowns}
+        companyId={currentUser?.companyId} // 👈 NEW
+        onConfirm={handleGodownAssignConfirm}
+        onClose={() => setIsGodownAssignOpen(false)}
+      />
 
       <ItemEditDrawer
         item={selectedItemForEdit}

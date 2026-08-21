@@ -36,6 +36,13 @@ export interface User {
     name: string;
     role: Role;
     permissions: (Permissions | Cata_Permissions)[];
+    // Kept separate from the merged `permissions` array above because
+    // Permissions and Cata_Permissions have overlapping string values
+    // (e.g. both define 'ManageItems' for two different features) — a
+    // flat merged array lets one silently satisfy a check meant for the
+    // other. hasPermission/hasCataloguePermission check these instead.
+    corePermissions?: Permissions[];
+    cataloguePermissions?: Cata_Permissions[];
     companyId?: string;
     ownReferralCode?: string;
     Subscription?: {

@@ -361,6 +361,20 @@ const SalesSettingsPage: React.FC = () => {
 
     const handleCheckboxChange = (field: keyof SalesSettings, checked: boolean) => {
         if (settings) {
+            // Turning on Due Billing without customer info being collected
+            // would let a cashier save a credit sale with no way to track
+            // who owes it — auto-enable the Customer Info section too.
+            if (field === 'allowDueBilling' && checked && !settings.enableCustomerInfoToggle) {
+                setSettings({ ...settings, allowDueBilling: true, enableCustomerInfoToggle: true });
+                return;
+            }
+            // The reverse must hold too: Due Billing depends on customer info
+            // being collectable at all, so turning that off must turn Due
+            // Billing off with it rather than leaving it silently on.
+            if (field === 'enableCustomerInfoToggle' && !checked && settings.allowDueBilling) {
+                setSettings({ ...settings, enableCustomerInfoToggle: false, allowDueBilling: false });
+                return;
+            }
             setSettings({ ...settings, [field]: checked });
         }
     };
@@ -784,15 +798,6 @@ const SalesSettingsPage: React.FC = () => {
                                         tooltip="Allow selling items even if recorded stock is zero."
                                         icon={<PackageX size={18} />}
                                     />
-                                    <ToggleRow
-                                        id="allow-due"
-                                        label="Allow Due Billing"
-                                        description="Allow partial or no payment billing (credit)."
-                                        checked={settings.allowDueBilling ?? false}
-                                        onChange={(checked) => handleCheckboxChange('allowDueBilling', checked)}
-                                        tooltip="Allow finalizing sales with pending amount."
-                                        icon={<Wallet size={18} />}
-                                    />
                                     <ToggleRow id="enable-shipping" label="Enable Shipping Details" description="Allow shipping address and GST capture." checked={settings.enableShippingDetails ?? false} onChange={(checked) => handleCheckboxChange('enableShippingDetails', checked)} tooltip="Allow capturing separate shipping address and GST for customers." icon={<MapPin size={18} />} />
                                     <ToggleRow id="enable-expense" label="Enable Extra Expense" description="Allow additional charges like freight/packing." checked={settings.enableExtraExpense ?? false} onChange={(checked) => handleCheckboxChange('enableExtraExpense', checked)} tooltip="Add extra charge to final bill." icon={<Receipt size={18} />} />
                                     <ToggleRow id="enable-narration" label="Enable Narration / Remarks" description="Allow adding custom note in invoice." checked={settings.enableNarration ?? false} onChange={(checked) => handleCheckboxChange('enableNarration', checked)} tooltip="Allow custom remarks on invoice." icon={<MessageSquare size={18} />} />
@@ -804,6 +809,23 @@ const SalesSettingsPage: React.FC = () => {
                                         onChange={(checked) => handleCheckboxChange('enableTransportDetails', checked)}
                                         tooltip="Show transport details option in payment drawer."
                                         icon={<Truck size={18} />}
+                                    />
+                                </SettingsCard>
+                            </ShowWrapper>
+
+                            {/* Allow Due Billing — kept out of the HiddenProFeatures-gated
+                                card above so it's available on every plan (incl. Calc +
+                                Catalogue), not just Pro/Enterprise. */}
+                            <ShowWrapper requiredPermission={Permissions.AllowDueBilling}>
+                                <SettingsCard title="Due Billing" icon={<Wallet size={18} />}>
+                                    <ToggleRow
+                                        id="allow-due"
+                                        label="Allow Due Billing"
+                                        description="Allow partial or no payment billing (credit)."
+                                        checked={settings.allowDueBilling ?? false}
+                                        onChange={(checked) => handleCheckboxChange('allowDueBilling', checked)}
+                                        tooltip="Allow finalizing sales with pending amount."
+                                        icon={<Wallet size={18} />}
                                     />
                                 </SettingsCard>
                             </ShowWrapper>

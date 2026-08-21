@@ -212,6 +212,7 @@ const ExpenseReportPage: React.FC = () => {
                 head: [['DATE', 'TITLE', 'DESCRIPTION', 'AMOUNT(Rs)']],
                 body: filtered.map(e => [formatDate(e.date), e.title, e.description, e.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })]),
                 foot: [['TOTAL', '', '', summary.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })]],
+                showFoot: 'lastPage',
                 theme: 'plain',
                 styles: { font: 'helvetica', cellPadding: 7, fontSize: 10, textColor: [55, 65, 81] },
                 headStyles: { fillColor: [249, 250, 251], textColor: [17, 24, 39], fontStyle: 'bold', lineWidth: { top: 1, bottom: 1 }, lineColor: [229, 231, 235] },

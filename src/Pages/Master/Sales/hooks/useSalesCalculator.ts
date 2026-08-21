@@ -47,6 +47,7 @@ export const useSalesCalculator = ({
     longPressTimer,
     finalAmount,
 }: UseSalesCalculatorParams) => {
+    const OPERATORS = ['+', '-', '*'];
     const [calcInput, setCalcInput] = useState<string>('');
     const [stagedCalcInput, setStagedCalcInput] = useState<string>('');
     const displayRef = useRef<HTMLTextAreaElement>(null);
@@ -89,19 +90,41 @@ export const useSalesCalculator = ({
     // Injects a number exactly where the user tapped
     const insertAtCursor = (val: string) => {
         const input = displayRef.current;
+        const isOperator = OPERATORS.includes(val);
+
         if (!input) {
-            setCalcInput(prev => prev + val);
+            setCalcInput(prev => {
+                const currentInput = prev || '';
+                // Tapping an operator right after another operator (e.g. -
+                // then *) replaces it instead of stacking — "+-*" isn't a
+                // valid expression, and the last operator tapped is what
+                // the user actually wants.
+                if (isOperator && OPERATORS.includes(currentInput.slice(-1))) {
+                    return currentInput.slice(0, -1) + val;
+                }
+                return currentInput + val;
+            });
             return;
         }
 
         // Capture cursor position *before* the state updates
         const start = input.selectionStart ?? 0;
         const end = input.selectionEnd ?? 0;
+        const hasSelection = start !== end;
         // Detect if the user is typing at the very end of the visible text
         const isAtEnd = start === (input.value?.length || 0);
 
         setCalcInput(prev => {
             const currentInput = prev || '';
+
+            if (isOperator && !hasSelection && start > 0 && OPERATORS.includes(currentInput[start - 1])) {
+                const newVal = currentInput.slice(0, start - 1) + val + currentInput.slice(end);
+                setTimeout(() => {
+                    input.focus();
+                    input.setSelectionRange(start, start);
+                }, 0);
+                return newVal;
+            }
 
             // If typing rapidly at the end, safely append. Otherwise, insert at cursor.
             const newVal = isAtEnd
@@ -348,7 +371,13 @@ export const useSalesCalculator = ({
             }
             const key = e.key;
             if (/^[0-9*.\-+]$/.test(key)) {
-                setCalcInput(prev => prev + key);
+                setCalcInput(prev => {
+                    const currentInput = prev || '';
+                    if (OPERATORS.includes(key) && OPERATORS.includes(currentInput.slice(-1))) {
+                        return currentInput.slice(0, -1) + key;
+                    }
+                    return currentInput + key;
+                });
             } else if (key === 'Enter' || key === '=') {
                 e.preventDefault();
                 handleCheckoutClick();

@@ -6,6 +6,7 @@ import {
     Timestamp,
     orderBy,
     where,
+    limit,
 } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
 import type { Order } from '../orders.types';
@@ -135,13 +136,15 @@ export const useOrdersData = (
                 orderBy('createdAt', 'desc')
             );
         }
-        return query(ordersRef, orderBy('createdAt'));
+        // No date range passed — cap the unfiltered fallback so a caller that
+        // forgets to pass a range can't trigger a full-collection read.
+        return query(ordersRef, orderBy('createdAt'), limit(500));
     }, [companyId, startDate?.getTime(), endDate?.getTime()]);
 
     const upcomingQuery = useMemo(() => {
         if (!companyId) return null;
         const ordersRef = collection(db, 'companies', companyId, 'Orders');
-        return query(ordersRef, where('status', '==', 'Upcoming'));
+        return query(ordersRef, where('status', '==', 'Upcoming'), limit(1000));
     }, [companyId]);
 
     // Listener 1: Date-filtered orders (all statuses except upcoming are sourced from here)

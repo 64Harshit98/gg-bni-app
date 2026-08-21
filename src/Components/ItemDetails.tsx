@@ -3,7 +3,7 @@ import type { Item } from '../constants/models';
 import { X, ShoppingCart, Plus, Minus } from 'lucide-react';
 import { Spinner } from '../constants/Spinner';
 import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting'
-import { doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, documentId, getDocs } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import { FiPackage } from 'react-icons/fi';
 
@@ -102,10 +102,15 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
             }
             setVariantLoading(true);
             try {
+                // Batch into a single `in` query per chunk of 30 (Firestore's limit)
+                // instead of one getDoc per variant id.
+                const itemsRef = collection(db, 'companies', companyId, 'items');
+                const CHUNK_SIZE = 30;
                 const results: Item[] = [];
-                for (const id of idsToFetch) {
-                    const snap = await getDoc(doc(db, 'companies', companyId, 'items', id));
-                    if (snap.exists()) results.push({ id: snap.id, ...snap.data() } as Item);
+                for (let i = 0; i < idsToFetch.length; i += CHUNK_SIZE) {
+                    const chunk = idsToFetch.slice(i, i + CHUNK_SIZE);
+                    const snap = await getDocs(query(itemsRef, where(documentId(), 'in', chunk)));
+                    snap.docs.forEach((d) => results.push({ id: d.id, ...d.data() } as Item));
                 }
                 setVariantItems(results);
             } catch (e) {

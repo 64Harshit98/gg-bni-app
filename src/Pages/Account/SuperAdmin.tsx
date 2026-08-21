@@ -48,6 +48,7 @@ const SuperAdminCompanies: React.FC = () => {
   const [companies, setCompanies] = useState<CompanyData[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
@@ -278,12 +279,24 @@ const SuperAdminCompanies: React.FC = () => {
         return ea - eb;
       });
 
-    const filtered = activeFilter === 'all'
+    const statusFiltered = activeFilter === 'all'
       ? companies
       : companies.filter(c => getStatus(c) === activeFilter);
 
-    return sortByExpiry(filtered);
-  }, [companies, activeFilter]);
+    const query = searchQuery.trim().toLowerCase();
+    const searched = query
+      ? statusFiltered.filter(c => [
+          c.name,
+          c.ownerName,
+          c.email,
+          c.phone,
+          c.id,
+          c.pack,
+        ].some(field => field && field.toLowerCase().includes(query)))
+      : statusFiltered;
+
+    return sortByExpiry(searched);
+  }, [companies, activeFilter, searchQuery]);
 
   // ── Edit helpers ───────────────────────────────────────
   const startEdit = (company: CompanyData) => {
@@ -405,6 +418,32 @@ const SuperAdminCompanies: React.FC = () => {
           <CustomCard variant={CardVariant.Summary} title="Near Expiry" value={stats.near_expiry.toString()} />
         </div>
 
+      </div>
+
+      {/* ── SEARCH ── */}
+      <div className="relative mb-4">
+        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
+          </svg>
+        </div>
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder="Search by company name, owner, email, phone, or company ID..."
+          className="w-full text-sm bg-white border border-gray-200 rounded-sm pl-9 pr-9 py-2.5 outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery('')}
+            className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* ── COMPANY LIST ── */}

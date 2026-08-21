@@ -168,6 +168,10 @@ service cloud.firestore {
       allow read: if true;
         allow create: if true;
       }
+      match/reffarals/{documnet=**}{
+      allow read: if true;
+        allow create: if true;
+      }
       match/PersonalizationRequests/{documnet=**}{
       allow read: if true;
         allow create: if true;

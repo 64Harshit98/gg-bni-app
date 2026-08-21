@@ -20,6 +20,7 @@ interface UseSalesCalculatorParams {
     setModal: (modal: { message: string; type: State } | null) => void;
     isCalculatorView: boolean;
     setIsDrawerOpen: (open: boolean) => void;
+    isDrawerOpen: boolean;
     longPressTimer: React.MutableRefObject<NodeJS.Timeout | null>;
     finalAmount: number;
 }
@@ -42,6 +43,7 @@ export const useSalesCalculator = ({
     setModal,
     isCalculatorView,
     setIsDrawerOpen,
+    isDrawerOpen,
     longPressTimer,
     finalAmount,
 }: UseSalesCalculatorParams) => {
@@ -320,6 +322,16 @@ export const useSalesCalculator = ({
     useEffect(() => {
         if (!isCalculatorView) return;
         const handleKeyDown = (e: KeyboardEvent) => {
+            // 👇 NEW: PaymentDrawer (phone number, party name, etc.) is open —
+            // don't let the calculator's global listener hijack those keystrokes.
+            if (isDrawerOpen) return;
+            // 👇 NEW: also bail out if focus is on any input/textarea that isn't
+            // our own hidden calculator textarea (covers any future non-drawer inputs).
+            const active = document.activeElement;
+            const isForeignTextInput =
+                active !== displayRef.current &&
+                (active?.tagName === 'INPUT' || active?.tagName === 'TEXTAREA' || (active as HTMLElement)?.isContentEditable);
+            if (isForeignTextInput) return;
             if (document.activeElement === displayRef.current) {
                 if (e.key === 'Enter' || e.key === '=') {
                     e.preventDefault();
@@ -352,7 +364,7 @@ export const useSalesCalculator = ({
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isCalculatorView, calcInput, items.length]);
+    }, [isCalculatorView, calcInput, items.length, isDrawerOpen]);
 
     return {
         calcInput, setCalcInput,

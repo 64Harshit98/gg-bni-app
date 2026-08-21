@@ -903,6 +903,7 @@ const PurchasePage: React.FC = () => {
           initialPartyNumber={editModeData ? editModeData.partyNumber : ''}
           initialPaymentMethods={editModeData ? editModeData.paymentMethods : undefined}
           totalQuantity={totalQuantity}
+          enableCustomerDetails={true}
           requireCustomerName={purchaseSettings?.requireSupplierName}
           requireCustomerMobile={purchaseSettings?.requireSupplierMobile}
 
@@ -1270,6 +1271,7 @@ const PurchasePage: React.FC = () => {
         initialPartyNumber={editModeData ? editModeData.partyNumber : ''}
         initialPaymentMethods={editModeData ? editModeData.paymentMethods : undefined}
         totalQuantity={totalQuantity}
+        enableCustomerDetails={true}
         requireCustomerName={purchaseSettings?.requireSupplierName}
         requireCustomerMobile={purchaseSettings?.requireSupplierMobile}
 

@@ -333,7 +333,12 @@ const Journal: React.FC = () => {
           (invoice.status === 'Unpaid' && invoice.partyNumber ? 1 : 0) +       // Remind
           (invoice.status === 'Paid' ? 1 : 0) +                                // Delete
           (hasProPermission ? 1 : 0) +                                         // Edit
-          (hasProPermission ? (invoice.type === 'Credit' ? 2 : 2) : 0);        // Return + Print
+          (invoice.type === 'Credit'
+            ? (hasProPermission ? 1 : 0) + 1                                   // Return (pro only) + Print (always renders)
+            : 0) +
+          (invoice.type === 'Debit'
+            ? (hasProPermission ? 2 : 0)                                       // Return + Print (both pro-gated together)
+            : 0);
 
         return (
           <CustomCard key={invoice.id} onClick={() => handleInvoiceClick(invoice.id)} className="cursor-pointer transition-shadow hover:shadow-md">

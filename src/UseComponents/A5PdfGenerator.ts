@@ -113,13 +113,9 @@ export const generateA5Invoice = async (
         }
     }
     // ================= DRAW PAGE HELPER =================
-    const drawPage = (isDuplicate: boolean = false) => {
-        if (isDuplicate) {
-            doc.addPage();
-        }
-
-        // watermark moved out — stamped globally after generation
-
+    // NEW: reusable header + 3-box (Invoice Details/Billed To/Shipped To) block,
+    // returns the Y position where the items table should start.
+    const drawHeaderAndParties = (isDuplicate: boolean = false): number => {
         // --- 1. HEADER (colour fill removed, wrapped in a border box — same plain style as A4) ---
         const headerHeight = showGstinDetails && data.companyGstin ? 26 : 24;
 
@@ -350,7 +346,15 @@ export const generateA5Invoice = async (
         }
 
 
-        const tableStartY = sectionStartY + sectionHeight + 5;
+        return sectionStartY + sectionHeight + 5;
+    };
+
+    const drawPage = (isDuplicate: boolean = false) => {
+        if (isDuplicate) {
+            doc.addPage();
+        }
+
+        const tableStartY = drawHeaderAndParties(isDuplicate);
 
         // ================= PRE-CALCULATE MATH & GRAND TOTAL =================
         let calculatedGrandTotal = 0;
@@ -457,10 +461,16 @@ export const generateA5Invoice = async (
         // ================= ITEMS TABLE =================
         autoTable(doc, {
             startY: tableStartY,
-            margin: { left: 5, right: 5 },
+            margin: { left: 5, right: 5, top: tableStartY },
             tableWidth: 'auto',
             rowPageBreak: 'avoid',
             theme: 'plain',
+            // NEW: autoTable jab khud naya page banaye, header+parties dobara draw karo
+            didDrawPage: (hookData: any) => {
+                if (hookData.pageNumber > 1) {
+                    drawHeaderAndParties(isDuplicate);
+                }
+            },
             headStyles: {
                 fillColor: false,
                 textColor: [0, 0, 0],
@@ -616,17 +626,17 @@ export const generateA5Invoice = async (
                 }
             });
 
-            const gstBankBlockHeight = 20;
-
-            if (
-                finalY + gstBankBlockHeight >
-                pageHeight - 42
-            ) {
-                doc.addPage();
-                finalY = 20;
-            }
-
             if (Object.keys(taxBreakdownData).length > 0) {
+                const gstBankBlockHeight = 20;
+
+                if (
+                    finalY + gstBankBlockHeight >
+                    pageHeight - 42
+                ) {
+                    doc.addPage();
+                    finalY = 20;
+                }
+
                 autoTable(doc, {
                     startY: finalY,
                     margin: { left: 5 },

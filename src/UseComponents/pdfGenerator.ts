@@ -357,11 +357,9 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   // ==========================================
   // --- REUSABLE PAGE RENDERER ---
   // ==========================================
-  const renderPage = (isDuplicate: boolean) => {
-    if (isDuplicate) doc.addPage();
+  // NEW: reusable header+meta+transport+party block so it can be redrawn on every page
+  const drawHeaderAndParties = (isDuplicate: boolean): number => {
     let cursorY = margin;
-
-    // watermark moved out of here — stamped globally after all pages exist
 
     // --- ONLY DIFFERENCE: THE "DUPLICATE" STAMP ---
     if (isDuplicate) {
@@ -506,6 +504,13 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     }
     cursorY += partyHeight;
 
+    return cursorY;
+  };
+
+  const renderPage = (isDuplicate: boolean) => {
+    if (isDuplicate) doc.addPage();
+    let cursorY = drawHeaderAndParties(isDuplicate);
+
     const fullTaxHeaders = showImages
       ? (isIgst
         ? ['S.N.', 'Image', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Bill Disc.', 'Subtotal', 'IGST', 'IGST Amt', 'Amount']
@@ -539,7 +544,13 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       headStyles: { fillColor: false, textColor, fontStyle: 'bold', lineWidth: 0.1, lineColor },
       // @ts-ignore
       columnStyles: activeColumnStyles as any,
-      margin: { left: margin, right: margin },
+      margin: { left: margin, right: margin, top: cursorY + 2 },
+      // NEW: autoTable jab bhi khud naya page banaye, header+party dobara draw karo
+      didDrawPage: (hookData: any) => {
+        if (hookData.pageNumber > 1) {
+          drawHeaderAndParties(isDuplicate);
+        }
+      },
       // NEW: har item ki photo "Image" column (index 1) me draw karo
       ...(showImages ? {
         didDrawCell: (hookData: any) => {

@@ -210,7 +210,15 @@ const SalesSettingsPage: React.FC = () => {
                 // 1. Start with safe defaults
                 let dbSettings = getDefaultSalesSettings(companyId);
 
-                // 2. FETCH AND APPLY ACTUAL DATA FROM BACKEND
+                // Plan-aware defaults, applied only when the doc is created for the first time
+                const planIsCalcOnly = activePlan === 'pos_basic';
+                if (planIsCalcOnly) {
+                    dbSettings.enableCustomerInfoToggle = true;
+                } else {
+                    dbSettings.requireCustomerName = true;
+                    dbSettings.requireCustomerMobile = true;
+                }
+
                 if (docSnap.exists()) {
                     dbSettings = { ...dbSettings, ...docSnap.data() };
                 } else {
@@ -253,7 +261,7 @@ const SalesSettingsPage: React.FC = () => {
             }
         }
     }, [settings?.gstScheme, settings?.taxType]);
-useEffect(() => {
+    useEffect(() => {
         if (settings && !settings.enableCustomerInfoToggle) {
             if (settings.requireCustomerName || settings.requireCustomerMobile) {
                 setSettings(prev => prev
@@ -408,6 +416,9 @@ useEffect(() => {
             </div>
         );
     }
+
+    // 👇 true for pos_basic (catalog-forced calc) OR any plan where user manually picked calc view
+    const isCalcPlan = activePlan === 'pos_basic' || settings.salesViewType === 'calculator';
 
     return (
         <div className="flex flex-col min-h-screen bg-white w-full">
@@ -798,17 +809,19 @@ useEffect(() => {
                             </ShowWrapper>
                             {/* Customer Access (Outside ShowWrapper to display for all plans) */}
                             <SettingsCard title="Customer Access" icon={<ShieldCheck size={18} />}>
-                                <ToggleRow
-                                    id="req-customer-info"
-                                    label="Enable Customer Info"
-                                    description="Enable and disable customer info during payment."
-                                    checked={settings.enableCustomerInfoToggle ?? false}
-                                    onChange={(checked) => handleCheckboxChange('enableCustomerInfoToggle', checked)}
-                                    tooltip="Toggles the customer information capture section during checkout."
-                                    icon={<ShieldCheck size={18} />}
-                                />
-                                <ToggleRow id="req-customer" label="Require Customer Name" description="Force customer name before save." checked={settings.requireCustomerName ?? false} onChange={(checked) => handleCheckboxChange('requireCustomerName', checked)} tooltip="Force entering customer name before saving invoice." icon={<User size={18} />} disabled={!settings.enableCustomerInfoToggle} />
-                                <ToggleRow id="req-mobile" label="Require Customer Mobile" description="Force customer mobile before save." checked={settings.requireCustomerMobile ?? false} onChange={(checked) => handleCheckboxChange('requireCustomerMobile', checked)} tooltip="Force entering customer mobile before saving invoice." icon={<Phone size={18} />} disabled={!settings.enableCustomerInfoToggle} />
+                                {isCalcPlan && (
+                                    <ToggleRow
+                                        id="req-customer-info"
+                                        label="Enable Customer Info"
+                                        description="Enable and disable customer info during payment."
+                                        checked={settings.enableCustomerInfoToggle ?? false}
+                                        onChange={(checked) => handleCheckboxChange('enableCustomerInfoToggle', checked)}
+                                        tooltip="Toggles the customer information capture section during checkout."
+                                        icon={<ShieldCheck size={18} />}
+                                    />
+                                )}
+                                <ToggleRow id="req-customer" label="Require Customer Name" description="Force customer name before save." checked={settings.requireCustomerName ?? false} onChange={(checked) => handleCheckboxChange('requireCustomerName', checked)} tooltip="Force entering customer name before saving invoice." icon={<User size={18} />} />
+                                <ToggleRow id="req-mobile" label="Require Customer Mobile" description="Force customer mobile before save." checked={settings.requireCustomerMobile ?? false} onChange={(checked) => handleCheckboxChange('requireCustomerMobile', checked)} tooltip="Force entering customer mobile before saving invoice." icon={<Phone size={18} />} />
                             </SettingsCard>
                         </div>
                     </div>

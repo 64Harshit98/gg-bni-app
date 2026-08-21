@@ -473,11 +473,9 @@ export const CatalogueBill = async (
   const wordsH = hasPrevOrDue ? 12 : 8;
   const leftColW = contentWidth - (hasPrevOrDue ? 70 : 0);
 
-  const renderPage = (isDuplicate: boolean) => {
-    if (isDuplicate) doc.addPage();
+  // NEW: reusable header+meta+transport+parties+special-instruction block so it can be redrawn on every page
+  const drawHeaderAndParties = (isDuplicate: boolean): number => {
     let cursorY = margin;
-
-    // watermark moved out — stamped globally after generation
 
     if (isDuplicate) {
       doc.setFontSize(10); doc.setFont("helvetica", "bold");
@@ -631,6 +629,13 @@ export const CatalogueBill = async (
       cursorY += boxH + 2;
     }
 
+    return cursorY;
+  };
+
+  const renderPage = (isDuplicate: boolean) => {
+    if (isDuplicate) doc.addPage();
+    let cursorY = drawHeaderAndParties(isDuplicate);
+
     // --- DYNAMIC HEADERS (FIXES COLUMN SHIFT) ---
     const fullTaxHeaders = isIgst
       ? ['S.N.', 'Image', 'Item', 'Qty', 'Unit', priceHeader, 'Discount', ...(hasBillDiscount ? ['Bill Disc.'] : []), 'Subtotal', 'IGST %', 'IGST Amt', 'Amount']
@@ -654,7 +659,13 @@ export const CatalogueBill = async (
       headStyles: { fillColor: false, textColor, fontStyle: 'bold', lineWidth: 0.1, lineColor },
       // @ts-ignore
       columnStyles: activeColumnStyles as any,
-      margin: { left: margin, right: margin },
+      margin: { left: margin, right: margin, top: cursorY + 2 },
+      // NEW: autoTable jab bhi khud naya page banaye, header+party dobara draw karo
+      didDrawPage: (hookData) => {
+        if (hookData.pageNumber > 1) {
+          drawHeaderAndParties(isDuplicate);
+        }
+      },
       didDrawCell: (hookData) => {
         if (hookData.column.index === 1 && hookData.section === "body") {
           const item = data.items[hookData.row.index];

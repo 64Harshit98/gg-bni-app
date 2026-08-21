@@ -424,6 +424,7 @@ doc.text(reportTitle, 14, 24);
             `${Math.round(summary.averageMarginPercentage)}%`,
           ]
         ],
+        showFoot: 'lastPage',
         theme: 'plain',
         styles: {
           font: 'helvetica',

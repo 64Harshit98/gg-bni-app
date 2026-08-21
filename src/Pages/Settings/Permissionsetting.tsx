@@ -27,6 +27,10 @@ export const BASIC_ALLOWED_PERMISSIONS = [
     Permissions.ViewSalesReport,
     Permissions.CreateUsers,
     Permissions.ViewAccount,
+    Permissions.ManageUsers,
+    Permissions.ViewAttendance,
+    Permissions.ManageSalesSetting,
+    Permissions.AllowDueBilling,
 ];
 
 export const DEFAULT_PERMISSIONS_MAP = {
@@ -35,7 +39,8 @@ export const DEFAULT_PERMISSIONS_MAP = {
         Permissions.ViewDashboard,
         Permissions.CreateSales,
         Permissions.CreateSalesReturn,
-        Permissions.ViewAccount
+        Permissions.ViewAccount,
+        Permissions.ViewCatalogue,
     ],
     [ROLES.MANAGER]: [
         Permissions.ViewDashboard,
@@ -51,6 +56,7 @@ export const DEFAULT_PERMISSIONS_MAP = {
         Permissions.CreatePurchase,
         Permissions.CreatePurchaseReturn,
         Permissions.HiddenProFeatures,
+        Permissions.ViewCatalogue,
     ],
     [ROLES.OWNER]: Object.values(Permissions).filter(
         (permission) => !EXCLUDED_OWNER_PERMISSIONS.includes(permission)
@@ -353,9 +359,13 @@ const ManagePermissionsPage: React.FC = () => {
                             finalPermissions = getSafePermissionsToSave(role, Object.values(Permissions), currentPlan);
                             shouldUpdateDB = true;
                         } else {
-                            // FIX: Stop merging defaults here. Just use the stored data!
-                            // This ensures unchecked permissions stay unchecked.
-                            finalPermissions = getSafePermissionsToSave(role, storedData, currentPlan);
+                            // Auto-merge in any default permission for this role that
+                            // isn't saved yet, so rollouts of new default capabilities
+                            // reach existing companies without a manual Reset + Save.
+                            const defaults = getDefaultPermissions(role);
+                            const merged = Array.from(new Set([...storedData, ...defaults]));
+                            if (merged.length !== storedData.length) shouldUpdateDB = true;
+                            finalPermissions = getSafePermissionsToSave(role, merged, currentPlan);
                         }
                     } else {
                         console.warn(`No permissions for ${role}, using defaults.`);

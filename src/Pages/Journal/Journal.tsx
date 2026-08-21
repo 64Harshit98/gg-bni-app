@@ -263,7 +263,7 @@ const Journal: React.FC = () => {
           setDaysRemaining(Math.ceil((d.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)));
         }
         const normalizedPlan = normalizePlan(data.pack);
-        setIsPosBasicPlan(normalizedPlan === PLANS.POS_BASIC);
+        setIsPosBasicPlan(normalizedPlan === PLANS.POS_BASIC || normalizedPlan === PLANS.CALC_CATALOG);
       }
     };
     fetchExpiry();

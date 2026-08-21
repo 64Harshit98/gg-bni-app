@@ -216,6 +216,7 @@ const RestockReportPage: React.FC = () => {
           `Out of stock: ${outOfStockCount}`,
         ],
       ],
+      showFoot: 'lastPage',
       theme: 'plain',
       styles: {
         font: 'helvetica',

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { collection, query, onSnapshot, Timestamp } from 'firebase/firestore';
+import { useEffect, useRef, useState } from 'react';
+import { collection, query, onSnapshot, Timestamp, where } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 import {
   type Transaction,
@@ -12,15 +12,65 @@ import { formatDateForInput } from '../../Pages/Reports/SalesReportComponents/sa
 
 export const usePnlReport = (companyId: string | undefined) => {
   const [sales, setSales] = useState<Transaction[]>([]);
-  const [itemsMap, setItemsMap] = useState<Map<string, Item>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Held in a ref (not state) so the sales listener can read the latest
+  // items map without being re-triggered by it — using it as reactive
+  // state here previously caused this effect to tear down and
+  // re-subscribe to the full items/Orders collections on every snapshot,
+  // an infinite resubscribe loop.
+  const itemsMapRef = useRef<Map<string, Item>>(new Map());
+  const recomputeSalesRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (!companyId) {
       setLoading(false);
       return;
     }
+
+    let latestOrderDocs: any[] = [];
+
+    const recomputeSales = () => {
+      const itemsMap = itemsMapRef.current;
+      const completedDocs = latestOrderDocs.filter((doc) => {
+        const data = doc.data();
+        return data.status === 'Completed' || data.status === 'Paid';
+      });
+
+      if (itemsMap.size === 0 && completedDocs.length > 0) return;
+
+      setSales(
+        completedDocs.map((doc) => {
+          const saleData = doc.data();
+
+          const costOfGoodsSold = (saleData.items || []).reduce(
+            (sum: number, item: { id: string; quantity: number }) => {
+              const itemDetails = itemsMap.get(item.id);
+              const itemCost = itemDetails ? itemDetails.purchasePrice : 0;
+              return sum + itemCost * (item.quantity || 0);
+            },
+            0,
+          );
+
+          return {
+            id: doc.id,
+            totalAmount: saleData.totalAmount || 0,
+            createdAt:
+              saleData.createdAt instanceof Timestamp
+                ? saleData.createdAt.toDate()
+                : new Date(),
+            invoiceNumber: saleData.invoiceNumber || 'N/A',
+            partyName: saleData.partyName || 'N/A',
+            costOfGoodsSold: costOfGoodsSold,
+            items: saleData.items || [],
+          };
+        }),
+      );
+
+      setLoading(false);
+    };
+    recomputeSalesRef.current = recomputeSales;
 
     const itemsCollectionRef = collection(db, 'companies', companyId, 'items');
     const qItems = query(itemsCollectionRef);
@@ -35,63 +85,31 @@ export const usePnlReport = (companyId: string | undefined) => {
             purchasePrice: doc.data().purchasePrice || 0,
           });
         });
-        setItemsMap(newItemsMap);
+        itemsMapRef.current = newItemsMap;
+        recomputeSalesRef.current?.();
       },
       (_err) => setError('Failed to fetch item data.'),
     );
 
+    // Only Completed/Paid orders are ever used by this report, so filter
+    // server-side instead of downloading every order regardless of status.
     const salesCollectionRef = collection(db, 'companies', companyId, 'Orders');
-    const qSales = query(salesCollectionRef);
+    const qSales = query(salesCollectionRef, where('status', 'in', ['Completed', 'Paid']));
 
     const unsubscribeSales = onSnapshot(
       qSales,
       (snapshot) => {
-
-        const completedDocs = snapshot.docs.filter((doc) => {
-          const data = doc.data();
-          return data.status === 'Completed' || data.status === 'Paid';
-        });
-
-        if (itemsMap.size === 0 && completedDocs.length > 0) return;
-
-        setSales(
-          completedDocs.map((doc) => {
-            const saleData = doc.data();
-
-            const costOfGoodsSold = (saleData.items || []).reduce(
-              (sum: number, item: { id: string; quantity: number }) => {
-                const itemDetails = itemsMap.get(item.id);
-                const itemCost = itemDetails ? itemDetails.purchasePrice : 0;
-                return sum + itemCost * (item.quantity || 0);
-              },
-              0,
-            );
-
-            return {
-              id: doc.id,
-              totalAmount: saleData.totalAmount || 0,
-              createdAt:
-                saleData.createdAt instanceof Timestamp
-                  ? saleData.createdAt.toDate()
-                  : new Date(),
-              invoiceNumber: saleData.invoiceNumber || 'N/A',
-              partyName: saleData.partyName || 'N/A',
-              costOfGoodsSold: costOfGoodsSold,
-              items: saleData.items || [],
-            };
-          }),
-        );
-
-        setLoading(false);
+        latestOrderDocs = snapshot.docs;
+        recomputeSales();
       },
       (_err) => setError('Failed to fetch sales data.'),
     );
-    
+
     return () => {
       unsubscribeItems();
       unsubscribeSales();
     };
-  }, [companyId, itemsMap]);
+  }, [companyId]);
 
   return { sales, loading, error };
 };

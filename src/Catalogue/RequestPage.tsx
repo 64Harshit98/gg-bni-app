@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { ChevronLeft } from 'lucide-react'
-import { collection, doc, updateDoc, deleteDoc, onSnapshot, getDoc } from "firebase/firestore";
+import { collection, doc, updateDoc, deleteDoc, onSnapshot, getDoc, query, limit } from "firebase/firestore";
 import { db } from '../lib/Firebase';
 import { useAuth } from "../context/auth-context";
 import { Search, Phone, Filter, Reply, Trash2 } from 'lucide-react'
@@ -472,8 +472,9 @@ function RequestPage() {
             setRequests(merged);
         };
 
-        // approval realtime
-        const unsubApproval = onSnapshot(approvalRef, (snap) => {
+        // approval realtime — safety cap so this never re-downloads a whole
+        // unbounded collection on every open of this admin page
+        const unsubApproval = onSnapshot(query(approvalRef, limit(1000)), (snap) => {
             approvalData = snap.docs.map(doc => ({
                 id: doc.id,
                 type: "approval",
@@ -483,7 +484,7 @@ function RequestPage() {
         });
 
         // notify realtime
-        const unsubNotify = onSnapshot(notifyRef, (snap) => {
+        const unsubNotify = onSnapshot(query(notifyRef, limit(1000)), (snap) => {
             notifyData = snap.docs.map((docSnap) => {
                 const data = docSnap.data() as Partial<RequestType>;
 
@@ -503,7 +504,7 @@ function RequestPage() {
             mergeAndSet();
         });
         const bulkRef = collection(db, 'companies', companyId, 'BulkQuoteRequests');
-        const unsubBulk = onSnapshot(bulkRef, (snap) => {
+        const unsubBulk = onSnapshot(query(bulkRef, limit(1000)), (snap) => {
             const items: BulkQuoteType[] = snap.docs.map(docSnap => ({
                 id: docSnap.id,
                 ...docSnap.data() as any,
@@ -511,7 +512,7 @@ function RequestPage() {
             setBulkQuotes(items); // standalone state, not merged into requests
         });
         const personalizationRef = collection(db, 'companies', companyId, 'PersonalizationRequests');
-        const unsubPersonalization = onSnapshot(personalizationRef, (snap) => {
+        const unsubPersonalization = onSnapshot(query(personalizationRef, limit(1000)), (snap) => {
             const items: PersonalizationType[] = snap.docs.map(docSnap => ({
                 id: docSnap.id,
                 ...docSnap.data() as any,

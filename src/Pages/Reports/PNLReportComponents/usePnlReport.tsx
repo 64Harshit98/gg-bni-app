@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, query, onSnapshot, Timestamp } from 'firebase/firestore';
+import { collection, query, onSnapshot, Timestamp, limit } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
 import {
   type Transaction,
@@ -21,7 +21,10 @@ export const usePnlReport = (companyId: string | undefined) => {
     }
 
     const salesRef = collection(db, 'companies', companyId, 'sales');
-    const qSales = query(salesRef);
+    // Safety cap — this report filters client-side by the selected date range,
+    // so without a limit a company with years of sales would re-download the
+    // entire collection on every live update.
+    const qSales = query(salesRef, limit(5000));
 
     const unsubscribe = onSnapshot(qSales, (snapshot) => {
       const processedSales: Transaction[] = snapshot.docs.map((doc) => {

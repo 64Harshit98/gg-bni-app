@@ -675,6 +675,7 @@ doc.text(reportTitle, 14, 24);
               .toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
           ]
         ],
+        showFoot: 'lastPage',
         theme: 'plain',
         styles: {
           font: 'helvetica',

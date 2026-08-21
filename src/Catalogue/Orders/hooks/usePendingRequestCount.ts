@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, where, limit } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
 
 // Matches whatever date range the Orders page's own filter currently
@@ -60,9 +60,9 @@ export const usePendingRequestCount = (
                     // Note: Fetching entire collections here will still cost 1 read per document.
                     // If these collections get very large, consider maintaining a counter document instead.
                     const [notifySnap, bulkSnap, personalizationSnap] = await Promise.all([
-                        getDocs(collection(db, "companies", companyId, "NotifyRequests")),
-                        getDocs(collection(db, "companies", companyId, "BulkQuoteRequests")),
-                        getDocs(collection(db, "companies", companyId, "PersonalizationRequests")),
+                        getDocs(query(collection(db, "companies", companyId, "NotifyRequests"), limit(2000))),
+                        getDocs(query(collection(db, "companies", companyId, "BulkQuoteRequests"), limit(2000))),
+                        getDocs(query(collection(db, "companies", companyId, "PersonalizationRequests"), limit(2000))),
                     ]);
 
                     const inRangeNotifyDocs = notifySnap.docs.filter((d) => isCreatedInRange(d.data()?.createdAt, startDate, endDate));

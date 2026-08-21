@@ -516,6 +516,7 @@ doc.text(reportTitle, 14, 24);
                     summary.totalQuantitySold.toString(),
                     Math.round(summary.totalValueSold).toLocaleString('en-IN')
                 ]],
+                showFoot: 'lastPage',
                 theme: 'plain',
                 styles: {
                     font: 'helvetica',

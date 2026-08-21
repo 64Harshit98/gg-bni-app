@@ -3,7 +3,7 @@ import { db } from '../../lib/Firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { useAuth } from '../../context/auth-context';
 import { ROLES, State } from '../../enums';
-import { Cata_Permissions } from '../../Catalogue/enum/cata_permissions.enum';
+import { Cata_Permissions, migrateCataPermissions } from '../../Catalogue/enum/cata_permissions.enum';
 import BackButton from '../../Components/BackButton';
 import { Modal } from '../../constants/Modal';
 
@@ -15,23 +15,36 @@ export const getDefaultCataPermissions = (role: string): Cata_Permissions[] => {
         case ROLES.OWNER:
             return Object.values(Cata_Permissions);
         case ROLES.MANAGER:
+            // Parity with the POS Manager defaults (DEFAULT_PERMISSIONS_MAP in
+            // Permissionsetting.tsx): dashboard + account visibility, item
+            // management, order handling (incl. returns), and the same
+            // operational widgets (hide button, sales chart, notifications).
             return [
                 Cata_Permissions.ViewCatalogueDashboard,
                 Cata_Permissions.ViewCatalogueAccounts,
                 Cata_Permissions.ViewCatalogueOrders,
                 Cata_Permissions.ViewCatalogueRequests,
                 Cata_Permissions.ViewCatalogueFilter,
+                Cata_Permissions.ViewCatalogueHidebutton,
+                Cata_Permissions.ViewCatalogueSalesbarchart,
                 Cata_Permissions.ViewReports,
                 Cata_Permissions.ManageItems,
                 Cata_Permissions.ViewEditButton,
                 Cata_Permissions.ViewShop,
                 Cata_Permissions.ViewShopItems,
+                Cata_Permissions.ViewOrdersReturn,
+                Cata_Permissions.ViewNotification,
             ];
         case ROLES.SALESMAN:
+            // Parity with the POS Salesman defaults: dashboard, create/view
+            // sales (orders) and their returns, and account visibility —
+            // nothing beyond day-to-day billing operations.
             return [
                 Cata_Permissions.ViewCatalogueDashboard,
+                Cata_Permissions.ViewCatalogueAccounts,
                 Cata_Permissions.ViewCatalogueOrders,
                 Cata_Permissions.ViewCatalogueFilter,
+                Cata_Permissions.ViewOrdersReturn,
             ];
         default:
             return [];
@@ -218,7 +231,21 @@ const CataloguePermissionSetting: React.FC = () => {
                 const snap = await getDoc(docRef);
 
                 if (snap.exists()) {
-                    newMap[role] = snap.data().allowedPermissions || [];
+                    const { permissions: migrated, changed: renamed } = migrateCataPermissions(snap.data().allowedPermissions);
+                    // Auto-merge in any default permission for this role that
+                    // isn't saved yet, so new default capabilities reach
+                    // existing companies without a manual Reset click.
+                    const roleDefaults = getDefaultCataPermissions(role);
+                    const merged = Array.from(new Set([...migrated, ...roleDefaults]));
+                    const changed = renamed || merged.length !== migrated.length;
+                    newMap[role] = merged;
+                    if (changed) {
+                        try {
+                            await setDoc(docRef, { allowedPermissions: merged }, { merge: true });
+                        } catch (err) {
+                            console.error(`Failed to persist synced catalogue permissions for ${role}`, err);
+                        }
+                    }
                 } else {
                     // Doc missing (e.g. no user with this role has logged in yet,
                     // so AuthContext's ensureCataPermissionsExist never ran for it).

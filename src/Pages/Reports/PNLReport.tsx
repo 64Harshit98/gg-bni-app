@@ -356,6 +356,7 @@ const PnlReportPage: React.FC = () => {
           totalCost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
           grossProfit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         ]],
+        showFoot: 'lastPage',
         theme: 'plain',
         styles: {
           font: 'helvetica',

@@ -1,16 +1,11 @@
 import { useEffect, useRef } from "react";
-import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
-import { db } from "../../lib/Firebase";
 
-const SOUND_SEEN_ORDERS_KEY = "seenOrdersSound";
-
+// Plays a sound when a new Confirmed order comes in. Rides on the
+// 'pdc_notification' event NotificationContext already dispatches from its
+// single, date-bounded Orders listener — this hook no longer opens its own
+// onSnapshot subscription.
 export const useOrderSound = (companyId?: string) => {
     const audioRef = useRef<HTMLAudioElement | null>(null);
-    const seenOrdersRef = useRef<Set<string>>(
-        new Set(JSON.parse(localStorage.getItem(SOUND_SEEN_ORDERS_KEY) || "[]"))
-    );
-
-    const isInitialLoad = useRef(true); 
 
     useEffect(() => {
         const audio = new Audio("/sounds/order-confirmed.mp3");
@@ -38,42 +33,14 @@ export const useOrderSound = (companyId?: string) => {
     useEffect(() => {
         if (!companyId) return;
 
-        const q = query(
-            collection(db, "companies", companyId, "Orders"),
-            orderBy("createdAt", "desc")
-        );
-
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            if (isInitialLoad.current) {
-                snapshot.docs.forEach(doc => {
-                    seenOrdersRef.current.add(doc.id);
-                });
-
-                isInitialLoad.current = false;
-                return;
+        const handlePdc = (e: Event) => {
+            const detail = (e as CustomEvent).detail;
+            if (detail?.type === "NEW_ORDER" && detail?.status === "Confirmed") {
+                audioRef.current?.play().catch(() => { });
             }
+        };
 
-            snapshot.docChanges().forEach(change => {
-                if (change.type === "added") {
-                    const doc = change.doc;
-                    const data = doc.data();
-
-                    if (
-                        !seenOrdersRef.current.has(doc.id) &&
-                        data.status === "Confirmed"
-                    ) {
-                        audioRef.current?.play().catch(() => { });
-                        seenOrdersRef.current.add(doc.id);
-                    }
-                }
-            });
-
-            localStorage.setItem(
-                SOUND_SEEN_ORDERS_KEY,
-                JSON.stringify(Array.from(seenOrdersRef.current))
-            );
-        });
-
-        return () => unsubscribe();
+        window.addEventListener("pdc_notification", handlePdc);
+        return () => window.removeEventListener("pdc_notification", handlePdc);
     }, [companyId]);
 };

@@ -3,7 +3,8 @@ import SignatureCanvas from 'react-signature-canvas';
 import { db } from '../../lib/Firebase';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../../context/auth-context';
-import { State } from '../../enums';
+import { State, PLANS } from '../../enums';
+import { normalizePlan } from '../../context/Plan';
 import { Modal } from '../../constants/Modal';
 import { useNavigate } from 'react-router';
 import BackButton from '../../Components/BackButton';
@@ -89,6 +90,13 @@ const BillSettings: React.FC = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
 
+    // Calculator Billing plans (POS Basic, Calc+Catalogue) always print on a
+    // 2-inch thermal printer — Journal.tsx forces THERMAL58 at print time
+    // regardless of what's saved here, so lock the setting itself to match
+    // instead of letting the user pick a format that's silently ignored.
+    const currentPlan = normalizePlan((currentUser as any)?.plan);
+    const isThermalOnlyPlan = currentPlan === PLANS.POS_BASIC || currentPlan === PLANS.CALC_CATALOG;
+
     const [businessInfo, setBusinessInfo] = useState<BusinessInfoData>({
         companyName: '',
         address: '',
@@ -169,7 +177,7 @@ const BillSettings: React.FC = () => {
                     upiId: sData.upiId || bData.upiId || '',
                     termsAndConditions: sData.posTermsAndConditions || '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
                     signatureBase64: sData.signatureBase64 || '',
-                    printFormat: sData.posPrintFormat || 'A4',
+                    printFormat: isThermalOnlyPlan ? 'THERMAL58' : (sData.posPrintFormat || 'A4'),
                     whatsappExtraMessage: sData.posWhatsappExtraMessage || '',
                     enableTriplicate: sData.enableTriplicate || false,
                     discountDisplayFormat: sData.discountDisplayFormat || 'amount',
@@ -230,7 +238,7 @@ const BillSettings: React.FC = () => {
 
                 // Editable settings (independent per bill type)
                 posTermsAndConditions: settings.termsAndConditions,
-                posPrintFormat: settings.printFormat,
+                posPrintFormat: isThermalOnlyPlan ? 'THERMAL58' : settings.printFormat,
                 posWhatsappExtraMessage: settings.whatsappExtraMessage,
                 enableTriplicate: settings.enableTriplicate || false,
                 discountDisplayFormat: settings.discountDisplayFormat || 'amount',
@@ -442,7 +450,13 @@ const BillSettings: React.FC = () => {
                         <p className="text-xs text-gray-500">Choose your default bill format.</p>
                     </div>
                     <div className="p-6">
+                        {isThermalOnlyPlan && (
+                            <p className="mb-4 text-xs text-amber-600 font-medium">
+                                Your plan bills on a 2-Inch Thermal printer only — A4/A5 formats aren't available.
+                            </p>
+                        )}
                         <div className="flex flex-col sm:flex-row gap-4">
+                            {!isThermalOnlyPlan && (
                             <label className={`flex-1 flex items-center p-4 border rounded-sm cursor-pointer transition-colors ${settings.printFormat === 'A4' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'}`}>
                                 <input
                                     type="radio"
@@ -457,7 +471,9 @@ const BillSettings: React.FC = () => {
                                     <span className="block text-xs text-gray-500">Standard full-page invoice layout.</span>
                                 </div>
                             </label>
+                            )}
 
+                            {!isThermalOnlyPlan && (
                             <label className={`flex-1 flex items-center p-4 border rounded-sm cursor-pointer transition-colors ${settings.printFormat === 'A5' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'
                                 }`}>
                                 <input
@@ -474,6 +490,7 @@ const BillSettings: React.FC = () => {
                                     <span className="block text-xs text-gray-500">Half-page compact invoice layout.</span>
                                 </div>
                             </label>
+                            )}
 
                             <label className={`flex-1 flex items-center p-4 border rounded-sm cursor-pointer transition-colors ${settings.printFormat === 'THERMAL58' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'}`}>
                                 <input

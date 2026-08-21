@@ -13,7 +13,7 @@ import { getDefaultPurchaseSettings } from '../Pages/Settings/Purchasesetting';
 import { getDefaultSalesSettings } from '../Pages/Settings/SalesSetting';
 import { getDefaultCatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting';
 import { syncCompanyPermissions } from '../context/Permissions';
-import type { Cata_Permissions } from '../Catalogue/enum/cata_permissions.enum';
+import { migrateCataPermissions, type Cata_Permissions } from '../Catalogue/enum/cata_permissions.enum';
 import { getDefaultCataPermissions } from '../Catalogue/Settings/CataloguePermissionSetting';
 import { isMerchantSubdomain } from '../lib/subdomain';
 
@@ -42,9 +42,25 @@ export const ensureCataPermissionsExist = async (companyId: string, role: string
   const cataDocRef = doc(db, 'companies', companyId, 'cata_permissions', role);
   const cataSnap = await getDoc(cataDocRef);
 
-  // 1. If it exists, return the database values
+  // 1. If it exists, self-heal it: rewrite any renamed permission strings
+  // (see migrateCataPermissions) AND auto-merge in any default catalogue
+  // permission for this role that isn't saved yet (e.g. a new capability
+  // added to the role's defaults after this doc was first created), instead
+  // of requiring a manual Reset + Save on the Permission Setting page.
   if (cataSnap.exists()) {
-    return cataSnap.data().allowedPermissions || [];
+    const { permissions: migrated, changed: renamed } = migrateCataPermissions(cataSnap.data().allowedPermissions);
+    const defaults = getDefaultCataPermissions(role);
+    const merged = Array.from(new Set([...migrated, ...defaults]));
+    const changed = renamed || merged.length !== migrated.length;
+
+    if (changed) {
+      try {
+        await setDoc(cataDocRef, { allowedPermissions: merged }, { merge: true });
+      } catch (err) {
+        console.error(`Failed to persist synced catalogue permissions for ${role}`, err);
+      }
+    }
+    return merged;
   }
 
   // 2. If it DOES NOT exist, generate defaults
@@ -184,6 +200,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             plan: PLANS.POS_BASIC,
             isFirstLogin: false,
             permissions: [Permissions.ViewPartnerDashboard],
+            corePermissions: [Permissions.ViewPartnerDashboard],
+            cataloguePermissions: [],
             Subscription: {
               pack: 'Partner',
               isActive: true,
@@ -288,6 +306,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           plan: resolvedPlan,
           isFirstLogin: uData.isFirstLogin === true,
           permissions: finalPermissions, // 👈 2. Now includes Catalogue Permissions!
+          corePermissions: finalCorePermissions,
+          cataloguePermissions,
           Subscription: {
             pack: String(resolvedPlan),
             isActive: isSubscriptionActive,
@@ -315,11 +335,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Assert that currentUser is the User type AND has a companyId
     currentUser: authState.user as (User & { companyId: string }) | null,
     hasPermission: (perm: Permissions) => {
-      // Ensure you return a boolean, not boolean | undefined
-      return !!authState.user?.permissions.includes(perm);
+      // Checks corePermissions specifically, NOT the merged `permissions`
+      // array — Permissions and Cata_Permissions share some string values
+      // (e.g. 'ManageItems'), so checking the merged array would let a
+      // catalogue-only permission silently satisfy a core POS check.
+      return !!authState.user?.corePermissions?.includes(perm);
     },
     hasCataloguePermission: (perm: Cata_Permissions) => {
-      return !!authState.user?.permissions.includes(perm);
+      return !!authState.user?.cataloguePermissions?.includes(perm);
     },
     loading: authState.status === 'pending',
   }), [authState]);

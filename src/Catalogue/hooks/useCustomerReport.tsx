@@ -3,7 +3,7 @@ import { useAuth } from '../../context/auth-context';
 import { useState, useEffect } from 'react';
 import { State } from '../../enums';
 import { formatDateForInput } from '../../Pages/Reports/SalesReportComponents/salesReport.utils';
-import { collection, onSnapshot, query, where, Timestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, Timestamp, limit } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 import { type Sale } from '../../Pages/Reports/CustomerReportComponents/customerReport.utils';
 
@@ -59,8 +59,11 @@ export default function useCustomerReport() {
     const ordersRef = collection(db, 'companies', currentUser.companyId, 'Orders');
     const obRef = collection(db, 'companies', currentUser.companyId, 'openingBalances');
 
-    const q = query(ordersRef, where('status', '!=', 'Upcoming'));
-    const obQ = query(obRef);
+    // Safety caps — this report filters client-side by the selected date range,
+    // so without a limit a company with years of orders would re-download the
+    // entire collection on every live update.
+    const q = query(ordersRef, where('status', '!=', 'Upcoming'), limit(5000));
+    const obQ = query(obRef, limit(5000));
 
     const unsubscribeSales = onSnapshot(
       q,

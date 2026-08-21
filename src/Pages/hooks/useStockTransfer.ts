@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   collection, addDoc, deleteDoc, updateDoc, doc,
-  onSnapshot, query, orderBy, runTransaction, serverTimestamp,
+  onSnapshot, query, orderBy, runTransaction, serverTimestamp, limit,
 } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 
@@ -115,7 +115,7 @@ export function useStockTransfers(companyId: string | undefined) {
 
   useEffect(() => {
     if (!companyId) return;
-    const q = query(collection(db, 'companies', companyId, 'stockTransfers'), orderBy('date', 'desc'));
+    const q = query(collection(db, 'companies', companyId, 'stockTransfers'), orderBy('date', 'desc'), limit(1000));
     const unsub = onSnapshot(q,
       (snap) => {
         setTransfers(snap.docs.map(d => ({ id: d.id, ...d.data() } as StockTransfer)));

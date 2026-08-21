@@ -180,6 +180,19 @@ export const useSalesPayment = ({
             return;
         }
 
+        // A due (part-paid/unpaid) bill needs a way to track who owes it —
+        // enforce customer name + mobile here regardless of the individual
+        // require-name/require-mobile toggles above, since those can be off
+        // even while Allow Due Billing is on.
+        const dueAmount = completionData.paymentDetails?.due || 0;
+        if (dueAmount > 0) {
+            if (!completionData.partyName?.trim() || !completionData.partyNumber?.trim()) {
+                setModal({ message: "Customer name and mobile number are required for a due/credit sale.", type: State.ERROR });
+                setIsSaving(false);
+                return;
+            }
+        }
+
         const resolvedCompanyId = companyId!;
         const salesman = salesSettings?.enableSalesmanSelection ? selectedWorker : workers.find(w => w.uid === currentUser.uid);
         const finalSalesman = salesman || { uid: currentUser.uid, name: currentUser.uid || 'Current User' };

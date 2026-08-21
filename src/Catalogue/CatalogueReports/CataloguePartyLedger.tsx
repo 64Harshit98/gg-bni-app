@@ -54,7 +54,7 @@ import { useAuth } from '../../context/auth-context';
 import { CustomCard } from '../../Components/CustomCard';
 import { IconChevronDown } from '../../constants/Icons';
 import { db } from '../../lib/Firebase';
-import { collection, query, onSnapshot, orderBy, where, doc, getDoc, getDocs, Timestamp } from 'firebase/firestore';
+import { collection, query, onSnapshot, orderBy, where, doc, getDoc, getDocs, Timestamp, limit } from 'firebase/firestore';
 import BackButton from '../../Components/BackButton';
 import { PaymentModal } from '../../constants/Modal';
 import { useNavigate } from 'react-router-dom';
@@ -74,7 +74,11 @@ const useOrdersData = (companyId?: string) => {
     React.useEffect(() => {
         if (!companyId) return;
         const ref = collection(db, 'companies', companyId, 'Orders');
-        const q = query(ref, where('status', '!=', 'Upcoming'), orderBy('status'), orderBy('createdAt', 'desc'));
+        // Safety cap — this ledger is not date-bound at the query level (it filters
+        // client-side by the selected date range), so without a limit a company with
+        // years of orders would re-download its entire Orders collection on every
+        // live update.
+        const q = query(ref, where('status', '!=', 'Upcoming'), orderBy('status'), orderBy('createdAt', 'desc'), limit(5000));
         const unsub = onSnapshot(q, (snapshot) => {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setOrders(data);

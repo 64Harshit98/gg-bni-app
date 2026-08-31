@@ -1,16 +1,17 @@
-import { Suspense, useEffect, useRef, useState } from 'react'; // <-- Add useState
+import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react'; // <-- Add useState
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'; // <-- Add useLocation
 import { Button } from '../Components/ui/button';
 import { FloatingButton } from '../Components/FloatingButton';
 import { ROUTES } from '../constants/routes.constants';
-import { CatItems } from '../routes/CatalougeRoutes';
+import { CatItems, CatMobileNavItems } from '../routes/CatalougeRoutes';
 import { useAuth } from '../context/auth-context';
 import sellarLogo from '../assets/sellar-logo-heading.png';
-import { Share2 } from "lucide-react"; // <-- Add Globe icon
+import { Share2, Store, Package, RotateCcw, Inbox, Wallet, UserPlus } from "lucide-react"; // <-- Add Globe icon
 import { useOrderSound } from '../Catalogue/hooks/useOrderSound';
 import { useConfirmedOrdersCount } from '../Catalogue/hooks/useConfirmedOrdersCount';
 import GlobalCatalogueModal from '../Components/CatalogueShareCard';
 import { ExpenseModal } from '../Components/ExpenseModal';
+import { AddUserModal } from '../Components/AddUserModal';
 import { useExpenses } from '../Pages/Reports/ExpenseReport/useExpense';
 // Add Firebase imports for fetching the subdomain
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -34,6 +35,7 @@ const CatalogueLayout = () => {
     // 1. New State for the Store Link (Fallback to old link just in case)
     const [storeLink, setStoreLink] = useState(`${window.location.origin}/catalogue/${currentUser?.companyId}`);
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+    const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
     const { addExpense } = useExpenses(currentUser?.companyId, 'catalogue');
 
     const { settings: shopSettings, isClosingSoon, shouldAutoClose, needsReset } = useShopHours(currentUser?.companyId);
@@ -67,7 +69,7 @@ const CatalogueLayout = () => {
             setReminderDismissed(false);
         }
     }, [isOwner, needsReset, currentUser?.companyId]);
-useEffect(() => {
+    useEffect(() => {
         const checkTutorial = async () => {
             if (!currentUser?.companyId) return;
             try {
@@ -150,6 +152,39 @@ useEffect(() => {
         }
     }, [location.pathname]);
 
+    const renderMobileNavLink = ({ to, icon, label, permission }: { to: string; icon: ReactNode; label: string; permission?: Cata_Permissions }) => {
+        const link = (
+            <NavLink
+                key={to}
+                to={to}
+                end
+                className={({ isActive }) =>
+                    `flex-1 flex flex-col items-center justify-center gap-1 rounded-sm text-sm transition-colors border border-[rgba(0,0,0,0.15)] duration-200 min-w-0 ${isActive
+                        ? 'bg-[#F97316] text-white'
+                        : 'text-black-500 hover:bg-gray-100'
+                    }`
+                }
+            >
+                <div className="relative flex flex-col items-center gap-1">
+                    <div className="flex-shrink-0 relative">
+                        {icon}
+
+                        {label === "Orders" && confirmedCount > 0 && (
+                            <span className="absolute -top-2 -right-2 min-w-[16px] h-[16px] px-1 flex items-center justify-center text-[9px] font-bold bg-red-500 text-white rounded-full">
+                                {confirmedCount}
+                            </span>
+                        )}
+                    </div>
+
+                    <span className="font-medium truncate text-[10px] sm:text-xs">
+                        {label}
+                    </span>
+                </div>
+            </NavLink>
+        );
+        return permission ? <ShowWrapper key={to} requiredPermission={permission}>{link}</ShowWrapper> : link;
+    };
+
     const sidebarLinkClass = (isActive: boolean) =>
         `flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium transition-all ${isActive
             ? 'bg-orange-50 text-[#F97316] shadow-sm border border-orange-100'
@@ -163,48 +198,64 @@ useEffect(() => {
         }));
     };
 
+    const fabActionClass = 'w-full mb-2 rounded-sm bg-white shadow-sm';
+    const fabIconBadgeClass = 'w-10 h-10 rounded-full bg-orange-100 text-[#F97316] flex items-center justify-center';
+    const fabLabelClass = 'text-[11px] font-medium text-gray-700';
+
     const MobileActions = () => (
         <>
             <ShowWrapper requiredPermission={Cata_Permissions.ViewShop}>
                 <Button
                     variant="outline"
-                    className="w-full mb-2 rounded bg-white"
+                    className={fabActionClass}
                     onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ORDER}`)}
                 >
-                    Edit Catalog
+                    <span className={fabIconBadgeClass}><Store size={18} /></span>
+                    <span className={fabLabelClass}>Catalog</span>
                 </Button>
             </ShowWrapper>
             <ShowWrapper requiredPermission={Cata_Permissions.ManageItems}>
                 <Button
                     variant="outline"
-                    className="w-full mb-2 rounded bg-white"
+                    className={fabActionClass}
                     onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`)}
                 >
-                    Add Item
+                    <span className={fabIconBadgeClass}><Package size={18} /></span>
+                    <span className={fabLabelClass}>Item</span>
                 </Button>
             </ShowWrapper>
             <ShowWrapper requiredPermission={Cata_Permissions.ViewOrdersReturn}>
                 <Button
                     variant="outline"
-                    className="w-full mb-2 rounded bg-white"
+                    className={fabActionClass}
                     onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`)}
                 >
-                    Orders Return
+                    <span className={fabIconBadgeClass}><RotateCcw size={18} /></span>
+                    <span className={fabLabelClass}>Returns</span>
                 </Button>
             </ShowWrapper>
             <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueRequests}>
                 <Button
                     variant="outline"
-                    className="w-full mb-2 rounded bg-white"
+                    className={fabActionClass}
                     onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`)}
                 >
-                    Requests
+                    <span className={fabIconBadgeClass}><Inbox size={18} /></span>
+                    <span className={fabLabelClass}>Requests</span>
                 </Button>
             </ShowWrapper>
             <ShowWrapper requiredPermission={Cata_Permissions.ViewExpenseReport}>
-                <Button variant="outline" className="w-full mb-2 rounded bg-white"
+                <Button variant="outline" className={fabActionClass}
                     onClick={() => setIsExpenseModalOpen(true)}>
-                    Add Expense
+                    <span className={fabIconBadgeClass}><Wallet size={18} /></span>
+                    <span className={fabLabelClass}>Expense</span>
+                </Button>
+            </ShowWrapper>
+            <ShowWrapper requiredPermission={Cata_Permissions.ManageUserSettings}>
+                <Button variant="outline" className={fabActionClass}
+                    onClick={() => setIsAddUserModalOpen(true)}>
+                    <span className={fabIconBadgeClass}><UserPlus size={18} /></span>
+                    <span className={fabLabelClass}>User</span>
                 </Button>
             </ShowWrapper>
         </>
@@ -304,6 +355,15 @@ useEffect(() => {
                             <span>Add Expense</span>
                         </button>
                     </ShowWrapper>
+                    <ShowWrapper requiredPermission={Cata_Permissions.ManageUserSettings}>
+                        <button
+                            onClick={() => setIsAddUserModalOpen(true)}
+                            className={sidebarLinkClass(false)}
+                        >
+                            <span className="text-lg">+</span>
+                            <span>Add User</span>
+                        </button>
+                    </ShowWrapper>
                     <button
                         onClick={handleShare}
                         className={sidebarLinkClass(false)} // same design, no active
@@ -322,62 +382,41 @@ useEffect(() => {
                     </Suspense>
                 </div>
 
-                {/* FLOATING BUTTON (MOBILE) */}
-                <div className="md:hidden absolute bottom-36 right-4 z-50">
+                {/* SHARE BUTTON (MOBILE) */}
+                <div className="md:hidden absolute bottom-20 right-4 z-50">
                     <button
                         onClick={handleShare}
                         className="bg-white border border-gray-300 shadow-md rounded-full p-3"
                     >
                         <Share2 size={20} />
                     </button>
-                    <TutorialStep
-                        step={0}
-                        currentStep={tutorialStep}
-                        text="Tap here to quickly add Items, view Requests, and more!"
-                        onNext={handleTutorialNext}
-                        onSkip={handleTutorialSkip}
-                        isLast={true}
-                        position="top"
-                    >
-                        <FloatingButton>
-                            <MobileActions />
-                        </FloatingButton>
-                    </TutorialStep>
                 </div>
             </main>
 
             {/* --- MOBILE BOTTOM NAV --- */}
             <nav className="md:hidden fixed bottom-0 left-0 w-full border-t border-slate-200 bg-white z-40">
                 <div className="flex justify-around items-center gap-2 px-2 pt-2 pb-3">
-                    {CatItems.map(({ to, icon, label }) => (
-                        <NavLink
-                            key={to}
-                            to={to}
-                            end
-                            className={({ isActive }) =>
-                                `flex-1 flex flex-row items-center justify-center gap-1 py-2 rounded-sm text-sm transition-colors border border-[rgba(0,0,0,0.15)] duration-200 min-w-0 ${isActive
-                                    ? 'bg-[#F97316] text-white'
-                                    : 'text-black-500 hover:bg-gray-100'
-                                }`
-                            }
-                        >
-                            <div className="relative flex items-center gap-1">
-                                <div className="flex-shrink-0 relative">
-                                    {icon}
+                    {CatMobileNavItems.slice(0, 2).map((item) => renderMobileNavLink(item))}
 
-                                    {label === "Orders" && confirmedCount > 0 && (
-                                        <span className="absolute -top-2 -right-2 min-w-[16px] h-[16px] px-1 flex items-center justify-center text-[9px] font-bold bg-red-500 text-white rounded-full">
-                                            {confirmedCount}
-                                        </span>
-                                    )}
-                                </div>
+                    <div className="flex-1 flex justify-center">
+                        <div className="-mt-7">
+                            <TutorialStep
+                                step={0}
+                                currentStep={tutorialStep}
+                                text="Tap here to quickly add Items, view Requests, and more!"
+                                onNext={handleTutorialNext}
+                                onSkip={handleTutorialSkip}
+                                isLast={true}
+                                position="top"
+                            >
+                                <FloatingButton className="static shadow-lg">
+                                    <MobileActions />
+                                </FloatingButton>
+                            </TutorialStep>
+                        </div>
+                    </div>
 
-                                <span className="font-medium truncate text-xs sm:text-sm">
-                                    {label}
-                                </span>
-                            </div>
-                        </NavLink>
-                    ))}
+                    {CatMobileNavItems.slice(2).map((item) => renderMobileNavLink(item))}
                 </div>
             </nav>
             <GlobalCatalogueModal />
@@ -386,6 +425,10 @@ useEffect(() => {
                 onClose={() => setIsExpenseModalOpen(false)}
                 onSave={data => addExpense(currentUser?.companyId!, data)}
                 theme="orange"
+            />
+            <AddUserModal
+                isOpen={isAddUserModalOpen}
+                onClose={() => setIsAddUserModalOpen(false)}
             />
         </div>
     );

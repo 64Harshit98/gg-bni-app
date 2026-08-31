@@ -607,6 +607,10 @@ const ItemAdd: React.FC<ItemAddProps> = ({
 
       let processedCount = 0, createdCount = 0, updatedCount = 0, failedCount = 0, skippedCount = 0;
       let totalItems = 0;
+      // Breaks down WHY rows failed, since "missing prices or Name" was a
+      // catch-all covering several unrelated validation rules — makes the
+      // actual rejection reason visible instead of a single opaque count.
+      const failReasons = { missingPrice: 0, invalidPricing: 0, purchasePriceRequired: 0, unknownLocation: 0, negativeValue: 0, other: 0 };
 
       for (let r = dataStartRow; r <= worksheet.rowCount; r++) {
         const name = safeGetVal(worksheet.getRow(r), 1);
@@ -630,24 +634,18 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         if (item.name) itemMapByName.set(item.name.toLowerCase().trim(), item);
       });
 
-      let maxImportedNumericBarcode = 0;
-      for (let r = dataStartRow; r <= worksheet.rowCount; r++) {
-        const rawBarcode = safeGetVal(worksheet.getRow(r), 2);
-        if (rawBarcode && /^\d+$/.test(rawBarcode)) {
-          maxImportedNumericBarcode = Math.max(maxImportedNumericBarcode, parseInt(rawBarcode, 10));
-        }
-      }
-
+      // Only peek at the counter here — do NOT reserve/increment it yet.
+      // The DB counter must move only by the number of barcodes that end up
+      // actually attached to successfully created items, so the real
+      // increment happens once at the end of the import based on that count.
       let nextSeqNumber = 0;
       if (importMode === 'create_update') {
-        let needsBarcodeCount = 0;
-        for (let r = dataStartRow; r <= worksheet.rowCount; r++) {
-          if (!safeGetVal(worksheet.getRow(r), 2) && safeGetVal(worksheet.getRow(r), 1)) {
-            needsBarcodeCount++;
-          }
-        }
-        if (needsBarcodeCount > 0) nextSeqNumber = await reserveSequenceBlock(needsBarcodeCount);
+        const counterRef = doc(db, 'companies', currentUser.companyId, 'counters', 'items');
+        const counterSnap = await getDoc(counterRef);
+        const lastSeq = counterSnap.exists() ? (counterSnap.data().currentSequence || 1000) : 1000;
+        nextSeqNumber = lastSeq + 1;
       }
+      let barcodesUsed = 0;
 
       for (let rowNum = dataStartRow; rowNum <= worksheet.rowCount; rowNum++) {
         const row = worksheet.getRow(rowNum);
@@ -658,8 +656,8 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         setUploadProgress({ current: processedCount + 1, total: totalItems });
 
         const rowBarcodeStr = safeGetVal(row, 2);
-        const rowMRP = parseFloat(safeGetVal(row, 3)) || 0;
-        const rowSale = parseFloat(safeGetVal(row, 4)) || 0;
+        let rowMRP = parseFloat(safeGetVal(row, 3)) || 0;
+        let rowSale = parseFloat(safeGetVal(row, 4)) || 0;
         const rowPurchase = parseFloat(safeGetVal(row, 5)) || 0;
         const rowSaleDiscount = parseFloat(safeGetVal(row, 6)) || 0;
         const rowPurchaseDiscount = parseFloat(safeGetVal(row, 7)) || 0;
@@ -673,37 +671,61 @@ const ItemAdd: React.FC<ItemAddProps> = ({
 
         const stockVal = parseInt(safeGetVal(row, 11)) || 0;
         const rowLocationStr = safeGetVal(row, 12);
-        const rowRestock = parseInt(safeGetVal(row, 12)) || 0;
-        const rowMoq = parseInt(safeGetVal(row, 13)) || 1;
-        const rowImageUrlStr = safeGetVal(row, 14);
-        const rowDescription = safeGetVal(row, 15);
+        const rowRestock = parseInt(safeGetVal(row, 13)) || 0;
+        const rowMoq = parseInt(safeGetVal(row, 14)) || 1;
+        const rowImageUrlStr = safeGetVal(row, 15);
+        const rowDescription = safeGetVal(row, 16);
         // Resolve the Location cell. Blank or "Shop" (case-insensitive) → item.stock.
         // Otherwise must match an existing godown name exactly (case-insensitive).
         const trimmedLocation = rowLocationStr.trim().toLowerCase();
         const isShopLocation = !trimmedLocation || trimmedLocation === SHOP_NAME.toLowerCase();
         const targetGodownId = !isShopLocation ? godownNameMapImport.get(trimmedLocation) : undefined;
+
+        // Looked up early (moved ahead of price validation below) so a blank
+        // price cell on a row that matches an existing item — e.g. a report
+        // export re-uploaded to update stock/other fields — can fall back to
+        // that item's current price instead of being rejected outright. Only
+        // genuinely new items (no existing match) are held to "must supply a
+        // price" below.
+        let existingItem = null;
+        if (rowBarcodeStr && itemMapByBarcode.has(rowBarcodeStr)) {
+          existingItem = itemMapByBarcode.get(rowBarcodeStr);
+        } else if (itemMapByName.has(rawName.toLowerCase())) {
+          existingItem = itemMapByName.get(rawName.toLowerCase());
+        }
+
+        if (rowMRP === 0 && rowSale === 0 && existingItem) {
+          rowMRP = existingItem.mrp || 0;
+          rowSale = existingItem.salesPrice || 0;
+        }
+
         // --- STRICT VALIDATION FIX ---
         // Catches bad data early and increments fail count properly
         let rowIsValid = true;
-        if (rowMRP === 0 && rowSale === 0) rowIsValid = false; // Missing prices
-        if (rowMRP > 0 && rowSale > 0 && rowSale > rowMRP) rowIsValid = false; // Invalid pricing
-        if (itemSettings.requirePurchasePrice && rowPurchase <= 0) rowIsValid = false;
-        if (trimmedLocation && !isShopLocation && !targetGodownId) rowIsValid = false; // Unknown Location name
+        if (rowMRP === 0 && rowSale === 0) { rowIsValid = false; failReasons.missingPrice++; } // Missing prices
+        else if (rowMRP > 0 && rowSale > 0 && rowSale > rowMRP) { rowIsValid = false; failReasons.invalidPricing++; } // Invalid pricing
+        else if (itemSettings.requirePurchasePrice && rowPurchase <= 0) { rowIsValid = false; failReasons.purchasePriceRequired++; }
+        else if (trimmedLocation && !isShopLocation && !targetGodownId) { rowIsValid = false; failReasons.unknownLocation++; } // Unknown Location name
 
         // --- NEGATIVE VALUE GUARD ---
-        // Reject any row containing negative numeric values
+        // Only checks MRP/Sale/Purchase price and their discounts — the
+        // fields that genuinely can't be negative. Stock, tax, restock
+        // level, and MOQ are deliberately NOT checked here: this app allows
+        // negative stock (e.g. a sale recorded before its matching purchase
+        // entry), and a report export of such an item legitimately carries
+        // that negative figure through; rejecting the row would block every
+        // other field on it from being updated too.
         if (
-          rowMRP < 0 ||
-          rowSale < 0 ||
-          rowPurchase < 0 ||
-          rowSaleDiscount < 0 ||
-          rowPurchaseDiscount < 0 ||
-          rowTax < 0 ||
-          stockVal < 0 ||
-          rowRestock < 0 ||
-          rowMoq < 0
+          rowIsValid && (
+            rowMRP < 0 ||
+            rowSale < 0 ||
+            rowPurchase < 0 ||
+            rowSaleDiscount < 0 ||
+            rowPurchaseDiscount < 0
+          )
         ) {
           rowIsValid = false;
+          failReasons.negativeValue++;
         }
 
         if (!rowIsValid) {
@@ -726,13 +748,6 @@ const ItemAdd: React.FC<ItemAddProps> = ({
               }
             } catch (e) { /* fallback */ }
           }
-        }
-
-        let existingItem = null;
-        if (rowBarcodeStr && itemMapByBarcode.has(rowBarcodeStr)) {
-          existingItem = itemMapByBarcode.get(rowBarcodeStr);
-        } else if (itemMapByName.has(rawName.toLowerCase())) {
-          existingItem = itemMapByName.get(rawName.toLowerCase());
         }
 
         let finalUploadedImageUrl = null;
@@ -791,14 +806,17 @@ const ItemAdd: React.FC<ItemAddProps> = ({
             updatedCount++;
           } catch (e) {
             failedCount++;
+            failReasons.other++;
           }
 
         } else {
           let finalRowBarcode = rowBarcodeStr;
+          let usedAutoBarcode = false;
 
           if (!existingItem && !finalRowBarcode) {
             finalRowBarcode = String(nextSeqNumber);
             nextSeqNumber++;
+            usedAutoBarcode = true;
           } else if (existingItem) {
             finalRowBarcode = existingItem.barcode;
           }
@@ -853,6 +871,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
             } else {
               await dbOperations.createItem(itemData, finalRowBarcode);
               createdCount++;
+              if (usedAutoBarcode) barcodesUsed++;
 
               // --- MAP UPDATE FIX ---
               // Add newly created items to the maps immediately.
@@ -863,33 +882,31 @@ const ItemAdd: React.FC<ItemAddProps> = ({
             }
           } catch (e) {
             failedCount++;
+            failReasons.other++;
           }
         }
         processedCount++;
       }
 
-      if (maxImportedNumericBarcode > 0) {
-        try {
-          const counterRef = doc(db, 'companies', currentUser.companyId, 'counters', 'items');
-          await runTransaction(db, async (transaction) => {
-            const counterDoc = await transaction.get(counterRef);
-            const currentSeq = counterDoc.exists() ? (counterDoc.data().currentSequence || 1000) : 1000;
-
-            if (maxImportedNumericBarcode >= currentSeq) {
-              transaction.set(counterRef, { currentSequence: maxImportedNumericBarcode }, { merge: true });
-            }
-          });
-        } catch (e) {
-          console.error("Failed to sync sequence counter:", e);
-        }
+      if (barcodesUsed > 0) {
+        await reserveSequenceBlock(barcodesUsed);
       }
 
       await fetchGroups();
       await fetchNextBarcode(true);
 
       if (failedCount > 0) {
-        // Now accurately captures failing items due to bad input or DB rejections
-        setModal({ message: `Imported with errors. ${failedCount} rows failed due to missing prices or Name.`, type: State.ERROR });
+        // Break down WHY rows failed instead of a single opaque count — the
+        // old message ("missing prices or Name") lumped together several
+        // unrelated validation rules and made real causes invisible.
+        const reasonParts: string[] = [];
+        if (failReasons.missingPrice > 0) reasonParts.push(`${failReasons.missingPrice} missing both MRP & Sales Price`);
+        if (failReasons.invalidPricing > 0) reasonParts.push(`${failReasons.invalidPricing} Sales Price higher than MRP`);
+        if (failReasons.purchasePriceRequired > 0) reasonParts.push(`${failReasons.purchasePriceRequired} missing Purchase Price`);
+        if (failReasons.unknownLocation > 0) reasonParts.push(`${failReasons.unknownLocation} unknown Location`);
+        if (failReasons.negativeValue > 0) reasonParts.push(`${failReasons.negativeValue} negative values`);
+        if (failReasons.other > 0) reasonParts.push(`${failReasons.other} save errors`);
+        setModal({ message: `Imported with errors. ${failedCount} rows failed: ${reasonParts.join(', ')}.`, type: State.ERROR });
       } else {
         setSuccess(`Completed: ${createdCount} New, ${updatedCount} Updated, ${skippedCount} Skipped.`);
       }

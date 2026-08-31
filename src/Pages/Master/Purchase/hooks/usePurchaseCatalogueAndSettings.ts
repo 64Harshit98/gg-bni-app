@@ -64,7 +64,7 @@ export const usePurchaseCatalogueAndSettings = ({
     const [_settingsDocId, setSettingsDocId] = useState<string | null>(null);
 
     // Keeps availableItems' `stock` field live-synced — see useLiveItemsStock.ts
-    useLiveItemsStock(currentUser?.companyId, setAvailableItems);
+    useLiveItemsStock(currentUser?.companyId, dbOperations, setAvailableItems);
 
     useEffect(() => {
         setPageIsLoading(authLoading || loadingPurchaseSettings);

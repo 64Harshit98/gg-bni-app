@@ -4,6 +4,7 @@ import {
   onSnapshot, query, orderBy, runTransaction, serverTimestamp, limit,
 } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
+import { useDatabase } from '../../context/auth-context';
 
 // ============================================================
 // TYPES
@@ -277,20 +278,21 @@ export function useStockTransfers(companyId: string | undefined) {
 export function useGodownStock(companyId: string | undefined, godowns: Godown[]) {
   const [items, setItems] = useState<ItemDoc[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error] = useState<string | null>(null);
+  const dbOperations = useDatabase();
 
+  // Rides on the shared idb-keyval-backed items sync (dbOperations.listenToItems,
+  // see ItemsFirebase.ts) instead of opening a second full `items` collection
+  // listener — after the first sync it only reads docs changed since last sync.
   useEffect(() => {
-    if (!companyId) return;
-    const q = collection(db, 'companies', companyId, 'items');
-    const unsub = onSnapshot(q,
-      (snap) => {
-        setItems(snap.docs.map(d => ({ id: d.id, ...(d.data() as any) })));
-        setLoading(false);
-      },
-      (err) => { setError(err.message); setLoading(false); },
-    );
+    if (!companyId || !dbOperations) return;
+    setLoading(true);
+    const unsub = dbOperations.listenToItems((liveItems) => {
+      setItems(liveItems.map(i => ({ ...(i as any), id: i.id! })));
+      setLoading(false);
+    });
     return unsub;
-  }, [companyId]);
+  }, [companyId, dbOperations]);
 
   const godownMap = useMemo(() => {
     const m: Record<string, string> = {};

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { collection, query, where, orderBy, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, doc, getDoc, setDoc, limit } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import { useAuth } from '../context/auth-context';
 import ShowWrapper from '../context/ShowWrapper';
@@ -214,7 +214,10 @@ const DashboardContent = () => {
       const salesRef = collection(db, 'companies', currentUser.companyId, 'sales');
       const usersRef = collection(db, 'companies', currentUser.companyId, 'users');
       const qSales = query(salesRef, where('createdAt', '>=', prevStart), where('createdAt', '<=', end), orderBy('createdAt', 'desc'));
-      const [snapSales, snapUsers] = await Promise.all([getDocs(qSales), getDocs(usersRef)]);
+      // Defensive cap — this is a staff roster (small in practice), but nothing
+      // previously bounded it against unbounded growth.
+      const qUsers = query(usersRef, limit(1000));
+      const [snapSales, snapUsers] = await Promise.all([getDocs(qSales), getDocs(qUsers)]);
 
       const currentSalesMap: Record<string, { amount: number, count: number }> = {};
       const paymentMap: Record<string, { amount: number, count: number }> = {};

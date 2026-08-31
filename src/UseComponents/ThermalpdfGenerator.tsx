@@ -19,6 +19,7 @@ export const generateThermalReceipt = (
     const safeTaxType = (data.taxType && data.taxType.trim() !== '') ? data.taxType.toUpperCase() : 'EXCLUSIVE';
 
     // Master Switches (Matching the A4 Bill)
+    const isComposition = safeScheme === 'COMPOSITION';
     const showGstinDetails = !isEstimate && safeScheme !== 'NONE' && safeTaxType !== 'EXEMPT' && safeTaxType !== 'NONE';
     const showTaxDetails = !isEstimate && safeScheme !== 'NONE' && (safeScheme === 'COMPOSITION' || (safeTaxType !== 'EXEMPT' && safeTaxType !== 'NONE'));
 
@@ -70,7 +71,7 @@ export const generateThermalReceipt = (
         totalTaxAmt += taxAmt;
         grossTotal += finalAmount;
 
-        if (taxRate > 0) {
+        if (taxRate > 0 && !isComposition) {
             const rateKey = taxRate.toString();
             if (!taxBreakdown[rateKey]) taxBreakdown[rateKey] = { taxable: 0, cgst: 0, sgst: 0 };
             taxBreakdown[rateKey].taxable += taxableAmt;

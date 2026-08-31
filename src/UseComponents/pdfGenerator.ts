@@ -157,6 +157,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   // NEW: exempt (NONE scheme / exempt taxType) bills lose GST columns just like an estimate,
   // but heading/bank/terms/signature stay normal (SCRUM-1266).
   const isTaxExempt = safeScheme === 'NONE' || safeTaxType === 'EXEMPT' || safeTaxType === 'NONE';
+  const isComposition = safeScheme === 'COMPOSITION';
   const showGstinDetails = !isEstimate && !isTaxExempt;
   const showTaxColumns = !isEstimate && !isTaxExempt;
   // NEW: POS-Photos toggle
@@ -289,7 +290,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     totalTaxAmt += taxAmt;
     grossTotal += finalAmount;
 
-    if (taxRate > 0) {
+    if (taxRate > 0 && !isComposition) {
       const rateKey = taxRate.toString();
       if (!taxBreakdown[rateKey]) {
         taxBreakdown[rateKey] = { taxable: 0, cgst: 0, sgst: 0, igst: 0 };
@@ -316,7 +317,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     const row: any[] = [
       item.sno, item.name, item.hsn || (item as any).hsnSac || '', qty, item.unit || 'PCS',
       mrp.toFixed(2), itemDiscDisplay, billDisc.toFixed(2), taxableAmt.toFixed(2),
-      `${taxRate}%`, taxAmt.toFixed(2), finalAmount.toFixed(2)
+      isComposition ? '-' : `${taxRate}%`, isComposition ? '-' : taxAmt.toFixed(2), finalAmount.toFixed(2)
     ];
     if (showImages) row.splice(1, 0, ''); // NEW
     return row;
@@ -659,24 +660,31 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
         : [['Tax Rate', 'Taxable Amt.', 'CGST %', 'CGST Amt.', 'SGST %', 'SGST Amt.', 'Total Tax']];
 
       // 2. Map the body to place rates and amounts in separate columns
-      const taxBody = Object.keys(taxBreakdown).map(rate => {
-        const d = taxBreakdown[rate];
-        const fmt = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-
-        // Format the half rate (e.g., 18 -> 9, 5 -> 2.5)
-        const halfRate = (Number(rate) / 2).toFixed(1).replace('.0', '');
-
-        return isIgst
-          ? [`${rate}%`, fmt(d.taxable), `${rate}%`, fmt(d.igst), fmt(d.igst)]
-          : [`${rate}%`, fmt(d.taxable), `${halfRate}%`, fmt(d.cgst), `${halfRate}%`, fmt(d.sgst), fmt(d.cgst + d.sgst)];
-      });
-
-      // 3. Add the totals row (using empty strings '' for the percentage columns)
       const fmt = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-      if (isIgst) {
-        taxBody.push(['TOTAL', fmt(totalTaxable), '', fmt(totalTaxAmt), fmt(totalTaxAmt)]);
+      let taxBody: any[][];
+      if (isComposition) {
+        // Composition Scheme: show taxable amount only, no tax rate/amount columns
+        taxBody = isIgst
+          ? [['-', fmt(totalTaxable), '-', '-', '-']]
+          : [['-', fmt(totalTaxable), '-', '-', '-', '-', '-']];
       } else {
-        taxBody.push(['TOTAL', fmt(totalTaxable), '', fmt(totalTaxAmt / 2), '', fmt(totalTaxAmt / 2), fmt(totalTaxAmt)]);
+        taxBody = Object.keys(taxBreakdown).map(rate => {
+          const d = taxBreakdown[rate];
+
+          // Format the half rate (e.g., 18 -> 9, 5 -> 2.5)
+          const halfRate = (Number(rate) / 2).toFixed(1).replace('.0', '');
+
+          return isIgst
+            ? [`${rate}%`, fmt(d.taxable), `${rate}%`, fmt(d.igst), fmt(d.igst)]
+            : [`${rate}%`, fmt(d.taxable), `${halfRate}%`, fmt(d.cgst), `${halfRate}%`, fmt(d.sgst), fmt(d.cgst + d.sgst)];
+        });
+
+        // 3. Add the totals row (using empty strings '' for the percentage columns)
+        if (isIgst) {
+          taxBody.push(['TOTAL', fmt(totalTaxable), '', fmt(totalTaxAmt), fmt(totalTaxAmt)]);
+        } else {
+          taxBody.push(['TOTAL', fmt(totalTaxable), '', fmt(totalTaxAmt / 2), '', fmt(totalTaxAmt / 2), fmt(totalTaxAmt)]);
+        }
       }
 
       // 4. Render the table

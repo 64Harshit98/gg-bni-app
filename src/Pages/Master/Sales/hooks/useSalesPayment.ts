@@ -21,6 +21,35 @@ import type { SalesInvoice, SalesItem } from '../sales.types';
 // used directly as a doc ID for the uniqueness-registry check below.
 const toRegistryKey = (invoiceNumber: string) => encodeURIComponent(invoiceNumber);
 
+// Called after a save fails with INVOICE_NUMBER_TAKEN for an auto-generated
+// number — walks the counter forward past whichever numbers are already
+// registered, so the next save attempt doesn't hit the same collision again.
+const advanceInvoiceCounterPastDuplicates = async (companyId: string): Promise<string> => {
+    const counterRef = doc(db, 'companies', companyId, 'counters', 'invoiceCounter');
+    const settingsRef = doc(db, 'companies', companyId, 'settings', 'sales-settings');
+
+    return runTransaction(db, async (transaction) => {
+        const [counterDoc, settingsDoc] = await Promise.all([
+            transaction.get(counterRef),
+            transaction.get(settingsRef),
+        ]);
+
+        const prefix = settingsDoc.exists() ? (settingsDoc.data().voucherPrefix || 'INV') : 'INV';
+        let candidate = counterDoc.exists() ? (counterDoc.data().currentNumber || 1) : 1;
+
+        const MAX_ATTEMPTS = 500;
+        for (let i = 0; i < MAX_ATTEMPTS; i++) {
+            const registryRef = doc(db, 'companies', companyId, 'salesInvoiceRegistry', toRegistryKey(`${prefix}-${candidate}`));
+            const registrySnap = await transaction.get(registryRef);
+            if (!registrySnap.exists()) break;
+            candidate++;
+        }
+
+        transaction.set(counterRef, { currentNumber: candidate }, { merge: true });
+        return `${prefix}-${candidate}`;
+    });
+};
+
 interface UseSalesPaymentParams {
     currentUser: any;
     companyId: string | undefined;
@@ -505,8 +534,16 @@ export const useSalesPayment = ({
 
             if (typeof e?.message === 'string' && e.message.startsWith('INVOICE_NUMBER_TAKEN:')) {
                 const takenNumber = e.message.split(':')[1];
+
+                // Move the counter past the duplicate(s) so the next save works.
+                try {
+                    const nextNum = await advanceInvoiceCounterPastDuplicates(resolvedCompanyId);
+                    setInvoiceNumber(nextNum);
+                } catch (advanceErr) {
+                    console.error("Failed to advance invoice counter:", advanceErr);
+                }
                 setModal({
-                    message: `Invoice number ${takenNumber} is already in use. Please choose a different number.`,
+                    message: `Invoice number ${takenNumber} is repeating. Moved to the next available number — please save again.`,
                     type: State.ERROR
                 });
             } else if (e?.message === 'EMPTY_INVOICE_NUMBER') {

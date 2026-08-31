@@ -98,46 +98,66 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         { id: 'catalogue-sales-settings', generator: getDefaultCatalogueSalesSettings }
       ];
 
-      for (const setting of settingsToCreate) {
+      await Promise.all(settingsToCreate.map(async (setting) => {
         const docRef = doc(db, 'companies', companyId, 'settings', setting.id);
         const docSnap = await getDoc(docRef);
         if (!docSnap.exists()) {
           console.log(`⚙️ Creating missing default setting: ${setting.id}`);
           await setDoc(docRef, setting.generator(companyId));
         }
-      }
+      }));
     } catch (err) {
       console.error("Setup Error:", err);
     }
   };
 
   useEffect(() => {
-    let settled = false;
+    // `generation` guards against two overlapping onAuthStateChanged
+    // callbacks racing each other (e.g. a stale/slow chain from a previous
+    // firing finishing AFTER a newer one already committed a result) — only
+    // the most recent callback's commit is allowed to win.
+    let generation = 0;
 
-    // Safety net: if Firebase's auth handshake (or the Firestore chain below) stalls,
-    // don't leave the whole app stuck behind the pending/loading gate forever.
-    const timeoutId = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        console.error('AUTH_TIMEOUT: onAuthStateChanged did not resolve in time');
+    // Safety net: this ONLY guards against Firebase's own auth handshake
+    // (onAuthStateChanged) never firing at all — a rare SDK/network-init
+    // issue. It must NOT fire once we already know the real auth state,
+    // because that used to force a false "unauthenticated" while the
+    // (now much faster, but still async) Firestore lookup below was still
+    // in flight — the app would flash logged-out, then the real result
+    // would land seconds later and silently flip it back to logged-in.
+    // That flip-flop was the "reload logs me out, then logs me back in
+    // after ~10s" symptom.
+    const startupTimeoutId = setTimeout(() => {
+      if (generation === 0) {
+        generation = 1;
+        console.error('AUTH_TIMEOUT: onAuthStateChanged did not fire in time');
         setAuthState({ status: 'unauthenticated', user: null });
       }
     }, AUTH_RESOLUTION_TIMEOUT_MS);
 
-    const commit = (state: AuthState) => {
-      settled = true;
-      clearTimeout(timeoutId);
-      setAuthState(state);
-    };
-
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
+      clearTimeout(startupTimeoutId);
+      const myGeneration = ++generation;
+      const commit = (state: AuthState) => {
+        // A newer callback has already superseded this one — drop this
+        // stale result instead of clobbering the newer (correct) state.
+        if (myGeneration !== generation) return;
+        setAuthState(state);
+      };
+
       try {
         if (!firebaseUser) {
           commit({ status: 'unauthenticated', user: null });
           return;
         }
 
-        const idTokenResult = await firebaseUser.getIdTokenResult(true);
+        // No forced refresh here: `true` would force a network round-trip to
+        // reissue the ID token on every load even when the cached one is
+        // still valid, which was the single biggest source of login latency.
+        // Firebase already auto-refreshes tokens ~5min before expiry, and
+        // custom-claim changes (role/companyId) require the client to call
+        // getIdTokenResult(true) explicitly elsewhere after such a change.
+        const idTokenResult = await firebaseUser.getIdTokenResult();
         let companyId = idTokenResult.claims.companyId as string | undefined;
         let userRole = idTokenResult.claims.role as ROLES;
 
@@ -218,12 +238,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         // 5. EXISTING COMPANY LOGIC (Owners & Staff)
         // ========================================================
 
-        await initializeDefaults(companyId!);
-
         const companyDocRef = doc(db, 'companies', companyId!);
         const userDocRef = doc(db, 'companies', companyId!, 'users', firebaseUser.uid);
 
-        const [companyDoc, userDoc] = await Promise.all([
+        // initializeDefaults doesn't gate on or feed into the company/user
+        // doc reads below, so run it alongside them instead of before them.
+        const [, companyDoc, userDoc] = await Promise.all([
+          initializeDefaults(companyId!),
           getDoc(companyDocRef),
           getDoc(userDocRef)
         ]);
@@ -252,9 +273,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         let cataloguePermissions: Cata_Permissions[] = []; // 👈 1. Create a variable for catalogue perms
 
         if (uData.role) {
-          // --- FETCH CORE PERMISSIONS ---
+          // --- FETCH CORE PERMISSIONS + CATALOGUE PERMISSIONS IN PARALLEL ---
+          // These two docs are independent, so run them concurrently instead
+          // of stacking their round trips one after another.
           const permDocRef = doc(db, 'companies', companyId!, 'permissions', uData.role);
-          const permSnap = await getDoc(permDocRef);
+          const [permSnap, cataPerms] = await Promise.all([
+            getDoc(permDocRef),
+            ensureCataPermissionsExist(companyId!, uData.role),
+          ]);
 
           let dbPerms: Permissions[] = [];
 
@@ -268,20 +294,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           }
 
           rolePermissions = await syncCompanyPermissions(companyId!, uData.role, dbPerms, permSnap.exists());
-
-          // --- FETCH CATALOGUE PERMISSIONS (THIS WAS MISSING) ---
-          const cataDocRef = doc(db, 'companies', companyId!, 'cata_permissions', uData.role);
-          const cataSnap = await getDoc(cataDocRef);
-
-          if (cataSnap.exists()) {
-            cataloguePermissions = cataSnap.data().allowedPermissions || [];
-          }
+          cataloguePermissions = cataPerms;
         }
 
         // --- FILTER CORE PERMISSIONS BY PLAN ---
         const packAllowed = getPackPermissions(resolvedPlan) || [];
         const finalCorePermissions = rolePermissions.filter(p => packAllowed.includes(p));
-        cataloguePermissions = await ensureCataPermissionsExist(companyId!, uData.role);
         // Owner is the one who sets up a new company — provision Manager/
         // Salesman defaults too while we're here, instead of leaving them
         // missing until a user with that role logs in for the first time.
@@ -314,7 +332,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             expiryDate: expiryDate
           }
         };
-        console.log(`[DEBUG] Final permissions for ${userData.role}:`, userData.permissions);
         setDbOperations(getFirestoreOperations(companyId!));
         commit({ status: 'authenticated', user: userData });
 
@@ -325,7 +342,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
 
     return () => {
-      clearTimeout(timeoutId);
+      clearTimeout(startupTimeoutId);
       unsubscribe();
     };
   }, []);

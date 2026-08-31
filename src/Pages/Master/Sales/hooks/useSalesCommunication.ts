@@ -118,6 +118,7 @@ export const useSalesCommunication = ({
             enableItemImages: billSettings.enableItemImages || false, // NEW
             gstScheme: salesSettings?.gstScheme || '',
             taxType: salesSettings?.taxType || '',
+            enableDiscount2: salesSettings?.enableDiscount2 || false,
             upiId: billSettings.upiId || '',   //  ADDED: without this, QR never generates
             companyName: businessInfo?.name || 'Your Company',
             companyAddress: businessInfo?.address || 'Your Address',

@@ -35,14 +35,14 @@ const SERVICES: ServiceItem[] = [
     {
         id: 'label-design',
         title: 'Label Design',
-        description: 'Custom label design for your products. ₹1,100 per design.',
+        description: 'Custom label design for your products.',
         route: '/label-design',
         isLocked: false,
     },
     {
         id: 'bill-design',
         title: 'Bill Design',
-        description: 'Custom bill design for your business. ₹1,100 per design.',
+        description: 'Custom bill design for your business.',
         route: '/bill-design',
         isLocked: false,
     }

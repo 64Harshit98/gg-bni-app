@@ -13,6 +13,7 @@ import { Spinner } from '../../../constants/Spinner';
 import { ItemEditDrawer } from '../../../Components/ItemDrawer';
 import { GenericCartList } from '../../../Components/CartItem';
 import BarcodeLinkModal from '../../../Components/BarcodeLinkModal';
+import { AddUserModal } from '../../../Components/AddUserModal';
 import { FiTrash2, FiX, FiEdit, FiCamera, FiDelete, FiSearch, FiMenu } from 'react-icons/fi';
 import { GenericBillFooter } from '../../../Components/Footer';
 import { IconScanCircle, IconPrint } from '../../../constants/Icons';
@@ -90,6 +91,7 @@ const Sales: React.FC = () => {
     const isEditMode = location.state?.isEditMode === true && !!invoiceToEdit;
 
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
+    const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
 
     const {
         salesSettings,
@@ -392,6 +394,7 @@ const Sales: React.FC = () => {
                     onClose={closeBarcodeLinkModal}
                     onLink={handleLinkScannedBarcode}
                 />
+                <AddUserModal isOpen={isAddUserModalOpen} onClose={() => setIsAddUserModalOpen(false)} />
                 {renderHeader()}
                 <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
 
@@ -566,7 +569,7 @@ const Sales: React.FC = () => {
                                     <select
                                         value={selectedWorker?.uid || ''}
                                         onChange={(e) => {
-                                            if (e.target.value === 'ADD_NEW_SALESMAN') navigate(ROUTES.USER_ADD);
+                                            if (e.target.value === 'ADD_NEW_SALESMAN') setIsAddUserModalOpen(true);
                                             else setSelectedWorker(workers.find(w => w.uid === e.target.value) || null);
                                         }}
                                         className="p-1 border rounded text-sm"
@@ -1248,6 +1251,7 @@ const Sales: React.FC = () => {
                 onClose={closeBarcodeLinkModal}
                 onLink={handleLinkScannedBarcode}
             />
+            <AddUserModal isOpen={isAddUserModalOpen} onClose={() => setIsAddUserModalOpen(false)} />
             {renderHeader()}
 
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
@@ -1284,7 +1288,7 @@ const Sales: React.FC = () => {
                                 value={selectedWorker?.uid || ''}
                                 onChange={(e) => {
                                     if (e.target.value === 'ADD_NEW_SALESMAN') {
-                                        navigate(ROUTES.USER_ADD);
+                                        setIsAddUserModalOpen(true);
                                     } else {
                                         setSelectedWorker(workers.find(w => w.uid === e.target.value) || null);
                                     }

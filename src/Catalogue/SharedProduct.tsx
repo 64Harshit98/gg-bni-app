@@ -830,7 +830,7 @@ const SharedProduct: React.FC = () => {
                 setPageIsLoading(true);
                 setError(null);
 
-                // 2. Use direct library calls or manual Firestore queries 
+                // 2. Use direct library calls or manual Firestore queries
                 const [fetchedItemGroups, fetchedItems] = await Promise.all([
                     getItemGroupsByCompany(effectiveCompanyId),
                     getItemsByCompany(effectiveCompanyId)

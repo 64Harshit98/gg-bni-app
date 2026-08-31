@@ -419,8 +419,6 @@ const ManagePermissionsPage: React.FC = () => {
 
             const docRef = doc(db, 'companies', currentUser.companyId, 'permissions', role);
             await setDoc(docRef, { allowedPermissions: permissionsToSave }, { merge: true });
-            console.log(`[DEBUG] Saved permissions for ${role}:`, permissionsToSave);
-
             setSuccessMessage(`Permissions for ${role} updated successfully!`);
             setTimeout(() => setSuccessMessage(null), 3000);
 

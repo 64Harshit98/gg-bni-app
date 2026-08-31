@@ -247,32 +247,6 @@ const ItemReport: React.FC = () => {
       restockQuantity: item.restockQuantity || 0,
     };
   };
-  // const prepareExportDataForExcel = (item: Item) => {
-  //   const salePrice = item.salesPrice ||
-  //     (item.mrp && item.discount ? parseFloat((item.mrp * (1 - item.discount / 100)).toFixed(2)) : item.mrp || 0);
-
-  //   return {
-  //     name: item.name || '-',
-  //     barcode: item.barcode || '-',
-  //     itemGroup: getGroupName(item.itemGroupId),
-  //     mrp: item.mrp || 0,
-  //     purchasePrice: item.purchasePrice || 0,
-  //     purchaseDiscount: item.purchasediscount || 0,
-  //     salesPrice: salePrice,
-  //     discount: item.discount || 0,
-  //     tax: item.tax || 0,
-  //     taxRate: item.taxRate || 0,
-  //     gst: item.gst || 0,
-  //     hsnSac: item.hsnSac || '-',
-  //     unit: item.unit || '-',
-  //     packetSize: item.packetSize || 0,
-  //     unitMultiplier: item.unitMultiplier || 0,
-  //     moq: item.moq || 0,
-  //     stock: item.stock || 0,
-  //     restockQuantity: item.restockQuantity || 0,
-  //     description: item.description || '-',
-  //   };
-  // };
 
   const downloadAsPdf = async () => {
     try {
@@ -528,29 +502,50 @@ const ItemReport: React.FC = () => {
         ? `Group: ${itemGroups.find(g => g.id === appliedItemGroupId)?.name ?? appliedItemGroupId}`
         : 'Group: All';
 
-      // ── COLUMN DEFINITIONS (order matches Bulk Import parser exactly) ───
+      // ── COLUMN DEFINITIONS ──────────────────────────────────────────────
+      // Columns 1-16 (header text, marker, notes, width) are copied verbatim
+      // from the Bulk Import template (ItemAdd.tsx → handleDownloadSample)
+      // so this export looks — and re-imports — exactly like that template.
+      // Columns 17-21 are report-only ledger figures with no import-template
+      // counterpart, marked with a distinct '■' marker.
+      const TYPE_STYLE: Record<string, { bg: string; txt: string }> = {
+        R: { bg: 'FEE2E2', txt: 'DC2626' },
+        O: { bg: 'DCFCE7', txt: '15803D' },
+        L: { bg: 'E0F2FE', txt: '0369A1' },
+        X: { bg: 'F1F5F9', txt: '475569' },
+      };
+
+      // Same LEGEND block as the Bulk Import template (marker + description
+      // per row, colored by type) — plus a 4th row for the report-only columns.
+      const legendRows = [
+        { type: 'R', marker: '★  Required', desc: 'Must be filled in for a clean re-import — item will be skipped if missing' },
+        { type: 'O', marker: '●  Optional', desc: 'Improves data quality; blank is fine on re-import' },
+        { type: 'L', marker: '▲  Lookup', desc: 'Matched by name on re-import (category/location)' },
+        { type: 'X', marker: '■  Report Only', desc: 'Ledger figures for this report — ignored if this file is re-uploaded' },
+      ];
+
       const COLS = [
-        { header: 'Name', width: 28 },
-        { header: 'Barcode', width: 18 },
-        { header: 'MRP (₹)', width: 14 },
-        { header: 'Sale Price (₹)', width: 16 },
-        { header: 'Purchase Price (₹)', width: 16 },
-        { header: 'Sale Disc (%)', width: 14 },
-        { header: 'Purchase Disc (%)', width: 15 },
-        { header: 'Tax (%)', width: 12 },
-        { header: 'HSN/SAC', width: 14 },
-        { header: 'Category', width: 20 },
-        { header: 'Stock', width: 10 },
-        { header: 'Location', width: 18 },
-        { header: 'Restock Qty', width: 13 },
-        { header: 'MOQ', width: 10 },
-        { header: 'Image URL', width: 25 },
-        { header: 'Description', width: 35 },
-        { header: 'Opening Bal.', width: 14 },
-        { header: 'Stock In', width: 12 },
-        { header: 'Stock Out', width: 12 },
-        { header: 'Closing Bal.', width: 14 },
-        { header: 'Value (₹)', width: 15 },
+        { header: '★ Item Name', note: 'Full product name  e.g. Amul Butter 500g', type: 'R', width: 28 },
+        { header: '● Barcode', note: 'Optional (Leave blank to auto-generate)', type: 'O', width: 18 },
+        { header: '● MRP', note: 'Max Retail Price (₹)  Required if Sale Price blank', type: 'O', width: 14 },
+        { header: '★ Sales Price', note: 'Selling price (₹)  Required if MRP blank', type: 'R', width: 16 },
+        { header: '● Purchase Price', note: 'Your cost price (₹)', type: 'O', width: 16 },
+        { header: '● Sale Disc (%)', note: 'Default customer discount  e.g. 5', type: 'O', width: 14 },
+        { header: '● Purchase Disc (%)', note: 'Supplier discount  e.g. 3', type: 'O', width: 15 },
+        { header: '● Tax (%)', note: 'GST/VAT rate  e.g. 18', type: 'O', width: 12 },
+        { header: '● HSN Code', note: '6-digit HSN / SAC code', type: 'O', width: 14 },
+        { header: '▲ Category', note: 'Group name – new category auto-created', type: 'L', width: 20 },
+        { header: '● Stock', note: 'Opening stock quantity', type: 'O', width: 10 },
+        { header: '▲ Location', note: `"${SHOP_NAME}" or exact godown name  Leave blank for ${SHOP_NAME}`, type: 'L', width: 18 },
+        { header: '● Restock Level', note: 'Alert when stock falls below this', type: 'O', width: 15 },
+        { header: '● MOQ', note: 'Minimum Order Quantity', type: 'O', width: 10 },
+        { header: '● Image URL', note: 'Web link to image (Optional)', type: 'O', width: 25 },
+        { header: '● Description', note: 'Product details shown on Catalogue page', type: 'O', width: 35 },
+        { header: '■ Opening Bal.', note: 'Stock at period start (report only)', type: 'X', width: 14 },
+        { header: '■ Stock In', note: 'Received during period (report only)', type: 'X', width: 12 },
+        { header: '■ Stock Out', note: 'Sold/consumed during period (report only)', type: 'X', width: 12 },
+        { header: '■ Closing Bal.', note: 'Stock at period end (report only)', type: 'X', width: 14 },
+        { header: '■ Value (₹)', note: 'Closing stock value (report only)', type: 'X', width: 15 },
       ];
       const colCount = COLS.length;
       // Same label the Location column shows for this row's Stock figure.
@@ -560,26 +555,32 @@ const ItemReport: React.FC = () => {
       const exportLocationLabel = locationFilter
         ? (locationFilter === SHOP_ID ? SHOP_NAME : (godowns.find(g => g.id === locationFilter)?.name || SHOP_NAME))
         : SHOP_NAME;
-      // Row layout:
-      // 0  → Title (merged)
-      // 1  → Meta (merged)
-      // 2  → blank spacer
-      // 3  → Summary label (merged)
-      // 4  → Summary values
-      // 5  → blank spacer
-      // 6  → Column headers
-      // 7  → blank spacer (REQUIRED: Bulk Import always reads data starting
-      //       2 rows after the header row it detects, so this row must exist)
-      // 8+ → Data rows
+      // Row layout (mirrors the Bulk Import template's layout exactly):
+      // 0    → Title (merged)
+      // 1    → Meta (merged)
+      // 2    → "LEGEND" label (merged)
+      // 3-6  → Legend rows (marker + description, same as the Import template)
+      // 7    → blank spacer
+      // 8    → Summary label (merged)
+      // 9    → Summary values
+      // 10   → blank spacer
+      // 11   → Column headers
+      // 12   → Notes row (REQUIRED: Bulk Import always reads data starting
+      //         2 rows after the header row it detects, so this row must exist)
+      // 13+  → Data rows
 
-      const dataStartRow = 8;
+      const legendStartRow = 3;
+      const summaryLabelRow = legendStartRow + legendRows.length + 1; // 8
+      const headerRow = summaryLabelRow + 3; // 11
+      const notesRow = headerRow + 1; // 12
+      const dataStartRow = headerRow + 2; // 13
       const totalRows = dataStartRow + filteredItems.length; // no footer row — see Change 5
       const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
 
       // Row 0 – Title (Company Name alongside)
       aoa[0][0] = companyName
-        ? `Detailed Item Report  —  ${companyName}`
-        : 'Detailed Item Report';
+        ? `SELLAR  ·  Item Report  —  ${companyName}`
+        : 'SELLAR  ·  Item Report';
 
       const periodText = fromDate === toDate
         ? `Period: ${new Date(fromDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}`
@@ -588,16 +589,28 @@ const ItemReport: React.FC = () => {
       // Row 1 – Meta
       aoa[1][0] = `Generated: ${generationDate}   |   ${periodText}   |   ${groupLabel}   |   Total Items: ${summary.totalItems}`;
 
-      // Row 3 – Summary label
-      aoa[3][0] = 'SUMMARY';
+      // Row 2 – "LEGEND" label
+      aoa[2][0] = 'LEGEND';
 
-      // Row 4 – Summary values (single merged cell)
-      aoa[4][0] = `Avg MRP: ₹${summary.averageMrp.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Avg Cost: ₹${summary.averagePurchasePrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Avg Sale: ₹${summary.averageSalePrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Avg Margin: ₹${summary.averageProfitMargin.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Margin %: ${summary.averageMarginPercentage.toFixed(1)}%`;
+      // Rows 3-6 – Legend rows (marker in col A, description in col B)
+      legendRows.forEach((l, i) => {
+        aoa[legendStartRow + i][0] = l.marker;
+        aoa[legendStartRow + i][1] = l.desc;
+      });
 
-      // Row 6 – Column headers
-      COLS.forEach((c, i) => { aoa[6][i] = c.header; });
+      // Row 8 – Summary label
+      aoa[summaryLabelRow][0] = 'SUMMARY';
 
-      // Rows 8+ – Data (column order matches Bulk Import parser exactly)
+      // Row 9 – Summary values (single merged cell)
+      aoa[summaryLabelRow + 1][0] = `Avg MRP: ₹${summary.averageMrp.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Avg Cost: ₹${summary.averagePurchasePrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Avg Sale: ₹${summary.averageSalePrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Avg Margin: ₹${summary.averageProfitMargin.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Margin %: ${summary.averageMarginPercentage.toFixed(1)}%`;
+
+      // Row 11 – Column headers
+      COLS.forEach((c, i) => { aoa[headerRow][i] = c.header; });
+
+      // Row 12 – Notes (same per-column descriptions as the Import template)
+      COLS.forEach((c, i) => { aoa[notesRow][i] = c.note; });
+
+      // Rows 13+ – Data (column order matches Bulk Import parser exactly)
       filteredItems.forEach((item, idx) => {
         const r = dataStartRow + idx;
         const salePrice =
@@ -636,22 +649,26 @@ const ItemReport: React.FC = () => {
       const worksheet = XLSX.utils.aoa_to_sheet(aoa);
       worksheet['!cols'] = COLS.map(c => ({ wch: c.width }));
       worksheet['!rows'] = [
-        { hpt: 36 }, // 0 title
+        { hpt: 34 }, // 0 title
         { hpt: 20 }, // 1 meta
-        { hpt: 8 },  // 2 spacer
-        { hpt: 18 }, // 3 summary label
-        { hpt: 22 }, // 4 summary values
-        { hpt: 8 },  // 5 spacer
-        { hpt: 28 }, // 6 headers
-        { hpt: 8 },  // 7 spacer (required offset row for Bulk Import)
+        { hpt: 18 }, // 2 "LEGEND" label
+        ...legendRows.map(() => ({ hpt: 18 })), // 3-6 legend rows
+        { hpt: 8 },  // 7 spacer
+        { hpt: 18 }, // 8 summary label
+        { hpt: 22 }, // 9 summary values
+        { hpt: 8 },  // 10 spacer
+        { hpt: 28 }, // 11 headers
+        { hpt: 24 }, // 12 notes (required offset row for Bulk Import)
         ...filteredItems.map(() => ({ hpt: 20 })),
       ];
 
       worksheet['!merges'] = [
         { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
         { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
-        { s: { r: 3, c: 0 }, e: { r: 3, c: colCount - 1 } },
-        { s: { r: 4, c: 0 }, e: { r: 4, c: colCount - 1 } },
+        { s: { r: 2, c: 0 }, e: { r: 2, c: colCount - 1 } },
+        ...legendRows.map((_, i) => ({ s: { r: legendStartRow + i, c: 2 }, e: { r: legendStartRow + i, c: 3 } })),
+        { s: { r: summaryLabelRow, c: 0 }, e: { r: summaryLabelRow, c: colCount - 1 } },
+        { s: { r: summaryLabelRow + 1, c: 0 }, e: { r: summaryLabelRow + 1, c: colCount - 1 } },
       ];
 
       const style = (addr: string, st: any) => {
@@ -661,10 +678,10 @@ const ItemReport: React.FC = () => {
 
       // ── APPLY STYLES ──────────────────────────────────────────────────────
 
-      // Title (row 0)
+      // Title (row 0) — same palette as the Bulk Import template
       style('A1', s(
-        { sz: 16, bold: true, color: { rgb: 'FFFFFF' } },
-        solidFill('2563EB'),
+        { sz: 15, bold: true, color: { rgb: 'FFFFFF' } },
+        solidFill('0369A1'),
         { horizontal: 'center', vertical: 'center' },
       ));
 
@@ -675,34 +692,82 @@ const ItemReport: React.FC = () => {
         { horizontal: 'center', vertical: 'center' },
       ));
 
-      // Summary label (row 3)
-      style('A4', s(
+      // "LEGEND" label (row 2)
+      style('A3', s(
+        { sz: 10, bold: true, color: { rgb: '0369A1' } },
+        solidFill('E0F2FE'),
+        { horizontal: 'left', vertical: 'center' },
+        allBorders,
+      ));
+
+      // Legend rows (rows 3-6) — marker cell + description cell, same
+      // 2-column layout and colors as the Bulk Import template
+      legendRows.forEach((l, i) => {
+        const { bg, txt } = TYPE_STYLE[l.type];
+        const row = legendStartRow + i;
+        style(XLSX.utils.encode_cell({ r: row, c: 0 }), s(
+          { sz: 9, bold: true, color: { rgb: txt } },
+          solidFill(bg),
+          { horizontal: 'left', vertical: 'center' },
+          bblr,
+        ));
+        style(XLSX.utils.encode_cell({ r: row, c: 1 }), s(
+          { sz: 9, color: { rgb: '334155' } },
+          solidFill(bg),
+          { horizontal: 'left', vertical: 'center' },
+          bblr,
+        ));
+        [2, 3].forEach(ci => {
+          style(XLSX.utils.encode_cell({ r: row, c: ci }), s(
+            { sz: 9 },
+            solidFill(bg),
+            {},
+            bblr,
+          ));
+        });
+      });
+
+      // Summary label (row 8)
+      style(XLSX.utils.encode_cell({ r: summaryLabelRow, c: 0 }), s(
         { sz: 10, bold: true, color: { rgb: '1D4ED8' } },
         solidFill('EFF6FF'),
         { horizontal: 'left', vertical: 'center' },
         allBorders,
       ));
 
-      style('A5', s(
+      style(XLSX.utils.encode_cell({ r: summaryLabelRow + 1, c: 0 }), s(
         { sz: 10, bold: true, color: { rgb: '166534' } },
         solidFill('DCFCE7'),
         { horizontal: 'center', vertical: 'center' },
         bblr,
       ));
 
-      // Column headers (row 6)
-      COLS.forEach((_c, i) => {
-        const addr = XLSX.utils.encode_cell({ r: 6, c: i });
+      // Column headers — colored per marker type, same as the
+      // Bulk Import template (TYPE_STYLE)
+      COLS.forEach((c, i) => {
+        const { bg, txt } = TYPE_STYLE[c.type];
+        const addr = XLSX.utils.encode_cell({ r: headerRow, c: i });
         style(addr, s(
-          { sz: 10, bold: true, color: { rgb: 'FFFFFF' } },
-          solidFill('1E40AF'),
-          { horizontal: i === 0 ? 'left' : 'center', vertical: 'center' },
+          { sz: 9, bold: true, color: { rgb: txt } },
+          solidFill(bg),
+          { horizontal: 'center', vertical: 'center', wrapText: true },
           allBorders,
         ));
       });
 
+      // Notes row — same style as the Bulk Import template's notes row
+      COLS.forEach((_c, i) => {
+        const addr = XLSX.utils.encode_cell({ r: notesRow, c: i });
+        style(addr, s(
+          { sz: 7, italic: true, color: { rgb: '64748B' } },
+          solidFill('F8FAFC'),
+          { horizontal: 'center', vertical: 'center', wrapText: true },
+          bblr,
+        ));
+      });
+
       // Numeric column indices (for right-align + number formatting)
-      const numericCols = new Set([2, 3, 4, 5, 6, 7, 10, 12, 13]);
+      const numericCols = new Set([2, 3, 4, 5, 6, 7, 10, 12, 13, 16, 17, 18, 19, 20]);
 
       // Data rows
       filteredItems.forEach((item, idx) => {
@@ -731,11 +796,13 @@ const ItemReport: React.FC = () => {
             { horizontal: isNumeric ? 'center' : 'left', vertical: 'center' },
             bblr,
           ));
-          // Apply number formatting for currency/numeric columns
+          // Apply number formatting for currency/numeric columns.
+          // Plain "0.00" — no thousands separator, no ₹ symbol — so the
+          // cell holds a clean re-importable number.
           if (worksheet[addr] && isNumeric) {
-            const isCurrency = [2, 3, 4].includes(ci); // MRP, Sale Price, Cost Price
+            const isCurrency = [2, 3, 4, 20].includes(ci); // MRP, Sale Price, Cost Price, Value
             worksheet[addr].t = 'n';
-            worksheet[addr].z = isCurrency ? '₹#,##0.00' : '#,##0.##';
+            worksheet[addr].z = isCurrency ? '0.00' : '0.##';
           }
         }
       });

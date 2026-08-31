@@ -16,6 +16,22 @@ if (!admin.apps.length) {
 }
 const db = admin.firestore();
 
+// IST is UTC+5:30. Cloud Functions run in UTC, so naive `Date.setHours(23,59,59,999)`
+// sets end-of-day in the *server's* local time (UTC), not the end of the IST calendar
+// day a user actually sees — this silently added ~5.5 hours (rounding a partial day
+// up to a whole extra day in "days remaining" displays) and expired subscriptions at
+// an odd early-morning IST time instead of midnight.
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+// Returns the UTC instant corresponding to 23:59:59.999 IST, `addDays` days after
+// `baseDate`'s IST calendar date.
+function istEndOfDay(baseDate, addDays) {
+    const baseIST = new Date(baseDate.getTime() + IST_OFFSET_MS);
+    const y = baseIST.getUTCFullYear();
+    const m = baseIST.getUTCMonth();
+    const d = baseIST.getUTCDate();
+    return new Date(Date.UTC(y, m, d + addDays, 23, 59, 59, 999) - IST_OFFSET_MS);
+}
+
 // Initialize Vision API Client
 const client = new vision.ImageAnnotatorClient();
 
@@ -229,6 +245,48 @@ exports.getPublicCatalogue = functions.https.onRequest(async (req, res) => {
     }
 });
 
+// Server-side, CDN-cacheable equivalent of getItemGroupsByCompany() +
+// getItemsByCompany() (src/lib/ItemsFirebase.ts) for the public storefront
+// pages (SharedCatalouge.tsx, SharedProduct.tsx). Those pages previously hit
+// the Firestore client SDK directly on every anonymous page load with no
+// caching at all; this puts the same reads behind Firebase Hosting's CDN so
+// concurrent visitors within the cache window share one Firestore read
+// instead of one each. Returns full item/group docs (not a stripped preview
+// shape like getPublicItem) since the storefront needs full fields for
+// cart/detail rendering.
+exports.getPublicCatalogueItems = functions.https.onRequest(async (req, res) => {
+    const { cId } = req.query;
+
+    if (!cId) {
+        res.status(400).json({ error: "Missing cId" });
+        return;
+    }
+
+    try {
+        const companyRef = db.collection("companies").doc(String(cId));
+
+        const [itemsSnap, groupsSnap] = await Promise.all([
+            companyRef.collection("items").where("isListed", "==", true).get(),
+            companyRef.collection("itemGroups").get(),
+        ]);
+
+        const items = itemsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        const itemGroups = groupsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+
+        // Shorter CDN window than getPublicItem's (1hr) since a full catalogue
+        // listing's stock/listed-status changes more often than one item's
+        // preview card.
+        res.set(
+            "Cache-Control",
+            "public, max-age=30, s-maxage=300, stale-while-revalidate=600"
+        );
+        res.status(200).json({ items, itemGroups });
+    } catch (error) {
+        console.error("Error fetching public catalogue items:", error);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
+});
+
 exports.autoAwardUserReferralCredit = functions.firestore
     .document('companies/{newCompanyId}')
     .onCreate(async (snap) => {
@@ -366,9 +424,7 @@ exports.approveManualPayment = functions.https.onCall(async (data, context) => {
 
         const currentExpiry = companyData.expiryDate?.toDate() || new Date();
         const baseDate = currentExpiry > new Date() ? currentExpiry : new Date();
-        const newExpiryDate = new Date(baseDate);
-        newExpiryDate.setDate(newExpiryDate.getDate() + planDays);
-        newExpiryDate.setHours(23, 59, 59, 999);
+        const newExpiryDate = istEndOfDay(baseDate, planDays);
 
         batch.update(companyRef, {
             expiryDate: admin.firestore.Timestamp.fromDate(newExpiryDate),
@@ -392,9 +448,7 @@ exports.approveManualPayment = functions.https.onCall(async (data, context) => {
                     const refData = referrerSnap.data() || {};
                     const refCurrentExpiry = refData.expiryDate?.toDate() || new Date();
                     const refBaseDate = refCurrentExpiry > new Date() ? refCurrentExpiry : new Date();
-                    const refNewExpiry = new Date(refBaseDate);
-                    refNewExpiry.setDate(refNewExpiry.getDate() + 30);
-                    refNewExpiry.setHours(23, 59, 59, 999);
+                    const refNewExpiry = istEndOfDay(refBaseDate, 30);
 
                     batch.update(referrerCompanyRef, {
                         expiryDate: admin.firestore.Timestamp.fromDate(refNewExpiry)
@@ -529,9 +583,7 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data) => {
         const userRecord = await admin.auth().createUser({ email, password, displayName: name });
         await admin.auth().setCustomUserClaims(userRecord.uid, { companyId: newCompanyId, role });
 
-        const trialDate = new Date();
-        trialDate.setDate(trialDate.getDate() + 3);
-        trialDate.setHours(23, 59, 59, 999);
+        const trialDate = istEndOfDay(new Date(), 3);
 
         const batch = db.batch();
         batch.set(db.doc(`companies/${newCompanyId}`), {
@@ -868,9 +920,7 @@ exports.verifyRazorpayPayment = functions.https.onCall(async (data, context) => 
             // --- All writes after ---
             const currentExpiry = companyData.expiryDate && companyData.expiryDate.toDate ? companyData.expiryDate.toDate() : new Date();
             const baseDate = currentExpiry > new Date() ? currentExpiry : new Date();
-            const newExpiryDate = new Date(baseDate);
-            newExpiryDate.setDate(newExpiryDate.getDate() + freshOrder.planDays);
-            newExpiryDate.setHours(23, 59, 59, 999);
+            const newExpiryDate = istEndOfDay(baseDate, freshOrder.planDays);
 
             tx.update(companyRef, {
                 expiryDate: admin.firestore.Timestamp.fromDate(newExpiryDate),
@@ -909,9 +959,7 @@ exports.verifyRazorpayPayment = functions.https.onCall(async (data, context) => 
                     const refData = referrerSnap.data() || {};
                     const refCurrentExpiry = refData.expiryDate && refData.expiryDate.toDate ? refData.expiryDate.toDate() : new Date();
                     const refBaseDate = refCurrentExpiry > new Date() ? refCurrentExpiry : new Date();
-                    const refNewExpiry = new Date(refBaseDate);
-                    refNewExpiry.setDate(refNewExpiry.getDate() + 30);
-                    refNewExpiry.setHours(23, 59, 59, 999);
+                    const refNewExpiry = istEndOfDay(refBaseDate, 30);
                     tx.update(referrerCompanyRef, {
                         expiryDate: admin.firestore.Timestamp.fromDate(refNewExpiry),
                     });
@@ -926,3 +974,6 @@ exports.verifyRazorpayPayment = functions.https.onCall(async (data, context) => 
         throw new functions.https.HttpsError("internal", "Failed to activate subscription.");
     }
 });
+
+// Compiled from functions/src/paymentWebhook.ts (`npm run build` recompiles it).
+exports.paymentWebhook = require("./paymentWebhook").paymentWebhook;

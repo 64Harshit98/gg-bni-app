@@ -119,7 +119,13 @@ export const useInvoicePayment = ({ currentUser }: UseInvoicePaymentParams) => {
       const isCashOrUpi = method?.toLowerCase() === 'cash' || method?.toLowerCase() === 'upi';
       const isNowPaid = newDue === 0;
 
-      if (isSales && isCashOrUpi) {
+      // Only notify once the invoice is FULLY settled (status: 'PAID', which
+      // renders a plain "payment received" message). A partial cash/UPI
+      // installment must NOT dispatch status: 'UPCOMING' — that status is
+      // shared with the real PDC-cheque reminder flow, whose listener always
+      // renders it as "Cheque due soon ... Cheque #<undefined>" regardless of
+      // payment method, since a cash/UPI payment never has cheque details.
+      if (isSales && isCashOrUpi && isNowPaid) {
         window.dispatchEvent(
           new CustomEvent('pdc_notification', {
             detail: {
@@ -127,7 +133,7 @@ export const useInvoicePayment = ({ currentUser }: UseInvoicePaymentParams) => {
               partyName: invoice.partyName,
               amount: amount,
               createdAt: new Date().toISOString(),
-              status: isNowPaid ? 'PAID' : 'UPCOMING',
+              status: 'PAID',
               method: method
             },
           })

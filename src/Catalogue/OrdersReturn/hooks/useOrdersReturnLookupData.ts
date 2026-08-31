@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { collection, query, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
+import { useDatabase } from '../../../context/auth-context';
 import type { Order, OrderItem } from '../../Orders';
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -35,6 +36,7 @@ export const useOrdersReturnLookupData = ({
 }: UseOrdersReturnLookupDataParams) => {
   const [catalogueSettings, setCatalogueSettings] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const dbOperations = useDatabase();
 
   useEffect(() => {
     if (!currentUser?.companyId) {
@@ -88,20 +90,15 @@ export const useOrdersReturnLookupData = ({
   }, [currentUser]);
 
   useEffect(() => {
-    if (!currentUser?.companyId) return;
+    if (!currentUser?.companyId || !dbOperations) return;
 
+    // Rides on the shared idb-keyval-backed items sync (dbOperations.syncItems,
+    // see ItemsFirebase.ts) instead of a raw full `items` collection getDocs —
+    // only fetches items changed since the device's last sync.
     const fetchItems = async () => {
       try {
-        const q = query(
-          collection(db, 'companies', currentUser.companyId, 'items')
-        );
-        const snap = await getDocs(q);
-        const list = snap.docs.map(d => ({
-          id: d.id,
-          ...d.data()
-        })) as any[];
-
-        setAvailableItems(list);
+        const list = await dbOperations.syncItems();
+        setAvailableItems(list as any[]);
       } catch (err) {
         console.error(err);
         setError('Failed to load items');
@@ -109,7 +106,7 @@ export const useOrdersReturnLookupData = ({
     };
 
     fetchItems();
-  }, [currentUser]);
+  }, [currentUser, dbOperations]);
 
   return { catalogueSettings, error, setError };
 };

@@ -14,7 +14,7 @@ import { useBusinessName } from './hooks/BusinessName';
 import { syncNotifyStock } from "../../src/Catalogue/utils/syncNotifyStock";
 import SearchableItemInput from '../UseComponents/SearchIteminput';
 import { db } from '../lib/Firebase';
-import { doc, getDoc, setDoc, collection, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import ShowWrapper from '../context/ShowWrapper';
 import { Cata_Permissions } from './enum/cata_permissions.enum';
 const StockIndicator: React.FC<{ stock: number }> = ({ stock }) => {
@@ -621,18 +621,15 @@ const MyShop: React.FC = () => {
                 const settingsSnap = await getDoc(settingsRef);
                 if (settingsSnap.exists()) setCatalogueSettings(settingsSnap.data() as CatalogueSalesSettings);
 
-                const itemsRef = collection(db, "companies", companyId, "items");
-                unsubscribeItems = onSnapshot(itemsRef, (snapshot) => {
-                    const liveItemsList: Item[] = [];
-                    snapshot.forEach((docSnap) => {
-                        const data = docSnap.data();
-                        liveItemsList.push({
-                            ...data,
-                            id: docSnap.id,
-                            stock: data.stock !== undefined && data.stock !== null ? Number(data.stock) : 0,
-                            isListed: data.isListed ?? false
-                        } as Item);
-                    });
+                // Rides on the shared idb-keyval-backed items sync (see ItemsFirebase.ts)
+                // instead of a raw full `items` collection listener — after the first
+                // sync it only re-reads docs changed since the last sync.
+                unsubscribeItems = dbOperations.listenToItems((liveItems) => {
+                    const liveItemsList: Item[] = liveItems.map((data) => ({
+                        ...data,
+                        stock: data.stock !== undefined && data.stock !== null ? Number(data.stock) : 0,
+                        isListed: (data as any).isListed ?? false,
+                    } as Item));
 
                     setAllItems(liveItemsList);
 
@@ -640,10 +637,6 @@ const MyShop: React.FC = () => {
                         setIsAllLive(liveItemsList.every(item => item.isListed === true));
                     }
 
-                    setPageIsLoading(false);
-                }, (err) => {
-                    console.error("Live items sync failed:", err);
-                    setError("Real-time inventory synchronization lost.");
                     setPageIsLoading(false);
                 });
 

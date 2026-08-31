@@ -1,10 +1,11 @@
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../lib/Firebase'; // adjust path if your db export differs
 import { useAuth } from '../context/auth-context'; // adjust if your auth hook path/name differs
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '../Components/ui/button';
-import { navItems } from '../routes/bottomRoutes';
+import { Receipt, ShoppingCart, Package, ScanLine, UserPlus, Wallet } from 'lucide-react';
+import { navItems, mobileNavItems } from '../routes/bottomRoutes';
 import { FloatingButton } from '../Components/FloatingButton';
 import { ROUTES } from '../constants/routes.constants';
 import { Permissions } from '../enums';
@@ -12,6 +13,7 @@ import ShowWrapper from '../context/ShowWrapper';
 import sellarLogo from '../assets/sellar-logo-heading.png';
 import { TutorialStep } from '../Components/TutorialStep';
 import { ExpenseModal } from '../Components/ExpenseModal';
+import { AddUserModal } from '../Components/AddUserModal';
 import { useExpenses } from '../Pages/Reports/ExpenseReport/useExpense';
 import { useShopHours } from '../Pages/hooks/useShopHours'; // already exists
 import { ROLES } from '../enums';
@@ -24,6 +26,7 @@ const MainLayout = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [tutorialStep, setTutorialStep] = useState(-1); // -1 = hidden by default
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+  const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const { currentUser } = useAuth();
   const { addExpense } = useExpenses(currentUser?.companyId, 'pos');
 
@@ -135,28 +138,64 @@ const MainLayout = () => {
 
   const isActive = (path: string) => location.pathname === path;
 
+  const fabActionClass = 'w-full mb-2 rounded-sm bg-white shadow-sm';
+  const fabIconBadgeClass = 'w-10 h-10 rounded-full bg-sky-100 text-sky-600 flex items-center justify-center';
+  const fabLabelClass = 'text-[11px] font-medium text-gray-700';
+
   const MobileActionButtons = () => (
     <>
       <ShowWrapper requiredPermission={Permissions.CreateSales}>
-        <Button variant="outline" className="w-full mb-2 rounded-sm bg-white" onClick={() => navigate(ROUTES.SALES)}>Add Sales</Button>
+        <Button variant="outline" className={fabActionClass} onClick={() => navigate(ROUTES.SALES)}>
+          <span className={fabIconBadgeClass}><Receipt size={18} /></span>
+          <span className={fabLabelClass}>Sales</span>
+        </Button>
       </ShowWrapper>
       <ShowWrapper requiredPermission={Permissions.CreatePurchase}>
-        <Button variant="outline" className="w-full mb-2 rounded-sm bg-white" onClick={() => navigate(ROUTES.PURCHASE)}>Add Purchase</Button>
+        <Button variant="outline" className={fabActionClass} onClick={() => navigate(ROUTES.PURCHASE)}>
+          <span className={fabIconBadgeClass}><ShoppingCart size={18} /></span>
+          <span className={fabLabelClass}>Purchase</span>
+        </Button>
       </ShowWrapper>
       <ShowWrapper requiredPermission={Permissions.ManageItems}>
-        <Button variant="outline" className="w-full mb-2 rounded-sm bg-white" onClick={() => navigate(ROUTES.ITEM_ADD)}>Add Item</Button>
+        <Button variant="outline" className={fabActionClass} onClick={() => navigate(ROUTES.ITEM_ADD)}>
+          <span className={fabIconBadgeClass}><Package size={18} /></span>
+          <span className={fabLabelClass}>Item</span>
+        </Button>
       </ShowWrapper>
       <ShowWrapper requiredPermission={Permissions.PrintQR}>
-        <Button variant="outline" className="w-full mb-2 rounded-sm bg-white" onClick={() => navigate(ROUTES.PRINTQR)}>Add Barcode</Button>
+        <Button variant="outline" className={fabActionClass} onClick={() => navigate(ROUTES.PRINTQR)}>
+          <span className={fabIconBadgeClass}><ScanLine size={18} /></span>
+          <span className={fabLabelClass}>Barcode</span>
+        </Button>
       </ShowWrapper>
       <ShowWrapper requiredPermission={Permissions.CreateUsers}>
-        <Button variant="outline" className="w-full mb-2 rounded-sm bg-white" onClick={() => navigate(ROUTES.USER_ADD)}>Add User</Button>
+        <Button variant="outline" className={fabActionClass} onClick={() => setIsAddUserModalOpen(true)}>
+          <span className={fabIconBadgeClass}><UserPlus size={18} /></span>
+          <span className={fabLabelClass}>User</span>
+        </Button>
       </ShowWrapper>
       <ShowWrapper requiredPermission={Permissions.ViewReports}>
-        <Button variant="outline" className="w-full mb-2 rounded-sm bg-white" onClick={() => setIsExpenseModalOpen(true)}>Add Expense</Button>
+        <Button variant="outline" className={fabActionClass} onClick={() => setIsExpenseModalOpen(true)}>
+          <span className={fabIconBadgeClass}><Wallet size={18} /></span>
+          <span className={fabLabelClass}>Expense</span>
+        </Button>
       </ShowWrapper>
     </>
   );
+
+  const mobileNavLinkClass = (path: string) =>
+    `flex-1 flex flex-col items-center justify-center gap-1  rounded-sm text-sm transition-colors border border-[rgba(0,0,0,0.15)] duration-200 min-w-0 ${isActive(path) ? 'bg-sky-500 text-white' : 'text-black-500 hover:bg-gray-100'
+    }`;
+
+  const renderMobileNavLink = ({ to, icon, label, permission }: { to: string; icon: ReactNode; label: string; permission?: Permissions }) => {
+    const link = (
+      <Link key={to} to={to} className={mobileNavLinkClass(to)}>
+        <div className="flex-shrink-0">{icon}</div>
+        <span className="font-medium truncate text-[10px] sm:text-xs">{label}</span>
+      </Link>
+    );
+    return permission ? <ShowWrapper key={to} requiredPermission={permission}>{link}</ShowWrapper> : link;
+  };
 
   const sidebarLinkClass = (path: string) =>
     `flex items-center gap-3 px-4 py-3 rounded-sm text-sm font-medium transition-all ${isActive(path)
@@ -205,7 +244,7 @@ const MainLayout = () => {
             <Link to={ROUTES.PRINTQR} className={sidebarLinkClass(ROUTES.PRINTQR)}><span className="text-lg">+</span><span>Add Barcode</span></Link>
           </ShowWrapper>
           <ShowWrapper requiredPermission={Permissions.CreateUsers}>
-            <Link to={ROUTES.USER_ADD} className={sidebarLinkClass(ROUTES.USER_ADD)}><span className="text-lg">+</span><span>Add User</span></Link>
+            <button onClick={() => setIsAddUserModalOpen(true)} className={sidebarLinkClass('')}><span className="text-lg">+</span><span>Add User</span></button>
           </ShowWrapper>
           <ShowWrapper requiredPermission={Permissions.ViewReports}>
             <button onClick={() => setIsExpenseModalOpen(true)} className={sidebarLinkClass('')}><span className="text-lg">+</span><span>Add Expense</span></button>
@@ -221,44 +260,42 @@ const MainLayout = () => {
           </Suspense>
         </div>
 
-        {/* FLOATING BUTTON (MOBILE ONLY) */}
-        <div className="md:hidden absolute bottom-20 right-4 z-50">
-          <TutorialStep
-            step={0}
-            currentStep={tutorialStep}
-            text="Tap here to quickly add Sales, Purchase, Items and more!"
-            onNext={handleTutorialNext}
-            onSkip={handleTutorialSkip}
-            isLast={true}
-            position="top"
-          >
-            <FloatingButton className="">
-              <MobileActionButtons />
-            </FloatingButton>
-          </TutorialStep>
-        </div>
       </main>
 
       {/* MOBILE BOTTOM NAV */}
-      <nav className="md:hidden fixed bottom-0 left-0 w-full border-t border-slate-200 bg-white">
+      <nav className="md:hidden fixed bottom-0 left-0 w-full border-t border-slate-200 bg-white z-40">
         <div className="flex justify-around items-center gap-2 px-2 pt-2 pb-3">
-          {navItems.map(({ to, icon, label }) => (
-            <Link
-              key={to}
-              to={to}
-              className={`flex-1 flex flex-row items-center justify-center gap-1 py-2 rounded-sm text-sm transition-colors border border-[rgba(0,0,0,0.15)] duration-200 min-w-0 ${isActive(to) ? 'bg-sky-500 text-white' : 'text-black-500 hover:bg-gray-100'
-                }`}
-            >
-              <div className="flex-shrink-0">{icon}</div>
-              <span className="font-medium truncate text-xs sm:text-sm">{label}</span>
-            </Link>
-          ))}
+          {mobileNavItems.slice(0, 2).map((item) => renderMobileNavLink(item))}
+
+          <div className="flex-1 flex justify-center">
+            <div className="-mt-7">
+              <TutorialStep
+                step={0}
+                currentStep={tutorialStep}
+                text="Tap here to quickly add Sales, Purchase, Items and more!"
+                onNext={handleTutorialNext}
+                onSkip={handleTutorialSkip}
+                isLast={true}
+                position="top"
+              >
+                <FloatingButton className="static shadow-lg">
+                  <MobileActionButtons />
+                </FloatingButton>
+              </TutorialStep>
+            </div>
+          </div>
+
+          {mobileNavItems.slice(2).map((item) => renderMobileNavLink(item))}
         </div>
       </nav>
       <ExpenseModal
         isOpen={isExpenseModalOpen}
         onClose={() => setIsExpenseModalOpen(false)}
         onSave={data => addExpense(currentUser?.companyId!, data)}
+      />
+      <AddUserModal
+        isOpen={isAddUserModalOpen}
+        onClose={() => setIsAddUserModalOpen(false)}
       />
     </div>
   );

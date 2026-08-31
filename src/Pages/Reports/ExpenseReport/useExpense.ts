@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   collection, addDoc, deleteDoc, doc,
-  onSnapshot, query, orderBy,
+  onSnapshot, query, orderBy, limit,
 } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
 
@@ -25,6 +25,7 @@ export function useExpenses(companyId: string | undefined, source: 'pos' | 'cata
     const q = query(
       collection(db, 'companies', companyId, collectionName),
       orderBy('date', 'desc'),
+      limit(300),
     );
     const unsub = onSnapshot(q,
       (snap) => {

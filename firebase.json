@@ -12,6 +12,10 @@
         "function": "getPublicCatalogue"
       },
       {
+        "source": "/api/getPublicCatalogueItems",
+        "function": "getPublicCatalogueItems"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }

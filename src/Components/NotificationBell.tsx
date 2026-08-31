@@ -26,7 +26,7 @@ const NotificationBell: React.FC = () => {
   return (
     <Popover onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
-        <div className="cursor-pointer relative z-50 flex items-center justify-center p-2 rounded-md hover:bg-slate-200 transition-colors">
+        <div className="cursor-pointer relative z-30 flex items-center justify-center p-2 rounded-md hover:bg-slate-200 transition-colors">
           <FiBell className="w-5 h-5" />
           {unreadCount > 0 && (
             <span className="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full translate-x-1 -translate-y-1">

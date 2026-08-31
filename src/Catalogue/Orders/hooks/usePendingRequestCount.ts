@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, doc, getDoc, getDocs, query, where, limit } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, where, limit, Timestamp } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
 
 // Matches whatever date range the Orders page's own filter currently
@@ -57,12 +57,26 @@ export const usePendingRequestCount = (
                     setPendingRequestCount(inRangeCount);
 
                 } else {
-                    // Note: Fetching entire collections here will still cost 1 read per document.
-                    // If these collections get very large, consider maintaining a counter document instead.
+                    // NotifyRequests still needs a full (capped) fetch — its phone set is used
+                    // to dedup Bulk/Personalization requests regardless of the notify request's
+                    // own date, so it can't be date-bounded without changing that behavior.
+                    // Note: this still costs 1 read per document. If it gets very large,
+                    // consider maintaining a counter document instead.
+                    //
+                    // Bulk/Personalization requests, however, are only ever counted when their
+                    // OWN createdAt falls in [startDate, endDate] (see isCreatedInRange below) —
+                    // pushing that same bound into the query itself is a pure server-side
+                    // equivalent of the client-side filter that already ran here, with no
+                    // behavior change, and cuts these two (usually the largest) collections
+                    // down from "every request ever" to just the active date range.
+                    const dateConstraints = [];
+                    if (startDate) dateConstraints.push(where("createdAt", ">=", Timestamp.fromDate(startDate)));
+                    if (endDate) dateConstraints.push(where("createdAt", "<=", Timestamp.fromDate(endDate)));
+
                     const [notifySnap, bulkSnap, personalizationSnap] = await Promise.all([
                         getDocs(query(collection(db, "companies", companyId, "NotifyRequests"), limit(2000))),
-                        getDocs(query(collection(db, "companies", companyId, "BulkQuoteRequests"), limit(2000))),
-                        getDocs(query(collection(db, "companies", companyId, "PersonalizationRequests"), limit(2000))),
+                        getDocs(query(collection(db, "companies", companyId, "BulkQuoteRequests"), ...dateConstraints, limit(2000))),
+                        getDocs(query(collection(db, "companies", companyId, "PersonalizationRequests"), ...dateConstraints, limit(2000))),
                     ]);
 
                     const inRangeNotifyDocs = notifySnap.docs.filter((d) => isCreatedInRange(d.data()?.createdAt, startDate, endDate));

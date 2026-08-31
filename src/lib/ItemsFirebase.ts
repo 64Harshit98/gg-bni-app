@@ -316,6 +316,24 @@ export const getItemsByCompany = async (companyId: string): Promise<Item[]> => {
   }
 };
 
+// CDN-cached equivalent of getItemGroupsByCompany() + getItemsByCompany()
+// combined, for the PUBLIC storefront pages only (SharedCatalouge.tsx,
+// SharedProduct.tsx). Goes through the getPublicCatalogueItems Cloud
+// Function (Cache-Control: public, s-maxage=300) instead of the Firestore
+// client SDK directly, so concurrent anonymous visitors within the cache
+// window share one Firestore read instead of one each. Internal/authenticated
+// pages should keep using dbOperations.syncItems()/listenToItems() instead —
+// this is not for them.
+export const getPublicCatalogueItems = async (
+  companyId: string
+): Promise<{ items: Item[]; itemGroups: ItemGroup[] }> => {
+  const res = await fetch(`/api/getPublicCatalogueItems?cId=${encodeURIComponent(companyId)}`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch public catalogue items (${res.status})`);
+  }
+  return res.json();
+};
+
 export const getItemGroupsByCompany = async (companyId: string): Promise<ItemGroup[]> => {
   try {
     const groupsRef = collection(db, 'companies', companyId, 'itemGroups');

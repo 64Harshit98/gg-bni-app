@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { db } from "../lib/Firebase";
 import {
   collection, updateDoc, doc, onSnapshot, setDoc,
-  query, orderBy, serverTimestamp, where, Timestamp
+  query, orderBy, serverTimestamp, where, Timestamp, limit
 } from "firebase/firestore";
 import { useAuth } from "./auth-context"; // Adjust path if necessary
 
@@ -57,7 +57,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     const q = query(
       collection(db, "companies", currentUser.companyId, "notifications"),
-      orderBy("createdAt", "desc")
+      orderBy("createdAt", "desc"),
+      limit(50)
     );
 
     const unsub = onSnapshot(q, (snapshot) => {
@@ -93,7 +94,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     const q = query(
       collection(db, "companies", currentUser.companyId, "Orders"),
       where("createdAt", ">=", Timestamp.fromDate(dateLimit)),
-      orderBy("createdAt", "desc")
+      orderBy("createdAt", "desc"),
+      limit(100)
     );
 
     const unsub = onSnapshot(q, (snapshot) => {
@@ -193,9 +195,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         }
       } else if (detail.type === "PAYMENT_RECEIVED") {
         message = `✅ Payment received from ${detail.partyName || "Customer"} (Order ${detail.invoiceNumber || "-"}) — Amount ₹${detail.amount || 0}`;
-      } else if (detail.status === "OVERDUE") {
+      } else if (detail.status === "OVERDUE" && detail.chequeNumber && detail.chequeDate) {
         message = `⚠️ Overdue cheque for ${detail.partyName} (Invoice ${detail.invoiceNumber}) — Cheque #${detail.chequeNumber} of ₹${detail.amount} was due on ${detail.chequeDate}`;
-      } else if (detail.status === "UPCOMING") {
+      } else if (detail.status === "UPCOMING" && detail.chequeNumber && detail.chequeDate) {
         message = `🔔 Cheque due soon for ${detail.partyName} (Invoice ${detail.invoiceNumber}) — Cheque #${detail.chequeNumber} of ₹${detail.amount} on ${detail.chequeDate}`;
       } else if (detail.status === "PAID") {
         message = `✅ Payment received from ${detail.partyName} (Invoice ${detail.invoiceNumber}) — Amount ₹${detail.amount}`;

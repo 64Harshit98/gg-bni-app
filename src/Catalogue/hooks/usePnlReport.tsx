@@ -7,7 +7,7 @@ import {
   type TransactionDetail,
 } from '../../Pages/Reports/PNLReportComponents/pnlReport.utils';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/auth-context';
+import { useAuth, useDatabase } from '../../context/auth-context';
 import { formatDateForInput } from '../../Pages/Reports/SalesReportComponents/salesReport.utils';
 
 export const usePnlReport = (companyId: string | undefined) => {
@@ -22,9 +22,10 @@ export const usePnlReport = (companyId: string | undefined) => {
   // an infinite resubscribe loop.
   const itemsMapRef = useRef<Map<string, Item>>(new Map());
   const recomputeSalesRef = useRef<(() => void) | null>(null);
+  const dbOperations = useDatabase();
 
   useEffect(() => {
-    if (!companyId) {
+    if (!companyId || !dbOperations) {
       setLoading(false);
       return;
     }
@@ -72,24 +73,21 @@ export const usePnlReport = (companyId: string | undefined) => {
     };
     recomputeSalesRef.current = recomputeSales;
 
-    const itemsCollectionRef = collection(db, 'companies', companyId, 'items');
-    const qItems = query(itemsCollectionRef);
-
-    const unsubscribeItems = onSnapshot(
-      qItems,
-      (snapshot) => {
-        const newItemsMap = new Map<string, Item>();
-        snapshot.docs.forEach((doc) => {
-          newItemsMap.set(doc.id, {
-            id: doc.id,
-            purchasePrice: doc.data().purchasePrice || 0,
-          });
+    // Rides on the shared idb-keyval-backed items sync (dbOperations.listenToItems,
+    // see ItemsFirebase.ts) instead of a raw full `items` collection listener —
+    // after the first sync it only re-reads docs changed since last sync.
+    const unsubscribeItems = dbOperations.listenToItems((liveItems) => {
+      const newItemsMap = new Map<string, Item>();
+      liveItems.forEach((item) => {
+        if (!item.id) return;
+        newItemsMap.set(item.id, {
+          id: item.id,
+          purchasePrice: (item as any).purchasePrice || 0,
         });
-        itemsMapRef.current = newItemsMap;
-        recomputeSalesRef.current?.();
-      },
-      (_err) => setError('Failed to fetch item data.'),
-    );
+      });
+      itemsMapRef.current = newItemsMap;
+      recomputeSalesRef.current?.();
+    });
 
     // Only Completed/Paid orders are ever used by this report, so filter
     // server-side instead of downloading every order regardless of status.
@@ -109,7 +107,7 @@ export const usePnlReport = (companyId: string | undefined) => {
       unsubscribeItems();
       unsubscribeSales();
     };
-  }, [companyId]);
+  }, [companyId, dbOperations]);
 
   return { sales, loading, error };
 };

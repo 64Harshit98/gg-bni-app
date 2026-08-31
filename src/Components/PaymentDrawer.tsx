@@ -198,6 +198,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const [useDebit, setUseDebit] = useState(false);
     const [selectedPayments, setSelectedPayments] = useState<PaymentDetails>({});
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
+    const [pendingReturnAmount, setPendingReturnAmount] = useState<number | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isDiscountLocked, setIsDiscountLocked] = useState(true);
     const [partyState, setPartyState] = useState('');
@@ -603,19 +604,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             return key.toLowerCase().includes('due') ? acc + (value || 0) : acc;
         }, 0);
 
-        const activeNonDuePayments = Object.entries(selectedPayments).filter(([key, value]) => {
-            const isDue = key.toLowerCase().includes('due');
-            return !isDue && (value || 0) > 0;
-        });
-
-        if (activeNonDuePayments.length > 1 && nonDuePaymentTotal > netPayable + 0.01) {
-            setModal({
-                message: `Paid amount (₹${nonDuePaymentTotal.toFixed(2)}) exceeds the bill total of ₹${netPayable.toFixed(2)}. Please correct the payment amounts.`,
-                type: State.ERROR
-            });
-            return;
-        }
-
         if (dueInPayments > 0 && nonDuePaymentTotal + dueInPayments > netPayable + 0.01) {
             setModal({
                 message: `Total entered (₹${(nonDuePaymentTotal + dueInPayments).toFixed(2)}) exceeds the bill of ₹${netPayable.toFixed(2)}. Reduce Due or other payment amounts.`,
@@ -650,6 +638,15 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             return;
         }
 
+        if (changeToReturn > 0.01) {
+            setPendingReturnAmount(changeToReturn);
+            return;
+        }
+
+        await proceedWithSave();
+    };
+
+    const proceedWithSave = async () => {
         let revDiscount = 0;
         if (changeToReturn > 0.01) revDiscount = changeToReturn;
 
@@ -840,7 +837,18 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         >
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" />
 
-            {modal && <div className="absolute z-[10000]"><Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} /></div>}
+            {modal && <div className="absolute z-[10000]" onClick={(e) => e.stopPropagation()}><Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} /></div>}
+            {pendingReturnAmount !== null && (
+                <div className="absolute z-[10000]" onClick={(e) => e.stopPropagation()}>
+                    <Modal
+                        message={`You have returned ₹${pendingReturnAmount.toFixed(2)} to the customer. I confirm.`}
+                        type={State.WARNING}
+                        showConfirmButton
+                        onClose={() => setPendingReturnAmount(null)}
+                        onConfirm={() => { setPendingReturnAmount(null); void proceedWithSave(); }}
+                    />
+                </div>
+            )}
             {showTransportModal && (
                 <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4" onClick={() => setShowTransportModal(false)}>
                     <div className="absolute inset-0 bg-black/50" />

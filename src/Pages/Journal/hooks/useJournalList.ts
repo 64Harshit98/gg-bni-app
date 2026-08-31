@@ -24,7 +24,43 @@ export const useJournalList = ({ companyId, isTutorialActive }: UseJournalListPa
   const [customEndDate, setCustomEndDate] = useState<string>('');
   const [showCustomPicker, setShowCustomPicker] = useState(false);
 
-  const { invoices, loading: dataLoading, error } = useJournalData(companyId);
+  // Computed once here and passed down so useJournalData can enforce the
+  // range server-side (where + orderBy on createdAt) instead of fetching a
+  // fixed recent-N window and filtering client-side — the latter silently
+  // drops in-range invoices once a company has more than that many more
+  // recent transactions than the selected range.
+  const dateRange = useMemo(() => {
+    if (isTutorialActive) return null;
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const daysAgo = (date: Date, days: number) => new Date(date.getFullYear(), date.getMonth(), date.getDate() - days);
+    const endOfDay = (date: Date) => {
+      const d = new Date(date);
+      d.setHours(23, 59, 59, 999);
+      return d;
+    };
+
+    switch (activeDateFilter) {
+      case 'all': return null;
+      case 'today': return { start: today, end: endOfDay(today) };
+      case 'yesterday': { const y = daysAgo(today, 1); return { start: y, end: endOfDay(y) }; }
+      case 'last7': return { start: daysAgo(today, 7), end: endOfDay(today) };
+      case 'last15': return { start: daysAgo(today, 15), end: endOfDay(today) };
+      case 'last30': return { start: daysAgo(today, 30), end: endOfDay(today) };
+      case 'custom': {
+        if (!customStartDate || !customEndDate) return null;
+        const start = new Date(customStartDate);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(customEndDate);
+        end.setHours(23, 59, 59, 999);
+        return { start, end };
+      }
+      default: return null;
+    }
+  }, [activeDateFilter, customStartDate, customEndDate, isTutorialActive]);
+
+  const { invoices, loading: dataLoading, error } = useJournalData(companyId, dateRange);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

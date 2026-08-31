@@ -228,7 +228,7 @@ export const useSalesCatalogueAndSettings = ({
     }, [authLoading, currentUser, dbOperations, isEditMode, invoiceToEdit, loadingSettings]);
 
     // Keeps availableItems' `stock` field live-synced — see useLiveItemsStock.ts
-    useLiveItemsStock(currentUser?.companyId, setAvailableItems);
+    useLiveItemsStock(currentUser?.companyId, dbOperations, setAvailableItems);
 
     useEffect(() => {
         if (!isEditMode && activeTaxMode && !pageIsLoading) {

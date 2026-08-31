@@ -4,6 +4,8 @@ import {
   query,
   onSnapshot,
   orderBy,
+  limit,
+  where,
   Timestamp,
   QuerySnapshot,
 } from 'firebase/firestore';
@@ -11,10 +13,25 @@ import { db } from '../../../lib/Firebase';
 import { formatDate } from '../../../lib/format';
 import type { Invoice } from '../journal.types';
 
-export const useJournalData = (companyId?: string) => {
+export interface JournalDateRange {
+  start: Date;
+  end: Date;
+}
+
+// When a date range is active, the range MUST be enforced server-side
+// (where + orderBy on createdAt) rather than fetched-then-filtered — a
+// company with 300+ more recent sales than the selected range would
+// otherwise never even have the older, in-range invoices fetched, no
+// matter what date filter the user picks (they'd just silently be
+// missing). With no range ("all"), fall back to the previous recent-300
+// behavior — an unbounded scan of the whole history isn't needed there.
+export const useJournalData = (companyId?: string, dateRange?: JournalDateRange | null) => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const rangeStartMs = dateRange?.start.getTime();
+  const rangeEndMs = dateRange?.end.getTime();
 
   useEffect(() => {
     if (!companyId) {
@@ -25,15 +42,31 @@ export const useJournalData = (companyId?: string) => {
 
     setLoading(true);
 
-    const salesQuery = query(
-      collection(db, 'companies', companyId, 'sales'),
-      orderBy('createdAt', 'desc')
-    );
+    const salesQuery = rangeStartMs !== undefined && rangeEndMs !== undefined
+      ? query(
+        collection(db, 'companies', companyId, 'sales'),
+        where('createdAt', '>=', Timestamp.fromMillis(rangeStartMs)),
+        where('createdAt', '<=', Timestamp.fromMillis(rangeEndMs)),
+        orderBy('createdAt', 'desc')
+      )
+      : query(
+        collection(db, 'companies', companyId, 'sales'),
+        orderBy('createdAt', 'desc'),
+        limit(300)
+      );
 
-    const purchasesQuery = query(
-      collection(db, 'companies', companyId, 'purchases'),
-      orderBy('createdAt', 'desc')
-    );
+    const purchasesQuery = rangeStartMs !== undefined && rangeEndMs !== undefined
+      ? query(
+        collection(db, 'companies', companyId, 'purchases'),
+        where('createdAt', '>=', Timestamp.fromMillis(rangeStartMs)),
+        where('createdAt', '<=', Timestamp.fromMillis(rangeEndMs)),
+        orderBy('createdAt', 'desc')
+      )
+      : query(
+        collection(db, 'companies', companyId, 'purchases'),
+        orderBy('createdAt', 'desc'),
+        limit(300)
+      );
 
     const processSnapshot = (snapshot: QuerySnapshot, type: 'Credit' | 'Debit'): Invoice[] => {
       return snapshot.docs.map((doc) => {
@@ -169,7 +202,7 @@ export const useJournalData = (companyId?: string) => {
       unsubSales();
       unsubPurchases();
     };
-  }, [companyId]);
+  }, [companyId, rangeStartMs, rangeEndMs]);
 
   return { invoices, loading, error };
 };

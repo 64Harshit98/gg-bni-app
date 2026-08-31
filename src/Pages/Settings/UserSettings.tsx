@@ -3,13 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { collection, query, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 import { useAuth } from '../../context/auth-context';
-import { ROUTES } from '../../constants/routes.constants';
 import { Spinner } from '../../constants/Spinner';
 import { Permissions, ROLES, State, Variant } from '../../enums'; // Import ROLES
 import { CustomButton } from '../../Components';
 import { Modal } from '../../constants/Modal';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import BackButton from '../../Components/BackButton';
+import { AddUserModal } from '../../Components/AddUserModal';
 
 
 interface AppUser {
@@ -65,6 +65,7 @@ const ManageUsersPage: React.FC = () => {
 
     const [editingUserId, setEditingUserId] = useState<string | null>(null);
     const [editFormData, setEditFormData] = useState<EditFormData>({});
+    const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
 
     const canManageUsers = hasPermission(Permissions.ManageUsers);
 
@@ -89,48 +90,48 @@ const ManageUsersPage: React.FC = () => {
             return;
         }
 
-
-        const fetchUsers = async () => {
-            setIsLoading(true);
-            setError(null);
-            try {
-                // --- FIX: Use the correct multi-tenant path ---
-                const usersCollectionRef = collection(db, 'companies', currentUser.companyId, 'users');
-
-                // --- FIX: No 'where' clause for companyId is needed ---
-                const q = query(usersCollectionRef);
-
-                const querySnapshot = await getDocs(q);
-                const fetchedUsers: AppUser[] = [];
-                querySnapshot.forEach((doc) => {
-                    const data = doc.data();
-                    fetchedUsers.push({
-                        uid: doc.id,
-                        name: data.name || '',
-                        email: data.email || '',
-                        phoneNumber: data.phoneNumber || '',
-                        role: data.role || '',
-                        companyId: data.companyId || '',
-                        photoURL: data.photoURL || '',
-                        // ← Pick up the field saved by EditProfilePage
-                        profilePicture: data.profilePicture || '',
-                    } as AppUser);
-                });
-                setUsers(fetchedUsers);
-            } catch (err) {
-                console.error("Error fetching users:", err);
-                setError("Failed to load user data. Please try again.");
-                setModal({ message: "Failed to load users.", type: State.ERROR });
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
         fetchUsers();
     }, [currentUser, currentUser?.companyId, canManageUsers, authLoading, navigate]);
 
+    const fetchUsers = async () => {
+        if (!currentUser?.companyId) return;
+        setIsLoading(true);
+        setError(null);
+        try {
+            // --- FIX: Use the correct multi-tenant path ---
+            const usersCollectionRef = collection(db, 'companies', currentUser.companyId, 'users');
+
+            // --- FIX: No 'where' clause for companyId is needed ---
+            const q = query(usersCollectionRef);
+
+            const querySnapshot = await getDocs(q);
+            const fetchedUsers: AppUser[] = [];
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                fetchedUsers.push({
+                    uid: doc.id,
+                    name: data.name || '',
+                    email: data.email || '',
+                    phoneNumber: data.phoneNumber || '',
+                    role: data.role || '',
+                    companyId: data.companyId || '',
+                    photoURL: data.photoURL || '',
+                    // ← Pick up the field saved by EditProfilePage
+                    profilePicture: data.profilePicture || '',
+                } as AppUser);
+            });
+            setUsers(fetchedUsers);
+        } catch (err) {
+            console.error("Error fetching users:", err);
+            setError("Failed to load user data. Please try again.");
+            setModal({ message: "Failed to load users.", type: State.ERROR });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     const handleAddUser = () => {
-        navigate(ROUTES.USER_ADD);
+        setIsAddUserModalOpen(true);
     };
     const handleDeleteUser = async (userToDelete: AppUser) => {
         // 1. Prevent deleting the currently logged-in owner
@@ -251,6 +252,11 @@ const ManageUsersPage: React.FC = () => {
     return (
         <div className="flex flex-col min-h-screen bg-gray-100 w-full mb-15">
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+            <AddUserModal
+                isOpen={isAddUserModalOpen}
+                onClose={() => setIsAddUserModalOpen(false)}
+                onUserAdded={fetchUsers}
+            />
 
             <div className="flex items-center justify-between p-3 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
                 <BackButton />

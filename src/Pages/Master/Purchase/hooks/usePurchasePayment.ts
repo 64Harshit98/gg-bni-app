@@ -32,6 +32,37 @@ const sanitizeForFirestore = <T extends Record<string, any>>(obj: T): T => {
 // used directly as a doc ID for the uniqueness-registry check below.
 const toRegistryKey = (invoiceNumber: string) => encodeURIComponent(invoiceNumber);
 
+// Called after a save fails with INVOICE_NUMBER_TAKEN — walks the counter
+// forward past whichever numbers are already registered, so the next save
+// attempt doesn't hit the same collision again.
+const advancePurchaseCounterPastDuplicates = async (companyId: string): Promise<string> => {
+    const counterRef = doc(db, 'companies', companyId, 'counters', 'purchaseCounter');
+    const settingsRef = doc(db, 'companies', companyId, 'settings', 'purchase-settings');
+
+    return runTransaction(db, async (transaction) => {
+        const [counterDoc, settingsDoc] = await Promise.all([
+            transaction.get(counterRef),
+            transaction.get(settingsRef),
+        ]);
+
+        const prefix = settingsDoc.exists() ? (settingsDoc.data().voucherPrefix || 'INV') : 'INV';
+        const currentFY = getFinancialYear();
+        const counterData = counterDoc.exists() ? counterDoc.data() : null;
+        let candidate = (counterData && counterData.financialYear === currentFY) ? (counterData.currentNumber || 1) : 1;
+
+        const MAX_ATTEMPTS = 500;
+        for (let i = 0; i < MAX_ATTEMPTS; i++) {
+            const registryRef = doc(db, 'companies', companyId, 'purchaseInvoiceRegistry', toRegistryKey(`${prefix}-${candidate}`));
+            const registrySnap = await transaction.get(registryRef);
+            if (!registrySnap.exists()) break;
+            candidate++;
+        }
+
+        transaction.set(counterRef, { currentNumber: candidate, financialYear: currentFY }, { merge: true });
+        return `${prefix}-${candidate}`;
+    });
+};
+
 interface UsePurchasePaymentParams {
     currentUser: any;
     purchaseSettings: any;
@@ -374,7 +405,13 @@ export const usePurchasePayment = ({
             console.error('Error saving purchase:', err?.code, err?.message);
             if (typeof err?.message === 'string' && err.message.startsWith('INVOICE_NUMBER_TAKEN:')) {
                 const takenNumber = err.message.split(':')[1];
-                setModal({ message: `Invoice number ${takenNumber} is already in use. Please choose a different number.`, type: State.ERROR });
+                try {
+                    const nextNum = await advancePurchaseCounterPastDuplicates(companyId);
+                    setInvoiceNumber(nextNum);
+                } catch (advanceErr) {
+                    console.error("Failed to advance purchase counter:", advanceErr);
+                }
+                setModal({ message: `Invoice number ${takenNumber} is repeating. Moved to the next available number — please save again.`, type: State.ERROR });
             } else if (err?.message === 'EMPTY_INVOICE_NUMBER') {
                 setModal({ message: 'Please enter an invoice number.', type: State.ERROR });
             } else if (err?.code === 'unavailable' || err?.message?.includes('network-request-failed')) {

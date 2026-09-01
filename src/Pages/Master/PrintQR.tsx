@@ -42,7 +42,7 @@ const LabelPreview: React.FC<{
     if (!item.barcode) return;
 
     if (labelFormat === 'qr_only' || labelFormat === 'both') {
-      QRCodeLib.toDataURL(item.barcode, { width: 140, margin: 1 })
+      QRCodeLib.toDataURL(item.barcode, { width: 140, margin: 2, errorCorrectionLevel: 'H' })
         .then(url => setQrDataUrl(url))
         .catch(err => console.error(err));
     } else {
@@ -56,8 +56,8 @@ const LabelPreview: React.FC<{
           format: 'CODE128',
           displayValue: false,
           height: 40,
-          width: 1,
-          margin: 0,
+          width: 2,
+          margin: 8,
         });
         setBarcodeDataUrl(canvas.toDataURL('image/png'));
       } catch (e) {
@@ -86,13 +86,14 @@ const LabelPreview: React.FC<{
             src={qrDataUrl}
             alt="QR Code Preview"
             className="w-24 h-24"
+            style={{ imageRendering: 'pixelated' }}
           />
           {/* Rotated barcode on the RIGHT — visual height matches QR (96px), visual width = barcode's height dimension (28px) */}
           <div style={{ width: 28, height: 96, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <img
               src={barcodeDataUrl}
               alt="Barcode Preview"
-              style={{ width: 96, height: 28, transform: 'rotate(90deg)', objectFit: 'contain' }}
+              style={{ width: 96, height: 28, transform: 'rotate(90deg)', objectFit: 'contain', imageRendering: 'pixelated' }}
             />
           </div>
         </div>
@@ -101,11 +102,11 @@ const LabelPreview: React.FC<{
         <div className="flex flex-col items-center justify-center h-28">
           {barcodeDataUrl && (
             <div className="w-24 h-8 flex items-center justify-center overflow-hidden mb-1">
-              <img src={barcodeDataUrl} alt="Barcode Preview" className="w-24 h-8" />
+              <img src={barcodeDataUrl} alt="Barcode Preview" className="w-24 h-8" style={{ imageRendering: 'pixelated' }} />
             </div>
           )}
           {qrDataUrl && (
-            <img src={qrDataUrl} alt="QR Code Preview" className="w-24 h-24" />
+            <img src={qrDataUrl} alt="QR Code Preview" className="w-24 h-24" style={{ imageRendering: 'pixelated' }} />
           )}
         </div>
       )}
@@ -245,12 +246,12 @@ const QRCodeGeneratorPage: React.FC = () => {
         let barcodeDataUrl = '';
 
         if (labelFormat === 'qr_only' || labelFormat === 'both') {
-          qrDataUrl = await QRCodeLib.toDataURL(item.barcode, { width: 150, margin: 1 });
+          qrDataUrl = await QRCodeLib.toDataURL(item.barcode, { width: 300, margin: 2, errorCorrectionLevel: 'H' });
         }
 
         if (labelFormat === 'barcode_only' || labelFormat === 'both') {
           try {
-            JsBarcode(canvas, item.barcode, { format: 'CODE128', displayValue: false, height: 40, width: 1.5, margin: 0 });
+            JsBarcode(canvas, item.barcode, { format: 'CODE128', displayValue: false, height: 60, width: 2, margin: 8 });
             barcodeDataUrl = canvas.toDataURL('image/png');
           } catch (e) {
             console.warn(`Could not generate barcode for ${item.name}`, e);
@@ -360,7 +361,6 @@ const QRCodeGeneratorPage: React.FC = () => {
             /* "both" layout: QR LEFT, rotated barcode RIGHT, equal heights */
             .barcode-area.side-by-side {
               flex-direction: row;
-              gap: 1.5mm;
               align-items: center;
               justify-content: center;
               margin-top: -2mm;
@@ -369,8 +369,8 @@ const QRCodeGeneratorPage: React.FC = () => {
 
             /* QR in side-by-side: 14×14mm */
             .barcode-area.side-by-side .qr-image {
-              width: 14mm;
-              height: 14mm;
+              width: 16mm;
+              height: 16mm;
             }
 
             /*
@@ -380,7 +380,7 @@ const QRCodeGeneratorPage: React.FC = () => {
              * Container matches the visual footprint.
              */
             .barcode-rotated-wrapper {
-              width: 6mm;
+              width: 14mm;
               height: 14mm;
               overflow: hidden;
               display: flex;
@@ -390,15 +390,23 @@ const QRCodeGeneratorPage: React.FC = () => {
             }
             .barcode-image-rotated {
               width: 14mm;
-              height: 6mm;
+              height: 14mm;
               transform: rotate(90deg);
               object-fit: contain;
             }
 
             /* Single-code QR */
-            .qr-image { width: 14mm; height: 14mm; object-fit: contain; }
+            .qr-image { width: 20mm; height: 20mm; object-fit: contain; }
             /* Single-code barcode (horizontal) */
             .barcode-image { width: 30mm; height: 16mm; object-fit: contain; margin-bottom: -6mm; margin-top: -2mm; }
+
+            /* Keep QR/barcode edges crisp instead of letting the browser smooth/blur them
+               when scaling down for print — blurred edges are what makes scanners slow to lock on. */
+            .qr-image, .barcode-image, .barcode-image-rotated {
+              image-rendering: -webkit-optimize-contrast;
+              image-rendering: crisp-edges;
+              image-rendering: pixelated;
+            }
 
             .item-barcode { font-size: 4pt; font-weight: bold; margin: 0; }
             .item-name { font-size: 6pt; font-weight: bold; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 33mm; display: block; }

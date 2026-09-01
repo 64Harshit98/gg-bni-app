@@ -39,6 +39,7 @@ const GallaHisaabTool = lazy(() => import('../Pages/Reports/GallaHisaabTool'))
 const ItemSoldReport = lazy(() => import('../Pages/Reports/ItemSoldReport'));
 const ExpenseReport = lazy(() => import('../Pages/Reports/ExpenseReport'));
 import UserReport from '../Pages/Reports/UserReport';
+const BarcodeSettings = lazy(() => import('../Pages/Settings/BarcodeSetting'));
 const StockTransferReport = lazy(() => import('../Pages/Reports/StockTransferReport'));
 
 // --- CATALOGUE MODULE IMPORTS ---
@@ -190,6 +191,7 @@ export const AppRegistry: AppModule[] = [
             { path: ROUTES.BILLSETTING, component: BillSettings, permission: null },
             { path: ROUTES.SUPPORT_PAGE, component: SupportPage, permission: null },
             { path: ROUTES.ADDITIONAL_FEATURES, component: AdditionalServices, permission: Permissions.ViewItemReport },
+            { path: ROUTES.BARCODE_SETTING, component: BarcodeSettings, permission: null },
 
             { path: ROUTES.ITEM_REPORTS, component: ItemReports, permission: Permissions.ViewItemReport },
             { path: ROUTES.RESTOCK_REPORT, component: RestockReportPage, permission: Permissions.ViewItemReport },

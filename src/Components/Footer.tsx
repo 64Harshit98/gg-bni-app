@@ -1,7 +1,6 @@
 import React from 'react';
 import { CustomButton } from './index';
 import { Variant } from '../enums';
-import { IconChevronDown } from '../constants/Icons';
 
 const formatINR = (value: number) =>
   value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -24,8 +23,6 @@ interface GenericBillFooterProps {
 }
 
 export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
-  isExpanded,
-  onToggleExpand,
   totalQuantity,
   subtotal,
   totalDiscount = 0,
@@ -40,32 +37,14 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
 }) => {
   return (
 
-    <div className="flex-shrink-0 bg-white border-t border-gray-100 shadow-[0_-5px_15px_rgba(0,0,0,0.05)] rounded-t-sm z-20 md:shadow-none md:border-0 md:rounded-none md:bg-transparent md:w-full">
+    <div className="flex-shrink-0 bg-white z-20 md:bg-transparent md:w-full">
 
       <div className="md:mb-4">
         {children}
       </div>
 
 
-      <div
-        onClick={onToggleExpand}
-        className="flex justify-between items-center px-5 py-2 cursor-pointer active:bg-gray-50 transition-colors rounded-t-2xl group border-b border-gray-100 md:hidden"
-      >
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-bold tracking-wider text-gray-500 group-hover:text-gray-700">
-            Bill Details
-          </span>
-          <span className="bg-gray-100 text-gray-600 text-[10px] px-2 py-0.5 rounded-sm font-medium">
-            {totalQuantity} Items
-          </span>
-        </div>
-        <div className={`transform transition-transform duration-300 text-gray-400 ${isExpanded ? '' : 'rotate-180'}`}>
-          <IconChevronDown width={20} height={20} />
-        </div>
-      </div>
-
-
-      <div className={`${isExpanded ? 'block' : 'hidden'} md:block px-5 pb-1 pt-1 md:px-0 md:pb-4 space-y-1.5 text-sm animate-in slide-in-from-bottom-2 duration-200 md:animate-none`}>
+      <div className="hidden md:block px-0 pb-4 space-y-1.5 text-sm">
 
         <div className="flex justify-between text-gray-600 pt-1">
           <span> MRP Subtotal</span>
@@ -92,8 +71,8 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
         )}
       </div>
 
-      {/* Main Total & Action */}
-      <div className="px-5 pb-1 md:px-0 md:pb-0 md:pt-4 md:border-t md:border-gray-100">
+      {/* Main Total & Action — desktop only */}
+      <div className="hidden md:block md:pt-4 md:border-t md:border-gray-100">
         <div className="flex justify-between items-end mb-1">
           <span className="text-gray-500 text-sm font-medium pb-1">Grand Total</span>
           <span className="text-2xl font-extrabold text-gray-900 tracking-tight">
@@ -114,6 +93,47 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Compact item count / total / action bar — mobile only, whole bar is the action button */}
+      <button
+        type="button"
+        onClick={onActionClick}
+        disabled={disableAction}
+        className="flex md:hidden w-full items-center justify-between gap-1 px-2 py-2 mb-1 rounded-sm border border-gray-100 bg-emerald-100 shadow-sm text-left disabled:opacity-50 disabled:pointer-events-none active:scale-[0.99] transition-transform"
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="flex items-center justify-center w-11 h-11 rounded-full bg-emerald-50 flex-shrink-0">
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.8}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-emerald-600"
+            >
+              <circle cx="9" cy="21" r="1" />
+              <circle cx="20" cy="21" r="1" />
+              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+            </svg>
+          </span>
+          <div className="leading-tight min-w-0">
+            <p className="text-[11px] font-bold tracking-wider text-gray-500 uppercase">
+              {totalQuantity} {totalQuantity === 1 ? 'Item' : 'Items'}
+            </p>
+            <p className="text-lg font-extrabold text-gray-900 tracking-tight truncate">
+              ₹{formatINR(finalAmount)}
+            </p>
+          </div>
+        </div>
+
+        <span className="flex items-center gap-1 text-emerald-600 font-bold text-sm flex-shrink-0">
+          {actionLabel}
+          <span aria-hidden="true">→</span>
+        </span>
+      </button>
     </div>
   );
 };

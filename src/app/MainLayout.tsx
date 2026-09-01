@@ -184,7 +184,7 @@ const MainLayout = () => {
   );
 
   const mobileNavLinkClass = (path: string) =>
-    `flex-1 flex flex-col items-center justify-center gap-1  rounded-sm text-sm transition-colors border border-[rgba(0,0,0,0.15)] duration-200 min-w-0 ${isActive(path) ? 'bg-sky-500 text-white' : 'text-black-500 hover:bg-gray-100'
+    `flex-1 flex flex-col items-center justify-center gap-1 py-1 text-sm transition-colors duration-200 min-w-0 ${isActive(path) ? 'text-sky-500' : 'text-gray-500'
     }`;
 
   const renderMobileNavLink = ({ to, icon, label, permission }: { to: string; icon: ReactNode; label: string; permission?: Permissions }) => {
@@ -254,7 +254,7 @@ const MainLayout = () => {
 
       {/* MAIN CONTENT */}
       <main className="flex-1 relative flex flex-col min-w-0 overflow-hidden">
-        <div ref={scrollRef} className="flex-1 overflow-y-auto pb-20 md:pb-4 scroll-smooth">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto pb-16 md:pb-4 scroll-smooth">
           <Suspense fallback={<div>Loading...</div>}>
             <Outlet />
           </Suspense>
@@ -263,7 +263,7 @@ const MainLayout = () => {
       </main>
 
       {/* MOBILE BOTTOM NAV */}
-      <nav className="md:hidden fixed bottom-0 left-0 w-full border-t border-slate-200 bg-white z-40">
+      <nav className="md:hidden fixed bottom-0 left-0 w-full bg-white z-40">
         <div className="flex justify-around items-center gap-2 px-2 pt-2 pb-3">
           {mobileNavItems.slice(0, 2).map((item) => renderMobileNavLink(item))}
 

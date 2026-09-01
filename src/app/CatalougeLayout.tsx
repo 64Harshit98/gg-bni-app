@@ -159,9 +159,9 @@ const CatalogueLayout = () => {
                 to={to}
                 end
                 className={({ isActive }) =>
-                    `flex-1 flex flex-col items-center justify-center gap-1 rounded-sm text-sm transition-colors border border-[rgba(0,0,0,0.15)] duration-200 min-w-0 ${isActive
-                        ? 'bg-[#F97316] text-white'
-                        : 'text-black-500 hover:bg-gray-100'
+                    `flex-1 flex flex-col items-center justify-center gap-1 py-1 text-sm transition-colors duration-200 min-w-0 ${isActive
+                        ? 'text-[#F97316]'
+                        : 'text-gray-500'
                     }`
                 }
             >
@@ -394,7 +394,7 @@ const CatalogueLayout = () => {
             </main>
 
             {/* --- MOBILE BOTTOM NAV --- */}
-            <nav className="md:hidden fixed bottom-0 left-0 w-full border-t border-slate-200 bg-white z-40">
+            <nav className="md:hidden fixed bottom-0 left-0 w-full bg-white z-40">
                 <div className="flex justify-around items-center gap-2 px-2 pt-2 pb-3">
                     {CatMobileNavItems.slice(0, 2).map((item) => renderMobileNavLink(item))}
 

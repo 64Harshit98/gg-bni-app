@@ -134,7 +134,7 @@ export const GenericCartList = <T extends CartItem>({
 }: GenericCartListProps<T>) => {
 
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-1 sm:space-y-4 pb-20 px-1 pt-1 sm:pt-4">
+    <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-1 sm:space-y-4 pb-2 px-1 pt-1 sm:pt-4">
       {items.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-40 text-gray-400">
           <p>Cart is empty</p>

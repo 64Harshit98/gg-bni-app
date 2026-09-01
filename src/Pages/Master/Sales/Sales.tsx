@@ -925,7 +925,7 @@ const Sales: React.FC = () => {
                                 totalDiscount={totalDiscount} taxAmount={taxAmount}
                                 finalAmount={finalAmount} showTaxRow={showTaxRow}
                                 taxLabel={`Tax (${activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})`}
-                                actionLabel={isEditMode ? 'Update Invoice' : 'Proceed to Pay'}
+                                actionLabel={isEditMode ? 'Update Invoice' : 'Pay Now'}
                                 onActionClick={handleProceedToPayment}
                                 disableAction={items.length === 0}>
                             </GenericBillFooter>
@@ -945,7 +945,7 @@ const Sales: React.FC = () => {
                                 totalDiscount={totalDiscount} taxAmount={taxAmount}
                                 finalAmount={finalAmount} showTaxRow={showTaxRow}
                                 taxLabel={`Tax (${activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})`}
-                                actionLabel={isEditMode ? 'Update Invoice' : 'Proceed to Pay'}
+                                actionLabel={isEditMode ? 'Update Invoice' : 'Pay Now'}
                                 onActionClick={handleProceedToPayment}
                                 disableAction={items.length === 0}
                             />
@@ -1133,7 +1133,7 @@ const Sales: React.FC = () => {
                             disabled={liveItemCount === 0}
                             className="w-full bg-emerald-500 rounded-xs hover:bg-emerald-600 disabled:bg-emerald-200 disabled:text-white text-white font-bold py-1 text-xl transition-colors shadow-md active:scale-[0.98]"
                         >
-                            Proceed to Pay
+                            Pay Now
                         </button>
                     </div>
                 </div>
@@ -1173,7 +1173,7 @@ const Sales: React.FC = () => {
     }
 
     return (
-        <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden pb-2">
+        <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden">
             {modal && (
                 <Modal
                     message={modal.message}
@@ -1354,7 +1354,7 @@ const Sales: React.FC = () => {
                                 finalAmount={finalAmount}
                                 showTaxRow={showTaxRow}
                                 taxLabel={`Tax (${activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})`}
-                                actionLabel={isEditMode ? 'Update Invoice' : 'Proceed to Pay'}
+                                actionLabel={isEditMode ? 'Update Invoice' : 'Pay Now'}
                                 onActionClick={handleProceedToPayment}
                                 disableAction={items.length === 0}
                             >
@@ -1381,7 +1381,7 @@ const Sales: React.FC = () => {
                             finalAmount={finalAmount}
                             showTaxRow={showTaxRow}
                             taxLabel={`Tax (${activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})`}
-                            actionLabel={isEditMode ? 'Update Invoice' : 'Proceed to Pay'}
+                            actionLabel={isEditMode ? 'Update Invoice' : 'Pay Now'}
                             onActionClick={handleProceedToPayment}
                             disableAction={items.length === 0}
                         />

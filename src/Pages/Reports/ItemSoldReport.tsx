@@ -64,26 +64,26 @@ const ItemsSoldReport: React.FC = () => {
     const [companyName, setCompanyName] = useState<string>('');
 
     useEffect(() => {
-    const fetchCompanyName = async () => {
-      if (!currentUser?.companyId) return;
-      try {
-        const businessInfoRef = doc(
-          db,
-          'companies',
-          currentUser.companyId,
-          'business_info',
-          currentUser.companyId,
-        );
-        const snap = await getDoc(businessInfoRef);
-        if (snap.exists()) {
-          setCompanyName(snap.data().businessName || '');
-        }
-      } catch (e) {
-        console.error('Failed to fetch company name', e);
-      }
-    };
-    fetchCompanyName();
-  }, [currentUser?.companyId]);
+        const fetchCompanyName = async () => {
+            if (!currentUser?.companyId) return;
+            try {
+                const businessInfoRef = doc(
+                    db,
+                    'companies',
+                    currentUser.companyId,
+                    'business_info',
+                    currentUser.companyId,
+                );
+                const snap = await getDoc(businessInfoRef);
+                if (snap.exists()) {
+                    setCompanyName(snap.data().businessName || '');
+                }
+            } catch (e) {
+                console.error('Failed to fetch company name', e);
+            }
+        };
+        fetchCompanyName();
+    }, [currentUser?.companyId]);
 
     useEffect(() => {
         const fetchItemGroups = async () => {
@@ -255,7 +255,7 @@ const ItemsSoldReport: React.FC = () => {
             header: 'Item Name',
             accessor: 'name',
             sortKey: 'name',
-            className: 'font-medium'
+            className: 'font-medium whitespace-normal break-words max-w-[180px]'
         },
         {
             header: 'Category',
@@ -513,7 +513,7 @@ const ItemsSoldReport: React.FC = () => {
             const totalRows = dataStartRow + aggregatedItems.length + 1;
             const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
 
-           // Row 0 – Title
+            // Row 0 – Title
             aoa[0][0] = companyName
                 ? `Items Sold Report  —  ${companyName}`
                 : 'Items Sold Report';

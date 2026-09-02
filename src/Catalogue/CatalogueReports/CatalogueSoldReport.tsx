@@ -398,7 +398,7 @@ const ItemsSoldReport: React.FC = () => {
             header: 'Item Name',
             accessor: 'name',
             sortKey: 'name',
-            className: 'font-medium'
+            className: 'font-medium whitespace-normal break-words max-w-[180px]'
         },
         {
             header: 'Category',
@@ -484,9 +484,9 @@ const ItemsSoldReport: React.FC = () => {
             doc.setTextColor(17, 24, 39);
             doc.setFont('helvetica', 'bold');
             const reportTitle = companyName
-    ? `Items Sold Report — ${companyName}`
-    : 'Items Sold Report';
-doc.text(reportTitle, 14, 24);
+                ? `Items Sold Report — ${companyName}`
+                : 'Items Sold Report';
+            doc.text(reportTitle, 14, 24);
 
             // ===== SUBTITLE =====
             doc.setFontSize(10);

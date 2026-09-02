@@ -1,168 +1,565 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { db } from '../lib/Firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
-import { FilterControls, FilterProvider } from '../Components/Filter';
-import ShowWrapper from '../context/ShowWrapper';
+import { FilterControls, FilterProvider, useFilter } from '../Components/Filter';
 import { Permissions } from '../enums';
 import { SiteItems } from '../routes/SiteRoutes';
 import { OrderTimeline } from '../Components/OrderTimeline';
-import { CompletedSalesCard } from '../Components/CatalougeSales'; // Assuming this is the correct path
+import { CompletedSalesCard } from '../Components/CatalougeSales';
 // import { RestockAlertsCard } from '../Components/RestockItems';
 import { TopSoldItemsCard } from '../Components/TopFiveOrder';
 import { OrderBarChartReport } from '../Components/OrderSalesGraph';
 import { IconChevronDown } from '../constants/Icons';
 import { FiRefreshCw, FiLoader } from 'react-icons/fi';
+import { fetchDashboardData, CACHE_DURATION } from '../lib/fetchDashboardData';
+import ShinyText from '../Components/ShinyText';
+import type { WithCacheMeta } from '../lib/fetchDashboardData';
+import NotificationBell from '../Components/NotificationBell';
+import { TutorialStep } from '../Components/TutorialStep';
+import useTutorial from '../Catalogue/hooks/useTutorial';
+import { completeTutorial } from '../Catalogue/hooks/useCompleteTutorial';
+import ShowWrapper from '../context/ShowWrapper';
+import { Cata_Permissions } from '../Catalogue/enum/cata_permissions.enum';
 
-// --- Custom Hook for Business Name ---
-const useBusinessName = (userId?: string, companyId?: string) => { // <-- FIX: Added companyId
+
+// ─── Shared Types ─────────────────────────────────────────────────────────────
+
+export interface TopItem {
+    id: string;
+    name: string;
+    totalQuantity: number;
+    totalAmount: number;
+}
+
+export interface ChartDataPoint {
+    date: string;
+    sales: number;
+    bills: number;
+}
+
+export interface CatalogueDashboardData {
+    totalSalesAmount: number;
+    totalSalesCount: number;
+    chartData: ChartDataPoint[];
+    topByQuantity: TopItem[];
+    topByAmount: TopItem[];
+    orderCounts: Record<string, number>;
+}
+
+// ─── Business Name Hook ───────────────────────────────────────────────────────
+
+const useBusinessName = (userId?: string, companyId?: string) => {
     const [businessName, setBusinessName] = useState<string>('');
     const [loading, setLoading] = useState(true);
+
     useEffect(() => {
-        // --- FIX: Wait for both userId AND companyId ---
-        if (!userId || !companyId) {
-            setLoading(false);
-            return;
-        }
+        // Wait for both userId and companyId to be available
+        if (!userId || !companyId) { setLoading(false); return; }
+
         const fetchBusinessInfo = async () => {
             try {
-                // --- FIX: Use the correct multi-tenant path ---
-                // (Assumes business_info doc ID is the companyId, as set in your Cloud Function)
                 const docRef = doc(db, 'companies', companyId, 'business_info', companyId);
                 const docSnap = await getDoc(docRef);
                 setBusinessName(docSnap.exists() ? docSnap.data().businessName || 'Business' : 'Business');
-            } catch (err) {
-                console.error("Error fetching business name:", err);
+            } catch {
+                setBusinessName('Business');
                 setBusinessName('Business');
             } finally {
                 setLoading(false);
             }
         };
+
         fetchBusinessInfo();
-    }, [userId, companyId]); // <-- FIX: Add companyId dependency
+    }, [userId, companyId]);
+
     return { businessName, loading };
 };
+const getSampleChartData = (): ChartDataPoint[] => {
+    const sales = [4200, 5600, 3100, 6800, 4900, 7200, 4700];
+    const bills = [10, 13, 8, 16, 12, 17, 8];
+    const today = new Date();
 
-const HomePage: React.FC = () => {
+    return sales.map((amount, i) => {
+        const d = new Date(today);
+        d.setDate(d.getDate() - (sales.length - 1 - i)); // last 7 days ending today
+        return {
+            date: d.toLocaleDateString('en-CA'), // matches YYYY-MM-DD key used elsewhere
+            sales: amount,
+            bills: bills[i],
+        };
+    });
+};
+const SAMPLE_CATALOGUE_DATA: CatalogueDashboardData = {
+    totalSalesAmount: 36500,
+    totalSalesCount: 84,
+    chartData: getSampleChartData(),
+    topByQuantity: [
+        { id: 'sample-1', name: 'Sample Item A', totalQuantity: 42, totalAmount: 8400 },
+        { id: 'sample-2', name: 'Sample Item B', totalQuantity: 31, totalAmount: 6200 },
+        { id: 'sample-3', name: 'Sample Item C', totalQuantity: 24, totalAmount: 4800 },
+        { id: 'sample-4', name: 'Sample Item D', totalQuantity: 18, totalAmount: 3600 },
+        { id: 'sample-5', name: 'Sample Item E', totalQuantity: 12, totalAmount: 2400 },
+    ],
+    topByAmount: [
+        { id: 'sample-1', name: 'Sample Item A', totalQuantity: 42, totalAmount: 8400 },
+        { id: 'sample-2', name: 'Sample Item B', totalQuantity: 31, totalAmount: 6200 },
+        { id: 'sample-3', name: 'Sample Item C', totalQuantity: 24, totalAmount: 4800 },
+        { id: 'sample-4', name: 'Sample Item D', totalQuantity: 18, totalAmount: 3600 },
+        { id: 'sample-5', name: 'Sample Item E', totalQuantity: 12, totalAmount: 2400 },
+    ],
+    orderCounts: {
+        Upcoming: 6,
+        Confirmed: 10,
+        Packed: 5,
+        Completed: 63,
+    },
+};
+
+// Total tutorial steps
+const TOTAL_STEPS = 7;
+
+// ─── Inner Dashboard Component ────────────────────────────────────────────────
+const HomePageContent: React.FC = () => {
     const location = useLocation();
     const { currentUser, loading: authLoading } = useAuth();
-    // --- FIX: Pass companyId to the hook ---
+    const { filters } = useFilter();
     const { businessName, loading: nameLoading } = useBusinessName(currentUser?.uid, currentUser?.companyId);
-    const hasCataloguePermission = currentUser?.permissions?.includes(Permissions.ViewCatalogue);
-    const [isDataVisible, setIsDataVisible] = useState<boolean>(false); // Default to visible
-    const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
-    const isLoading = authLoading || nameLoading;
-    const currentItem = SiteItems.find(item => item.to === location.pathname);
-    const currentLabel = currentItem ? currentItem.label : "Menu";
-    const [lastUpdated, setLastUpdated] = useState<number>(Date.now());
-    const [isRefreshing, setIsRefreshing] = useState(false);
-    const [refreshKey, setRefreshKey] = useState(0);
-    // --- FIX: This class is no longer needed on the main container ---
-    // const dataVisibilityClass = isDataVisible ? '' : 'blur-sm select-none';
 
-    const handleRefresh = async () => {
-        if (isRefreshing) return;
-        setIsRefreshing(true);
-        setTimeout(() => {
-            setLastUpdated(Date.now());
-            setRefreshKey(prev => prev + 1);
-            setIsRefreshing(false);
-        }, 800);
+    const [tutorialStep, setTutorialStep] = useState(0);
+    const isTutorialActive = tutorialStep > 0 && tutorialStep <= TOTAL_STEPS;
+
+    // ─── Refs for autoscroll ──────────────────────────────────────────────────
+    const tutorialRefs = useRef<(HTMLElement | null)[]>([]);
+    const mainRef = useRef<HTMLElement | null>(null);
+
+    const setTutorialRef = (index: number) => (el: HTMLElement | null) => {
+        tutorialRefs.current[index] = el;
     };
-    
-    const formattedLastUpdated = new Date(lastUpdated).toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit'
-    });
+
+    useEffect(() => {
+        if (tutorialStep === 0) return;
+        const el = tutorialRefs.current[tutorialStep];
+        if (!el) return;
+        if (tutorialStep <= 2) return;
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, [tutorialStep]);
+    // ─────────────────────────────────────────────────────────────────────────
+
+    const next = (n: number) => setTutorialStep(n <= TOTAL_STEPS ? n : 0);
+    const skip = () => {
+        completeTutorial(currentUser, 'catalogueTutorialDone', setTutorialStep);
+    };
+
+    // Expiry date state and effect
+    const [expiryDate, setExpiryDate] = useState<any>(null);
+
+    useEffect(() => {
+        const fetchExpiry = async () => {
+            if (!currentUser?.companyId) return;
+            try {
+                const ref = doc(db, 'companies', currentUser.companyId);
+                const snap = await getDoc(ref);
+                if (snap.exists()) {
+                    setExpiryDate(snap.data().expiryDate);
+                }
+            } catch (e) {
+                console.error('Error fetching expiry date:', e);
+            }
+        };
+        fetchExpiry();
+    }, [currentUser?.companyId]);
+
+    const hasCataloguePermission = currentUser?.permissions?.includes(Permissions.ViewCatalogue);
+    const [isDataVisible, setIsDataVisible] = useState<boolean>(false);
+    const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
+    const currentItem = SiteItems.find(item => item.to === location.pathname);
+    const currentLabel = currentItem ? currentItem.label : 'Menu';
+    const isHeaderLoading = authLoading || nameLoading;
+
+    const [data, setData] = useState<WithCacheMeta<CatalogueDashboardData> | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    const sampleData = useMemo(
+    () => ({ ...SAMPLE_CATALOGUE_DATA, chartData: getSampleChartData() }),
+    [] 
+);
+const displayData = isTutorialActive ? sampleData : data;
+    const effectiveDataVisible = isTutorialActive ? true : isDataVisible;
+
+    const fetchData = useCallback(async (forceRefresh = false) => {
+        if (!currentUser?.companyId || !filters.startDate || !filters.endDate) {
+            setLoading(false);
+            return;
+        }
+        if (!forceRefresh) setLoading(true);
+        try {
+            const result = await fetchDashboardData<CatalogueDashboardData>({
+                companyId: currentUser.companyId,
+                startDate: filters.startDate,
+                endDate: filters.endDate,
+                cacheKey: `catalogue_cache_${currentUser.companyId}`,
+                forceRefresh,
+                transform: (snap, start, end) => {
+                    let totalSalesAmount = 0;
+                    let totalSalesCount = 0;
+                    const salesByDate: Record<string, { sales: number; bills: number }> = {};
+                    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                        salesByDate[d.toLocaleDateString('en-CA')] = { sales: 0, bills: 0 };
+                    }
+                    const itemStats = new Map<string, { name: string; totalQuantity: number; totalAmount: number }>();
+                    const orderCounts: Record<string, number> = {
+                        Upcoming: 0, Confirmed: 0, Packed: 0, Completed: 0,
+                    };
+
+                    snap.forEach(docSnap => {
+                        const o = docSnap.data();
+                        const status: string = o.status || 'Upcoming';
+                        const dateKey: string = (o.createdAt as Timestamp).toDate().toLocaleDateString('en-CA');
+
+                        // 1. Update order journey counts
+                        const timelineStatus = status === 'Paid' ? 'Completed' : status;
+                        if (timelineStatus in orderCounts) {
+                            orderCounts[timelineStatus] = (orderCounts[timelineStatus] || 0) + 1;
+                        }
+
+                        // 2. Calculate Total Sales Amount irrespective of status
+                        // Read the total exactly as it was saved on the order (checkout/edit
+                        // time), same as OrderCard — never recomputed from the company's
+                        // *current* tax settings, which can drift from what was true when the
+                        // bill was actually made.
+                        if (status === 'Upcoming') return;
+                        const effectiveAmount = Number(o.totalAmount) || Number(o.grandTotal) || 0;
+
+                        totalSalesAmount += effectiveAmount;
+                        totalSalesCount += 1;
+
+                        if (salesByDate[dateKey]) {
+                            salesByDate[dateKey].sales += effectiveAmount;
+                            salesByDate[dateKey].bills += 1;
+                        }
+
+                        // 3. Calculate Item Stats irrespective of status
+                        // Uses item.finalPrice as saved at checkout/edit time — the
+                        // tax-INCLUSIVE line total, matching the order's displayed total
+                        // (Order.totalAmount) and the "Completed Sales" figure above.
+                        if (Array.isArray(o.items)) {
+                            o.items.forEach((item: any) => {
+                                // Group by the stable catalog product id (itemId), not item.id —
+                                // items added to an order via the edit modal get a fresh random
+                                // item.id each time (see useOrderEditor.ts's addSelectedItemToOrder),
+                                // so keying by item.id alone was splitting one product's totals
+                                // across multiple entries instead of summing them.
+                                const key = item.itemId || item.id;
+                                if (!key || !item.name) return;
+                                const quantity = Number(item.quantity || 0);
+                                const finalPrice = Number(item.finalPrice ?? item.taxableAmount ?? 0);
+                                const cur = itemStats.get(key) || { name: item.name, totalQuantity: 0, totalAmount: 0 };
+                                itemStats.set(key, {
+                                    name: item.name,
+                                    totalQuantity: cur.totalQuantity + quantity,
+                                    totalAmount: cur.totalAmount + finalPrice,
+                                });
+                            });
+                        }
+                    });
+
+                    const chartData: ChartDataPoint[] = Object.entries(salesByDate).map(([date, v]) => ({
+                        date, sales: v.sales, bills: v.bills,
+                    }));
+                    const allItems: TopItem[] = Array.from(itemStats.entries()).map(([id, v]) => ({
+                        id,
+                        ...v,
+                        totalAmount: Math.round(v.totalAmount),
+                    }));
+                    const topByQuantity = [...allItems].sort((a, b) => b.totalQuantity - a.totalQuantity).slice(0, 5);
+                    const topByAmount = [...allItems].sort((a, b) => b.totalAmount - a.totalAmount).slice(0, 5);
+
+                    return { totalSalesAmount, totalSalesCount, chartData, topByQuantity, topByAmount, orderCounts };
+                },
+            });
+            setData(result);
+
+        } catch (e) {
+            console.error('Catalogue dashboard fetch error:', e);
+        } finally {
+            setLoading(false);
+        }
+    }, [currentUser, filters]);
+
+    useEffect(() => { fetchData(); }, [fetchData]);
+
+    useEffect(() => {
+        const interval = setInterval(() => fetchData(true), CACHE_DURATION);
+        return () => clearInterval(interval);
+    }, [fetchData]);
+
+    // Manual refresh: bypass cache and fetch latest data immediately
+    const handleRefresh = () => fetchData(true);
+
+    // Helper functions for expiry
+    const isExpiringSoon = (expiry: any) => {
+        if (!expiry) return false;
+        const d = expiry.toDate ? expiry.toDate() : new Date(expiry);
+        const diff = d.getTime() - new Date().getTime();
+        return diff > 0 && diff <= 7 * 24 * 60 * 60 * 1000;
+    };
+
+    const getDaysLeft = (expiry: any) => {
+        if (!expiry) return null;
+        const d = expiry.toDate ? expiry.toDate() : new Date(expiry);
+        const diff = d.getTime() - new Date().getTime();
+        if (diff <= 0) return 0;
+        return Math.ceil(diff / (1000 * 60 * 60 * 24));
+    };
+
+    const daysLeft = (getDaysLeft(expiryDate) ?? 0);
+    const soon = isExpiringSoon(expiryDate);
+    const isUrgent = daysLeft <= 2;
+
+    // Format the last-updated timestamp for display in the header
+    const formattedLastUpdated = useMemo(() => {
+        if (!data?.lastUpdated) return 'Never';
+        return new Date(data.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }, [data]);
+    useTutorial(currentUser, setTutorialStep, 'catalogueTutorialDone');
+
+    useEffect(() => {
+        const checkTutorial = async () => {
+            if (!currentUser?.companyId) return;
+            const docRef = doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial');
+            const snap = await getDoc(docRef);
+            const done = snap.exists() && snap.data()?.catalogueTutorialDone;
+            if (!done) setTutorialStep(1);
+        };
+        checkTutorial();
+    }, [currentUser]);
 
     return (
-        <FilterProvider>
-            <div className="flex min-h-screen w-full flex-col bg-gray-100 mb-16">
+        <div className="flex min-h-screen w-full flex-col bg-gray-100 mb-16">
 
-                {/* === HEADER === */}
-                <header className="flex flex-shrink-0 items-center justify-between border-b border-slate-300 bg-gray-100 p-2 ">
+            {soon && (
+                <div className={`w-full text-center py-2 text-sm font-bold text-white shadow-sm transition-colors duration-300 ${isUrgent ? 'bg-red-300' : 'bg-amber-200'}`}>
+                    <ShinyText
+                        text={` Subscription expires ${daysLeft} day${daysLeft === 1 ? '' : 's'}.`}
+                        speed={4}
+                        delay={0}
+                        color="#030303"
+                        shineColor="#faf5f5"
+                        spread={100}
+                        direction="left"
+                        yoyo={false}
+                        pauseOnHover={false}
+                        disabled={false}
+                    />
+                    <Link to="/subscription" className="text-black ml-2 underline hover:text-gray-100">Renew Now</Link>
+                </div>
+            )}
 
-                    {/* Left Path Dropdown */}
-                    <div className="relative flex justify-start">
-                        <button disabled={!hasCataloguePermission} onClick={() => setIsMenuOpen(!isMenuOpen)} className={`flex min-w-28 items-center justify-between gap-2 rounded-sm border border-slate-400 p-2 text-sm font-medium text-slate-700 transition-colors whitespace-nowrap ${!hasCataloguePermission ? 'opacity-50 cursor-not-allowed bg-gray-100' : 'hover:bg-slate-200 cursor-pointer'}`}>
+            {/* ── Header ──────────────────────────────────────────────────── */}
+            <header className="flex flex-shrink-0 items-center justify-between border-b border-slate-300 bg-gray-100 p-2">
+
+                {/* Left: page navigation dropdown */}
+                <TutorialStep step={1} currentStep={tutorialStep} text="Use this menu to switch between POS and Catalogue views." onNext={() => next(2)} onSkip={skip} mobileArrowAlign="left">
+                    <div ref={setTutorialRef(1)} className="relative flex justify-start">
+                        <button
+                            disabled={!hasCataloguePermission}
+                            onClick={() => setIsMenuOpen(!isMenuOpen)}
+                            className={`flex min-w-20 items-center justify-between rounded-sm border border-slate-400 p-2 text-sm font-medium text-slate-700 transition-colors whitespace-nowrap
+                            ${!hasCataloguePermission ? 'opacity-50 cursor-not-allowed bg-gray-100' : 'hover:bg-slate-200 cursor-pointer'}`}
+                        >
                             <span className="font-medium">{currentLabel}</span>
                             <IconChevronDown width={16} height={16} className={`transition-transform ${isMenuOpen ? 'rotate-180' : 'rotate-0'}`} />
                         </button>
+
                         {isMenuOpen && hasCataloguePermission && (
                             <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-slate-300 rounded-md shadow-lg z-10">
                                 <ul className="py-1">
                                     {SiteItems.map(({ to, label }) => (
-                                        <li key={to}><Link to={to} onClick={() => setIsMenuOpen(false)} className={`flex w-full items-center gap-3 px-4 py-2 text-sm font-medium ${location.pathname === to ? 'bg-gray-500 text-white' : 'text-slate-700 hover:bg-gray-100'}`}>{label}</Link></li>
+                                        <li key={to}>
+                                            <Link
+                                                to={to}
+                                                onClick={() => setIsMenuOpen(false)}
+                                                className={`flex w-full items-center gap-3 px-4 py-2 text-sm font-medium
+                                                ${location.pathname === to ? 'bg-gray-500 text-white' : 'text-slate-700 hover:bg-gray-100'}`}
+                                            >
+                                                {label}
+                                            </Link>
+                                        </li>
                                     ))}
                                 </ul>
                             </div>
                         )}
                     </div>
+                </TutorialStep>
 
-                    {/* Center Title */}
-                    <div className="flex-1 text-center">
-                        <h1 className="text-2xl font-bold text-slate-800">Dashboard</h1>
-                        <p className="text-sm text-slate-500">{isLoading ? 'Loading...' : businessName}</p>
-                    </div>
+                {/* Center: dashboard title and business name */}
+                <div className="flex-1 text-center flex flex-col items-center justify-center">
+                    <h1 className="text-2xl font-bold text-slate-800">Dashboard</h1>
+                    <p className="text-sm text-slate-500">{isHeaderLoading ? '...' : businessName}</p>
+                </div>
 
-                    {/* Right-side Show/Hide Button */}
-                    <div className="w-14 flex justify-end">
-                        <ShowWrapper requiredPermission={Permissions.ViewSalescard}>
+                {/* Right: Notification bell + toggle button */}
+                <div className="w-28 flex justify-end items-center gap-2">
+                    <ShowWrapper requiredPermission={Cata_Permissions.ViewNotification}>
+                        <div className="border border-slate-300 rounded-sm bg-gray-100 shadow-sm">
+                            <NotificationBell />
+                        </div>
+                    </ShowWrapper>
+                    <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueHidebutton}>
+                        <TutorialStep step={2} currentStep={tutorialStep} text="Toggle this to show or hide sensitive sales figures." onNext={() => next(3)} onSkip={skip}>
                             <button
                                 onClick={() => setIsDataVisible(!isDataVisible)}
                                 className="p-2 rounded-sm border border-slate-400 hover:bg-slate-200 transition-colors"
                                 title={isDataVisible ? 'Hide Data' : 'Show Data'}
                             >
                                 {isDataVisible ? (
+                                    // Eye open — data is currently visible
                                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></svg>
                                 ) : (
+                                    // Eye closed — data is currently hidden
                                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" /><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" /><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" /><line x1="2" x2="22" y1="2" y2="22" /></svg>
                                 )}
                             </button>
-                        </ShowWrapper>
-                    </div>
-                </header>
+                        </TutorialStep>
+                    </ShowWrapper>
+                </div>
+            </header>
 
-                {/* === MAIN CONTENT === */}
-                <main className="flex-grow overflow-y-auto p-2">
+            {/* ── Main Content ─────────────────────────────────────────────── */}
+            <main ref={mainRef} className="flex-grow overflow-y-auto p-2">
+
+                {/* Refresh bar: shows when data was last fetched + manual refresh button */}
+                <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueFilter}>
                     <div className="flex justify-center gap-2 mb-2">
                         <p className="text-sm text-slate-500 flex items-center">
                             Last Updated: {formattedLastUpdated}
                         </p>
-
                         <button
                             onClick={handleRefresh}
-                            className={`p-1 rounded-full hover:bg-slate-200 text-slate-600 transition-all ${isRefreshing ? 'animate-spin' : ''
-                                }`}
+                            className={`p-1 rounded-full hover:bg-slate-200 text-slate-600 transition-all ${loading ? 'animate-spin' : ''}`}
                         >
-                            {isRefreshing ? <FiLoader size={14} /> : <FiRefreshCw size={14} />}
+                            {loading ? <FiLoader size={14} /> : <FiRefreshCw size={14} />}
                         </button>
                     </div>
-                    <div key={refreshKey} className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                        <FilterControls key={refreshKey} />
-                        <CompletedSalesCard key={refreshKey} isDataVisible={isDataVisible} />
-                        <OrderTimeline key={refreshKey} isDataVisible={isDataVisible} />
-                        <OrderBarChartReport key={refreshKey} isDataVisible={isDataVisible} />
-                        <TopSoldItemsCard key={refreshKey} isDataVisible={isDataVisible} />
-                        {/* <RestockAlertsCard/>     */}
-                        <div className="relative rounded-xl border border-gray-200 bg-white p-4 shadow-sm opacity-70 cursor-not-allowed flex items-center justify-center min-h-[160px]">
+                </ShowWrapper>
 
-                            <span className="absolute top-2 right-2 text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">
-                                Coming Soon
-                            </span>
+                <div className="mx-auto max-w-7xl relative">
 
-                            <div className="text-center">
-                                <h3 className="text-lg font-semibold text-gray-500">Restock Alerts</h3>
-                                <p className="text-sm text-gray-400">Feature under development</p>
+                    {/* Date Filter — matches POS (mb-2 inside max-w-7xl) */}
+                    <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueFilter}>
+
+                        <TutorialStep step={3} currentStep={tutorialStep} text="Use these filters to select the date range for your dashboard data." onNext={() => next(4)} onSkip={skip}>
+                            <div ref={setTutorialRef(3)} className="mb-2">
+                                <FilterControls />
+                            </div>
+                        </TutorialStep>
+                    </ShowWrapper>
+                    {/* Full-page loader shown only on the very first load */}
+                    {(loading && !data && !isTutorialActive) ? (
+                        <div className="flex h-64 items-center justify-center text-slate-500">
+                            <FiLoader className="animate-spin mr-2" /> Loading Dashboard...
+                        </div>
+                    ) : (
+                        <div className="flex flex-col gap-2">
+
+                            {/* ── Row 1+2: Completed Sales + Order Journey — side by side ── */}
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueSalesbarchart}>
+                                    <TutorialStep step={4} currentStep={tutorialStep} text="This shows your total completed sales for the selected period." onNext={() => next(5)} onSkip={skip}>
+                                        <div ref={setTutorialRef(4)} className="h-full [&>*]:h-full">
+                                            <CompletedSalesCard
+                                                isDataVisible={effectiveDataVisible}
+                                                totalSalesAmount={displayData?.totalSalesAmount ?? 0}
+                                                totalSalesCount={displayData?.totalSalesCount ?? 0}
+                                                loading={loading}
+                                            />
+                                        </div>
+                                    </TutorialStep>
+                                </ShowWrapper>
+                                <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueOrders}>
+                                    <TutorialStep step={5} currentStep={tutorialStep} text="Track your order journey from upcoming to completed." onNext={() => next(6)} onSkip={skip}>
+                                        <div ref={setTutorialRef(5)} className="h-full [&>*]:h-full">
+                                            <OrderTimeline
+                                                isDataVisible={effectiveDataVisible}
+                                                orderCounts={displayData?.orderCounts ?? {}}
+                                                loading={loading}
+                                            />
+                                        </div>
+                                    </TutorialStep>
+                                </ShowWrapper>
                             </div>
 
+                            {/* ── Row 3: Three equal columns ──────────────── */}
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueSalesbarchart}>
+                                    <TutorialStep step={6} currentStep={tutorialStep} text="This bar chart shows your order sales performance over the selected date range." onNext={() => next(7)} onSkip={skip}>
+                                        <div ref={setTutorialRef(6)} className="h-full [&>*]:h-full">
+                                            <OrderBarChartReport
+                                                isDataVisible={effectiveDataVisible}
+                                                chartData={displayData?.chartData ?? []}
+                                                totalSales={displayData?.totalSalesAmount ?? 0}
+                                                totalBills={displayData?.totalSalesCount ?? 0}
+                                                loading={loading}
+                                            />
+                                        </div>
+                                    </TutorialStep>
+                                </ShowWrapper>
+                                <TutorialStep
+                                    step={7}
+                                    currentStep={tutorialStep}
+                                    isLast={true}
+                                    text="See your top selling items by quantity and amount."
+                                    onNext={async () => {
+                                        if (!currentUser?.companyId) return;
+                                        await setDoc(
+                                            doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial'),
+                                            { catalogueTutorialDone: true },
+                                            { merge: true }
+                                        );
+                                        setTutorialStep(0);
+                                        window.dispatchEvent(new Event("catalogue_tutorial_done"));
+                                    }}
+                                    onSkip={skip}
+                                >
+                                    <ShowWrapper requiredPermission={Cata_Permissions.ViewTopSoldItems}>
+                                        <div ref={setTutorialRef(7)} className="h-full [&>*]:h-full">
+                                            <TopSoldItemsCard
+                                                isDataVisible={effectiveDataVisible}
+                                                topByQuantity={displayData?.topByQuantity ?? []}
+                                                topByAmount={displayData?.topByAmount ?? []}
+                                                loading={loading}
+                                            />
+                                        </div>
+                                    </ShowWrapper>
+                                </TutorialStep>
+
+                                {/* Coming Soon placeholder */}
+                                <div className="relative rounded-xl border border-gray-200 bg-white p-4 shadow-sm opacity-70 cursor-not-allowed flex items-center justify-center min-h-[160px]">
+                                    <span className="absolute top-2 right-2 text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">
+                                        Coming Soon
+                                    </span>
+                                    <div className="text-center">
+                                        <h3 className="text-lg font-semibold text-gray-500">Restock Alerts</h3>
+                                        <p className="text-sm text-gray-400">Feature under development</p>
+                                    </div>
+                                </div>
+
+                            </div>
                         </div>
-                    </div>
-                </main>
-            </div>
-        </FilterProvider>
+                    )}
+                </div>
+            </main>
+        </div>
     );
 };
+
+// FilterProvider wraps HomePageContent so that useFilter() works inside it.
+const HomePage: React.FC = () => (
+    <FilterProvider>
+        <HomePageContent />
+    </FilterProvider>
+);
 
 export default HomePage;

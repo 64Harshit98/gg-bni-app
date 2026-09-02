@@ -1,8 +1,12 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/auth-context';
+import { ROUTES } from '../../constants/indesx';
 
-const SUPER_ADMIN_UID = "1AKioGfop8PmHhry6uXOz8Rw6qT2";
+const SUPER_ADMIN_UIDS = [
+    "6vwZ1HRqX7VSnh5KP4JW0TKeuZm2",
+    "1AKioGfop8PmHhry6uXOz8Rw6qT2"
+];
 
 const tiles = [
     {
@@ -18,7 +22,7 @@ const tiles = [
         textClass: 'text-blue-600',
     },
     {
-        label: 'App Key Leads',
+        label: 'App Registration Leads',
         description: 'Track and manage leads generated through the Sellar app',
         route: '/leads',
         icon: (
@@ -42,7 +46,7 @@ const tiles = [
         textClass: 'text-yellow-600',
     },
     {
-        label: 'Support Tickets',
+        label: 'App Support Tickets',
         description: 'Manage open and closed support tickets from customers',
         route: '/super-admin/support',
         icon: (
@@ -53,6 +57,30 @@ const tiles = [
         iconClass: 'bg-red-50 text-red-500',
         textClass: 'text-red-500',
     },
+    {
+        label: 'Agents & Partners',
+        description: 'View and manage agent and partner accounts',
+        route: ROUTES.AGENT_DASHBOARD,
+        icon: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-7 h-7">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+            </svg>
+        ),
+        iconClass: 'bg-purple-50 text-purple-500',
+        textClass: 'text-purple-600',
+    },
+    {
+        label: 'Coupon Codes',
+        description: 'Create and manage subscription discount coupons',
+        route: ROUTES.SUPER_ADMIN_COUPONS,
+        icon: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-7 h-7">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 8.25H7.5a2.25 2.25 0 00-2.25 2.25v9a2.25 2.25 0 002.25 2.25h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25H15m0-3l-3-3m0 0l-3 3m3-3v11.25" />
+            </svg>
+        ),
+        iconClass: 'bg-teal-50 text-teal-600',
+        textClass: 'text-teal-600',
+    },
 
 ];
 
@@ -60,7 +88,7 @@ const SuperAdminHub: React.FC = () => {
     const { currentUser } = useAuth();
     const navigate = useNavigate();
 
-    if (currentUser?.uid !== SUPER_ADMIN_UID) {
+    if (!currentUser || !SUPER_ADMIN_UIDS.includes(currentUser.uid)) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gray-100">
                 <div className="text-center">
@@ -80,9 +108,6 @@ const SuperAdminHub: React.FC = () => {
                 <h1 className="flex-1 text-xl text-center font-bold text-gray-800 md:text-2xl">
                     Super Admin
                 </h1>
-                <span className="text-[10px] font-mono text-gray-400 bg-gray-200 px-2 py-1 rounded">
-                    {SUPER_ADMIN_UID.slice(0, 8)}...
-                </span>
             </div>
 
             {/* Section label */}

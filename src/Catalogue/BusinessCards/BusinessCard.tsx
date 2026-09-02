@@ -1,21 +1,77 @@
 import { useAuth } from "../../context/auth-context";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../../lib/Firebase";
 import { useEffect, useState, useRef } from "react";
 import { FiShare2, FiDownload } from "react-icons/fi"; // Download icon add kiya
 import { toPng } from 'html-to-image'; // Install this: npm install html-to-image
+import { sanitizeName } from "../utils/stringUtils";
 
+// ─── Compress uploaded card image (same logic as EditProfilePage) ───────────
+const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.src = URL.createObjectURL(file);
+
+        img.onload = () => {
+            const MAX_WIDTH = 800;
+            const MAX_HEIGHT = 450; // business card is landscape
+
+            let width = img.width;
+            let height = img.height;
+
+            if (width > height) {
+                if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
+            } else {
+                if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+
+            const ctx = canvas.getContext('2d');
+            if (!ctx) { reject(new Error("Canvas context failed")); return; }
+
+            ctx.drawImage(img, 0, 0, width, height);
+
+            // Convert to base64 string (JPEG, 60% quality) so we can store in localStorage
+            const base64 = canvas.toDataURL('image/jpeg', 0.6);
+            URL.revokeObjectURL(img.src);
+            resolve(base64);
+        };
+
+        img.onerror = (error) => { URL.revokeObjectURL(img.src); reject(error); };
+    });
+};
+
+// const STORAGE_KEY = "businessCard_uploadedCard";
 function BusinessCard() {
     const { currentUser } = useAuth();
     const [data, setData] = useState<any>(null);
     const [activeIndex, setActiveIndex] = useState(0);
     const [uploadedCard, setUploadedCard] = useState<string | null>(null);
+    const uploadedCardRef = useRef<HTMLDivElement>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
 
     // Cards ke liye references
     const cardRef1 = useRef<HTMLDivElement>(null);
     const cardRef2 = useRef<HTMLDivElement>(null);
 
+    useEffect(() => {
+        const fetchUploadedCard = async () => {
+            if (!currentUser?.companyId || !currentUser?.uid) return;
+            try {
+                const cardRef = doc(db, "companies", currentUser.companyId, "business_cards", currentUser.uid);
+                const cardSnap = await getDoc(cardRef);
+                if (cardSnap.exists()) {
+                    setUploadedCard(cardSnap.data().uploadedCard || null);
+                }
+            } catch (err) {
+                console.error("Error fetching uploaded card:", err);
+            }
+        };
+        fetchUploadedCard();
+    }, [currentUser?.companyId, currentUser?.uid]);
     const handleScroll = () => {
         if (scrollRef.current) {
             const scrollLeft = scrollRef.current.scrollLeft;
@@ -30,6 +86,8 @@ function BusinessCard() {
 
         const buttons = ref.current.querySelectorAll(".no-export");
 
+        const safeName = sanitizeName(name);
+
         try {
             // hide buttons
             buttons.forEach((el) => ((el as HTMLElement).style.display = "none"));
@@ -40,7 +98,7 @@ function BusinessCard() {
             });
 
             const link = document.createElement("a");
-            link.download = `${name}-business-card.png`;
+            link.download = `${safeName}-business-card.png`;
             link.href = dataUrl;
             link.click();
 
@@ -52,13 +110,69 @@ function BusinessCard() {
         }
     };
 
-    const handleUploadCard = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleUploadCard = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (!file) return;
-        const fileURL = URL.createObjectURL(file);
-        setUploadedCard(fileURL)
+        if (!file || !currentUser?.companyId || !currentUser?.uid) return;
+
+        const cardRef = doc(db, "companies", currentUser.companyId, "business_cards", currentUser.uid);
+
+        const saveCard = async (base64: string) => {
+            setUploadedCard(base64);
+            try {
+                await setDoc(cardRef, { uploadedCard: base64, updatedAt: new Date().toISOString() }, { merge: true });
+            } catch (err) {
+                console.error("Error saving uploaded card:", err);
+            }
+        };
+
+        try {
+            const compressed = await compressImage(file);
+            await saveCard(compressed);
+        } catch (err) {
+            console.error("Compression error:", err);
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const base64 = ev.target?.result as string;
+                saveCard(base64);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+    const downloadUploadedCard = () => {
+        if (!uploadedCard) return;
+        const link = document.createElement("a");
+        link.download = "my-business-card.jpg";
+        link.href = uploadedCard;
+        link.click();
     };
 
+    const handleShareUploadedCard = async () => {
+        if (!uploadedCard) return;
+        try {
+            const response = await fetch(uploadedCard);
+            const blob = await response.blob();
+            const file = new File([blob], "my-business-card.jpg", { type: 'image/jpeg' });
+
+            if (navigator.share && navigator.canShare({ files: [file] })) {
+                await navigator.share({ files: [file], title: "My Business Card" });
+            } else {
+                downloadUploadedCard();
+            }
+        } catch (err) {
+            console.error("Share error:", err);
+        }
+    };
+
+    const removeUploadedCard = async () => {
+        setUploadedCard(null);
+        if (!currentUser?.companyId || !currentUser?.uid) return;
+        try {
+            const cardRef = doc(db, "companies", currentUser.companyId, "business_cards", currentUser.uid);
+            await setDoc(cardRef, { uploadedCard: null }, { merge: true });
+        } catch (err) {
+            console.error("Error removing uploaded card:", err);
+        }
+    };
     useEffect(() => {
         const fetchBusinessCardData = async () => {
             if (!currentUser?.uid || !currentUser?.companyId) return;
@@ -85,11 +199,45 @@ function BusinessCard() {
         fetchBusinessCardData();
     }, [currentUser]);
 
-    const handleShare = async () => {
-        if (navigator.share) {
-            try { await navigator.share({ title: data.companyName, url: window.location.href }); }
-            catch (e) { console.log(e); }
-        } else { navigator.clipboard.writeText(window.location.href); alert("Link Copied!"); }
+    const handleShare = async (ref: React.RefObject<HTMLDivElement | null>, name: string) => {
+        if (!ref.current) return;
+
+        const buttons = ref.current.querySelectorAll(".no-export");
+        const safeName = sanitizeName(name);
+
+        try {
+            // Hide buttons
+            buttons.forEach((el) => ((el as HTMLElement).style.display = "none"));
+
+            const dataUrl = await toPng(ref.current, {
+                cacheBust: true,
+                pixelRatio: 3
+            });
+
+            // Convert base64 to blob
+            const response = await fetch(dataUrl);
+            const blob = await response.blob();
+            const file = new File([blob], `${safeName}-business-card.png`, { type: 'image/png' });
+
+            if (navigator.share && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                    files: [file],
+                    title: `${data.companyName} - Business Card`,
+                });
+            } else {
+                // Fallback: download the image
+                const link = document.createElement("a");
+                link.download = `${safeName}-business-card.png`;
+                link.href = dataUrl;
+                link.click();
+                alert("Card downloaded!");
+            }
+        } catch (err) {
+            console.error("Share error:", err);
+        } finally {
+            // Show buttons again
+            buttons.forEach((el) => ((el as HTMLElement).style.display = "flex"));
+        }
     };
 
     if (!data) return <div className="p-4 text-[10px]">Loading...</div>;
@@ -113,124 +261,173 @@ function BusinessCard() {
                 onScroll={handleScroll}
                 className="flex flex-nowrap overflow-x-auto gap-4 p-4 pb-8 md:pb-4 snap-x snap-mandatory md:snap-none scrollbar-hide"
             >
-                {/* ================= DESIGN 1 ================= */}
+                {/* ================= DESIGN 1 (FIXED) ================= */}
                 <div ref={cardRef1} className="relative flex-shrink-0 w-[280px] h-[155px] flex rounded shadow-md overflow-hidden bg-white border border-gray-200 snap-center">
                     <div className="absolute top-1.5 right-1.5 flex gap-1 z-20 no-export">
-                        <button onClick={() => downloadCard(cardRef1, 'design1')} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
+                        <button onClick={() => downloadCard(cardRef1, formatName(data.personName))} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
                             <FiDownload size={10} />
                         </button>
-                        <button onClick={handleShare} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
+                        <button onClick={() => handleShare(cardRef1, formatName(data.personName))} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
                             <FiShare2 size={10} />
                         </button>
                     </div>
 
-                    <div className="w-[60%] bg-[#00425A] text-white p-3 flex flex-col justify-center">
-                        <h2 className="text-xs font-bold uppercase truncate">{formatName(data.personName)}</h2>
-                        <p className="text-[7px] mb-2 opacity-80">{data.role}</p>
-                        <div className="space-y-0.5 text-[7px] opacity-90 italic font-light">
-                            <p className="">📍 {data.address}</p>
-                            <p>📞 {data.phone}</p>
-                            <p className="truncate">✉️ {data.email}</p>
+                    {/* Left panel */}
+                    <div className="w-[58%] bg-[#00425A] text-white p-3 flex flex-col justify-between h-full">
+                        <div>
+                            <h2 className="text-[11px] font-bold uppercase tracking-wide truncate leading-tight">
+                                {formatName(data.personName)}
+                            </h2>
+                            <p className="text-[8px] opacity-75 mt-0.5 truncate">{data.role}</p>
+                        </div>
+                        <div className="space-y-[3px] text-[8px] opacity-90 font-light">
+                            {/* Address */}
+                            <div className="flex items-center gap-1 overflow-hidden">
+                                <svg className="shrink-0" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
+                                    <circle cx="12" cy="9" r="2.5" />
+                                </svg>
+                                <span className="line-clamp-2 leading-tight">{data.address}</span>
+                            </div>
+                            {/* Phone */}
+                            <div className="flex items-center gap-1">
+                                <svg className="shrink-0" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.12 1.18 2 2 0 012.1 0h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 14.92v2z" />
+                                </svg>
+                                <span>{data.phone}</span>
+                            </div>
+                            {/* Email */}
+                            <div className="flex items-center gap-1 overflow-hidden">
+                                <svg className="shrink-0" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                                    <polyline points="22,6 12,13 2,6" />
+                                </svg>
+                                <span className="truncate">{data.email}</span>
+                            </div>
                         </div>
                     </div>
-                    <div className="w-[40%] flex flex-col items-center justify-center p-2 text-center bg-white">
+
+                    {/* Right panel */}
+                    <div className="w-[42%] flex flex-col items-center justify-center p-3 text-center bg-white">
                         <div className="w-7 h-7 border border-blue-900 rounded-full flex items-center justify-center mb-1 text-[10px]">✈️</div>
-                        <h3 className="font-bold text-[7px] text-[#00425A] uppercase leading-tight">{data.companyName}</h3>
-                        <p className="text-[5px] text-gray-400 uppercase leading-tight">{data.tagline}</p>
+                        <h3 className="font-bold text-[8px] text-[#00425A] uppercase leading-tight line-clamp-2 px-1">
+                            {data.companyName}
+                        </h3>
+                        <p className="text-[6.5px] text-gray-400 uppercase leading-tight mt-0.5 truncate w-full px-1">
+                            {data.tagline}
+                        </p>
                     </div>
                 </div>
 
-                {/* ================= DESIGN 2 ================= */}
-                <div ref={cardRef2} className="relative flex-shrink-0 w-[280px] h-[155px] flex flex-col rounded-sm shadow-lg overflow-hidden bg-white border border-gray-100 snap-center p-4">
-                    <div className="absolute top-2 right-2 flex gap-1 z-20 mt-1 no-export">
-                        <button onClick={() => downloadCard(cardRef2, 'design2')} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
+                {/* ================= DESIGN 2 (FIXED) ================= */}
+                <div ref={cardRef2} className="relative flex-shrink-0 w-[280px] h-[155px] flex flex-col rounded-sm shadow-lg overflow-hidden bg-white border border-gray-100 snap-center p-3">
+                    <div className="absolute top-1.5 right-1.5 flex gap-1 z-20 no-export">
+                        <button onClick={() => downloadCard(cardRef2, formatName(data.personName))} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
                             <FiDownload size={10} />
                         </button>
-                        <button onClick={handleShare} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
+                        <button onClick={() => handleShare(cardRef2, formatName(data.personName))} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
                             <FiShare2 size={10} />
                         </button>
                     </div>
 
-                    <div className="flex justify-between items-center w-full mb-1">
-                        <div className="flex items-center gap-2">
-                            <div className="flex flex-col">
-                                <h3 className="font-extrabold text-[8px] uppercase tracking-wider text-gray-800 leading-none">{data.companyName}</h3>
-                                <p className="text-[5px] text-gray-400 font-medium uppercase tracking-tighter">{data.tagline}</p>
-                            </div>
+                    {/* Header row */}
+                    <div className="flex justify-between items-start w-full mb-1">
+                        <div className="flex flex-col min-w-0 flex-1 pr-2">
+                            <h3 className="font-extrabold text-[8.5px] uppercase tracking-wider text-gray-800 leading-none truncate">
+                                {data.companyName}
+                            </h3>
+                            <p className="text-[6.5px] text-gray-400 font-medium uppercase tracking-tighter mt-0.5 truncate">
+                                {data.tagline}
+                            </p>
                         </div>
-                        <div className="flex items-center gap-2 pr-12"> {/* Space for buttons */}
-                            <span className="text-[6px] font-black bg-[#00425A] text-white px-2 py-1 rounded-full uppercase tracking-widest shadow-sm">
-                                {data.role}
-                            </span>
+                        {/* Role badge — flex-shrink-0 prevents overlap with buttons */}
+                        <span className="flex-shrink-0 text-[7px] font-black bg-[#00425A] text-white px-2 py-0.5 rounded-full uppercase tracking-widest mr-14 whitespace-nowrap">
+                            {data.role.length > 12 ? data.role.slice(0, 12) + "…" : data.role}
+                        </span>
+                    </div>
+
+                    {/* Center — name */}
+                    <div className="flex-1 flex flex-col items-center justify-center border-y border-gray-50 py-1.5 min-h-0">
+                        <h2 className="text-[14px] font-black uppercase italic tracking-tight text-gray-900 leading-none truncate max-w-full px-2">
+                            {formatName(data.personName)}
+                        </h2>
+                        <div className="h-0.5 w-7 bg-orange-400 mt-1.5 rounded-sm"></div>
+                        <div className="flex items-center gap-1 mt-1 overflow-hidden max-w-full px-2">
+                            <svg className="shrink-0" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2">
+                                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                                <polyline points="22,6 12,13 2,6" />
+                            </svg>
+                            <span className="text-[8px] text-gray-600 truncate">{data.email}</span>
                         </div>
                     </div>
 
-                    <div className="flex-1 flex flex-col items-center justify-center border-y border-gray-50 my-2 py-2">
-                        <h2 className="text-xl font-black uppercase italic tracking-tight text-gray-900 leading-none">{formatName(data.personName)}</h2>
-                        <div className="h-0.5 w-8 bg-orange-400 mt-2 rounded-sm"></div>
-                        <div className="flex items-center gap-1.5 mt-1">
-                            <span className="text-[7px]">{data.email}</span>
-                        </div>
-                    </div>
-
-                    <div className="mt-auto">
-                        <div className="flex items-center justify-between text-[7px] font-semibold text-gray-600 px-1 mb-1.5 gap-1.5">
-                            <div className="h-3 w-[1px] bg-gray-200"></div>
-                            <div className="flex items-center gap-1.5">
-                                <span className="text-orange-500">📞</span>
-                                <span>{data.phone}</span>
-                            </div>
-                            <div className="h-3 w-[1px] bg-gray-200"></div>
-                            <div className="flex items-center">
-                                <span className="text-orange-500">📍</span>
-                                <span className="">{data.address}</span>
-                            </div>
+                    {/* Footer row */}
+                    <div className="mt-auto pt-1.5">
+                        <div className="flex items-start gap-2 text-[8px] font-medium text-gray-600 overflow-hidden">
+                            <svg className="shrink-0" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2.5">
+                                <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.12 1.18 2 2 0 012.1 0h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 14.92v2z" />
+                            </svg>
+                            <span className="whitespace-nowrap">{data.phone}</span>
+                            <div className="h-3 w-[1px] bg-gray-200 shrink-0"></div>
+                            <svg className="shrink-0" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2.5">
+                                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
+                                <circle cx="12" cy="9" r="2.5" />
+                            </svg>
+                            <span className="line-clamp-2 leading-tight">{data.address}</span>
                         </div>
                     </div>
                 </div>
 
                 {/* ================= DESIGN 3 (UPLOAD CARD) ================= */}
-                <div className="relative flex-shrink-0 w-[280px] h-[155px] flex flex-col items-center justify-center rounded-sm shadow-lg overflow-hidden bg-white border border-dashed border-gray-300 snap-center p-4">
+                <div
+                    ref={uploadedCardRef}
+                    className="relative flex-shrink-0 w-[280px] h-[155px] flex flex-col items-center justify-center rounded-sm shadow-lg overflow-hidden bg-white border border-dashed border-gray-300 snap-center p-4"
+                >
 
                     {!uploadedCard ? (
-                        <>
-                            <label className="flex flex-col items-center justify-center cursor-pointer text-center">
-                                <div className="text-gray-400 text-xs font-semibold mb-2">
-                                    Upload Your Business Card
-                                </div>
-
-                                <div className="px-3 py-1 bg-blue-600 text-white text-[10px] rounded">
-                                    Upload Card
-                                </div>
-
-                                <input
-                                    type="file"
-                                    accept="image/png, image/jpeg, image/jpg, image/webp"
-                                    className="hidden"
-                                    onChange={handleUploadCard}
-                                />
-                            </label>
-                        </>
+                        <label className="flex flex-col items-center justify-center cursor-pointer text-center">
+                            <div className="text-gray-400 text-xs font-semibold mb-2">
+                                Upload Your Business Card
+                            </div>
+                            <div className="px-3 py-1 bg-blue-600 text-white text-[10px] rounded">
+                                Upload Card
+                            </div>
+                            <input
+                                type="file"
+                                accept="image/png, image/jpeg, image/jpg, image/webp"
+                                className="hidden"
+                                onChange={handleUploadCard}
+                            />
+                        </label>
                     ) : (
                         <>
                             {/* Preview */}
-                                <img
-                                    src={uploadedCard}
-                                    alt="Uploaded card"
-                                    className="w-full h-full object-contain rounded"
-                                />
-                            {/* Buttons */}
+                            <img
+                                src={uploadedCard}
+                                alt="Uploaded card"
+                                className="w-full h-full object-contain rounded"
+                            />
+
+                            {/* Action buttons — same layout as Design 1 & 2 */}
                             <div className="absolute top-1.5 right-1.5 flex gap-1 z-20 no-export">
-                                <a
-                                    href={uploadedCard}
-                                    download="my-business-card"
+                                {/* Download */}
+                                <button
+                                    onClick={downloadUploadedCard}
                                     className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100"
                                 >
                                     <FiDownload size={10} />
-                                </a>
+                                </button>
 
+                                {/* Share */}
                                 <button
-                                    onClick={() => setUploadedCard(null)}
+                                    onClick={handleShareUploadedCard}
+                                    className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100"
+                                >
+                                    <FiShare2 size={10} />
+                                </button>
+                                {/* Remove / Replace */}
+                                <button
+                                    onClick={removeUploadedCard}
                                     className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100"
                                 >
                                     <svg

@@ -8,7 +8,9 @@ interface LeadPopUpProps {
     companyId?: string;
     companyName?: string;
     forceOpen?: boolean;
+    autoPopup?: boolean;
     onLeadSubmit?: () => void;
+    detailsOnly?: boolean;
 }
 
 const compressImage = (file: File, maxWidth = 1000, quality = 0.7): Promise<File> => {
@@ -57,7 +59,9 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
     companyId,
     companyName,
     forceOpen,
-    onLeadSubmit
+    // autoPopup = true,
+    onLeadSubmit,
+    detailsOnly = false,
 }) => {
     const [isVisible, setIsVisible] = useState(false);
     const [step, setStep] = useState(1); // 1: Form, 2: Success
@@ -69,35 +73,70 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
     useEffect(() => {
         const isFilled = localStorage.getItem("leadSubmitted");
 
-        // agar lead already filled hai → kabhi popup nahi
+        // If already submitted, never show
         if (isFilled === "true") {
             setIsVisible(false);
             return;
         }
 
-        // FORCE OPEN (add to cart case)
+        // Force open (add-to-cart / bulk button trigger)
         if (forceOpen) {
             setIsVisible(true);
             return;
         }
 
-        // normal auto popup
-        const timer = setTimeout(() => {
-            setIsVisible(true);
-        }, 5000);
-
-        return () => clearTimeout(timer);
+        setIsVisible(false);
     }, [forceOpen]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
         if (!companyId) return alert("Company not found");
-
+        if (formData.number.length !== 10) {
+            return alert("Please enter a valid 10-digit phone number");
+        }
         setLoading(true);
 
         try {
-            // Duplicate check
+            // ── DETAILS-ONLY MODE (no approval, just capture name+number) ──
+            if (detailsOnly) {
+                localStorage.setItem(
+                    "leadData",
+                    JSON.stringify({
+                        name: formData.name,
+                        number: formData.number,
+                    })
+                );
+                localStorage.setItem("leadSubmitted", "true");
+                onLeadSubmit?.();
+
+                // Update existing upcoming order with real name
+                try {
+                    const upcomingUserKey = localStorage.getItem("upcoming_user_key");
+                    if (upcomingUserKey && companyId) {
+                        const { doc, updateDoc } = await import("firebase/firestore");
+                        const orderRef = doc(
+                            db,
+                            "companies",
+                            companyId,
+                            "Orders",
+                            `upcoming_${upcomingUserKey}`
+                        );
+                        await updateDoc(orderRef, {
+                            userName: formData.name,
+                            userLoginPhone: formData.number,
+                        });
+                    }
+                } catch (err) {
+                    console.log("No upcoming order to update yet");
+                }
+
+                setStep(2);
+                setTimeout(() => setIsVisible(false), 2500);
+                return;
+            }
+
+            // ── APPROVAL MODE (existing full lead flow) ──
             const q = query(
                 collection(db, "companies", companyId, "AuthorizedUser"),
                 where("customerNumber", "==", formData.number)
@@ -136,7 +175,7 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
                 const storage = getStorage();
                 const storageRef = ref(
                     storage,
-                    `companies/companyId/AuthorizedUser/${Date.now()}_${cardFile.name}`
+                    `companies/${companyId}/AuthorizedUser/${Date.now()}_${cardFile.name}`
                 );
 
                 await uploadBytes(storageRef, cardFile);
@@ -164,7 +203,7 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
                 })
             );
             localStorage.setItem("leadSubmitted", "true");
-            onLeadSubmit?.(); // parent ko bolo lead fill ho gaya
+            onLeadSubmit?.();
 
             // EXISTING UPCOMING ORDER UPDATE KARO
             try {
@@ -231,7 +270,7 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
 
     return (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-            <div className="bg-white w-full max-w-md rounded-xs shadow-2xl overflow-hidden relative border-t-4 border-[#00A3E1]">
+            <div className="bg-white w-full max-w-md rounded-xs shadow-2xl overflow-hidden relative border-t-4 border-[#F97316] overflow-y-auto max-h-[90dvh]">
 
                 {/* Close Button */}
                 <button
@@ -246,14 +285,18 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
                 {step === 1 ? (
                     <div className="p-8">
 
-                        <p className="text-gray-500 text-lg mb-6 font-bold">Please share your details to get the best business deals.</p>
+                        <p className="text-gray-500 text-lg mb-6 font-bold">
+                            {detailsOnly
+                                ? "You're one step away! Enter your name and number to add items to your cart."
+                                : "Please share your details to get the best business deals."}
+                        </p>
 
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div>
                                 <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Your Name</label>
                                 <input
                                     required
-                                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xs focus:border-[#00A3E1] outline-none text-sm transition-all"
+                                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xs focus:border-[#F97316] outline-none text-sm transition-all"
                                     placeholder="Your name"
                                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                 />
@@ -267,7 +310,7 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
                                     required
                                     type="text" // 'tel' ya 'number' ki jagah 'text' use karenge control ke liye
                                     inputMode="numeric" // Mobile keyboard par sirf numbers dikhayega
-                                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xs focus:border-[#00A3E1] outline-none text-sm transition-all"
+                                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xs focus:border-[#F97316] outline-none text-sm transition-all"
                                     placeholder="10-digit mobile number"
                                     value={formData.number} // Value ko bind karna zaroori hai
                                     onChange={handleNumberChange}
@@ -275,64 +318,66 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
                             </div>
 
                             {/* Business Card Upload */}
-                            <div className="relative">
-                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">
-                                    Business Card
-                                </label>
-
-                                {/* Gallery/File picker */}
-                                <input
-                                    id="businessCardFile"
-                                    type="file"
-                                    accept="image/*"
-                                    onChange={handleCardUpload}
-                                    className="hidden"
-                                />
-
-                                {/* Camera capture */}
-                                <input
-                                    id="businessCardCamera"
-                                    type="file"
-                                    accept="image/*"
-                                    capture="environment"
-                                    onChange={handleCardUpload}
-                                    className="hidden"
-                                />
-
-                                {/* Custom buttons */}
-                                <div className="grid grid-cols-2 gap-2">
-
-                                    {/* Choose from gallery */}
-                                    <label
-                                        htmlFor="businessCardFile"
-                                        className="cursor-pointer flex items-center justify-center gap-2 py-3 text-[11px] font-bold text-slate-700 bg-gray-100 border border-gray-200 rounded-xs hover:bg-gray-200 active:scale-95 transition-all"
-                                    >
-                                        🖼 Choose File
+                            {!detailsOnly && (
+                                <div className="relative">
+                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">
+                                        Business Card
                                     </label>
+
+                                    {/* Gallery/File picker */}
+                                    <input
+                                        id="businessCardFile"
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={handleCardUpload}
+                                        className="hidden"
+                                    />
 
                                     {/* Camera capture */}
-                                    <label
-                                        htmlFor="businessCardCamera"
-                                        className="cursor-pointer flex items-center justify-center gap-2 py-3 text-[11px] font-bold text-white bg-[#00A3E1] rounded-xs hover:bg-[#1A3B5D] active:scale-95 transition-all"
-                                    >
-                                        📸 Click Photo
-                                    </label>
-                                </div>
+                                    <input
+                                        id="businessCardCamera"
+                                        type="file"
+                                        accept="image/*"
+                                        capture="environment"
+                                        onChange={handleCardUpload}
+                                        className="hidden"
+                                    />
 
-                                {/* Preview */}
-                                {cardPreview && (
-                                    <div className="mt-3 border rounded-xs p-2 bg-gray-50">
-                                        <img
-                                            src={cardPreview}
-                                            alt="Business Card Preview"
-                                            className="h-28 w-full object-contain"
-                                        />
+                                    {/* Custom buttons */}
+                                    <div className="grid grid-cols-2 gap-2">
+
+                                        {/* Choose from gallery */}
+                                        <label
+                                            htmlFor="businessCardFile"
+                                            className="cursor-pointer flex items-center justify-center gap-2 py-3 text-[11px] font-bold text-slate-700 bg-gray-100 border border-gray-200 rounded-xs hover:bg-gray-200 active:scale-95 transition-all"
+                                        >
+                                            🖼 Choose File
+                                        </label>
+
+                                        {/* Camera capture */}
+                                        <label
+                                            htmlFor="businessCardCamera"
+                                            className="cursor-pointer flex items-center justify-center gap-2 py-3 text-[11px] font-bold text-white bg-[#F97316] rounded-xs hover:bg-[#ea6c0a] active:scale-95 transition-all"
+                                        >
+                                            📸 Click Photo
+                                        </label>
                                     </div>
-                                )}
-                            </div>
+
+                                    {/* Preview */}
+                                    {cardPreview && (
+                                        <div className="mt-3 border rounded-xs p-2 bg-gray-50">
+                                            <img
+                                                src={cardPreview}
+                                                alt="Business Card Preview"
+                                                className="h-20 w-full object-contain"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                             <button
                                 disabled={loading}
-                                className={`w-full py-4 rounded-xs font-black text-xs uppercase tracking-widest text-white shadow-lg transition-all active:scale-95 ${loading ? 'bg-gray-300' : 'bg-[#00A3E1] hover:bg-[#1A3B5D]'}`}
+                                className={`w-full py-4 rounded-xs font-black text-xs uppercase tracking-widest text-white shadow-lg transition-all active:scale-95 ${loading ? 'bg-gray-300' : 'bg-[#F97316] hover:bg-[#ea6c0a]'}`}
                             >
                                 {loading ? 'Processing...' : 'Submit Details'}
                             </button>

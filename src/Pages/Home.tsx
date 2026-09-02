@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { collection, query, where, orderBy, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, doc, getDoc, setDoc, limit } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import { useAuth } from '../context/auth-context';
 import ShowWrapper from '../context/ShowWrapper';
@@ -16,7 +16,13 @@ import { TopSoldItemsCard } from '../Components/TopFiveItemCard';
 import { TopSalespersonCard } from '../Components/TopSalesCard';
 import { PaymentChart } from '../Components/PaymentChart';
 import { TopEntitiesList } from '../Components/TopFiveEntities';
+import { TutorialStep } from '../Components/TutorialStep';
 import ShinyText from '../Components/ShinyText';
+import NotificationBell from '../Components/NotificationBell';
+import { CACHE_DURATION } from '../lib/fetchDashboardData';
+import useTutorial from '../Catalogue/hooks/useTutorial';
+import { completeTutorial } from '../Catalogue/hooks/useCompleteTutorial';
+
 
 export interface SmartMetric { name: string; amount: number; quantity: number; }
 
@@ -24,7 +30,16 @@ interface DashboardData {
   totalSales: number;
   totalOrders: number;
   percentageChange: number;
-  salesByDate: { name: string; sales: number; previousSales: number; count: number }[];
+  salesByDate: {
+    name: string;
+    sales: number;
+    previousSales: number;
+    count: number;
+    qty?: number;
+    quantity?: number;
+    bills?: number;
+    Bills?: number;
+  }[];
   paymentMethods: SmartMetric[];
   topItems: SmartMetric[];
   topCustomers: SmartMetric[];
@@ -33,8 +48,6 @@ interface DashboardData {
   cacheStart?: string;
   cacheEnd?: string;
 }
-
-const CACHE_DURATION = 60 * 60 * 1000;
 
 const cleanString = (str: string) => {
   if (!str) return 'N/A';
@@ -55,7 +68,45 @@ const getSafeDate = (val: any): Date | null => {
   if (typeof val === 'string' || typeof val === 'number') return new Date(val);
   return null;
 };
-
+const SAMPLE_DASHBOARD_DATA: DashboardData = {
+  totalSales: 48250,
+  totalOrders: 132,
+  percentageChange: 12.4,
+  salesByDate: [
+    { name: '01/07', sales: 5200, previousSales: 0, count: 14, qty: 14, quantity: 14, bills: 14, Bills: 14 },
+    { name: '02/07', sales: 7100, previousSales: 0, count: 19, qty: 19, quantity: 19, bills: 19, Bills: 19 },
+    { name: '03/07', sales: 4300, previousSales: 0, count: 11, qty: 11, quantity: 11, bills: 11, Bills: 11 },
+    { name: '04/07', sales: 8900, previousSales: 0, count: 23, qty: 23, quantity: 23, bills: 23, Bills: 23 },
+    { name: '05/07', sales: 6400, previousSales: 0, count: 17, qty: 17, quantity: 17, bills: 17, Bills: 17 },
+    { name: '06/07', sales: 9800, previousSales: 0, count: 26, qty: 26, quantity: 26, bills: 26, Bills: 26 },
+    { name: '07/07', sales: 6550, previousSales: 0, count: 18, qty: 18, quantity: 18, bills: 18, Bills: 18 },
+  ],
+  paymentMethods: [
+    { name: 'Cash', amount: 21000, quantity: 58 },
+    { name: 'Card', amount: 15250, quantity: 41 },
+    { name: 'UPI', amount: 12000, quantity: 33 },
+  ],
+  topItems: [
+    { name: 'Sample Item A', amount: 9800, quantity: 45 },
+    { name: 'Sample Item B', amount: 7600, quantity: 32 },
+    { name: 'Sample Item C', amount: 6200, quantity: 28 },
+    { name: 'Sample Item D', amount: 5100, quantity: 21 },
+    { name: 'Sample Item E', amount: 4300, quantity: 18 },
+  ],
+  topCustomers: [
+    { name: 'Sample Customer 1', amount: 8200, quantity: 12 },
+    { name: 'Sample Customer 2', amount: 6900, quantity: 9 },
+    { name: 'Sample Customer 3', amount: 5400, quantity: 7 },
+    { name: 'Sample Customer 4', amount: 4100, quantity: 6 },
+    { name: 'Sample Customer 5', amount: 3300, quantity: 5 },
+  ],
+  topSalesmen: [
+    { name: 'Sample Salesperson 1', amount: 15200, quantity: 40 },
+    { name: 'Sample Salesperson 2', amount: 11800, quantity: 31 },
+    { name: 'Sample Salesperson 3', amount: 9400, quantity: 24 },
+  ],
+  lastUpdated: Date.now(),
+};
 const useBusinessName = () => {
   const [businessName, setBusinessName] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -75,6 +126,9 @@ const useBusinessName = () => {
   return { businessName, loading };
 };
 
+// Total tutorial steps
+const TOTAL_STEPS = 9;
+
 const DashboardContent = () => {
   const { currentUser } = useAuth();
   const { businessName, loading: nameLoading } = useBusinessName();
@@ -84,21 +138,52 @@ const DashboardContent = () => {
   const [loading, setLoading] = useState(true);
   const [isDataVisible, setIsDataVisible] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [tutorialStep, setTutorialStep] = useState(0);
   const location = useLocation();
 
-  const daysRemaining = useMemo(() => {
-    const subData = (currentUser as any)?.subscription || (currentUser as any)?.Subscription;
-    const rawDate = subData?.expiryDate;
-    if (!rawDate) return null;
-    const expiryDate = new Date((rawDate as any).toDate ? (rawDate as any).toDate() : rawDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    expiryDate.setHours(0, 0, 0, 0);
-    const diffTime = expiryDate.getTime() - today.getTime();
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  }, [currentUser]);
+  // ─── Refs for autoscroll ──────────────────────────────────────────────────
+  const tutorialRefs = useRef<(HTMLElement | null)[]>([]);
+  const mainRef = useRef<HTMLElement | null>(null);
 
-  const showBadge = daysRemaining !== null && daysRemaining <= 5 && daysRemaining >= 0;
+  const setTutorialRef = (index: number) => (el: HTMLElement | null) => {
+    tutorialRefs.current[index] = el;
+  };
+
+  useEffect(() => {
+    if (tutorialStep === 0) return;
+    const el = tutorialRefs.current[tutorialStep];
+    if (!el) return;
+    if (tutorialStep <= 2) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [tutorialStep]);
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const next = (n: number) => setTutorialStep(n <= TOTAL_STEPS ? n : 0);
+  const skip = () => {
+    completeTutorial(currentUser, 'dashboardTutorialDone', setTutorialStep);
+  };
+
+  const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
+
+  useEffect(() => {
+    const fetchExpiry = async () => {
+      if (!currentUser?.companyId) return;
+      const ref = doc(db, 'companies', currentUser.companyId);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const expiry = snap.data().expiryDate;
+        if (!expiry) return;
+        const d = expiry.toDate ? expiry.toDate() : new Date(expiry);
+        const diff = d.getTime() - new Date().getTime();
+        setDaysRemaining(Math.ceil(diff / (1000 * 60 * 60 * 24)));
+      }
+    };
+    fetchExpiry();
+  }, [currentUser?.companyId]);
+  const isTutorialActive = tutorialStep > 0 && tutorialStep <= TOTAL_STEPS;
+  const displayData = isTutorialActive ? SAMPLE_DASHBOARD_DATA : data;
+  const effectiveDataVisible = isTutorialActive ? true : isDataVisible;
+  const showBadge = daysRemaining !== null && daysRemaining <= 7 && daysRemaining >= 0;
   const isUrgent = daysRemaining !== null && daysRemaining <= 2;
   const hasCataloguePermission = currentUser?.permissions?.includes(Permissions.ViewCatalogue);
   const currentItem = SiteItems.find(item => item.to === location.pathname);
@@ -109,74 +194,76 @@ const DashboardContent = () => {
       setLoading(false);
       return;
     }
-
     if (!forceRefresh) setLoading(true);
-
-    const CACHE_KEY = `dashboard_cache_${currentUser.companyId}`;
-
+    const CACHE_KEY = `dashboard_cache_v2_${currentUser.companyId}`;
     try {
       const cached = localStorage.getItem(CACHE_KEY);
       if (!forceRefresh && cached) {
         const parsed = JSON.parse(cached);
         const isTimeValid = (Date.now() - parsed.lastUpdated < CACHE_DURATION);
         const isDateValid = parsed.cacheStart === filters.startDate && parsed.cacheEnd === filters.endDate;
-
-        if (isTimeValid && isDateValid) {
-          setData(parsed);
-          setLoading(false);
-          return;
-        }
+        if (isTimeValid && isDateValid) { setData(parsed); setLoading(false); return; }
       }
 
       const start = new Date(filters.startDate); start.setHours(0, 0, 0, 0);
       const end = new Date(filters.endDate); end.setHours(23, 59, 59, 999);
-
       const duration = end.getTime() - start.getTime();
       const prevEnd = new Date(start.getTime() - 1);
       const prevStart = new Date(prevEnd.getTime() - duration);
 
       const salesRef = collection(db, 'companies', currentUser.companyId, 'sales');
       const usersRef = collection(db, 'companies', currentUser.companyId, 'users');
-
-      const qSales = query(
-        salesRef,
-        where('createdAt', '>=', prevStart),
-        where('createdAt', '<=', end),
-        orderBy('createdAt', 'desc')
-      );
-
-      const [snapSales, snapUsers] = await Promise.all([
-        getDocs(qSales), getDocs(usersRef)
-      ]);
+      const qSales = query(salesRef, where('createdAt', '>=', prevStart), where('createdAt', '<=', end), orderBy('createdAt', 'desc'));
+      // Defensive cap — this is a staff roster (small in practice), but nothing
+      // previously bounded it against unbounded growth.
+      const qUsers = query(usersRef, limit(1000));
+      const [snapSales, snapUsers] = await Promise.all([getDocs(qSales), getDocs(qUsers)]);
 
       const currentSalesMap: Record<string, { amount: number, count: number }> = {};
       const paymentMap: Record<string, { amount: number, count: number }> = {};
-      const itemMap: Record<string, { amount: number, count: number }> = {};
+      const itemMap: Record<string, { amount: number, count: number, latestName: string }> = {};
       const customerMap: Record<string, { amount: number, count: number }> = {};
       const salesmanMap: Record<string, { amount: number, count: number }> = {};
+      let currentTotalSales = 0, currentOrderCount = 0, prevTotalSales = 0;
 
-      let currentTotalSales = 0;
-      let currentOrderCount = 0;
-      let prevTotalSales = 0;
-
-      const validSalesmen = new Set<string>();
+      const validSalesmen = new Map<string, string>();
       snapUsers.docs.forEach(doc => {
         const u = doc.data();
-        const role = (u.role || '').toLowerCase();
-        if (role === 'salesman') {
-          if (u.name) validSalesmen.add(u.name.toLowerCase().trim());
-        }
+        const role = String(u.role || '').toLowerCase().trim();
+        const isSalesRole =
+          role.includes('sales') ||
+          role === 'salesman' ||
+          role === 'sales person' ||
+          role === 'manager';
+        if (!isSalesRole) return;
+
+        // Grab the best available display name
+        const displayName = u.name || u.fullName || u.displayName || u.username || u.userName || 'Unknown Salesperson';
+
+        // Map the Document ID (the "gibberish") to the display name
+        validSalesmen.set(doc.id, displayName);
+
+        // Also map name variations just in case the sales doc stores names directly
+        const possibleNames = [
+          u.name,
+          u.fullName,
+          u.displayName,
+          u.username,
+          u.userName,
+        ]
+          .map((n: any) => String(n || '').trim().toLowerCase())
+          .filter(Boolean);
+
+        possibleNames.forEach((name: string) => validSalesmen.set(name, displayName));
       });
 
       snapSales.docs.forEach(doc => {
         const d = doc.data();
         const saleDate = getSafeDate(d.createdAt);
         if (!saleDate) return;
-
         const amount = parseNum(d.totalAmount || d.total || d.amount || d.grandTotal || 0);
         const offset = saleDate.getTimezoneOffset() * 60000;
         const dateKey = new Date(saleDate.getTime() - offset).toISOString().split('T')[0];
-
         if (!currentSalesMap[dateKey]) currentSalesMap[dateKey] = { amount: 0, count: 0 };
         currentSalesMap[dateKey].amount += amount;
         currentSalesMap[dateKey].count++;
@@ -184,70 +271,57 @@ const DashboardContent = () => {
         if (saleDate >= start && saleDate <= end) {
           currentTotalSales += amount;
           currentOrderCount++;
-
           if (d.paymentMethods && typeof d.paymentMethods === 'object') {
-            const methods = Object.entries(d.paymentMethods)
-              .map(([key, val]) => ({ key: cleanString(key), amt: parseNum(val) }))
-              .filter(m => m.amt > 0);
-
+            const methods = Object.entries(d.paymentMethods).map(([key, val]) => ({ key: cleanString(key), amt: parseNum(val) })).filter(m => m.amt > 0);
             if (methods.length > 0) {
               const totalTendered = methods.reduce((sum, m) => sum + m.amt, 0);
               let change = totalTendered > amount ? totalTendered - amount : 0;
-
               methods.forEach(m => {
                 let finalAmt = m.amt;
-                if (change > 0 && m.key.toLowerCase() === 'cash') {
-                  const deduct = Math.min(finalAmt, change);
-                  finalAmt -= deduct;
-                  change -= deduct;
-                }
-                if (change > 0) {
-                  const deduct = Math.min(finalAmt, change);
-                  finalAmt -= deduct;
-                  change -= deduct;
-                }
-                if (finalAmt > 0) {
-                  if (!paymentMap[m.key]) paymentMap[m.key] = { amount: 0, count: 0 };
-                  paymentMap[m.key].amount += finalAmt;
-                  paymentMap[m.key].count++;
-                }
+                if (change > 0 && m.key.toLowerCase() === 'cash') { const deduct = Math.min(finalAmt, change); finalAmt -= deduct; change -= deduct; }
+                if (change > 0) { const deduct = Math.min(finalAmt, change); finalAmt -= deduct; change -= deduct; }
+                if (finalAmt > 0) { if (!paymentMap[m.key]) paymentMap[m.key] = { amount: 0, count: 0 }; paymentMap[m.key].amount += finalAmt; paymentMap[m.key].count++; }
               });
             }
           }
-
           let cust = d.partyName || d.customerName || d.customer || 'N/A';
           if (typeof cust === 'object' && cust.name) cust = cust.name;
           if (!customerMap[cust]) customerMap[cust] = { amount: 0, count: 0 };
-          customerMap[cust].amount += amount;
-          customerMap[cust].count++;
+          customerMap[cust].amount += amount; customerMap[cust].count++;
 
-          let sm = d.salesmanName || d.salesman || 'Admin';
+          let sm = d.salesmanName || d.salesman || d.salesmanId || 'Admin';
           if (typeof sm === 'object' && sm.name) sm = sm.name;
-          if (!salesmanMap[sm]) salesmanMap[sm] = { amount: 0, count: 0 };
-          salesmanMap[sm].amount += amount;
-          salesmanMap[sm].count++;
+
+          const smStr = String(sm);
+          // Translate the ID (or Name) into the official Display Name
+          const resolvedName = validSalesmen.get(smStr) || validSalesmen.get(smStr.toLowerCase().trim());
+
+          // Strictly filter: Only track if they have the salesman role
+          if (resolvedName) {
+            if (!salesmanMap[resolvedName]) salesmanMap[resolvedName] = { amount: 0, count: 0 };
+            salesmanMap[resolvedName].amount += amount;
+            salesmanMap[resolvedName].count++;
+          }
 
           if (Array.isArray(d.items)) {
             d.items.forEach((item: any) => {
               const name = item.name || item.itemName;
-              if (name) {
-                const qty = parseNum(item.quantity || item.qty || 1);
-                let val = parseNum(item.finalPrice || item.totalAmount || item.total || item.amount);
-                if (val === 0) {
-                  const price = parseNum(item.mrp || item.price || item.rate || item.sellingPrice || 0);
-                  val = price * qty;
-                }
-                if (!itemMap[name]) itemMap[name] = { amount: 0, count: 0 };
-                itemMap[name].amount += val;
-                itemMap[name].count += qty;
-              }
+              if (!name) return;
+              // Group by normalized name, not item.id/itemId/sku — those fields
+              // aren't populated consistently across every entry path a line can
+              // be created from (catalog pick, quick-calculator, custom price),
+              // so grouping by id was splitting one product's units/amount
+              // across multiple map entries instead of summing them together.
+              const key = String(name).trim().toLowerCase();
+              const qty = parseNum(item.quantity || item.qty || 1);
+              let val = parseNum(item.finalPrice || item.totalAmount || item.total || item.amount);
+              if (val === 0) { const price = parseNum(item.mrp || item.price || item.rate || item.sellingPrice || 0); val = price * qty; }
+              if (!itemMap[key]) itemMap[key] = { amount: 0, count: 0, latestName: name };
+              itemMap[key].amount += val; itemMap[key].count += qty;
             });
           }
         }
-
-        if (saleDate >= prevStart && saleDate <= prevEnd) {
-          prevTotalSales += amount;
-        }
+        if (saleDate >= prevStart && saleDate <= prevEnd) prevTotalSales += amount;
       });
 
       let percentageChange = 0;
@@ -255,61 +329,50 @@ const DashboardContent = () => {
       else if (currentTotalSales > 0) percentageChange = 100;
 
       const chartData = [];
-      const itr = new Date(prevStart);
+
+      const itr = new Date(start);
+      itr.setDate(itr.getDate() - 1);
+
       while (itr <= end) {
         const offset = itr.getTimezoneOffset() * 60000;
         const key = new Date(itr.getTime() - offset).toISOString().split('T')[0];
         const label = itr.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
 
+        const countVal = currentSalesMap[key]?.count || 0;
+
         chartData.push({
           name: label,
           sales: currentSalesMap[key]?.amount || 0,
-          count: currentSalesMap[key]?.count || 0,
+          count: countVal,
+          // FIX 2: Pass all possible variations of the count key to ensure the chart reads it
+          quantity: countVal,
+          qty: countVal,
+          bills: countVal,
+          Bills: countVal,
           previousSales: 0
         });
 
         itr.setDate(itr.getDate() + 1);
       }
 
-      const toList = (map: any) => Object.entries(map)
-        .map(([name, v]: [string, any]) => ({ name, amount: v.amount, quantity: v.count }))
-        .sort((a, b) => b.amount - a.amount)
-        .slice(0, 5);
-
+      const toList = (map: any) => Object.entries(map).map(([key, v]: [string, any]) => ({ name: v.latestName ?? key, amount: v.amount, quantity: v.count })).sort((a, b) => b.amount - a.amount).slice(0, 5);
+      // Unlike toList(), this isn't sliced to 5 — TopSoldItemsCard needs the
+      // full set so it can independently pick its own top 5 by amount OR by
+      // quantity when the user toggles view. Slicing here first would lock
+      // the "Qty" view to whichever 5 items happened to lead by amount.
+      const toFullList = (map: any) => Object.entries(map).map(([key, v]: [string, any]) => ({ name: v.latestName ?? key, amount: v.amount, quantity: v.count }));
       const topSalesmen = Object.entries(salesmanMap)
-        .filter(([name]) => validSalesmen.has(name.toLowerCase().trim()))
         .map(([name, v]: [string, any]) => ({ name, amount: v.amount, quantity: v.count }))
         .sort((a, b) => b.amount - a.amount)
         .slice(0, 5);
 
-      const finalData = {
-        totalSales: currentTotalSales,
-        totalOrders: currentOrderCount,
-        percentageChange,
-        salesByDate: chartData,
-        paymentMethods: toList(paymentMap),
-        topItems: toList(itemMap),
-        topCustomers: toList(customerMap),
-        topSalesmen,
-        lastUpdated: Date.now(),
-        cacheStart: filters.startDate,
-        cacheEnd: filters.endDate
-      };
-
+      const finalData = { totalSales: currentTotalSales, totalOrders: currentOrderCount, percentageChange, salesByDate: chartData, paymentMethods: toList(paymentMap), topItems: toFullList(itemMap), topCustomers: toList(customerMap), topSalesmen, lastUpdated: Date.now(), cacheStart: filters.startDate, cacheEnd: filters.endDate };
       setData(finalData);
       localStorage.setItem(CACHE_KEY, JSON.stringify(finalData));
-
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e) { console.error(e); } finally { setLoading(false); }
   }, [currentUser, filters]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
+  useEffect(() => { fetchData(); }, [fetchData]);
   const handleRefresh = () => fetchData(true);
 
   const formattedLastUpdated = useMemo(() => {
@@ -317,58 +380,77 @@ const DashboardContent = () => {
     return new Date(data.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }, [data]);
 
-  // ONBOARDING TRIGGER
+  useTutorial(currentUser, setTutorialStep, 'dashboardTutorialDone');
+
+  useEffect(() => {
+    const checkTutorial = async () => {
+      if (!currentUser?.companyId) return;
+      const docRef = doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial');
+      const snap = await getDoc(docRef);
+      const done = snap.exists() && snap.data()?.dashboardTutorialDone;
+      if (!done) setTutorialStep(1);
+    };
+    checkTutorial();
+  }, [currentUser]);
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-100">
       {showBadge && (
         <div className={`w-full text-center py-2 text-sm font-bold text-white shadow-sm transition-colors duration-300 ${isUrgent ? 'bg-red-300' : 'bg-amber-200'}`}>
-          <ShinyText
-            text={`Subscription expires in ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}.`}
-            speed={4}
-            delay={0}
-            color="#030303"
-            shineColor="#faf5f5"
-            spread={100}
-            direction="left"
-            yoyo={false}
-            pauseOnHover={false}
-            disabled={false}
-          />
-          <Link to="/subscription" className=" text-black ml-2 underline hover:text-gray-100">Renew Now</Link>
+          <ShinyText text={`Subscription expires in ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}.`} speed={4} delay={0} color="#030303" shineColor="#faf5f5" spread={100} direction="left" yoyo={false} pauseOnHover={false} disabled={false} />
+          <Link to="/subscription" className="text-black ml-2 underline hover:text-gray-100">Renew Now</Link>
         </div>
       )}
 
       <header className="flex flex-shrink-0 items-center justify-between border-b border-slate-300 bg-gray-100 p-2">
-        <div className="relative w-14 flex justify-start">
-          <button disabled={!hasCataloguePermission} onClick={() => setIsMenuOpen(!isMenuOpen)} className={`flex min-w-20 items-center justify-between gap-2 rounded-sm border border-slate-400 p-2 text-sm font-medium text-slate-700 transition-colors ${!hasCataloguePermission ? 'opacity-50 cursor-not-allowed bg-gray-100' : 'hover:bg-slate-200 cursor-pointer'}`}>
-            <span className="font-medium">{currentLabel}</span>
-            <IconChevronDown width={16} height={16} className={`transition-transform ${isMenuOpen ? 'rotate-180' : 'rotate-0'}`} />
-          </button>
-          {isMenuOpen && hasCataloguePermission && (
-            <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-slate-300 rounded-md shadow-lg z-10">
-              <ul className="py-1">
-                {SiteItems.map(({ to, label }) => (
-                  <li key={to}><Link to={to} onClick={() => setIsMenuOpen(false)} className={`flex w-full items-center gap-3 px-4 py-2 text-sm font-medium ${location.pathname === to ? 'bg-gray-500 text-white' : 'text-slate-700 hover:bg-gray-100'}`}>{label}</Link></li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-        <div className="flex-1 text-center flex flex-col items-center justify-center">
-          <h1 className="text-3xl font-bold text-slate-800">Dashboard</h1>
-          <p className="text-sm text-slate-500">{nameLoading ? '...' : businessName}</p>
-        </div>
-        <div className="w-14 flex justify-end">
-          <ShowWrapper requiredPermission={Permissions.ViewHidebutton}>
-            <button onClick={() => setIsDataVisible(!isDataVisible)} className="p-2 rounded-sm border border-slate-400 hover:bg-slate-200 transition-colors">
-              {isDataVisible ? <IconEye width={24} height={24} /> : <IconEyeOff width={24} height={24} />}
+        {/* Step 1 — POS/Catalogue switch button */}
+        <TutorialStep step={1} currentStep={tutorialStep} text="Use this menu to switch between POS and Catalogue views." onNext={() => next(2)} onSkip={skip} mobileArrowAlign="left" >
+          <div ref={setTutorialRef(1)} className="relative inline-block">
+            <button
+              disabled={!hasCataloguePermission}
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className={`flex w-20 items-center justify-between gap-2 rounded-sm border border-slate-400 p-2 text-sm font-medium text-slate-700 transition-colors ${!hasCataloguePermission ? 'opacity-50 cursor-not-allowed bg-gray-100' : 'hover:bg-slate-200 cursor-pointer'}`}
+            >
+              <span className="font-medium">{currentLabel}</span>
+              <IconChevronDown width={16} height={16} className={`transition-transform ${isMenuOpen ? 'rotate-180' : 'rotate-0'}`} />
             </button>
+            {isMenuOpen && hasCataloguePermission && (
+              <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-slate-300 rounded-md shadow-lg z-10">
+                <ul className="py-1">
+                  {SiteItems.map(({ to, label }) => (
+                    <li key={to}>
+                      <Link to={to} onClick={() => setIsMenuOpen(false)} className={`flex w-full items-center gap-3 px-4 py-2 text-sm font-medium ${location.pathname === to ? 'bg-gray-500 text-white' : 'text-slate-700 hover:bg-gray-100'}`}>{label}</Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </TutorialStep>
+
+        <div className="flex-1 text-center flex flex-col items-center justify-center">
+          <h1 className="text-2xl font-bold text-slate-800 pl-8">Dashboard</h1>
+          <p className="text-sm text-slate-500 pl-8">{nameLoading ? '...' : businessName}</p>
+        </div>
+
+        {/* Step 2 — Eye / hide button and Notification Bell */}
+        <div className="flex items-center gap-3 justify-end">
+          <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+            <div className="relative border border-slate-300 rounded-sm bg-gray-100 shadow-sm">
+              <NotificationBell />
+            </div>
+          </ShowWrapper>
+          <ShowWrapper requiredPermission={Permissions.ViewHidebutton}>
+            <TutorialStep step={2} currentStep={tutorialStep} text="Toggle this to show or hide sensitive sales figures." onNext={() => next(3)} onSkip={skip}>
+              <button ref={setTutorialRef(2)} onClick={() => setIsDataVisible(!isDataVisible)} className="p-2 rounded-sm border border-slate-400 hover:bg-slate-200 transition-colors">
+                {isDataVisible ? <IconEye width={24} height={24} /> : <IconEyeOff width={24} height={24} />}
+              </button>
+            </TutorialStep>
           </ShowWrapper>
         </div>
       </header>
 
-      <main className="flex-grow overflow-y-auto p-2 sm:p-2 relative">
+      <main ref={mainRef} className="flex-grow overflow-y-auto p-2 sm:p-2 relative">
         <ShowWrapper requiredPermission={Permissions.ViewHidebutton}>
           <div className="flex justify-center gap-2">
             <p className="text-sm text-slate-500 flex items-center">Last Updated: {formattedLastUpdated}</p>
@@ -380,32 +462,106 @@ const DashboardContent = () => {
 
         <div className="mx-auto max-w-7xl relative">
 
-          <ShowWrapper requiredPermission={Permissions.ViewFilter}><div className="mb-2"><FilterControls /></div></ShowWrapper>
+          {/* Step 3 — Filter */}
+          <ShowWrapper requiredPermission={Permissions.ViewFilter}>
+            <TutorialStep step={3} currentStep={tutorialStep} text="Use these filters to select the date range for your dashboard data." onNext={() => next(4)} onSkip={skip}>
+              <div ref={setTutorialRef(3)} className="mb-2">
+                <FilterControls />
+              </div>
+            </TutorialStep>
+          </ShowWrapper>
 
-          {loading && !data ? (
+          {(loading && !data && !isTutorialActive) ? (
             <div className="flex h-64 items-center justify-center text-slate-500"><FiLoader className="animate-spin mr-2" /> Loading Dashboard...</div>
           ) : (
-            <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 pb-30 `}>
-              <ShowWrapper requiredPermission={Permissions.ViewSalescard}>
-                <SalesCard isDataVisible={isDataVisible} totalSales={Math.ceil(data?.totalSales || 0)} percentageChange={data?.percentageChange || 0} />
-              </ShowWrapper>
-              <ShowWrapper requiredPermission={Permissions.ViewSalesbarchart}>
-                <SalesBarChartReport isDataVisible={isDataVisible} data={data?.salesByDate || []} />
-              </ShowWrapper>
-              <ShowWrapper requiredPermission={Permissions.ViewPaymentmethods}>
-                <PaymentChart isDataVisible={isDataVisible} data={data?.paymentMethods || []} />
-              </ShowWrapper>
-              <ShowWrapper requiredPermission={Permissions.ViewTopSoldItems}>
-                <TopSoldItemsCard isDataVisible={isDataVisible} items={data?.topItems || []} />
-              </ShowWrapper>
-              <ShowWrapper requiredPermission={Permissions.ViewTopSalesperson}>
-                <TopSalespersonCard isDataVisible={isDataVisible} salesmen={data?.topSalesmen || []} />
-              </ShowWrapper>
-              <ShowWrapper requiredPermission={Permissions.ViewTopCustomers}>
-                <TopEntitiesList isDataVisible={isDataVisible} titleOverride="Top Customers" items={data?.topCustomers || []} />
-              </ShowWrapper>
-              <ShowWrapper requiredPermission={Permissions.ViewAttendance}><AttendancePage /></ShowWrapper>
-            </div>
+            <>
+              <div className="space-y-2 pb-30">
+
+                {/* ── ROW 1: Sales Card + Daily Performance Bar Chart ── */}
+                <div className="grid grid-cols-1 md:grid-cols-10 gap-2 items-stretch md:[direction:ltr]">
+                  {/* Step 4 — Sales Card */}
+                  <TutorialStep step={4} currentStep={tutorialStep} text="This is your Sales Card. It shows total sales and overall performance for the selected period." onNext={() => next(5)} onSkip={skip}>
+                    <div ref={setTutorialRef(4)} className="order-1 h-full min-h-0 md:col-span-4 md:order-1">
+                      <ShowWrapper requiredPermission={Permissions.ViewSalescard}>
+                        <div className="h-full min-h-0 [&>*]:h-full">
+                          <SalesCard isDataVisible={effectiveDataVisible} totalSales={Math.ceil(displayData?.totalSales || 0)} percentageChange={displayData?.percentageChange || 0} />
+                        </div>
+                      </ShowWrapper>
+                    </div>
+                  </TutorialStep>
+
+                  {/* Step 5 — Daily Performance Bar Chart */}
+                  <TutorialStep step={5} currentStep={tutorialStep} text="This bar chart shows your daily sales performance over the selected date range." onNext={() => next(6)} onSkip={skip}>
+                    <div ref={setTutorialRef(5)} className="order-2 h-full min-h-0 md:col-span-6 md:order-2">
+                      <ShowWrapper requiredPermission={Permissions.ViewSalesbarchart}>
+                        <div className="h-full min-h-0 [&>*]:h-full">
+                          <SalesBarChartReport isDataVisible={effectiveDataVisible} data={displayData?.salesByDate || []} />
+                        </div>
+                      </ShowWrapper>
+                    </div>
+                  </TutorialStep>
+                </div>
+
+                {/* ── ROW 2: Top 5 Items, Top Salesperson, Top Customers ── */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 items-stretch">
+                  {/* Step 6 — Top 5 Items */}
+                  <TutorialStep step={6} currentStep={tutorialStep} text="See your top 5 best-selling items by revenue for the selected period." onNext={() => next(7)} onSkip={skip}>
+                    <div ref={setTutorialRef(6)} className="h-full [&>*]:h-full">
+                      <ShowWrapper requiredPermission={Permissions.ViewTopSoldItems}>
+                        <TopSoldItemsCard isDataVisible={effectiveDataVisible} items={displayData?.topItems || []} />
+                      </ShowWrapper>
+                    </div>
+                  </TutorialStep>
+
+                  {/* Step 7 — Top Salesperson */}
+                  <TutorialStep step={7} currentStep={tutorialStep} text="Track your top 5 performing salespeople ranked by total sales amount." onNext={() => next(8)} onSkip={skip}>
+                    <div ref={setTutorialRef(7)} className="h-full [&>*]:h-full">
+                      <ShowWrapper requiredPermission={Permissions.ViewTopSalesperson}>
+                        <TopSalespersonCard isDataVisible={effectiveDataVisible} salesmen={displayData?.topSalesmen || []} />
+                      </ShowWrapper>
+                    </div>
+                  </TutorialStep>
+
+                  {/* Step 8 — Top Customers */}
+                  <TutorialStep step={8} currentStep={tutorialStep} text="Your top 5 customers by purchase value. Great for identifying your most loyal buyers." onNext={() => next(9)} onSkip={skip}>
+                    <div ref={setTutorialRef(8)} className="h-full [&>*]:h-full">
+                      <ShowWrapper requiredPermission={Permissions.ViewTopCustomers}>
+                        <TopEntitiesList isDataVisible={effectiveDataVisible} titleOverride="Top Customers" items={displayData?.topCustomers || []} />
+                      </ShowWrapper>
+                    </div>
+                  </TutorialStep>
+                </div>
+
+                {/* ── ROW 3: Payment Methods (full width) ── */}
+                <TutorialStep
+                  step={9}
+                  currentStep={tutorialStep}
+                  isLast={window.innerWidth >= 768}
+                  text="This chart breaks down sales by payment method — cash, card, UPI, etc."
+                  onNext={async () => {
+                    if (!currentUser?.companyId) return;
+                    await setDoc(
+                      doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial'),
+                      { dashboardTutorialDone: true },
+                      { merge: true }
+                    );
+                    setTutorialStep(0);
+                    window.dispatchEvent(new Event("dashboard_tutorial_done"));
+                  }}
+                  onSkip={skip}
+                >
+                  <div ref={setTutorialRef(9)} className="grid grid-cols-1 md:grid-cols-10 gap-2">
+                    <div className="md:col-span-4">
+                      <ShowWrapper requiredPermission={Permissions.ViewPaymentmethods}>
+                        <PaymentChart isDataVisible={effectiveDataVisible} data={displayData?.paymentMethods || []} />
+                      </ShowWrapper>
+                    </div>
+                  </div>
+                </TutorialStep>
+
+                <ShowWrapper requiredPermission={Permissions.ViewAttendance}><AttendancePage /></ShowWrapper>
+              </div>
+            </>
           )}
         </div>
       </main>

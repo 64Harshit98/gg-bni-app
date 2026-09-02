@@ -20,7 +20,8 @@ export interface Item {
   purchasediscount?: number;
   tax: number;
   taxRate?: number;
-  itemGroupId: string;
+  itemGroupId?: string;
+  itemGroupIds?: string[];
   isDeleted?: boolean;
   salesPrice: number;
   stock: number;
@@ -40,7 +41,12 @@ export interface Item {
   firestoreDocId?: string;
   packetSize?: number;
   unitMultiplier?: number;
-  moq?:number;
+  moq?: number;
+  mrpOriginal?: number;
+  mfgDate?: string;
+  expDate?: string;
+  variants?: string[];
+  godownStock?: Record<string, number>;
 }
 
 export interface ItemGroup {
@@ -58,6 +64,9 @@ export interface PurchaseItem {
   purchasePrice: number;
   quantity: number;
   stock?: number;
+  taxType?: 'inclusive' | 'exclusive' | 'exempt';
+  taxRate?: number;
+  tax?: number;
 }
 
 export interface Purchase {
@@ -109,4 +118,5 @@ export interface SalesItem {
   discountPercentage?: number;
   finalPrice?: number;
   stock?: number;
+  productId?: string
 }

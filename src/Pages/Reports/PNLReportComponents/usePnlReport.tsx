@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, query, onSnapshot, Timestamp } from 'firebase/firestore';
+import { collection, query, onSnapshot, Timestamp, limit } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
 import {
   type Transaction,
@@ -21,7 +21,10 @@ export const usePnlReport = (companyId: string | undefined) => {
     }
 
     const salesRef = collection(db, 'companies', companyId, 'sales');
-    const qSales = query(salesRef);
+    // Safety cap — this report filters client-side by the selected date range,
+    // so without a limit a company with years of sales would re-download the
+    // entire collection on every live update.
+    const qSales = query(salesRef, limit(5000));
 
     const unsubscribe = onSnapshot(qSales, (snapshot) => {
       const processedSales: Transaction[] = snapshot.docs.map((doc) => {
@@ -62,7 +65,7 @@ export const usePnlReport = (companyId: string | undefined) => {
 export function usePnlStates() {
   const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
-  const [datePreset, setDatePreset] = useState<string>('today');
+  const [datePreset, setDatePreset] = useState<string>('last30');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [appliedFilters, setAppliedFilters] = useState({ start: '', end: '' });
@@ -74,12 +77,16 @@ export function usePnlStates() {
 
   useEffect(() => {
     const today = new Date();
-    const formattedToday = formatDateForInput(today);
-    setStartDate(formattedToday);
-    setEndDate(formattedToday);
-    const startTimestamp = new Date(formattedToday);
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+
+    const formattedStart = formatDateForInput(thirtyDaysAgo);
+    const formattedEnd = formatDateForInput(today);
+    setStartDate(formattedStart);
+    setEndDate(formattedEnd);
+    const startTimestamp = new Date(formattedStart);
     startTimestamp.setHours(0, 0, 0, 0);
-    const endTimestamp = new Date(formattedToday);
+    const endTimestamp = new Date(formattedEnd);
     endTimestamp.setHours(23, 59, 59, 999);
     setAppliedFilters({
       start: startTimestamp.toISOString(),

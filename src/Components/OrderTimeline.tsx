@@ -1,106 +1,38 @@
 import React, { useMemo } from 'react';
-import { useAuth } from '../context/auth-context';
-import { useOrdersData, type Order, type OrderStatus } from '../Catalogue/Orders';
-import { Spinner } from '../constants/Spinner';
 import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '../constants/routes.constants';
 import { useFilter } from './Filter';
+import { Spinner } from '../constants/Spinner';
+import type { OrderStatus } from '../Catalogue/Orders';
 
-const orderStatuses: (OrderStatus | 'Upcoming')[] = ['Upcoming', 'Confirmed', 'Packed', 'Completed'];
+const orderStatuses: OrderStatus[] = ['Upcoming', 'Confirmed', 'Packed', 'Completed'];
 
-const startOfDay = (dateStr: string) => {
-    const d = new Date(dateStr);
-    d.setHours(0, 0, 0, 0);
-    return d;
-};
-
-const endOfDay = (dateStr: string) => {
-    const d = new Date(dateStr);
-    d.setHours(23, 59, 59, 999);
-    return d;
-};
-
-
-const useGroupedOrders = () => {
-    const { currentUser } = useAuth();
-    const { filters } = useFilter();
-
-    const safeStartDate = useMemo(() => {
-        if (!filters.startDate) return null;
-        return startOfDay(filters.startDate);
-    }, [filters.startDate]);
-
-    const safeEndDate = useMemo(() => {
-        if (!filters.endDate) return null;
-        return endOfDay(filters.endDate);
-    }, [filters.endDate]);
-
-
-    const { Orders, loading, error } = useOrdersData(
-        currentUser?.companyId,
-        safeStartDate,
-        safeEndDate
-    );
-
-    const groupedOrders = useMemo(() => {
-        const map = new Map<OrderStatus | 'Upcoming', Order[]>();
-        orderStatuses.forEach(status => map.set(status, []));
-
-        for (const order of Orders) {
-
-            let status: OrderStatus | 'Upcoming' = order.status || 'Upcoming';
-
-            // Completed me Paid bhi add karo
-            if (order.status === 'Paid') {
-                status = 'Completed';
-            }
-
-            if (map.has(status)) {
-                map.get(status)?.push(order);
-            }
-        }
-
-        return map;
-    }, [Orders]);
-
-
-
-    return { groupedOrders, loading, error };
-};
-
-
+// ── Props (counts come from HomePage, no internal fetch) ─────────────────────
 interface OrderTimelineProps {
     isDataVisible: boolean;
+    orderCounts: Record<string, number>;
+    loading: boolean;
 }
 
-export const OrderTimeline: React.FC<OrderTimelineProps> = ({ isDataVisible }) => {
+export const OrderTimeline: React.FC<OrderTimelineProps> = ({
+    isDataVisible,
+    orderCounts,
+    loading,
+}) => {
     const { filters } = useFilter();
-    const safeStartDate = useMemo(() => {
-        if (!filters.startDate) return new Date();
-        return startOfDay(filters.startDate);
-    }, [filters.startDate]);
-
-    const safeEndDate = useMemo(() => {
-        if (!filters.endDate) return new Date();
-        return endOfDay(filters.endDate);
-    }, [filters.endDate]);
-
-
-    const { groupedOrders, loading, error } = useGroupedOrders();
     const navigate = useNavigate();
 
-
     const selectedPeriodText = useMemo(() => {
-        const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
-
-        const start = safeStartDate.toLocaleDateString('en-IN', options);
-        const end = safeEndDate.toLocaleDateString('en-IN', options);
-
+        if (!filters.startDate || !filters.endDate) return '';
+        const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
+        const s = new Date(filters.startDate); s.setHours(0, 0, 0, 0);
+        const e = new Date(filters.endDate); e.setHours(23, 59, 59, 999);
+        const start = s.toLocaleDateString('en-IN', opts);
+        const end = e.toLocaleDateString('en-IN', opts);
         return start === end ? `for ${start}` : `from ${start} to ${end}`;
-    }, [safeStartDate, safeEndDate]);
+    }, [filters.startDate, filters.endDate]);
 
-
-    const handleViewStatus = (status: OrderStatus | 'Upcoming') => {
+    const handleViewStatus = (status: OrderStatus) => {
         navigate(ROUTES.ORDERDETAILS, {
             state: {
                 defaultStatus: status,
@@ -110,21 +42,26 @@ export const OrderTimeline: React.FC<OrderTimelineProps> = ({ isDataVisible }) =
         });
     };
 
-    if (loading) return <div className="flex justify-center p-8 bg-white rounded-lg shadow-md"><Spinner /></div>;
-    if (error) return <p className="text-center text-red-500 bg-white p-8 rounded-lg shadow-md">{error}</p>;
+    if (loading) {
+        return (
+            <div className="flex justify-center p-8 bg-white rounded-lg shadow-md">
+                <Spinner />
+            </div>
+        );
+    }
 
     return (
         <div className="w-full p-4 md:p-6 bg-white rounded-sm shadow-md">
             <div className="flex flex-col items-center mb-4">
                 <h2 className="text-xl md:text-2xl font-bold text-gray-800">Order Journey</h2>
-                <span className="bg-blue-100 text-blue-600 text-[10px] font-bold px-2 py-0.5 rounded-full mt-1 uppercase">
+                <span className="bg-gray-50 text-[#F97316] text-[12px] font-bold px-2 py-0.5 rounded-full mt-1 uppercase">
                     {selectedPeriodText}
                 </span>
             </div>
 
             <div className="flex items-start w-full px-1 md:px-4 pt-12 pb-10">
                 {orderStatuses.map((status, index) => {
-                    const ordersInStatus = groupedOrders.get(status) || [];
+                    const count = orderCounts[status] ?? 0;
                     const isLast = index === orderStatuses.length - 1;
                     const labelContent = status === "Upcoming" ? "Upcoming" : status.replace(' & ', ' &\n');
                     const isTopLabel = index % 2 === 0;
@@ -133,28 +70,23 @@ export const OrderTimeline: React.FC<OrderTimelineProps> = ({ isDataVisible }) =
                         <React.Fragment key={status}>
                             <div className="flex flex-col items-center flex-1 min-w-0">
                                 <button
-                                    className={`relative flex flex-col items-center w-full group ${status === "Upcoming" ? "cursor-not-allowed" : "cursor-pointer"}`}
-                                    onClick={() => {
-                                        if (status !== "Upcoming") {
-                                            handleViewStatus(status as any);
-                                        }
-                                    }}
+                                    className={`relative flex flex-col items-center w-full group`}
+                                    onClick={() => handleViewStatus(status)}
                                 >
                                     {isTopLabel && (
                                         <span className="absolute bottom-full mb-2 text-center text-[10px] sm:text-xs md:text-sm text-gray-600 font-bold whitespace-pre-line leading-tight w-max">
                                             {labelContent}
                                         </span>
                                     )}
-                                    <div className="relative w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full bg-orange-400 flex items-center justify-center transition-all duration-300 z-10 border-2 md:border-4 border-yellow-500 shadow-sm group-hover:scale-110">
-                                        {status === "Upcoming" ? (
-                                            <span className="absolute px-1 py-[2px] text-[6px] font-black uppercase rounded-full bg-orange-100 text-orange-700 border border-orange-300 whitespace-nowrap">
+                                    <div className="relative w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full bg-[#F97316] flex items-center justify-center transition-all duration-300 z-10 border-2 md:border-4 border-gray-300 shadow-sm group-hover:scale-110">
+                                        {/* {status === "Upcoming" ? (
+                                            <span className="absolute px-1 py-[2px] text-[6px] font-black uppercase rounded-full bg-orange-100 text-[#F97316] border border-orange-300 whitespace-nowrap">
                                                 Coming Soon
                                             </span>
-                                        ) : (
-                                            <span className="text-xs sm:text-sm md:text-xl font-bold text-white">
-                                                {isDataVisible ? ordersInStatus.length : '∗'}
-                                            </span>
-                                        )}
+                                        ) : ( */}
+                                        <span className="text-xs sm:text-sm md:text-xl font-bold text-white">
+                                            {isDataVisible ? count : '∗'}
+                                        </span>
                                     </div>
                                     {!isTopLabel && (
                                         <span className="absolute top-full mt-2 text-center text-[10px] sm:text-xs md:text-sm text-gray-600 font-bold whitespace-pre-line leading-tight w-max">

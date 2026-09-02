@@ -98,6 +98,7 @@ export const getFirestoreOperations = (companyId: string) => {
       if (lastSyncTime) {
         const lastDate = new Date(lastSyncTime);
         itemsQuery = query(itemRef, where('updatedAt', '>', lastDate));
+        lastDate.setMinutes(lastDate.getMinutes() - 1);
         // Query our tombstones for anything deleted since last sync
         deletedQuery = query(collection(companyRef, 'deletedItems'), where('deletedAt', '>', lastDate));
       } else {
@@ -196,12 +197,16 @@ export const getFirestoreOperations = (companyId: string) => {
         return {
           name: (data.businessName as string) || "Company Name",
           address: finalAddress,
+          state: (data.state as string) || "",
           phoneNumber: (data.phoneNumber as string) || "",
           accountHolderName: (data.accountHolderName as string) || "",
           accountNumber: (data.accountNumber as string) || "",
+          ifscCode: (data.ifscCode as string) || "",
           bankName: (data.bankName as string) || "",
           email: (data.email as string) || "",
-          gstin: (data.gstin as string) || ""
+          gstin: (data.gstin as string) || "",
+          msmeNumber: (data.msmeUdyamNumber as string) || "",
+          panNumber: (data.panNumber as string) || "",
         };
       } else {
         return { name: "", address: "", phoneNumber: "", email: "", gstin: "" };
@@ -309,6 +314,24 @@ export const getItemsByCompany = async (companyId: string): Promise<Item[]> => {
     console.error("Error fetching items:", error);
     throw new Error("Failed to fetch items for this catalogue.");
   }
+};
+
+// CDN-cached equivalent of getItemGroupsByCompany() + getItemsByCompany()
+// combined, for the PUBLIC storefront pages only (SharedCatalouge.tsx,
+// SharedProduct.tsx). Goes through the getPublicCatalogueItems Cloud
+// Function (Cache-Control: public, s-maxage=300) instead of the Firestore
+// client SDK directly, so concurrent anonymous visitors within the cache
+// window share one Firestore read instead of one each. Internal/authenticated
+// pages should keep using dbOperations.syncItems()/listenToItems() instead —
+// this is not for them.
+export const getPublicCatalogueItems = async (
+  companyId: string
+): Promise<{ items: Item[]; itemGroups: ItemGroup[] }> => {
+  const res = await fetch(`/api/getPublicCatalogueItems?cId=${encodeURIComponent(companyId)}`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch public catalogue items (${res.status})`);
+  }
+  return res.json();
 };
 
 export const getItemGroupsByCompany = async (companyId: string): Promise<ItemGroup[]> => {

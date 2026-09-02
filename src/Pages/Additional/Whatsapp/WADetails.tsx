@@ -7,6 +7,7 @@ import { useAuth } from '../../../context/auth-context';
 import { ROUTES } from '../../../constants/routes.constants';
 import { Stepper } from '../../../Components/Stepper';
 import { botMasterService } from './WhatsappApi';
+import BackButton from '../../../Components/BackButton';
 
 // --- Types ---
 interface ProfileData {
@@ -208,6 +209,7 @@ const WhatsAppDetailsPage: React.FC = () => {
             {/* --- Stepper Header --- */}
             <div className="sticky top-0 z-50 w-full backdrop-blur-sm transition-all duration-300">
                 <div className="max-w-md mx-auto px-6 py-4">
+                    <BackButton />
                     <Stepper
                         totalSteps={3}
                         currentStep={2}

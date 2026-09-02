@@ -3,58 +3,128 @@ import SignatureCanvas from 'react-signature-canvas';
 import { db } from '../../lib/Firebase';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../../context/auth-context';
-import { State } from '../../enums';
+import { State, PLANS } from '../../enums';
+import { normalizePlan } from '../../context/Plan';
 import { Modal } from '../../constants/Modal';
-
+import { useNavigate } from 'react-router';
+import BackButton from '../../Components/BackButton';
+import { InfoTooltip } from '../../Components/InfoToolTip';
 
 // --- Interfaces ---
 export interface BillSettingsData {
-    companyGstin: string;
-    msmeNumber: string;
-    panNumber: string;
-    bankName: string;
-    accountName: string;
-    accountNumber: string;
     upiId?: string;
-    ifscCode: string;
     termsAndConditions: string;
     signatureBase64?: string;
+    printFormat?: 'A4' | 'A5' | 'THERMAL58' | 'THERMAL80';
+    whatsappExtraMessage?: string;
+    enableTriplicate?: boolean;
+    discountDisplayFormat?: 'amount' | 'percentage';
+    enableItemImages?: boolean;
 }
+
+// The raw shape persisted at companies/{companyId}/settings/bill — a single
+// doc shared by this page (pos*-prefixed fields) and
+// src/Catalogue/Settings/CatalogueBillSetting.tsx (catalogue*-prefixed
+// fields), plus a few unprefixed fields both pages read/write directly.
+export interface RawBillSettings {
+    companyId: string;
+    settingType: 'bill';
+    upiId: string;
+    signatureBase64: string;
+    enableTriplicate: boolean;
+    discountDisplayFormat: 'amount' | 'percentage';
+    enableItemImages: boolean;
+    posTermsAndConditions: string;
+    posPrintFormat: 'A4' | 'A5' | 'THERMAL58' | 'THERMAL80';
+    posWhatsappExtraMessage: string;
+    catalogueTermsAndConditions: string;
+    cataloguePrintFormat: 'A4' | 'A5' | 'THERMAL58' | 'THERMAL80';
+    catalogueWhatsappExtraMessage: string;
+}
+
+const DEFAULT_TERMS_AND_CONDITIONS =
+    '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.';
+
+// Same shape SettingsContext.tsx's other getDefault*Settings functions use —
+// a plain object keyed by companyId, persisted the first time any user from
+// that company loads the app (see SettingsContext.tsx), so consumers that
+// read settings/bill directly (e.g. CatalogueBill.tsx's PDF generator) can
+// trust the doc always has real values instead of needing their own
+// hardcoded fallback text.
+export const getDefaultBillSettings = (companyId: string): RawBillSettings => ({
+    companyId,
+    settingType: 'bill',
+    upiId: '',
+    signatureBase64: '',
+    enableTriplicate: false,
+    discountDisplayFormat: 'amount',
+    enableItemImages: false,
+    posTermsAndConditions: DEFAULT_TERMS_AND_CONDITIONS,
+    posPrintFormat: 'A4',
+    posWhatsappExtraMessage: '',
+    catalogueTermsAndConditions: DEFAULT_TERMS_AND_CONDITIONS,
+    cataloguePrintFormat: 'A4',
+    catalogueWhatsappExtraMessage: '',
+});
 
 interface BusinessInfoData {
     companyName: string;
     address: string;
     phone: string;
     email: string;
+    gstin: string;
+    panNumber: string;
+    msmeNumber: string;
+    bankName: string;
+    accountHolderName: string;
+    accountNumber: string;
+    ifscCode: string;
+    companyLogo: string;
 }
 
 const BillSettings: React.FC = () => {
     const { currentUser } = useAuth();
+    const navigate = useNavigate();
     const sigPadRef = useRef<any>(null);
-
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
 
+    // Calculator Billing plans (POS Basic, Calc+Catalogue) always print on a
+    // 2-inch thermal printer — Journal.tsx forces THERMAL58 at print time
+    // regardless of what's saved here, so lock the setting itself to match
+    // instead of letting the user pick a format that's silently ignored.
+    const currentPlan = normalizePlan((currentUser as any)?.plan);
+    const isThermalOnlyPlan = currentPlan === PLANS.POS_BASIC || currentPlan === PLANS.CALC_CATALOG;
+
     const [businessInfo, setBusinessInfo] = useState<BusinessInfoData>({
-        companyName: '', address: '', phone: '', email: ''
+        companyName: '',
+        address: '',
+        phone: '',
+        email: '',
+        gstin: '',
+        panNumber: '',
+        msmeNumber: '',
+        bankName: '',
+        accountHolderName: '',
+        accountNumber: '',
+        ifscCode: '',
+        companyLogo: '',
     });
 
     const [settings, setSettings] = useState<BillSettingsData>({
-        companyGstin: '',
-        msmeNumber: '',
-        panNumber: '',
-        bankName: '',
-        accountName: '',
-        accountNumber: '',
         upiId: '',
-        ifscCode: '',
         termsAndConditions: '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
-        signatureBase64: ''
+        signatureBase64: '',
+        printFormat: 'A4',
+        whatsappExtraMessage: '',
+        enableTriplicate: false,
+        discountDisplayFormat: 'amount',
+        enableItemImages: false,
     });
 
     const formatAddress = (addr: any): string => {
-        if (!addr) return 'Not Set';
+        if (!addr) return '';
         if (typeof addr === 'string') return addr;
         const { streetAddress, city, state, postalCode, zipCode, pincode } = addr;
         const parts = [streetAddress, city, state].filter(part => part && part.trim() !== '');
@@ -75,44 +145,55 @@ const BillSettings: React.FC = () => {
 
                 const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
                 const settingsDocRef = doc(db, 'companies', companyId, 'settings', 'bill');
+                const userDocRef = currentUser.uid
+                    ? doc(db, 'companies', companyId, 'users', currentUser.uid)
+                    : null;
 
-                const [businessSnap, settingsSnap] = await Promise.all([
+                const [businessSnap, settingsSnap, userSnap] = await Promise.all([
                     getDoc(businessDocRef),
-                    getDoc(settingsDocRef)
+                    getDoc(settingsDocRef),
+                    userDocRef ? getDoc(userDocRef) : Promise.resolve(null)
                 ]);
 
                 const bData = businessSnap.exists() ? businessSnap.data() : {};
                 const sData = settingsSnap.exists() ? settingsSnap.data() : {};
-
+                const uData = userSnap?.exists() ? userSnap.data() : {};
                 setBusinessInfo({
                     companyName: bData.businessName || bData.name || 'Not Set',
                     address: formatAddress(bData),
-                    phone: bData.phoneNumber || bData.phone || 'Not Set',
-                    email: bData.email || 'Not Set'
+                    phone: bData.phoneNumber || bData.phone || uData.phoneNumber || uData.phone || 'Not Set',
+                    email: bData.email || uData.email || 'Not Set',
+                    gstin: bData.gstin || '',
+                    panNumber: bData.panNumber || '',
+                    msmeNumber: bData.msmeUdyamNumber || bData.registrationNumber || '',
+                    bankName: bData.bankName || '',
+                    accountHolderName: bData.accountHolderName || '',
+                    accountNumber: bData.accountNumber || '',
+                    ifscCode: bData.ifscCode || '',
+                    companyLogo: bData.companyLogo || '',
                 });
 
-                const loadedSettings = {
-                    companyGstin: sData.companyGstin || bData.gstin || '',
-                    msmeNumber: sData.msmeNumber || bData.registrationNumber || '',
-                    panNumber: sData.panNumber || bData.panNumber || '',
-                    bankName: sData.bankName || bData.bankName || '',
-                    accountName: sData.accountName || bData.accountHolderName || '',
-                    accountNumber: sData.accountNumber || bData.accountNumber || '',
-                    ifscCode: sData.ifscCode || bData.ifscCode || '',
-                    termsAndConditions: sData.termsAndConditions || '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
-                    signatureBase64: sData.signatureBase64 || '',
+                const loadedSettings: BillSettingsData = {
                     upiId: sData.upiId || bData.upiId || '',
+                    termsAndConditions: sData.posTermsAndConditions || '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
+                    signatureBase64: sData.signatureBase64 || '',
+                    printFormat: isThermalOnlyPlan
+                        ? (sData.posPrintFormat === 'THERMAL80' ? 'THERMAL80' : 'THERMAL58')
+                        : (sData.posPrintFormat || 'A4'),
+                    whatsappExtraMessage: sData.posWhatsappExtraMessage || '',
+                    enableTriplicate: sData.enableTriplicate || false,
+                    discountDisplayFormat: sData.discountDisplayFormat || 'amount',
+                    enableItemImages: sData.enableItemImages || false,
                 };
 
                 setSettings(loadedSettings);
 
-                // FIX: Load signature after component has mounted and canvas is ready
                 if (loadedSettings.signatureBase64) {
                     setTimeout(() => {
                         if (sigPadRef.current) {
                             sigPadRef.current.fromDataURL(loadedSettings.signatureBase64);
                         }
-                    }, 200); // Tiny delay to ensure canvas DOM is ready
+                    }, 200);
                 }
 
             } catch (error) {
@@ -144,19 +225,37 @@ const BillSettings: React.FC = () => {
         try {
             setIsSaving(true);
 
-            let currentSignature = settings.signatureBase64; // Keep old one if pad is empty?
+            let currentSignature = settings.signatureBase64;
 
-            // If the user drew something new, get the data URL
             if (sigPadRef.current && !sigPadRef.current.isEmpty()) {
                 currentSignature = sigPadRef.current.getCanvas().toDataURL('image/png');
             } else if (sigPadRef.current && sigPadRef.current.isEmpty()) {
-                // If they cleared it, set to empty
                 currentSignature = '';
             }
 
             const dataToSave = {
-                ...settings,
+                // Editable settings (shared)
+                upiId: settings.upiId,
                 signatureBase64: currentSignature,
+
+                // Editable settings (independent per bill type)
+                posTermsAndConditions: settings.termsAndConditions,
+                posPrintFormat: isThermalOnlyPlan
+                    ? (settings.printFormat === 'THERMAL80' ? 'THERMAL80' : 'THERMAL58')
+                    : settings.printFormat,
+                posWhatsappExtraMessage: settings.whatsappExtraMessage,
+                enableTriplicate: settings.enableTriplicate || false,
+                discountDisplayFormat: settings.discountDisplayFormat || 'amount',
+                enableItemImages: settings.enableItemImages || false,
+
+                // ✅ Always sync from businessInfo so these stay fresh
+                companyGstin: businessInfo.gstin,
+                panNumber: businessInfo.panNumber,
+                msmeNumber: businessInfo.msmeNumber,
+                accountName: businessInfo.accountHolderName,
+                accountNumber: businessInfo.accountNumber,
+                bankName: businessInfo.bankName,
+                ifscCode: businessInfo.ifscCode,
                 updatedAt: serverTimestamp()
             };
 
@@ -186,140 +285,155 @@ const BillSettings: React.FC = () => {
         <div className="min-h-screen bg-gray-50 pb-24 relative">
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
-            <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+            <div className="flex items-center bg-white border-b border-gray-200 sticky top-0 z-10">
+                <BackButton className='ml-3' />
                 <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-                    <h1 className="text-2xl font-bold text-gray-900">Invoice Configuration</h1>
+                    <h1 className="text-2xl font-bold text-gray-900">Bill Settings</h1>
                     <p className="text-sm text-gray-500 mt-1">Manage details printed on your bills.</p>
                 </div>
             </div>
 
-            <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+            <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-6">
 
-                {/* SECTION 1: Company Identity */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                {/* SECTION 1: Company Identity — pulled from business profile, read-only */}
+                <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden">
                     <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
                         <div>
                             <h2 className="text-lg font-semibold text-gray-800">Company Details</h2>
-                            <p className="text-xs text-gray-500">Fetched from Business Profile</p>
+                            <p className="text-xs text-gray-500">
+                                Fetched from your{' '}
+                                <button
+                                    type="button"
+                                    onClick={() => navigate('/edit-profile')}
+                                    className="text-blue-600 hover:underline text-xs bg-transparent border-0 cursor-pointer p-0 font-normal"
+                                >
+                                    Business Profile
+                                </button>
+                                . Edit there to update here.
+                            </p>
                         </div>
-                        <span className="text-xs font-medium px-2 py-1 bg-gray-200 text-gray-600 rounded">Read Only</span>
+                        <span className="text-xs font-medium px-2 py-1 bg-gray-200 text-gray-600 rounded">
+                            Read Only
+                        </span>
                     </div>
-                    <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 opacity-80">
-                        <div className="md:col-span-2">
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Company Name</label>
-                            <div className="p-3 bg-gray-50 border border-gray-200 rounded-md text-gray-800 font-medium">
-                                {businessInfo.companyName}
+                    <div className="p-5 space-y-6 opacity-80">
+
+                        {/* Logo + Name + Address */}
+                        <div className="flex flex-col sm:flex-row items-start gap-4">
+                            {businessInfo.companyLogo ? (
+                                <img
+                                    src={businessInfo.companyLogo}
+                                    alt="Company Logo"
+                                    className="w-16 h-16 rounded-sm object-contain border border-gray-200 bg-gray-50 p-1.5 shrink-0"
+                                />
+                            ) : (
+                                <div className="w-16 h-16 rounded-sm border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center text-gray-400 text-xs font-bold shrink-0">
+                                    LOGO
+                                </div>
+                            )}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 min-w-0">
+                                <div className="md:col-span-2">
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Company Name</label>
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium h-[44px] flex items-center truncate">
+                                        {businessInfo.companyName}
+                                    </div>
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Registered Address</label>
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium min-h-[44px] flex items-center whitespace-normal break-words">
+                                        {businessInfo.address}
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div className="md:col-span-2">
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Address</label>
-                            <div className="p-3 bg-gray-50 border border-gray-200 rounded-md text-gray-800">
-                                {businessInfo.address}
+
+                        {/* Contact */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Phone</label>
+                                <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium h-[44px] flex items-center">
+                                    {businessInfo.phone}
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label>
+                                <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium h-[44px] flex items-center">
+                                    {businessInfo.email}
+                                </div>
                             </div>
                         </div>
+
+                        <div className="border-t border-gray-100" />
+
+                        {/* Tax & Registration */}
                         <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Contact</label>
-                            <div className="p-3 bg-gray-50 border border-gray-200 rounded-md text-gray-800">
-                                {businessInfo.phone}
+                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">Tax & Registration</p>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">GSTIN</label>
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate h-[44px] flex items-center">
+                                        {businessInfo.gstin}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">PAN Number</label>
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium h-[44px] flex items-center">
+                                        {businessInfo.panNumber}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">MSME No.</label>
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate h-[44px] flex items-center">
+                                        {businessInfo.msmeNumber}
+                                    </div>
+                                </div>
                             </div>
                         </div>
+
+                        <div className="border-t border-gray-100" />
+
+                        {/* Bank Details */}
                         <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label>
-                            <div className="p-3 bg-gray-50 border border-gray-200 rounded-md text-gray-800">
-                                {businessInfo.email}
+                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">Bank Details</p>
+                            <div className="grid grid-cols-2 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Bank Name</label>
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate h-[44px] flex items-center">
+                                        {businessInfo.bankName}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Acc.Holder Name</label>
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate h-[44px] flex items-center">
+                                        {businessInfo.accountHolderName}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Account Number</label>
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium truncate h-[44px] flex items-center">
+                                        {businessInfo.accountNumber}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">IFSC Code</label>
+                                    <div className="p-3 bg-gray-50 border border-gray-200 rounded-sm text-gray-800 font-medium h-[44px] flex items-center">
+                                        {businessInfo.ifscCode}
+                                    </div>
+                                </div>
                             </div>
                         </div>
+
                     </div>
                 </div>
 
-                {/* SECTION 2: Tax & Registration */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                {/* ── SECTION 2: UPI ID ── */}
+                <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden">
                     <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-                        <h2 className="text-lg font-semibold text-gray-800">Tax & Registration</h2>
+                        <h2 className="text-lg font-semibold text-gray-800">Payment</h2>
+                        <p className="text-xs text-gray-500">UPI ID displayed on invoices for quick payments.</p>
                     </div>
-                    <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">GSTIN</label>
-                            <input
-                                type="text"
-                                name="companyGstin"
-                                value={settings.companyGstin}
-                                onChange={handleChange}
-                                placeholder="e.g. 27ABCDE1234F1Z5"
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none uppercase font-mono"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">MSME / Udyam No.</label>
-                            <input
-                                type="text"
-                                name="msmeNumber"
-                                value={settings.msmeNumber}
-                                onChange={handleChange}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none uppercase"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">PAN Number</label>
-                            <input
-                                type="text"
-                                name="panNumber"
-                                value={settings.panNumber}
-                                onChange={handleChange}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none uppercase font-mono"
-                            />
-                        </div>
-                    </div>
-                </div>
-
-                {/* SECTION 3: Banking Details */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                    <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-                        <h2 className="text-lg font-semibold text-gray-800">Banking Information</h2>
-                        <p className="text-xs text-gray-500">Displayed for bank transfer payments.</p>
-                    </div>
-                    <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Bank Name</label>
-                            <input
-                                type="text"
-                                name="bankName"
-                                value={settings.bankName}
-                                onChange={handleChange}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Account Holder Name</label>
-                            <input
-                                type="text"
-                                name="accountName"
-                                value={settings.accountName}
-                                onChange={handleChange}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Account Number</label>
-                            <input
-                                type="text"
-                                name="accountNumber"
-                                value={settings.accountNumber}
-                                onChange={handleChange}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none font-mono"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">IFSC Code</label>
-                            <input
-                                type="text"
-                                name="ifscCode"
-                                value={settings.ifscCode}
-                                onChange={handleChange}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none uppercase font-mono"
-                            />
-                        </div>
-                        <div>
+                    <div className="p-6">
+                        <div className="max-w-sm">
                             <label className="block text-sm font-medium text-gray-700 mb-1">UPI ID</label>
                             <input
                                 type="text"
@@ -327,14 +441,165 @@ const BillSettings: React.FC = () => {
                                 value={settings.upiId || ''}
                                 onChange={handleChange}
                                 placeholder="e.g. yourname@upi"
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-blue-500 focus:border-blue-500 outline-none"
                             />
                         </div>
                     </div>
                 </div>
 
+                {/* --- NEW SECTION: Print Preferences --- */}
+                <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden">
+                    <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+                        <h2 className="text-lg font-semibold text-gray-800">Print Preferences</h2>
+                        <p className="text-xs text-gray-500">Choose your default bill format.</p>
+                    </div>
+                    <div className="p-6">
+                        {isThermalOnlyPlan && (
+                            <p className="mb-4 text-xs text-amber-600 font-medium">
+                                Your plan bills on a 2-Inch Thermal printer only — A4/A5 formats aren't available.
+                            </p>
+                        )}
+                        <div className="flex flex-col sm:flex-row gap-4">
+                            {!isThermalOnlyPlan && (
+                            <label className={`flex-1 flex items-center p-4 border rounded-sm cursor-pointer transition-colors ${settings.printFormat === 'A4' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'}`}>
+                                <input
+                                    type="radio"
+                                    name="printFormat"
+                                    value="A4"
+                                    checked={settings.printFormat === 'A4'}
+                                    onChange={handleChange}
+                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                />
+                                <div className="ml-3">
+                                    <span className="block text-sm font-medium text-gray-900">A4 Size</span>
+                                    <span className="block text-xs text-gray-500">Standard full-page invoice layout.</span>
+                                </div>
+                            </label>
+                            )}
+
+                            {!isThermalOnlyPlan && (
+                            <label className={`flex-1 flex items-center p-4 border rounded-sm cursor-pointer transition-colors ${settings.printFormat === 'A5' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'
+                                }`}>
+                                <input
+                                    type="radio"
+                                    name="printFormat"
+                                    value="A5"
+                                    checked={settings.printFormat === 'A5'}
+                                    onChange={handleChange}
+                                    // disabled
+                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                />
+                                <div className="ml-3">
+                                    <span className="block text-sm font-medium text-gray-900">A5 Size</span>
+                                    <span className="block text-xs text-gray-500">Half-page compact invoice layout.</span>
+                                </div>
+                            </label>
+                            )}
+
+                            <label className={`flex-1 flex items-center p-4 border rounded-sm cursor-pointer transition-colors ${settings.printFormat === 'THERMAL58' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'}`}>
+                                <input
+                                    type="radio"
+                                    name="printFormat"
+                                    value="THERMAL58"
+                                    checked={settings.printFormat === 'THERMAL58'}
+                                    onChange={handleChange}
+                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                />
+                                <div className="ml-3">
+                                    <span className="block text-sm font-medium text-gray-900">2-Inch Thermal</span>
+                                    <span className="block text-xs text-gray-500">58mm continuous receipt layout.</span>
+                                </div>
+                            </label>
+
+                            <label className={`flex-1 flex items-center p-4 border rounded-sm cursor-pointer transition-colors ${settings.printFormat === 'THERMAL80' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'}`}>
+                                <input
+                                    type="radio"
+                                    name="printFormat"
+                                    value="THERMAL80"
+                                    checked={settings.printFormat === 'THERMAL80'}
+                                    onChange={handleChange}
+                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                />
+                                <div className="ml-3">
+                                    <span className="block text-sm font-medium text-gray-900">3-Inch Thermal</span>
+                                    <span className="block text-xs text-gray-500">80mm continuous receipt layout.</span>
+                                </div>
+                            </label>
+                        </div>
+                        {/* NEW: Triplicate toggle */}
+                        <div className="mt-5 pt-5 border-t border-gray-100 flex items-center justify-between">
+                            <div>
+                                <span className="block text-sm font-medium text-gray-900">Print Triplicate Copies</span>
+                                <span className="block text-xs text-gray-500">
+                                    Prints 1 original + 2 stamped "DUPLICATE" copies instead of just 1.
+                                </span>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-4">
+                                <input
+                                    type="checkbox"
+                                    checked={!!settings.enableTriplicate}
+                                    onChange={(e) =>
+                                        setSettings(prev => ({ ...prev, enableTriplicate: e.target.checked }))
+                                    }
+                                    className="sr-only peer"
+                                />
+                                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:bg-blue-600 transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div>
+                            </label>
+                        </div>
+                        {/* NEW: Item Images toggle */}
+                        <div className="mt-5 pt-5 border-t border-gray-100 flex items-center justify-between">
+                            <div>
+                                <span className="block text-sm font-medium text-gray-900">Show Item Photos on Bill</span>
+                                <span className="block text-xs text-gray-500">
+                                    Prints each item's photo next to its row on A4 bills.
+                                </span>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-4">
+                                <input
+                                    type="checkbox"
+                                    checked={!!settings.enableItemImages}
+                                    onChange={(e) =>
+                                        setSettings(prev => ({ ...prev, enableItemImages: e.target.checked }))
+                                    }
+                                    className="sr-only peer"
+                                />
+                                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:bg-blue-600 transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div>
+                            </label>
+                        </div>
+
+                        {/* NEW: Discount 1 + Discount 2 display format */}
+                        <div className="mt-5 pt-5 border-t border-gray-100">
+                            <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <p className="text-sm font-semibold text-gray-800 leading-5">Discount Display on Bill</p>
+                                    <InfoTooltip text="Choose how the Disc1 + Disc2 column is shown on the printed/PDF bill." />
+                                </div>
+                                <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+                                    {[
+                                        { label: 'Amount (₹)', value: 'amount' },
+                                        { label: 'Percentage (%)', value: 'percentage' },
+                                    ].map((opt) => (
+                                        <button
+                                            key={opt.value}
+                                            type="button"
+                                            onClick={() => setSettings(prev => ({ ...prev, discountDisplayFormat: opt.value as 'amount' | 'percentage' }))}
+                                            className={`min-w-0 min-h-[42px] px-2 py-2 rounded-sm text-[11px] sm:text-sm font-semibold border leading-tight text-center whitespace-normal break-words ${(settings.discountDisplayFormat ?? 'amount') === opt.value
+                                                ? 'bg-blue-600 text-white border-blue-600'
+                                                : 'bg-white text-gray-700 border-gray-300'
+                                                }`}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {/* ------------------------------------- */}
+
                 {/* SECTION 4: Digital Signature */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden">
                     <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
                         <div>
                             <h2 className="text-lg font-semibold text-gray-800">Digital Signature</h2>
@@ -349,13 +614,13 @@ const BillSettings: React.FC = () => {
                         </button>
                     </div>
                     <div className="p-6">
-                        <div className="border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 flex justify-center items-center overflow-hidden relative">
+                        <div className="border-2 border-dashed border-gray-300 rounded-sm bg-gray-50 flex justify-center items-center overflow-hidden relative">
                             <SignatureCanvas
                                 ref={sigPadRef}
                                 penColor="black"
                                 canvasProps={{
                                     className: 'signature-canvas',
-                                    style: { width: '100%', height: '200px' }
+                                    style: { width: '100%', height: '200px' },
                                 }}
                                 backgroundColor="rgba(255,255,255,0)"
                             />
@@ -363,41 +628,62 @@ const BillSettings: React.FC = () => {
                                 SIGN HERE
                             </div>
                         </div>
+                        {(settings.printFormat === 'THERMAL58' || settings.printFormat === 'THERMAL80') && (
+                            <p className="mt-2 text-xs text-amber-600 font-medium">Note: Signatures are not displayed on Thermal receipts.</p>
+                        )}
                     </div>
                 </div>
 
-                {/* SECTION 5: Terms & Conditions */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-20">
+                <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden mb-6">
                     <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-                        <h2 className="text-lg font-semibold text-gray-800">Terms & Conditions</h2>
+                        <h2 className="text-lg font-semibold text-gray-800">WhatsApp Message</h2>
+                        <p className="text-xs text-gray-500">Add an extra message to send along with your invoices on WhatsApp.</p>
                     </div>
                     <div className="p-6">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Invoice Terms</label>
+                        <textarea
+                            name="whatsappExtraMessage"
+                            value={settings.whatsappExtraMessage || ''}
+                            onChange={handleChange}
+                            placeholder="e.g., Thank you for shopping with us! Please leave a Google review."
+                            rows={3}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-blue-500 focus:border-blue-500 outline-none text-sm leading-relaxed"
+                        />
+                    </div>
+                </div>
+
+
+                {/* ── SECTION 4: Terms & Conditions ── */}
+                <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden mb-20">
+                    <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+                        <h2 className="text-lg font-semibold text-gray-800">Terms & Conditions</h2>
+                        <p className="text-xs text-gray-500">Printed at the footer of every invoice.</p>
+                    </div>
+                    <div className="p-6">
                         <textarea
                             name="termsAndConditions"
                             value={settings.termsAndConditions}
                             onChange={handleChange}
                             rows={5}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none text-sm leading-relaxed"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-blue-500 focus:border-blue-500 outline-none text-sm leading-relaxed"
                         />
                     </div>
                 </div>
 
             </div>
 
-            {/* FLOATING SAVE BUTTON */}
-            <div className="fixed bottom-0 left-0 right-0 p-4 bg-transparent pb-18 flex justify-end md:px-8">
+            {/* ── Floating Save Button ── */}
+            <div className="fixed bottom-0 left-0 right-0 p-4 bg-transparent pb-18 flex justify-center md:px-8">
                 <button
                     onClick={handleSave}
                     disabled={isSaving}
                     className={`
-                        w-full md:w-auto px-8 py-3 rounded-lg text-white font-bold text-lg shadow-md transition-all transform active:scale-[0.98]
-                        ${isSaving ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}
+                        w-auto min-w-[150px] py-3 px-6 rounded-sm text-white font-bold shadow-lg transition-colors
+    ${isSaving ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}
                     `}
                 >
-                    {isSaving ? 'Saving...' : 'Save Changes'}
+                    {isSaving ? 'Saving...' : 'Save Settings'}
                 </button>
-                
+
             </div>
         </div>
     );

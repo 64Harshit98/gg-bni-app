@@ -18,7 +18,24 @@ service cloud.firestore {
 
     // --- Master Admin Access ---
     match /{document=**} {
+      allow read, write: if request.auth.uid == "6vwZ1HRqX7VSnh5KP4JW0TKeuZm2";
       allow read, write: if request.auth.uid == "1AKioGfop8PmHhry6uXOz8Rw6qT2";
+      }
+    match /agents/{userId} {
+      allow read, write, create, update: if request.auth != null && request.auth.uid == userId;
+    }
+    match /commissions/{commissionId} {
+      allow read: if request.auth != null && resource.data.agentId == request.auth.uid;
+    }
+
+    match /payoutRequests/{requestId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && resource.data.agentId == request.auth.uid;
+    }
+
+    match /manualLeads/{leadId} {
+      allow create: if request.auth != null && request.resource.data.agencyId == request.auth.uid;
+      allow read, update, delete: if request.auth != null && resource.data.agencyId == request.auth.uid;
     }
 
     // --- Public Leads (Sign Up) ---
@@ -35,8 +52,9 @@ service cloud.firestore {
     match /companies/{companyId} {
       
       // Default rule: Must be a member to read/update the company doc itself
-      allow read: if isCompanyMember(companyId);
+      allow read: if true;
       allow update: if isCompanyMember(companyId);
+      allow read: if request.auth != null && resource.data.referralDetails.referrerId == request.auth.uid;
 
       // =========================================================
       // PUBLIC READ ACCESS (For QR Bill Download)
@@ -59,11 +77,13 @@ service cloud.firestore {
         allow read: if true;
         allow write: if isCompanyMember(companyId);
       }
-             match /settings/bill {
+      match /settings/bill {
         allow read: if true;
         allow write: if isCompanyMember(companyId);
       }
-      // =========================
+      match /settings/{document=**} {
+          allow read: if true; 
+      }
       
       // =========================================================
       // AUTHENTICATED ONLY SECTIONS
@@ -107,8 +127,21 @@ service cloud.firestore {
 
       // 2. Orders: Public needs to CREATE, READ, and DELETE (for upcoming orders)
       match /Orders/{orderId} {
-        allow create, read, delete: if true; 
-        allow update: if true; 
+        allow create, read, delete: if true;
+        allow update: if true;
+      }
+
+      // 2b. Customers: same collection Sales writes to (staff-side, already
+      // covered by isCompanyMember via the catch-all below). Checkout is a
+      // public, unauthenticated storefront just like Orders/items above, so
+      // it needs the same public create/update here to upsert its own
+      // customer record when an order is placed. Delete stays restricted to
+      // company members — a public checkout has no reason to delete a
+      // customer record.
+      match /customers/{customerId} {
+        allow read: if true;
+        allow create, update: if true;
+        allow delete: if isCompanyMember(companyId);
       }
 
       // 3. Catalogue Settings: Ensure this is EXACTLY like this
@@ -129,6 +162,18 @@ service cloud.firestore {
       
       match /AuthorizedUser/{userId} {
         allow read: if true;
+        allow create: if true;
+      }
+      match/BulkQuoteRequests/{documnet=**}{
+      allow read: if true;
+        allow create: if true;
+      }
+      match/reffarals/{documnet=**}{
+      allow read: if true;
+        allow create: if true;
+      }
+      match/PersonalizationRequests/{documnet=**}{
+      allow read: if true;
         allow create: if true;
       }
       

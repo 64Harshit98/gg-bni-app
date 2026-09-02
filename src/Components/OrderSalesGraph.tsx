@@ -1,15 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
-import { db } from '../lib/Firebase';
-import {
-    collection,
-    query,
-    where,
-    getDocs,
-    Timestamp,
-    orderBy,
-} from 'firebase/firestore';
-import { useAuth } from '../context/auth-context';
-// --- FIX: Import LineChart and Line ---
+import { useState, useMemo } from 'react';
 import { Line, LineChart, CartesianGrid, YAxis, XAxis } from 'recharts';
 import {
     Card,
@@ -22,115 +11,67 @@ import {
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from './ui/chart';
 import type { ChartConfig } from './ui/chart';
 import { useFilter } from './Filter';
-
-// --- Interfaces ---
-interface SaleRecord {
-    totalAmount: number;
-    createdAt: Timestamp; // Use Timestamp from Firestore
-    companyId: string;
-}
-interface ChartData {
+interface ChartDataPoint {
     date: string;
     sales: number;
-    bills: number; // To store the count of bills
+    bills: number;
 }
 
-// --- Chart Configuration ---
 const chartConfig = {
-    sales: {
-        label: 'Sales',
-        color: '#3b82f6',
-    },
-    bills: {
-        label: 'Bills',
-        color: '#3b82f6',
-    },
+    sales: { label: 'Sales', color: '#F97316' },
+    bills: { label: 'Bills', color: '#F97316' },
 } satisfies ChartConfig;
 
-
-interface SalesBarChartReportProps {
+// ── Props (data comes from HomePage, no internal fetch) ──────────────────────
+interface OrderBarChartReportProps {
     isDataVisible: boolean;
+    chartData: ChartDataPoint[];
+    totalSales: number;
+    totalBills: number;
+    loading: boolean;
 }
 
-// Renamed component to match the file and your request
-export function OrderBarChartReport({ isDataVisible }: SalesBarChartReportProps) {
-    const { currentUser } = useAuth();
+export function OrderBarChartReport({
+    isDataVisible,
+    chartData,
+    totalSales,
+    totalBills,
+    loading,
+}: OrderBarChartReportProps) {
     const { filters } = useFilter();
-    const [chartData, setChartData] = useState<ChartData[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
     const [viewMode, setViewMode] = useState<'amount' | 'quantity'>('amount');
 
-    useEffect(() => {
-        const fetchSalesData = async () => {
-            if (!currentUser?.companyId || !filters.startDate || !filters.endDate) {
-                setIsLoading(false);
-                setChartData([]);
-                return;
-            }
-            setIsLoading(true);
-            setError(null);
+    const processedChartData = useMemo(() => {
+        if (!filters.startDate || !filters.endDate) return chartData;
 
-            const start = new Date(filters.startDate);
-            start.setHours(0, 0, 0, 0);
-            const end = new Date(filters.endDate);
-            end.setHours(23, 59, 59, 999);
+        const start = new Date(filters.startDate);
+        const end = new Date(filters.endDate);
 
-            try {
-                // --- Use 'Orders' (capital 'O') to match your other files ---
-                const salesQuery = query(
-                    collection(db, 'companies', currentUser.companyId, 'Orders'),
-                    where('status', 'in', ['Completed', 'Paid']),
-                    where('createdAt', '>=', Timestamp.fromDate(start)),
-                    where('createdAt', '<=', Timestamp.fromDate(end)),
-                    orderBy('createdAt', 'asc')
-                    // This query requires a composite index. 
-                    // Check your console for a link to create it.
-                );
-                const querySnapshot = await getDocs(salesQuery);
+        const isTodayFilter =
+            start.toDateString() === end.toDateString();
 
-                const salesByDate: { [key: string]: { sales: number; bills: number } } = {};
+        if (!isTodayFilter) return chartData;
 
-                // Initialize all dates in the range with 0 sales and 0 bills
-                for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                    const dateKey = d.toLocaleDateString('en-CA'); // YYYY-MM-DD
-                    salesByDate[dateKey] = { sales: 0, bills: 0 };
-                }
+        // 👇 yesterday
+        const yesterday = new Date(start);
+        yesterday.setDate(yesterday.getDate() - 1);
 
-                querySnapshot.forEach((doc) => {
-                    const sale = doc.data() as SaleRecord;
-                    // --- Use toDate() on the Timestamp ---
-                    const dateKey = sale.createdAt.toDate().toLocaleDateString('en-CA');
-                    if (salesByDate[dateKey]) {
-                        salesByDate[dateKey].sales += sale.totalAmount;
-                        salesByDate[dateKey].bills += 1;
-                    }
-                });
+        // 👇 format function (same as backend: en-CA)
+        const format = (d: Date) =>
+            d.toLocaleDateString('en-CA');
 
-                const newChartData: ChartData[] = Object.keys(salesByDate).map((date) => ({
-                    date,
-                    sales: salesByDate[date].sales,
-                    bills: salesByDate[date].bills,
-                }));
+        const yesterdayKey = format(yesterday);
+        const todayKey = format(end);
 
-                setChartData(newChartData);
-            } catch (err) {
-                console.error('Error fetching sales data:', err);
-                setError('Failed to fetch sales data. (Check console for index link)');
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        fetchSalesData();
-    }, [currentUser, filters]);
+        // 👇 existing data map
+        const map = new Map(chartData.map(item => [item.date, item]));
 
-    const { totalSales, totalBills } = useMemo(() => {
-        return chartData.reduce((acc, data) => {
-            acc.totalSales += data.sales;
-            acc.totalBills += data.bills;
-            return acc;
-        }, { totalSales: 0, totalBills: 0 });
-    }, [chartData]);
+        return [
+            map.get(yesterdayKey) || { date: yesterdayKey, sales: 0, bills: 0 },
+            map.get(todayKey) || { date: todayKey, sales: 0, bills: 0 },
+        ];
+
+    }, [chartData, filters.startDate, filters.endDate]);
 
     const selectedPeriodText = useMemo(() => {
         if (!filters.startDate || !filters.endDate) {
@@ -158,61 +99,69 @@ export function OrderBarChartReport({ isDataVisible }: SalesBarChartReportProps)
                 <div className="flex items-center p-1 bg-gray-100 rounded-lg">
                     <button
                         onClick={() => setViewMode('amount')}
-                        className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${viewMode === 'amount' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}
+                        className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${viewMode === 'amount' ? 'bg-white text-[#F97316] shadow-sm' : 'text-gray-500'}`}
                     >
                         Amt
                     </button>
                     <button
                         onClick={() => setViewMode('quantity')}
-                        className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${viewMode === 'quantity' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}
+                        className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${viewMode === 'quantity' ? 'bg-white text-[#F97316] shadow-sm' : 'text-gray-500'}`}
                     >
                         Qty
                     </button>
                 </div>
             </CardHeader>
             <CardContent>
-                {isLoading ? <div className="flex h-[260px] items-center justify-center"></div> :
-                    error ? <div className="flex h-[260px] items-center justify-center text-center"><p className="text-red-500 text-sm">{error}</p></div> :
-                        isDataVisible ? (
-                            <ChartContainer config={chartConfig} className="h-[260px] w-full">
-                                {/* --- FIX: Changed to LineChart --- */}
-                                <LineChart data={chartData} margin={{ top: 30, left: -10, right: 12, bottom: 10 }}>
-                                    <CartesianGrid vertical={false} />
-                                    <ChartTooltip
-                                        cursor={false}
-                                        content={<ChartTooltipContent hideLabel />}
-                                    />
-                                    <XAxis
-                                        dataKey="date"
-                                        tickLine={false}
-                                        axisLine={false}
-                                        tickMargin={8}
-                                        fontSize={10}
-                                        tickFormatter={(value) => new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
-                                    />
-                                    <YAxis
-                                        stroke="#888888"
-                                        fontSize={10}
-                                        tickLine={false}
-                                        axisLine={false}
-                                        tickFormatter={(value) => viewMode === 'amount' ? `₹${value / 1000}k` : value.toString()}
-                                    />
-                                    {/* --- FIX: Changed to Line --- */}
-                                    <Line
-                                        dataKey={viewMode === 'amount' ? 'sales' : 'bills'}
-                                        type="monotone"
-                                        stroke={viewMode === 'amount' ? chartConfig.sales.color : chartConfig.bills.color}
-                                        strokeWidth={2}
-                                        dot={{ r: 4 }}
-                                    />
-                                </LineChart>
-                            </ChartContainer>
-                        ) : (
-                            <div className="flex h-[250px] w-full flex-col items-center justify-center rounded-lg bg-white">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 mb-2"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" /><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" /><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" /><line x1="2" x2="22" y1="2" y2="22" /></svg>
-                                <p className="text-gray-500">Data is hidden</p>
-                            </div>
-                        )}
+                {loading ? <div className="flex h-[260px] items-center justify-center"></div> :
+                    isDataVisible ? (
+                        <ChartContainer config={chartConfig} className="h-[260px] w-full">
+                            {/* --- FIX: Changed to LineChart --- */}
+                            <LineChart data={processedChartData} margin={{ top: 30, left: -10, right: 12, bottom: 10 }}>
+                                <CartesianGrid vertical={false} />
+                                <ChartTooltip
+                                    cursor={{ stroke: '#ccc', strokeWidth: 1 }}
+                                    content={
+                                        <ChartTooltipContent
+                                            labelFormatter={(label) =>
+                                                new Date(label).toLocaleDateString('en-IN', {
+                                                    day: '2-digit',
+                                                    month: '2-digit',
+                                                })
+                                            }
+                                        />
+                                    }
+                                />
+                                <XAxis
+                                    dataKey="date"
+                                    tickLine={false}
+                                    axisLine={false}
+                                    tickMargin={8}
+                                    fontSize={10}
+                                    tickFormatter={(value) => new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                                />
+                                <YAxis
+                                    stroke="#888888"
+                                    fontSize={10}
+                                    tickLine={false}
+                                    axisLine={false}
+                                    tickFormatter={(value) => viewMode === 'amount' ? `₹${value / 1000}k` : value.toString()}
+                                />
+                                {/* --- FIX: Changed to Line --- */}
+                                <Line
+                                    dataKey={viewMode === 'amount' ? 'sales' : 'bills'}
+                                    type="linear"
+                                    stroke={viewMode === 'amount' ? chartConfig.sales.color : chartConfig.bills.color}
+                                    strokeWidth={2}
+                                    dot={{ r: 4 }}
+                                />
+                            </LineChart>
+                        </ChartContainer>
+                    ) : (
+                        <div className="flex h-[250px] w-full flex-col items-center justify-center rounded-lg bg-white">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 mb-2"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" /><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" /><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" /><line x1="2" x2="22" y1="2" y2="22" /></svg>
+                            <p className="text-gray-500">Data is hidden</p>
+                        </div>
+                    )}
             </CardContent>
             <CardFooter className="flex-col items-start gap-2 text-sm">
                 <div className="flex gap-2 leading-none font-medium">

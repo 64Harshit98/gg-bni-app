@@ -1,25 +1,18 @@
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Outlet, useLocation } from 'react-router-dom';
 import { ROUTES } from '../constants/routes.constants';
 import ShowWrapper from '../context/ShowWrapper';
 import { Permissions } from '../enums';
-import { IconClose } from '../constants/Icons';
+import BackButton from '../Components/BackButton';
 
 const Reports = () => {
   const location = useLocation();
-  const navigate = useNavigate();
-
   const isDefaultReportsView =
     location.pathname === '/reports' || location.pathname === '/reports/';
 
   return (
     <div className="flex flex-col w-full bg-gray-100 overflow-hidden font-poppins">
       <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
-        <button
-          onClick={() => navigate(-1)}
-          className="flex items-center gap-2 text-gray-500 hover:text-gray-900 transition-colors"
-        >
-          <IconClose />
-        </button>
+        <BackButton />
         <h1 className="text-2xl font-bold text-gray-800 m-0 flex-grow text-center">
           Reports
         </h1>
@@ -64,7 +57,25 @@ const Reports = () => {
                 <span className="text-xl text-gray-500">→</span>
               </Link>
             </ShowWrapper>
-            <ShowWrapper requiredPermission={Permissions.ViewPNLReport}>
+            <ShowWrapper requiredPermission={Permissions.ViewExpenseReport}>
+              <Link
+                to={ROUTES.EXPENSE_REPORT}
+                className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
+              >
+                <span className="text-lg font-medium">Expense Report</span>
+                <span className="text-xl text-gray-500">→</span>
+              </Link>
+            </ShowWrapper>
+            <ShowWrapper requiredPermission={Permissions.ViewStockTransferReport}>
+              <Link
+                to={ROUTES.STOCK_TRANSFER}
+                className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
+              >
+                <span className="text-lg font-medium">Stock Transfer Report</span>
+                <span className="text-xl text-gray-500">→</span>
+              </Link>
+            </ShowWrapper>
+            <ShowWrapper requiredPermission={Permissions.ViewCustomerReport}>
               <Link
                 to={ROUTES.CUSTOMER_REPORT}
                 className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
@@ -73,14 +84,38 @@ const Reports = () => {
                 <span className="text-xl text-gray-500">→</span>
               </Link>
             </ShowWrapper>
-            <ShowWrapper requiredPermission={Permissions.ViewPNLReport}>
+            <ShowWrapper requiredPermission={Permissions.ViewPartyLedger}>
               <Link
                 to={ROUTES.PARTY_LEDGER}
                 className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
-              >
+              >                                                                               
                 <span className="text-lg font-medium">Party Ledger</span>
                 <span className="text-xl text-gray-500">→</span>
               </Link>
+            </ShowWrapper>
+            <ShowWrapper requiredPermission={Permissions.ViewTaxReport}>
+              <Link
+                to={ROUTES.TAX_REPORT}
+                className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
+              >
+                <span className="text-lg font-medium">Tax Report</span>
+                <span className="text-xl text-gray-500">→</span>
+              </Link>
+            </ShowWrapper>
+            <ShowWrapper requiredPermission={Permissions.ViewPNLReport}>
+              <div
+                className="flex justify-between items-center bg-gray-50 p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-400 cursor-not-allowed relative overflow-hidden"
+              >
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">
+                    Coming Soon
+                  </span>
+                  <span className="text-lg font-medium">User Report</span>
+                </div>
+
+                {/* Optional: Keep the arrow but make it look disabled, or remove it */}
+                <span className="text-xl text-gray-300">→</span>
+              </div>
             </ShowWrapper>
             <ShowWrapper requiredPermission={Permissions.ViewPNLReport}>
               <div
@@ -105,14 +140,13 @@ const Reports = () => {
                   <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">
                     Coming Soon
                   </span>
-                  <span className="text-lg font-medium">Tax Report</span>
+                  <span className="text-lg font-medium">Galla Hisaab Tool</span>
                 </div>
 
                 {/* Optional: Keep the arrow but make it look disabled, or remove it */}
                 <span className="text-xl text-gray-300">→</span>
               </div>
             </ShowWrapper>
-
           </>
         ) : (
           <div className="bg-white p-6 rounded-xl shadow-md mt-6 min-h-[200px] flex justify-center items-center text-gray-500 italic">

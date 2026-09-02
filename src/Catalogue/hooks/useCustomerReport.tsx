@@ -3,7 +3,7 @@ import { useAuth } from '../../context/auth-context';
 import { useState, useEffect } from 'react';
 import { State } from '../../enums';
 import { formatDateForInput } from '../../Pages/Reports/SalesReportComponents/salesReport.utils';
-import { collection, onSnapshot, query, Timestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, Timestamp, limit } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 import { type Sale } from '../../Pages/Reports/CustomerReportComponents/customerReport.utils';
 
@@ -15,7 +15,7 @@ export default function useCustomerReport() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [datePreset, setDatePreset] = useState('today');
+  const [datePreset, setDatePreset] = useState('last30');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [appliedFilters, setAppliedFilters] = useState({ start: '', end: '' });
@@ -30,16 +30,20 @@ export default function useCustomerReport() {
 
   useEffect(() => {
     const today = new Date();
-    const formatted = formatDateForInput(today);
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
 
-    const start = new Date(formatted);
+    const formattedStart = formatDateForInput(thirtyDaysAgo);
+    const formattedEnd = formatDateForInput(today);
+
+    const start = new Date(formattedStart);
     start.setHours(0, 0, 0, 0);
 
-    const end = new Date(formatted);
+    const end = new Date(formattedEnd);
     end.setHours(23, 59, 59, 999);
 
-    setStartDate(formatted);
-    setEndDate(formatted);
+    setStartDate(formattedStart);
+    setEndDate(formattedEnd);
     setAppliedFilters({
       start: start.toISOString(),
       end: end.toISOString(),
@@ -52,45 +56,49 @@ export default function useCustomerReport() {
       return;
     }
 
-    const salesRef = collection(
-      db,
-      'companies',
-      currentUser.companyId,
-      'Orders',
-    );
+    const ordersRef = collection(db, 'companies', currentUser.companyId, 'Orders');
+    const obRef = collection(db, 'companies', currentUser.companyId, 'openingBalances');
 
-    const q = query(salesRef);
+    // Safety caps — this report filters client-side by the selected date range,
+    // so without a limit a company with years of orders would re-download the
+    // entire collection on every live update.
+    const q = query(ordersRef, where('status', '!=', 'Upcoming'), limit(5000));
+    const obQ = query(obRef, limit(5000));
 
-    const unsubscribe = onSnapshot(
+    const unsubscribeSales = onSnapshot(
       q,
       (snapshot) => {
-        setSales(
-          snapshot.docs.map((doc) => {
+        setSales(prev => {
+          const obEntries = prev.filter((s: any) => s.isOpeningBalance === true);
+          const salesEntries = snapshot.docs.map((doc) => {
             const data = doc.data();
-            const totalAmount = Number(data.totalAmount || 0);
-            const paidAmount = Number(data.paidAmount || 0);
-            
-
-            // ONLY Completed + unpaid orders
-            const isCompletedUnpaid =
-              data.status === 'Completed' &&
-              paidAmount < totalAmount;
-
+            const total = Number(data.totalAmount || 0);
+            const paid = Number(data.paidAmount || 0);
             return {
               id: doc.id,
-              partyName: data.userName || 'N/A',
-              partyNumber: data.userLoginPhone ? String(data.userLoginPhone) : 'N/A',
-              totalAmount,
-              dueAmount: isCompletedUnpaid
-                ? totalAmount - paidAmount
-                : 0,
+              partyName:
+                data.userName ||
+                data.billingDetails?.name ||
+                data.shippingDetails?.name ||
+                'N/A',
+              partyNumber: (
+                data.userLoginPhone ||
+                data.billingDetails?.phone ||
+                data.shippingDetails?.phone ||
+                'N/A'
+              ).toString(),
+              totalAmount: total,
+              dueAmount: Math.max(0, total - paid),
+              creditNoteAmount: 0,
               createdAt:
                 data.createdAt instanceof Timestamp
                   ? data.createdAt.toDate()
                   : new Date(),
+              isOpeningBalance: false,
             };
-          }),
-        );
+          });
+          return [...salesEntries, ...obEntries];
+        });
         setLoading(false);
       },
       () => {
@@ -99,7 +107,44 @@ export default function useCustomerReport() {
       },
     );
 
-    return unsubscribe;
+    const unsubscribeOB = onSnapshot(
+  obQ,
+  (snapshot) => {
+    setSales(prev => {
+      const salesEntries = prev.filter((s: any) => s.isOpeningBalance !== true);
+      const obEntries = snapshot.docs
+        .filter(doc => {
+          const data = doc.data();
+          return (data.balanceType ?? 'due') === 'due' 
+            && data.partyType === 'Customer'
+            && data.source === 'catalogue';  // ← ADD THIS
+        })
+            .map(doc => {
+              const data = doc.data();
+              return {
+                id: doc.id,
+                partyName: data.partyName || 'N/A',
+                partyNumber: data.partyNumber || 'N/A',
+                totalAmount: Number(data.amount || 0),
+                dueAmount: Number(data.dueAmount ?? data.amount ?? 0),
+                creditNoteAmount: 0,
+                createdAt:
+                  data.createdAt instanceof Timestamp
+                    ? data.createdAt.toDate()
+                    : new Date(),
+                isOpeningBalance: true,
+              };
+            });
+          return [...salesEntries, ...obEntries];
+        });
+      },
+      () => { }
+    );
+
+    return () => {
+      unsubscribeSales();
+      unsubscribeOB();
+    };
   }, [currentUser?.companyId]);
 
   return {

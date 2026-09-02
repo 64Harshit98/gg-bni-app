@@ -190,7 +190,10 @@ export const useInvoiceCommunication = ({
 
     // NEW: POS-Photos — setting ON
     // NEW: POS-Photos — sirf A4 format ke liye, aur setting ON hone par hi photos fetch karo
-    const resolvedPrintFormat = (forcePosPrint || isPosBasicPlan) ? 'THERMAL58' : (billSettings.posPrintFormat || 'A4');
+    const isThermalFormat = billSettings.posPrintFormat === 'THERMAL58' || billSettings.posPrintFormat === 'THERMAL80';
+    const resolvedPrintFormat = (forcePosPrint || isPosBasicPlan)
+      ? (isThermalFormat ? billSettings.posPrintFormat : 'THERMAL58')
+      : (billSettings.posPrintFormat || 'A4');
     if (billSettings.enableItemImages && resolvedPrintFormat === 'A4') {
       await Promise.all(populatedItems.map(async (pItem: any, idx: number) => {
         const original = (invoice.items || [])[idx];
@@ -209,7 +212,7 @@ export const useInvoiceCommunication = ({
     }
 
     return {
-      printFormat: (forcePosPrint || isPosBasicPlan) ? 'THERMAL58' : (billSettings.posPrintFormat || 'A4'),
+      printFormat: resolvedPrintFormat,
       enableTriplicate: billSettings.enableTriplicate || false,
       enableItemImages: billSettings.enableItemImages || false, // NEW
       gstScheme: salesSettings?.gstScheme || '',

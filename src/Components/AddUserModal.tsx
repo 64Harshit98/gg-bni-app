@@ -140,7 +140,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onU
               onChange={setRole}
               placeholder="Select a role..."
               disabled={isSubmitting}
-              className="w-full"
+              className="w-full z-[8000]"
             />
           </div>
 

@@ -6,6 +6,7 @@ import { Variant, State } from '../../enums';
 import XLSX from 'xlsx-js-style';
 import BarcodeScanner from '../../UseComponents/BarcodeScanner';
 import { useAuth, useDatabase } from '../../context/auth-context';
+import { useCatalogueData } from '../../context/CatalogueDataContext';
 import { Spinner } from '../../constants/Spinner';
 import { Modal } from '../../constants/Modal';
 import { useItemSettings } from '../../context/SettingsContext';
@@ -126,8 +127,16 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   const [hsnCode, setHsnCode] = useState<string>('');
   const [itemUnit, setItemUnit] = useState<string>('pcs');
   const [packetSize, setPacketSize] = useState<string>('');
-  const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
-  const [allItems, setAllItems] = useState<any[]>([]);
+  const { items: catalogueItems, itemGroups: catalogueItemGroups, itemGroupsLoading: catalogueGroupsLoading } = useCatalogueData();
+  const [itemGroups, setItemGroups] = useState<ItemGroup[]>(catalogueItemGroups);
+  const [allItems, setAllItems] = useState<any[]>(catalogueItems);
+  // Seeds from the shared CatalogueDataContext on mount/update instead of
+  // this page re-fetching groups/items itself. `fetchGroups()` below is
+  // still used as an explicit one-shot refresh after the bulk CSV import
+  // writes many items/groups in a tight loop and needs a deterministic
+  // fresh read to keep going — that path is unchanged.
+  useEffect(() => { setItemGroups(catalogueItemGroups); }, [catalogueItemGroups]);
+  useEffect(() => { setAllItems(catalogueItems); }, [catalogueItems]);
   const [moq, setMoq] = useState<string>('1');
   const [imageUrl, setImageUrl] = useState<string>('');
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -268,9 +277,10 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     }
   };
 
+  useEffect(() => { setLoading(catalogueGroupsLoading); }, [catalogueGroupsLoading]);
+
   useEffect(() => {
     if (dbOperations && currentUser && itemSettings) {
-      fetchGroups();
       fetchNextBarcode();
     }
   }, [dbOperations, currentUser, itemSettings]);

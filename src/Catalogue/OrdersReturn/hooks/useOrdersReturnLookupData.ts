@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { collection, query, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
-import { useDatabase } from '../../../context/auth-context';
+import { useCatalogueData } from '../../../context/CatalogueDataContext';
 import type { Order, OrderItem } from '../../Orders';
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -36,7 +36,7 @@ export const useOrdersReturnLookupData = ({
 }: UseOrdersReturnLookupDataParams) => {
   const [catalogueSettings, setCatalogueSettings] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-  const dbOperations = useDatabase();
+  const { items: catalogueItems } = useCatalogueData();
 
   useEffect(() => {
     if (!currentUser?.companyId) {
@@ -89,24 +89,13 @@ export const useOrdersReturnLookupData = ({
     fetchSettings();
   }, [currentUser]);
 
+  // items now come from the shared CatalogueDataContext instead of this hook
+  // fetching them itself — mirrored into setAvailableItems, which is owned by
+  // OrdersReturn.tsx and shared with sibling hooks (e.g. useItemEditDrawer's
+  // handleSaveSuccess) that optimistically mutate it after their own writes.
   useEffect(() => {
-    if (!currentUser?.companyId || !dbOperations) return;
-
-    // Rides on the shared idb-keyval-backed items sync (dbOperations.syncItems,
-    // see ItemsFirebase.ts) instead of a raw full `items` collection getDocs —
-    // only fetches items changed since the device's last sync.
-    const fetchItems = async () => {
-      try {
-        const list = await dbOperations.syncItems();
-        setAvailableItems(list as any[]);
-      } catch (err) {
-        console.error(err);
-        setError('Failed to load items');
-      }
-    };
-
-    fetchItems();
-  }, [currentUser, dbOperations]);
+    setAvailableItems(catalogueItems as any[]);
+  }, [catalogueItems]);
 
   return { catalogueSettings, error, setError };
 };

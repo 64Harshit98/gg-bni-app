@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth, useDatabase } from '../context/auth-context';
+import { useCatalogueData } from '../context/CatalogueDataContext';
 import type { Item, ItemGroup } from '../constants/models';
 import { Modal } from '../constants/Modal';
 import { State } from '../enums';
@@ -112,10 +113,16 @@ const OrderingPage: React.FC = () => {
     const companyId = currentUser?.companyId;
     const { businessName: companyName, loading: _nameLoading } = useBusinessName(companyId);
     const dbOperations = useDatabase();
-    const [items, setItems] = useState<Item[]>([]);
-    const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
+    const { items: catalogueItems, itemsLoading, itemGroups: catalogueItemGroups, itemGroupsLoading } = useCatalogueData();
+    // Local mirrors (not direct context reads) — this page optimistically
+    // mutates both after live-toggling items and renaming/deleting groups,
+    // ahead of the shared listener echoing those writes back.
+    const [items, setItems] = useState<Item[]>(catalogueItems);
+    const [itemGroups, setItemGroups] = useState<ItemGroup[]>(catalogueItemGroups);
+    useEffect(() => { setItems(catalogueItems); }, [catalogueItems]);
+    useEffect(() => { setItemGroups(catalogueItemGroups); }, [catalogueItemGroups]);
     const [searchQuery, _setSearchQuery] = useState('');
-    const [pageIsLoading, setPageIsLoading] = useState(true);
+    const pageIsLoading = authLoading || !dbOperations || itemsLoading || itemGroupsLoading;
     const [cart, setCart] = useState<any[]>([]);
     const [isPlacingOrder, setIsPlacingOrder] = useState(false);
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
@@ -170,43 +177,13 @@ const OrderingPage: React.FC = () => {
         };
         loadPins();
     }, [companyId]);
-    // --- Fetch Data ---
+    // --- Fetch business info (page-specific; items/itemGroups come from
+    // CatalogueDataContext, mirrored into local state above) ---
     useEffect(() => {
-        if (authLoading || !currentUser || !dbOperations) {
-            setPageIsLoading(authLoading || !dbOperations);
-            return;
-        }
+        if (!companyId) return;
 
-        const fetchData = async () => {
-            if (!companyId) return;
+        const fetchBusinessInfo = async () => {
             try {
-                setPageIsLoading(true);
-
-                const [fetchedItems, fetchedItemGroups] = await Promise.all([
-                    dbOperations.syncItems(),
-                    dbOperations.getItemGroups()
-                ]);
-
-                let updatedGroups = [...fetchedItemGroups];
-
-                setItems(fetchedItems);
-
-                const groupMap = new Map<string, ItemGroup>();
-
-                updatedGroups.forEach(group => {
-                    if (!group.id) return;
-
-                    if (!groupMap.has(group.id)) {
-                        groupMap.set(group.id, group);
-                    }
-                });
-
-                setItemGroups(
-                    Array.from(groupMap.values()).sort((a, b) =>
-                        a.name.localeCompare(b.name)
-                    )
-                );
-
                 const businessRef = doc(
                     db,
                     "companies",
@@ -220,15 +197,12 @@ const OrderingPage: React.FC = () => {
                 if (businessSnap.exists()) {
                     setSocialLinks(businessSnap.data());
                 }
-
             } catch (err) {
-                console.error("Error fetching data:", err);
-            } finally {
-                setPageIsLoading(false);
+                console.error("Error fetching business info:", err);
             }
         };
-        fetchData();
-    }, [authLoading, currentUser, dbOperations]);
+        fetchBusinessInfo();
+    }, [companyId]);
 
     // --- HANDLERS ---
     const handleEdit = (group: any) => {

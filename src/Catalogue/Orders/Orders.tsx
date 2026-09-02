@@ -4,13 +4,11 @@ import { Link } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
 import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '../../../src/constants/routes.constants';
-import { useDatabase } from '../../context/auth-context';
+import { useCatalogueData } from '../../context/CatalogueDataContext';
 import ShinyText from '../../Components/ShinyText';
 import {
-    collection,
     doc,
     getDoc,
-    getDocs,
     setDoc,
 } from 'firebase/firestore';
 import { useAuth } from '../../context/auth-context';
@@ -55,9 +53,9 @@ const OrdersPage: React.FC = () => {
     const [enableTransportDetails, setEnableTransportDetails] = useState(false);
     const [_itemGroupMap, setItemGroupMap] = useState<Record<string, string>>({});
     const [_pageIsLoading, setPageIsLoading] = useState(false);
-    const dbOperations = useDatabase();
-    const [_error, setError] = useState<string | null>(null);
+    const [_error, _setError] = useState<string | null>(null);
     const [availableItems, setAvailableItems] = useState<Item[]>([]);
+    const { items: catalogueItems, itemsLoading: catalogueItemsLoading, itemGroups: catalogueItemGroups } = useCatalogueData();
 
     const { currentUser } = useAuth();
     // ─── Tutorial state (mirrors Journal.tsx pattern) ─────────────────────────
@@ -414,46 +412,21 @@ const OrdersPage: React.FC = () => {
         fetchSalesSettings();
     }, [currentUser?.companyId]);
 
+    // items/itemGroups now come from the shared CatalogueDataContext instead
+    // of this page fetching (and separately live-listening to) them itself —
+    // the old code above did both a one-shot syncItems() AND a listenToItems()
+    // live listener writing into the same availableItems state, which was
+    // redundant even before this change.
     useEffect(() => {
-        const fetchData = async () => {
-            if (!dbOperations || !currentUser?.companyId) return;
-            try {
-                setPageIsLoading(true);
-                // Sales.tsx wala fast sync logic
-                const fetchedItems = await dbOperations.syncItems();
-                setAvailableItems(fetchedItems);
-
-                // Item Groups (Categories) fetch logic
-                const groupsRef = collection(db, 'companies', currentUser.companyId, 'itemGroups');
-                const groupsSnap = await getDocs(groupsRef);
-                const groupMap: Record<string, string> = {};
-                groupsSnap.docs.forEach(doc => {
-                    const data = doc.data();
-                    groupMap[doc.id] = data.name || data.groupName || 'Unknown Group';
-                });
-                setItemGroupMap(groupMap);
-            } catch (err) {
-                console.error("Fetch Error:", err);
-                setError('Failed to sync data.');
-            } finally {
-                setPageIsLoading(false);
-            }
-        };
-        fetchData();
-    }, [dbOperations, currentUser?.companyId]);
-
+        setPageIsLoading(catalogueItemsLoading);
+        setAvailableItems(catalogueItems);
+    }, [catalogueItems, catalogueItemsLoading]);
 
     useEffect(() => {
-        let unsubscribeItems: () => void;
-        if (dbOperations) {
-            unsubscribeItems = dbOperations.listenToItems((data) => {
-                setAvailableItems(data);
-            });
-        }
-        return () => {
-            if (unsubscribeItems) unsubscribeItems();
-        };
-    }, [dbOperations]);
+        const groupMap: Record<string, string> = {};
+        catalogueItemGroups.forEach((g) => { if (g.id) groupMap[g.id] = g.name || 'Unknown Group'; });
+        setItemGroupMap(groupMap);
+    }, [catalogueItemGroups]);
 
     return (
         <div className="flex min-h-screen w-full flex-col bg-gray-100 mb-10">

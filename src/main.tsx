@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { SettingsProvider } from './context/SettingsContext';
+import { CatalogueDataProvider } from './context/CatalogueDataContext';
 import { Provider } from 'react-redux';
 import { AuthProvider } from './context/AuthContext';
 import { store } from './store/store';
@@ -18,7 +19,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <ShopHoursGuard>
             <NotificationProvider>
               <SettingsProvider>
-                <AppRouter />
+                <CatalogueDataProvider>
+                  <AppRouter />
+                </CatalogueDataProvider>
               </SettingsProvider>
             </NotificationProvider>
           </ShopHoursGuard>

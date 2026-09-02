@@ -1,5 +1,5 @@
-import { lazy, Suspense } from 'react';
-import { createBrowserRouter, Outlet, RouterProvider, ScrollRestoration } from 'react-router-dom';
+import { lazy, Suspense, useEffect } from 'react';
+import { createBrowserRouter, Outlet, RouterProvider, ScrollRestoration, useLocation } from 'react-router-dom';
 import MainLayout from '../app/MainLayout';
 import CatalogueLayout from '../app/CatalougeLayout';
 import { ROUTES } from '../constants/routes.constants';
@@ -10,6 +10,26 @@ import GlobalError from '../Components/GlobalError';
 import { AppRegistry } from './AppRegistry';
 import AppGuard from '../guards/AppGuard';
 import { getSubdomain } from '../lib/subdomain';
+import { logAnalyticsEvent } from '../lib/Firebase';
+
+const RootLayout: React.FC = () => {
+  const location = useLocation();
+
+  useEffect(() => {
+    logAnalyticsEvent('page_view', {
+      page_path: location.pathname + location.search,
+      page_location: window.location.href,
+      page_title: document.title,
+    });
+  }, [location]);
+
+  return (
+    <>
+      <ScrollRestoration />
+      <Outlet />
+    </>
+  );
+};
 
 // --- PUBLIC ROUTE IMPORTS ---
 const Landing = lazy(() => import('../Pages/Auth/Landing'));
@@ -58,10 +78,7 @@ const router = createBrowserRouter(
       {
         path: '/',
         errorElement: <GlobalError />,
-        element: <>
-          <ScrollRestoration />
-          <Outlet />
-        </>,
+        element: <RootLayout />,
         children: [
           { index: true, element: <Catalogue />, handle: { isPublic: true } },
           { path: 'checkout', element: <CartPage />, handle: { isPublic: true } },
@@ -74,12 +91,7 @@ const router = createBrowserRouter(
       {
         path: '/',
         errorElement: <GlobalError />,
-        element: (
-          <>
-            <ScrollRestoration />
-            <Outlet />
-          </>
-        ),
+        element: <RootLayout />,
         children: [
 
           // --- 1. LEGACY PUBLIC ROUTES (Completely outside permissions!) ---

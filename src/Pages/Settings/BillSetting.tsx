@@ -15,7 +15,7 @@ export interface BillSettingsData {
     upiId?: string;
     termsAndConditions: string;
     signatureBase64?: string;
-    printFormat?: 'A4' | 'A5' | 'THERMAL58';
+    printFormat?: 'A4' | 'A5' | 'THERMAL58' | 'THERMAL80';
     whatsappExtraMessage?: string;
     enableTriplicate?: boolean;
     discountDisplayFormat?: 'amount' | 'percentage';
@@ -35,10 +35,10 @@ export interface RawBillSettings {
     discountDisplayFormat: 'amount' | 'percentage';
     enableItemImages: boolean;
     posTermsAndConditions: string;
-    posPrintFormat: 'A4' | 'A5' | 'THERMAL58';
+    posPrintFormat: 'A4' | 'A5' | 'THERMAL58' | 'THERMAL80';
     posWhatsappExtraMessage: string;
     catalogueTermsAndConditions: string;
-    cataloguePrintFormat: 'A4' | 'A5' | 'THERMAL58';
+    cataloguePrintFormat: 'A4' | 'A5' | 'THERMAL58' | 'THERMAL80';
     catalogueWhatsappExtraMessage: string;
 }
 
@@ -177,7 +177,9 @@ const BillSettings: React.FC = () => {
                     upiId: sData.upiId || bData.upiId || '',
                     termsAndConditions: sData.posTermsAndConditions || '1. Goods once sold will not be taken back.\n2. Interest @18% p.a. will be charged if payment is delayed.\n3. Subject to local Jurisdiction only.',
                     signatureBase64: sData.signatureBase64 || '',
-                    printFormat: isThermalOnlyPlan ? 'THERMAL58' : (sData.posPrintFormat || 'A4'),
+                    printFormat: isThermalOnlyPlan
+                        ? (sData.posPrintFormat === 'THERMAL80' ? 'THERMAL80' : 'THERMAL58')
+                        : (sData.posPrintFormat || 'A4'),
                     whatsappExtraMessage: sData.posWhatsappExtraMessage || '',
                     enableTriplicate: sData.enableTriplicate || false,
                     discountDisplayFormat: sData.discountDisplayFormat || 'amount',
@@ -238,7 +240,9 @@ const BillSettings: React.FC = () => {
 
                 // Editable settings (independent per bill type)
                 posTermsAndConditions: settings.termsAndConditions,
-                posPrintFormat: isThermalOnlyPlan ? 'THERMAL58' : settings.printFormat,
+                posPrintFormat: isThermalOnlyPlan
+                    ? (settings.printFormat === 'THERMAL80' ? 'THERMAL80' : 'THERMAL58')
+                    : settings.printFormat,
                 posWhatsappExtraMessage: settings.whatsappExtraMessage,
                 enableTriplicate: settings.enableTriplicate || false,
                 discountDisplayFormat: settings.discountDisplayFormat || 'amount',
@@ -506,6 +510,21 @@ const BillSettings: React.FC = () => {
                                     <span className="block text-xs text-gray-500">58mm continuous receipt layout.</span>
                                 </div>
                             </label>
+
+                            <label className={`flex-1 flex items-center p-4 border rounded-sm cursor-pointer transition-colors ${settings.printFormat === 'THERMAL80' ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'}`}>
+                                <input
+                                    type="radio"
+                                    name="printFormat"
+                                    value="THERMAL80"
+                                    checked={settings.printFormat === 'THERMAL80'}
+                                    onChange={handleChange}
+                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                />
+                                <div className="ml-3">
+                                    <span className="block text-sm font-medium text-gray-900">3-Inch Thermal</span>
+                                    <span className="block text-xs text-gray-500">80mm continuous receipt layout.</span>
+                                </div>
+                            </label>
                         </div>
                         {/* NEW: Triplicate toggle */}
                         <div className="mt-5 pt-5 border-t border-gray-100 flex items-center justify-between">
@@ -609,8 +628,8 @@ const BillSettings: React.FC = () => {
                                 SIGN HERE
                             </div>
                         </div>
-                        {settings.printFormat === 'THERMAL58' && (
-                            <p className="mt-2 text-xs text-amber-600 font-medium">Note: Signatures are not displayed on 2-Inch Thermal receipts.</p>
+                        {(settings.printFormat === 'THERMAL58' || settings.printFormat === 'THERMAL80') && (
+                            <p className="mt-2 text-xs text-amber-600 font-medium">Note: Signatures are not displayed on Thermal receipts.</p>
                         )}
                     </div>
                 </div>

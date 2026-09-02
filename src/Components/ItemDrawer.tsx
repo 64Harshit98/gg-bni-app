@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { Item, ItemGroup } from '../constants/models';
+import type { Item } from '../constants/models';
 import { useDatabase } from '../context/auth-context';
+import { useCatalogueData } from '../context/CatalogueDataContext';
 import { doc, getDoc, collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { db, storage } from '../lib/Firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
@@ -92,52 +93,22 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
 
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
     const firstInputRef = useRef<HTMLInputElement>(null);
-    const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
-    const [_loadingGroups, setLoadingGroups] = useState(false);
+    // Groups/items for the category picker + VariantPicker now come straight
+    // from the shared CatalogueDataContext instead of this drawer re-fetching
+    // them every time it opens (it's opened from many pages, many times).
+    const { items: allItemsForVariants, itemGroups } = useCatalogueData();
 
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
     const [uploadProgress, setUploadProgress] = useState<number | null>(null);
     const [unitChangeWarning, setUnitChangeWarning] = useState(false);
     const [variantIds, setVariantIds] = useState<string[]>([]);
-    const [allItemsForVariants, setAllItemsForVariants] = useState<any[]>([]);
     const [showCropModal, setShowCropModal] = useState(false);
     const [rawImageSrc, setRawImageSrc] = useState<string | null>(null);
     const [crop, setCrop] = useState<Crop>();
     const [completedCrop, setCompletedCrop] = useState<Crop | null>(null);
     const imgRef = useRef<HTMLImageElement>(null);
     const pendingRawFile = useRef<File | null>(null);
-
-    useEffect(() => {
-        const fetchGroups = async () => {
-            if (isOpen && dbOperations) {
-                setLoadingGroups(true);
-                try {
-                    const groups = await dbOperations.getItemGroups();
-                    setItemGroups(groups);
-                } catch (err) {
-                    console.error("Failed to load groups", err);
-                } finally {
-                    setLoadingGroups(false);
-                }
-            }
-        };
-        fetchGroups();
-    }, [isOpen, dbOperations]);
-
-    useEffect(() => {
-        const loadAllItems = async () => {
-            if (isOpen && dbOperations) {
-                try {
-                    const items = await dbOperations.syncItems();
-                    setAllItemsForVariants(items || []);
-                } catch (e) {
-                    console.error("Failed to load items for variant picker", e);
-                }
-            }
-        };
-        loadAllItems();
-    }, [isOpen, dbOperations]);
 
     useEffect(() => {
         const fetchLiveItemData = async () => {

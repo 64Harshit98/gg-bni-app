@@ -4,12 +4,25 @@ import type { InvoiceData } from './pdfGenerator';
 
 export const generateThermalReceipt = (
     data: InvoiceData,
-    action: ACTION.DOWNLOAD | ACTION.PRINT | ACTION.BLOB
+    action: ACTION.DOWNLOAD | ACTION.PRINT | ACTION.BLOB,
+    paperWidthMm: 58 | 80 = 58
 ): Blob | void => {
-    // 58mm standard thermal paper width
-    const paperWidth = 58;
+    // 58mm (2-inch) or 80mm (3-inch) thermal paper — all column positions
+    // below are derived from contentWidth so both sizes share one layout.
+    const paperWidth = paperWidthMm;
     const margin = 2;
     const contentWidth = paperWidth - margin * 2;
+
+    // Column x-positions as fractions of contentWidth (tuned against the
+    // original 58mm layout: Qty@32, Price@43, Amount@56, margin=2, width=54).
+    const colQty = margin + contentWidth * 0.556;
+    const colPrice = margin + contentWidth * 0.759;
+    const colAmount = paperWidth - margin;
+    const colTotalLabel = margin + contentWidth * 0.704;
+    // Item name wrap width and chars-per-line estimate, scaled the same way
+    // (originals: 24mm wrap / 54mm content, ~18 chars / 54mm content).
+    const nameWrapWidth = contentWidth * (24 / 54);
+    const charsPerLine = contentWidth * (18 / 54);
 
     // --- 1. PRE-CALCULATE DATA & HEIGHT ---
     const isEstimate = (data as any).isEstimate === true;
@@ -79,8 +92,8 @@ export const generateThermalReceipt = (
             taxBreakdown[rateKey].sgst += (taxAmt / 2);
         }
 
-        // Estimate line wrap for height (approx 18 chars fit in the item name column)
-        const lines = Math.max(1, Math.ceil(item.name.length / 18));
+        // Estimate line wrap for height
+        const lines = Math.max(1, Math.ceil(item.name.length / charsPerLine));
         itemsAreaHeight += (lines * 3) + 2;
 
         return { name: item.name, qty, rate: mrp, amount: finalAmount };
@@ -184,9 +197,9 @@ export const generateThermalReceipt = (
     // --- ITEMS TABLE HEADER ---
     doc.setFont('helvetica', 'bold');
     doc.text('Particulars', margin, currentY);
-    doc.text('Qty', 32, currentY, { align: 'right' });
-    doc.text('Price', 43, currentY, { align: 'right' });
-    doc.text('Amount', 56, currentY, { align: 'right' });
+    doc.text('Qty', colQty, currentY, { align: 'right' });
+    doc.text('Price', colPrice, currentY, { align: 'right' });
+    doc.text('Amount', colAmount, currentY, { align: 'right' });
     currentY += 2;
 
     drawDashedLine(currentY);
@@ -196,11 +209,11 @@ export const generateThermalReceipt = (
     doc.setFont('helvetica', 'normal');
 
     processedItems.forEach((item) => {
-        const nameLines = doc.splitTextToSize(item.name, 24);
+        const nameLines = doc.splitTextToSize(item.name, nameWrapWidth);
 
-        doc.text(item.qty.toString(), 32, currentY, { align: 'right' });
-        doc.text(item.rate.toFixed(2), 43, currentY, { align: 'right' });
-        doc.text(item.amount.toFixed(2), 56, currentY, { align: 'right' });
+        doc.text(item.qty.toString(), colQty, currentY, { align: 'right' });
+        doc.text(item.rate.toFixed(2), colPrice, currentY, { align: 'right' });
+        doc.text(item.amount.toFixed(2), colAmount, currentY, { align: 'right' });
 
         doc.text(nameLines, margin, currentY);
         currentY += (nameLines.length * 3) + 1;
@@ -210,8 +223,8 @@ export const generateThermalReceipt = (
 
     // --- TAX & TOTALS SECTION ---
     if (Object.keys(taxBreakdown).length > 0 || billDiscount > 0 || extraExpense > 0 || Math.abs(roundOffAmt) > 0) {
-        doc.text('Sub Total :', 43, currentY, { align: 'right' });
-        doc.text(subTotal.toFixed(2), 56, currentY, { align: 'right' });
+        doc.text('Sub Total :', colPrice, currentY, { align: 'right' });
+        doc.text(subTotal.toFixed(2), colAmount, currentY, { align: 'right' });
         currentY += 4;
     }
 
@@ -219,31 +232,31 @@ export const generateThermalReceipt = (
     if (showTaxDetails) {
         Object.keys(taxBreakdown).forEach((rate) => {
             const tax = taxBreakdown[rate];
-            doc.text(`CGST @${(Number(rate) / 2)}% :`, 43, currentY, { align: 'right' });
-            doc.text(tax.cgst.toFixed(2), 56, currentY, { align: 'right' });
+            doc.text(`CGST @${(Number(rate) / 2)}% :`, colPrice, currentY, { align: 'right' });
+            doc.text(tax.cgst.toFixed(2), colAmount, currentY, { align: 'right' });
             currentY += 3.5;
 
-            doc.text(`SGST @${(Number(rate) / 2)}% :`, 43, currentY, { align: 'right' });
-            doc.text(tax.sgst.toFixed(2), 56, currentY, { align: 'right' });
+            doc.text(`SGST @${(Number(rate) / 2)}% :`, colPrice, currentY, { align: 'right' });
+            doc.text(tax.sgst.toFixed(2), colAmount, currentY, { align: 'right' });
             currentY += 3.5;
         });
     }
 
     if (extraExpense > 0) {
-        doc.text(`${data.extraExpenseName?.substring(0, 10) || 'Extra'} (+) :`, 43, currentY, { align: 'right' });
-        doc.text(extraExpense.toFixed(2), 56, currentY, { align: 'right' });
+        doc.text(`${data.extraExpenseName?.substring(0, 10) || 'Extra'} (+) :`, colPrice, currentY, { align: 'right' });
+        doc.text(extraExpense.toFixed(2), colAmount, currentY, { align: 'right' });
         currentY += 3.5;
     }
 
     if (billDiscount > 0) {
-        doc.text('Discount (-) :', 43, currentY, { align: 'right' });
-        doc.text(billDiscount.toFixed(2), 56, currentY, { align: 'right' });
+        doc.text('Discount (-) :', colPrice, currentY, { align: 'right' });
+        doc.text(billDiscount.toFixed(2), colAmount, currentY, { align: 'right' });
         currentY += 3.5;
     }
 
     if (Math.abs(roundOffAmt) > 0.009) {
-        doc.text('Round Off :', 43, currentY, { align: 'right' });
-        doc.text(roundOffAmt.toFixed(2), 56, currentY, { align: 'right' });
+        doc.text('Round Off :', colPrice, currentY, { align: 'right' });
+        doc.text(roundOffAmt.toFixed(2), colAmount, currentY, { align: 'right' });
         currentY += 3.5;
     }
 
@@ -254,8 +267,8 @@ export const generateThermalReceipt = (
     // GRAND TOTAL
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
-    doc.text('Total :', 40, currentY, { align: 'right' });
-    doc.text(finalRoundTotal.toFixed(2), 56, currentY, { align: 'right' });
+    doc.text('Total :', colTotalLabel, currentY, { align: 'right' });
+    doc.text(finalRoundTotal.toFixed(2), colAmount, currentY, { align: 'right' });
     currentY += 2;
 
     drawDashedLine(currentY);

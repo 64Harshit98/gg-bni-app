@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/auth-context';
+import { useCatalogueData } from '../../context/CatalogueDataContext';
 import type { Item } from '../../constants/models';
 import { getFirestoreOperations } from '../../lib/ItemsFirebase';
 import { Card, CardContent, CardHeader, CardTitle } from '../../Components/ui/card';
@@ -126,7 +127,11 @@ const LabelPreview: React.FC<{
 
 const QRCodeGeneratorPage: React.FC = () => {
   const { currentUser } = useAuth();
-  const [allItems, setAllItems] = useState<Item[]>([]);
+  const { items: catalogueItems, itemsLoading: catalogueItemsLoading } = useCatalogueData();
+  const allItems = useMemo(
+    () => catalogueItems.filter(item => item.barcode && item.barcode.trim() !== ''),
+    [catalogueItems]
+  );
   const [printQueue, setPrintQueue] = useState<PrintableItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isPrinting, setIsPrinting] = useState(false);
@@ -146,16 +151,15 @@ const QRCodeGeneratorPage: React.FC = () => {
     return null;
   }, [currentUser]);
 
+  // items now come from the shared CatalogueDataContext instead of this page
+  // fetching them itself; businessInfo/barcode-settings are page-specific.
+  const [pageDataLoading, setPageDataLoading] = useState(true);
   useEffect(() => {
-    if (!dbOperations || !currentUser?.companyId) { setIsLoading(false); return; }
+    if (!dbOperations || !currentUser?.companyId) { setPageDataLoading(false); return; }
     const fetchData = async () => {
-      setIsLoading(true);
+      setPageDataLoading(true);
       try {
-        const [fetchedItems, businessInfo] = await Promise.all([
-          dbOperations.syncItems(),
-          dbOperations.getBusinessInfo()
-        ]);
-        setAllItems(fetchedItems.filter(item => item.barcode && item.barcode.trim() !== ''));
+        const businessInfo = await dbOperations.getBusinessInfo();
         setCompanyName(businessInfo.name || 'Your Company');
 
         const settingsRef = doc(db, 'companies', currentUser.companyId!, 'settings', 'barcode-settings');
@@ -169,11 +173,15 @@ const QRCodeGeneratorPage: React.FC = () => {
       } catch (err) {
         console.error(err);
       } finally {
-        setIsLoading(false);
+        setPageDataLoading(false);
       }
     };
     fetchData();
   }, [dbOperations, currentUser?.companyId]);
+
+  useEffect(() => {
+    setIsLoading(pageDataLoading || catalogueItemsLoading);
+  }, [pageDataLoading, catalogueItemsLoading]);
 
   useEffect(() => {
     const prefilledItems = location.state?.prefilledItems as PrefilledItem[] | undefined;

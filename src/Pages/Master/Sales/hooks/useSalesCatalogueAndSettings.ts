@@ -4,7 +4,7 @@ import { db } from '../../../../lib/Firebase';
 import type { Item } from '../../../../constants/models';
 import type { User } from '../../../../Role/permission';
 import { PLAN_ALLOWED_FEATURES } from '../../../Settings/SalesSetting';
-import { useLiveItemsStock } from '../../../hooks/useLiveItemsStock';
+import { useCatalogueData } from '../../../../context/CatalogueDataContext';
 
 interface UseSalesCatalogueAndSettingsParams {
     currentUser: any;
@@ -16,28 +16,25 @@ interface UseSalesCatalogueAndSettingsParams {
     invoiceToEdit: any;
 }
 
-// Owns the settings/invoice-counter/items-sync/workers/itemGroups fetch
-// effects — moved verbatim from Sales.tsx (was L98-425: the salesSettings
-// useMemo enforcing plan limits, the active-tax-mode preselect effect, the
-// invoice-number onSnapshot counter listener + one-time data fetch
-// (settingsDocId, availableItems via dbOperations.syncItems(), workers,
-// itemGroups, selectedWorker restore), useLiveItemsStock, and the
-// tax-mode/salesman sessionStorage draft-save effects). The edit-mode item
-// hydration effect and the cart-items sessionStorage draft-save effect were
-// NOT moved here even though they fall inside the same original line range —
-// they mutate `items`, which is owned by useSalesCart, so moving them here
-// would have required passing setItems back into this hook and created a
-// circular dependency between the two hooks. They were moved into
-// useSalesCart instead; behavior is unchanged, only which file declares them.
+// Owns the settings/invoice-counter fetch + the page-specific parts of the
+// original data-fetch effect. items/workers/itemGroups themselves now come
+// from CatalogueDataContext (shared app-wide, one live listener each)
+// instead of being fetched here per-page — that shared provider is what
+// actually fixes the "stuck on loading" race this hook used to have: this
+// hook's own effect no longer stacks 3 sequential Firestore calls behind
+// pageIsLoading, so there's much less here for auth-object churn to re-fire
+// into an overlapping fetch. See CatalogueDataContext.tsx for the full story.
 export const useSalesCatalogueAndSettings = ({
     currentUser,
     authLoading,
-    dbOperations,
+    dbOperations: _dbOperations,
     rawSettings,
     loadingSettings,
     isEditMode,
     invoiceToEdit,
 }: UseSalesCatalogueAndSettingsParams) => {
+    const { items: catalogueItems, itemsLoading, workers, workersLoading, itemGroups, itemGroupsLoading } = useCatalogueData();
+
     // 👇 2. INSTANTLY ENFORCE PLAN LIMITS 👇
     const salesSettings = useMemo(() => {
         if (!rawSettings) return null;
@@ -81,15 +78,28 @@ export const useSalesCatalogueAndSettings = ({
         return `${yyyy}-${mm}-${dd}`;
     });
 
-    const [availableItems, setAvailableItems] = useState<Item[]>([]);
-    const [pageIsLoading, setPageIsLoading] = useState<boolean>(true);
+    // Local mirror of the shared catalogue items — kept as real state (not a
+    // direct read of context) because callers (useSalesCart, useSalesPayment)
+    // need to optimistically mutate it (barcode link, item-edit-drawer save,
+    // post-sale stock decrement) ahead of the shared listener echoing the
+    // write back. Re-synced from context whenever the shared list updates.
+    const [availableItems, setAvailableItems] = useState<Item[]>(catalogueItems);
+    useEffect(() => {
+        setAvailableItems(catalogueItems);
+    }, [catalogueItems]);
+
     const [error, setError] = useState<string | null>(null);
 
-    const [workers, setWorkers] = useState<User[]>([]);
     const [selectedWorker, setSelectedWorker] = useState<User | null>(null);
     const [settingsDocId, setSettingsDocId] = useState<string | null>(null);
 
-    const [itemGroupMap, setItemGroupMap] = useState<Record<string, string>>({});
+    const itemGroupMap = useMemo(() => {
+        const map: Record<string, string> = {};
+        itemGroups.forEach((g) => { if (g.id) map[g.id] = g.name || 'Unknown Group'; });
+        return map;
+    }, [itemGroups]);
+
+    const pageIsLoading = authLoading || loadingSettings || itemsLoading || workersLoading || itemGroupsLoading;
 
     // Logic: Always pre-select based on settings, but allow override.
     useEffect(() => {
@@ -139,28 +149,30 @@ export const useSalesCatalogueAndSettings = ({
         }
     }, [loadingSettings, salesSettings, isEditMode, invoiceToEdit]);
 
-    // ... (Data Fetching - Unchanged) ...
+    // --- Settings doc id lookup + real-time invoice counter (multi-tab fix) ---
+    // Page-specific, unrelated to the shared catalogue data above.
     useEffect(() => {
+        const companyId = currentUser?.companyId;
+        if (!companyId) return;
+
         const findSettingsDocId = async () => {
-            if (currentUser?.companyId) {
-                const settingsQuery = query(collection(db, 'companies', currentUser.companyId, 'settings'), where('settingType', '==', 'sales'));
+            try {
+                const settingsQuery = query(collection(db, 'companies', companyId, 'settings'), where('settingType', '==', 'sales'));
                 const settingsSnapshot = await getDocs(settingsQuery);
                 if (!settingsSnapshot.empty) setSettingsDocId(settingsSnapshot.docs[0].id);
+                setError(null);
+            } catch (err) {
+                console.error(err);
+                setError('Failed to load initial page data.');
             }
         };
         findSettingsDocId();
 
-        if (authLoading || !currentUser || !dbOperations || loadingSettings) {
-            setPageIsLoading(authLoading || loadingSettings);
-            return;
-        }
-
-        // --- REAL-TIME INVOICE LISTENER (Multi-tab Fix) ---
         let unsubscribeCounter: () => void = () => { };
 
-        if (!isEditMode && currentUser?.companyId) {
-            const counterRef = doc(db, 'companies', currentUser.companyId, 'counters', 'invoiceCounter');
-            const settingsRef = doc(db, 'companies', currentUser.companyId, 'settings', 'sales-settings');
+        if (!isEditMode) {
+            const counterRef = doc(db, 'companies', companyId, 'counters', 'invoiceCounter');
+            const settingsRef = doc(db, 'companies', companyId, 'settings', 'sales-settings');
 
             unsubscribeCounter = onSnapshot(counterRef, async (docSnap) => {
                 if (isInvoiceNumberManuallyEdited.current) return;
@@ -174,61 +186,38 @@ export const useSalesCatalogueAndSettings = ({
                     setInvoiceNumber(`${prefix}-1`);
                 }
             });
+        } else if (invoiceToEdit?.invoiceNumber) {
+            // In edit mode, we use the saved number, NOT the live counter
+            setInvoiceNumber(invoiceToEdit.invoiceNumber);
         }
 
-        const fetchData = async () => {
-            try {
-                setPageIsLoading(true);
-                setError(null);
-                const fetchedItems = await dbOperations.syncItems();
-                setAvailableItems(fetchedItems);
-
-                // If in edit mode, we use the saved number, NOT the live counter
-                if (isEditMode && invoiceToEdit?.invoiceNumber) {
-                    setInvoiceNumber(invoiceToEdit.invoiceNumber);
-                }
-
-                const fetchedWorkers = await dbOperations.getWorkers();
-                setWorkers(fetchedWorkers);
-                let groupMap: Record<string, string> = {};
-                if (currentUser?.companyId) {
-                    try {
-                        const groupsRef = collection(db, 'companies', currentUser.companyId, 'itemGroups');
-                        const groupsSnap = await getDocs(groupsRef);
-                        groupsSnap.docs.forEach(doc => { const data = doc.data(); groupMap[doc.id] = data.name || data.groupName || 'Unknown Group'; });
-                    } catch (e) { console.error(e); }
-                }
-                setItemGroupMap(groupMap);
-                if (isEditMode) {
-                    const originalSalesman = fetchedWorkers.find((u: User) => u.uid === invoiceToEdit?.salesmanId);
-                    setSelectedWorker(originalSalesman || null);
-                } else {
-                    const savedSalesmanUid = sessionStorage.getItem('sales_salesman_draft');
-                    if (savedSalesmanUid) {
-                        const savedWorker = fetchedWorkers.find((u: User) => u.uid === savedSalesmanUid);
-                        setSelectedWorker(savedWorker || null);
-                    } else {
-                        const currentUserAsWorker = fetchedWorkers.find((u: User) => u.uid === currentUser.uid);
-                        setSelectedWorker(currentUserAsWorker || null);
-                    }
-                }
-            } catch (err) {
-                console.error(err);
-                setError('Failed to load initial page data.');
-            } finally {
-                setPageIsLoading(false);
-            }
-        };
-
-        fetchData();
-
-        // Cleanup the listener when the component unmounts
         return () => unsubscribeCounter();
+    }, [currentUser?.companyId, isEditMode, invoiceToEdit]);
 
-    }, [authLoading, currentUser, dbOperations, isEditMode, invoiceToEdit, loadingSettings]);
+    // --- Default salesman selection — runs once, the first time the shared
+    // workers list is ready, same as the old one-shot fetchData used to.
+    // Guarded by a ref (not just `workers.length`) because `workers` is now a
+    // LIVE list: without the guard, any later edit to a worker elsewhere would
+    // re-run this and silently stomp on whatever the user has since chosen.
+    const workerDefaultInitialized = useRef(false);
+    useEffect(() => {
+        if (workersLoading || workerDefaultInitialized.current) return;
+        workerDefaultInitialized.current = true;
 
-    // Keeps availableItems' `stock` field live-synced — see useLiveItemsStock.ts
-    useLiveItemsStock(currentUser?.companyId, dbOperations, setAvailableItems);
+        if (isEditMode) {
+            const originalSalesman = workers.find((u) => u.uid === invoiceToEdit?.salesmanId);
+            setSelectedWorker(originalSalesman || null);
+        } else {
+            const savedSalesmanUid = sessionStorage.getItem('sales_salesman_draft');
+            if (savedSalesmanUid) {
+                const savedWorker = workers.find((u) => u.uid === savedSalesmanUid);
+                setSelectedWorker(savedWorker || null);
+            } else {
+                const currentUserAsWorker = workers.find((u) => u.uid === currentUser?.uid);
+                setSelectedWorker(currentUserAsWorker || null);
+            }
+        }
+    }, [workersLoading, workers, isEditMode, invoiceToEdit, currentUser]);
 
     useEffect(() => {
         if (!isEditMode && activeTaxMode && !pageIsLoading) {
@@ -267,11 +256,11 @@ export const useSalesCatalogueAndSettings = ({
         isInvoiceNumberManuallyEdited,
         invoiceDate, setInvoiceDate,
         availableItems, setAvailableItems,
-        pageIsLoading, setPageIsLoading,
-        error, setError,
-        workers, setWorkers,
+        pageIsLoading,
+        error,
+        workers,
         selectedWorker, setSelectedWorker,
-        settingsDocId, setSettingsDocId,
-        itemGroupMap, setItemGroupMap,
+        settingsDocId,
+        itemGroupMap,
     };
 };

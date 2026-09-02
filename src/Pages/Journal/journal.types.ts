@@ -76,7 +76,7 @@ export interface Invoice {
 }
 
 export interface PdfData {
-  printFormat?: 'A4' | 'THERMAL58';
+  printFormat?: 'A4' | 'THERMAL58' | 'THERMAL80';
   enableTriplicate?: boolean;
   enableItemImages?: boolean; // NEW
   gstScheme: string;

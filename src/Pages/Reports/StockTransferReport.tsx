@@ -66,19 +66,19 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
   // Excel export colors — mirrors the orange/blue theme used in the UI
   const xlsxColors = theme === 'orange'
     ? {
-        titleBg: 'EA580C', metaBg: 'FFEDD5', metaText: '7C2D12',
-        summaryLabelText: 'C2410C', summaryLabelBg: 'FFF7ED',
-        summaryValueText: '9A3412', summaryValueBg: 'FFF7ED',
-        headerBg: 'C2410C', footerBg: 'FED7AA',
-        border: 'FED7AA', altRow: 'FFF7ED',
-      }
+      titleBg: 'EA580C', metaBg: 'FFEDD5', metaText: '7C2D12',
+      summaryLabelText: 'C2410C', summaryLabelBg: 'FFF7ED',
+      summaryValueText: '9A3412', summaryValueBg: 'FFF7ED',
+      headerBg: 'C2410C', footerBg: 'FED7AA',
+      border: 'FED7AA', altRow: 'FFF7ED',
+    }
     : {
-        titleBg: '2563EB', metaBg: 'DBEAFE', metaText: '475569',
-        summaryLabelText: '1D4ED8', summaryLabelBg: 'EFF6FF',
-        summaryValueText: '166534', summaryValueBg: 'DCFCE7',
-        headerBg: '1E40AF', footerBg: 'E2E8F0',
-        border: 'CBD5E1', altRow: 'F8FAFC',
-      };
+      titleBg: '2563EB', metaBg: 'DBEAFE', metaText: '475569',
+      summaryLabelText: '1D4ED8', summaryLabelBg: 'EFF6FF',
+      summaryValueText: '166534', summaryValueBg: 'DCFCE7',
+      headerBg: '1E40AF', footerBg: 'E2E8F0',
+      border: 'CBD5E1', altRow: 'F8FAFC',
+    };
 
   const { godowns, loading: godownsLoading, addGodown } = useGodowns(companyId);
   const { stockRows, items, loading: stockLoading } = useGodownStock(companyId, godowns);
@@ -574,7 +574,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
                     </th>
                   );
                 })}
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Unit</th>
+                <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Unit</th>
               </tr>
             </thead>
             <tbody>
@@ -587,9 +587,9 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
                       ? <span className={`font-medium ${accentText}`}>🏪 {r.godownName}</span>
                       : r.godownName}
                   </td>
-                  <td className="px-4 py-3 text-gray-700">{r.itemName}</td>
+                  <td className="px-4 py-3 text-gray-700 whitespace-normal break-words max-w-[180px]">{r.itemName}</td>
                   <td className="px-4 py-3 font-semibold text-gray-800">{r.quantity.toLocaleString('en-IN')}</td>
-                  <td className="px-4 py-3 text-gray-500">{r.unit || '-'}</td>
+                  <td className="hidden md:table-cell px-4 py-3 text-gray-500">{r.unit || '-'}</td>
                 </tr>
               ))}
             </tbody>
@@ -639,7 +639,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
               ) : filteredHistory.map((t, i) => (
                 <tr key={t.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                   <td className="px-4 py-3 text-gray-700">{formatDate(t.date)}</td>
-                  <td className="px-4 py-3 text-gray-700">{t.itemName}</td>
+                  <td className="px-4 py-3 text-gray-700 whitespace-normal break-words max-w-[180px]">{t.itemName}</td>
                   <td className="px-4 py-3 text-gray-700">{t.fromGodownName || '-'}</td>
                   <td className="px-4 py-3 text-gray-700">{t.toGodownName}</td>
                   <td className="px-4 py-3 font-semibold text-gray-800">{t.quantity.toLocaleString('en-IN')}</td>

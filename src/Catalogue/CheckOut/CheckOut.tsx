@@ -54,7 +54,7 @@ const CartPage: React.FC = () => {
         const lead = getSavedLead();
         return { name: lead.name, phone: lead.phone, city: '', state: '', address: '', gstin: '' };
     });
-    const [isSameAsShipping, setIsSameAsShipping] = useState<boolean>(false);
+    const [isSameAsShipping, setIsSameAsShipping] = useState<boolean>(true);
     const [movError, setMovError] = useState<string | null>(null);
     const [approvalError, setApprovalError] = useState<string | null>(null);
     const [specialInstruction, setSpecialInstruction] = useState("");

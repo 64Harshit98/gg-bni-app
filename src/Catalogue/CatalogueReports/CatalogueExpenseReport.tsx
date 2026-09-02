@@ -399,7 +399,8 @@ const CatalogueExpenseReportPage: React.FC = () => {
 
                                     return (
                                         <th key={col} onClick={() => handleSort(col)}
-                                            className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-800 select-none">
+                                            className={`px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-800 select-none ${col === 'description' ? 'hidden md:table-cell' : ''
+                                                }`}>
                                             <span className="inline-flex items-center gap-1">
                                                 {col}
                                                 <span className="w-4 inline-block">
@@ -428,7 +429,7 @@ const CatalogueExpenseReportPage: React.FC = () => {
                                 <tr key={exp.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                                     <td className="px-4 py-3 text-gray-700">{formatDate(exp.date)}</td>
                                     <td className="px-4 py-3 text-gray-700">{exp.title}</td>
-                                    <td className="px-4 py-3 text-gray-700">{exp.description}</td>
+                                    <td className="px-4 py-3 text-gray-700 hidden md:table-cell">{exp.description}</td>
                                     <td className="px-4 py-3 font-semibold text-gray-800">₹{exp.amount.toLocaleString('en-IN')}</td>
                                     <td className="px-4 py-3">
                                         <button onClick={() => setDeleteConfirm(exp.id)} className="text-red-400 hover:text-red-600 text-xs font-medium">Delete</button>

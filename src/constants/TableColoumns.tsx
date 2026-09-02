@@ -15,11 +15,17 @@ const UNASSIGNED_GROUP_NAME = 'Uncategorized';
 // --- 1. Item Report Columns ---
 export const getItemColumns = (itemGroups: any[]): TableColumn<any>[] => [
   {
+    header: 'Barcode',
+    accessor: (item) => item.barcode || '-',
+    sortKey: 'barcode',
+    className: 'text-slate-600 text-left'
+  },
+  {
     header: 'Item Name',
     accessor: 'name',
     sortKey: 'name',
-    className: 'font-medium text-left'
-  },
+    className: 'font-medium text-left whitespace-normal break-words max-w-[180px]'
+},
   {
     header: 'Stock',
     accessor: 'stock',
@@ -32,13 +38,13 @@ export const getItemColumns = (itemGroups: any[]): TableColumn<any>[] => [
       const group = itemGroups.find(g => g.id === item.itemGroupId);
       return group?.name || item.itemGroupId || UNASSIGNED_GROUP_NAME;
     },
-    className: 'text-slate-600'
+    className: 'hidden md:table-cell text-slate-600'
   },
   {
     header: 'MRP',
     accessor: (item) => `₹${item.mrp?.toFixed(2) || '0.00'}`,
     sortKey: 'mrp',
-    className: 'text-right'
+    className: 'hidden md:table-cell text-right'
   },
   {
     header: 'Cost Price',

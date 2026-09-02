@@ -4,9 +4,10 @@ import {
     formatDateForInput,
 } from './SalesReportComponents/salesReport.utils';
 import ReportDateFilter from '../../Components/ReportDateFilter';
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 import { useAuth } from '../../context/auth-context';
+import { useCatalogueData } from '../../context/CatalogueDataContext';
 import useSalesReport from './SalesReportComponents/useSalesReport';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -60,7 +61,12 @@ const ItemsSoldReport: React.FC = () => {
     });
 
     const { currentUser } = useAuth();
-    const [itemGroupMap, setItemGroupMap] = useState<Record<string, string>>({});
+    const { itemGroups: catalogueItemGroups } = useCatalogueData();
+    const itemGroupMap = useMemo(() => {
+        const map: Record<string, string> = {};
+        catalogueItemGroups.forEach((g) => { if (g.id) map[g.id] = g.name || 'Unknown Group'; });
+        return map;
+    }, [catalogueItemGroups]);
     const [companyName, setCompanyName] = useState<string>('');
 
     useEffect(() => {
@@ -83,28 +89,6 @@ const ItemsSoldReport: React.FC = () => {
             }
         };
         fetchCompanyName();
-    }, [currentUser?.companyId]);
-
-    useEffect(() => {
-        const fetchItemGroups = async () => {
-            if (!currentUser?.companyId) return;
-            try {
-                const groupsRef = collection(db, 'companies', currentUser.companyId, 'itemGroups');
-                const groupsSnap = await getDocs(groupsRef);
-
-                const map: Record<string, string> = {};
-                groupsSnap.docs.forEach(doc => {
-                    const data = doc.data();
-                    map[doc.id] = data.name || data.groupName || 'Unknown Group';
-                });
-
-                setItemGroupMap(map);
-            } catch (err) {
-                console.error("Error fetching item groups:", err);
-            }
-        };
-
-        fetchItemGroups();
     }, [currentUser?.companyId]);
 
     const [sortConfig, setSortConfig] = useState<{

@@ -210,6 +210,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
 
     const numberInputRef = useRef<HTMLInputElement>(null);
     const nameInputRef = useRef<HTMLInputElement>(null);
+    const suggestionsRef = useRef<HTMLDivElement>(null);
     const shouldSaveToLocalStorage = useRef(true);
     const longPressTimer = useRef<NodeJS.Timeout | null>(null);
     const [discountInfo, setDiscountInfo] = useState<string | null>(null);
@@ -487,6 +488,24 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         isSameAsBilling, expenses, narration, selectedPayments, isOpen, isSubmitting, transportName, grRrNo, grRrDate, vehicleNo, stationFrom, pinCode
     ]);
 
+    // --- CLOSE PARTY SUGGESTIONS ON OUTSIDE CLICK ---
+    useEffect(() => {
+        if (!showSuggestions) return;
+        const handleClickOutside = (e: MouseEvent) => {
+            const target = e.target as Node;
+            if (
+                suggestionsRef.current?.contains(target) ||
+                nameInputRef.current?.contains(target) ||
+                numberInputRef.current?.contains(target)
+            ) {
+                return;
+            }
+            setShowSuggestions(false);
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [showSuggestions]);
+
     const searchParty = async (term: string, field: 'name' | 'number') => {
         if (!term || term.length < 2 || !currentUser?.companyId) {
             setSuggestions([]); setShowSuggestions(false); return;
@@ -624,7 +643,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             return key.toLowerCase().includes('due') ? acc + (value || 0) : acc;
         }, 0);
 
-                if (partyNumber.trim().length > 0 && partyNumber.trim().length !== 10) {
+        if (mode !== 'purchase' && partyNumber.trim().length > 0 && partyNumber.trim().length !== 10) {
             setModal({ message: `${partyLabel} Phone Number must be exactly 10 digits.`, type: State.ERROR });
             return;
         }
@@ -804,14 +823,15 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
 
         return createPortal(
             <div
+                ref={suggestionsRef}
                 style={{
                     position: 'fixed',
                     top: rect.bottom + 4,
                     left: rect.left,
-                    width: rect.width * 2 + 8,
+                    width: rect.width,
                     zIndex: 99999,
                 }}
-                className="bg-white border border-gray-200 shadow-xl rounded-sm max-h-48 overflow-y-auto"
+                className="bg-white border border-gray-200 shadow-xl rounded-sm max-h-40 overflow-y-auto"
             >
                 {suggestions.map((party, idx) => (
                     <div key={idx} className="px-2 py-1 hover:bg-blue-50 cursor-pointer border-b last:border-0 text-sm flex justify-between items-center" onClick={() => selectParty(party)}>
@@ -950,13 +970,15 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                         <input
                                             ref={numberInputRef}
                                             type="tel"
-                                            maxLength={10}
+                                            maxLength={mode === 'purchase' ? undefined : 10}
                                             placeholder={requireCustomerMobile ? "Phone Number *" : "Phone Number"}
                                             value={addressType === 'billing' ? partyNumber : shippingNumber}
                                             onChange={(e) => {
-                                                const val = e.target.value.replace(/\D/g, '').slice(0, 10);
-                                                if (addressType === 'billing') { handleInputChange(val, 'number'); }
-                                                else { setShippingNumber(val); setIsSameAsBilling(false); }
+                                                const val = e.target.value.replace(/\D/g, '');
+                                                const finalVal = mode === 'purchase' ? val : val.slice(0, 10);
+
+                                                if (addressType === 'billing') { handleInputChange(finalVal, 'number'); }
+                                                else { setShippingNumber(finalVal); setIsSameAsBilling(false); }
                                             }}
                                             onFocus={() => {
                                                 setActiveSearchField('number');

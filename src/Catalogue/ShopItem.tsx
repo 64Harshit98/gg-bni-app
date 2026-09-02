@@ -3,6 +3,7 @@ import { ShoppingCart, X, Minus, Plus, Trash2, Send, Pin, Download, Loader2 } fr
 import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting';
 import { ROUTES } from '../constants/routes.constants';
 import { useAuth, useDatabase } from '../context/auth-context';
+import { useCatalogueData } from '../context/CatalogueDataContext';
 import type { Item, ItemGroup } from '../constants/models';
 import { FiStar, FiCheckSquare, FiLoader, FiPackage, FiPlus } from 'react-icons/fi';
 import { ItemEditDrawer } from '../Components/ItemDrawer';
@@ -171,8 +172,12 @@ const MyShop: React.FC = () => {
     const companyId = currentUser?.companyId;
     const { businessName: companyName, loading: _nameLoading } = useBusinessName(companyId);
     const dbOperations = useDatabase();
+    const { items: catalogueItems, itemsLoading: catalogueItemsLoading, itemGroups: catalogueItemGroups } = useCatalogueData();
 
     const [highlightedId, setHighlightedId] = useState<string | null>(null);
+    // Local mirror of the shared catalogue items — this page optimistically
+    // toggles `isListed`/edits items ahead of the shared listener echoing
+    // those writes back (see setAllItems calls further down).
     const [allItems, setAllItems] = useState<Item[]>([]);
     const [selectedCategory, setSelectedCategory] = useState(groupId || 'All');
     const [searchQuery, setSearchQuery] = useState('');
@@ -595,24 +600,41 @@ const MyShop: React.FC = () => {
         setIsAllLive(allLive);
     }, [allItems, resolvedGroupId, selectedCategory]);
 
-    // Live Sync Listener
+    // items/itemGroups now come from the shared CatalogueDataContext instead
+    // of this page fetching/listening to them itself — mirrored into local
+    // state (with the same stock/isListed normalization the old listener
+    // callback applied) so the optimistic mutations below still work.
     useEffect(() => {
-        if (authLoading || !currentUser || !dbOperations || !companyId) {
-            if (!authLoading && (!currentUser || !dbOperations)) {
-                setPageIsLoading(false);
-            }
+        if (authLoading || !currentUser) {
+            if (!authLoading && !currentUser) setPageIsLoading(false);
             return;
         }
 
-        setPageIsLoading(true);
-        setError(null);
-        let unsubscribeItems = () => { };
+        setPageIsLoading(catalogueItemsLoading);
 
-        const setupLiveSync = async () => {
+        const liveItemsList: Item[] = catalogueItems.map((data) => ({
+            ...data,
+            stock: data.stock !== undefined && data.stock !== null ? Number(data.stock) : 0,
+            isListed: (data as any).isListed ?? false,
+        } as Item));
+
+        setAllItems(liveItemsList);
+        if (liveItemsList.length > 0) {
+            setIsAllLive(liveItemsList.every(item => item.isListed === true));
+        }
+    }, [authLoading, currentUser, catalogueItems, catalogueItemsLoading]);
+
+    useEffect(() => {
+        setAllItemGroups(catalogueItemGroups);
+    }, [catalogueItemGroups]);
+
+    // Business info + catalogue-sales-settings — page-specific, unrelated to
+    // the shared catalogue data above.
+    useEffect(() => {
+        if (!companyId) return;
+
+        const fetchPageInfo = async () => {
             try {
-                const fetchedItemGroups = await dbOperations.getItemGroups();
-                setAllItemGroups(fetchedItemGroups || []);
-
                 const businessRef = doc(db, "companies", companyId, "business_info", companyId);
                 const businessSnap = await getDoc(businessRef);
                 if (businessSnap.exists()) setSocialLinks(businessSnap.data());
@@ -620,36 +642,13 @@ const MyShop: React.FC = () => {
                 const settingsRef = doc(db, 'companies', companyId, 'settings', 'catalogue-sales-settings');
                 const settingsSnap = await getDoc(settingsRef);
                 if (settingsSnap.exists()) setCatalogueSettings(settingsSnap.data() as CatalogueSalesSettings);
-
-                // Rides on the shared idb-keyval-backed items sync (see ItemsFirebase.ts)
-                // instead of a raw full `items` collection listener — after the first
-                // sync it only re-reads docs changed since the last sync.
-                unsubscribeItems = dbOperations.listenToItems((liveItems) => {
-                    const liveItemsList: Item[] = liveItems.map((data) => ({
-                        ...data,
-                        stock: data.stock !== undefined && data.stock !== null ? Number(data.stock) : 0,
-                        isListed: (data as any).isListed ?? false,
-                    } as Item));
-
-                    setAllItems(liveItemsList);
-
-                    if (liveItemsList.length > 0) {
-                        setIsAllLive(liveItemsList.every(item => item.isListed === true));
-                    }
-
-                    setPageIsLoading(false);
-                });
-
             } catch (err: any) {
                 setError(err.message || "Failed to load initial data.");
-                setPageIsLoading(false);
             }
         };
 
-        setupLiveSync();
-
-        return () => unsubscribeItems();
-    }, [authLoading, currentUser, dbOperations, companyId]);
+        fetchPageInfo();
+    }, [companyId]);
 
     const itemGroupMap = useMemo(() => {
         return allItemGroups.reduce((acc, group) => {

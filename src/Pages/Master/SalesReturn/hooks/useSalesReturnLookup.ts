@@ -11,6 +11,7 @@ import {
     type DocumentData,
 } from 'firebase/firestore';
 import { db } from '../../../../lib/Firebase';
+import { useCatalogueData } from '../../../../context/CatalogueDataContext';
 import type { Item } from '../../../../constants/models';
 import { State } from '../../../../enums';
 import { applyRounding } from '../../Sales';
@@ -51,6 +52,8 @@ export const useSalesReturnLookup = ({
     const [partyName, setPartyName] = useState<string>('');
     const [partyNumber, setPartyNumber] = useState<string>('');
 
+    const { items: catalogueItems } = useCatalogueData();
+
     const [originalSaleItems, setOriginalSaleItems] = useState<TransactionItem[]>([]);
     const [selectedReturnIds, setSelectedReturnIds] = useState<Set<string>>(new Set());
     const [salesList, setSalesList] = useState<SalesData[]>([]);
@@ -64,7 +67,11 @@ export const useSalesReturnLookup = ({
     const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState<boolean>(false);
     const customerDropdownRef = useRef<HTMLDivElement>(null);
 
-    const [availableItems, setAvailableItems] = useState<Item[]>([]);
+    // Local mirror of the shared catalogue items (not a direct context read)
+    // — useExchangeItems optimistically mutates this after linking a scanned
+    // barcode, ahead of the shared listener echoing the write back.
+    const [availableItems, setAvailableItems] = useState<Item[]>(catalogueItems);
+    useEffect(() => { setAvailableItems(catalogueItems); }, [catalogueItems]);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
     const [returnItemSearchQuery, setReturnItemSearchQuery] = useState<string>('');
@@ -139,11 +146,6 @@ export const useSalesReturnLookup = ({
                     specificInvoicePromise = getDoc(specificRef);
                 }
 
-                let allItems = availableItems;
-                if (availableItems.length === 0) {
-                    allItems = await dbOperations.syncItems();
-                }
-
                 const [salesSnapshot, customersSnap, specificInvoiceSnap] = await Promise.all([
                     getDocs(salesQuery),
                     getDocs(customersQuery),
@@ -169,7 +171,6 @@ export const useSalesReturnLookup = ({
                 }
 
                 setSalesList(recentSales);
-                if (availableItems.length === 0) setAvailableItems(allItems);
                 setAvailableCustomers(customersData);
 
             } catch (err) {

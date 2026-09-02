@@ -10,6 +10,7 @@ import { Spinner } from '../../constants/Spinner';
 import { loginUser } from '../../lib/AuthOperations';
 import { useAuth } from '../../context/auth-context';
 import { FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
+import { LegalModal } from '../../Components/LegalModal';
 
 const LoginPage: React.FC = () => {
   const { currentUser, loading: authLoading } = useAuth();
@@ -18,6 +19,7 @@ const LoginPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [legalTab, setLegalTab] = useState<'terms' | 'privacy' | null>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -181,6 +183,17 @@ const LoginPage: React.FC = () => {
                 </p>
               </div>
 
+              <p className="mt-3 text-center text-xs text-gray-500">
+                By continuing, you agree to our{' '}
+                <button type="button" onClick={() => setLegalTab('terms')} className="font-semibold text-blue-600 hover:underline">
+                  Terms & Conditions
+                </button>{' '}
+                and{' '}
+                <button type="button" onClick={() => setLegalTab('privacy')} className="font-semibold text-blue-600 hover:underline">
+                  Privacy Policy
+                </button>
+              </p>
+
             </form>
           </div>
         </div>
@@ -292,6 +305,17 @@ const LoginPage: React.FC = () => {
                       </p>
                     </div>
 
+                    <p className="mt-2 text-center text-xs text-gray-500">
+                      By continuing, you agree to our{' '}
+                      <button type="button" onClick={() => setLegalTab('terms')} className="font-semibold text-blue-600 hover:underline">
+                        Terms & Conditions
+                      </button>{' '}
+                      and{' '}
+                      <button type="button" onClick={() => setLegalTab('privacy')} className="font-semibold text-blue-600 hover:underline">
+                        Privacy Policy
+                      </button>
+                    </p>
+
                   </form>
                 </div>
 
@@ -301,6 +325,12 @@ const LoginPage: React.FC = () => {
 
         </div>
       </div>
+
+      <LegalModal
+        isOpen={legalTab !== null}
+        defaultTab={legalTab ?? 'terms'}
+        onClose={() => setLegalTab(null)}
+      />
     </>
   );
 };

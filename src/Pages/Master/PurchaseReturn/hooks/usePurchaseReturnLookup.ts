@@ -13,6 +13,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../../../lib/Firebase';
 import { ROUTES } from '../../../../constants/routes.constants';
+import { useCatalogueData } from '../../../../context/CatalogueDataContext';
 import type { Item } from '../../../../constants/models';
 import { State } from '../../../../enums';
 import type { PurchaseData, TransactionItem, ReturnCartItem, Party } from '../purchaseReturn.types';
@@ -48,6 +49,7 @@ export const usePurchaseReturnLookup = ({
     setNewItemsSearchQuery,
 }: UsePurchaseReturnLookupParams) => {
     const navigate = useNavigate();
+    const { items: catalogueItems } = useCatalogueData();
 
     const [supplierName, setSupplierName] = useState<string>('');
     const [supplierNumber, setSupplierNumber] = useState<string>('');
@@ -75,7 +77,11 @@ export const usePurchaseReturnLookup = ({
     const [isNameDropdownOpen, setIsNameDropdownOpen] = useState<boolean>(false);
     const nameDropdownRef = useRef<HTMLDivElement>(null);
 
-    const [availableItems, setAvailableItems] = useState<Item[]>([]);
+    // Local mirror of the shared catalogue items (not a direct context read)
+    // — useNewItemsReceived optimistically mutates this after linking a
+    // scanned barcode, ahead of the shared listener echoing the write back.
+    const [availableItems, setAvailableItems] = useState<Item[]>(catalogueItems);
+    useEffect(() => { setAvailableItems(catalogueItems); }, [catalogueItems]);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
     const [returnItemSearchQuery, setReturnItemSearchQuery] = useState<string>('');
@@ -150,9 +156,8 @@ export const usePurchaseReturnLookup = ({
                     specificPurchasePromise = getDoc(specificRef);
                 }
 
-                const [purchasesSnapshot, allItems, partiesSnap, specificPurchaseSnap] = await Promise.all([
+                const [purchasesSnapshot, partiesSnap, specificPurchaseSnap] = await Promise.all([
                     getDocs(purchasesQuery),
-                    dbOperations.syncItems(),
                     getDocs(partiesQuery),
                     specificPurchasePromise
                 ]);
@@ -178,7 +183,6 @@ export const usePurchaseReturnLookup = ({
                 }
 
                 setPurchaseList(recentPurchases);
-                setAvailableItems(allItems);
                 setAvailableParties(partiesData);
 
             } catch (err) {

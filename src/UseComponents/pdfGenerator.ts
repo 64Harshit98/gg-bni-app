@@ -9,7 +9,7 @@ import { generateA5Invoice } from './A5PdfGenerator';
 import { drawWatermark } from '../Components/pdfWatermark';
 
 export interface InvoiceData {
-  printFormat?: 'A4' | 'THERMAL58' | 'A5';
+  printFormat?: 'A4' | 'THERMAL58' | 'THERMAL80' | 'A5';
   enableTriplicate?: boolean;
   enableItemImages?: boolean;
   gstScheme?: string;
@@ -104,8 +104,8 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       return rest;
     });
   }
-  if (data.printFormat === 'THERMAL58') {
-    return generateThermalReceipt(data, action);
+  if (data.printFormat === 'THERMAL58' || data.printFormat === 'THERMAL80') {
+    return generateThermalReceipt(data, action, data.printFormat === 'THERMAL80' ? 80 : 58);
   }
 
   if (data.printFormat === 'A5') {

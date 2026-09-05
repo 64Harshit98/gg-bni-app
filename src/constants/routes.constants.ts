@@ -93,5 +93,5 @@ export const ROUTES = {
   AGENT_SIGNUP: '/agent-signup',
   PARTNER_DASHBOARD: '/partner-dashboard',
   AGENT_DASHBOARD: '/agent-dashboard',
-  BARCODE_SETTING: 'masters/barcode-setting',
+  BARCODE_SETTING: '/barcode-setting',
 };

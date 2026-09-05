@@ -27,6 +27,7 @@ const CartPage: React.FC = () => {
     const [step, setStep] = useState<number>(1);
     const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
     const [showAlert, setShowAlert] = useState(false);
+    const [brokenImageIds, setBrokenImageIds] = useState<Set<string>>(new Set());
 
     const { subdomain, effectiveCompanyId, domainResolveError, isResolvingDomain } = useDomainResolution(pathId);
 
@@ -312,13 +313,21 @@ const CartPage: React.FC = () => {
                                         {cartItems.length > 0 ? cartItems.map((item) => (
                                             <div key={item.id} className="bg-white rounded-sm p-3 shadow-sm border border-gray-10">
                                                 <div className="flex gap-3">
-                                                    {/* Image Container with Background */}
                                                     <div className="w-15 h-15 bg-gray-100 rounded-sm overflow-hidden flex-shrink-0 flex items-center justify-center border border-gray-100">
-                                                        {item.imageUrl ? (
+                                                        {item.imageUrl && !brokenImageIds.has(String(item.id)) ? (
                                                             <img
                                                                 src={item.imageUrl}
                                                                 alt={item.name}
                                                                 className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110"
+                                                                onError={() => {
+                                                                    setBrokenImageIds(prev => {
+                                                                        const key = String(item.id);
+                                                                        if (prev.has(key)) return prev;
+                                                                        const next = new Set(prev);
+                                                                        next.add(key);
+                                                                        return next;
+                                                                    });
+                                                                }}
                                                             />
                                                         ) : (
                                                             <FiPackage className="w-10 h-10 text-gray-300" />

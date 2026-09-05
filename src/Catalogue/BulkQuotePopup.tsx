@@ -17,6 +17,7 @@ const BulkQuotePopup: React.FC<BulkQuotePopupProps> = ({ item, companyId, onClos
     const [note, setNote] = useState('');
     const [loading, setLoading] = useState(false);
     const [submitted, setSubmitted] = useState(false);
+    const [imageBroken, setImageBroken] = useState(false);
 
     const handleSubmit = async () => {
         if (!quantity.trim()) return;
@@ -75,10 +76,14 @@ const BulkQuotePopup: React.FC<BulkQuotePopupProps> = ({ item, companyId, onClos
                         {/* Item Info Row — matches whiteboard layout */}
                         <div className="flex gap-3 bg-gray-50 border border-gray-100 rounded-sm p-3">
 
-                            {/* Image (left) */}
                             <div className="w-20 h-20 shrink-0 bg-white border border-gray-200 rounded-sm flex items-center justify-center overflow-hidden">
-                                {item.imageUrl ? (
-                                    <img src={item.imageUrl} alt={item.name} className="w-full h-full object-contain" />
+                                {item.imageUrl && !imageBroken ? (
+                                    <img
+                                        src={item.imageUrl}
+                                        alt={item.name}
+                                        className="w-full h-full object-contain"
+                                        onError={() => setImageBroken(true)}
+                                    />
                                 ) : (
                                     <FiPackage className="w-8 h-8 text-gray-300" />
                                 )}

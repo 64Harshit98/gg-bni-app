@@ -8,42 +8,56 @@ const GlobalCatalogueModal = () => {
     const { currentUser } = useAuth();
     const [show, setShow] = useState(false);
     const [shareUrl, setShareUrl] = useState("");
-     const [companyName, setCompanyName] = useState("Our Store");
+    const [companyName, setCompanyName] = useState("Our Store");
     const qrPrintRef = useRef<HTMLDivElement>(null);
 
-    // 1. Actively fetch the absolute best link for the user behind the scenes
-    useEffect(() => {
-        const fetchBestLink = async () => {
-            if (!currentUser?.companyId) return;
+    // Extracted so it can run both on mount AND every time the modal opens —
+    // fixes the stale company name/link showing after either is updated elsewhere.
+    const fetchBestLink = async (companyId: string) => {
+        // Set the dev/fallback link immediately just in case
+        const fallbackUrl = `${window.location.origin}/catalogue/${companyId}`;
+        setShareUrl(fallbackUrl);
 
-            // Set the dev/fallback link immediately just in case
-            const fallbackUrl = `${window.location.origin}/catalogue/${currentUser.companyId}`;
-            setShareUrl(fallbackUrl);
+        try {
+            // Subdomain (for shareUrl) lives on companies/{companyId}.
+            // Business name lives on companies/{companyId}/business_info/{companyId}
+            // — same path useBusinessName() reads — so fetch both in parallel.
+            const companyDocRef = doc(db, 'companies', companyId);
+            const businessInfoRef = doc(db, 'companies', companyId, 'business_info', companyId);
 
-            try {
-                // Check if they have a custom subdomain
-                const docRef = doc(db, 'companies', currentUser.companyId);
-                const snap = await getDoc(docRef);
-                if (snap.exists()) {
-                    const data = snap.data();
-                    if (data.subdomain) {
-                        // Overwrite with the custom link!
-                        setShareUrl(`https://${data.subdomain}.sellar.in`);
-                    }
-                    if (data.name || data.businessName) {
-                        setCompanyName(data.name || data.businessName);
-                    }
+            const [companySnap, businessSnap] = await Promise.all([
+                getDoc(companyDocRef),
+                getDoc(businessInfoRef),
+            ]);
+
+            if (companySnap.exists()) {
+                const data = companySnap.data();
+                if (data.subdomain) {
+                    // Overwrite with the custom link!
+                    setShareUrl(`https://${data.subdomain}.sellar.in`);
                 }
-            } catch (err) {
-                console.error("Error fetching subdomain for modal:", err);
             }
-        };
-        fetchBestLink();
+
+            if (businessSnap.exists()) {
+                setCompanyName(businessSnap.data().businessName || 'Our Store');
+            }
+        } catch (err) {
+            console.error("Error fetching link/business name for modal:", err);
+        }
+    };
+
+    // 1. Fetch once on mount so a fallback is ready before the modal is even opened
+    useEffect(() => {
+        if (!currentUser?.companyId) return;
+        fetchBestLink(currentUser.companyId);
     }, [currentUser]);
 
-    // 2. Handle opening the modal
+    // 2. Handle opening the modal — re-fetch every time so name/link are always current
     useEffect(() => {
         const openHandler = (e: any) => {
+            if (currentUser?.companyId) {
+                fetchBestLink(currentUser.companyId);
+            }
             // If the event specifically forced a link, use it, otherwise keep the one we fetched
             if (e.detail && e.detail.link) {
                 setShareUrl(e.detail.link);
@@ -53,7 +67,7 @@ const GlobalCatalogueModal = () => {
 
         window.addEventListener("open-catalogue-share", openHandler);
         return () => window.removeEventListener("open-catalogue-share", openHandler);
-    }, []);
+    }, [currentUser]);
 
     if (!show) return null;
 

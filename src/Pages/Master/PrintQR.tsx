@@ -458,7 +458,7 @@ const QRCodeGeneratorPage: React.FC = () => {
           </span>
           <span className="text-xs text-gray-400">· 35 × 35 mm</span>
           <button
-            onClick={() => navigate('/masters/barcode-setting')}
+            onClick={() => navigate('/barcode-setting')}
             className="text-xs text-sky-600 underline hover:text-sky-800 ml-1"
           >
             Change in settings →

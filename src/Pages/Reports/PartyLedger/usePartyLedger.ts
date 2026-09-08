@@ -41,7 +41,15 @@ export interface BulkOpeningBalanceRow {
     gstNumber?: string;  // NEW
     date?: number; // millis, optional — defaults to "now" if not in the sheet
 }
-
+export interface InvoiceItem {
+    id?: string;
+    name: string;
+    mrp?: number;
+    quantity: number;
+    taxableAmount?: number;
+    effectiveUnitPrice?: number;
+    finalPrice?: number;
+}
 // Renamed from LedgerSaleRecord to LedgerTransaction to reflect both Sales & Purchases
 export interface LedgerTransaction {
     id: string;
@@ -55,6 +63,8 @@ export interface LedgerTransaction {
     type: 'sale' | 'purchase'; // NEW: Identifies the type of bill
     isOpeningBalance?: boolean;
     note?: string;
+    items?: InvoiceItem[];                    // NEW
+    paymentMethods?: Record<string, number>;  // NEW
 }
 
 export interface PartySummary {
@@ -175,7 +185,9 @@ export default function usePartyLedger() {
                         dueAmount: data.paymentMethods?.due ?? data.dueAmount ?? 0,
                         paymentHistory: history, // <-- Using the reconstructed history
                         createdAt: creationMillis,
-                        type: 'sale' as const
+                        type: 'sale' as const,
+                        items: data.items || [],                    // NEW
+                        paymentMethods: data.paymentMethods || {},   // NEW
                     } as LedgerTransaction;
                 });
 
@@ -330,7 +342,7 @@ export default function usePartyLedger() {
 
         const allItems = [...transactions, ...obAsTransactions];
 
-       // ✅ Strict date filtering — every party (billing-created or Opening-Balance-created)
+        // ✅ Strict date filtering — every party (billing-created or Opening-Balance-created)
         // now gets a proper createdAt stamp from PaymentDrawer/addOpeningBalance, so this
         // filters exactly by the applied date range with no exceptions.
         const filteredCustomersMaster = customersMaster.filter(c => {

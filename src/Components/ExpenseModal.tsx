@@ -8,11 +8,15 @@ interface Props {
     description: string;
     amount: number;
     date: number;
+    addedBy: string;      // 👈 new
   }) => Promise<void>;
   theme?: 'blue' | 'orange';
+  currentUserName: string; // 👈 new — passed in from parent
 }
 
-export const ExpenseModal = ({ isOpen, onClose, onSave, theme = 'blue' }: Props) => {
+
+export const ExpenseModal = ({ isOpen, onClose, onSave, theme = 'blue', currentUserName }: Props) => {
+  console.log('DEBUG currentUserName in modal:', currentUserName)
   const accent = theme === 'orange'
     ? 'bg-[#F97316] hover:bg-orange-600 focus:ring-orange-400'
     : 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500';
@@ -40,6 +44,7 @@ export const ExpenseModal = ({ isOpen, onClose, onSave, theme = 'blue' }: Props)
         description: description.trim(),
         amount: Number(amount),
         date: new Date(date).getTime(),
+        addedBy: currentUserName,   // 👈 include current logged-in user
       });
       setTitle('');
       setDescription('');
@@ -55,8 +60,15 @@ export const ExpenseModal = ({ isOpen, onClose, onSave, theme = 'blue' }: Props)
 
   return (
     <div className="fixed inset-0 z-[8000] flex items-center justify-center bg-black/40 px-4">
-      <div className="bg-white w-full max-w-sm rounded-sm shadow-xl p-5">
-        <h2 className="text-lg font-bold text-gray-800 mb-4">Add Expense</h2>
+            <div className="bg-white w-full max-w-sm rounded-sm shadow-xl p-5">
+        {/* Heading row: "Add Expense" on left, logged-in user on right */}
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold text-gray-800">Add Expense</h2>
+          <span className="text-xs text-gray-500">
+            Added by <span className="font-semibold text-gray-700">{currentUserName || 'Unknown'}</span>
+          </span>
+        </div>
+
         {/* Title */}
         <label className="block text-sm font-medium text-gray-600 mb-1">Title</label>
         <input
@@ -78,21 +90,21 @@ export const ExpenseModal = ({ isOpen, onClose, onSave, theme = 'blue' }: Props)
 
         {/* Amount */}
         {/* Amount */}
-<label className="block text-sm font-medium text-gray-600 mb-1">Amount (₹)</label>
-<input
-  type="text"
-  inputMode="decimal"
-  placeholder="0"
-  value={amount}
-  onChange={e => {
-    const val = e.target.value;
-    // allow empty, or digits with at most one decimal point
-    if (val === '' || /^\d*\.?\d*$/.test(val)) {
-      setAmount(val);
-    }
-  }}
-  className={`w-full border rounded-sm p-2 text-sm mb-3 bg-gray-50 focus:outline-none focus:ring-2 ${focusRing}`}
-/>
+        <label className="block text-sm font-medium text-gray-600 mb-1">Amount (₹)</label>
+        <input
+          type="text"
+          inputMode="decimal"
+          placeholder="0"
+          value={amount}
+          onChange={e => {
+            const val = e.target.value;
+            // allow empty, or digits with at most one decimal point
+            if (val === '' || /^\d*\.?\d*$/.test(val)) {
+              setAmount(val);
+            }
+          }}
+          className={`w-full border rounded-sm p-2 text-sm mb-3 bg-gray-50 focus:outline-none focus:ring-2 ${focusRing}`}
+        />
 
         {/* Date */}
         <label className="block text-sm font-medium text-gray-600 mb-1">Date</label>

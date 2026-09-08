@@ -22,6 +22,8 @@ type LedgerTransaction = {
     isOpeningBalance?: boolean;
     balanceType?: 'due' | 'advance';
     note?: string;
+    items?: any[];                             // NEW
+    paymentMethods?: Record<string, number>;   // NEW
 };
 type OpeningBalance = {
     id: string;
@@ -165,6 +167,8 @@ const CataloguePartyLedger: React.FC = () => {
     // NEW: delete-single-party state
     const [partyToDelete, setPartyToDelete] = useState<{ partyName: string; partyNumber: string } | null>(null);
     const [isDeletingParty, setIsDeletingParty] = useState(false);
+    // NEW: shows a lightweight overlay while a "Settle All" submission loops through unpaid orders/OBs
+    const [isSettlingAll, setIsSettlingAll] = useState(false);
     const showToast = (message: string, type: 'success' | 'error' = 'success') => {
         setToast({ message, type });
         setTimeout(() => setToast(null), 3500);
@@ -434,6 +438,106 @@ const CataloguePartyLedger: React.FC = () => {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
             showToast(`Failed to settle payment: ${errorMessage}`, 'error');
             throw error;
+        }
+    };
+
+    const handleSettleAllPayment = async (
+        invoice: any,
+        amount: number,
+        method: string,
+        chequeNumber?: string,
+        chequeDate?: string
+    ) => {
+        const targetNumber = normalizePartyNumber(invoice?.partyNumber);
+        const targetName = invoice?.partyName;
+        if (!targetNumber && !targetName) {
+            showToast('Party details missing for settle-all.', 'error');
+            return;
+        }
+
+        // Unpaid orders for this party (same matching logic as selectedPartyLedger memo)
+        const unpaidOrders = dateFilteredOrders
+            .filter((order: any) => {
+                const orderPhone = normalizePartyNumber(
+                    order.userLoginPhone || order.billingDetails?.phone || order.shippingDetails?.phone || ''
+                );
+                if (targetNumber) return orderPhone === targetNumber;
+                const orderName = order.userName || order.billingDetails?.name || order.shippingDetails?.name || 'Unknown';
+                return orderName === targetName;
+            })
+            .map((order: any) => {
+                const total = Number(order.totalAmount || 0);
+                const paid = localPaidOverrides[order.id] !== undefined
+                    ? localPaidOverrides[order.id]
+                    : Number(order.paidAmount || 0);
+                return {
+                    id: order.id,
+                    type: 'sale',
+                    isOpeningBalance: false,
+                    dueAmount: Math.max(0, total - paid),
+                    createdAt: order.createdAt?.toDate ? order.createdAt.toDate().getTime() : Date.now(),
+                };
+            })
+            .filter(t => t.dueAmount > 0);
+
+        // Unpaid (due-type) opening balances for this party
+        const unpaidOBs = openingBalances
+            .filter(ob => ob.balanceType !== 'advance' && ob.dueAmount > 0)
+            .filter(ob => {
+                const obPhone = normalizePartyNumber(ob.partyNumber);
+                if (targetNumber) return obPhone === targetNumber;
+                return ob.partyName === targetName;
+            })
+            .map(ob => ({
+                id: ob.id,
+                type: 'sale',
+                isOpeningBalance: true,
+                dueAmount: ob.dueAmount,
+                createdAt: ob.createdAt,
+            }));
+
+        const unpaidItems = [...unpaidOBs, ...unpaidOrders].sort((a, b) => a.createdAt - b.createdAt);
+
+        if (unpaidItems.length === 0) {
+            showToast('No due bills found for this party.', 'error');
+            return;
+        }
+        if (amount <= 0) {
+            showToast('Payment amount must be greater than 0.', 'error');
+            return;
+        }
+        const totalDue = unpaidItems.reduce((sum, t) => sum + t.dueAmount, 0);
+        if (amount > totalDue) {
+            showToast(`Amount (₹${amount}) exceeds total due (₹${totalDue}).`, 'error');
+            return;
+        }
+
+        setIsSettlingAll(true);
+
+        let remaining = amount;
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const item of unpaidItems) {
+            if (remaining <= 0) break;
+            const portion = Math.min(remaining, item.dueAmount);
+            try {
+                await handleSettlePayment(item, portion, method, chequeNumber, chequeDate);
+                remaining -= portion;
+                successCount++;
+            } catch (e) {
+                failCount++;
+            }
+        }
+
+        setIsSettlingAll(false);
+        setIsPaymentModalOpen(false);
+        setSelectedInvoiceForPayment(null);
+
+        if (failCount > 0) {
+            showToast(`Settled ${successCount} bill(s), ${failCount} failed.`, 'error');
+        } else {
+            showToast(`₹${amount} settled across ${successCount} bill(s)!`, 'success');
         }
     };
     // Set default date range on mount
@@ -801,6 +905,8 @@ const CataloguePartyLedger: React.FC = () => {
                         ?? (order.paymentHistory as PaymentRecord[] || []),
                     isOpeningBalance: false,
                     balanceType: undefined,
+                    items: order.items || [],                    // NEW
+                    paymentMethods: order.paymentMethods || {},   // NEW
                 };
             });
         // Merge matching opening balances as pseudo-transactions
@@ -1527,12 +1633,24 @@ const CataloguePartyLedger: React.FC = () => {
                     </div>
                 )
             }
+            {/* NEW: Lightweight overlay while a "Settle All" submission loops through orders/OBs.
+                The actual input UI is the same PaymentModal used for individual bills — see below. */}
+            {isSettlingAll && (
+                <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center">
+                    <div className="bg-white p-8 rounded-sm shadow-xl w-72 text-center flex flex-col items-center gap-3">
+                        <Spinner />
+                        <p className="text-sm font-semibold text-gray-700">Settling all due bills...</p>
+                    </div>
+                </div>
+            )}
             <PaymentModal
                 isOpen={isPaymentModalOpen}
                 onClose={() => { setIsPaymentModalOpen(false); setSelectedInvoiceForPayment(null); }}
                 invoice={selectedInvoiceForPayment}
                 availableCredit={availableCredit}
-                onSubmit={handleSettlePayment}
+                // ✅ NEW: same modal is reused for "Settle All" from the list —
+                // route to the bulk handler only when the pseudo-invoice flags it
+                onSubmit={selectedInvoiceForPayment?.isSettleAll ? handleSettleAllPayment : handleSettlePayment}
             />
             {/* Hidden file input for bulk import */}
             <input
@@ -1735,8 +1853,7 @@ const CataloguePartyLedger: React.FC = () => {
                                                             </p>
                                                         </div>
                                                     </div>
-                                                    {/* Remind + Delete row */}
-                                                    <div className="mt-2 pt-2 border-t border-slate-100 flex gap-2">
+                                                    <div className="mt-2 pt-2 border-t border-slate-100 flex gap-2 flex-wrap">
                                                         {party.totalDue > 0 && party.partyNumber && party.partyNumber.trim() !== '' && (
                                                             <button
                                                                 onClick={(e) => {
@@ -1749,6 +1866,36 @@ const CataloguePartyLedger: React.FC = () => {
                                                                 {sendingReminderFor === party.partyNumber ? <Spinner /> : 'Remind'}
                                                             </button>
                                                         )}
+
+                                                        {/* ✅ NEW: Settle full due in one shot — opens the SAME PaymentModal used for
+                                                            individual bills, pre-filled with the party's total due. Same color as
+                                                            the individual "Settle Payment" button for consistency. */}
+                                                        {party.totalDue > 0 && (
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    // Sets selectedPartyNumber so the existing availableCredit useEffect
+                                                                    // (keyed on isPaymentModalOpen + selectedPartyNumber) fetches it automatically
+                                                                    setSelectedPartyNumber(party.partyNumber || '');
+                                                                    setSelectedInvoiceForPayment({
+                                                                        id: `settle-all-${party.partyNumber || party.partyName}`,
+                                                                        invoiceNumber: undefined,
+                                                                        type: 'sale',
+                                                                        totalAmount: party.totalDue,
+                                                                        dueAmount: party.totalDue,
+                                                                        partyName: party.partyName,
+                                                                        partyNumber: party.partyNumber,
+                                                                        createdAt: Date.now(),
+                                                                        isSettleAll: true, // flags PaymentModal's onSubmit routing above
+                                                                    });
+                                                                    setIsPaymentModalOpen(true);
+                                                                }}
+                                                                className="flex-1 py-1.5 text-[11px] font-bold text-white bg-[#F97316] rounded-sm hover:bg-orange-600 transition-colors"
+                                                            >
+                                                                Settle
+                                                            </button>
+                                                        )}
+
                                                         {/* NEW: per-party delete button */}
                                                         <button
                                                             onClick={(e) => {
@@ -1895,6 +2042,58 @@ const CataloguePartyLedger: React.FC = () => {
                                                                     Note: {txn.note}
                                                                 </p>
                                                             )}
+                                                            {/* NEW: Item-level breakdown — same style as Transactions page card */}
+                                                            {!txn.isOpeningBalance && txn.items && txn.items.length > 0 && (
+                                                                <>
+                                                                    <div className="relative py-2">
+                                                                        <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200" /></div>
+                                                                        <div className="relative flex justify-center">
+                                                                            <span className="bg-white px-2 text-xs font-bold text-slate-400 uppercase tracking-widest">Items</span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="space-y-2 text-sm">
+                                                                        {txn.items.map((item: any, idx: number) => {
+                                                                            const netUnitPrice = item.taxableAmount && item.quantity > 0
+                                                                                ? item.taxableAmount / item.quantity
+                                                                                : item.effectiveUnitPrice
+                                                                                    ? item.effectiveUnitPrice
+                                                                                    : (item.quantity > 0 ? (item.finalPrice || 0) / item.quantity : 0);
+                                                                            const lineAmount = netUnitPrice * item.quantity;
+                                                                            return (
+                                                                                <div key={idx} className="flex justify-between items-center text-slate-700">
+                                                                                    <div className="flex-1 pr-4">
+                                                                                        <p className="font-medium">{item.name}</p>
+                                                                                        <p className="text-xs text-slate-400 flex items-center gap-1">
+                                                                                            <span>MRP: {(item.mrp || 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}</span>
+                                                                                            <span className="text-slate-400">|</span>
+                                                                                            <span className="font-medium">Net: {netUnitPrice.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}</span>
+                                                                                        </p>
+                                                                                    </div>
+                                                                                    <div className="text-right">
+                                                                                        <p className="font-semibold">{lineAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</p>
+                                                                                        <p className="text-xs text-slate-400">Qty: {item.quantity}</p>
+                                                                                    </div>
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </>
+                                                            )}
+
+                                                            {/* NEW: Paid via breakdown */}
+                                                            {!txn.isOpeningBalance && txn.paymentMethods &&
+                                                                Object.entries(txn.paymentMethods).some(([k, v]) => k !== 'due' && Number(v) > 0) && (
+                                                                    <div className="flex justify-end flex-wrap gap-x-2 gap-y-1 mt-2 pt-2 border-t border-slate-200 text-xs text-slate-500">
+                                                                        <span>Paid via:</span>
+                                                                        {Object.entries(txn.paymentMethods)
+                                                                            .filter(([key, val]) => key !== 'due' && Number(val) > 0)
+                                                                            .map(([key, val]) => (
+                                                                                <span key={key} className="font-medium text-slate-700 whitespace-nowrap">
+                                                                                    {key === 'upi' ? 'UPI' : key.charAt(0).toUpperCase() + key.slice(1)}: {Number(val).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                                                                                </span>
+                                                                            ))}
+                                                                    </div>
+                                                                )}
                                                             <div className="relative py-2">
                                                                 <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200" /></div>
                                                                 <div className="relative flex justify-center">

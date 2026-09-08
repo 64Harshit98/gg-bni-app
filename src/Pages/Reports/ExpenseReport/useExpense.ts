@@ -12,6 +12,7 @@ export interface Expense {
   amount: number;
   date: number;
   createdAt: number;
+  addedBy: string;
 }
 
 export function useExpenses(companyId: string | undefined, source: 'pos' | 'catalogue' = 'pos') {

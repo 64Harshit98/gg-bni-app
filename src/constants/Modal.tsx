@@ -102,7 +102,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
 
     useEffect(() => {
         if (invoice) {
-            setAmount(invoice.dueAmount?.toString() ?? '');
+            setAmount(invoice.dueAmount != null ? invoice.dueAmount.toFixed(3) : '');
             setError('');
             setChequeNumber('');
             setChequeDate('');
@@ -120,7 +120,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
             setError('Please enter a valid amount.');
             return;
         }
-        if (paymentAmount > (invoice.dueAmount ?? 0)) {
+        if (paymentAmount > (invoice.dueAmount ?? 0) + 0.01) {
             setError('Payment cannot exceed the due amount.');
             return;
         }

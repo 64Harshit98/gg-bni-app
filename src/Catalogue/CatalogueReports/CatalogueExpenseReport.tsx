@@ -208,16 +208,16 @@ const CatalogueExpenseReportPage: React.FC = () => {
 
             autoTable(doc, {
                 startY: 38,
-                head: [['DATE', 'TITLE', 'DESCRIPTION', 'AMOUNT(Rs)']],
-                body: filtered.map(e => [formatDate(e.date), e.title, e.description, e.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })]),
-                foot: [['TOTAL', '', '', summary.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })]],
+                head: [['DATE', 'TITLE', 'DESCRIPTION', 'AMOUNT(Rs)', 'ADDED BY']],
+                body: filtered.map(e => [formatDate(e.date), e.title, e.description, e.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 }), e.addedBy || '—']),
+                foot: [['TOTAL', '', '', summary.total.toLocaleString('en-IN', { minimumFractionDigits: 2 }), '']],
                 showFoot: 'lastPage',
                 theme: 'plain',
                 styles: { font: 'helvetica', cellPadding: 7, fontSize: 10, textColor: [55, 65, 81] },
                 headStyles: { fillColor: [249, 250, 251], textColor: [17, 24, 39], fontStyle: 'bold', lineWidth: { top: 1, bottom: 1 }, lineColor: [229, 231, 235] },
                 footStyles: { fillColor: [255, 255, 255], textColor: [17, 24, 39], fontStyle: 'bold', lineWidth: { top: 1, bottom: 2 }, lineColor: [17, 24, 39] },
                 alternateRowStyles: { fillColor: [252, 252, 252] },
-                columnStyles: { 0: { cellWidth: 35 }, 1: { cellWidth: 30 }, 2: { cellWidth: 'auto' }, 3: { halign: 'right', cellWidth: 42 } },
+                columnStyles: { 0: { cellWidth: 32 }, 1: { cellWidth: 26 }, 2: { cellWidth: 'auto' }, 3: { halign: 'right', cellWidth: 32 }, 4: { cellWidth: 30 } },
                 didDrawPage: () => {
                     doc.setFontSize(9); doc.setTextColor(156, 163, 175);
                     doc.text(`Page ${doc.getNumberOfPages()}`, pw - 14, ph - 10, { align: 'right' });
@@ -240,7 +240,7 @@ const CatalogueExpenseReportPage: React.FC = () => {
             const allBorders = { top: { style: 'thin', color: { rgb: 'FED7AA' } }, bottom: { style: 'thin', color: { rgb: 'FED7AA' } }, left: { style: 'thin', color: { rgb: 'FED7AA' } }, right: { style: 'thin', color: { rgb: 'FED7AA' } } };
             const bblr = { bottom: { style: 'thin', color: { rgb: 'FED7AA' } }, left: { style: 'thin', color: { rgb: 'FED7AA' } }, right: { style: 'thin', color: { rgb: 'FED7AA' } } };
 
-            const COLS = [{ header: '#', width: 6 }, { header: 'Date', width: 16 }, { header: 'Title', width: 20 }, { header: 'Description', width: 32 }, { header: 'Amount (₹)', width: 18 }];
+            const COLS = [{ header: '#', width: 6 }, { header: 'Date', width: 16 }, { header: 'Title', width: 20 }, { header: 'Description', width: 32 }, { header: 'Amount (₹)', width: 18 }, { header: 'Added By', width: 18 }];
             const colCount = COLS.length;
             const dataStartRow = 7;
             const totalRows = dataStartRow + filtered.length + 1;
@@ -255,10 +255,10 @@ const CatalogueExpenseReportPage: React.FC = () => {
             COLS.forEach((c, i) => { aoa[6][i] = c.header; });
             filtered.forEach((exp, idx) => {
                 const r = dataStartRow + idx;
-                aoa[r] = [idx + 1, formatDate(exp.date), exp.title, exp.description, exp.amount];
+                aoa[r] = [idx + 1, formatDate(exp.date), exp.title, exp.description, exp.amount, exp.addedBy || '—'];
             });
             const footerRow = dataStartRow + filtered.length;
-            aoa[footerRow] = ['TOTAL', '', '', '', summary.total];
+            aoa[footerRow] = ['TOTAL', '', '', '', summary.total, ''];
 
             const ws: any = XLSX.utils.aoa_to_sheet(aoa);
             ws['!cols'] = COLS.map(c => ({ wch: c.width }));
@@ -315,6 +315,7 @@ const CatalogueExpenseReportPage: React.FC = () => {
                 onClose={() => setIsAddOpen(false)}
                 onSave={data => addExpense(companyId!, data)}
                 theme="orange"
+                currentUserName={currentUser?.name || 'Unknown'}
             />
 
             {/* Delete confirm */}
@@ -393,7 +394,7 @@ const CatalogueExpenseReportPage: React.FC = () => {
                     <table className="w-full text-sm">
                         <thead>
                             <tr className="bg-gray-50 border-b">
-                                {(['date', 'title', 'description', 'amount'] as (keyof Expense)[]).map(col => {
+                                {(['date', 'title', 'description', 'amount', 'addedBy'] as (keyof Expense)[]).map(col => {
                                     const isSorted = sortConfig.key === col;
                                     const directionIcon = sortConfig.direction === 'asc' ? '∧' : '∨';
 
@@ -424,13 +425,14 @@ const CatalogueExpenseReportPage: React.FC = () => {
                         </thead>
                         <tbody>
                             {filtered.length === 0 ? (
-                                <tr><td colSpan={5} className="text-center py-10 text-gray-400">No expenses found for selected period.</td></tr>
+                                <tr><td colSpan={6} className="text-center py-10 text-gray-400">No expenses found for selected period.</td></tr>
                             ) : filtered.map((exp, i) => (
                                 <tr key={exp.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                                     <td className="px-4 py-3 text-gray-700">{formatDate(exp.date)}</td>
                                     <td className="px-4 py-3 text-gray-700">{exp.title}</td>
                                     <td className="px-4 py-3 text-gray-700 hidden md:table-cell">{exp.description}</td>
                                     <td className="px-4 py-3 font-semibold text-gray-800">₹{exp.amount.toLocaleString('en-IN')}</td>
+                                    <td className="px-4 py-3 text-gray-700">{exp.addedBy || '—'}</td>
                                     <td className="px-4 py-3">
                                         <button onClick={() => setDeleteConfirm(exp.id)} className="text-red-400 hover:text-red-600 text-xs font-medium">Delete</button>
                                     </td>

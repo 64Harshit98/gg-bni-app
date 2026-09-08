@@ -182,7 +182,11 @@ const CatalogueLayout = () => {
                 </div>
             </NavLink>
         );
-        return permission ? <ShowWrapper key={to} requiredPermission={permission}>{link}</ShowWrapper> : link;
+        return permission ? (
+    <ShowWrapper key={to} requiredPermission={permission} mode="disable">
+        {link}
+    </ShowWrapper>
+) : link;
     };
 
     const sidebarLinkClass = (isActive: boolean) =>
@@ -425,6 +429,7 @@ const CatalogueLayout = () => {
                 onClose={() => setIsExpenseModalOpen(false)}
                 onSave={data => addExpense(currentUser?.companyId!, data)}
                 theme="orange"
+                currentUserName={currentUser?.name || 'Unknown'}
             />
             <AddUserModal
                 isOpen={isAddUserModalOpen}

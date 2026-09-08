@@ -189,13 +189,21 @@ const MainLayout = () => {
 
   const renderMobileNavLink = ({ to, icon, label, permission }: { to: string; icon: ReactNode; label: string; permission?: Permissions }) => {
     const link = (
-      <Link key={to} to={to} className={mobileNavLinkClass(to)}>
+      <Link
+        key={to}
+        to={to}
+        className={mobileNavLinkClass(to)}
+      >
         <div className="flex-shrink-0">{icon}</div>
         <span className="font-medium truncate text-[10px] sm:text-xs">{label}</span>
       </Link>
     );
-    return permission ? <ShowWrapper key={to} requiredPermission={permission}>{link}</ShowWrapper> : link;
-  };
+    return permission ? (
+      <ShowWrapper key={to} requiredPermission={permission} mode="disable">
+        {link}
+      </ShowWrapper>
+    ) : link;
+};
 
   const sidebarLinkClass = (path: string) =>
     `flex items-center gap-3 px-4 py-3 rounded-sm text-sm font-medium transition-all ${isActive(path)
@@ -292,6 +300,7 @@ const MainLayout = () => {
         isOpen={isExpenseModalOpen}
         onClose={() => setIsExpenseModalOpen(false)}
         onSave={data => addExpense(currentUser?.companyId!, data)}
+        currentUserName={currentUser?.name || 'Unknown'}
       />
       <AddUserModal
         isOpen={isAddUserModalOpen}

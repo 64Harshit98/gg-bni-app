@@ -255,7 +255,9 @@ const OrdersPage: React.FC = () => {
         billType, setBillType,
         handlePdfAction,
         handleSendWhatsapp,
+        handleSendWhatsappSnapto,
         handleSendReminder,
+        handleSendReminderSnapto,
     } = useOrderCommunication({
         currentUser,
         companyInfo,
@@ -494,6 +496,8 @@ const OrdersPage: React.FC = () => {
                                     setSelectedOrderForAction={setSelectedOrderForAction}
                                     pdfLoadingOrderId={pdfLoadingOrderId}
                                     handleSendReminder={handleSendReminder}
+                                    handleSendReminderSnapto={handleSendReminderSnapto}
+                                    companyId={currentUser?.companyId}
                                     sendingPdf={sendingPdf}
                                     handleDeleteOrder={handleDeleteOrder}
                                     setShowPaymentModal={setShowPaymentModal}
@@ -540,6 +544,8 @@ const OrdersPage: React.FC = () => {
                     billType={billType}
                     setBillType={setBillType}
                     handleSendWhatsapp={handleSendWhatsapp}
+                    handleSendWhatsappSnapto={handleSendWhatsappSnapto}
+                    companyId={currentUser?.companyId}
                     sendingPdf={sendingPdf}
                     pdfLoadingOrderId={pdfLoadingOrderId}
                     setPdfLoadingOrderId={setPdfLoadingOrderId}

@@ -5,6 +5,7 @@ import { db } from '../../../lib/Firebase';
 import { storage } from '../../../lib/Firebase'; // Ensure 'storage' is exported from your Firebase config
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { botMasterService } from '../../../Pages/Additional/Whatsapp/WhatsappApi';
+import { snaptoService } from '../../../Pages/Additional/Whatsapp/SnaptoApi';
 import { ROUTES } from '../../../constants/routes.constants';
 import { State } from '../../../enums';
 import { ACTION } from '../../../enums/action.enum';
@@ -470,6 +471,94 @@ export const useOrderCommunication = ({
         }
     };
 
+    // Snapto counterpart of handleSendWhatsapp above — same PDF prep, sent as
+    // an approved order-confirmation template instead of free-form text.
+    const handleSendWhatsappSnapto = async (Order: Order) => {
+        const phone = Order.userLoginPhone || Order.billingDetails?.phone || '';
+        const name = Order.userName || Order.billingDetails?.name || 'Customer';
+
+        if (!phone) {
+            setModal({ message: "Customer phone number is missing.", type: State.ERROR });
+            return;
+        }
+
+        setSendingPdf(true);
+
+        try {
+            if (!currentUser?.companyId) throw new Error("User context missing.");
+
+            const businessDocRef = doc(db, 'companies', currentUser.companyId, 'business_info', currentUser.companyId);
+            const billSettingsRef = doc(db, 'companies', currentUser.companyId, 'settings', 'bill');
+            const [businessSnap, billSettingsSnap] = await Promise.all([
+                getDoc(businessDocRef),
+                getDoc(billSettingsRef),
+            ]);
+            const businessData = businessSnap.exists() ? businessSnap.data() : {};
+
+            const billSettingsData = billSettingsSnap.exists() ? billSettingsSnap.data() : {};
+            const { snaptoApiKey, snaptoTemplateName, snaptoLanguage } = billSettingsData;
+
+            if (!snaptoApiKey || !snaptoTemplateName) {
+                setSendingPdf(false);
+                setSelectedOrderForAction(null);
+                setModal({ message: "Add your Snapto API key and template name in Bill Settings first.", type: State.ERROR });
+                return;
+            }
+
+            const itemsWithBase64 = await buildBillItems(Order.items, convertImageUrlToBase64);
+            const { paidAmount, advancePaid, dueAmount } = computeStatusAwareAmounts(Order);
+
+            const rawBillData = buildRawBillData({
+                order: Order,
+                companyInfo,
+                businessData,
+                companyId: currentUser?.companyId,
+                items: itemsWithBase64,
+                grandTotal: Order.totalAmount,
+                paidAmount,
+                advancePaid,
+                dueAmount,
+            });
+
+            const preparedData = await prepareCatalogueBillData({
+                ...rawBillData,
+                isEstimate: billType === 'estimate'
+            });
+
+            const pdfBlob = await CatalogueBill(preparedData, "blob");
+            if (!pdfBlob) throw new Error("Failed to generate PDF Blob.");
+
+            const safeNum = Order.orderId.replace(/[\/\\?%*:|"<>]/g, '-');
+            const cleanName = `${safeNum}.pdf`;
+            const storageRef = ref(storage, cleanName);
+            await uploadBytes(storageRef, pdfBlob);
+
+            const fileUrl = await getDownloadURL(storageRef);
+            const formattedAmount = Number(Order.totalAmount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            await snaptoService.sendTemplateMessage({
+                apiKey: snaptoApiKey,
+                to: phone,
+                templateName: snaptoTemplateName,
+                language: snaptoLanguage || 'en',
+                fileUrl,
+                templateVariables: [name, companyInfo?.name || '', 'order', Order.orderId, formattedAmount],
+            });
+
+            setModal({ message: "Order sent via WhatsApp (Snapto)!", type: State.SUCCESS });
+            setTimeout(async () => {
+                try { await deleteObject(storageRef); } catch (error) { console.warn("Auto-delete failed:", error); }
+            }, 60000);
+        } catch (err: any) {
+            console.error("Snapto WhatsApp Send Error:", err);
+            const detail = err?.response?.data?.detail || err?.response?.data?.error?.error_data?.details;
+            setModal({ message: detail ? `Failed to send order: ${detail}` : "Failed to send order via Snapto.", type: State.ERROR });
+        } finally {
+            setSendingPdf(false);
+            setSelectedOrderForAction(null);
+        }
+    };
+
     const handleSendReminder = async (Order: Order) => {
         const phone = Order.userLoginPhone || Order.billingDetails?.phone || '';
         const name = Order.userName || Order.billingDetails?.name || 'Customer';
@@ -572,6 +661,95 @@ export const useOrderCommunication = ({
         }
     };
 
+    // Snapto counterpart of handleSendReminder above.
+    const handleSendReminderSnapto = async (Order: Order) => {
+        const phone = Order.userLoginPhone || Order.billingDetails?.phone || '';
+        const name = Order.userName || Order.billingDetails?.name || 'Customer';
+
+        if (!phone) {
+            setModal({ message: "Customer phone number is missing.", type: State.ERROR });
+            return;
+        }
+        if (!currentUser?.companyId) return;
+
+        setSendingPdf(true);
+
+        try {
+            const businessDocRef = doc(db, 'companies', currentUser.companyId, 'business_info', currentUser.companyId);
+            const billSettingsRef = doc(db, 'companies', currentUser.companyId, 'settings', 'bill');
+            const [businessSnap, billSettingsSnap] = await Promise.all([
+                getDoc(businessDocRef),
+                getDoc(billSettingsRef),
+            ]);
+
+            const billSettingsData = billSettingsSnap.exists() ? billSettingsSnap.data() : {};
+            const { snaptoApiKey, snaptoReminderTemplateName, snaptoLanguage } = billSettingsData;
+
+            if (!snaptoApiKey || !snaptoReminderTemplateName) {
+                setSendingPdf(false);
+                setModal({ message: "Add your Snapto API key and reminder template name in Bill Settings first.", type: State.ERROR });
+                return;
+            }
+
+            const { paidAmount, dueAmount } = computeStatusAwareAmounts(Order);
+            const total = Order.totalAmount;
+
+            const dueAmt = dueAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const totalAmt = total.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            const businessData = businessSnap.exists() ? businessSnap.data() : {};
+
+            const itemsWithBase64 = await buildBillItems(Order.items, convertImageUrlToBase64);
+
+            const rawBillData = buildRawBillData({
+                order: Order,
+                companyInfo,
+                businessData,
+                companyId: currentUser?.companyId,
+                items: itemsWithBase64,
+                grandTotal: total,
+                paidAmount,
+                advancePaid: paidAmount,
+                dueAmount,
+            });
+
+            const preparedData = await prepareCatalogueBillData({
+                ...rawBillData,
+                isEstimate: billType === 'estimate'
+            });
+
+            const pdfBlob = await CatalogueBill(preparedData, "blob");
+            if (!pdfBlob) throw new Error("Failed to generate PDF Blob.");
+
+            const safeNum = Order.orderId.replace(/[\/\\?%*:|"<>]/g, '-');
+            const cleanName = `${safeNum}.pdf`;
+            const storageRef = ref(storage, cleanName);
+            await uploadBytes(storageRef, pdfBlob);
+
+            const fileUrl = await getDownloadURL(storageRef);
+
+            await snaptoService.sendTemplateMessage({
+                apiKey: snaptoApiKey,
+                to: phone,
+                templateName: snaptoReminderTemplateName,
+                language: snaptoLanguage || 'en',
+                fileUrl,
+                templateVariables: [name, companyInfo?.name || '', dueAmt, `order #${Order.orderId}`, totalAmt],
+            });
+
+            setModal({ message: "Reminder sent via WhatsApp (Snapto)!", type: State.SUCCESS });
+            setTimeout(async () => {
+                try { await deleteObject(storageRef); } catch (error) { console.warn("Auto-delete failed:", error); }
+            }, 60000);
+        } catch (err: any) {
+            console.error("Snapto Reminder Send Error:", err);
+            const detail = err?.response?.data?.detail || err?.response?.data?.error?.error_data?.details;
+            setModal({ message: detail ? `Failed to send reminder: ${detail}` : "Failed to send reminder via Snapto.", type: State.ERROR });
+        } finally {
+            setSendingPdf(false);
+        }
+    };
+
     return {
         selectedOrderForAction, setSelectedOrderForAction,
         pdfLoadingOrderId, setPdfLoadingOrderId,
@@ -581,6 +759,8 @@ export const useOrderCommunication = ({
         billType, setBillType,
         handlePdfAction,
         handleSendWhatsapp,
+        handleSendWhatsappSnapto,
         handleSendReminder,
+        handleSendReminderSnapto,
     };
 };

@@ -14,6 +14,8 @@ import { useNavigate } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { botMasterService } from '../Additional/Whatsapp/WhatsappApi';
+import { snaptoService } from '../Additional/Whatsapp/SnaptoApi';
+import { useWhatsappProvider } from '../Additional/Whatsapp/useWhatsappProvider';
 import { ROUTES } from '../../constants/routes.constants';
 
 interface BulkOpeningBalanceRow {
@@ -46,6 +48,7 @@ const PartyLedger: React.FC = () => {
 
     //const { currentUser } = useAuth();
     const navigate = useNavigate();
+    const { provider: whatsappProvider } = useWhatsappProvider(companyId);
     const [sendingReminderFor, setSendingReminderFor] = useState<string | null>(null);
 
     const [expandedBillId, setExpandedBillId] = useState<string | null>(null);
@@ -189,6 +192,82 @@ const PartyLedger: React.FC = () => {
             setSendingReminderFor(null);
         }
     };
+
+    // Snapto counterpart of handleSendPartyReminder above — same due-invoice
+    // list, sent as an approved reminder template. Meta rejects newlines
+    // inside template variable values, so invoice lines are joined with " | "
+    // instead of the "\n" used for the free-text BotMaster message.
+    const handleSendPartyReminderSnapto = async (party: typeof partySummaries[number]) => {
+        if (!party.partyNumber || party.partyNumber === 'N/A') {
+            showToast('Party phone number is missing.', 'error');
+            return;
+        }
+        if (!companyId) return;
+
+        setSendingReminderFor(party.partyNumber);
+
+        try {
+            const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
+            const billSettingsRef = doc(db, 'companies', companyId, 'settings', 'bill');
+            const [businessSnap, billSettingsSnap] = await Promise.all([
+                getDoc(businessDocRef),
+                getDoc(billSettingsRef),
+            ]);
+            const businessData = businessSnap.exists() ? businessSnap.data() : {};
+
+            const billSettingsData = billSettingsSnap.exists() ? billSettingsSnap.data() : {};
+            const { snaptoApiKey, snaptoReminderTemplateName, snaptoLanguage } = billSettingsData;
+
+            if (!snaptoApiKey || !snaptoReminderTemplateName) {
+                setSendingReminderFor(null);
+                showToast('Add your Snapto API key and reminder template name in Bill Settings first.', 'error');
+                return;
+            }
+
+            const unpaidTxns = party.transactions.filter(
+                (t: any) => t.dueAmount > 0 && !(t.isOpeningBalance && t.balanceType === 'advance')
+            );
+
+            if (unpaidTxns.length === 0) {
+                showToast('No due invoices found for this party.', 'error');
+                setSendingReminderFor(null);
+                return;
+            }
+
+            const invoiceList = unpaidTxns
+                .map((t: any) => {
+                    const label = t.isOpeningBalance ? 'Opening Due' : (t.invoiceNumber || `#${t.id.slice(0, 6).toUpperCase()}`);
+                    const due = Number(t.dueAmount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    return `${label}: ₹${due}`;
+                })
+                .join(' | ');
+
+            const totalDueStr = party.totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            await snaptoService.sendTemplateMessage({
+                apiKey: snaptoApiKey,
+                to: party.partyNumber,
+                templateName: snaptoReminderTemplateName,
+                language: snaptoLanguage || 'en',
+                templateVariables: [
+                    party.partyName,
+                    businessData.businessName || businessData.name || '',
+                    totalDueStr,
+                    invoiceList,
+                    totalDueStr,
+                ],
+            });
+
+            showToast('Reminder sent via WhatsApp (Snapto)!', 'success');
+        } catch (err: any) {
+            console.error('Snapto Party Reminder Send Error:', err);
+            const detail = err?.response?.data?.detail || err?.response?.data?.error?.error_data?.details;
+            showToast(detail ? `Failed to send reminder: ${detail}` : 'Failed to send reminder via Snapto.', 'error');
+        } finally {
+            setSendingReminderFor(null);
+        }
+    };
+
     useEffect(() => {
         // Set default to last 30 days (acts as last month)
         handleDatePresetChange('last30');
@@ -1175,10 +1254,8 @@ const PartyLedger: React.FC = () => {
                                                     </div>
                                                 </div>
                                                 {/* Remind + Delete row */}
-                                                <div className="mt-2 pt-2 border-t border-slate-100 flex gap-2 flex-wrap">
-                                                    {/* ✅ FIX: Reminder sirf tab, jab party humse paisa lena chahti ho (Customer/Both) — 
-        Supplier ka due matlab hum unhe pay karenge, unhe "Remind" bhejna galat hai */}
-                                                    {party.partyType !== 'Supplier' && party.totalDue > 0 && party.partyNumber && party.partyNumber !== 'N/A' && (
+                                                <div className="mt-2 pt-2 border-t border-slate-100 flex gap-2">
+                                                    {party.totalDue > 0 && party.partyNumber && party.partyNumber !== 'N/A' && whatsappProvider === 'botmaster' && (
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
@@ -1190,53 +1267,19 @@ const PartyLedger: React.FC = () => {
                                                             {sendingReminderFor === party.partyNumber ? <Spinner /> : 'Remind'}
                                                         </button>
                                                     )}
-
-                                                    {party.totalDue > 0 && (
+                                                    {party.totalDue > 0 && party.partyNumber && party.partyNumber !== 'N/A' && whatsappProvider === 'snapto' && (
                                                         <button
-                                                            onClick={async (e) => {
+                                                            onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                setSelectedInvoiceForPayment({
-                                                                    id: `settle-all-${normalizePartyNumber(party.partyNumber) || party.partyName}`,
-                                                                    invoiceNumber: undefined,
-                                                                    type: party.partyType === 'Supplier' ? 'purchase' : 'sale',
-                                                                    totalAmount: party.totalDue,
-                                                                    dueAmount: party.totalDue,
-                                                                    partyName: party.partyName,
-                                                                    partyNumber: party.partyNumber,
-                                                                    createdAt: Date.now(),
-                                                                    isSettleAll: true, // flags PaymentModal's onSubmit routing above
-                                                                    partyRef: party,   // used inside handleSettleAllPayment
-                                                                });
-
-                                                                // ✅ Same credit/debit fetch as the individual bill "Settle Payment" button below
-                                                                const partyNum = normalizePartyNumber(party.partyNumber);
-                                                                if (partyNum && companyId) {
-                                                                    try {
-                                                                        const { doc, getDoc } = await import('firebase/firestore');
-                                                                        const { db } = await import('../../lib/Firebase');
-                                                                        const isSupplier = party.partyType === 'Supplier';
-                                                                        const collectionName = isSupplier ? 'suppliers' : 'customers';
-                                                                        const balanceField = isSupplier ? 'debitBalance' : 'creditBalance';
-
-                                                                        const partyRefDoc = doc(db, 'companies', companyId, collectionName, partyNum);
-                                                                        const snap = await getDoc(partyRefDoc);
-                                                                        setAvailableCredit(snap.exists() ? Number(snap.data()[balanceField] || 0) : 0);
-                                                                    } catch {
-                                                                        setAvailableCredit(0);
-                                                                    }
-                                                                } else {
-                                                                    setAvailableCredit(0);
-                                                                }
-
-                                                                setIsPaymentModalOpen(true);
+                                                                handleSendPartyReminderSnapto(party);
                                                             }}
-                                                            className="flex-1 py-1.5 text-[11px] font-bold text-white bg-blue-500 rounded-sm hover:bg-blue-600 transition-colors"
+                                                            disabled={sendingReminderFor === party.partyNumber}
+                                                            className="flex-1 py-1.5 text-[11px] font-bold text-white bg-blue-500 rounded-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
                                                         >
-                                                            Settle
+                                                            {sendingReminderFor === party.partyNumber ? <Spinner /> : 'Remind'}
                                                         </button>
                                                     )}
-
-                                                    {/* per-party delete button */}
+                                                    {/* NEW: per-party delete button */}
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();

@@ -20,6 +20,7 @@ import { IconScanCircle, IconPrint } from '../../../constants/Icons';
 import QRCode from 'react-qr-code';
 import { FiSend } from 'react-icons/fi';
 import CalcDisplay from '../../../Components/CalcDisplay';
+import { useWhatsappProvider } from '../../Additional/Whatsapp/useWhatsappProvider';
 import type { SalesItem } from './sales.types';
 import { applyRounding, calculateSaleTotals } from './sales.calculations';
 import {
@@ -84,6 +85,7 @@ const Sales: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const { currentUser, loading: authLoading, hasPermission } = useAuth();
+    const { provider: whatsappProvider } = useWhatsappProvider(currentUser?.companyId);
     const dbOperations = useDatabase();
     const { salesSettings: rawSettings, loadingSettings } = useSalesSettings();
 
@@ -207,6 +209,7 @@ const Sales: React.FC = () => {
         enableTriplicate,
         isDrawerOpen, setIsDrawerOpen,
         handleSendWhatsapp,
+        handleSendWhatsappSnapto,
         handlePrintAction,
         showSuccessModal,
         handleCloseQrModal,
@@ -1000,10 +1003,20 @@ const Sales: React.FC = () => {
                             </div>
                             <p className="text-center text-sm text-gray-600 mb-4">Ask customer to scan this QR code to download their bill.</p>
                             {savedBillData.invoiceData?.partyNumber ? (
-                                <button onClick={() => handleSendWhatsapp(savedBillData.invoiceData)} disabled={sendingPdf}
-                                    className="w-full bg-green-500 text-white py-3 rounded-lg font-semibold hover:bg-green-600 transition-colors flex items-center justify-center gap-2 mb-3 disabled:opacity-50">
-                                    {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
-                                </button>
+                                <>
+                                    {whatsappProvider === 'botmaster' && (
+                                        <button onClick={() => handleSendWhatsapp(savedBillData.invoiceData)} disabled={sendingPdf}
+                                            className="w-full bg-green-500 text-white py-3 rounded-lg font-semibold hover:bg-green-600 transition-colors flex items-center justify-center gap-2 mb-3 disabled:opacity-50">
+                                            {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
+                                        </button>
+                                    )}
+                                    {whatsappProvider === 'snapto' && (
+                                        <button onClick={() => handleSendWhatsappSnapto(savedBillData.invoiceData)} disabled={sendingPdf}
+                                            className="w-full bg-green-500 text-white py-3 rounded-lg font-semibold hover:bg-green-600 transition-colors flex items-center justify-center gap-2 mb-3 disabled:opacity-50">
+                                            {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
+                                        </button>
+                                    )}
+                                </>
                             ) : (
                                 <p className="text-xs text-amber-600 mb-3 text-center bg-amber-50 p-2 rounded w-full border border-amber-200">No phone number provided for WhatsApp.</p>
                             )}
@@ -1450,13 +1463,26 @@ const Sales: React.FC = () => {
 
                         {/* --- NEW WHATSAPP BUTTON --- */}
                         {savedBillData.invoiceData?.partyNumber ? (
-                            <button
-                                onClick={() => handleSendWhatsapp(savedBillData.invoiceData)}
-                                disabled={sendingPdf}
-                                className="w-full bg-green-500 text-white py-3 rounded-lg font-semibold hover:bg-green-600 transition-colors flex items-center justify-center gap-2 mb-3 disabled:opacity-50"
-                            >
-                                {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
-                            </button>
+                            <>
+                                {whatsappProvider === 'botmaster' && (
+                                    <button
+                                        onClick={() => handleSendWhatsapp(savedBillData.invoiceData)}
+                                        disabled={sendingPdf}
+                                        className="w-full bg-green-500 text-white py-3 rounded-lg font-semibold hover:bg-green-600 transition-colors flex items-center justify-center gap-2 mb-3 disabled:opacity-50"
+                                    >
+                                        {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
+                                    </button>
+                                )}
+                                {whatsappProvider === 'snapto' && (
+                                    <button
+                                        onClick={() => handleSendWhatsappSnapto(savedBillData.invoiceData)}
+                                        disabled={sendingPdf}
+                                        className="w-full bg-green-500 text-white py-3 rounded-lg font-semibold hover:bg-green-600 transition-colors flex items-center justify-center gap-2 mb-3 disabled:opacity-50"
+                                    >
+                                        {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
+                                    </button>
+                                )}
+                            </>
                         ) : (
                             <p className="text-xs text-amber-600 mb-3 text-center bg-amber-50 p-2 rounded w-full border border-amber-200">
                                 No phone number provided for WhatsApp.

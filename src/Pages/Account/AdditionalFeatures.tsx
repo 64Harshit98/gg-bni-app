@@ -23,7 +23,7 @@ const SERVICES: ServiceItem[] = [
         id: 'Whatsapp',
         title: 'WhatsApp Integration',
         description: 'Connect your business to WhatsApp for seamless communication.',
-        route: ROUTES.WHATSAPP_PLAN,
+        route: ROUTES.WHATSAPP_CHOOSE,
     },
     {
         id: 'inventory',
@@ -79,7 +79,11 @@ const AdditionalServices: React.FC = () => {
         try {
             const companyId = (currentUser as any).companyId || currentUser.uid;
             const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
-            const businessDoc = await getDoc(businessDocRef);
+            const billSettingsRef = doc(db, 'companies', companyId, 'settings', 'bill');
+            const [businessDoc, billSettingsDoc] = await Promise.all([
+                getDoc(businessDocRef),
+                getDoc(billSettingsRef),
+            ]);
 
             if (businessDoc.exists()) {
                 const data = businessDoc.data();
@@ -97,8 +101,22 @@ const AdditionalServices: React.FC = () => {
                             return;
                         }
                     }
+                    // BotMaster token exists but isn't actively connected — send
+                    // them back into the plan/QR flow to reconnect, not the
+                    // choose-provider screen (they've already made their choice).
+                    navigate(ROUTES.WHATSAPP_PLAN);
+                    return;
                 }
             }
+
+            const billSettings = billSettingsDoc.exists() ? billSettingsDoc.data() : {};
+            if (billSettings.snaptoApiKey && billSettings.snaptoTemplateName) {
+                // Snapto is configured — there's no separate dashboard for it yet,
+                // so send them to Bill Settings where the key/template live.
+                navigate(ROUTES.BILLSETTING);
+                return;
+            }
+
             navigate(route);
         } catch (err) {
             console.error("WhatsApp check failed:", err);

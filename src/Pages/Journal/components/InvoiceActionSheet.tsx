@@ -1,10 +1,13 @@
 import React from 'react';
 import { FiSend } from 'react-icons/fi';
+import { useNavigate } from 'react-router-dom';
 import { Spinner } from '../../../constants/Spinner';
 import { IconClose, IconDownload, IconPrint, IconScanCircle } from '../../../constants/Icons';
 import { ACTION } from '../../../enums';
 import { Permissions } from '../../../enums/permissions.enum';
+import { ROUTES } from '../../../constants/routes.constants';
 import ShowWrapper from '../../../context/ShowWrapper';
+import { useWhatsappProvider } from '../../Additional/Whatsapp/useWhatsappProvider';
 import type { Invoice } from '../journal.types';
 
 interface InvoiceActionSheetProps {
@@ -15,7 +18,9 @@ interface InvoiceActionSheetProps {
   billType: 'estimate' | 'bill';
   setBillType: (v: 'estimate' | 'bill') => void;
   sendingPdf: boolean;
+  companyId: string | undefined;
   handleSendWhatsapp: (invoice: Invoice) => void;
+  handleSendWhatsappSnapto: (invoice: Invoice) => void;
   handlePdfAction: (invoice: Invoice, action: ACTION.DOWNLOAD | ACTION.PRINT, withDuplicate?: boolean) => void;
   handleShowQr: (invoice: Invoice) => void;
   handlePrintQr: (invoice: Invoice) => void;
@@ -31,11 +36,15 @@ export const InvoiceActionSheet: React.FC<InvoiceActionSheetProps> = ({
   billType,
   setBillType,
   sendingPdf,
+  companyId,
   handleSendWhatsapp,
+  handleSendWhatsappSnapto,
   handlePdfAction,
   handleShowQr,
   handlePrintQr,
 }) => {
+  const { provider: whatsappProvider } = useWhatsappProvider(companyId);
+  const navigate = useNavigate();
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => { setInvoiceToPrint(null); setShowPrintSubMenu(false); }}>
       <div className="bg-white rounded-sm p-4 w-full max-w-sm mx-4 shadow-xl animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
@@ -67,18 +76,44 @@ export const InvoiceActionSheet: React.FC<InvoiceActionSheetProps> = ({
         <div className="flex flex-col gap-3">
           {invoiceToPrint.type === 'Credit' ? (
             <>
-              <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-                <button
-                  onClick={() => handleSendWhatsapp({
-                    ...invoiceToPrint,
-                    isEstimate: billType === 'estimate'
-                  } as any)}
-                  disabled={sendingPdf}
-                  className="w-full bg-green-600 text-white py-2.5 px-4 rounded-sm font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
-                </button>
-              </ShowWrapper>
+              {whatsappProvider === 'botmaster' && (
+                <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+                  <button
+                    onClick={() => handleSendWhatsapp({
+                      ...invoiceToPrint,
+                      isEstimate: billType === 'estimate'
+                    } as any)}
+                    disabled={sendingPdf}
+                    className="w-full bg-green-600 text-white py-2.5 px-4 rounded-sm font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
+                  </button>
+                </ShowWrapper>
+              )}
+              {whatsappProvider === 'snapto' && (
+                <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+                  <button
+                    onClick={() => handleSendWhatsappSnapto({
+                      ...invoiceToPrint,
+                      isEstimate: billType === 'estimate'
+                    } as any)}
+                    disabled={sendingPdf}
+                    className="w-full bg-green-600 text-white py-2.5 px-4 rounded-sm font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
+                  </button>
+                </ShowWrapper>
+              )}
+              {whatsappProvider === 'none' && (
+                <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+                  <button
+                    onClick={() => navigate(ROUTES.WHATSAPP_CHOOSE)}
+                    className="w-full bg-gray-100 text-gray-700 border border-gray-300 py-2.5 px-4 rounded-sm font-medium hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <FiSend /> Connect WhatsApp
+                  </button>
+                </ShowWrapper>
+              )}
               <button
                 onClick={() => handlePdfAction({
                   ...invoiceToPrint,

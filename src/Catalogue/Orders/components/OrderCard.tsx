@@ -5,6 +5,7 @@ import { ROUTES } from '../../../constants/routes.constants';
 import { CustomCard } from '../../../Components/CustomCard';
 import { Spinner } from '../../../constants/Spinner';
 import { IconEdit } from '../../../constants/Icons';
+import { useWhatsappProvider } from '../../../Pages/Additional/Whatsapp/useWhatsappProvider';
 import type { Order, OrderStatus } from '../orders.types';
 import { formatAmount } from '../../../lib/format';
 
@@ -16,6 +17,8 @@ interface OrderCardProps {
     setSelectedOrderForAction: (order: Order | null) => void;
     pdfLoadingOrderId: string | null;
     handleSendReminder: (order: Order) => void;
+    handleSendReminderSnapto: (order: Order) => void;
+    companyId: string | undefined;
     sendingPdf: boolean;
     handleDeleteOrder: (orderId: string, skipConfirm?: boolean) => void;
     setShowPaymentModal: (order: Order | null) => void;
@@ -32,6 +35,8 @@ export const OrderCard: React.FC<OrderCardProps> = ({
     setSelectedOrderForAction,
     pdfLoadingOrderId,
     handleSendReminder,
+    handleSendReminderSnapto,
+    companyId,
     sendingPdf,
     handleDeleteOrder,
     setShowPaymentModal,
@@ -40,6 +45,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
     isUpdatingStatus,
 }) => {
     const navigate = useNavigate();
+    const { provider: whatsappProvider } = useWhatsappProvider(companyId);
 
     const returnMethods =
         Order.returnHistory && Order.returnHistory.length > 0
@@ -640,11 +646,23 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                                             </button>
                                         )}
                                         {/* REMIND – only UNPAID Completed orders */}
-                                        {!isPaid && Order.status === 'Completed' && (
+                                        {!isPaid && Order.status === 'Completed' && whatsappProvider === 'botmaster' && (
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     handleSendReminder(Order);
+                                                }}
+                                                disabled={sendingPdf}
+                                                className="py-2.5 bg-amber-500 text-white text-xs font-bold rounded-sm disabled:opacity-50 flex items-center justify-center"
+                                            >
+                                                {sendingPdf ? <Spinner /> : "Remind"}
+                                            </button>
+                                        )}
+                                        {!isPaid && Order.status === 'Completed' && whatsappProvider === 'snapto' && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleSendReminderSnapto(Order);
                                                 }}
                                                 disabled={sendingPdf}
                                                 className="py-2.5 bg-amber-500 text-white text-xs font-bold rounded-sm disabled:opacity-50 flex items-center justify-center"

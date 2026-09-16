@@ -1,1 +1,2 @@
-functions/** text eol=lf
+functions/**/*.ts text eol=lf
+functions/**/*.js text eol=lf

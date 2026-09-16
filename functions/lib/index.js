@@ -222,6 +222,28 @@ exports.botmasterProxy = functions.https.onRequest((req, res) => {
     });
 });
 
+exports.snaptoProxy = functions.https.onRequest((req, res) => {
+    cors(req, res, async () => {
+        try {
+            const targetUrl = `https://app.snapto.ai${req.url}`;
+            const response = await axios({
+                method: req.method,
+                url: targetUrl,
+                data: req.body,
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-api-key": req.headers["x-api-key"],
+                }
+            });
+            res.status(response.status).send(response.data);
+        } catch (error) {
+            console.error("Snapto Proxy Error:", error.message);
+            if (error.response) res.status(error.response.status).send(error.response.data);
+            else res.status(500).send({ error: "Cloud Function Proxy failed." });
+        }
+    });
+});
+
 exports.getPublicCatalogue = functions.https.onRequest(async (req, res) => {
     const host = req.hostname;
     const slug = host.split('.')[0];

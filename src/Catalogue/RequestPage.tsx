@@ -8,6 +8,8 @@ import { Search, Phone, Filter, Reply, Trash2 } from 'lucide-react'
 import { State } from '../enums'
 import { Modal } from '../constants/Modal'
 import { botMasterService } from '../Pages/Additional/Whatsapp/WhatsappApi';
+import { snaptoService } from '../Pages/Additional/Whatsapp/SnaptoApi';
+import { useWhatsappProvider } from '../Pages/Additional/Whatsapp/useWhatsappProvider';
 import { ROUTES } from '../constants/routes.constants'
 
 type RequestType = {
@@ -56,6 +58,7 @@ function RequestPage() {
     const location = useLocation()
     const { currentUser } = useAuth();
     const companyId = currentUser?.companyId;
+    const { provider: whatsappProvider } = useWhatsappProvider(companyId);
     const [requireApproval, setRequireApproval] = useState<boolean>(false);
     const [requestType, setRequestType] = useState<'notify' | 'approval'>('approval')
     const [catalogueBaseUrl, setCatalogueBaseUrl] = useState<string>('');
@@ -699,6 +702,71 @@ function RequestPage() {
         }
     };
 
+    // Sends the "back in stock" notification via Snapto's WhatsApp template
+    // API. Unlike sendDirectWhatsappMessage above (free-form text, edited by
+    // the merchant in the reply composer), this bypasses the composer since
+    // template messages can't carry arbitrary formatted text — item names are
+    // joined with " | " (not newlines) because Meta rejects newlines inside
+    // template variable values.
+    const sendStockAlertSnapto = async (
+        customerNumber: string | undefined,
+        customerName: string | undefined,
+        itemNames: string[],
+        rowKey: string
+    ): Promise<boolean> => {
+        if (!companyId) {
+            setModal({ message: "Company not found.", type: State.ERROR });
+            return false;
+        }
+        if (!customerNumber) {
+            setModal({ message: "Customer phone number is missing.", type: State.ERROR });
+            return false;
+        }
+
+        setSendingId(rowKey);
+
+        try {
+            const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
+            const billSettingsRef = doc(db, 'companies', companyId, 'settings', 'bill');
+            const [businessSnap, billSettingsSnap] = await Promise.all([
+                getDoc(businessDocRef),
+                getDoc(billSettingsRef),
+            ]);
+            const businessData = businessSnap.exists() ? businessSnap.data() : {};
+
+            const billSettingsData = billSettingsSnap.exists() ? billSettingsSnap.data() : {};
+            const { snaptoApiKey, snaptoStockAlertTemplateName, snaptoLanguage } = billSettingsData;
+
+            if (!snaptoApiKey || !snaptoStockAlertTemplateName) {
+                setSendingId(null);
+                setModal({ message: "Add your Snapto API key and stock alert template name in Bill Settings first.", type: State.ERROR });
+                return false;
+            }
+
+            await snaptoService.sendTemplateMessage({
+                apiKey: snaptoApiKey,
+                to: customerNumber,
+                templateName: snaptoStockAlertTemplateName,
+                language: snaptoLanguage || 'en',
+                templateVariables: [
+                    customerName || 'there',
+                    businessData.businessName || businessData.name || '',
+                    itemNames.join(' | '),
+                ],
+            });
+
+            setModal({ message: "Stock alert sent via WhatsApp (Snapto)!", type: State.SUCCESS });
+            return true;
+        } catch (err: any) {
+            console.error("Snapto Stock Alert Send Error:", err);
+            const detail = err?.response?.data?.detail || err?.response?.data?.error?.error_data?.details;
+            setModal({ message: detail ? `Failed to send: ${detail}` : "Failed to send stock alert via Snapto.", type: State.ERROR });
+            return false;
+        } finally {
+            setSendingId(null);
+        }
+    };
+
     return (
         <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col">
             {modal && (
@@ -1206,7 +1274,7 @@ function RequestPage() {
                                                             <span className="text-[9px] font-black uppercase tracking-widest text-white">
                                                                 Requested Item
                                                             </span>
-                                                            {(req.items || []).some(i => i.inStock === true) && (
+                                                            {(req.items || []).some(i => i.inStock === true) && whatsappProvider === 'botmaster' && (
                                                                 <button
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
@@ -1232,6 +1300,27 @@ function RequestPage() {
                                                                     className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-sm bg-white/20 hover:bg-white/30 text-white shrink-0"
                                                                 >
                                                                     <Reply size={11} /> Send In Stock
+                                                                </button>
+                                                            )}
+                                                            {(req.items || []).some(i => i.inStock === true) && whatsappProvider === 'snapto' && (
+                                                                <button
+                                                                    disabled={sendingId === `stock_snapto_${req.id}`}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        const inStockItems = (req.items || []).filter(i => i.inStock === true);
+                                                                        const itemNames = inStockItems.map(i => i.name);
+                                                                        sendStockAlertSnapto(
+                                                                            req.customerNumber,
+                                                                            req.customerName,
+                                                                            itemNames,
+                                                                            `stock_snapto_${req.id}`
+                                                                        ).then(sent => {
+                                                                            if (sent) markMessageSent(req.id);
+                                                                        });
+                                                                    }}
+                                                                    className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-sm bg-white/20 hover:bg-white/30 text-white shrink-0 disabled:opacity-50"
+                                                                >
+                                                                    <Reply size={11} /> {sendingId === `stock_snapto_${req.id}` ? 'Sending...' : 'Send In Stock'}
                                                                 </button>
                                                             )}
                                                         </div>

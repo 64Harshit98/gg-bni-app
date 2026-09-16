@@ -282,7 +282,9 @@ const Journal: React.FC = () => {
     billType, setBillType,
     handlePdfAction,
     handleSendWhatsapp,
+    handleSendWhatsappSnapto,
     handleSendReminder,
+    handleSendReminderSnapto,
     handleShowQr,
     handlePrintQr,
   } = useInvoiceCommunication({ currentUser, salesSettings, isPosBasicPlan, setModal });
@@ -331,6 +333,7 @@ const Journal: React.FC = () => {
           (hasTransportInfo ? 1 : 0) +                                         // Transport
           (invoice.status === 'Unpaid' ? 1 : 0) +                              // Settle
           (invoice.status === 'Unpaid' && invoice.partyNumber ? 1 : 0) +       // Remind
+          (invoice.status === 'Unpaid' && invoice.partyNumber ? 1 : 0) +       // Remind (Snapto)
           (invoice.status === 'Paid' ? 1 : 0) +                                // Delete
           (hasProPermission ? 1 : 0) +                                         // Edit
           (invoice.type === 'Credit'
@@ -686,6 +689,15 @@ const Journal: React.FC = () => {
                       {sendingPdf ? <Spinner /> : <>Remind</>}
                     </button>
                   )}
+                  {invoice.status === 'Unpaid' && invoice.partyNumber && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleSendReminderSnapto(invoice); }}
+                      disabled={sendingPdf}
+                      className="py-2 text-[11px] font-bold text-white bg-teal-500 rounded-sm hover:bg-teal-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                    >
+                      {sendingPdf ? <Spinner /> : <>Remind (Snapto)</>}
+                    </button>
+                  )}
                   {invoice.status === 'Paid' && (<button onClick={(e) => { e.stopPropagation(); promptDeleteInvoice(invoice); }} className="py-2 text-[11px] font-bold text-white bg-red-500 rounded-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors">Delete</button>)}
                   <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
                     <button onClick={(e) => { e.stopPropagation(); handleEditInvoice(invoice); }} className="py-2 text-[11px] font-bold text-white bg-gray-400 rounded-sm hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors text-center">Edit</button>
@@ -756,7 +768,9 @@ const Journal: React.FC = () => {
           billType={billType}
           setBillType={setBillType}
           sendingPdf={sendingPdf}
+          companyId={currentUser?.companyId}
           handleSendWhatsapp={handleSendWhatsapp}
+          handleSendWhatsappSnapto={handleSendWhatsappSnapto}
           handlePdfAction={handlePdfAction}
           handleShowQr={handleShowQr}
           handlePrintQr={handlePrintQr}

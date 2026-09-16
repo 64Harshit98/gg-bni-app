@@ -1,7 +1,10 @@
 import React from 'react';
 import { FiSend } from 'react-icons/fi';
+import { useNavigate } from 'react-router-dom';
 import { Spinner } from '../../../constants/Spinner';
 import { ACTION } from '../../../enums/action.enum';
+import { ROUTES } from '../../../constants/routes.constants';
+import { useWhatsappProvider } from '../../../Pages/Additional/Whatsapp/useWhatsappProvider';
 import type { Order } from '../orders.types';
 
 interface OrderActionSheetProps {
@@ -11,6 +14,8 @@ interface OrderActionSheetProps {
     billType: 'estimate' | 'bill';
     setBillType: (v: 'estimate' | 'bill') => void;
     handleSendWhatsapp: (order: Order) => void;
+    handleSendWhatsappSnapto: (order: Order) => void;
+    companyId: string | undefined;
     sendingPdf: boolean;
     pdfLoadingOrderId: string | null;
     setPdfLoadingOrderId: (id: string | null) => void;
@@ -27,12 +32,16 @@ export const OrderActionSheet: React.FC<OrderActionSheetProps> = ({
     billType,
     setBillType,
     handleSendWhatsapp,
+    handleSendWhatsappSnapto,
+    companyId,
     sendingPdf,
     pdfLoadingOrderId,
     setPdfLoadingOrderId,
     handlePdfAction,
     setShowQrModal,
 }) => {
+    const { provider: whatsappProvider } = useWhatsappProvider(companyId);
+    const navigate = useNavigate();
     return (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4" onClick={() => { setSelectedOrderForAction(null); setShowPrintSubMenu(false); }}>
             <div className="bg-white rounded-sm p-6 w-full max-w-sm shadow-xl" onClick={e => e.stopPropagation()}>
@@ -51,19 +60,44 @@ export const OrderActionSheet: React.FC<OrderActionSheetProps> = ({
                     ))}
                 </div>
                 <div className="flex flex-col gap-3">
-                    <button
-                        onClick={() => handleSendWhatsapp(selectedOrderForAction)}
-                        disabled={sendingPdf || pdfLoadingOrderId === selectedOrderForAction.id}
-                        className="w-full bg-[#25D366] text-white py-2.5 rounded-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50"
-                    >
-                        {sendingPdf ? (
-                            <Spinner />
-                        ) : (
-                            <>
-                                <FiSend /> Share on WhatsApp
-                            </>
-                        )}
-                    </button>
+                    {whatsappProvider === 'botmaster' && (
+                        <button
+                            onClick={() => handleSendWhatsapp(selectedOrderForAction)}
+                            disabled={sendingPdf || pdfLoadingOrderId === selectedOrderForAction.id}
+                            className="w-full bg-[#25D366] text-white py-2.5 rounded-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                            {sendingPdf ? (
+                                <Spinner />
+                            ) : (
+                                <>
+                                    <FiSend /> Share on WhatsApp
+                                </>
+                            )}
+                        </button>
+                    )}
+                    {whatsappProvider === 'snapto' && (
+                        <button
+                            onClick={() => handleSendWhatsappSnapto(selectedOrderForAction)}
+                            disabled={sendingPdf || pdfLoadingOrderId === selectedOrderForAction.id}
+                            className="w-full bg-[#25D366] text-white py-2.5 rounded-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                            {sendingPdf ? (
+                                <Spinner />
+                            ) : (
+                                <>
+                                    <FiSend /> Share on WhatsApp
+                                </>
+                            )}
+                        </button>
+                    )}
+                    {whatsappProvider === 'none' && (
+                        <button
+                            onClick={() => navigate(ROUTES.WHATSAPP_CHOOSE)}
+                            className="w-full bg-gray-100 text-gray-700 border border-gray-300 py-2.5 rounded-sm font-bold flex items-center justify-center gap-2"
+                        >
+                            <FiSend /> Connect WhatsApp
+                        </button>
+                    )}
                     <button
                         onClick={() => {
                             const order = selectedOrderForAction;

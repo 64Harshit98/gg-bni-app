@@ -18,7 +18,7 @@ const CatalogueAdditionalServices: React.FC = () => {
 
     const handleWhatsappClick = async () => {
         if (!currentUser) {
-            navigate(ROUTES.WHATSAPP_PLAN);
+            navigate(ROUTES.WHATSAPP_CHOOSE);
             return;
         }
 
@@ -26,7 +26,11 @@ const CatalogueAdditionalServices: React.FC = () => {
         try {
             const companyId = (currentUser as any).companyId || currentUser.uid;
             const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
-            const businessDoc = await getDoc(businessDocRef);
+            const billSettingsRef = doc(db, 'companies', companyId, 'settings', 'bill');
+            const [businessDoc, billSettingsDoc] = await Promise.all([
+                getDoc(businessDocRef),
+                getDoc(billSettingsRef),
+            ]);
 
             if (businessDoc.exists()) {
                 const data = businessDoc.data();
@@ -45,12 +49,23 @@ const CatalogueAdditionalServices: React.FC = () => {
                             return;
                         }
                     }
+                    // BotMaster token exists but isn't actively connected — send
+                    // them back into the plan/QR flow to reconnect.
+                    navigate(ROUTES.WHATSAPP_PLAN);
+                    return;
                 }
             }
-            navigate(ROUTES.WHATSAPP_PLAN);
+
+            const billSettings = billSettingsDoc.exists() ? billSettingsDoc.data() : {};
+            if (billSettings.snaptoApiKey && billSettings.snaptoTemplateName) {
+                navigate(ROUTES.BILLSETTING);
+                return;
+            }
+
+            navigate(ROUTES.WHATSAPP_CHOOSE);
         } catch (err) {
             console.error('WhatsApp check failed:', err);
-            navigate(ROUTES.WHATSAPP_PLAN);
+            navigate(ROUTES.WHATSAPP_CHOOSE);
         } finally {
             setIsChecking(false);
         }

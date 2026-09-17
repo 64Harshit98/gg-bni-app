@@ -78,8 +78,8 @@ const TaxReport: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50 p-2 pb-16 text-gray-800">
       <div className="flex items-center justify-between pb-3 border-b bg-white p-3 rounded-sm shadow-sm mb-4">
-        <BackButton className="rounded-full" onClick={() => navigate(-1)} />
-        <h1 className="flex-1 text-center text-xl font-bold tracking-tight text-gray-900">Unified Reporting Vault</h1>
+        <BackButton className="rounded-sm" onClick={() => navigate(-1)} />
+        <h1 className="flex-1 text-center text-xl font-bold tracking-tight text-gray-900">Tax Report</h1>
         <div className="w-9" />
       </div>
 

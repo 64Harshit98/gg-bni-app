@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import { ACTION } from '../enums';
 import type { InvoiceData } from './pdfGenerator';
+import { drawWatermark } from '../Components/pdfWatermark';
 
 export const generateThermalReceipt = (
     data: InvoiceData,
@@ -304,6 +305,12 @@ export const generateThermalReceipt = (
     doc.setFont('helvetica', 'normal');
     doc.text('Powered by SELLAR.IN', paperWidth / 2, currentY, { align: 'center' });
 
+     // --- STAMP WATERMARK ON EVERY PAGE (matches A4/A5 generators — unconditional, Estimate included) ---
+    const totalPages = (doc as any).getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        drawWatermark(doc, paperWidth, calculatedHeight);
+    }
     // --- OUTPUT ROUTING ---
     if (action === ACTION.PRINT) {
         doc.autoPrint();

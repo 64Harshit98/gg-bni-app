@@ -2,9 +2,9 @@ import React from 'react';
 import { FiSearch, FiX } from 'react-icons/fi';
 import { IconFilter } from '../../../constants/Icons';
 import { TutorialStep } from '../../../Components/TutorialStep';
-import NotificationBell from '../../../Components/NotificationBell';
-import ShowWrapper from '../../../context/ShowWrapper';
-import { Cata_Permissions } from '../../enum/cata_permissions.enum';
+//import NotificationBell from '../../../Components/NotificationBell';
+//import ShowWrapper from '../../../context/ShowWrapper';
+//import { Cata_Permissions } from '../../enum/cata_permissions.enum';
 import type { OrderStatus } from '../orders.types';
 
 interface OrderListFiltersProps {
@@ -129,11 +129,11 @@ export const OrderListFilters: React.FC<OrderListFiltersProps> = ({
 
                     {/* Right: Notification Bell + Filter Icon */}
                     <div className="w-24 flex justify-end items-center gap-2">
-                        <ShowWrapper requiredPermission={Cata_Permissions.ViewNotification}>
+                        {/* <ShowWrapper requiredPermission={Cata_Permissions.ViewNotification}>
                             <div className="border border-slate-300 rounded-sm bg-gray-100 shadow-sm flex items-center justify-center">
                                 <NotificationBell />
                             </div>
-                        </ShowWrapper>
+                        </ShowWrapper> */}
                         {/* //<CataShowWrapper permission={Cata_Permissions.ViewFilterbutton}> */}
                         <div className="relative" ref={filterRef}>
                             <TutorialStep

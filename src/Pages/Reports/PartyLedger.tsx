@@ -576,10 +576,11 @@ const PartyLedger: React.FC = () => {
     };
 
     // ✅ FIXED: Complete rewrite of handleSettlePayment
-    const handleSettlePayment = async (
+        const handleSettlePayment = async (
         invoice: any,
         amount: number,
         method: string,
+        paymentDate: string,
         chequeNumber?: string,
         chequeDate?: string
     ) => {
@@ -599,8 +600,8 @@ const PartyLedger: React.FC = () => {
                     const data = sfDoc.data();
                     const currentDue = data.dueAmount ?? data.amount ?? 0;
                     if (amount > currentDue) throw new Error(`Amount (₹${amount}) exceeds due (₹${currentDue}).`);
-                    const paymentRecord = {
-                        amount, method: method.toLowerCase(), date: new Date().toISOString(), timestamp: Date.now(),
+                                        const paymentRecord = {
+                        amount, method: method.toLowerCase(), date: new Date(paymentDate).toISOString(), timestamp: Date.now(),
                         ...(method.toUpperCase() === 'PDC' && { chequeNumber: chequeNumber || '', chequeDate: chequeDate || '' }),
                     };
                     transaction.update(obRef, {
@@ -646,8 +647,8 @@ const PartyLedger: React.FC = () => {
                         }, { merge: true });
                     }
                 });
-                const paymentRecord: PaymentRecord = {
-                    amount, method: method.toLowerCase(), date: new Date().toISOString(), timestamp: Date.now(),
+                                const paymentRecord: PaymentRecord = {
+                    amount, method: method.toLowerCase(), date: new Date(paymentDate).toISOString(), timestamp: Date.now(),
                     ...(method.toUpperCase() === 'PDC' && { chequeNumber: chequeNumber || '', chequeDate: chequeDate || '' }),
                 };
                 updateOpeningBalanceLocally(invoice.id, amount, paymentRecord);
@@ -726,11 +727,11 @@ const PartyLedger: React.FC = () => {
                     }
                 }
 
-                // ✅ Create payment record with proper structure
+                                // ✅ Create payment record with proper structure
                 const paymentRecord = {
                     amount,
                     method: method.toLowerCase(), // Normalize method name
-                    date: new Date().toISOString(),
+                    date: new Date(paymentDate).toISOString(),
                     timestamp: Date.now(),
                     ...(method.toUpperCase() === 'PDC' && {
                         chequeNumber: chequeNumber || '',
@@ -746,11 +747,11 @@ const PartyLedger: React.FC = () => {
                 });
             });
 
-            // ✅ Update local state immediately — no refresh needed
+                        // ✅ Update local state immediately — no refresh needed
             const paymentRecord: PaymentRecord = {
                 amount,
                 method: method.toLowerCase(),
-                date: new Date().toISOString(),
+                date: new Date(paymentDate).toISOString(),
                 timestamp: Date.now(),
                 ...(method.toUpperCase() === 'PDC' && {
                     chequeNumber: chequeNumber || '',
@@ -776,10 +777,11 @@ const PartyLedger: React.FC = () => {
     // Distributes the amount entered in the modal across the party's unpaid bills
     // (oldest first), settling each one via the EXACT SAME handleSettlePayment used
     // for individual bills — so per-bill Firestore/local-state logic stays untouched.
-    const handleSettleAllPayment = async (
+       const handleSettleAllPayment = async (
         invoice: any,
         amount: number,
         method: string,
+        paymentDate: string,
         chequeNumber?: string,
         chequeDate?: string
     ) => {
@@ -815,8 +817,8 @@ const PartyLedger: React.FC = () => {
         for (const txn of unpaidTxns) {
             if (remaining <= 0) break;
             const portion = Math.min(remaining, txn.dueAmount);
-            try {
-                await handleSettlePayment(txn, portion, method, chequeNumber, chequeDate);
+                        try {
+                await handleSettlePayment(txn, portion, method, paymentDate, chequeNumber, chequeDate);
                 remaining -= portion;
                 successCount++;
             } catch (e) {

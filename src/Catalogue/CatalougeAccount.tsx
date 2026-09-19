@@ -9,7 +9,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { ROUTES } from '../constants/routes.constants';
 import BusinessCard from './BusinessCards/BusinessCard';
 import ShinyText from '../Components/ShinyText';
-import NotificationBell from '../Components/NotificationBell';
+//import NotificationBell from '../Components/NotificationBell';
 import { TutorialStep } from '../Components/TutorialStep';
 import { FiCopy, FiCheck } from 'react-icons/fi';
 import ShowWrapper from '../context/ShowWrapper';
@@ -226,11 +226,11 @@ const Account: React.FC = () => {
                 <div className="flex-1 text-center flex flex-col items-center justify-center">
                     <h1 className="text-2xl font-bold text-slate-800">Account</h1>
                 </div>
-                <ShowWrapper requiredPermission={Cata_Permissions.ViewNotification}>
+                {/* <ShowWrapper requiredPermission={Cata_Permissions.ViewNotification}>
                     <div className="relative border border-slate-300 rounded-sm bg-gray-100 shadow-sm">
                         <NotificationBell />
                     </div>
-                </ShowWrapper>
+                </ShowWrapper> */}
             </header>
 
             <div ref={profileRef} className="flex flex-col py-3 items-center">

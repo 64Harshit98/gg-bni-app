@@ -52,6 +52,7 @@ export const useInvoicePayment = ({ currentUser }: UseInvoicePaymentParams) => {
     invoice: any,
     amount: number,
     method: string,
+    paymentDate: string,
     chequeNumber?: string,
     chequeDate?: string
   ) => {
@@ -102,7 +103,7 @@ export const useInvoicePayment = ({ currentUser }: UseInvoicePaymentParams) => {
       const paymentRecord = {
         amount,
         method,
-        date: new Date().toISOString(),
+        date: new Date(paymentDate).toISOString(),
         timestamp: Date.now(),
         chequeNumber: method === 'PDC' ? (chequeNumber || '') : '',
         chequeDate: method === 'PDC' ? (chequeDate || '') : ''

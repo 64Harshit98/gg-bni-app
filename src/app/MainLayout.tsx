@@ -18,13 +18,30 @@ import { useExpenses } from '../Pages/Reports/ExpenseReport/useExpense';
 import { useShopHours } from '../Pages/hooks/useShopHours'; // already exists
 import { ROLES } from '../enums';
 import ShopClosingReminderModal from '../Components/ShopClosingReminderModal';
+import PosCataSwitcher from '../Components/PosCataSwitcher';
+import NotificationBell from '../Components/NotificationBell';
 
 
 const MainLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  //const isHomePage = location.pathname === ROUTES.HOME; // <-- adjust to actual home route constant
   const scrollRef = useRef<HTMLDivElement>(null);
   const [tutorialStep, setTutorialStep] = useState(-1); // -1 = hidden by default
+
+  // Dashboard tutorial step 1 (POS/Catalogue switcher) is rendered here in the strip
+  const [switcherStep, setSwitcherStep] = useState(-1);
+  const isMobileView = window.innerWidth < 768;
+
+  useEffect(() => {
+    const onStepChange = (e: Event) => setSwitcherStep((e as CustomEvent).detail?.step ?? -1);
+    window.addEventListener('tutorial_step_change', onStepChange);
+    return () => window.removeEventListener('tutorial_step_change', onStepChange);
+  }, []);
+
+  const handleSwitcherNext = () => window.dispatchEvent(new Event('tutorial_switcher_next'));
+  const handleSwitcherSkip = () => window.dispatchEvent(new Event('tutorial_switcher_skip'));
+
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const { currentUser } = useAuth();
@@ -203,7 +220,7 @@ const MainLayout = () => {
         {link}
       </ShowWrapper>
     ) : link;
-};
+  };
 
   const sidebarLinkClass = (path: string) =>
     `flex items-center gap-3 px-4 py-3 rounded-sm text-sm font-medium transition-all ${isActive(path)
@@ -221,12 +238,48 @@ const MainLayout = () => {
           onSnooze={handleSnooze}
         />
       )}
+      <header className="md:hidden relative flex items-center justify-between px-3 py-2 bg-white border-b border-slate-200 z-[150]">
+        <TutorialStep
+          step={1}
+          currentStep={isMobileView ? switcherStep : -1}
+          text="Use this menu to switch between POS and Catalogue views."
+          onNext={handleSwitcherNext}
+          onSkip={handleSwitcherSkip}
+          mobileArrowAlign="left"
+        >
+          <div>
+            <PosCataSwitcher current="POS" />
+          </div>
+        </TutorialStep>
+        <img
+          src={sellarLogo}
+          alt="Sellar Logo"
+          className="h-6 absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+        />
+        <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+          <NotificationBell />
+        </ShowWrapper>
+      </header>
+
       {/* DESKTOP SIDEBAR */}
-      <aside className="hidden md:flex flex-col w-48 bg-white border-r border-slate-200 h-full flex-shrink-0 z-20">
+      <aside className="hidden md:flex flex-col w-56 bg-white border-r border-slate-200 h-full flex-shrink-0 z-20">
         <div className="p-6 border-b border-slate-100">
           <h1 className="text-xl font-bold text-slate-800">
             <img src={sellarLogo} alt="Sellar Logo" className="w-48" />
           </h1>
+        </div>
+        <div className="px-4 pb-2">
+          <TutorialStep
+            step={1}
+            currentStep={!isMobileView ? switcherStep : -1}
+            text="Use this menu to switch between POS and Catalogue views."
+            onNext={handleSwitcherNext}
+            onSkip={handleSwitcherSkip}
+          >
+            <div>
+              <PosCataSwitcher current="POS" />
+            </div>
+          </TutorialStep>
         </div>
         <nav className="flex-1 overflow-y-auto p-4 space-y-1">
           {navItems.map(({ to, icon, label }) => (

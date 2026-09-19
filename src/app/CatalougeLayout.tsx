@@ -21,14 +21,32 @@ import { ROLES } from '../enums';
 import ShopClosingReminderModal from '../Components/ShopClosingReminderModal';
 import ShowWrapper from '../context/ShowWrapper';
 import { Cata_Permissions } from '../Catalogue/enum/cata_permissions.enum';
+//import { Permissions } from '../enums';
 import { TutorialStep } from '../Components/TutorialStep';
+import PosCataSwitcher from '../Components/PosCataSwitcher';
+import NotificationBell from '../Components/NotificationBell';
 
 const CatalogueLayout = () => {
     const navigate = useNavigate();
     const location = useLocation();
+    //const isCatalogueHomePage = location.pathname === ROUTES.CHOME;
     const { currentUser } = useAuth();
     const scrollRef = useRef<HTMLDivElement>(null);
     const [tutorialStep, setTutorialStep] = useState(-1);
+
+    // Dashboard tutorial step 1 (POS/Catalogue switcher) is rendered here in the strip
+    const [switcherStep, setSwitcherStep] = useState(-1);
+    const isMobileView = window.innerWidth < 768;
+
+    useEffect(() => {
+        const onStepChange = (e: Event) => setSwitcherStep((e as CustomEvent).detail?.step ?? -1);
+        window.addEventListener('tutorial_step_change', onStepChange);
+        return () => window.removeEventListener('tutorial_step_change', onStepChange);
+    }, []);
+
+    const handleSwitcherNext = () => window.dispatchEvent(new Event('tutorial_switcher_next'));
+    const handleSwitcherSkip = () => window.dispatchEvent(new Event('tutorial_switcher_skip'));
+
     useOrderSound(currentUser?.companyId);
     const confirmedCount = useConfirmedOrdersCount(currentUser?.companyId);
 
@@ -183,10 +201,10 @@ const CatalogueLayout = () => {
             </NavLink>
         );
         return permission ? (
-    <ShowWrapper key={to} requiredPermission={permission} mode="disable">
-        {link}
-    </ShowWrapper>
-) : link;
+            <ShowWrapper key={to} requiredPermission={permission} mode="disable">
+                {link}
+            </ShowWrapper>
+        ) : link;
     };
 
     const sidebarLinkClass = (isActive: boolean) =>
@@ -274,10 +292,47 @@ const CatalogueLayout = () => {
                     onSnooze={handleSnooze}
                 />
             )}
+            {/* --- MOBILE TOP STRIP — Catalogue Home ka apna header hai, wahan hide --- */}
+            <header className="md:hidden relative flex items-center justify-between px-3 py-2 bg-white border-b border-slate-200 z-[140]">
+                <TutorialStep
+                    step={1}
+                    currentStep={isMobileView ? switcherStep : -1}
+                    text="Use this menu to switch between POS and Catalogue views."
+                    onNext={handleSwitcherNext}
+                    onSkip={handleSwitcherSkip}
+                    mobileArrowAlign="left"
+                >
+                    <div>
+                        <PosCataSwitcher current="CATALOG" />
+                    </div>
+                </TutorialStep>
+                <img
+                    src={sellarLogo}
+                    alt="Sellar Logo"
+                    className="h-6 absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+                />
+                <ShowWrapper requiredPermission={Cata_Permissions.ViewNotification}>
+                    <NotificationBell />
+                </ShowWrapper>
+            </header>
+
             {/* --- DESKTOP SIDEBAR --- */}
-            <aside className="hidden md:flex flex-col w-48 bg-white border-r border-slate-200 h-full flex-shrink-0 z-20">
+            <aside className="hidden md:flex flex-col w-56 bg-white border-r border-slate-200 h-full flex-shrink-0 z-20">
                 <div className="p-6 border-b border-slate-100">
                     <img src={sellarLogo} alt="Sellar Logo" className="w-48" />
+                </div>
+                <div className="px-4 pb-2">
+                    <TutorialStep
+                        step={1}
+                        currentStep={!isMobileView ? switcherStep : -1}
+                        text="Use this menu to switch between POS and Catalogue views."
+                        onNext={handleSwitcherNext}
+                        onSkip={handleSwitcherSkip}
+                    >
+                        <div>
+                            <PosCataSwitcher current="CATALOG" />
+                        </div>
+                    </TutorialStep>
                 </div>
 
                 <nav className="flex-1 overflow-y-auto p-4 space-y-1">

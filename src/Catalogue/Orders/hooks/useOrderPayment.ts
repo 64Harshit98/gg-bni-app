@@ -101,7 +101,7 @@ export const useOrderPayment = ({
         return { updatedTotal, currentDue, alreadyPaid };
     }, [showPaymentModal]);
 
-    const onSubmit = async (_inv: any, amount: number, method: string) => {
+    const onSubmit = async (_inv: any, amount: number, method: string, paymentDate: string) => {
         try {
             if (!currentUser?.companyId || !showPaymentModal) return;
 
@@ -177,7 +177,7 @@ export const useOrderPayment = ({
                         amount: Number(amount || 0),
                         method: methodKey,
                         status: newStatus === 'Paid' ? 'PAID' : 'UPCOMING',
-                        createdAt: new Date().toISOString(),
+                        createdAt: new Date(paymentDate).toISOString(),
                     },
                 })
             );

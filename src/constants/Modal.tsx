@@ -86,7 +86,7 @@ interface PaymentModalProps {
     isOpen: boolean;
     onClose: () => void;
     invoice: ModalInvoice | null;
-    onSubmit: (invoice: ModalInvoice, amount: number, method: string, chequeNumber?: string, chequeDate?: string) => Promise<void>;
+    onSubmit: (invoice: ModalInvoice, amount: number, method: string, paymentDate: string, chequeNumber?: string, chequeDate?: string) => Promise<void>;
     onConfirm?: (amountToAdd: number) => Promise<void>;
     availableCredit?: number; // Added to receive credit from OrdersPage
     isDebitNote?: boolean;
@@ -95,7 +95,27 @@ interface PaymentModalProps {
 export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, invoice, onSubmit, availableCredit = 0, isDebitNote = false }) => {
     const [amount, setAmount] = useState('');
     const [method, setMethod] = useState('cash');
+    const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().split('T')[0]);
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Combines the user-selected date (YYYY-MM-DD, no time) with the CURRENT
+    // time-of-day. Without this, `new Date("2026-09-15")` is parsed as UTC
+    // midnight, which shows as 5:30 AM in India (UTC+5:30) regardless of
+    // when the payment was actually settled.
+    const getCombinedDateTime = (dateStr: string): string => {
+        const now = new Date();
+        const [year, month, day] = dateStr.split('-').map(Number);
+        const combined = new Date(
+            year,
+            month - 1,
+            day,
+            now.getHours(),
+            now.getMinutes(),
+            now.getSeconds(),
+            now.getMilliseconds()
+        );
+        return combined.toISOString();
+    };
     const [error, setError] = useState('');
     const [chequeNumber, setChequeNumber] = useState('');
     const [chequeDate, setChequeDate] = useState('');
@@ -107,6 +127,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
             setChequeNumber('');
             setChequeDate('');
             setMethod('cash'); // Reset method when modal opens
+            setPaymentDate(new Date().toISOString().split('T')[0]); // Reset to today when modal opens
         }
     }, [invoice]);
 
@@ -143,13 +164,20 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
             }
         }
 
+        if (!paymentDate) {
+            setError('Please select a payment date.');
+            return;
+        }
+
         setIsSubmitting(true);
         setError('');
         try {
+            const combinedDateTime = getCombinedDateTime(paymentDate);
             await onSubmit(
                 invoice,
                 paymentAmount,
                 method,
+                combinedDateTime,
                 method === 'PDC' ? chequeNumber : undefined,
                 method === 'PDC' ? chequeDate : undefined
             );
@@ -189,6 +217,18 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                             id="amount"
                             value={amount}
                             onChange={(e) => setAmount(e.target.value)}
+                            className="mt-1 block w-full rounded-sm border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border"
+                            required
+                        />
+                    </div>
+                    <div className="mb-4">
+                        <label htmlFor="paymentDate" className="block text-sm font-medium text-slate-700">Payment Date</label>
+                        <input
+                            type="date"
+                            id="paymentDate"
+                            value={paymentDate}
+                            max={new Date().toISOString().split('T')[0]}
+                            onChange={(e) => setPaymentDate(e.target.value)}
                             className="mt-1 block w-full rounded-sm border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border"
                             required
                         />

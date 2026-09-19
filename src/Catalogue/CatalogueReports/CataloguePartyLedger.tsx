@@ -311,6 +311,7 @@ const CataloguePartyLedger: React.FC = () => {
         invoice: any,
         amount: number,
         method: string,
+        paymentDate: string,
         chequeNumber?: string,
         chequeDate?: string
     ) => {
@@ -341,7 +342,7 @@ const CataloguePartyLedger: React.FC = () => {
                     const currentDue = data.dueAmount ?? data.amount ?? 0;
                     if (amount > currentDue) throw new Error(`Amount (₹${amount}) exceeds due (₹${currentDue}).`);
                     const paymentRecord = {
-                        amount, method: method.toLowerCase(), date: new Date().toISOString(), timestamp: Date.now(),
+                        amount, method: method.toLowerCase(), date: new Date(paymentDate).toISOString(), timestamp: Date.now(),
                         ...(method.toUpperCase() === 'PDC' && { chequeNumber: chequeNumber || '', chequeDate: chequeDate || '' }),
                     };
                     transaction.update(obRef, {
@@ -350,7 +351,7 @@ const CataloguePartyLedger: React.FC = () => {
                     });
                 });
                 const paymentRecord: PaymentRecord = {
-                    amount, method: method.toLowerCase(), date: new Date().toISOString(), timestamp: Date.now(),
+                    amount, method: method.toLowerCase(), date: new Date(paymentDate).toISOString(), timestamp: Date.now(),
                     ...(method.toUpperCase() === 'PDC' && { chequeNumber: chequeNumber || '', chequeDate: chequeDate || '' }),
                 };
                 updateOpeningBalanceLocally(invoice.id, amount, paymentRecord);
@@ -391,7 +392,7 @@ const CataloguePartyLedger: React.FC = () => {
                 const paymentRecord = {
                     amount,
                     method: method.toLowerCase(),
-                    date: new Date().toISOString(),
+                    date: new Date(paymentDate).toISOString(),
                     timestamp: Date.now(),
                     ...(method.toUpperCase() === 'PDC' && {
                         chequeNumber: chequeNumber || '',
@@ -419,7 +420,7 @@ const CataloguePartyLedger: React.FC = () => {
             const newPaymentRecord: PaymentRecord = {
                 amount,
                 method: method.toLowerCase(),
-                date: new Date().toISOString(),
+                date: new Date(paymentDate).toISOString(),
                 ...(method.toUpperCase() === 'PDC' && {
                     chequeNumber: chequeNumber || '',
                     chequeDate: chequeDate || '',
@@ -445,6 +446,7 @@ const CataloguePartyLedger: React.FC = () => {
         invoice: any,
         amount: number,
         method: string,
+        paymentDate: string,
         chequeNumber?: string,
         chequeDate?: string
     ) => {
@@ -522,7 +524,7 @@ const CataloguePartyLedger: React.FC = () => {
             if (remaining <= 0) break;
             const portion = Math.min(remaining, item.dueAmount);
             try {
-                await handleSettlePayment(item, portion, method, chequeNumber, chequeDate);
+                await handleSettlePayment(item, portion, method, paymentDate, chequeNumber, chequeDate);
                 remaining -= portion;
                 successCount++;
             } catch (e) {

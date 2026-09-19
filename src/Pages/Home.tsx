@@ -1,12 +1,12 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { collection, query, where, orderBy, getDocs, doc, getDoc, setDoc, limit } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import { useAuth } from '../context/auth-context';
 import ShowWrapper from '../context/ShowWrapper';
 import { Permissions } from '../enums';
-import { SiteItems } from '../routes/SiteRoutes';
-import { IconChevronDown, IconEye, IconEyeOff } from '../constants/Icons';
+//import { SiteItems } from '../routes/SiteRoutes';
+import { IconEye, IconEyeOff } from '../constants/Icons';
 import { FiRefreshCw, FiLoader } from 'react-icons/fi';
 import { FilterProvider, FilterControls, useFilter } from '../Components/Filter';
 import { AttendancePage } from '../Components/AttendaceCard';
@@ -18,7 +18,7 @@ import { PaymentChart } from '../Components/PaymentChart';
 import { TopEntitiesList } from '../Components/TopFiveEntities';
 import { TutorialStep } from '../Components/TutorialStep';
 import ShinyText from '../Components/ShinyText';
-import NotificationBell from '../Components/NotificationBell';
+//import NotificationBell from '../Components/NotificationBell';
 import { CACHE_DURATION } from '../lib/fetchDashboardData';
 import useTutorial from '../Catalogue/hooks/useTutorial';
 import { completeTutorial } from '../Catalogue/hooks/useCompleteTutorial';
@@ -137,9 +137,7 @@ const DashboardContent = () => {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [isDataVisible, setIsDataVisible] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(0);
-  const location = useLocation();
 
   // ─── Refs for autoscroll ──────────────────────────────────────────────────
   const tutorialRefs = useRef<(HTMLElement | null)[]>([]);
@@ -163,6 +161,30 @@ const DashboardContent = () => {
     completeTutorial(currentUser, 'dashboardTutorialDone', setTutorialStep);
   };
 
+  // Tell the layout strip which step is active (step 1 is rendered there now)
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('tutorial_step_change', { detail: { step: tutorialStep } }));
+  }, [tutorialStep]);
+
+  // Reset the layout's tutorial when leaving this page
+  useEffect(() => {
+    return () => {
+      window.dispatchEvent(new CustomEvent('tutorial_step_change', { detail: { step: 0 } }));
+    };
+  }, []);
+
+  // Next / Skip pressed on the layout's switcher tutorial (step 1)
+  useEffect(() => {
+    const onNext = () => next(2);
+    const onSkip = () => skip();
+    window.addEventListener('tutorial_switcher_next', onNext);
+    window.addEventListener('tutorial_switcher_skip', onSkip);
+    return () => {
+      window.removeEventListener('tutorial_switcher_next', onNext);
+      window.removeEventListener('tutorial_switcher_skip', onSkip);
+    };
+  }, [currentUser]);
+
   const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
 
   useEffect(() => {
@@ -185,9 +207,6 @@ const DashboardContent = () => {
   const effectiveDataVisible = isTutorialActive ? true : isDataVisible;
   const showBadge = daysRemaining !== null && daysRemaining <= 7 && daysRemaining >= 0;
   const isUrgent = daysRemaining !== null && daysRemaining <= 2;
-  const hasCataloguePermission = currentUser?.permissions?.includes(Permissions.ViewCatalogue);
-  const currentItem = SiteItems.find(item => item.to === location.pathname);
-  const currentLabel = currentItem ? currentItem.label : 'Dashboard';
 
   const fetchData = useCallback(async (forceRefresh = false) => {
     if (!currentUser?.companyId || !filters.startDate || !filters.endDate) {
@@ -403,43 +422,21 @@ const DashboardContent = () => {
       )}
 
       <header className="flex flex-shrink-0 items-center justify-between border-b border-slate-300 bg-gray-100 p-2">
-        {/* Step 1 — POS/Catalogue switch button */}
-        <TutorialStep step={1} currentStep={tutorialStep} text="Use this menu to switch between POS and Catalogue views." onNext={() => next(2)} onSkip={skip} mobileArrowAlign="left" >
-          <div ref={setTutorialRef(1)} className="relative inline-block">
-            <button
-              disabled={!hasCataloguePermission}
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className={`flex w-20 items-center justify-between gap-2 rounded-sm border border-slate-400 p-2 text-sm font-medium text-slate-700 transition-colors ${!hasCataloguePermission ? 'opacity-50 cursor-not-allowed bg-gray-100' : 'hover:bg-slate-200 cursor-pointer'}`}
-            >
-              <span className="font-medium">{currentLabel}</span>
-              <IconChevronDown width={16} height={16} className={`transition-transform ${isMenuOpen ? 'rotate-180' : 'rotate-0'}`} />
-            </button>
-            {isMenuOpen && hasCataloguePermission && (
-              <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-slate-300 rounded-md shadow-lg z-10">
-                <ul className="py-1">
-                  {SiteItems.map(({ to, label }) => (
-                    <li key={to}>
-                      <Link to={to} onClick={() => setIsMenuOpen(false)} className={`flex w-full items-center gap-3 px-4 py-2 text-sm font-medium ${location.pathname === to ? 'bg-gray-500 text-white' : 'text-slate-700 hover:bg-gray-100'}`}>{label}</Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        </TutorialStep>
+        {/* Left spacer (POS/Catalogue switcher now lives in the layout strip) */}
+        <div className="w-28" />
 
         <div className="flex-1 text-center flex flex-col items-center justify-center">
-          <h1 className="text-2xl font-bold text-slate-800 pl-8">Dashboard</h1>
-          <p className="text-sm text-slate-500 pl-8">{nameLoading ? '...' : businessName}</p>
+          <h1 className="text-2xl font-bold text-slate-800">Dashboard</h1>
+          <p className="text-sm text-slate-500">{nameLoading ? '...' : businessName}</p>
         </div>
 
         {/* Step 2 — Eye / hide button and Notification Bell */}
-        <div className="flex items-center gap-3 justify-end">
-          <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+        <div className="w-28 flex items-center gap-3 justify-end">
+          {/* <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
             <div className="relative border border-slate-300 rounded-sm bg-gray-100 shadow-sm">
               <NotificationBell />
             </div>
-          </ShowWrapper>
+          </ShowWrapper> */}
           <ShowWrapper requiredPermission={Permissions.ViewHidebutton}>
             <TutorialStep step={2} currentStep={tutorialStep} text="Toggle this to show or hide sensitive sales figures." onNext={() => next(3)} onSkip={skip}>
               <button ref={setTutorialRef(2)} onClick={() => setIsDataVisible(!isDataVisible)} className="p-2 rounded-sm border border-slate-400 hover:bg-slate-200 transition-colors">

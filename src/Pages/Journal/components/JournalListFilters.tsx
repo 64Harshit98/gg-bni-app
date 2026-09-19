@@ -6,7 +6,7 @@ import { IconChevronDown, IconClose, IconFilter, IconSearch } from '../../../con
 import { TutorialStep } from '../../../Components/TutorialStep';
 import { Permissions } from '../../../enums/permissions.enum';
 import ShowWrapper from '../../../context/ShowWrapper';
-import NotificationBell from '../../../Components/NotificationBell';
+//import NotificationBell from '../../../Components/NotificationBell';
 import { ROUTES } from '../../../constants/routes.constants';
 import { useNavigate } from 'react-router-dom';
 
@@ -95,19 +95,19 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
           className="absolute top-4 right-4 flex items-center gap-2 z-30"
         >
           <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-  <button
-    onClick={() => navigate(ROUTES.PARTY_LEDGER)}
-    className="hidden sm:inline-block text-xs font-bold text-black bg-white border border-gray-300 rounded-sm px-2 py-2.5 hover:bg-blue-100 transition-colors whitespace-nowrap"
-  >
-    Party Ledger
-  </button>
-</ShowWrapper>
+            <button
+              onClick={() => navigate(ROUTES.PARTY_LEDGER)}
+              className="hidden sm:inline-block text-xs font-bold text-black bg-white border border-gray-300 rounded-sm px-2 py-2.5 hover:bg-blue-100 transition-colors whitespace-nowrap"
+            >
+              Party Ledger
+            </button>
+          </ShowWrapper>
 
-          <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+          {/* <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
             <div className="border border-slate-300 rounded-sm bg-gray-100 shadow-sm flex items-center justify-center">
               <NotificationBell />
             </div>
-          </ShowWrapper>
+          </ShowWrapper> */}
 
           <TutorialStep
             step={3}
@@ -252,14 +252,14 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
       </div>
 
       {/* Party Ledger strip - mobile only, reduced width */}
-<ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-  <div
-    onClick={() => navigate(ROUTES.PARTY_LEDGER)}
-    className="sm:hidden mx-8 mt-1 mb-1 py-2 text-center text-sm font-bold text-black bg-white border border-gray-300 rounded-sm cursor-pointer hover:bg-blue-100 transition-colors"
-  >
-    Party Ledger
-  </div>
-</ShowWrapper>
+      <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+        <div
+          onClick={() => navigate(ROUTES.PARTY_LEDGER)}
+          className="sm:hidden mx-8 mt-1 mb-1 py-2 text-center text-sm font-bold text-black bg-white border border-gray-300 rounded-sm cursor-pointer hover:bg-blue-100 transition-colors"
+        >
+          Party Ledger
+        </div>
+      </ShowWrapper>
 
       {/* Step 4 — Sales / Purchase toggle */}
       <TutorialStep

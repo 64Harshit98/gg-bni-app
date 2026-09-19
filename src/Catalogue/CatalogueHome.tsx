@@ -1,22 +1,22 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { db } from '../lib/Firebase';
 import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
 import { FilterControls, FilterProvider, useFilter } from '../Components/Filter';
-import { Permissions } from '../enums';
-import { SiteItems } from '../routes/SiteRoutes';
+//import { Permissions } from '../enums';
+//import { SiteItems } from '../routes/SiteRoutes';
 import { OrderTimeline } from '../Components/OrderTimeline';
 import { CompletedSalesCard } from '../Components/CatalougeSales';
 // import { RestockAlertsCard } from '../Components/RestockItems';
 import { TopSoldItemsCard } from '../Components/TopFiveOrder';
 import { OrderBarChartReport } from '../Components/OrderSalesGraph';
-import { IconChevronDown } from '../constants/Icons';
+//import { IconChevronDown } from '../constants/Icons';
 import { FiRefreshCw, FiLoader } from 'react-icons/fi';
 import { fetchDashboardData, CACHE_DURATION } from '../lib/fetchDashboardData';
 import ShinyText from '../Components/ShinyText';
 import type { WithCacheMeta } from '../lib/fetchDashboardData';
-import NotificationBell from '../Components/NotificationBell';
+//import NotificationBell from '../Components/NotificationBell';
 import { TutorialStep } from '../Components/TutorialStep';
 import useTutorial from '../Catalogue/hooks/useTutorial';
 import { completeTutorial } from '../Catalogue/hooks/useCompleteTutorial';
@@ -122,7 +122,6 @@ const TOTAL_STEPS = 7;
 
 // ─── Inner Dashboard Component ────────────────────────────────────────────────
 const HomePageContent: React.FC = () => {
-    const location = useLocation();
     const { currentUser, loading: authLoading } = useAuth();
     const { filters } = useFilter();
     const { businessName, loading: nameLoading } = useBusinessName(currentUser?.uid, currentUser?.companyId);
@@ -152,6 +151,30 @@ const HomePageContent: React.FC = () => {
         completeTutorial(currentUser, 'catalogueTutorialDone', setTutorialStep);
     };
 
+    // Tell the layout strip which step is active (step 1 is rendered there now)
+    useEffect(() => {
+        window.dispatchEvent(new CustomEvent('tutorial_step_change', { detail: { step: tutorialStep } }));
+    }, [tutorialStep]);
+
+    // Reset the layout's tutorial when leaving this page
+    useEffect(() => {
+        return () => {
+            window.dispatchEvent(new CustomEvent('tutorial_step_change', { detail: { step: 0 } }));
+        };
+    }, []);
+
+    // Next / Skip pressed on the layout's switcher tutorial (step 1)
+    useEffect(() => {
+        const onNext = () => next(2);
+        const onSkip = () => skip();
+        window.addEventListener('tutorial_switcher_next', onNext);
+        window.addEventListener('tutorial_switcher_skip', onSkip);
+        return () => {
+            window.removeEventListener('tutorial_switcher_next', onNext);
+            window.removeEventListener('tutorial_switcher_skip', onSkip);
+        };
+    }, [currentUser]);
+
     // Expiry date state and effect
     const [expiryDate, setExpiryDate] = useState<any>(null);
 
@@ -171,21 +194,17 @@ const HomePageContent: React.FC = () => {
         fetchExpiry();
     }, [currentUser?.companyId]);
 
-    const hasCataloguePermission = currentUser?.permissions?.includes(Permissions.ViewCatalogue);
     const [isDataVisible, setIsDataVisible] = useState<boolean>(false);
-    const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
-    const currentItem = SiteItems.find(item => item.to === location.pathname);
-    const currentLabel = currentItem ? currentItem.label : 'Menu';
     const isHeaderLoading = authLoading || nameLoading;
 
     const [data, setData] = useState<WithCacheMeta<CatalogueDashboardData> | null>(null);
     const [loading, setLoading] = useState(true);
 
     const sampleData = useMemo(
-    () => ({ ...SAMPLE_CATALOGUE_DATA, chartData: getSampleChartData() }),
-    [] 
-);
-const displayData = isTutorialActive ? sampleData : data;
+        () => ({ ...SAMPLE_CATALOGUE_DATA, chartData: getSampleChartData() }),
+        []
+    );
+    const displayData = isTutorialActive ? sampleData : data;
     const effectiveDataVisible = isTutorialActive ? true : isDataVisible;
 
     const fetchData = useCallback(async (forceRefresh = false) => {
@@ -360,39 +379,8 @@ const displayData = isTutorialActive ? sampleData : data;
             {/* ── Header ──────────────────────────────────────────────────── */}
             <header className="flex flex-shrink-0 items-center justify-between border-b border-slate-300 bg-gray-100 p-2">
 
-                {/* Left: page navigation dropdown */}
-                <TutorialStep step={1} currentStep={tutorialStep} text="Use this menu to switch between POS and Catalogue views." onNext={() => next(2)} onSkip={skip} mobileArrowAlign="left">
-                    <div ref={setTutorialRef(1)} className="relative flex justify-start">
-                        <button
-                            disabled={!hasCataloguePermission}
-                            onClick={() => setIsMenuOpen(!isMenuOpen)}
-                            className={`flex min-w-20 items-center justify-between rounded-sm border border-slate-400 p-2 text-sm font-medium text-slate-700 transition-colors whitespace-nowrap
-                            ${!hasCataloguePermission ? 'opacity-50 cursor-not-allowed bg-gray-100' : 'hover:bg-slate-200 cursor-pointer'}`}
-                        >
-                            <span className="font-medium">{currentLabel}</span>
-                            <IconChevronDown width={16} height={16} className={`transition-transform ${isMenuOpen ? 'rotate-180' : 'rotate-0'}`} />
-                        </button>
-
-                        {isMenuOpen && hasCataloguePermission && (
-                            <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-slate-300 rounded-md shadow-lg z-10">
-                                <ul className="py-1">
-                                    {SiteItems.map(({ to, label }) => (
-                                        <li key={to}>
-                                            <Link
-                                                to={to}
-                                                onClick={() => setIsMenuOpen(false)}
-                                                className={`flex w-full items-center gap-3 px-4 py-2 text-sm font-medium
-                                                ${location.pathname === to ? 'bg-gray-500 text-white' : 'text-slate-700 hover:bg-gray-100'}`}
-                                            >
-                                                {label}
-                                            </Link>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        )}
-                    </div>
-                </TutorialStep>
+                {/* Left: spacer (POS/Catalogue switcher now lives in the layout strip) */}
+                <div className="w-28" />
 
                 {/* Center: dashboard title and business name */}
                 <div className="flex-1 text-center flex flex-col items-center justify-center">
@@ -402,11 +390,11 @@ const displayData = isTutorialActive ? sampleData : data;
 
                 {/* Right: Notification bell + toggle button */}
                 <div className="w-28 flex justify-end items-center gap-2">
-                    <ShowWrapper requiredPermission={Cata_Permissions.ViewNotification}>
+                    {/* <ShowWrapper requiredPermission={Cata_Permissions.ViewNotification}>
                         <div className="border border-slate-300 rounded-sm bg-gray-100 shadow-sm">
                             <NotificationBell />
                         </div>
-                    </ShowWrapper>
+                    </ShowWrapper> */}
                     <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueHidebutton}>
                         <TutorialStep step={2} currentStep={tutorialStep} text="Toggle this to show or hide sensitive sales figures." onNext={() => next(3)} onSkip={skip}>
                             <button

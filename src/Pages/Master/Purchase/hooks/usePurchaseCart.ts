@@ -12,7 +12,7 @@ interface UsePurchaseCartParams {
     availableItems: Item[];
     setAvailableItems: React.Dispatch<React.SetStateAction<Item[]>>;
     setModal: (modal: { message: string; type: State } | null) => void;
-     companyId?: string;
+    companyId?: string;
 }
 
 // Owns item/cart management — moved verbatim from Purchase.tsx: the
@@ -68,10 +68,10 @@ export const usePurchaseCart = ({
     const [showClearCartConfirm, setShowClearCartConfirm] = useState(false);
 
     useEffect(() => {
-       if (!isEditMode && companyId) {
-        localStorage.setItem(`purchase_cart_draft_${companyId}`, JSON.stringify(items));
-    }
-}, [items, isEditMode, companyId]);
+        if (!isEditMode && companyId) {
+            localStorage.setItem(`purchase_cart_draft_${companyId}`, JSON.stringify(items));
+        }
+    }, [items, isEditMode, companyId]);
 
     const cartItemsAdapter = useMemo(() => {
         const mapped = items.map(item => ({
@@ -379,7 +379,12 @@ export const usePurchaseCart = ({
         setDuplicateItemPrompt(null);
     };
 
-    const handleOpenEditDrawer = (item: Item) => { setSelectedItemForEdit(item); setIsItemDrawerOpen(true); };
+    const handleOpenEditDrawer = (item: Item) => {
+        const realProductId = (item as any).productId || item.id;
+        const masterItem = availableItems.find(a => a.id === realProductId);
+        setSelectedItemForEdit(masterItem || item);
+        setIsItemDrawerOpen(true);
+    };
     const handleCloseEditDrawer = () => { setIsItemDrawerOpen(false); setTimeout(() => setSelectedItemForEdit(null), 300); };
     const handleSaveSuccess = (updatedItemData: Partial<Item>) => {
         // 1. Update the master available items list

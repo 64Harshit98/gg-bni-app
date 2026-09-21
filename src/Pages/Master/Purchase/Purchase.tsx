@@ -11,6 +11,8 @@ import { CustomButton } from '../../../Components';
 import { Spinner } from '../../../constants/Spinner';
 import { FiTrash2, FiEdit, FiCamera, FiX, FiSearch, FiMenu } from 'react-icons/fi';
 import { ItemEditDrawer } from '../../../Components/ItemDrawer';
+import ItemAdd from '../ItemAdd';
+import type { Item } from '../../../constants/models';
 import { usePurchaseSettings } from '../../../context/SettingsContext';
 import { GenericCartList } from '../../../Components/CartItem';
 import { GenericBillFooter } from '../../../Components/Footer';
@@ -28,6 +30,19 @@ import {
 } from './hooks';
 
 export type { PurchaseItem, PurchaseDocumentData, Purchase };
+
+// Maps OCR-extracted unit text to one of the standard UNIT_OPTIONS values used in ItemAdd/ItemEditDrawer
+const normalizeUnit = (rawUnit: string | undefined | null): string => {
+  if (!rawUnit) return 'pcs';
+  const u = rawUnit.trim().toLowerCase();
+  if (['pcs', 'pc', 'piece', 'pieces', 'nos', 'no', 'unit', 'units', 'each', 'ea'].includes(u)) return 'pcs';
+  if (['box', 'boxes', 'bx'].includes(u)) return 'box';
+  if (['dozen', 'doz', 'dz'].includes(u)) return 'doz';
+  if (['quintal', 'quintals', 'qtl', 'qt'].includes(u)) return 'qt';
+  if (['ton', 'tons', 'tonne', 'tonnes'].includes(u)) return 'ton';
+  if (['pkt', 'packet', 'packets', 'pack', 'pk'].includes(u)) return 'pkt';
+  return 'pcs'; // safe fallback — always a valid dropdown option
+};
 
 const PurchasePage: React.FC = () => {
   const navigate = useNavigate();
@@ -140,12 +155,64 @@ const PurchasePage: React.FC = () => {
     isScannerOpen, setIsScannerOpen,
     handleApplySmartScan,
     handleBarcodeScanned,
-  } = usePurchaseSmartScan({
+    } = usePurchaseSmartScan({
     availableItems,
     setItems,
     addItemToCart,
     setModal,
   });
+
+  // NEW: for unlinked scanned items — opens the ItemAdd form as a popup instead of the edit drawer
+  const [showAddItemModal, setShowAddItemModal] = useState(false);
+  const [unlinkedPrefill, setUnlinkedPrefill] = useState<{
+    name?: string; mrp?: number; purchasePrice?: number; purchasediscount?: number; tax?: number; barcode?: string; unit?: string;
+  } | null>(null);
+  const [unlinkedCartItemId, setUnlinkedCartItemId] = useState<string | null>(null);
+
+  const handleAddUnlinkedItemToInventory = (cartItem: PurchaseItem) => {
+    const cleanName = cartItem.name.replace(/^⚠️\s*/, '').replace(/\s*\(Not in DB\)\s*$/, '');
+    setUnlinkedPrefill({
+      name: cleanName,
+      mrp: cartItem.mrp,
+      purchasePrice: Number(cartItem.purchasePrice) || 0,
+      purchasediscount: cartItem.purchasediscount || 0,
+      tax: cartItem.taxRate || 0,
+      barcode: cartItem.barcode || '',
+      unit: normalizeUnit(cartItem.unit),
+    });
+    setUnlinkedCartItemId(cartItem.id);
+    setShowAddItemModal(true);
+  };
+
+  const handleUnlinkedItemCreated = (createdItem: any) => {
+    // 1. Add to master inventory list so it shows up in the grid/search immediately
+    setAvailableItems(prev => [...prev, createdItem as Item]);
+
+    // 2. Re-link the cart's unlinked row to this real product
+    setItems(prev => prev.map(ci => {
+      if (ci.id !== unlinkedCartItemId) return ci;
+      return {
+        ...ci,
+        name: createdItem.name,
+        productId: createdItem.id,
+        barcode: createdItem.barcode || ci.barcode,
+        taxRate: createdItem.tax ?? ci.taxRate,
+        stock: createdItem.stock || 0,
+      };
+    }));
+
+    setShowAddItemModal(false);
+    setUnlinkedPrefill(null);
+    setUnlinkedCartItemId(null);
+    setModal({ message: `"${createdItem.name}" added to inventory and linked!`, type: State.SUCCESS });
+    setTimeout(() => setModal(null), 1500);
+  };
+
+  const handleCloseUnlinkedModal = () => {
+    setShowAddItemModal(false);
+    setUnlinkedPrefill(null);
+    setUnlinkedCartItemId(null);
+  };
 
   const {
     subtotal,
@@ -923,12 +990,24 @@ const PurchasePage: React.FC = () => {
           onClose={() => setIsGodownAssignOpen(false)}
         />
 
-        <ItemEditDrawer
+                <ItemEditDrawer
           item={selectedItemForEdit}
           isOpen={isItemDrawerOpen}
           onClose={handleCloseEditDrawer}
           onSaveSuccess={handleSaveSuccess}
         />
+        {showAddItemModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl h-[90vh] max-h-[90vh] flex flex-col overflow-hidden">
+              <ItemAdd
+                isModal
+                prefillData={unlinkedPrefill || undefined}
+                onItemCreated={handleUnlinkedItemCreated}
+                onCancel={handleCloseUnlinkedModal}
+              />
+            </div>
+          </div>
+        )}
       </div >
     );
   }
@@ -1201,7 +1280,8 @@ const PurchasePage: React.FC = () => {
                 applyRounding={(val) => val}
                 State={State}
                 setModal={setModal}
-                onOpenEditDrawer={handleOpenEditDrawer}
+                                onOpenEditDrawer={handleOpenEditDrawer}
+                onItemNotFound={(cartItem) => handleAddUnlinkedItemToInventory(cartItem as PurchaseItem)}
                 onDeleteItem={handleDeleteItem}
                 onDiscountChange={handleDiscountChange}
                 onDiscount2Change={handleDiscount2Change}
@@ -1292,16 +1372,28 @@ const PurchasePage: React.FC = () => {
         onClose={() => setIsGodownAssignOpen(false)}
       />
 
-      <ItemEditDrawer
+            <ItemEditDrawer
         item={selectedItemForEdit}
         isOpen={isItemDrawerOpen}
         onClose={handleCloseEditDrawer}
         onSaveSuccess={handleSaveSuccess}
       />
+      {showAddItemModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl h-[90vh] max-h-[90vh] flex flex-col overflow-hidden">
+            <ItemAdd
+              isModal
+              prefillData={unlinkedPrefill || undefined}
+              onItemCreated={handleUnlinkedItemCreated}
+              onCancel={handleCloseUnlinkedModal}
+            />
+          </div>
+        </div>
+      )}
       {hasUnlinkedItems && (
         <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded-sm">
           <p className="text-xs text-red-600 font-medium text-center leading-tight">
-            ⚠️ Cannot save bill. Please remove unlinked items or add them to your inventory.
+            ⚠️ Some scanned items aren't in your inventory yet.
           </p>
         </div>
       )}

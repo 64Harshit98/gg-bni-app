@@ -35,12 +35,281 @@ function istEndOfDay(baseDate, addDays) {
 // Initialize Vision API Client
 const client = new vision.ImageAnnotatorClient();
 
+// ============================================================================
+//  COORDINATE-BASED INVOICE TABLE READER
+// ============================================================================
+
+// Matched against the WHOLE text of a header cell ("Sale Price", "Bill Disc.", "GST Amt"),
+// never single words. A header cell that matches nothing becomes an 'OTHER' column: it still
+// gets its own band, so its numbers can't leak into a neighbouring column.
+// To support a new bill format, usually all you do is add a synonym here.
+const HEADER_DICTIONARY = [
+    ['OTHER', /^(BILL\s*DISC(OUNT)?|DISC(OUNT)?\s*(AMT|AMOUNT|VALUE)|SUB\s*TOTAL|TAXABLE(\s*(VALUE|AMT|AMOUNT))?)$/],
+    ['SLNO', /^(S\s*N|S\s*NO|SL\s*NO|SR\s*NO|SI\s*NO|SNO|SL|SR|NO|#)$/],
+    ['DESCRIPTION', /^(DESCRIPTION(\s*OF\s*(GOODS|SERVICES))?|PARTICULARS?|ITEMS?(\s*(NAME|DESCRIPTION|DETAILS))?|NAME|PRODUCTS?(\s*NAME)?|SERVICES?|GOODS)$/],
+    ['HSN', /^(HSN|SAC)(\s*\/\s*(HSN|SAC))?(\s*(NO|CODE))?$/],
+    ['QTY', /^(QTY|QUANTITY|QNTY)$/],
+    ['UNIT', /^(UNIT|UNITS|UOM)$/],
+    ['RATE', /^(RATE|PRICE|SALES?\s*(PRICE|RATE)|UNIT\s*(PRICE|RATE)|SELLING\s*PRICE|(RATE|PRICE)\s*\/\s*UNIT)$/],
+    ['MRP', /^MRP$/],
+    ['DISCOUNT', /^(DISC(OUNT)?|DIS)\s*%?$/],
+    ['TAX', /^(TAX|GST|VAT|IGST|CGST|SGST)(\s*(%|RATE|AMT|AMOUNT))?$/],
+    ['AMOUNT', /^(AMOUNT|AMT|TOTAL|NET\s*(AMT|AMOUNT)|LINE\s*TOTAL|TOTAL\s*(AMT|AMOUNT))$/],
+];
+
+// Rows that end the item table (only trusted when the row has no serial number)
+const SUMMARY_ROW =
+    /^(SUB\s*)?TOTAL\b|^GRAND\s*TOTAL|^TAXABLE|^ROUND(ED)?\s*OFF|^AMOUNT\s*(IN\s*WORDS|PAYABLE|PAID)|^BALANCE|^NET\s*(PAYABLE|AMOUNT)/i;
+
+const UNIT_WORD = /^(PCS?|NOS?|KGS?|GMS?|GRAMS?|MTRS?|METERS?|DZ|DOZEN|BAGS?|BTLS?|BOTTLES?|EA|EACH|UNITS?|ROLLS?|TABS?|STRIPS?|BOX(ES)?|PKTS?|PACKETS?|PACK|SETS?|LTRS?|LITERS?|LITRES?|L|ML|QTL|QUINTAL|TONS?|TONNES?|CTN|CARTONS?|BUNDLES?|PAIRS?|SQFT|SQM|FT)$/i;
+
+const round2 = (n) => Math.round(n * 100) / 100;
+const normHeader = (s) => s.toUpperCase().replace(/[.:,]/g, '').replace(/\s+/g, ' ').trim();
+const classifyHeader = (text) => {
+    const t = normHeader(text);
+    const hit = HEADER_DICTIONARY.find(([, re]) => re.test(t));
+    return hit ? hit[0] : null;
+};
+// "( No Prices )" -> "(No Prices)"
+const cleanName = (s) => (s || '').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')').replace(/\s+/g, ' ').trim();
+
+// OCR l / I / | -> 1 is fixed ONLY inside number-like tokens, so "Bottle" never becomes "Bott1e".
+function parseNumberToken(tok) {
+    let t = tok.replace(/[₹,%]/g, '').replace(/^Rs\.?/i, '');
+    if (/^[0-9lI|.]+$/.test(t)) t = t.replace(/[lI|]/g, '1');
+    return /^\d+(\.\d+)?$/.test(t) ? parseFloat(t) : null;
+}
+function firstNumber(str) {
+    for (const tok of String(str || '').split(/\s+/)) {
+        const n = parseNumberToken(tok);
+        if (n !== null) return n;
+    }
+    return 0;
+}
+
+// Unit comes from the Unit column, or from the Qty cell ("1 Pcs"); default PCS.
+function pickUnit(unitText, qtyText) {
+    const tokens = `${unitText || ''} ${qtyText || ''}`
+        .split(/\s+/).map(t => t.replace(/[^A-Za-z]/g, '')).filter(Boolean);
+    const known = tokens.find(t => UNIT_WORD.test(t));
+    if (known) return known.toUpperCase();
+    const custom = String(unitText || '').replace(/[^A-Za-z ]/g, '').trim();
+    return custom ? custom.toUpperCase() : 'PCS';
+}
+
+// Effective discount so that qty x rate x (1 - d) equals the bill's own Amount.
+// If the bill charges GST per line, Amount includes tax, so we use the explicit Discount % instead.
+function resolveDiscount({ quantity, rate, amount, explicit, hasTax }) {
+    const valid = (d) => Number.isFinite(d) && d >= 0 && d <= 95;
+    if (hasTax) return valid(explicit) ? explicit : 0;
+    if (rate > 0 && quantity > 0 && amount > 0) {
+        const effective = round2((1 - amount / (quantity * rate)) * 100);
+        if (valid(effective)) return effective;
+    }
+    return valid(explicit) ? explicit : 0;
+}
+
+// ---- Step 1: words with real geometry, de-skewed, watermark removed ---------
+function extractWords(annotations) {
+    const raw = [];
+    for (const a of annotations) {
+        const v = a.boundingPoly && a.boundingPoly.vertices;
+        if (!v || v.length < 4) continue;
+        const p = v.map(pt => ({ x: pt.x || 0, y: pt.y || 0 }));
+        raw.push({ text: a.description, p, angle: Math.atan2(p[1].y - p[0].y, p[1].x - p[0].x) });
+    }
+    if (!raw.length) return [];
+
+    const angles = raw.map(w => w.angle).sort((a, b) => a - b);
+    const tilt = angles[Math.floor(angles.length / 2)];
+    const cos = Math.cos(-tilt), sin = Math.sin(-tilt);
+    const rot = (pt) => ({ x: pt.x * cos - pt.y * sin, y: pt.x * sin + pt.y * cos });
+    const MAX_DEVIATION = (20 * Math.PI) / 180;
+
+    return raw
+        .filter(w => Math.abs(w.angle - tilt) < MAX_DEVIATION)
+        .map(w => {
+            const q = w.p.map(rot);
+            const xs = q.map(pt => pt.x), ys = q.map(pt => pt.y);
+            const left = Math.min(...xs), right = Math.max(...xs);
+            const top = Math.min(...ys), bottom = Math.max(...ys);
+            return { text: w.text, left, right, top, bottom, x: (left + right) / 2, y: (top + bottom) / 2, h: bottom - top };
+        });
+}
+
+// ---- Step 2: visual lines. Sorted by Y first (order-independent), tolerance scales with text size
+function clusterIntoLines(words) {
+    const hs = words.map(w => w.h).sort((a, b) => a - b);
+    const medH = hs[Math.floor(hs.length / 2)] || 10;
+    // Tighter tolerance: a single row's own words vary in Y by only a small fraction of
+    // the row height, but on compact bills (small row spacing) two full rows can sit close
+    // enough that a loose tolerance merges them into one line and silently drops an item.
+    const tol = medH * 0.4;
+    const lines = [];
+    [...words].sort((a, b) => a.y - b.y).forEach(w => {
+        const last = lines[lines.length - 1];
+        if (last && Math.abs(last.y - w.y) <= tol) {
+            last.items.push(w);
+            last.y = last.items.reduce((s, i) => s + i.y, 0) / last.items.length;
+        } else {
+            lines.push({ y: w.y, items: [w] });
+        }
+    });
+    lines.forEach(l => l.items.sort((a, b) => a.x - b.x));
+    return { lines, medH };
+}
+
+// ---- Step 3: header row -> columns -------------------------------------------
+function readHeaderCells(words, medH) {
+    const sorted = [...words].sort((a, b) => a.left - b.left);
+    const groups = [];
+    sorted.forEach(w => {
+        const g = groups[groups.length - 1];
+        if (g && w.left - g.right <= medH * 0.7) {
+            g.words.push(w);
+            g.right = Math.max(g.right, w.right);
+        } else {
+            groups.push({ words: [w], left: w.left, right: w.right });
+        }
+    });
+
+    const cells = [];
+    groups.forEach(g => {
+        g.words.sort((a, b) => (Math.abs(a.y - b.y) > medH * 0.6 ? a.y - b.y : a.x - b.x));
+        const text = g.words.map(w => w.text).join(' ');
+        const key = classifyHeader(text);
+        const parts = g.words.map(w => classifyHeader(w.text));
+        if (!key && g.words.length > 1 && parts.every(Boolean)) {
+            g.words.forEach((w, i) => cells.push({ key: parts[i], text: w.text, left: w.left, right: w.right }));
+        } else {
+            cells.push({ key: key || 'OTHER', text, left: g.left, right: g.right });
+        }
+    });
+    return cells.sort((a, b) => a.left - b.left);
+}
+
+function buildBands(cells, medH) {
+    const cuts = [];
+    for (let i = 0; i < cells.length - 1; i++) {
+        const a = cells[i], b = cells[i + 1];
+        if (a.key === 'DESCRIPTION') cuts.push(b.left - medH * 0.4);
+        else if (b.key === 'DESCRIPTION') cuts.push(a.right + medH * 0.4);
+        else cuts.push((a.right + b.left) / 2);
+    }
+    return cells.map((c, i) => ({
+        key: c.key,
+        pct: /%/.test(c.text),
+        xStart: i === 0 ? -Infinity : cuts[i - 1],
+        xEnd: i === cells.length - 1 ? Infinity : cuts[i],
+    }));
+}
+
+function findHeader(lines, medH) {
+    const attempt = (words) => {
+        const cells = readHeaderCells(words, medH);
+        const keys = new Set(cells.map(c => c.key));
+        const known = [...keys].filter(k => k !== 'OTHER').length;
+        return keys.has('QTY') && keys.has('AMOUNT') && known >= 4 ? cells : null;
+    };
+    for (let i = 0; i < lines.length; i++) {
+        let cells = attempt(lines[i].items);
+        let endIndex = i;
+        if (!cells && lines[i + 1] && lines[i + 1].y - lines[i].y <= medH * 2.5) {
+            cells = attempt([...lines[i].items, ...lines[i + 1].items]);
+            endIndex = i + 1;
+        }
+        if (cells) return { bands: buildBands(cells, medH), endIndex };
+    }
+    return null;
+}
+
+function mapWordsToBands(words, bands) {
+    const perBand = bands.map(() => []);
+    words.forEach(w => {
+        const i = bands.findIndex(b => w.x >= b.xStart && w.x < b.xEnd);
+        if (i >= 0) perBand[i].push(w.text);
+    });
+    const out = {};
+    bands.forEach((b, i) => {
+        const text = perBand[i].join(' ').trim();
+        if (!(b.key in out) || b.key === 'AMOUNT') out[b.key] = text;
+        else if (b.key === 'TAX') out[b.key] += ' ' + text;
+    });
+    return out;
+}
+
+// ---- Step 4: item rows --------------------------------------------------------
+function buildItems(lines, endIndex, bands, medH) {
+    const serialBand = bands.some(b => b.key === 'SLNO');
+    let body = lines.slice(endIndex + 1).map(line => {
+        const own = mapWordsToBands(line.items, bands);
+        const text = line.items.map(w => w.text).join(' ');
+        const hasSerial = serialBand && firstNumber(own.SLNO) > 0;
+        const summary = SUMMARY_ROW.test((own.DESCRIPTION || text).trim()) && !hasSerial;
+        const qty = firstNumber(own.QTY);
+        const amount = firstNumber(own.AMOUNT);
+        return { line, own, qty, amount, summary, primary: !summary && qty > 0 && amount > 0 };
+    });
+
+    // Safety check: if a "line" carries more than one Amount-shaped number, two real
+    // table rows got merged into one line — log it loudly instead of silently losing an item.
+    body.forEach(r => {
+        const amountTokens = (r.own.AMOUNT || '').split(/\s+/).filter(t => /\d/.test(t));
+        if (amountTokens.length > 1) {
+            console.warn('SUSPECTED MERGED ROWS (two items collapsed into one line):', r.own);
+        }
+    });
+
+    const firstPrimary = body.findIndex(r => r.primary);
+    if (firstPrimary < 0) return [];
+    const stop = body.findIndex((r, i) => i > firstPrimary && r.summary);
+    if (stop >= 0) body = body.slice(0, stop);
+
+    const primaries = body.filter(r => r.primary);
+    const gaps = primaries.slice(1).map((r, i) => r.line.y - primaries[i].line.y).sort((a, b) => a - b);
+    const pitch = gaps.length ? gaps[Math.floor(gaps.length / 2)] : medH * 4;
+    const maxDist = pitch * 0.75;
+
+    primaries.forEach(p => { p.lines = [p.line]; });
+    body.filter(r => !r.primary).forEach(orphan => {
+        let best = null, bestD = Infinity;
+        primaries.forEach(p => {
+            const d = Math.abs(p.line.y - orphan.line.y);
+            if (d < bestD) { best = p; bestD = d; }
+        });
+        if (best && bestD <= maxDist) best.lines.push(orphan.line);
+    });
+
+    const discBand = bands.find(b => b.key === 'DISCOUNT');
+    return primaries.map(p => {
+        const full = mapWordsToBands(p.lines.sort((a, b) => a.y - b.y).flatMap(l => l.items), bands);
+        const own = p.own;
+
+        let rate = firstNumber(own.RATE) || firstNumber(own.MRP);
+        if (!rate) rate = round2(p.amount / p.qty);
+
+        const rawDisc = own.DISCOUNT || '';
+        const isPct = /%/.test(rawDisc) || (discBand && discBand.pct);
+        const explicit = isPct ? firstNumber(rawDisc) : NaN;
+        const hasTax = firstNumber(own.TAX) > 0;
+
+        return {
+            name: cleanName(full.DESCRIPTION) || 'Unknown Item',
+            quantity: p.qty,
+            unit: pickUnit(full.UNIT, own.QTY),
+            purchasePrice: rate,
+            discountPercentage: resolveDiscount({ quantity: p.qty, rate, amount: p.amount, explicit, hasTax }),
+            totalAmount: p.amount,
+        };
+    });
+}
+
 exports.scanSmartInvoice = functions.https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'You must be logged in to scan documents.');
     }
 
-    const { imageBase64 } = data;
+    const { imageBase64, previousBands } = data;
     if (!imageBase64) {
         throw new functions.https.HttpsError('invalid-argument', 'No image data provided.');
     }
@@ -60,66 +329,42 @@ exports.scanSmartInvoice = functions.https.onCall(async (data, context) => {
             return { success: true, text: '' };
         }
 
-        // textAnnotations[0] is the full block of text (which is jumbled).
-        // Index 1 onwards contains every individual word on the page with exact X/Y coordinates.
-        const words = result.textAnnotations.slice(1);
+        // words with geometry: de-skewed, diagonal watermark text removed
+        const words = extractWords(result.textAnnotations.slice(1));
+        const { lines, medH } = clusterIntoLines(words);
 
-        const rows = [];
-        const Y_TOLERANCE = 14; // pixels of vertical wiggle room to handle slight camera tilt
-
-        words.forEach(wordObj => {
-            // Safe fallback to prevent the 500 error we saw earlier
-            const vertices = wordObj.boundingPoly && wordObj.boundingPoly.vertices;
-            if (!vertices || vertices.length < 4) return;
-
-            const text = wordObj.description;
-
-            // Safe coordinate extraction
-            const y0 = vertices[0].y || 0;
-            const y2 = vertices[2].y || 0;
-            const x0 = vertices[0].x || 0;
-            const x2 = vertices[2].x || 0;
-
-            // Find the physical center of the word
-            const yCenter = (y0 + y2) / 2;
-            const xCenter = (x0 + x2) / 2;
-
-            let addedToRow = false;
-
-            // Loop through existing rows. If it's on the same vertical level, add it to the row!
-            for (let row of rows) {
-                if (Math.abs(row.yCenter - yCenter) <= Y_TOLERANCE) {
-                    row.items.push({ text, x: xCenter });
-                    // Slightly adjust the row's center average as we add more words
-                    row.yCenter = ((row.yCenter * (row.items.length - 1)) + yCenter) / row.items.length;
-                    addedToRow = true;
-                    break;
-                }
-            }
-
-            // If it doesn't fit in an existing row, create a new one
-            if (!addedToRow) {
-                rows.push({ yCenter: yCenter, items: [{ text, x: xCenter }] });
-            }
-        });
-
-        // 1. Sort all rows top-to-bottom on the page
-        rows.sort((a, b) => a.yCenter - b.yCenter);
-
-        // 2. Sort words within each row left-to-right, then join them with spaces
-        const finalLines = rows.map(row => {
-            row.items.sort((a, b) => a.x - b.x);
-            return row.items.map(i => i.text).join(' ');
-        });
-
-        // Combine all the mathematically perfect rows back into a single text block
-        const perfectlyFormattedText = finalLines.join('\n');
-
+        const perfectlyFormattedText = lines
+            .map(l => l.items.map(w => w.text).join(' '))
+            .join('\n');
         console.log("GLOBAL RECONSTRUCTION:\n", perfectlyFormattedText);
+
+                let structuredItems = [];
+        let bandsUsed = null;
+        const header = findHeader(lines, medH);
+        if (header) {
+            console.log("HEADER COLUMNS:", header.bands.map(b => b.key).join(' | '));
+            structuredItems = buildItems(lines, header.endIndex, header.bands, medH);
+            bandsUsed = header.bands;
+            console.log("STRUCTURED ITEMS (coordinate-based):", structuredItems);
+        } else if (Array.isArray(previousBands) && previousBands.length > 0) {
+            // Continuation page: this page's own header row wasn't detected (repeated
+            // headers are the most common thing OCR mangles), so reuse the previous
+            // page's column layout instead of dropping every item on this page.
+            // endIndex -1 means "no header row to skip" -- every clustered line here
+            // is treated as a potential item row.
+            console.log("No header row detected on this page -- reusing previous page's column layout.");
+            structuredItems = buildItems(lines, -1, previousBands, medH);
+            bandsUsed = previousBands;
+            console.log("STRUCTURED ITEMS (via reused header):", structuredItems);
+        } else {
+            console.log("No header row detected: frontend fallback patterns will run on `text`.");
+        }
 
         return {
             success: true,
-            text: perfectlyFormattedText
+            text: perfectlyFormattedText,
+            items: structuredItems,
+            bands: bandsUsed
         };
 
     } catch (error) {

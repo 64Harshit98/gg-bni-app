@@ -244,6 +244,287 @@ exports.snaptoProxy = functions.https.onRequest((req, res) => {
     });
 });
 
+// ─── WhatsApp: Sellar-managed tiers (self-serve Snapto + Sellar shared number) ───
+// Both tiers now send through this one function so no company ever holds a
+// Snapto API key client-side. Which credential set to use is resolved here,
+// server-side, from companies/{companyId}/whatsappStatus/current.activeTier.
+const WHATSAPP_TEMPLATE_FIELD_BY_TYPE = {
+    invoice: 'templateName',
+    order: 'templateName',
+    reminder: 'reminderTemplateName',
+    stockAlert: 'stockAlertTemplateName',
+};
+
+exports.sendCompanyWhatsappMessage = functions.https.onCall(async (data, context) => {
+    if (!context.auth || !context.auth.token.companyId) {
+        throw new functions.https.HttpsError('unauthenticated', 'Must be logged in.');
+    }
+    const companyId = context.auth.token.companyId;
+    const { to, messageType, fileUrl, templateVariables, refCollection, refId } = data;
+
+    if (!to) throw new functions.https.HttpsError('invalid-argument', 'Missing recipient number.');
+    const templateField = WHATSAPP_TEMPLATE_FIELD_BY_TYPE[messageType];
+    if (!templateField) throw new functions.https.HttpsError('invalid-argument', 'Invalid messageType.');
+
+    const statusRef = db.doc(`companies/${companyId}/whatsappStatus/current`);
+    const statusSnap = await statusRef.get();
+    const status = statusSnap.exists ? statusSnap.data() : {};
+    const activeTier = status.activeTier;
+
+    if (activeTier !== 'snapto' && activeTier !== 'sellar') {
+        throw new functions.https.HttpsError('failed-precondition', 'WhatsApp is not connected for this company.');
+    }
+    if (!status.active) {
+        throw new functions.https.HttpsError('failed-precondition', 'WhatsApp sending is currently inactive for this company.');
+    }
+
+    let credentials;
+    if (activeTier === 'snapto') {
+        const configSnap = await db.doc(`adminWhatsappConfig/${companyId}`).get();
+        if (!configSnap.exists) {
+            throw new functions.https.HttpsError('failed-precondition', 'WhatsApp is not configured for this company.');
+        }
+        const config = configSnap.data();
+        credentials = {
+            apiKey: config.snaptoApiKey,
+            language: config.language || 'en',
+            templateName: config[templateField],
+        };
+    } else {
+        // sellar — shared credential + per-company plan/quota enforcement
+        const sharedSnap = await db.doc('sellarWhatsappSharedConfig/global').get();
+        if (!sharedSnap.exists) {
+            throw new functions.https.HttpsError('failed-precondition', 'Sellar WhatsApp is not configured yet.');
+        }
+        const shared = sharedSnap.data();
+
+        const plan = status.sellarPlan;
+        if (!plan || plan.status !== 'active') {
+            throw new functions.https.HttpsError('failed-precondition', 'Your Sellar WhatsApp plan is not active.');
+        }
+        if (plan.expiresAt && plan.expiresAt.toDate && plan.expiresAt.toDate() < new Date()) {
+            throw new functions.https.HttpsError('failed-precondition', 'Your Sellar WhatsApp plan has expired.');
+        }
+        if (plan.quotaTotal !== null && plan.quotaTotal !== undefined && (plan.quotaUsed || 0) >= plan.quotaTotal) {
+            throw new functions.https.HttpsError('resource-exhausted', 'Your Sellar WhatsApp message quota is used up.');
+        }
+
+        credentials = {
+            apiKey: shared.snaptoApiKey,
+            language: shared.language || 'en',
+            templateName: shared[templateField],
+        };
+    }
+
+    if (!credentials.apiKey || !credentials.templateName) {
+        throw new functions.https.HttpsError('failed-precondition', 'WhatsApp template is not configured for this message type.');
+    }
+
+    const logDocRef = db.collection(`companies/${companyId}/whatsappMessages`).doc();
+
+    let sendResult;
+    try {
+        const response = await axios.post(
+            'https://app.snapto.ai/api/v1/whatsapp/sendMessage',
+            {
+                templateName: credentials.templateName,
+                language: credentials.language,
+                to,
+                ...(fileUrl ? { fileUrl } : {}),
+                templateVariables: templateVariables || [],
+            },
+            {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': credentials.apiKey,
+                },
+            }
+        );
+        sendResult = { waMessageId: (response.data && response.data.waMessageId) || null };
+    } catch (err) {
+        const errData = err.response && err.response.data;
+        const errorDetail = (errData && (errData.detail || (errData.error && errData.error.message))) || err.message || 'Unknown error';
+
+        await logDocRef.set({
+            to, messageType, status: 'failed', tier: activeTier,
+            waMessageId: null, errorDetail,
+            refCollection: refCollection || null, refId: refId || null,
+            sentByUid: context.auth.uid,
+            sentAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        throw new functions.https.HttpsError('internal', `Failed to send WhatsApp message: ${errorDetail}`);
+    }
+
+    // Atomically log the send + (for the metered Sellar tier only) burn one
+    // unit of quota, so a log entry and a quota increment can never diverge.
+    await db.runTransaction(async (tx) => {
+        tx.set(logDocRef, {
+            to, messageType, status: 'sent', tier: activeTier,
+            waMessageId: sendResult.waMessageId,
+            errorDetail: null,
+            refCollection: refCollection || null, refId: refId || null,
+            sentByUid: context.auth.uid,
+            sentAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        if (activeTier === 'sellar') {
+            tx.update(statusRef, {
+                'sellarPlan.quotaUsed': admin.firestore.FieldValue.increment(1),
+            });
+        }
+    });
+
+    return { success: true, waMessageId: sendResult.waMessageId };
+});
+
+// Super-admin write path for a single company's WhatsApp config — either
+// their own Snapto credentials (tier 'snapto', admin-entered on their behalf)
+// or their Sellar-shared-tier plan/quota assignment (tier 'sellar'). Writes
+// the secret half (adminWhatsappConfig) and the client-readable status
+// mirror (whatsappStatus/current) together so a company is never left
+// half-activated.
+exports.setCompanyWhatsappConfig = functions.https.onCall(async (data, context) => {
+    if (!context.auth || !SUPER_ADMIN_UIDS.includes(context.auth.uid)) {
+        throw new functions.https.HttpsError('permission-denied', 'Only Super Admins can perform this action.');
+    }
+    const {
+        companyId, tier, active,
+        snaptoApiKey, whatsappNumber, templateName, reminderTemplateName, stockAlertTemplateName, language,
+        planId, quotaTotal, expiresAt,
+    } = data;
+
+    if (!companyId) throw new functions.https.HttpsError('invalid-argument', 'Missing companyId.');
+    if (!['snapto', 'sellar', 'none'].includes(tier)) {
+        throw new functions.https.HttpsError('invalid-argument', 'Invalid tier.');
+    }
+
+    const configRef = db.doc(`adminWhatsappConfig/${companyId}`);
+    const statusRef = db.doc(`companies/${companyId}/whatsappStatus/current`);
+
+    const configPayload = {
+        tier,
+        active: !!active,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedByUid: context.auth.uid,
+    };
+    const statusPayload = { activeTier: tier, active: !!active };
+
+    if (tier === 'snapto') {
+        Object.assign(configPayload, {
+            snaptoApiKey: snaptoApiKey || '',
+            whatsappNumber: whatsappNumber || '',
+            templateName: templateName || '',
+            reminderTemplateName: reminderTemplateName || '',
+            stockAlertTemplateName: stockAlertTemplateName || '',
+            language: language || 'en',
+        });
+        statusPayload.sellarPlan = null;
+    } else if (tier === 'sellar') {
+        const normalizedQuotaTotal = quotaTotal === null || quotaTotal === undefined ? null : Number(quotaTotal);
+        const normalizedExpiresAt = expiresAt ? admin.firestore.Timestamp.fromDate(new Date(expiresAt)) : null;
+        Object.assign(configPayload, { planId: planId || '', quotaTotal: normalizedQuotaTotal, expiresAt: normalizedExpiresAt });
+        statusPayload.sellarPlan = {
+            planId: planId || '',
+            status: active ? 'active' : 'suspended',
+            quotaTotal: normalizedQuotaTotal,
+            expiresAt: normalizedExpiresAt,
+        };
+    }
+
+    await db.runTransaction(async (tx) => {
+        const [configSnap, statusSnap] = await Promise.all([tx.get(configRef), tx.get(statusRef)]);
+
+        // Preserve existing quotaUsed across re-saves — this call edits the
+        // plan/credentials, it should never silently reset usage back to 0.
+        if (tier === 'sellar') {
+            const existingUsed = (statusSnap.exists && statusSnap.data().sellarPlan && statusSnap.data().sellarPlan.quotaUsed) || 0;
+            statusPayload.sellarPlan.quotaUsed = existingUsed;
+            configPayload.quotaUsed = (configSnap.exists && configSnap.data().quotaUsed) || 0;
+        }
+
+        tx.set(configRef, configPayload, { merge: true });
+        tx.set(statusRef, statusPayload, { merge: true });
+    });
+
+    return { success: true };
+});
+
+// Super-admin write path for the ONE shared Sellar WhatsApp credential used
+// by every company on the 'sellar' tier.
+exports.setSellarSharedWhatsappConfig = functions.https.onCall(async (data, context) => {
+    if (!context.auth || !SUPER_ADMIN_UIDS.includes(context.auth.uid)) {
+        throw new functions.https.HttpsError('permission-denied', 'Only Super Admins can perform this action.');
+    }
+    const { snaptoApiKey, whatsappNumber, templateName, reminderTemplateName, stockAlertTemplateName, language } = data;
+
+    await db.doc('sellarWhatsappSharedConfig/global').set({
+        snaptoApiKey: snaptoApiKey || '',
+        whatsappNumber: whatsappNumber || '',
+        templateName: templateName || '',
+        reminderTemplateName: reminderTemplateName || '',
+        stockAlertTemplateName: stockAlertTemplateName || '',
+        language: language || 'en',
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedByUid: context.auth.uid,
+    }, { merge: true });
+
+    return { success: true };
+});
+
+// One-off migration: carries forward any company that had already self-
+// entered a Snapto key into settings/bill (the old self-serve Bill Settings
+// UI, now removed) into the new admin-managed adminWhatsappConfig +
+// whatsappStatus/current shape, so nobody's working connection silently
+// breaks when the Bill Settings UI disappears. Safe to call more than once —
+// only touches companies that still have a legacy snaptoApiKey field.
+// Super-admin triggers this manually once (Firebase console's callable-
+// function tester, or a temporary button); it is NOT wired to run on its own.
+exports.migrateLegacySnaptoConfig = functions.https.onCall(async (data, context) => {
+    if (!context.auth || !SUPER_ADMIN_UIDS.includes(context.auth.uid)) {
+        throw new functions.https.HttpsError('permission-denied', 'Only Super Admins can perform this action.');
+    }
+
+    const companiesSnap = await db.collection('companies').get();
+    const migratedCompanyIds = [];
+
+    for (const companyDoc of companiesSnap.docs) {
+        const companyId = companyDoc.id;
+        const billSettingsSnap = await db.doc(`companies/${companyId}/settings/bill`).get();
+        if (!billSettingsSnap.exists) continue;
+
+        const billData = billSettingsSnap.data();
+        if (!billData.snaptoApiKey || !billData.snaptoTemplateName) continue;
+
+        const configRef = db.doc(`adminWhatsappConfig/${companyId}`);
+        const statusRef = db.doc(`companies/${companyId}/whatsappStatus/current`);
+
+        await db.runTransaction(async (tx) => {
+            tx.set(configRef, {
+                tier: 'snapto',
+                active: true,
+                snaptoApiKey: billData.snaptoApiKey,
+                whatsappNumber: billData.whatsappNumber || '',
+                templateName: billData.snaptoTemplateName || '',
+                reminderTemplateName: billData.snaptoReminderTemplateName || '',
+                stockAlertTemplateName: billData.snaptoStockAlertTemplateName || '',
+                language: billData.snaptoLanguage || 'en',
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                updatedByUid: context.auth.uid,
+                migratedFromBillSettings: true,
+            }, { merge: true });
+            tx.set(statusRef, {
+                activeTier: 'snapto',
+                active: true,
+                sellarPlan: null,
+            }, { merge: true });
+        });
+
+        migratedCompanyIds.push(companyId);
+    }
+
+    return { success: true, migratedCount: migratedCompanyIds.length, companyIds: migratedCompanyIds };
+});
+
 exports.getPublicCatalogue = functions.https.onRequest(async (req, res) => {
     const host = req.hostname;
     const slug = host.split('.')[0];
@@ -996,6 +1277,3 @@ exports.verifyRazorpayPayment = functions.https.onCall(async (data, context) => 
         throw new functions.https.HttpsError("internal", "Failed to activate subscription.");
     }
 });
-
-// Compiled from functions/src/paymentWebhook.ts (`npm run build` recompiles it).
-exports.paymentWebhook = require("./paymentWebhook").paymentWebhook;

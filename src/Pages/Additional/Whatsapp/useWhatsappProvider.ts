@@ -2,14 +2,18 @@ import { useState, useEffect } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
 
-export type WhatsappProvider = 'snapto' | 'botmaster' | 'none';
+export type WhatsappProvider = 'sellar' | 'snapto' | 'botmaster' | 'none';
 
 // Single source of truth for which WhatsApp sender a company has connected —
 // used everywhere a "Send on WhatsApp" button is rendered so only one
-// provider's button ever shows, never both. Snapto takes priority when a
-// company has somehow configured both, since it's the official Meta-based
-// integration; BotMaster is the fallback for companies onboarded before
-// Snapto existed.
+// provider's button ever shows, never both.
+//
+// 'snapto' and 'sellar' are both now admin-managed server-side (no company
+// ever holds a Snapto API key client-side any more — see
+// functions/lib/index.js's sendCompanyWhatsappMessage), so both are resolved
+// from the client-readable companies/{id}/whatsappStatus/current mirror doc
+// rather than from a client-held credential. 'botmaster' is unchanged: still
+// fully client-side, still resolved from credential presence.
 export const useWhatsappProvider = (companyId: string | undefined) => {
   const [provider, setProvider] = useState<WhatsappProvider>('none');
   const [loading, setLoading] = useState(true);
@@ -26,20 +30,23 @@ export const useWhatsappProvider = (companyId: string | undefined) => {
     const fetchProvider = async () => {
       setLoading(true);
       try {
-        const [businessSnap, billSettingsSnap] = await Promise.all([
+        const [businessSnap, statusSnap] = await Promise.all([
           getDoc(doc(db, 'companies', companyId, 'business_info', companyId)),
-          getDoc(doc(db, 'companies', companyId, 'settings', 'bill')),
+          getDoc(doc(db, 'companies', companyId, 'whatsappStatus', 'current')),
         ]);
 
         const businessData = businessSnap.exists() ? businessSnap.data() : {};
-        const billData = billSettingsSnap.exists() ? billSettingsSnap.data() : {};
+        const statusData = statusSnap.exists() ? statusSnap.data() : {};
 
-        const hasSnapto = !!(billData.snaptoApiKey && billData.snaptoTemplateName);
         const hasBotMaster = !!(businessData.botMasterToken && businessData.whatsappNumber);
+        const cloudTier = statusData.active ? statusData.activeTier : null;
+        const hasSellar = cloudTier === 'sellar' && statusData.sellarPlan?.status === 'active';
+        const hasSnapto = cloudTier === 'snapto';
 
         if (cancelled) return;
 
-        if (hasSnapto) setProvider('snapto');
+        if (hasSellar) setProvider('sellar');
+        else if (hasSnapto) setProvider('snapto');
         else if (hasBotMaster) setProvider('botmaster');
         else setProvider('none');
       } catch (err) {

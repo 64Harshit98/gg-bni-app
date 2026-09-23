@@ -215,6 +215,9 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       if (prefillData.unit) setItemUnit(prefillData.unit);
       return; // skip loading the regular draft in modal mode
     }
+    // FIX: search bar's "+ Add Item" click (Purchase/Sales SearchableItemInput
+    // onAddItem) passes the typed query via router state — grab it here.
+    const prefillNameFromSearch = (location.state as { prefillName?: string } | null)?.prefillName;
     const draft = sessionStorage.getItem(DRAFT_STORAGE_KEY);
     if (draft) {
       try {
@@ -239,6 +242,11 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       } catch (e) {
         console.error("Failed to parse draft storage", e);
       }
+    }
+    // FIX: apply AFTER the draft restore so the searched name always wins
+    // over a stale/old saved draft — this is the actual missing prefill step.
+    if (prefillNameFromSearch) {
+      setItemName(prefillNameFromSearch);
     }
   }, []);
 

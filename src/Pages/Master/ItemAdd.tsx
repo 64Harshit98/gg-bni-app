@@ -1121,7 +1121,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   const renderHeader = () => (
     <div className={isModal
       ? "p-4 border-b border-gray-200 flex items-center justify-between"
-      : "fixed top-0 left-0 right-0 z-10 p-4 bg-gray-100 border-b border-gray-300 flex flex-col md:static md:flex-row md:justify-between md:items-center md:p-3 md:bg-white md:shadow-sm"
+      : "relative z-10 p-4 bg-gray-100 border-b border-gray-300 flex flex-col md:static md:flex-row md:justify-between md:items-center md:p-3 md:bg-white md:shadow-sm"
     }>
       <h1 className={isModal ? "text-xl font-bold text-gray-800" : "text-2xl font-bold text-gray-800 text-center mb-4 md:mb-0 md:text-left"}>
         Add Item
@@ -1262,14 +1262,14 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         {/* LEFT PANEL */}
         <div className={isModal
           ? "flex-1 h-full overflow-y-auto w-full px-4 py-4"
-          : "flex-1 h-full overflow-y-auto w-full md:w-[65%] bg-gray-100 md:bg-gray-50 md:border-r border-gray-200 pt-32 pb-10 px-4 md:pt-6 md:px-6 md:pb-6"
+          : "flex-1 h-full overflow-y-auto w-full md:w-[65%] bg-gray-100 md:bg-gray-50 md:border-r border-gray-200 pt-4 pb-10 px-4 md:pt-6 md:px-6 md:pb-6"
         }>
 
           {error && <div className="mb-4 text-center p-3 bg-red-100 text-red-700 rounded-sm">{error}</div>}
 
           {/* Bulk Import (mobile) — hidden in modal mode, it doesn't apply to single-item quick-add */}
           {!isModal && (
-            <div className="md:hidden bg-white p-2 rounded-sm shadow-md mb-4 mt-4">
+            <div className="md:hidden bg-white p-2 rounded-sm shadow-md mb-4">
               <div className="flex flex-col items-center justify-center mb-4">
                 <h2 className="text-lg font-semibold text-gray-700 mb-2">Bulk Import</h2>
                 <input type="file" ref={fileInputRef} onChange={handleFileSelected} className="hidden" accept=".xlsx, .xls, .csv" />

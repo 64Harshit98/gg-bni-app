@@ -576,7 +576,7 @@ const PartyLedger: React.FC = () => {
     };
 
     // ✅ FIXED: Complete rewrite of handleSettlePayment
-        const handleSettlePayment = async (
+    const handleSettlePayment = async (
         invoice: any,
         amount: number,
         method: string,
@@ -600,7 +600,7 @@ const PartyLedger: React.FC = () => {
                     const data = sfDoc.data();
                     const currentDue = data.dueAmount ?? data.amount ?? 0;
                     if (amount > currentDue) throw new Error(`Amount (₹${amount}) exceeds due (₹${currentDue}).`);
-                                        const paymentRecord = {
+                    const paymentRecord = {
                         amount, method: method.toLowerCase(), date: new Date(paymentDate).toISOString(), timestamp: Date.now(),
                         ...(method.toUpperCase() === 'PDC' && { chequeNumber: chequeNumber || '', chequeDate: chequeDate || '' }),
                     };
@@ -647,7 +647,7 @@ const PartyLedger: React.FC = () => {
                         }, { merge: true });
                     }
                 });
-                                const paymentRecord: PaymentRecord = {
+                const paymentRecord: PaymentRecord = {
                     amount, method: method.toLowerCase(), date: new Date(paymentDate).toISOString(), timestamp: Date.now(),
                     ...(method.toUpperCase() === 'PDC' && { chequeNumber: chequeNumber || '', chequeDate: chequeDate || '' }),
                 };
@@ -727,7 +727,7 @@ const PartyLedger: React.FC = () => {
                     }
                 }
 
-                                // ✅ Create payment record with proper structure
+                // ✅ Create payment record with proper structure
                 const paymentRecord = {
                     amount,
                     method: method.toLowerCase(), // Normalize method name
@@ -747,7 +747,7 @@ const PartyLedger: React.FC = () => {
                 });
             });
 
-                        // ✅ Update local state immediately — no refresh needed
+            // ✅ Update local state immediately — no refresh needed
             const paymentRecord: PaymentRecord = {
                 amount,
                 method: method.toLowerCase(),
@@ -777,7 +777,7 @@ const PartyLedger: React.FC = () => {
     // Distributes the amount entered in the modal across the party's unpaid bills
     // (oldest first), settling each one via the EXACT SAME handleSettlePayment used
     // for individual bills — so per-bill Firestore/local-state logic stays untouched.
-       const handleSettleAllPayment = async (
+    const handleSettleAllPayment = async (
         invoice: any,
         amount: number,
         method: string,
@@ -817,7 +817,7 @@ const PartyLedger: React.FC = () => {
         for (const txn of unpaidTxns) {
             if (remaining <= 0) break;
             const portion = Math.min(remaining, txn.dueAmount);
-                        try {
+            try {
                 await handleSettlePayment(txn, portion, method, paymentDate, chequeNumber, chequeDate);
                 remaining -= portion;
                 successCount++;
@@ -1058,12 +1058,11 @@ const PartyLedger: React.FC = () => {
             <input type="file" ref={bulkFileInputRef} onChange={handleBulkFileSelected} className="hidden" accept=".xlsx, .xls" />
             {/* HEADER FOR MASTER LIST ONLY */}
             {!selectedPartyName && (
-                <div className="flex items-center justify-between p-3 border-b border-gray-200 mb-3 mt-2">
+                <div className="relative flex items-center justify-between p-3 border-b border-gray-200 mb-3 mt-2">
                     <BackButton />
-                    <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
+                    <h1 className="absolute left-1/2 -translate-x-1/2 text-xl font-bold text-gray-800 whitespace-nowrap">
                         Party Ledger
                     </h1>
-                    {/* NEW: Delete-all trigger, kept small/quiet since it's destructive */}
                     <button
                         onClick={() => setIsDeleteAllModalOpen(true)}
                         className="md:hidden text-xs font-semibold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 px-3 py-1.5 rounded-sm transition-colors"
@@ -1289,12 +1288,11 @@ const PartyLedger: React.FC = () => {
                                 {/* UNIFIED STICKY HEADER: Title + Summary Card */}
                                 <div className="sticky top-0 z-30 pt-2 pb-3 -mx-2 px-2 bg-gray-50">
                                     {/* Top Bar with Title and Close */}
-                                    <div className="flex items-center justify-between pb-2 mb-2">
+                                    <div className="relative flex items-center justify-between pb-2 mb-2">
                                         <BackButton onClick={() => { setSelectedPartyName(null); setExpandedBillId(null); setShowTransactionList(false); }} />
-                                        <h1 className="flex-1 text-lg text-center font-bold text-gray-800 truncate px-2">
+                                        <h1 className="absolute left-1/2 -translate-x-1/2 max-w-[65%] text-lg font-bold text-gray-800 truncate text-center">
                                             {selectedPartyLedger?.partyName || selectedPartyName} - Ledger
                                         </h1>
-                                        {/* NEW: delete this party from the detail view too */}
                                         <button
                                             onClick={() => { if (selectedPartyLedger) setPartyToDelete(selectedPartyLedger); }}
                                             className="text-xs font-semibold text-red-500 hover:text-red-700 px-2 py-1 whitespace-nowrap"

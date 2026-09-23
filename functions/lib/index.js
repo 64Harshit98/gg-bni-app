@@ -44,7 +44,8 @@ const client = new vision.ImageAnnotatorClient();
 // gets its own band, so its numbers can't leak into a neighbouring column.
 // To support a new bill format, usually all you do is add a synonym here.
 const HEADER_DICTIONARY = [
-    ['OTHER', /^(BILL\s*DISC(OUNT)?|DISC(OUNT)?\s*(AMT|AMOUNT|VALUE)|SUB\s*TOTAL|TAXABLE(\s*(VALUE|AMT|AMOUNT))?)$/],
+    ['IMAGE', /^(IMAGE|IMG|PHOTO|PIC(TURE)?)$/],
+    ['OTHER', /^(BILL\s*DISC(OUNT)?|DISC(OUNT)?\s*(AMT|AMOUNT|VALUE)|SUB\s*TOTAL|TAXABLE(\s*(VALUE|AMT|AMOUNT))?|(ITEM|PRODUCT|SKU)?\s*CODE)$/],
     ['SLNO', /^(S\s*N|S\s*NO|SL\s*NO|SR\s*NO|SI\s*NO|SNO|SL|SR|NO|#)$/],
     ['DESCRIPTION', /^(DESCRIPTION(\s*OF\s*(GOODS|SERVICES))?|PARTICULARS?|ITEMS?(\s*(NAME|DESCRIPTION|DETAILS))?|NAME|PRODUCTS?(\s*NAME)?|SERVICES?|GOODS)$/],
     ['HSN', /^(HSN|SAC)(\s*\/\s*(HSN|SAC))?(\s*(NO|CODE))?$/],
@@ -60,11 +61,18 @@ const HEADER_DICTIONARY = [
 // Rows that end the item table (only trusted when the row has no serial number)
 const SUMMARY_ROW =
     /^(SUB\s*)?TOTAL\b|^GRAND\s*TOTAL|^TAXABLE|^ROUND(ED)?\s*OFF|^AMOUNT\s*(IN\s*WORDS|PAYABLE|PAID)|^BALANCE|^NET\s*(PAYABLE|AMOUNT)/i;
-
+// Lines that sit ABOVE the item table on the source document -- invoice/company
+// header info, billed-to/shipped-to addresses, GST details. These must never be
+// treated as a table row. This matters most when a page's own header isn't
+// detected and we fall back to a previous page's bands with endIndex = -1,
+// which otherwise treats every line on the page (including this boilerplate)
+// as table body.
+const PREAMBLE_ROW =
+    /^(BILLED\s*TO|SHIPPED\s*TO|GSTIN|GST\s*NO|GST\s*TYPE|INVOICE\s*NO|PLACE\s*OF\s*SUPPLY|REVERSE\s*CHARGE|DATED?|TAX\s*INVOICE|ORIGINAL\s*COPY|TEL\b|PHONE|EMAIL|MSME)\b/i;
 const UNIT_WORD = /^(PCS?|NOS?|KGS?|GMS?|GRAMS?|MTRS?|METERS?|DZ|DOZEN|BAGS?|BTLS?|BOTTLES?|EA|EACH|UNITS?|ROLLS?|TABS?|STRIPS?|BOX(ES)?|PKTS?|PACKETS?|PACK|SETS?|LTRS?|LITERS?|LITRES?|L|ML|QTL|QUINTAL|TONS?|TONNES?|CTN|CARTONS?|BUNDLES?|PAIRS?|SQFT|SQM|FT)$/i;
 
 const round2 = (n) => Math.round(n * 100) / 100;
-const normHeader = (s) => s.toUpperCase().replace(/[.:,]/g, '').replace(/\s+/g, ' ').trim();
+const normHeader = (s) => s.toUpperCase().replace(/[.:,()*₹]/g, '').replace(/\s+/g, ' ').trim();
 const classifyHeader = (text) => {
     const t = normHeader(text);
     const hit = HEADER_DICTIONARY.find(([, re]) => re.test(t));
@@ -72,6 +80,17 @@ const classifyHeader = (text) => {
 };
 // "( No Prices )" -> "(No Prices)"
 const cleanName = (s) => (s || '').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')').replace(/\s+/g, ' ').trim();
+
+// A long item name routinely overflows PAST the narrow Description column on both
+// sides -- left into the Image column (which also carries real product photo /
+// QR-code OCR noise like "回家 回"), and right into the HSN column (otherwise a
+// pure numeric code). Keeping only tokens with an actual Latin/Devanagari letter
+// drops the HSN number and image/QR garbage while keeping genuine overflowed words.
+const extractNameOverflow = (text) =>
+    (text || '')
+        .split(/\s+/)
+        .filter(tok => /[A-Za-z\u0900-\u097F]/.test(tok))
+        .join(' ');
 
 // OCR l / I / | -> 1 is fixed ONLY inside number-like tokens, so "Bottle" never becomes "Bott1e".
 function parseNumberToken(tok) {
@@ -192,8 +211,9 @@ function buildBands(cells, medH) {
     const cuts = [];
     for (let i = 0; i < cells.length - 1; i++) {
         const a = cells[i], b = cells[i + 1];
-        if (a.key === 'DESCRIPTION') cuts.push(b.left - medH * 0.4);
-        else if (b.key === 'DESCRIPTION') cuts.push(a.right + medH * 0.4);
+        const wideCol = (k) => k === 'DESCRIPTION' || k === 'IMAGE';   // NEW
+        if (wideCol(a.key)) cuts.push(b.left - medH * 0.4);
+        else if (wideCol(b.key)) cuts.push(a.right + medH * 0.4);
         else cuts.push((a.right + b.left) / 2);
     }
     return cells.map((c, i) => ({
@@ -217,6 +237,10 @@ function findHeader(lines, medH) {
         if (!cells && lines[i + 1] && lines[i + 1].y - lines[i].y <= medH * 2.5) {
             cells = attempt([...lines[i].items, ...lines[i + 1].items]);
             endIndex = i + 1;
+            if (!cells && lines[i + 2] && lines[i + 2].y - lines[i].y <= medH * 4) {
+                cells = attempt([...lines[i].items, ...lines[i + 1].items, ...lines[i + 2].items]);
+                endIndex = i + 2;
+            }
         }
         if (cells) return { bands: buildBands(cells, medH), endIndex };
     }
@@ -232,8 +256,16 @@ function mapWordsToBands(words, bands) {
     const out = {};
     bands.forEach((b, i) => {
         const text = perBand[i].join(' ').trim();
-        if (!(b.key in out) || b.key === 'AMOUNT') out[b.key] = text;
-        else if (b.key === 'TAX') out[b.key] += ' ' + text;
+        // Skip an EMPTY band instance entirely -- otherwise a header split into
+        // multiple words that each independently classify to the same key (e.g.
+        // "Item" and "Description" both match DESCRIPTION, since the dictionary's
+        // suffix groups are optional) lets the first, empty band lock the key in
+        // `out` and permanently block the later band -- the one actually sitting
+        // under the real text -- from ever being written.
+        if (!text) return;
+        if (b.key === 'AMOUNT') out[b.key] = text; // latest AMOUNT-like column wins (e.g. "Taxable Amt" then "Total Amt")
+        else if (b.key in out) out[b.key] += ' ' + text; // concatenate genuine duplicate columns (TAX, or a split DESCRIPTION header) in left-to-right order
+        else out[b.key] = text;
     });
     return out;
 }
@@ -244,8 +276,15 @@ function buildItems(lines, endIndex, bands, medH) {
     let body = lines.slice(endIndex + 1).map(line => {
         const own = mapWordsToBands(line.items, bands);
         const text = line.items.map(w => w.text).join(' ');
-        const hasSerial = serialBand && firstNumber(own.SLNO) > 0;
-        const summary = SUMMARY_ROW.test((own.DESCRIPTION || text).trim()) && !hasSerial;
+        // A real serial number is a plain integer ("1", "2"...). A decimal like "4.000"
+        // (e.g. total quantity text bleeding into the S.N. column on a footer row) must
+        // NOT be treated as a serial number, or it wrongly cancels summary-row detection.
+        const hasSerial = serialBand && firstNumber(own.SLNO) > 0 && !/\./.test(own.SLNO || '');
+        // Preamble lines (address/GST/invoice-meta block) are ALWAYS treated as
+        // non-item, regardless of hasSerial -- a stray number like "59" from
+        // "Shop No. 59" landing in the S.N./Qty band must not let it slip through.
+        const isPreamble = PREAMBLE_ROW.test(text) || PREAMBLE_ROW.test(own.DESCRIPTION || '');
+        const summary = isPreamble || (SUMMARY_ROW.test((own.DESCRIPTION || text).trim()) && !hasSerial);
         const qty = firstNumber(own.QTY);
         const amount = firstNumber(own.AMOUNT);
         return { line, own, qty, amount, summary, primary: !summary && qty > 0 && amount > 0 };
@@ -270,15 +309,50 @@ function buildItems(lines, endIndex, bands, medH) {
     const pitch = gaps.length ? gaps[Math.floor(gaps.length / 2)] : medH * 4;
     const maxDist = pitch * 0.75;
 
+    // Each primary row starts life as its own single-line group; wrapped/orphan
+    // lines that belong to it (see below) get pushed into this array.
     primaries.forEach(p => { p.lines = [p.line]; });
-    body.filter(r => !r.primary).forEach(orphan => {
+
+
+    const originalPrimaries = primaries.slice();
+    const rescued = [];
+
+    body.filter(r => !r.primary && !r.summary).forEach(orphan => {
+        const rowText = orphan.line.items.map(w => w.text).join(' ').trim();
+        const looksLikeSummary =
+            SUMMARY_ROW.test((orphan.own.DESCRIPTION || '').trim()) ||
+            SUMMARY_ROW.test(rowText) ||
+            PREAMBLE_ROW.test(rowText) ||
+            PREAMBLE_ROW.test((orphan.own.DESCRIPTION || '').trim());
+
+        const hasName = !looksLikeSummary && cleanName(orphan.own.DESCRIPTION || '').length > 1;
+        const anyAmount =
+            firstNumber(orphan.own.AMOUNT) ||
+            firstNumber(orphan.own.RATE) ||
+            firstNumber(orphan.own.MRP);
+
+        if (hasName && anyAmount > 0) {
+            orphan.primary = true;
+            orphan.qty = orphan.qty > 0 ? orphan.qty : 1;
+            orphan.amount = orphan.amount > 0 ? orphan.amount : anyAmount;
+            orphan.lines = [orphan.line];
+            rescued.push(orphan);
+            console.warn('RESCUED ROW (would have been silently merged):', orphan.own);
+            return;
+        }
+
         let best = null, bestD = Infinity;
-        primaries.forEach(p => {
+        originalPrimaries.forEach(p => {
             const d = Math.abs(p.line.y - orphan.line.y);
             if (d < bestD) { best = p; bestD = d; }
         });
         if (best && bestD <= maxDist) best.lines.push(orphan.line);
     });
+
+    primaries.push(...rescued);
+
+    // Rescued rows were appended at the end above — restore top-to-bottom order.
+    primaries.sort((a, b) => a.line.y - b.line.y);
 
     const discBand = bands.find(b => b.key === 'DISCOUNT');
     return primaries.map(p => {
@@ -293,8 +367,20 @@ function buildItems(lines, endIndex, bands, medH) {
         const explicit = isPct ? firstNumber(rawDisc) : NaN;
         const hasTax = firstNumber(own.TAX) > 0;
 
+        // A long item name overflows the narrow Description column on BOTH sides:
+        // left into Image, right into HSN. extractNameOverflow() strips those two
+        // bands down to genuine leftover name words (real HSN numbers and image/QR
+        // noise get dropped), so "Artisanal Bread ( Sales Price ... only )" survives
+        // instead of collapsing to just the fragment that landed inside Description's
+        // exact pixel range.
+        const rawName = [
+            extractNameOverflow(full.IMAGE),
+            full.DESCRIPTION || '',
+            extractNameOverflow(full.HSN),
+        ].filter(Boolean).join(' ');
+
         return {
-            name: cleanName(full.DESCRIPTION) || 'Unknown Item',
+            name: cleanName(rawName) || 'Unknown Item',
             quantity: p.qty,
             unit: pickUnit(full.UNIT, own.QTY),
             purchasePrice: rate,
@@ -338,38 +424,49 @@ exports.scanSmartInvoice = functions.https.onCall(async (data, context) => {
             .join('\n');
         console.log("GLOBAL RECONSTRUCTION:\n", perfectlyFormattedText);
 
-                let structuredItems = [];
+        let structuredItems = [];
         let bandsUsed = null;
-        const header = findHeader(lines, medH);
-        if (header) {
-            console.log("HEADER COLUMNS:", header.bands.map(b => b.key).join(' | '));
-            structuredItems = buildItems(lines, header.endIndex, header.bands, medH);
-            bandsUsed = header.bands;
-            console.log("STRUCTURED ITEMS (coordinate-based):", structuredItems);
-        } else if (Array.isArray(previousBands) && previousBands.length > 0) {
-            // Continuation page: this page's own header row wasn't detected (repeated
-            // headers are the most common thing OCR mangles), so reuse the previous
-            // page's column layout instead of dropping every item on this page.
-            // endIndex -1 means "no header row to skip" -- every clustered line here
-            // is treated as a potential item row.
-            console.log("No header row detected on this page -- reusing previous page's column layout.");
-            structuredItems = buildItems(lines, -1, previousBands, medH);
-            bandsUsed = previousBands;
-            console.log("STRUCTURED ITEMS (via reused header):", structuredItems);
-        } else {
-            console.log("No header row detected: frontend fallback patterns will run on `text`.");
+        let debugError = null; // no backend log access right now -- send the real error to the frontend instead
+
+        try {
+            const header = findHeader(lines, medH);
+            if (header) {
+                console.log("HEADER COLUMNS:", header.bands.map(b => b.key).join(' | '));
+                structuredItems = buildItems(lines, header.endIndex, header.bands, medH);
+                bandsUsed = header.bands;
+                console.log("STRUCTURED ITEMS (coordinate-based):", structuredItems);
+            } else if (Array.isArray(previousBands) && previousBands.length > 0) {
+                console.log("No header row detected on this page -- reusing previous page's column layout.");
+                structuredItems = buildItems(lines, -1, previousBands, medH);
+                bandsUsed = previousBands;
+                console.log("STRUCTURED ITEMS (via reused header):", structuredItems);
+            } else {
+                console.log("No header row detected: frontend fallback patterns will run on `text`.");
+            }
+        } catch (bandError) {
+            // Don't let a bug in the coordinate-based parser crash the whole function --
+            // fall back gracefully, and ship the real error+stack back to the client
+            // so it's visible in the browser console without Firebase log access.
+            console.error("Band-based item extraction failed:", bandError);
+            structuredItems = [];
+            bandsUsed = null;
+            debugError = { message: bandError.message, stack: bandError.stack };
         }
 
         return {
             success: true,
             text: perfectlyFormattedText,
             items: structuredItems,
-            bands: bandsUsed
+            bands: bandsUsed,
+            debugError
         };
 
     } catch (error) {
         console.error("Cloud Vision API Error:", error);
-        throw new functions.https.HttpsError('internal', 'Failed to process the document via Cloud Vision.');
+        throw new functions.https.HttpsError('internal', 'Failed to process the document via Cloud Vision.', {
+            message: error.message,
+            stack: error.stack,
+        });
     }
 });
 exports.fetchInvoiceData = functions.https.onCall(async (data, context) => {

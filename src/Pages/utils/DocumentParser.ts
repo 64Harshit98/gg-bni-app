@@ -398,13 +398,23 @@ const mergeWrappedItemLines = (rawLines: string[]): string[] => {
 };
 
 export const parseRawText = (text: string): ParsedData => {
-    const cleanTextForSummary = text.replace(/[^a-zA-Z0-9\s/$.:-]/g, '');
+    const cleanTextForSummary = text.replace(/[^a-zA-Z0-9\s/$.:₹-]/g, '');
 
-    const currencyAmountRegex = /(?:Rs\.?|₹)\s*[:.]?\s*(\d[\d,]*\.\d{2})/i;
-    const fallbackAmountRegex = /(?:Total|Amt|Amount|GRAND TOTAL)[\s:]*(\d+[\.,]\d{2})/i;
+    const currencyAmountRegex = /(?:Rs\.?|₹)\s*[:.]?\s*(\d[\d,]*\.\d{2})/gi;
+    // "Grand Total" / "Net Amount" / "Balance Due" always print AFTER the GST
+    // breakup, so they're the true payable figure. Plain "Total"/"Amount" is
+    // excluded when it's actually "Taxable Amount" or "Sub Total" (the pre-GST
+    // figure) via the negative lookbehind.
+    const fallbackAmountRegex = /(?:GRAND\s*TOTAL|NET\s*AMOUNT|TOTAL\s*PAYABLE|BALANCE\s*DUE|(?<!TAXABLE\s)(?<!SUB\s)(?:TOTAL|AMT|AMOUNT))[\s:]*(\d+[\.,]\d{2})/gi;
+
+    const currencyMatches = [...cleanTextForSummary.matchAll(currencyAmountRegex)];
+    const fallbackMatches = [...cleanTextForSummary.matchAll(fallbackAmountRegex)];
+    // Last occurrence = closest to the bottom of the invoice = the final total,
+    // not an earlier subtotal/taxable-value line.
     const amountMatch =
-        cleanTextForSummary.match(currencyAmountRegex) ||
-        cleanTextForSummary.match(fallbackAmountRegex);
+        currencyMatches.length > 0 ? currencyMatches[currencyMatches.length - 1] :
+            fallbackMatches.length > 0 ? fallbackMatches[fallbackMatches.length - 1] :
+                null;
 
     const dateRegex = /(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/;
     const dateMatch = cleanTextForSummary.match(dateRegex);

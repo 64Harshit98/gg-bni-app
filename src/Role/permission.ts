@@ -1,3 +1,4 @@
+import { Cata_Permissions } from '../Catalogue/enum/cata_permissions.enum';
 import { Permissions, PLANS } from '../enums';
 
 /**
@@ -19,12 +20,14 @@ export const hasPermission = (
     return userPermissions.includes(permissionToCheck);
 };
 // 2. Define all user roles
-export type Role = 'Owner' | 'Manager' | 'Salesman';
+export type Role = 'Owner' | 'Manager' | 'Salesman' | 'agent' | 'agency';
 
 export const Role = {
     Owner: 'Owner' as 'Owner',
     Manager: 'Manager' as 'Manager',
     Salesman: 'Salesman' as 'Salesman',
+    Agent: 'agent' as 'agent',
+    Agency: 'agency' as 'agency',
 };
 
 // KEEP THIS - It defines the shape of your user object
@@ -32,8 +35,16 @@ export interface User {
     uid: string;
     name: string;
     role: Role;
-    permissions: Permissions[];
-    companyId: string;
+    permissions: (Permissions | Cata_Permissions)[];
+    // Kept separate from the merged `permissions` array above because
+    // Permissions and Cata_Permissions have overlapping string values
+    // (e.g. both define 'ManageItems' for two different features) — a
+    // flat merged array lets one silently satisfy a check meant for the
+    // other. hasPermission/hasCataloguePermission check these instead.
+    corePermissions?: Permissions[];
+    cataloguePermissions?: Cata_Permissions[];
+    companyId?: string;
+    ownReferralCode?: string;
     Subscription?: {
         pack: string;
         isActive: boolean;

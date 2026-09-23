@@ -1,20 +1,23 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { ShoppingCart, X, Minus, Plus, Trash2, ChevronLeft } from 'lucide-react';
-import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting'
+import { ShoppingCart, X, Minus, Plus, Trash2, Send, Pin, Download, Loader2 } from 'lucide-react';
+import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting';
+import { ROUTES } from '../constants/routes.constants';
 import { useAuth, useDatabase } from '../context/auth-context';
+import { useCatalogueData } from '../context/CatalogueDataContext';
 import type { Item, ItemGroup } from '../constants/models';
 import { FiStar, FiCheckSquare, FiLoader, FiPackage, FiPlus } from 'react-icons/fi';
 import { ItemEditDrawer } from '../Components/ItemDrawer';
 import { ItemDetailDrawer } from '../Components/ItemDetails';
 import { Spinner } from '../constants/Spinner';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName';
 import { syncNotifyStock } from "../../src/Catalogue/utils/syncNotifyStock";
-import SearchBar from './SearchBar';
-import { useLocation } from 'react-router-dom';
+import SearchableItemInput from '../UseComponents/SearchIteminput';
 import { db } from '../lib/Firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import ShowWrapper from '../context/ShowWrapper';
+import { Cata_Permissions } from './enum/cata_permissions.enum';
 const StockIndicator: React.FC<{ stock: number }> = ({ stock }) => {
     let colorClass = 'text-green-600 bg-green-100';
     if (stock <= 10 && stock > 0) colorClass = 'text-yellow-600 bg-yellow-100';
@@ -51,7 +54,7 @@ const QuickListedToggle: React.FC<QuickListedToggleProps> = ({ itemId, isListed,
         <button
             onClick={handleClick}
             disabled={disabled || isLoading}
-            className={`flex-1 py-1.5 rounded-sm text-[9px] font-black uppercase cursor-pointer tracking-wider transition-all flex items-center justify-center gap-1 ${isListed ? 'bg-green-500 text-white shadow-sm' : 'bg-gray-100 text-gray-400 cursor-pointer'
+            className={`flex-1 py-1.5 rounded-sm text-[9px] font-black uppercase cursor-pointer tracking-wider transition-all flex items-center justify-center gap-1 ${isListed ? 'bg-green-500/80 text-white shadow-sm' : 'bg-gray-100 text-gray-400 cursor-pointer'
                 }`}
         >
             {isLoading ? <FiLoader className="animate-spin" size={10} /> : isListed ? <FiCheckSquare size={10} /> : <FiStar size={10} />}
@@ -61,18 +64,120 @@ const QuickListedToggle: React.FC<QuickListedToggleProps> = ({ itemId, isListed,
 };
 
 const ITEMS_PER_BATCH_RENDER = 24;
+// --- NEW 3-TIER LOGIC HELPER ---
+const getEffectivePriceInfo = (item: Item) => {
+    const mrp = Number(item.mrp || 0);
+    const itemSalesPrice = Number(item.salesPrice || 0);
+    const presetDiscount = Number(item.discount || 0);
 
+    let salePrice = 0;
+    let calculatedDiscount = 0;
+
+    if (mrp > 0 && itemSalesPrice > 0) {
+        // Case 1: Both exist. Ignore DB discount. Calculate diff.
+        salePrice = itemSalesPrice;
+        calculatedDiscount = ((mrp - itemSalesPrice) / mrp) * 100;
+    } else if (itemSalesPrice > 0) {
+        // Case 2: Only Sales Price exists. Apply DB discount.
+        calculatedDiscount = presetDiscount;
+        salePrice = itemSalesPrice * (1 - (presetDiscount / 100));
+    } else if (mrp > 0) {
+        // Case 3: Only MRP exists. Apply DB discount.
+        calculatedDiscount = presetDiscount;
+        salePrice = mrp * (1 - (presetDiscount / 100));
+    }
+
+    // Round to 2 decimal places to ensure clean UI numbers
+    salePrice = Math.round((salePrice + Number.EPSILON) * 100) / 100;
+
+    return {
+        mrp,
+        salePrice,
+        discountPercent: Math.round(calculatedDiscount),
+        hasDiscount: calculatedDiscount > 0,
+        hasBothPrices: mrp > 0 && salePrice > 0 && salePrice < mrp
+    };
+};
+// 1. Updated normalizer: Converts ANY image format (WebP, AVIF, PNG) into a jsPDF-safe JPEG
+const blobToNormalizedBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.crossOrigin = 'Anonymous';
+
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+
+            if (ctx) {
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0);
+                resolve(canvas.toDataURL('image/jpeg', 0.8)); // 0.8 compression keeps PDF file size down
+            } else {
+                reject(new Error("Canvas context failed"));
+            }
+            URL.revokeObjectURL(url);
+        };
+        img.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error("Image load error"));
+        };
+        img.src = url;
+    });
+};
+
+// 2. Your existing fetch logic, routing the blob through the new Canvas normalizer
+const convertImageUrlToBase64 = async (url: string, itemName: string): Promise<string> => {
+    if (!url) {
+        console.warn(`⚠️ [${itemName}] No Image URL provided in the database.`);
+        return "";
+    }
+
+    try {
+        const cacheBuster = url + (url.includes('?') ? '&' : '?') + 'cb=' + new Date().getTime();
+        const response = await fetch(cacheBuster, { mode: 'cors' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const blob = await response.blob();
+
+        // Pass through the new normalizer
+        return await blobToNormalizedBase64(blob);
+
+    } catch (err) {
+        console.warn(`⚠️ [${itemName}] Direct fetch blocked. Trying Proxy...`);
+        try {
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+            const proxyResponse = await fetch(proxyUrl);
+            if (!proxyResponse.ok) throw new Error(`Proxy HTTP ${proxyResponse.status}`);
+            const blob = await proxyResponse.blob();
+
+            // Pass through the new normalizer
+            return await blobToNormalizedBase64(blob);
+
+        } catch (proxyErr) {
+            console.error(`❌ [${itemName}] Both direct and proxy fetch failed.`);
+            return "";
+        }
+    }
+};
 const MyShop: React.FC = () => {
-    const navigate = useNavigate()
+    const navigate = useNavigate();
     const location = useLocation();
     const highlightItemId = location.state?.highlightItemId;
-    // const isUnlisted = location.state?.isUnlisted;
+    const highlightTrigger = location.state?.trigger;
     const { groupId } = useParams<{ groupId: string }>();
     const { currentUser, loading: authLoading } = useAuth();
     const companyId = currentUser?.companyId;
     const { businessName: companyName, loading: _nameLoading } = useBusinessName(companyId);
     const dbOperations = useDatabase();
+    const { items: catalogueItems, itemsLoading: catalogueItemsLoading, itemGroups: catalogueItemGroups } = useCatalogueData();
+
     const [highlightedId, setHighlightedId] = useState<string | null>(null);
+    // Local mirror of the shared catalogue items — this page optimistically
+    // toggles `isListed`/edits items ahead of the shared listener echoing
+    // those writes back (see setAllItems calls further down).
     const [allItems, setAllItems] = useState<Item[]>([]);
     const [selectedCategory, setSelectedCategory] = useState(groupId || 'All');
     const [searchQuery, setSearchQuery] = useState('');
@@ -84,9 +189,12 @@ const MyShop: React.FC = () => {
     const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
     const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
     const [selectedItemForDetails, setSelectedItemForDetails] = useState<Item | null>(null);
+    const [variantGroupIds, setVariantGroupIds] = useState<string[]>([]);
     const [catalogueSettings, setCatalogueSettings] = useState<CatalogueSalesSettings | null>(null);
+
     const observerRef = useRef<IntersectionObserver | null>(null);
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
+
     const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A' | 'Price: Low-High' | 'Price: High-Low'>('A-Z');
     const [isSortOpen, setIsSortOpen] = useState(false);
     const isViewMode = false;
@@ -97,16 +205,61 @@ const MyShop: React.FC = () => {
     const [showConfirmPopup, setShowConfirmPopup] = useState(false);
     const [pendingLiveState, setPendingLiveState] = useState<boolean | null>(null);
     const [showUncategorizedWarning, setShowUncategorizedWarning] = useState(false);
+    const [isScrolled, setIsScrolled] = useState(false);
+    const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
+    const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
-    // const liveItems = useMemo(() => {
-    //     return allItems.filter(item => item.isListed);
-    // }, [allItems]);
-
-    // Sync selectedCategory when groupId changes from URL
     useEffect(() => {
-        if (groupId) {
-            setSelectedCategory(groupId);
+        if (!companyId) return;
+
+        const loadPins = async () => {
+            try {
+                const ref = doc(db, 'companies', companyId, 'settings', 'pinned_items');
+                const snap = await getDoc(ref);
+                if (snap.exists()) {
+                    const ids: string[] = snap.data().ids || [];
+                    setPinnedIds(new Set(ids));
+                    localStorage.setItem(`pinned_items_${companyId}`, JSON.stringify(ids));
+                } else {
+                    const saved = localStorage.getItem(`pinned_items_${companyId}`);
+                    if (saved) setPinnedIds(new Set(JSON.parse(saved)));
+                }
+            } catch (err) {
+                console.error("Failed to load pinned items:", err);
+                const saved = localStorage.getItem(`pinned_items_${companyId}`);
+                if (saved) setPinnedIds(new Set(JSON.parse(saved)));
+            }
+        };
+
+        loadPins();
+    }, [companyId]);
+
+    const generateSlug = (name: string) => {
+        return name
+            .toLowerCase()
+            .trim()
+            .replace(/\s+/g, "-")
+            .replace(/[^a-z0-9-]/g, "");
+    };
+
+    const resolvedGroupId = useMemo(() => {
+        if (!groupId || allItemGroups.length === 0) return groupId;
+        const matchedGroup = allItemGroups.find(
+            (group) => generateSlug(group.name) === groupId
+        );
+        return matchedGroup?.id || groupId;
+    }, [groupId, allItemGroups]);
+
+    const isUncategorized = (resolvedGroupId || selectedCategory) === 'uncategorized';
+
+    useEffect(() => {
+        if (resolvedGroupId) {
+            setSelectedCategory(resolvedGroupId);
         }
+    }, [resolvedGroupId]);
+
+    useEffect(() => {
+        setSearchQuery("");
     }, [groupId]);
 
     const addToCart = (item: Item, quantity: number = 1, isFromDrawer: boolean = false) => {
@@ -124,6 +277,46 @@ const MyShop: React.FC = () => {
         setCart(prev => prev.filter(i => i.item.id !== itemId));
     };
 
+    const handleShareItem = async (item: Item) => {
+        if (!companyId || !item?.itemGroupId || !item?.id) return;
+
+        const group = allItemGroups.find((g) => g.id === item.itemGroupId);
+        const categorySlug = group ? generateSlug(group.name) : item.itemGroupId;
+        const itemSlug = generateSlug(item.name || "product");
+
+        // ADDED &cId=${companyId} to the base URL
+        let shareUrl = `${window.location.origin}/${companyId}/${categorySlug}?product=${itemSlug}&itemId=${item.id}&cId=${companyId}`;
+
+        try {
+            const docRef = doc(db, 'companies', companyId);
+            const snap = await getDoc(docRef);
+
+            if (snap.exists() && snap.data().subdomain) {
+                // ADDED &cId=${companyId} to the subdomain URL
+                shareUrl = `https://${snap.data().subdomain}.sellar.in/${categorySlug}?product=${itemSlug}&itemId=${item.id}&cId=${companyId}`;
+            }
+        } catch (error) {
+            console.error("Error fetching subdomain for sharing:", error);
+        }
+
+        try {
+            const shareText = `Check out ${item.name} from ${companyName}`;
+
+            if (navigator.share) {
+                await navigator.share({
+                    title: item.name,
+                    text: shareText,
+                    url: shareUrl,
+                });
+            } else {
+                await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`);
+                alert("Product link copied to clipboard!");
+            }
+        } catch (error) {
+            if (error instanceof Error && error.name === 'AbortError') return;
+            console.error("Error sharing item:", error);
+        }
+    };
     const updateQuantity = (itemId: string, delta: number) => {
         setCart(prev => prev.map(i => {
             if (i.item.id === itemId) {
@@ -139,45 +332,188 @@ const MyShop: React.FC = () => {
 
     const cartTotal = useMemo(() =>
         cart.reduce((acc, curr) => {
-
-            const basePrice = curr.item.salesPrice || curr.item.mrp || 0;
-            const multiplier = (curr.item as any).unitMultiplier || 1;
-
-            const price =
-                multiplier > 1
-                    ? basePrice * multiplier
-                    : basePrice;
-
-            return acc + price * curr.quantity;
-
+            const { salePrice } = getEffectivePriceInfo(curr.item);
+            return acc + salePrice * curr.quantity;
         }, 0),
-        [cart]);
+        [cart]
+    );
+
     const cartCount = useMemo(() => cart.reduce((acc, curr) => acc + curr.quantity, 0), [cart]);
 
-    const handleToggleAllLive = () => {
-        if (groupId === "uncategorized") {
-            setShowUncategorizedWarning(true);
+    const handleDownloadPDF = async () => {
+        // 1. Filter out unlisted items immediately
+        const liveItemsToPrint = filteredItems.filter(item => item.isListed === true);
+
+        // 2. Prevent empty PDF generation
+        if (liveItemsToPrint.length === 0) {
+            alert("There are no LIVE items in this category to generate a PDF.");
             return;
         }
 
-        const newState = !isAllLive;
-        setPendingLiveState(newState);
+        setIsGeneratingPDF(true);
+
+        try {
+            // Deferred to keep jsPDF/jspdf-autotable out of the storefront's
+            // initial bundle — only fetched when a customer actually clicks
+            // "Download Catalogue PDF".
+            const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+                import('jspdf'),
+                import('jspdf-autotable'),
+            ]);
+
+            const doc = new jsPDF();
+
+            // --- Document Header ---
+            doc.setFontSize(18);
+            doc.text(`${companyName} - ${currentCategoryName}`, 14, 20);
+            doc.setFontSize(10);
+            doc.setTextColor(100);
+            doc.text(`Generated by SELLAR.IN: ${new Date().toLocaleDateString()}`, 14, 26);
+
+            const tableBody: any[] = [];
+            const tableImages: string[] = [];
+
+            // --- Prepare Data (Using the new filtered array & throttling) ---
+            for (const item of liveItemsToPrint) {
+                const { salePrice, mrp, hasBothPrices } = getEffectivePriceInfo(item);
+                let base64Img = '';
+
+                if (item.imageUrl) {
+                    // Fetch sequentially using the Canvas normalizer
+                    base64Img = await convertImageUrlToBase64(
+                        item.imageUrl,
+                        item.name || 'Unknown Product'
+                    );
+
+                    // Tiny delay to prevent Google Cloud rate limits (429 errors)
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                }
+
+                const mrpText = hasBothPrices ? `Rs. ${mrp}` : '-';
+                const salePriceText = `Rs. ${salePrice}`;
+
+                tableBody.push([
+                    '', // Leaves the cell blank for the image
+                    item.name?.toUpperCase() || 'UNNAMED PRODUCT',
+                    mrpText,
+                    salePriceText
+                ]);
+
+                tableImages.push(base64Img);
+            }
+
+            // --- Generate AutoTable ---
+            autoTable(doc, {
+                startY: 32,
+                margin: { bottom: 25 }, // CRITICAL: Prevents table from drawing over the footer
+                head: [['Image', 'Product Details', 'MRP', 'Sale Price']],
+                body: tableBody,
+                headStyles: { fillColor: [249, 115, 22], halign: 'center' }, // #F97316
+                bodyStyles: { minCellHeight: 25, valign: 'middle' },
+                columnStyles: {
+                    0: { cellWidth: 25 },
+                    1: { cellWidth: 'auto', fontStyle: 'bold', halign: 'center', textColor: [26, 59, 93] },
+                    2: { cellWidth: 25, halign: 'center', textColor: [156, 163, 175] },
+                    3: { cellWidth: 35, halign: 'center', fontStyle: 'bold', textColor: [249, 115, 22] }
+                },
+                didDrawCell: (data) => {
+                    // Manually draw the image inside the first column's cell
+                    if (data.column.index === 0 && data.cell.section === 'body') {
+                        const base64Img = tableImages[data.row.index];
+                        if (base64Img) {
+                            doc.addImage(base64Img, 'JPEG', data.cell.x + 2, data.cell.y + 2, 21, 21);
+                        }
+                    }
+                },
+                didDrawPage: () => {
+                    // --- Footer Branding Injection ---
+                    const pageSize = doc.internal.pageSize;
+                    const pageWidth = pageSize.width ? pageSize.width : pageSize.getWidth();
+                    const pageHeight = pageSize.height ? pageSize.height : pageSize.getHeight();
+                    const footerY = pageHeight - 12; // Base Y position near the bottom
+
+                    doc.setFontSize(10);
+
+                    // -- Line 1: Powered by SELLAR.IN --
+                    doc.setFont('helvetica', 'bold');
+                    const text1a = "Powered by ";
+                    const text1b = "SELLAR.IN";
+                    const w1a = doc.getTextWidth(text1a);
+                    const w1b = doc.getTextWidth(text1b);
+                    const startX1 = (pageWidth - (w1a + w1b)) / 2; // Centers the combined text
+
+                    doc.setTextColor(0, 0, 0); // Black
+                    doc.text(text1a, startX1, footerY - 5);
+
+                    doc.setTextColor(37, 99, 235); // Blue
+                    doc.text(text1b, startX1 + w1a, footerY - 5);
+
+                    // Draw underline for SELLAR.IN
+                    doc.setLineWidth(0.3);
+                    doc.setDrawColor(37, 99, 235);
+                    doc.line(startX1 + w1a, footerY - 4, startX1 + w1a + w1b, footerY - 4);
+
+                    // -- Line 2: Made with Love in India --
+                    doc.setFont('helvetica', 'normal');
+                    const text2a = "Made with ";
+                    const text2b = "Love";
+                    const text2c = " in India";
+                    const w2a = doc.getTextWidth(text2a);
+                    const w2b = doc.getTextWidth(text2b);
+                    const w2c = doc.getTextWidth(text2c);
+                    const startX2 = (pageWidth - (w2a + w2b + w2c)) / 2;
+
+                    doc.setTextColor(0, 0, 128); // Dark Navy/Blackish for start
+                    doc.text(text2a, startX2, footerY);
+
+                    doc.setTextColor(239, 68, 68); // Red
+                    doc.text(text2b, startX2 + w2a, footerY);
+
+                    doc.setTextColor(0, 0, 128); // Dark Navy for end
+                    doc.text(text2c, startX2 + w2a + w2b, footerY);
+                }
+            });
+
+            // --- Save the PDF ---
+            const safeCompanyName = (companyName || 'Company').replace(/\s+/g, '_');
+            const safeCategoryName = currentCategoryName === 'All Products'
+                ? 'Full_Catalogue'
+                : currentCategoryName.replace(/\s+/g, '_');
+
+            doc.save(`${safeCompanyName}_${safeCategoryName}.pdf`);
+
+        } catch (error) {
+            console.error("Error generating PDF:", error);
+            alert("Failed to generate PDF. Check console for details.");
+        } finally {
+            setIsGeneratingPDF(false);
+        }
+    };
+    const handleToggleAllLive = () => {
+        if (isUncategorized) {
+            setShowUncategorizedWarning(true);
+            return;
+        }
+        setPendingLiveState(!isAllLive);
         setShowConfirmPopup(true);
     };
 
     const confirmToggleAllLive = async () => {
         if (!dbOperations || pendingLiveState === null) return;
-
         const newState = pendingLiveState;
         setShowConfirmPopup(false);
         setIsAllLive(newState);
 
         try {
-            const activeCat = groupId || selectedCategory;
-
-            const itemsToUpdate = allItems.filter(item =>
-                activeCat === 'All' || item.itemGroupId === activeCat
-            );
+            const activeCat = resolvedGroupId || selectedCategory;
+            const itemsToUpdate = allItems.filter(item => {
+                if (activeCat === 'All') return true;
+                const allIds = [
+                    ...(item.itemGroupId ? [item.itemGroupId] : []),
+                    ...(item.itemGroupIds || []),
+                ];
+                return allIds.includes(activeCat);
+            });
 
             const updates = itemsToUpdate.map(item =>
                 dbOperations.updateItem(item.id!, { isListed: newState })
@@ -186,11 +522,14 @@ const MyShop: React.FC = () => {
             await Promise.all(updates);
 
             setAllItems(prev =>
-                prev.map(item =>
-                    (activeCat === 'All' || item.itemGroupId === activeCat)
-                        ? { ...item, isListed: newState }
-                        : item
-                )
+                prev.map(item => {
+                    if (activeCat === 'All') return { ...item, isListed: newState };
+                    const allIds = [
+                        ...(item.itemGroupId ? [item.itemGroupId] : []),
+                        ...(item.itemGroupIds || []),
+                    ];
+                    return allIds.includes(activeCat) ? { ...item, isListed: newState } : item;
+                })
             );
         } catch (err) {
             console.error("Bulk toggle failed:", err);
@@ -200,39 +539,46 @@ const MyShop: React.FC = () => {
     };
 
     const currentCategoryName = useMemo(() => {
-        const group = allItemGroups.find(g => g.id === groupId);
+        if (resolvedGroupId === 'uncategorized') return 'Uncategorized';
+        if (resolvedGroupId === 'All' || !resolvedGroupId) return 'All Products';
+
+        const group = allItemGroups.find(g => g.id === resolvedGroupId);
         return group ? group.name : 'Catalogue';
-    }, [allItemGroups, groupId]);
+    }, [allItemGroups, resolvedGroupId]);
 
     useEffect(() => {
-        if (!highlightedId) return;
-
-        const timer = setTimeout(() => {
-            const element = document.getElementById(highlightedId);
-
-            if (element) {
-                element.scrollIntoView({
-                    behavior: "smooth",
-                    block: "center"
-                });
-            }
-        }, 400);
-
-        const removeTimer = setTimeout(() => {
-            setHighlightedId(null);
-        }, 2200);
-
-        return () => {
-            clearTimeout(timer);
-            clearTimeout(removeTimer);
+        const getScrollContainer = (): HTMLElement | null => {
+            return document.querySelector(
+                ".flex-1.overflow-y-auto.pb-20.md\\:pb-4.scroll-smooth"
+            ) as HTMLElement | null;
         };
 
-    }, [highlightedId, itemsToRenderCount]);
+        const timer = setTimeout(() => {
+            const scrollContainer = getScrollContainer();
+            if (!scrollContainer) return;
 
-    useEffect(() => {
-        if (!highlightItemId) return;
-        setHighlightedId(highlightItemId);
-    }, [highlightItemId]);
+            let ticking = false;
+            const handleScroll = () => {
+                if (!ticking) {
+                    window.requestAnimationFrame(() => {
+                        const scrollTop = scrollContainer.scrollTop;
+                        setIsScrolled(scrollTop > 50);
+                        ticking = false;
+                    });
+                    ticking = true;
+                }
+            };
+
+            scrollContainer.addEventListener("scroll", handleScroll, { passive: true });
+            handleScroll();
+
+            return () => {
+                scrollContainer.removeEventListener("scroll", handleScroll);
+            };
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, []);
 
     useEffect(() => {
         if (!Array.isArray(allItems) || allItems.length === 0) {
@@ -240,113 +586,114 @@ const MyShop: React.FC = () => {
             return;
         }
 
-        const activeCat = groupId || selectedCategory;
+        const activeCat = resolvedGroupId || selectedCategory;
+        const filtered = allItems.filter(item => {
+            if (activeCat === 'All') return true;
+            const allIds = [
+                ...(item.itemGroupId ? [item.itemGroupId] : []),
+                ...(item.itemGroupIds || []),
+            ];
+            return allIds.includes(activeCat);
+        });
 
-        const filtered = allItems.filter(item =>
-            activeCat === 'All' || item.itemGroupId === activeCat
-        );
-
-        const allLive =
-            filtered.length > 0 &&
-            filtered.every(item => item.isListed === true);
-
+        const allLive = filtered.length > 0 && filtered.every(item => item.isListed === true);
         setIsAllLive(allLive);
-        setIsAllLive(allLive);
-    }, [allItems]);
+    }, [allItems, resolvedGroupId, selectedCategory]);
 
+    // items/itemGroups now come from the shared CatalogueDataContext instead
+    // of this page fetching/listening to them itself — mirrored into local
+    // state (with the same stock/isListed normalization the old listener
+    // callback applied) so the optimistic mutations below still work.
     useEffect(() => {
-        if (authLoading || !currentUser || !dbOperations || !companyId) {
-            if (!authLoading && (!currentUser || !dbOperations)) {
-                setPageIsLoading(false);
-            }
+        if (authLoading || !currentUser) {
+            if (!authLoading && !currentUser) setPageIsLoading(false);
             return;
         }
 
-        const fetchData = async () => {
+        setPageIsLoading(catalogueItemsLoading);
+
+        const liveItemsList: Item[] = catalogueItems.map((data) => ({
+            ...data,
+            stock: data.stock !== undefined && data.stock !== null ? Number(data.stock) : 0,
+            isListed: (data as any).isListed ?? false,
+        } as Item));
+
+        setAllItems(liveItemsList);
+        if (liveItemsList.length > 0) {
+            setIsAllLive(liveItemsList.every(item => item.isListed === true));
+        }
+    }, [authLoading, currentUser, catalogueItems, catalogueItemsLoading]);
+
+    useEffect(() => {
+        setAllItemGroups(catalogueItemGroups);
+    }, [catalogueItemGroups]);
+
+    // Business info + catalogue-sales-settings — page-specific, unrelated to
+    // the shared catalogue data above.
+    useEffect(() => {
+        if (!companyId) return;
+
+        const fetchPageInfo = async () => {
             try {
-                setPageIsLoading(true);
-                setError(null);
-
-                const [fetchedItemGroups, fetchedItems] = await Promise.all([
-                    dbOperations.getItemGroups(),
-                    dbOperations.syncItems()
-                ]);
-
-                setAllItemGroups(fetchedItemGroups);
-                setAllItems(
-                    (fetchedItems || []).map(item => ({
-                        ...item,
-                        isListed: item.isListed ?? false
-                    }))
-                );
-
-                if (Array.isArray(fetchedItems) && fetchedItems.length > 0) {
-                    const allLive = fetchedItems.every(item => item?.isListed === true);
-                    setIsAllLive(allLive);
-                } else {
-                    setIsAllLive(false);
-                }
-
-                //  SAFE FIRESTORE CALL
-                const businessRef = doc(
-                    db,
-                    "companies",
-                    companyId,
-                    "business_info",
-                    companyId
-                );
-
+                const businessRef = doc(db, "companies", companyId, "business_info", companyId);
                 const businessSnap = await getDoc(businessRef);
+                if (businessSnap.exists()) setSocialLinks(businessSnap.data());
 
-                if (businessSnap.exists()) {
-                    setSocialLinks(businessSnap.data());
-                }
-
-                //  FETCH CATALOGUE SETTINGS
-                const settingsRef = doc(
-                    db,
-                    'companies',
-                    companyId,
-                    'settings',
-                    'catalogue-sales-settings'
-                );
-
+                const settingsRef = doc(db, 'companies', companyId, 'settings', 'catalogue-sales-settings');
                 const settingsSnap = await getDoc(settingsRef);
-
-                if (settingsSnap.exists()) {
-                    setCatalogueSettings(settingsSnap.data() as CatalogueSalesSettings);
-                }
-
+                if (settingsSnap.exists()) setCatalogueSettings(settingsSnap.data() as CatalogueSalesSettings);
             } catch (err: any) {
                 setError(err.message || "Failed to load initial data.");
-            } finally {
-                setPageIsLoading(false);
             }
         };
 
-        fetchData();
+        fetchPageInfo();
+    }, [companyId]);
 
-    }, [authLoading, currentUser, dbOperations, companyId]);
+    const itemGroupMap = useMemo(() => {
+        return allItemGroups.reduce((acc, group) => {
+            if (group.id) {
+                acc[group.id] = group.name;
+            }
+            return acc;
+        }, {} as Record<string, string>);
+    }, [allItemGroups]);
 
-    // 3. Updated Filter logic with safety checks
     const filteredItems = useMemo(() => {
-        const activeCat = groupId || selectedCategory;
+        const activeCat = resolvedGroupId || selectedCategory;
+        const validGroupIds = new Set(allItemGroups.map(g => g.id));
 
         const result = allItems.filter(item => {
             if (!item) return false;
 
-            //  hide unlisted items in LIVE view
             const isSearching = searchQuery.trim().length > 0;
 
             if (isViewMode && !item.isListed && !isSearching) {
                 return false;
             }
 
-            const matchesCategory =
-                activeCat === 'All' || item.itemGroupId === activeCat;
+            let matchesCategory = false;
+
+            if (isSearching) {
+                matchesCategory = true;
+            } else if (activeCat === 'All') {
+                matchesCategory = true;
+            } else if (activeCat === 'uncategorized') {
+                const allIds = [
+                    ...(item.itemGroupId ? [item.itemGroupId] : []),
+                    ...(item.itemGroupIds || []),
+                ];
+                matchesCategory = allIds.length === 0 || allIds.every(id => !validGroupIds.has(id));
+            } else {
+                const allIds = [
+                    ...(item.itemGroupId ? [item.itemGroupId] : []),
+                    ...(item.itemGroupIds || []),
+                ];
+                matchesCategory = allIds.includes(activeCat);
+            }
 
             const itemName = item.name?.toLowerCase() || "";
-            const matchesSearch =
+            const matchesSearch = !isSearching ||
                 itemName.includes(searchQuery.toLowerCase()) ||
                 (item.barcode && item.barcode.includes(searchQuery));
 
@@ -354,15 +701,64 @@ const MyShop: React.FC = () => {
         });
 
         return [...result].sort((a, b) => {
+            const aPinned = pinnedIds.has(a.id!);
+            const bPinned = pinnedIds.has(b.id!);
+            if (aPinned !== bPinned) return aPinned ? -1 : 1;
             const nameA = a.name || "";
             const nameB = b.name || "";
             if (sortOrder === 'A-Z') return nameA.localeCompare(nameB);
             if (sortOrder === 'Z-A') return nameB.localeCompare(nameA);
-            if (sortOrder === 'Price: Low-High') return (a.mrp || 0) - (b.mrp || 0);
-            if (sortOrder === 'Price: High-Low') return (b.mrp || 0) - (a.mrp || 0);
+            if (sortOrder === 'Price: Low-High') return (a.salesPrice || a.mrp || 0) - (b.salesPrice || b.mrp || 0);
+            if (sortOrder === 'Price: High-Low') return (b.salesPrice || b.mrp || 0) - (a.salesPrice || a.mrp || 0);
+
             return 0;
         });
-    }, [allItems, selectedCategory, searchQuery, isViewMode, sortOrder, groupId, catalogueSettings]);
+    }, [
+        allItems,
+        selectedCategory,
+        searchQuery,
+        isViewMode,
+        sortOrder,
+        resolvedGroupId,
+        allItemGroups,
+        pinnedIds
+    ]);
+
+    useEffect(() => {
+        if (!highlightItemId || filteredItems.length === 0) return;
+
+        const itemIndex = filteredItems.findIndex(
+            (item) => String(item.id) === String(highlightItemId)
+        );
+
+        if (itemIndex !== -1) {
+            setItemsToRenderCount((prev) => Math.max(prev, itemIndex + 1));
+        }
+
+        const timer = setTimeout(() => {
+            setHighlightedId(highlightItemId);
+
+            const element = document.getElementById(highlightItemId);
+            element?.scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+            });
+
+            setTimeout(() => {
+                setHighlightedId(null);
+            }, 3000);
+
+            navigate(location.pathname, { replace: true, state: {} });
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [
+        highlightItemId,
+        highlightTrigger,
+        filteredItems,
+        navigate,
+        location.pathname
+    ]);
 
     const itemsToDisplay = useMemo(() => filteredItems.slice(0, itemsToRenderCount), [filteredItems, itemsToRenderCount]);
     const hasMoreItems = useMemo(() => itemsToRenderCount < filteredItems.length, [itemsToRenderCount, filteredItems.length]);
@@ -381,6 +777,43 @@ const MyShop: React.FC = () => {
         return () => observerRef.current?.disconnect();
     }, [hasMoreItems, loadMoreItems]);
 
+    const resolveVariantGroup = (item: Item): string[] => {
+        const itemId = String(item.id!);
+
+        // Walk the WHOLE connected component (forward + reverse edges, since
+        // variant links can be one-way) and collect every member — not just
+        // the "best" root's own declared variants array.
+        const visited = new Set<string>();
+        const queue = [itemId];
+
+        while (queue.length > 0) {
+            const currentId = queue.shift()!;
+            if (visited.has(currentId)) continue;
+            visited.add(currentId);
+
+            const currentItem = allItems.find(i => String(i.id) === currentId);
+            if (!currentItem) continue;
+
+            const currentVariants: string[] = ((currentItem as any).variants || []).map(String);
+            currentVariants.forEach(vid => { if (!visited.has(vid)) queue.push(vid); });
+
+            allItems.forEach(i => {
+                const iVariants: string[] = ((i as any).variants || []).map(String);
+                if (iVariants.includes(currentId) && !visited.has(String(i.id))) {
+                    queue.push(String(i.id));
+                }
+            });
+        }
+
+        if (visited.size <= 1) return [itemId];
+
+        // Stable order: always follow the catalogue's own item order, so the
+        // variant chips never reshuffle depending on which variant is open.
+        return allItems
+            .filter(i => visited.has(String(i.id)))
+            .map(i => String(i.id));
+    };
+
     const handleOpenEditDrawer = (item: Item) => {
         setSelectedItemForEdit(item);
         setIsDrawerOpen(true);
@@ -388,7 +821,26 @@ const MyShop: React.FC = () => {
 
     const handleOpenDetailDrawer = (item: Item) => {
         setSelectedItemForDetails(item);
+        setVariantGroupIds(resolveVariantGroup(item));
         setIsDetailDrawerOpen(true);
+    };
+
+    const handleTogglePin = (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        if (!companyId) return;
+        setPinnedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
+            localStorage.setItem(`pinned_items_${companyId}`, JSON.stringify([...next]));
+
+            const settingsRef = doc(db, 'companies', companyId, 'settings', 'pinned_items');
+            setDoc(settingsRef, { ids: [...next] }, { merge: true });
+            return next;
+        });
     };
 
     const handleToggleListed = async (itemId: string, newState: boolean) => {
@@ -399,12 +851,7 @@ const MyShop: React.FC = () => {
 
             if (updatedItem && companyId) {
                 const isNowInStock = (updatedItem.stock || 0) > 0;
-
-                await syncNotifyStock(
-                    companyId,
-                    updatedItem.id!,
-                    isNowInStock
-                );
+                await syncNotifyStock(companyId, updatedItem.id!, isNowInStock);
             }
             setAllItems(prev => prev.map(item => item.id === itemId ? { ...item, isListed: newState } as Item : item));
         } catch (err) {
@@ -418,63 +865,125 @@ const MyShop: React.FC = () => {
 
     return (
         <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative">
-            {/* --- HEADER SECTION --- */}
-            <header className="sticky top-0 z-[10] bg-white border-b border-gray-100 shadow-sm w-full">
-                <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col gap-2 relative">
-                    <div className="flex items-center justify-between">
-                        {/* LEFT: Logo/Name + Category (Combined for Mobile) */}
-                        <div className="flex items-center gap-1.5">
-                            <button
-                                onClick={() => navigate(-1)}
-                                className="p-1 hover:bg-gray-100 rounded-sm transition-colors"
+            <header className="sticky top-0 z-[100] bg-white border-b border-gray-100 shadow-sm w-full">
+                <div className="max-w-7xl mx-auto px-4 h-[68px] relative flex items-center justify-between">
+
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.ORDER}`)}
+                            className="p-2 rounded-sm hover:bg-slate-200 transition-colors text-slate-700"
+                            title="Back"
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
                             >
-                                <ChevronLeft className="text-[#1A3B5D]" size={20} />
-                            </button>
-                            <div className="w-1 h-5 bg-[#00A3E1] rounded-sm"></div>
+                                <line x1="19" y1="12" x2="5" y2="12"></line>
+                                <polyline points="12 19 5 12 12 5"></polyline>
+                            </svg>
+                        </button>
 
-                            <div className="flex items-center gap-1">
-                                <h1 className="text-xs md:text-sm font-black text-[#1A3B5D] uppercase tracking-tighter">
-                                    {companyName}
-                                </h1>
-
-
-                            </div>
-
-                        </div>
+                        <span
+                            className={`hidden md:inline-block transition-all duration-300 ease-out transform ${isScrolled
+                                ? "opacity-100 translate-x-0"
+                                : "opacity-0 -translate-x-4"
+                                } text-[10px] md:text-xs font-semibold text-gray-500 uppercase whitespace-nowrap`}
+                        >
+                            {companyName}
+                        </span>
                     </div>
+
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden">
+                        <span
+                            className={`absolute transition-all duration-300 ease-out will-change-transform transform ${isScrolled
+                                ? "-translate-y-6 opacity-0 scale-95"
+                                : "translate-y-0 opacity-100 scale-100"
+                                } text-lg font-black text-[#1A3B5D] uppercase tracking-tighter whitespace-nowrap`}
+                        >
+                            {companyName}
+                        </span>
+
+                        <span
+                            className={`absolute transition-all duration-300 ease-out will-change-transform transform ${isScrolled
+                                ? "translate-y-0 opacity-100 scale-100"
+                                : "translate-y-6 opacity-0 scale-95"
+                                } text-lg font-black text-[#F97316] uppercase tracking-tighter whitespace-nowrap`}
+                        >
+                            {currentCategoryName}
+                        </span>
+
+                        {isScrolled && (
+                            <span className="md:hidden text-[12px] font-semibold text-gray-500 uppercase tracking-wide mt-10">
+                                {companyName}
+                            </span>
+                        )}
+                    </div>
+
+                    <div className="w-10"></div>
                 </div>
             </header>
 
             <main className="p-3 md:p-6 space-y-3 flex-1 max-w-7xl mx-auto w-full pb-24">
-                <div className='flex items-center justify-center'>
-                    <h1 className="text-sm md:text-xl font-extrabold text-[#00A3E1] uppercase tracking-tighter">{currentCategoryName}</h1>
-                </div>
-                <div className="relative group md:max-w-md md:mx-auto w-full">
-                    <SearchBar
-                        items={allItems}
-                        placeholder="Search products..."
-                        onItemSelected={(item) => {
-                            if (!item.id) return;
-
-                            setSearchQuery(item.name);
-
-                            navigate(
-                                `/catalogue-home/my-shop/${item.itemGroupId}`,
-                                {
-                                    state: {
-                                        highlightItemId: item.id
-                                    }
-                                }
-                            );
-                        }}
-                    />
+                <div
+                    className={`relative w-full flex items-center justify-center transition-all duration-300 ease-out ${isScrolled
+                        ? "opacity-0 -translate-y-6 h-0 overflow-hidden"
+                        : "opacity-100 translate-y-0"
+                        }`}
+                >
+                    <h1 className="text-sm md:text-xl font-extrabold text-[#F97316] uppercase tracking-tighter">
+                        {currentCategoryName}
+                    </h1>
+                    <button
+                        onClick={handleDownloadPDF}
+                        disabled={filteredItems.length === 0 || isGeneratingPDF}
+                        className="absolute right-0 flex items-center gap-1.5 bg-white border border-gray-100 px-3 py-1.5 rounded-sm shadow-sm active:scale-95 transition-all text-[#1A3B5D] hover:text-[#F97316] disabled:opacity-50"
+                        title="Download PDF Catalogue"
+                    >
+                        {isGeneratingPDF ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                        <span className="text-[10px] font-black uppercase hidden sm:inline">
+                            {isGeneratingPDF ? 'Generating...' : 'PDF'}
+                        </span>
+                    </button>
                 </div>
 
+                <div
+                    className={`flex justify-center transition-all duration-300 ${isScrolled
+                        ? "sticky top-[70px] z-50 "
+                        : "relative"
+                        }`}
+                >
+                    <div className="relative group md:max-w-md md:mx-auto w-full">
+                        <SearchableItemInput
+                            items={allItems}
+                            placeholder="Search products..."
+                            itemGroupMap={itemGroupMap}
+                            onItemSelected={(item) => {
+                                if (!item.id) return;
+                                const group = allItemGroups.find(g => g.id === item.itemGroupId);
+                                const uncategorizedGroup = allItemGroups.find(g => g.name.toLowerCase().trim() === "uncategorized");
+                                const slug = group
+                                    ? generateSlug(group.name)
+                                    : uncategorizedGroup
+                                        ? generateSlug(uncategorizedGroup.name)
+                                        : "uncategorized";
+                                navigate(`/catalogue-home/my-shop/${slug}`, {
+                                    state: { highlightItemId: item.id, isUnlisted: !item.isListed }
+                                });
+                            }}
+                        />
+                    </div>
+                </div>
                 <div className="max-w-7xl mx-auto px-1 flex items-center justify-between relative">
-
                     <div className="flex items-center gap-2">
                         <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Total Products:</span>
-                        <span className="bg-[#00A3E1]/10 text-[#00A3E1] px-2.5 py-0.5 rounded-sm text-[10px] font-black">{filteredItems.length}</span>
+                        <span className="bg-[#F97316]/10 text-[#F97316] px-2.5 py-0.5 rounded-sm text-[10px] font-black">{filteredItems.length}</span>
                     </div>
 
                     <div className="relative">
@@ -488,7 +997,7 @@ const MyShop: React.FC = () => {
                                     <button
                                         key={opt}
                                         onClick={() => { setSortOrder(opt as any); setIsSortOpen(false); }}
-                                        className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 border-t border-gray-50 first:border-0 ${sortOrder === opt ? 'text-[#00A3E1]' : 'text-[#1A3B5D]'}`}
+                                        className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 border-t border-gray-50 first:border-0 ${sortOrder === opt ? 'text-[#F97316]' : 'text-[#1A3B5D]'}`}
                                     >
                                         {opt.replace(':', ': ')}
                                     </button>
@@ -497,56 +1006,50 @@ const MyShop: React.FC = () => {
                         )}
                     </div>
                 </div>
-
-                <div>
+                <ShowWrapper requiredPermission={Cata_Permissions.ViewEditButton}>
                     <div>
-                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">
-                            Live All Items
-                        </span>
+                        <div>
+                            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">
+                                Live All Items
+                            </span>
 
-                        <button
-                            onClick={handleToggleAllLive}
-                            className={`w-11 h-4 flex items-center rounded-sm p-1 transition-all duration-300 ${isAllLive ? 'bg-green-500' : 'bg-gray-300'
-                                }`}
-                        >
-                            <div
-                                className={`bg-white w-3 h-3 rounded-sm shadow-md transform transition-all duration-300 ${isAllLive ? 'translate-x-6' : 'translate-x-0'
-                                    }`}
-                            />
-                        </button>
+                            <button
+                                onClick={handleToggleAllLive}
+                                className={`w-11 h-4 flex items-center rounded-sm p-1 transition-all duration-300 ${isAllLive ? 'bg-[#F97316]' : 'bg-gray-300'}`}
+                            >
+                                <div
+                                    className={`bg-white w-3 h-3 rounded-sm shadow-md transform transition-all duration-300 ${isAllLive ? 'translate-x-6' : 'translate-x-0'
+                                        }`}
+                                />
+                            </button>
+                        </div>
                     </div>
-                </div>
+                </ShowWrapper>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1">
                     {itemsToDisplay.map((item) => {
-                        // const isOutOfStock = (item.stock || 0) <= 0;
-                        // const showNotifyButton = catalogueSettings?.enableOutOfStockNotification && isOutOfStock;
-                        // const disableAddToCart = !catalogueSettings?.enableOutOfStockNotification && isOutOfStock;
-                        const isUncategorized = groupId === "uncategorized";
-                        const basePrice = item.salesPrice || item.mrp;
+                        const { mrp, salePrice, discountPercent, hasDiscount, hasBothPrices } = getEffectivePriceInfo(item);
                         const multiplier = (item as any).unitMultiplier || 1;
-                        const salePrice = basePrice * multiplier;
-                        const mrp = (item.mrp || 0) * multiplier;
-                        const hasBothPrices =
-                            item.salesPrice &&
-                            item.mrp &&
-                            item.salesPrice < item.mrp;
-                        //  discount logic
-                        const hasDiscount = salePrice < mrp;
-                        const discountPercent = mrp && hasDiscount ? Math.round(((mrp - salePrice) / mrp) * 100) : 0;
-                        const showDiscountBadge =
-                            catalogueSettings?.showDiscountBadge &&
-                            hasDiscount;
+                        const showDiscountBadge = catalogueSettings?.showDiscountBadge && hasDiscount;
+
                         return (
                             <div
                                 id={item.id}
                                 key={item.id}
                                 onClick={() => handleOpenDetailDrawer(item)}
-                                className={`bg-white rounded-sm overflow-hidden shadow-sm border transition-all duration-300 relative group hover:shadow-md cursor-pointer ${highlightedId === item.id ? 'ring-3 ring-blue-500 shadow-lg scale-[1.02] z-100' : 'border-gray-100'} ${!isViewMode ? 'ring-1 ring-[#00A3E1]/10' : ''}`}
-                            >
+                                className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col h-full transition-all duration-300 relative group hover:shadow-md cursor-pointer ${highlightedId === item.id ? 'ring-3 ring-[#F97316] shadow-lg scale-[1.02]' : pinnedIds.has(item.id!) ? 'ring-1 ring-[#F97316] shadow-lg border-[#F97316]' : 'border-gray-100'}`}>
                                 <div className="aspect-square flex items-center justify-center relative overflow-hidden">
+                                    {pinnedIds.has(item.id!) && (
+                                        <div className="absolute top-1.5 right-1.5 z-10 bg-white text-[#F97316] rounded-sm px-1 py-1 flex items-center gap-0.5 shadow-md">
+                                            <Pin size={12} className="fill-[#F97316]" />
+                                        </div>
+                                    )}
+
                                     {showDiscountBadge && (
-                                        <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-tight shadow-md">
+                                        <div
+                                            className={`absolute top-2 ${pinnedIds.has(item.id!) ? "right-8" : "right-2"
+                                                } bg-[#F97316] text-white px-2 py-0.5 rounded-sm text-[9px] font-black uppercase tracking-tight shadow-md`}
+                                        >
                                             {discountPercent}% OFF
                                         </div>
                                     )}
@@ -554,77 +1057,108 @@ const MyShop: React.FC = () => {
                                         <StockIndicator stock={item.stock || 0} />
                                     </div>
                                     {item.imageUrl ? (
-                                        <img src={item.imageUrl} alt={item.name} className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" />
+                                        <img src={item.imageUrl} alt={item.name} className="object-contain w-full h-full transition-transform duration-500 group-hover:scale-110" />
                                     ) : (
                                         <FiPackage className="w-10 h-10 text-gray-200" />
                                     )}
                                 </div>
 
                                 <div className="p-3 flex flex-col flex-1">
-                                    <h3 className="text-[12px] font-black text-[#1A3B5D] mb-1 uppercase leading-tight">{item.name}</h3>
+                                    <div className="flex items-start justify-between mb-1">
+                                        <h3 className="text-[14px] font-bold text-[#1A3B5D] uppercase leading-tight break-words overflow-hidden max-h-[2.5em]">
+                                            {item.name}
+                                        </h3>
+
+                                        {!isUncategorized && (
+                                            <div className="flex items-center gap-1">
+                                                <button
+                                                    onClick={(e) => handleTogglePin(e, item.id!)}
+                                                    className={`p-1 rounded-sm transition-all ${pinnedIds.has(item.id!)
+                                                        ? 'bg-[#F97316]/10 text-[#F97316]'
+                                                        : 'bg-gray-100 text-gray-400 hover:bg-[#F97316] hover:text-white'
+                                                        }`}
+                                                    title={pinnedIds.has(item.id!) ? 'Unpin' : 'Pin to top'}
+                                                >
+                                                    <Pin size={12} className={pinnedIds.has(item.id!) ? 'fill-[#F97316]' : ''} />
+                                                </button>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleShareItem(item);
+                                                    }}
+                                                    className="p-1 rounded-sm bg-[#F97316]/10 text-[#F97316] hover:bg-[#F97316] hover:text-white transition-all"
+                                                    title="Share Product"
+                                                >
+                                                    <Send size={12} />
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
                                     <div className="flex items-center justify-between w-full">
-                                        <div className="flex items-center gap-2 w-full">
+                                        <div className="flex items-center gap-2 w-full min-w-0">
                                             {hasBothPrices ? (
-                                                <>
-                                                    <p className="text-[14px] font-bold text-gray-400 line-through">
+                                                <div className="flex flex-wrap items-center gap-x-1 leading-tight min-w-0">
+                                                    <p className="text-[14px] font-bold text-gray-400 line-through whitespace-nowrap shrink-0">
                                                         ₹{mrp}
                                                     </p>
-
-                                                    <p className="text-[14px]font-black text-[#00A3E1]">
+                                                    <p className="text-[14px] font-black text-[#F97316] whitespace-nowrap shrink-0">
                                                         ₹{salePrice}
-                                                        <span className="text-[12px] text-gray-600 font-semibold ml-1">
-                                                            ({multiplier} pcs)
-                                                        </span>
                                                     </p>
-                                                </>
-                                            ) : (
-                                                <p className="text-[14px] font-black text-[#00A3E1]">
-                                                    ₹{salePrice}
-                                                    <span className="text-[12px] text-gray-600 font-semibold ml-1">
+                                                    <span className="text-[11px] text-gray-600 font-semibold whitespace-nowrap">
                                                         ({multiplier} pcs)
                                                     </span>
-                                                </p>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-1 flex-nowrap overflow-hidden min-w-0">
+                                                    <p className="text-[14px] font-black text-[#F97316] whitespace-nowrap truncate max-w-[70%]">
+                                                        ₹{salePrice}
+                                                    </p>
+                                                    <span className="text-[12px] text-gray-600 font-semibold whitespace-nowrap shrink-0">
+                                                        ({multiplier} pcs)
+                                                    </span>
+                                                </div>
                                             )}
                                         </div>
                                     </div>
 
-
-
-                                    <div className="mt-1 flex gap-1">
+                                    <div className="mt-auto flex gap-1">
                                         {isUncategorized ? (
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleOpenEditDrawer(item);
-                                                }}
-                                                className="w-full bg-gray-200 text-[#1A3B5D] py-1.5 rounded-sm text-[12px] font-black uppercase border border-gray-100"
-                                            >
-                                                Edit
-                                            </button>
-                                        ) : (
-                                            <>
+                                            <ShowWrapper requiredPermission={Cata_Permissions.ViewEditButton}>
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         handleOpenEditDrawer(item);
                                                     }}
-                                                    className="flex-1 bg-gray-200 text-[#1A3B5D] py-1.5 rounded-sm text-[12px] font-black uppercase border border-gray-100"
+                                                    className="w-full bg-gray-200 text-[#1A3B5D] py-1.5 rounded-sm text-[12px] font-black uppercase border border-gray-100"
                                                 >
                                                     Edit
                                                 </button>
+                                            </ShowWrapper>
+                                        ) : (
+                                            <>
+                                                <ShowWrapper requiredPermission={Cata_Permissions.ViewEditButton}>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleOpenEditDrawer(item);
+                                                        }}
+                                                        className="flex-1 bg-gray-200 text-[#1A3B5D] py-1.5 rounded-sm text-[12px] font-black uppercase border border-gray-100"
+                                                    >
+                                                        Edit
+                                                    </button>
 
-                                                <QuickListedToggle
-                                                    itemId={item.id!}
-                                                    isListed={item.isListed ?? false}
-                                                    onToggle={async (itemId, newState) => {
-                                                        if (groupId === "uncategorized" && newState === true) {
-                                                            setShowUncategorizedWarning(true);
-                                                            return;
-                                                        }
-
-                                                        await handleToggleListed(itemId, newState);
-                                                    }}
-                                                />
+                                                    <QuickListedToggle
+                                                        itemId={item.id!}
+                                                        isListed={item.isListed ?? false}
+                                                        onToggle={async (itemId, newState) => {
+                                                            if (isUncategorized && newState === true) {
+                                                                setShowUncategorizedWarning(true);
+                                                                return;
+                                                            }
+                                                            await handleToggleListed(itemId, newState);
+                                                        }}
+                                                    />
+                                                </ShowWrapper>
                                             </>
                                         )}
                                     </div>
@@ -660,13 +1194,20 @@ const MyShop: React.FC = () => {
                                             {item.imageUrl ? <img src={item.imageUrl} className="w-full h-full object-cover" /> : <FiPackage className="w-full h-full p-4 text-gray-200" />}
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <h4 className="text-[10px] font-black text-[#00A3E1] uppercase truncate">{item.name}</h4>
-                                            <p className="text-xs font-black text-[#1A3B5D]">₹{item.mrp}</p>
+                                            <h4 className="text-[10px] font-black text-[#F97316] uppercase truncate">{item.name}</h4>
+                                            <p className="text-xs font-black text-[#1A3B5D]">
+                                                ₹{getEffectivePriceInfo(item).salePrice}
+                                                {getEffectivePriceInfo(item).hasBothPrices && (
+                                                    <span className="text-[10px] text-gray-400 line-through ml-1.5">
+                                                        ₹{getEffectivePriceInfo(item).mrp}
+                                                    </span>
+                                                )}
+                                            </p>
                                             <div className="flex items-center gap-3 mt-2">
                                                 <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-sm px-2 py-1">
-                                                    <button onClick={() => updateQuantity(item.id!, -1)} className="text-gray-400 hover:text-[#00A3E1]"><Minus size={14} /></button>
+                                                    <button onClick={() => updateQuantity(item.id!, -1)} className="text-gray-400 hover:text-[#F97316]"><Minus size={14} /></button>
                                                     <span className="text-xs font-black w-4 text-center">{quantity}</span>
-                                                    <button onClick={() => updateQuantity(item.id!, 1)} className="text-gray-400 hover:text-[#00A3E1]"><Plus size={14} /></button>
+                                                    <button onClick={() => updateQuantity(item.id!, 1)} className="text-gray-400 hover:text-[#F97316]"><Plus size={14} /></button>
                                                 </div>
                                                 <button onClick={() => removeFromCart(item.id!)} className="text-red-400 hover:text-red-600 ml-auto"><Trash2 size={16} /></button>
                                             </div>
@@ -681,7 +1222,7 @@ const MyShop: React.FC = () => {
                                     <span className="text-[10px] font-black text-gray-400 uppercase">Subtotal</span>
                                     <span className="text-lg font-black text-[#1A3B5D]">₹{cartTotal}</span>
                                 </div>
-                                <button className="w-full bg-[#00A3E1] text-white py-4 rounded-sm font-black text-xs uppercase tracking-widest shadow-lg shadow-[#00A3E1]/20 active:scale-[0.98] transition-all">
+                                <button className="w-full bg-[#F97316] text-white py-4 rounded-sm font-black text-xs uppercase tracking-widest shadow-lg shadow-[#F97316]/20 active:scale-[0.98] transition-all">
                                     Checkout Now
                                 </button>
                             </div>
@@ -692,7 +1233,6 @@ const MyShop: React.FC = () => {
 
             <ItemEditDrawer
                 item={selectedItemForEdit}
-                isCatalogue={true}
                 isOpen={isDrawerOpen}
                 onClose={() => {
                     setIsDrawerOpen(false);
@@ -702,50 +1242,41 @@ const MyShop: React.FC = () => {
                     setAllItems(prev =>
                         prev.map(i =>
                             i.id === selectedItemForEdit?.id
-                                ? { ...i, ...updated, moq: updated.moq ?? i.moq ?? 1 }
+                                ? {
+                                    ...i,
+                                    ...updated,
+                                    stock: updated.stock !== undefined ? Number(updated.stock) : i.stock,
+                                    moq: updated.moq ?? i.moq ?? 1
+                                }
                                 : i
                         )
                     );
 
-                    // REAL STOCK SYNC
                     if (companyId && selectedItemForEdit) {
-                        const newStock =
-                            updated.stock ?? selectedItemForEdit.stock ?? 0;
-
+                        const newStock = updated.stock !== undefined ? Number(updated.stock) : (selectedItemForEdit.stock ?? 0);
                         const isNowInStock = newStock > 0;
-
-                        await syncNotifyStock(
-                            companyId,
-                            selectedItemForEdit.id!,
-                            isNowInStock
-                        );
+                        await syncNotifyStock(companyId, selectedItemForEdit.id!, isNowInStock);
                     }
                 }}
+                itemGroupRoute={`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`}
             />
 
             {showUncategorizedWarning && (
                 <div className="fixed inset-0 z-[300] flex items-center justify-center">
-
-                    {/* BACKDROP */}
                     <div
                         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
                         onClick={() => setShowUncategorizedWarning(false)}
                     />
-
-                    {/* CARD */}
                     <div className="relative bg-white w-[90%] max-w-sm rounded-lg shadow-xl p-5 z-10 animate-in fade-in zoom-in duration-200">
-
                         <h2 className="text-sm font-black text-red-500 uppercase mb-2">
                             Warning
                         </h2>
-
                         <p className="text-sm font-bold text-gray-600 mb-4">
                             Please categorize the item first. You can only make it LIVE after assigning a category.
                         </p>
-
                         <button
                             onClick={() => setShowUncategorizedWarning(false)}
-                            className="w-full bg-[#00A3E1] text-white py-2 rounded-sm text-xs font-black uppercase"
+                            className="w-full bg-[#F97316] text-white py-2 rounded-sm text-xs font-black uppercase"
                         >
                             OK
                         </button>
@@ -755,24 +1286,17 @@ const MyShop: React.FC = () => {
 
             {showConfirmPopup && (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center">
-
-                    {/* BACKDROP */}
                     <div
                         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
                         onClick={() => setShowConfirmPopup(false)}
                     />
-
-                    {/* CARD */}
                     <div className="relative bg-white w-[90%] max-w-sm rounded-lg shadow-xl p-5 z-10 animate-in fade-in zoom-in duration-200">
-
                         <h2 className="text-sm font-black text-[#1A3B5D] uppercase mb-2">
                             Confirmation
                         </h2>
-
                         <p className="text-lg font-bold text-gray-600 mb-4">
                             Do you want to make all items {pendingLiveState ? "LIVE" : "UNLIVE"}?
                         </p>
-
                         <div className="flex gap-2">
                             <button
                                 onClick={confirmToggleAllLive}
@@ -780,7 +1304,6 @@ const MyShop: React.FC = () => {
                             >
                                 Yes
                             </button>
-
                             <button
                                 onClick={() => setShowConfirmPopup(false)}
                                 className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-sm text-xs font-black uppercase"
@@ -800,7 +1323,14 @@ const MyShop: React.FC = () => {
                 onAddToCart={addToCart}
                 initialQuantity={cart.find(i => i.item.id === selectedItemForDetails?.id)?.quantity || 0}
                 onUpdateQuantity={updateQuantity}
+                companyId={companyId}
+                variantGroupIds={variantGroupIds}
+                onVariantSelect={(variantItem) => {
+                    setSelectedItemForDetails(variantItem as Item);
+                    setVariantGroupIds(resolveVariantGroup(variantItem as Item));
+                }}
             />
+
             <Footer
                 companyName={companyName}
                 instagram={socialLinks.instagram}

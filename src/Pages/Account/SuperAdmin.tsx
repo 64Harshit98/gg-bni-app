@@ -4,14 +4,19 @@ import { db } from '../../lib/Firebase';
 import {
   collection, getDocs, doc, setDoc, Timestamp, collectionGroup
 } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { PLANS } from '../../enums';
 import Loading from '../Loading/Loading';
 import { useAuth } from '../../context/auth-context';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
+import { botMasterService } from '../Additional/Whatsapp/WhatsappApi';
 
 // ─── Config ───────────────────────────────────────────────
-const SUPER_ADMIN_UID = "1AKioGfop8PmHhry6uXOz8Rw6qT2";
+const SUPER_ADMIN_UIDS = [
+  "6vwZ1HRqX7VSnh5KP4JW0TKeuZm2",
+  "1AKioGfop8PmHhry6uXOz8Rw6qT2"
+];
 const DEFAULT_DURATION_DAYS = 28;
 
 const addDays = (date: Date, days: number) => {
@@ -25,6 +30,9 @@ interface CompanyData {
   id: string;
   name: string;
   ownerName?: string;
+  email?: string;
+  phone?: string;
+  lastLogin?: any;
   pack: string;
   validity: 'active' | 'inactive';
   expiryDate?: any;
@@ -40,7 +48,10 @@ const SuperAdminCompanies: React.FC = () => {
   const [companies, setCompanies] = useState<CompanyData[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [sendingId, setSendingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({
     pack: 'free',
     validity: 'active' as 'active' | 'inactive',
@@ -48,7 +59,7 @@ const SuperAdminCompanies: React.FC = () => {
   });
 
   // Access guard
-  if (currentUser?.uid !== SUPER_ADMIN_UID) {
+  if (!currentUser || !SUPER_ADMIN_UIDS.includes(currentUser.uid)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
         <div className="text-center">
@@ -59,38 +70,138 @@ const SuperAdminCompanies: React.FC = () => {
     );
   }
 
+  const handleDeleteCompany = async (companyId: string) => {
+    const confirmDelete = window.confirm(
+      "🛑 WARNING: This will permanently delete the company, ALL its data, and ALL its users from Firebase Authentication. This cannot be undone. Are you sure?"
+    );
+
+    if (!confirmDelete) return;
+
+    setDeletingId(companyId);
+    try {
+      const functions = getFunctions();
+      const deleteCompanyData = httpsCallable(functions, 'deleteCompanyData');
+
+      const result = await deleteCompanyData({ companyId });
+      console.log((result.data as any).message);
+
+      setCompanies(prev => prev.filter(c => c.id !== companyId));
+      setEditingId(null);
+      alert("Company and users successfully deleted.");
+
+    } catch (err: any) {
+      console.error(err);
+      alert(`Failed to delete company: ${err.message}`);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+  const handleSendReminder = async (company: CompanyData) => {
+    if (!company.phone || company.phone === 'N/A') {
+      alert('Company phone number is missing.');
+      return;
+    }
+
+    const confirmSend = window.confirm(`Send WhatsApp reminder to ${company.name} at ${company.phone}?`);
+    if (!confirmSend) return;
+
+    setSendingId(company.id);
+
+    try {
+      const SUPER_ADMIN_TOKEN = 'YOUR_MASTER_TOKEN';
+      const SUPER_ADMIN_WA_NUMBER = 'YOUR_MASTER_NUMBER';
+
+      const daysLeft = getDaysLeft(company.expiryDate);
+      const expiryStr = formatExpiry(company.expiryDate) || 'soon';
+
+      let timeText = '';
+      if (daysLeft === null) {
+        timeText = 'is expiring soon';
+      } else if (daysLeft < 0) {
+        timeText = `expired on *${expiryStr}* (${Math.abs(daysLeft)} days ago)`;
+      } else if (daysLeft === 0) {
+        timeText = `is expiring *today*`;
+      } else {
+        timeText = `is expiring in *${daysLeft} days* (on *${expiryStr}*)`;
+      }
+
+      const message = `Dear ${company.ownerName || 'User'},\n\nThis is a gentle reminder that your *${company.pack.toUpperCase().replace('POS_', '')}* plan ${timeText}.\n\nPlease renew your plan to continue using our services without interruption.\n\nThank you!`;
+
+      const response = await botMasterService.sendMessage(
+        SUPER_ADMIN_TOKEN,
+        SUPER_ADMIN_WA_NUMBER,
+        company.phone,
+        message
+      );
+
+      let isSuccess = false;
+      if (Array.isArray(response) && response.length > 0) {
+        const res = response[0];
+        if (res.status === 'sent' || res.status === 'delivered') isSuccess = true;
+      } else if (response?.status === 'sent' || response?.status === 'success' || response?.status === 200) {
+        isSuccess = true;
+      }
+
+      if (!isSuccess) throw new Error('API reported failure.');
+      alert('Reminder sent via WhatsApp!');
+
+    } catch (err: any) {
+      console.error('Reminder Send Error:', err);
+      alert('Failed to send reminder.');
+    } finally {
+      setSendingId(null);
+    }
+  };
   // ── Fetch ──────────────────────────────────────────────
   useEffect(() => {
     const fetchCompanies = async () => {
       try {
-        const usersQuery = await getDocs(collectionGroup(db, 'users'));
         const companyMap = new Map<string, CompanyData>();
 
-        usersQuery.forEach((userDoc) => {
-          const parentCompany = userDoc.ref.parent.parent;
-          if (parentCompany && !companyMap.has(parentCompany.id)) {
-            companyMap.set(parentCompany.id, {
-              id: parentCompany.id,
-              name: 'Unknown (Phantom)',
-              ownerName: 'Unknown',
-              pack: 'free',
-              validity: 'inactive',
-              expiryDate: null,
-            });
-          }
-        });
-
-        const realSnap = await getDocs(collection(db, 'companies'));
-        realSnap.forEach(d => {
+        // 1. Fetch Companies First (Primary Data)
+        const companiesSnap = await getDocs(collection(db, 'companies'));
+        companiesSnap.forEach(d => {
           const data = d.data();
           companyMap.set(d.id, {
             id: d.id,
             name: data.name || 'Unknown Company',
-            ownerName: data.ownerName || 'Unknown',
+            ownerName: 'Unknown', // Will be overwritten by User Doc
+            email: 'N/A',         // Will be overwritten by User Doc
+            phone: data.ownerPhoneNumber || 'N/A', // Base phone from company doc
+            lastLogin: data.createdAt || null,     // Fallback to company creation
             pack: data.pack || 'free',
             validity: data.validity || 'inactive',
             expiryDate: data.expiryDate,
           });
+        });
+
+        // 2. Fetch Users to get the specific "Owner" details
+        const usersQuery = await getDocs(collectionGroup(db, 'users'));
+        usersQuery.forEach((userDoc) => {
+          const userData = userDoc.data();
+          // Find the company ID (either from the document field or parent path)
+          const parentCompany = userDoc.ref.parent.parent;
+          const compId = userData.companyId || (parentCompany ? parentCompany.id : null);
+
+          if (compId && companyMap.has(compId)) {
+            // Check for Owner role (handling potential case variations)
+            if (userData.role === 'Owner' || userData.role === 'owner') {
+              const existing = companyMap.get(compId)!;
+
+              // Merge user data into the company state
+              if (userData.name) existing.ownerName = userData.name;
+              if (userData.email) existing.email = userData.email;
+              if (userData.phoneNumber) existing.phone = userData.phoneNumber;
+
+              // If you have a specific lastLogin field, map it here. 
+              // Otherwise it falls back to createdAt from the user doc.
+              if (userData.lastLogin || userData.createdAt) {
+                existing.lastLogin = userData.lastLogin || userData.createdAt;
+              }
+
+              companyMap.set(compId, existing);
+            }
+          }
         });
 
         setCompanies(Array.from(companyMap.values()));
@@ -103,7 +214,12 @@ const SuperAdminCompanies: React.FC = () => {
     };
     fetchCompanies();
   }, []);
-
+  const getDaysLeft = (expiryDate: any) => {
+    if (!expiryDate) return null;
+    const d = expiryDate.toDate ? expiryDate.toDate() : new Date(expiryDate);
+    const diff = d.getTime() - new Date().getTime();
+    return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  };
   // ── Helpers ────────────────────────────────────────────
   const getStatus = (company: CompanyData): FilterType => {
     const now = new Date();
@@ -111,11 +227,26 @@ const SuperAdminCompanies: React.FC = () => {
     const exp = company.expiryDate
       ? (company.expiryDate.toDate ? company.expiryDate.toDate() : new Date(company.expiryDate))
       : null;
+
+    // Check if pack includes "basic" or "free" for trial logic if needed
     if (company.pack === 'free') return 'trial';
     if (!exp || exp.getTime() < now.getTime()) return 'expired';
     const diff = exp.getTime() - now.getTime();
     if (diff <= soonMs) return 'near_expiry';
     return 'active';
+  };
+
+  const formatExpiry = (expiryDate: any) => {
+    if (!expiryDate) return null;
+    const d = expiryDate.toDate ? expiryDate.toDate() : new Date(expiryDate);
+    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  const formatDateTime = (timestamp: any) => {
+    if (!timestamp) return 'N/A';
+    const d = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    if (isNaN(d.getTime())) return 'N/A';
+    return d.toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
   // ── Stats ──────────────────────────────────────────────
@@ -148,12 +279,24 @@ const SuperAdminCompanies: React.FC = () => {
         return ea - eb;
       });
 
-    const filtered = activeFilter === 'all'
+    const statusFiltered = activeFilter === 'all'
       ? companies
       : companies.filter(c => getStatus(c) === activeFilter);
 
-    return sortByExpiry(filtered);
-  }, [companies, activeFilter]);
+    const query = searchQuery.trim().toLowerCase();
+    const searched = query
+      ? statusFiltered.filter(c => [
+          c.name,
+          c.ownerName,
+          c.email,
+          c.phone,
+          c.id,
+          c.pack,
+        ].some(field => field && field.toLowerCase().includes(query)))
+      : statusFiltered;
+
+    return sortByExpiry(searched);
+  }, [companies, activeFilter, searchQuery]);
 
   // ── Edit helpers ───────────────────────────────────────
   const startEdit = (company: CompanyData) => {
@@ -196,13 +339,6 @@ const SuperAdminCompanies: React.FC = () => {
     }
   };
 
-
-  const formatExpiry = (expiryDate: any) => {
-    if (!expiryDate) return null;
-    const d = expiryDate.toDate ? expiryDate.toDate() : new Date(expiryDate);
-    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-  };
-
   const isExpiringSoon = (expiryDate: any) => {
     if (!expiryDate) return false;
     const d = expiryDate.toDate ? expiryDate.toDate() : new Date(expiryDate);
@@ -211,12 +347,11 @@ const SuperAdminCompanies: React.FC = () => {
   };
 
   const packBadge = (pack: string) => {
-    switch (pack) {
-      case 'platinum': return 'bg-purple-100 text-purple-700';
-      case 'gold': return 'bg-yellow-100 text-yellow-700';
-      case 'basic': return 'bg-blue-100 text-blue-700';
-      default: return 'bg-gray-100 text-gray-500';
-    }
+    const p = pack.toLowerCase();
+    if (p.includes('platinum')) return 'bg-purple-100 text-purple-700';
+    if (p.includes('gold')) return 'bg-yellow-100 text-yellow-700';
+    if (p.includes('basic')) return 'bg-blue-100 text-blue-700';
+    return 'bg-gray-100 text-gray-500';
   };
 
   const toggleFilter = (f: FilterType) =>
@@ -239,7 +374,6 @@ const SuperAdminCompanies: React.FC = () => {
           </svg>
         </button>
       </div>
-
 
       {/* ── FILTER CARDS ── */}
       <div className="grid grid-cols-2 gap-2 mb-4 md:grid-cols-4 md:gap-4">
@@ -286,6 +420,32 @@ const SuperAdminCompanies: React.FC = () => {
 
       </div>
 
+      {/* ── SEARCH ── */}
+      <div className="relative mb-4">
+        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
+          </svg>
+        </div>
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder="Search by company name, owner, email, phone, or company ID..."
+          className="w-full text-sm bg-white border border-gray-200 rounded-sm pl-9 pr-9 py-2.5 outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery('')}
+            className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
+      </div>
+
       {/* ── COMPANY LIST ── */}
       {filteredCompanies.length === 0 ? (
         <div className="text-center p-10 text-gray-400">No companies found.</div>
@@ -295,6 +455,7 @@ const SuperAdminCompanies: React.FC = () => {
             const soon = isExpiringSoon(company.expiryDate);
             const isEditing = editingId === company.id;
             const expiryStr = formatExpiry(company.expiryDate);
+            const daysLeft = getDaysLeft(company.expiryDate);
 
             return (
               <div
@@ -315,7 +476,7 @@ const SuperAdminCompanies: React.FC = () => {
                       </h3>
                       {/* Pack badge */}
                       <span className={`text-[10px] px-2 py-0.5 rounded-sm font-bold uppercase ${packBadge(company.pack)}`}>
-                        {company.pack}
+                        {company.pack.replace('pos_', '')}
                       </span>
                       {/* Status badge */}
                       <span className={`text-[10px] px-2 py-0.5 rounded-sm font-bold uppercase ${getStatus(company) === 'expired'
@@ -355,9 +516,35 @@ const SuperAdminCompanies: React.FC = () => {
                   </div>
                 </div>
 
-                {/* ── Inline edit panel ── */}
+                {/* ── Inline edit panel & Contact Details ── */}
                 {isEditing && (
                   <div className="border-t border-gray-100 bg-gray-50 p-4">
+
+                    {/* Contact Info & Activity Section */}
+                    <div className="mb-5 p-3 bg-white border border-gray-200 rounded-sm shadow-sm">
+                      <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2 border-b border-gray-100 pb-1">
+                        Owner Contact & Activity Details
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-4 text-sm">
+                        <div className="flex flex-col">
+                          <span className="text-[10px] text-gray-400 font-bold uppercase">Owner Name</span>
+                          <span className="text-gray-800 font-medium">{company.ownerName || 'N/A'}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[10px] text-gray-400 font-bold uppercase">Email</span>
+                          <span className="text-blue-600 font-medium truncate">{company.email || 'N/A'}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[10px] text-gray-400 font-bold uppercase">Phone Number</span>
+                          <span className="text-gray-800 font-medium">{company.phone || 'N/A'}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[10px] text-gray-400 font-bold uppercase">Account Created / Last Activity</span>
+                          <span className="text-gray-800 font-medium">{formatDateTime(company.lastLogin)}</span>
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
 
                       {/* Plan */}
@@ -422,12 +609,60 @@ const SuperAdminCompanies: React.FC = () => {
                       </div>
                     </div>
 
-                    <button
-                      onClick={handleSave}
-                      className="w-full sm:w-auto px-10 py-2 bg-blue-600 text-white text-sm font-semibold rounded-sm hover:bg-blue-700 transition-colors"
-                    >
-                      Save Changes
-                    </button>
+                    <div className="flex flex-col sm:flex-row gap-3 mt-4">
+                      <button
+                        onClick={handleSave}
+                        className="w-full sm:w-auto px-10 py-2 bg-blue-600 text-white text-sm font-semibold rounded-sm hover:bg-blue-700 transition-colors"
+                      >
+                        Save Changes
+                      </button>
+
+                      {/* ADD THIS ENTIRE BLOCK: */}
+                      {(daysLeft !== null && daysLeft <= 3) && (
+                        <button
+                          onClick={() => handleSendReminder(company)}
+                          disabled={sendingId === company.id}
+                          className={`w-full sm:w-auto px-6 py-2 text-white text-sm font-semibold rounded-sm transition-colors flex items-center justify-center gap-2 ${sendingId === company.id
+                            ? 'bg-green-400 cursor-not-allowed'
+                            : 'bg-green-600 hover:bg-green-700'
+                            }`}
+                        >
+                          {sendingId === company.id ? (
+                            <>
+                              <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                              Sending...
+                            </>
+                          ) : (
+                            'Send WA Reminder'
+                          )}
+                        </button>
+                      )}
+                      {/* END OF NEW BLOCK */}
+
+                      <button
+                        onClick={() => handleDeleteCompany(company.id)}
+                        disabled={deletingId === company.id}
+                        className={`w-full sm:w-auto px-10 py-2 text-white text-sm font-semibold rounded-sm transition-colors flex items-center justify-center gap-2 ${deletingId === company.id
+                          ? 'bg-red-400 cursor-not-allowed'
+                          : 'bg-red-600 hover:bg-red-700'
+                          }`}
+                      >
+                        {deletingId === company.id ? (
+                          <>
+                            <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Deleting...
+                          </>
+                        ) : (
+                          'Delete Company & Users'
+                        )}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

@@ -4,6 +4,7 @@ export interface Sale {
   partyNumber: string;
   totalAmount: number;
   dueAmount?: number;
+  creditNoteAmount?: number;
   createdAt: Date;
 }
 

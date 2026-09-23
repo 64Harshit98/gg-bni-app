@@ -22,6 +22,7 @@ interface SalesBarChartProps {
     name: string;
     sales: number;
     previousSales?: number;
+    count?: number; // <-- Added this so TypeScript knows about the count
   }[];
 }
 
@@ -30,12 +31,39 @@ export const SalesBarChartReport: React.FC<SalesBarChartProps> = ({ isDataVisibl
 
   // Map Data
   const chartData = useMemo(() => {
-    return data.map(item => ({
+    const mappedData = data.map(item => ({
       date: item.name,
       sales: item.sales,
       previous: item.previousSales || 0,
-      bills: Math.ceil(item.sales / 1000)
+      bills: item.count || 0
     }));
+
+    // If only today data exists, prepend yesterday with zero values
+    if (mappedData.length === 1) {
+      const todayItem = mappedData[0];
+
+      const parsedDate = new Date(todayItem.date);
+
+      // Ensure valid date parsing before applying yesterday logic
+      if (!isNaN(parsedDate.getTime())) {
+        const yesterday = new Date(parsedDate);
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        const yesterdayKey = yesterday.toLocaleDateString('en-CA');
+
+        return [
+          {
+            date: yesterdayKey,
+            sales: 0,
+            previous: 0,
+            bills: 0
+          },
+          todayItem
+        ];
+      }
+    }
+
+    return mappedData;
   }, [data]);
 
   // Custom Tooltip to match the clean look
@@ -63,11 +91,11 @@ export const SalesBarChartReport: React.FC<SalesBarChartProps> = ({ isDataVisibl
 
   if (!isDataVisible) {
     return (
-      <Card className="col-span-1 md:col-span-2">
+      <Card className="h-full">
         <CardHeader>
           <CardTitle>Daily Performance</CardTitle>
         </CardHeader>
-        <CardContent className="flex h-[300px] flex-col items-center justify-center bg-gray-50 rounded-lg">
+        <CardContent className="flex h-full min-h-[240px] flex-col items-center justify-center bg-gray-50 rounded-lg">
           <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 mb-2">
             <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
             <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
@@ -81,7 +109,7 @@ export const SalesBarChartReport: React.FC<SalesBarChartProps> = ({ isDataVisibl
   }
 
   return (
-    <Card className="col-span-1 md:col-span-2">
+    <Card className="h-full flex flex-col">
       <CardHeader className="flex flex-row items-center justify-between pb-4">
         <div className="space-y-1">
           <CardTitle>Daily Performance</CardTitle>
@@ -105,8 +133,8 @@ export const SalesBarChartReport: React.FC<SalesBarChartProps> = ({ isDataVisibl
         </div>
       </CardHeader>
 
-      <CardContent className="pl-0">
-        <div className="h-[300px] w-full">
+      <CardContent className="pl-0 flex-1 min-h-0">
+        <div className="h-full w-full min-h-[240px]">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart
               data={chartData}
@@ -135,14 +163,13 @@ export const SalesBarChartReport: React.FC<SalesBarChartProps> = ({ isDataVisibl
               />
 
               <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#9ca3af', strokeWidth: 1, strokeDasharray: '4 4' }} />
-        
+
               <Line
-                type="linear" // Matches the straight lines in your image
+                type="linear"
                 dataKey={viewMode === 'amount' ? 'sales' : 'bills'}
                 name={viewMode === 'amount' ? 'Sales' : 'Bills'}
                 stroke={viewMode === 'amount' ? '#3b82f6' : '#16a34a'}
                 strokeWidth={2}
-                // This creates the "White center, Blue border" dot look
                 dot={{ fill: 'white', stroke: viewMode === 'amount' ? '#3b82f6' : '#16a34a', strokeWidth: 2, r: 4 }}
                 activeDot={{ r: 6, strokeWidth: 2 }}
               />

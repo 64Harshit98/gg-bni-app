@@ -1,28 +1,71 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import useItemReport from '../../Pages/Reports/ItemReportComponents/useItemReport';
 import type { Item } from '../../constants/models';
-import { useNavigate } from 'react-router-dom';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
+import XLSX from 'xlsx-js-style';
 import { Spinner } from '../../constants/Spinner';
 import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
 import { CustomTable } from '../../Components/CustomTable';
-import { IconClose } from '../../constants/Icons';
+import { IconClose, IconSearch } from '../../constants/Icons';
 import { getItemColumns } from '../../constants/TableColoumns';
 import DownloadChoiceModal from '../../Pages/Reports/ItemReportComponents/DownloadChoiceModal';
 import FilterSelect from '../../Pages/Reports/ItemReportComponents/FilterSelect';
-
+import ReportDateFilter from '../../Components/ReportDateFilter';
+//import CataShowWrapper from '../../context/CataShowWrapper';
+//import { Cata_Permissions } from '../enum/cata_permissions.enum';
+import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import { useAuth } from '../../context/auth-context';
+import { useGodowns, useGodownStock, SHOP_ID, SHOP_NAME } from '../../Pages/hooks/useStockTransfer';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../lib/Firebase';
 // Import your Modal and State
 import { Modal } from '../../constants/Modal'; // Adjust path to where you saved the Modal code
 import { State } from '../../enums';
+import BackButton from '../../Components/BackButton';
+import { useStockLedger } from '../../Pages/hooks/useStockLedger';
 
 const UNASSIGNED_GROUP_NAME = 'Uncategorized';
 // --- Helper Component ---
 
-const CatalogueItemReport: React.FC = () => {
-  const navigate = useNavigate();
+const CatalogueItemReport: React.FC = () => {   // (or `const ItemReport: React.FC = () => {`)
+  const { currentUser } = useAuth();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [companyName, setCompanyName] = useState<string>('');
+
+  useEffect(() => {
+    const fetchCompanyName = async () => {
+      if (!currentUser?.companyId) return;
+      try {
+        const businessInfoRef = doc(
+          db,
+          'companies',
+          currentUser.companyId,
+          'business_info',
+          currentUser.companyId,
+        );
+        const snap = await getDoc(businessInfoRef);
+        if (snap.exists()) {
+          setCompanyName(snap.data().businessName || '');
+        }
+      } catch (e) {
+        console.error('Failed to fetch company name', e);
+      }
+    };
+    fetchCompanyName();
+  }, [currentUser?.companyId]);
+  const [showSearch, setShowSearch] = useState(false);
+  const [locationFilter, setLocationFilter] = useState('');
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const last30StartStr = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 29);
+    return d.toISOString().slice(0, 10);
+  })();
+  const [fromDate, setFromDate] = useState<string>(last30StartStr);
+  const [toDate, setToDate] = useState<string>(todayStr);
+  const [datePreset, setDatePreset] = useState<string>('last30');
   const {
     items,
     appliedItemGroupId,
@@ -41,12 +84,82 @@ const CatalogueItemReport: React.FC = () => {
     isDownloadModalOpen,
   } = useItemReport();
 
-  const { filteredItems, summary } = useMemo(() => {
-    const newFilteredItems = items.filter((item) => {
-      if (!appliedItemGroupId) return true;
-      const itemGroupName = item.itemGroupId || UNASSIGNED_GROUP_NAME;
-      return itemGroupName === appliedItemGroupId;
+  const { godowns } = useGodowns(currentUser?.companyId);
+  const { stockRows } = useGodownStock(currentUser?.companyId, godowns);
+  const { ledgerMap } = useStockLedger(currentUser?.companyId, fromDate, toDate, locationFilter);
+
+  // Per-item, per-location quantity map (Shop + every godown).
+  const stockByItemLocation = useMemo(() => {
+    const map = new Map<string, Map<string, number>>();
+    stockRows.forEach(r => {
+      if (!map.has(r.itemId)) map.set(r.itemId, new Map());
+      const inner = map.get(r.itemId)!;
+      inner.set(r.godownId, (inner.get(r.godownId) || 0) + r.quantity);
     });
+    return map;
+  }, [stockRows]);
+
+  // Items with `stock` overridden to reflect the selected location
+  // (or the sum across all locations when no location is selected).
+  const itemsWithLocationStock = useMemo(() => {
+    return items.map(item => {
+      const locMap = stockByItemLocation.get(item.id || '');
+      let stock: number;
+      if (locationFilter) {
+        stock = locMap?.get(locationFilter) || 0;
+      } else {
+        stock = locMap ? Array.from(locMap.values()).reduce((s, q) => s + q, 0) : (item.stock || 0);
+      }
+
+      const agg = ledgerMap.get(item.id || '') || { in: 0, out: 0 };
+      const stockIn = agg.in;
+      const stockOut = agg.out;
+      const closingBalance = stock;
+      const openingBalance = closingBalance - stockIn + stockOut;
+      const valueOfItem = stock * (item.purchasePrice || 0);
+
+      return { ...item, stock, stockIn, stockOut, openingBalance, closingBalance, valueOfItem };
+    });
+  }, [items, stockByItemLocation, locationFilter, ledgerMap]);
+
+  const { filteredItems, summary } = useMemo(() => {
+    let newFilteredItems = itemsWithLocationStock.filter((item) => {
+      if (!appliedItemGroupId) return true;
+      if (appliedItemGroupId === UNASSIGNED_GROUP_NAME) {
+        const hasNoGroup =
+          (!item.itemGroupIds || item.itemGroupIds.length === 0) && !item.itemGroupId;
+        return hasNoGroup;
+      }
+      const groupIds: string[] = item.itemGroupIds?.length
+        ? item.itemGroupIds
+        : item.itemGroupId
+          ? [item.itemGroupId]
+          : [];
+      return groupIds.includes(appliedItemGroupId);
+    });
+
+    // When a specific location is selected, only show items that actually
+    // have stock there — an item with 0 stock at this location shouldn't appear.
+    if (locationFilter) {
+      newFilteredItems = newFilteredItems.filter((item) => (item.stock || 0) > 0);
+    }
+
+    //  SEARCH 
+    const trimmedQuery = searchQuery.toLowerCase().trim();
+
+    if (trimmedQuery) {
+      const searchTokens = trimmedQuery.split(/\s+/);
+
+      newFilteredItems = newFilteredItems.filter((item) => {
+        const name = item.name?.toLowerCase() || '';
+        const barcode = item.barcode?.toLowerCase() || '';
+        const matchesName = searchTokens.every(token =>
+          name.includes(token)
+        );
+        const matchesBarcode = barcode.includes(trimmedQuery);
+        return matchesName || matchesBarcode;
+      });
+    }
 
     newFilteredItems.sort((a, b) => {
       const key = sortConfig.key;
@@ -94,9 +207,45 @@ const CatalogueItemReport: React.FC = () => {
         averageMarginPercentage,
       },
     };
-  }, [appliedItemGroupId, sortConfig, items]);
+  }, [appliedItemGroupId, sortConfig, itemsWithLocationStock, searchQuery, locationFilter]);
 
   const handleApplyFilters = () => setAppliedItemGroupId(itemGroupId);
+
+  const getPresetRange = (preset: string): { from: string; to: string } => {
+    const today = new Date().toISOString().slice(0, 10);
+    switch (preset) {
+      case 'today':
+        return { from: today, to: today };
+      case 'yesterday': {
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        const ds = d.toISOString().slice(0, 10);
+        return { from: ds, to: ds };
+      }
+      case 'last7': {
+        const d = new Date();
+        d.setDate(d.getDate() - 6);
+        return { from: d.toISOString().slice(0, 10), to: today };
+      }
+      case 'last30': {
+        const d = new Date();
+        d.setDate(d.getDate() - 29);
+        return { from: d.toISOString().slice(0, 10), to: today };
+      }
+      default:
+        // 'custom' — leave whatever the user typed in the date inputs
+        return { from: fromDate, to: toDate };
+    }
+  };
+
+  const handleDatePresetChange = (preset: string) => {
+    setDatePreset(preset);
+    if (preset !== 'custom') {
+      const { from, to } = getPresetRange(preset);
+      setFromDate(from);
+      setToDate(to);
+    }
+  };
 
   const handleSort = (key: keyof Item) => {
     const direction =
@@ -109,73 +258,494 @@ const CatalogueItemReport: React.FC = () => {
     const group = itemGroups.find((g) => g.id === id);
     return group ? group.name : UNASSIGNED_GROUP_NAME;
   };
+  // const prepareExportDataForExcel = (item: Item) => {
+  //   const salePrice = item.salesPrice ||
+  //     (item.mrp && item.discount ? parseFloat((item.mrp * (1 - item.discount / 100)).toFixed(2)) : item.mrp || 0);
 
-  const prepareExportData = (item: Item) => {
-    return {
-      name: item.name,
-      mrp: item.mrp || 0,
-      purchasePrice: item.purchasePrice || 0,
-      discount: item.discount || 0,
-      tax: item.tax || 0,
-      itemGroupId: getGroupName(item.itemGroupId),
-      stock: item.stock || 0,
-      barcode: item.barcode || '-',
-      restockQuantity: item.restockQuantity || 0,
-    };
-  };
+  //   return {
+  //     name: item.name || '-',
+  //     barcode: item.barcode || '-',
+  //     itemGroup: item.itemGroupIds?.length
+  //       ? item.itemGroupIds.map((id) => getGroupName(id)).join(', ')
+  //       : getGroupName(item.itemGroupId),
+  //     mrp: item.mrp || 0,
+  //     purchasePrice: item.purchasePrice || 0,
+  //     purchaseDiscount: item.purchasediscount || 0,
+  //     salesPrice: salePrice,
+  //     discount: item.discount || 0,
+  //     tax: item.tax || 0,
+  //     taxRate: item.taxRate || 0,
+  //     gst: item.gst || 0,
+  //     hsnSac: item.hsnSac || '-',
+  //     unit: item.unit || '-',
+  //     packetSize: item.packetSize || 0,
+  //     unitMultiplier: item.unitMultiplier || 0,
+  //     moq: item.moq || 0,
+  //     stock: item.stock || 0,
+  //     restockQuantity: item.restockQuantity || 0,
+  //     description: item.description || '-',
+  //     isListed: item.isListed ? 'Yes' : 'No',
+  //   };
+  // };
 
-  const downloadAsPdf = () => {
+  const downloadAsPdf = async () => {
     try {
+      // Initialize in Landscape mode ('l') for the detailed item report
       const doc = new jsPDF('l', 'mm', 'a4');
-      doc.setFontSize(14);
-      doc.text('Detailed Item Report', 14, 15);
-      doc.setFontSize(10);
-      doc.text(
-        `Total Items: ${summary.totalItems} | Avg Margin: ${Math.round(summary.averageMarginPercentage)}%`,
-        14,
-        22,
-      );
+      const pageWidth = doc.internal.pageSize.getWidth();
 
-      const exportData = filteredItems.map(prepareExportData);
-      const headers = Object.keys(exportData[0] || {});
-      const body = exportData.map((obj) => Object.values(obj));
-
-      autoTable(doc, {
-        startY: 25,
-        head: [headers],
-        body: body,
-        theme: 'grid',
-        styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [41, 128, 185] },
+      // ===== CLEAN GENERATION TAG (drawn first, reserves space for logo) =====
+      const now = new Date();
+      const generatedAt = now.toLocaleString('en-IN', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
       });
 
-      doc.save('detailed_item_report.pdf');
+      const margin = 14;
 
-      // Close selection modal and show success modal
+      const tagText = `Generated using SELLAR • ${generatedAt}`;
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+
+      const textWidth = doc.getTextWidth(tagText);
+      const paddingX = 2;
+
+      const boxWidth = textWidth + paddingX * 2;
+      const boxHeight = 5;
+
+      const logoReservedWidth = 20; // space reserved for logo + gap, so tag never overlaps it
+      const boxX = pageWidth - margin - logoReservedWidth - boxWidth;
+      const boxY = 10;
+
+      // light gray background
+      doc.setFillColor(245, 245, 245);
+      doc.rect(boxX, boxY, boxWidth, boxHeight, "F");
+
+      // text
+      doc.setTextColor(80, 80, 80);
+      doc.text(tagText, boxX + paddingX, boxY + 3.5);
+
+      // reset styles
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(14);
+
+      // Embed company logo (drawn after, in its own reserved slot at top-right corner)
+      try {
+        const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
+        if (base64Logo) {
+          const img = new Image();
+          img.src = base64Logo;
+          await new Promise<void>((resolve) => {
+            img.onload = () => {
+              const logoWidth = 15;
+              const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
+              const logoX = pageWidth - logoWidth - 14;
+              doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
+              resolve();
+            };
+            img.onerror = () => resolve();
+          });
+        }
+      } catch {
+        // Continue without logo
+      }
+
+
+      const pageHeight = doc.internal.pageSize.getHeight();
+
+      // --- 1. BRAND ACCENT BAR ---
+      // Uses the #F97316 orange from your UI
+      doc.setFillColor(249, 115, 22);
+      doc.rect(0, 0, pageWidth, 6, 'F');
+      doc.setFontSize(22);
+      doc.setTextColor(17, 24, 39); // gray-900
+      doc.setFont('helvetica', 'bold');
+      const reportTitle = companyName
+  ? `Detailed Item Report — ${companyName}`
+  : 'Detailed Item Report';
+doc.text(reportTitle, 14, 24);
+
+      // Company name right after the title, same line
+      if (companyName) {
+        const titleWidth = doc.getTextWidth('Detailed Item Report');
+        doc.setFontSize(13);
+        doc.setTextColor(107, 114, 128); // gray-500
+        doc.setFont('helvetica', 'normal');
+        doc.text(`—  ${companyName}`, 14 + titleWidth + 4, 24);
+      }
+
+      // Dynamic Subtitle with Date Range & Summary Stats
+      doc.setFontSize(10);
+      doc.setTextColor(107, 114, 128); // gray-500
+      doc.setFont('helvetica', 'normal');
+
+      const generationDate = new Date().toLocaleDateString('en-IN', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      });
+
+      // Combining your requested summary stats with the date/period formatting
+      const periodText = fromDate === toDate
+        ? `Period: ${new Date(fromDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}`
+        : `Period: ${new Date(fromDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })} to ${new Date(toDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}`;
+
+      let subtitleText = `Generated: ${generationDate}   |   ${periodText}   |   Total Items: ${summary.totalItems}   |   Avg Margin: ${Math.round(summary.averageMarginPercentage)}%`;
+      doc.text(subtitleText, 14, 31);
+
+      // --- 3. AUTOTABLE GENERATION ---
+      autoTable(doc, {
+        startY: 38,
+        // UPDATE THESE HEADERS TO MATCH YOUR EXACT ITEM DATA
+        head: [['ITEM NAME', 'CATEGORY', 'QTY SOLD', 'TOTAL SALES (Rs.)', 'MARGIN (%)']],
+        // DROP YOUR ITEM MAPPING LOGIC HERE
+        body: filteredItems.map((item) => {
+          return [
+            item.name || 'N/A',
+            item.itemGroupIds?.length
+              ? item.itemGroupIds.map((id) => getGroupName(id)).join(', ')
+              : getGroupName(item.itemGroupId),
+            (item.stock ?? 0).toString(),
+            (item.mrp ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            `${((item.mrp && item.purchasePrice) ? (((item.mrp - item.purchasePrice) / item.mrp) * 100) : 0).toFixed(2)}%`,
+          ];
+        }),
+        // OPTIONAL: ADD A TOTALS ROW AT THE BOTTOM IF NEEDED
+        foot: [
+          [
+            'TOTAL / AVERAGE',
+            '-',
+            summary.totalItems.toString(), // Assuming this is total qty
+            (summary.averageSalePrice ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            `${Math.round(summary.averageMarginPercentage)}%`,
+          ]
+        ],
+        showFoot: 'lastPage',
+        theme: 'plain',
+        styles: {
+          font: 'helvetica',
+          cellPadding: 7,
+          fontSize: 10,
+          textColor: [55, 65, 81], // gray-700
+        },
+        headStyles: {
+          fillColor: [249, 250, 251], // gray-50
+          textColor: [17, 24, 39], // gray-900
+          fontStyle: 'bold',
+          halign: 'center',
+          lineWidth: { top: 1, bottom: 1 },
+          lineColor: [229, 231, 235], // gray-200
+        },
+        footStyles: {
+          fillColor: [255, 255, 255],
+          textColor: [17, 24, 39],
+          fontStyle: 'bold',
+          halign: 'right',
+          lineWidth: { top: 1, bottom: 2 }, // Thicker bottom line for totals
+          lineColor: [17, 24, 39],
+        },
+        alternateRowStyles: {
+          fillColor: [252, 252, 252], // Extremely subtle zebra striping
+        },
+        // Adjust column widths and alignments for landscape mode
+        columnStyles: {
+          0: { halign: 'left', cellWidth: 'auto' }, // Item Name
+          1: { halign: 'left', cellWidth: 40 },     // Category
+          2: { halign: 'right', cellWidth: 30 },    // Qty
+          3: { halign: 'right', cellWidth: 50 },    // Sales
+          4: { halign: 'right', cellWidth: 35 },    // Margin
+        },
+        // --- 4. CONDITIONAL FORMATTING ---
+        didParseCell: function (data) {
+          // Highlight negative margins in red (assuming Margin is column index 4)
+          if ((data.section === 'body' || data.section === 'foot') && data.column.index === 4) {
+            const rawVal = parseFloat(String(data.cell.raw).replace(/,/g, '').replace('%', ''));
+            if (rawVal < 0) {
+              data.cell.styles.textColor = [220, 38, 38]; // red-600
+              data.cell.styles.fontStyle = 'bold';
+            }
+          }
+        },
+        // --- 5. PAGINATION FOOTER ---
+        didDrawPage: function () {
+          const pageCount = (doc.internal as any).getNumberOfPages();
+          doc.setFontSize(9);
+          doc.setTextColor(156, 163, 175); // gray-400
+          // Draw page number at the bottom right
+          doc.text(
+            `Page ${pageCount}`,
+            pageWidth - 14,
+            pageHeight - 10,
+            { align: 'right' }
+          );
+        },
+      });
+
+      doc.save(`Detailed_Item_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+
       setIsDownloadModalOpen(false);
       setFeedbackModal({
         isOpen: true,
         type: State.SUCCESS,
-        message: 'PDF downloaded successfully!',
+        message: 'Item PDF downloaded successfully!',
       });
-    } catch (e) {
+    } catch (err) {
+      console.error('PDF Generation Error:', err);
       setFeedbackModal({
         isOpen: true,
         type: State.ERROR,
-        message: 'Failed to generate PDF.',
+        message: 'Failed to generate Item PDF.',
       });
     }
   };
 
   const downloadAsExcel = () => {
     try {
-      const dataToExport = filteredItems.map(prepareExportData);
-      const worksheet = XLSX.utils.json_to_sheet(dataToExport);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Items');
-      XLSX.writeFile(workbook, 'item_report.xlsx');
+      const s = (font: any, fill?: any, alignment?: any, border?: any) => ({
+        font: { name: 'Arial', ...font },
+        fill: fill ?? {},
+        alignment: alignment ?? { horizontal: 'center', vertical: 'center', wrapText: true },
+        border: border ?? {},
+      });
+      const solidFill = (rgb: string) => ({ patternType: 'solid', fgColor: { rgb } });
+      const allBorders = {
+        top: { style: 'thin', color: { rgb: 'FED7AA' } },
+        bottom: { style: 'thin', color: { rgb: 'FED7AA' } },
+        left: { style: 'thin', color: { rgb: 'FED7AA' } },
+        right: { style: 'thin', color: { rgb: 'FED7AA' } },
+      };
+      const bblr = {
+        bottom: { style: 'thin', color: { rgb: 'FED7AA' } },
+        left: { style: 'thin', color: { rgb: 'FED7AA' } },
+        right: { style: 'thin', color: { rgb: 'FED7AA' } },
+      };
 
-      // Close selection modal and show success modal
+      const generationDate = new Date().toLocaleDateString('en-IN', {
+        year: 'numeric', month: 'short', day: 'numeric',
+      });
+
+      const COLS = [
+        { header: 'Name', width: 28 },
+        { header: 'Barcode', width: 18 },
+        { header: 'MRP (₹)', width: 14 },
+        { header: 'Sale Price (₹)', width: 16 },
+        { header: 'Purchase Price (₹)', width: 16 },
+        { header: 'Sale Disc (%)', width: 14 },
+        { header: 'Purchase Disc (%)', width: 15 },
+        { header: 'Tax (%)', width: 12 },
+        { header: 'HSN/SAC', width: 14 },
+        { header: 'Category', width: 20 },
+        { header: 'Stock', width: 10 },
+        { header: 'Location', width: 18 },
+        { header: 'Restock Qty', width: 13 },
+        { header: 'MOQ', width: 10 },
+        { header: 'Image URL', width: 25 },
+        { header: 'Description', width: 35 },
+        { header: 'Opening Bal.', width: 14 },
+        { header: 'Stock In', width: 12 },
+        { header: 'Stock Out', width: 12 },
+        { header: 'Closing Bal.', width: 14 },
+        { header: 'Value (₹)', width: 15 },
+      ];
+      const colCount = COLS.length;
+      const exportLocationLabel = locationFilter
+        ? (locationFilter === SHOP_ID ? SHOP_NAME : (godowns.find(g => g.id === locationFilter)?.name || SHOP_NAME))
+        : SHOP_NAME;
+      // Row layout:
+      // 0  → Title (merged)
+      // 1  → Meta (merged)
+      // 2  → blank spacer
+      // 3  → Summary label (merged)
+      // 4  → Summary values
+      // 5  → blank spacer
+      // 6  → Column headers
+      // 7  → blank spacer (REQUIRED: Bulk Import always reads data starting
+      //       2 rows after the header row it detects, so this row must exist)
+      // 8+ → Data rows
+
+      const dataStartRow = 8;
+      const totalRows = dataStartRow + filteredItems.length; // no footer row — see Change 5
+      const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
+
+      // Row 0 – Title (Company Name alongside)
+      aoa[0][0] = companyName
+        ? `Detailed Item Report  —  ${companyName}`
+        : 'Detailed Item Report';
+
+      const periodText = fromDate === toDate
+        ? `Period: ${new Date(fromDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}`
+        : `Period: ${new Date(fromDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })} to ${new Date(toDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}`;
+
+      // Row 1 – Meta
+      aoa[1][0] = `Generated: ${generationDate}   |   ${periodText}   |   Total Items: ${summary.totalItems}   |   Avg Margin: ${Math.round(summary.averageMarginPercentage)}%`;
+
+      // Row 3 – Summary label
+      aoa[3][0] = 'SUMMARY';
+
+      // Row 4 – Summary values (single merged cell)
+      aoa[4][0] = `Total Items: ${summary.totalItems}   |   Avg MRP: ₹${Math.round(summary.averageMrp).toLocaleString('en-IN')}   |   Avg Sale Price: ₹${Math.round(summary.averageSalePrice).toLocaleString('en-IN')}   |   Avg Margin: ${Math.round(summary.averageMarginPercentage)}%`;
+
+      // Row 6 – Column headers
+      COLS.forEach((c, i) => { aoa[6][i] = c.header; });
+
+      // Rows 8+ – Data (column order matches Bulk Import parser exactly)
+      filteredItems.forEach((item, idx) => {
+        const r = dataStartRow + idx;
+        const salePrice =
+          item.salesPrice ||
+          (item.mrp && item.discount
+            ? parseFloat((item.mrp * (1 - item.discount / 100)).toFixed(2))
+            : item.mrp || 0);
+
+        aoa[r][0] = item.name || '-';                          // Name
+        aoa[r][1] = item.barcode || '-';                        // Barcode
+        aoa[r][2] = item.mrp || 0;                               // MRP
+        aoa[r][3] = salePrice;                                   // Sale Price
+        aoa[r][4] = item.purchasePrice || 0;                     // Cost Price
+        aoa[r][5] = item.discount || 0;                          // Sale Disc %
+        aoa[r][6] = item.purchasediscount || 0;                  // Purchase Disc %
+        aoa[r][7] = item.tax || 0;                                // Tax %
+        aoa[r][8] = item.hsnSac || '-';                            // HSN/SAC
+        aoa[r][9] = item.itemGroupIds?.length                      // Category
+          ? item.itemGroupIds.map((id) => getGroupName(id)).join(', ')
+          : getGroupName(item.itemGroupId);
+        aoa[r][10] = item.stock || 0;                              // Stock
+        aoa[r][11] = exportLocationLabel;                          // Location
+        aoa[r][12] = item.restockQuantity || 0;                    // Restock Qty
+        aoa[r][13] = item.moq || 1;                                // MOQ
+        aoa[r][14] = (item as any).imageUrl || '';                  // Image URL
+        aoa[r][15] = item.description || '';
+        aoa[r][16] = item.openingBalance || 0;                      // Opening Bal.
+        aoa[r][17] = item.stockIn || 0;                            // Stock In
+        aoa[r][18] = item.stockOut || 0;                           // Stock Out
+        aoa[r][19] = item.closingBalance || 0;                      // Closing Bal.
+        aoa[r][20] = item.valueOfItem || 0;                        // Value (₹)
+      });
+
+      // No footer/TOTAL row — a text row at the end would get misread as
+      // an extra invalid item if this file is re-uploaded into Bulk Import.
+
+      // ── BUILD WORKSHEET ──────────────────────────────────────────────
+      const worksheet = XLSX.utils.aoa_to_sheet(aoa);
+      worksheet['!cols'] = COLS.map(c => ({ wch: c.width }));
+      worksheet['!rows'] = [
+        { hpt: 36 }, // 0 title
+        { hpt: 20 }, // 1 meta
+        { hpt: 8 },  // 2 spacer
+        { hpt: 18 }, // 3 summary label
+        { hpt: 22 }, // 4 summary values
+        { hpt: 8 },  // 5 spacer
+        { hpt: 28 }, // 6 headers
+        { hpt: 8 },  // 7 spacer (required offset row for Bulk Import)
+        ...filteredItems.map(() => ({ hpt: 20 })),
+      ];
+
+      worksheet['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
+        { s: { r: 3, c: 0 }, e: { r: 3, c: colCount - 1 } },
+        { s: { r: 4, c: 0 }, e: { r: 4, c: colCount - 1 } },
+      ];
+
+      const style = (addr: string, st: any) => {
+        if (!worksheet[addr]) worksheet[addr] = { t: 's', v: '' };
+        worksheet[addr].s = st;
+      };
+
+      // Title (row 0) — deep orange
+      style('A1', s(
+        { sz: 16, bold: true, color: { rgb: 'FFFFFF' } },
+        solidFill('EA580C'),
+        { horizontal: 'center', vertical: 'center' },
+      ));
+
+      // Meta (row 1) — light orange tint
+      style('A2', s(
+        { sz: 9, italic: true, color: { rgb: '7C2D12' } },
+        solidFill('FFEDD5'),
+        { horizontal: 'center', vertical: 'center' },
+      ));
+
+      // Summary label (row 3)
+      style('A4', s(
+        { sz: 10, bold: true, color: { rgb: 'C2410C' } },
+        solidFill('FFF7ED'),
+        { horizontal: 'left', vertical: 'center' },
+        allBorders,
+      ));
+
+      style('A5', s(
+        { sz: 10, bold: true, color: { rgb: '9A3412' } },
+        solidFill('FFF7ED'),
+        { horizontal: 'center', vertical: 'center' },
+        bblr,
+      ));
+
+      // Column headers (row 6) — dark orange header bar
+      COLS.forEach((_c, i) => {
+        const addr = XLSX.utils.encode_cell({ r: 6, c: i });
+        style(addr, s(
+          { sz: 10, bold: true, color: { rgb: 'FFFFFF' } },
+          solidFill('C2410C'),
+          { horizontal: i === 0 ? 'left' : 'center', vertical: 'center' },
+          allBorders,
+        ));
+      });
+
+      const numericCols = new Set([2, 3, 4, 5, 6, 7, 10, 12, 13, 16, 17, 18, 19, 20]);
+
+      // Data rows
+      filteredItems.forEach((_item, idx) => {
+        const r = dataStartRow + idx;
+        const isAlt = idx % 2 === 1;
+        const rowBg = solidFill(isAlt ? 'FFF7ED' : 'FFFFFF');
+
+        for (let ci = 0; ci < colCount; ci++) {
+          const addr = XLSX.utils.encode_cell({ r, c: ci });
+          const isNumeric = numericCols.has(ci);
+          style(addr, s(
+            { sz: 9, color: { rgb: '1E293B' } },
+            rowBg,
+            { horizontal: isNumeric ? 'center' : 'left', vertical: 'center' },
+            bblr,
+          ));
+          // Format currency/numeric columns
+          if (worksheet[addr] && isNumeric) {
+            const isCurrency = [2, 3, 4].includes(ci); // MRP, Sale Price, Cost Price
+            worksheet[addr].t = 'n';
+            worksheet[addr].z = isCurrency ? '₹#,##0.00' : '#,##0.##';
+          }
+        }
+      });
+
+      // // Footer row
+      // for (let ci = 0; ci < colCount; ci++) {
+      //   const addr = XLSX.utils.encode_cell({ r: footerRow, c: ci });
+      //   style(addr, s(
+      //     { sz: 10, bold: true, color: { rgb: '1E293B' } },
+      //     solidFill('FED7AA'),
+      //     { horizontal: ci === 0 ? 'left' : 'center', vertical: 'center' },
+      //     {
+      //       top: { style: 'medium', color: { rgb: '1E293B' } },
+      //       bottom: { style: 'medium', color: { rgb: '1E293B' } },
+      //       left: { style: 'thin', color: { rgb: 'FED7AA' } },
+      //       right: { style: 'thin', color: { rgb: 'FED7AA' } },
+      //     },
+      //   ));
+      //   if ((ci === 4 || ci === 5 || ci === 6) && worksheet[addr]) {
+      //     worksheet[addr].t = 'n';
+      //     worksheet[addr].z = '₹#,##0.00';
+      //   }
+      // }
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Item Report');
+      XLSX.writeFile(workbook, `Item-Report-${new Date().toISOString().split('T')[0]}.xlsx`);
+
       setIsDownloadModalOpen(false);
       setFeedbackModal({
         isOpen: true,
@@ -218,83 +788,139 @@ const CatalogueItemReport: React.FC = () => {
       />
 
       <div className="flex items-center justify-between pb-3 border-b mb-2">
+
+        <BackButton />
+
+        {/* TITLE */}
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
           Item Report
         </h1>
-        <button
-          onClick={() => navigate(-1)}
-          className="rounded-full bg-gray-200 p-2 text-gray-900 hover:bg-gray-300"
-        >
-          <IconClose width={20} height={20} />
+
+        <button onClick={() => setShowSearch(true)} className="p-2">
+          <IconSearch />
         </button>
+
       </div>
 
-      <div className="bg-white p-2 rounded-lg mb-2">
+      {showSearch && (
+        <div className="flex justify-center mb-2 px-2">
+          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-[#F97316]">
+
+            <input
+              type="text"
+              placeholder="Search by Item Name..."
+              className="flex-1 text-base font-light p-2 outline-none bg-transparent text-center"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              autoFocus
+            />
+
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setShowSearch(false);
+              }}
+              className="p-1 text-gray-500 hover:text-black"
+            >
+              <IconClose />
+            </button>
+
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white p-2 rounded-sm mb-2">
         <h2 className="text-center font-semibold text-gray-700 mb-2">
           FILTERS
         </h2>
-        <div className="flex space-x-3 items-end">
-          <FilterSelect
-            label="Item Group"
-            value={itemGroupId}
-            onChange={(e) => setItemGroupId(e.target.value)}
-          >
-            <option value="">All Groups</option>
-            {itemGroups.map((group) => (
-              <option key={group.id} value={group.id}>
-                {group.name}
-              </option>
-            ))}
-            <option value={UNASSIGNED_GROUP_NAME}>Uncategorized</option>
-          </FilterSelect>
+        <div className="flex flex-col sm:flex-row w-full gap-3 sm:items-end">
+          <div className="flex-1">
+            <FilterSelect
+              label="Item Group"
+              value={itemGroupId}
+              onChange={(e) => setItemGroupId(e.target.value)}
+            >
+              <option value="">All Groups</option>
+              {itemGroups.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
+                </option>
+              ))}
+              <option value={UNASSIGNED_GROUP_NAME}>Uncategorized</option>
+            </FilterSelect>
+          </div>
+          <div className="flex-1">
+            <FilterSelect
+              label="Location"
+              value={locationFilter}
+              onChange={(e) => setLocationFilter(e.target.value)}
+            >
+              <option value="">All Locations</option>
+              <option value={SHOP_ID}>🏪 Shop</option>
+              {godowns.map((g) => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </FilterSelect>
+          </div>
           <button
             onClick={handleApplyFilters}
-            className="px-6 py-2 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 transition"
+            className="w-full sm:w-[28%] py-2 bg-[#F97316] text-white font-semibold rounded-md shadow-sm hover:bg-orange-600 transition"
           >
             Apply
           </button>
         </div>
       </div>
 
+      <ReportDateFilter
+        datePreset={datePreset}
+        startDate={fromDate}
+        endDate={toDate}
+        onPresetChange={handleDatePresetChange}
+        onStartDateChange={(value) => { setDatePreset('custom'); setFromDate(value); }}
+        onEndDateChange={(value) => { setDatePreset('custom'); setToDate(value); }}
+        onApply={handleApplyFilters}
+        theme="catalogue"
+      />
+
       <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-2">
         <CustomCard
           variant={CardVariant.Summary}
           title="Total Items"
-          value={Math.round(summary.totalItems).toString()}
+          value={Math.round(summary.totalItems).toLocaleString('en-IN')}
         />
         <CustomCard
           variant={CardVariant.Summary}
           title="Average MRP"
-          value={`₹${Math.round(summary.averageMrp).toFixed(0)}`}
+          value={`₹${Math.round(summary.averageMrp).toLocaleString('en-IN')}`}
         />
         <CustomCard
           variant={CardVariant.Summary}
           title="Avg. Cost Price"
-          value={`₹${Math.round(summary.averagePurchasePrice).toFixed(0)}`}
+          value={`₹${Math.round(summary.averagePurchasePrice).toLocaleString('en-IN')}`}
         />
         <CustomCard
           variant={CardVariant.Summary}
           title="Avg. Sale Price"
-          value={`₹${Math.round(summary.averageSalePrice).toFixed(0)}`}
+          value={`₹${Math.round(summary.averageSalePrice).toLocaleString('en-IN')}`}
         />
         <CustomCard
           variant={CardVariant.Summary}
           title="Avg. Margin"
-          value={`₹${Math.round(summary.averageProfitMargin).toFixed(0)}`}
+          value={`₹${Math.round(summary.averageProfitMargin).toLocaleString('en-IN')}`}
         />
         <CustomCard
           variant={CardVariant.Summary}
           title="Avg. Margin %"
-          value={`${Math.round(summary.averageMarginPercentage).toFixed(0)} %`}
+          value={`${Math.round(summary.averageMarginPercentage).toLocaleString('en-IN')} %`}
         />
       </div>
 
-      <div className="bg-white p-4 rounded-lg flex flex-col md:flex-row justify-between items-center gap-4">
+      <div className="bg-white p-4 rounded-sm flex flex-col md:flex-row justify-between items-center gap-4">
         <h2 className="text-lg font-semibold text-gray-700">Report Details</h2>
         <div className="flex items-center space-x-3 w-full md:w-auto overflow-x-auto">
           <button
             onClick={() => setIsListVisible(!isListVisible)}
-            className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition whitespace-nowrap"
+            className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-sm hover:bg-slate-300 transition whitespace-nowrap"
           >
             {isListVisible ? 'Hide List' : 'Show List'}
           </button>
@@ -312,7 +938,7 @@ const CatalogueItemReport: React.FC = () => {
                 setIsDownloadModalOpen(true);
               }
             }}
-            className="bg-blue-600 text-white font-semibold rounded-md py-2 px-4 shadow-sm hover:bg-blue-700 whitespace-nowrap"
+            className="bg-[#F97316] text-white font-semibold rounded-sm py-2 px-4 shadow-sm hover:bg-[#F97316] whitespace-nowrap"
           >
             Download Report
           </button>

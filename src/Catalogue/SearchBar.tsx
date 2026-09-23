@@ -1,25 +1,29 @@
-// src/Components/SearchableItemInput.tsx
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import type { Item } from '../constants/models';
+import type { Item, ItemGroup } from '../constants/models';
 import { FiSearch, FiX, FiBox } from 'react-icons/fi';
 
 interface SearchableItemInputProps {
   items: Item[];
+  itemGroups: ItemGroup[];
   onItemSelected: (item: Item) => void;
   label?: string;
   placeholder?: string;
   isLoading?: boolean;
   error?: string | null;
+  hideUncategorized?: boolean;
+  hideOutOfStock?: boolean;
 }
 
 const THROTTLE_DELAY = 500;
 
 const SearchBar: React.FC<SearchableItemInputProps> = ({
   items,
+  itemGroups,
   onItemSelected,
   placeholder = "Scan or search item...",
   isLoading = false,
+  hideUncategorized = false,
+  hideOutOfStock = false,
   error = null
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -64,13 +68,32 @@ const SearchBar: React.FC<SearchableItemInputProps> = ({
   }, []);
 
   // --- FILTER & SORT LOGIC ---
-  const filteredItems = useMemo(() => {
+  const filteredItems = useMemo<Item[]>(() => {
     const trimmedQuery = throttledQuery.toLowerCase().trim();
     if (!trimmedQuery) return [];
 
     const searchTokens = trimmedQuery.split(/\s+/);
 
     const matches = items.filter(item => {
+
+      if (hideOutOfStock) {
+        const stock = Number(item.stock ?? 0);
+        if (stock <= 0) return false;
+      }
+
+      const uncategorizedGroup = itemGroups.find(
+        g => g.name.toLowerCase().trim() === "uncategorized"
+      );
+
+      const groupExists = itemGroups.some(g => g.id === item.itemGroupId);
+
+      const finalGroupId = groupExists
+        ? item.itemGroupId
+        : uncategorizedGroup?.id;
+
+      if (hideUncategorized && finalGroupId === uncategorizedGroup?.id) {
+        return false;
+      }
       const lowerName = item.name.toLowerCase();
       const lowerBarcode = item.barcode ? item.barcode.toLowerCase() : '';
       const matchesName = searchTokens.every(token => lowerName.includes(token));
@@ -167,12 +190,7 @@ const SearchBar: React.FC<SearchableItemInputProps> = ({
           onFocus={() => setIsDropdownOpen(true)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
-          className={`w-full pl-10 pr-10 py-3 bg-white border border-gray-300 rounded-sm shadow-sm 
-                               focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all 
-                               text-gray-800 placeholder-gray-400 font-medium
-                               ${error ? 'border-red-500 focus:border-red-500 focus:ring-red-100' : ''}`}
-          autoComplete="off"
-        />
+          className={`w-full pl-10 pr-10 py-3 bg-white border border-gray-300 rounded-sm shadow-sm focus:border-[#F97316] focus:ring-2 focus:ring-[#F97316]/20 outline-none transition-all text-gray-800 placeholder-gray-400 font-medium ${error ? 'border-red-500 focus:border-red-500 focus:ring-red-100' : ''}`} autoComplete="off" />
 
         {searchQuery && (
           <button
@@ -208,28 +226,27 @@ const SearchBar: React.FC<SearchableItemInputProps> = ({
               ) : (
                 filteredItems.map((item, index) => {
                   const isSelected = index === activeIndex;
-                  // const stock = item.stock || (item as any).Stock || 0;
-                  // const stockColor = stock <= 0 ? 'text-red-600 bg-red-50' : stock < 10 ? 'text-orange-600 bg-orange-50' : 'text-green-700 bg-green-50';
-
+                  const categoryName =
+                    itemGroups.find(group => group.id === item.itemGroupId)?.name ||
+                    "Uncategorized";
                   return (
                     <div
                       key={item.id}
                       onMouseEnter={() => setActiveIndex(index)}
                       onClick={() => handleSelect(item)}
-                      className={`px-4 py-3 cursor-pointer border-b border-gray-50 last:border-0 transition-colors duration-150 flex justify-between items-center
-                                                ${isSelected ? 'bg-blue-100' : 'hover:bg-gray-50'}
-                                            `}
+                      className={`px-4 py-3 cursor-pointer border-b border-gray-50 last:border-0 transition-colors duration-150 flex justify-between items-center ${isSelected ? '' : 'hover:bg-gray-50'}`}
+                      style={isSelected ? { backgroundColor: '#E0F2FE', color: '#0369A1' } : {}}
                     >
                       {/* Left: Name & Barcode */}
                       <div className="flex flex-col min-w-0 pr-4">
                         <span className="text-sm font-medium text-gray-800 truncate">
                           {item.name}
                         </span>
-                        {item.barcode && (
-                          <span className="text-xs text-gray-400 font-mono mt-0.5">
-                            {item.barcode}
-                          </span>
-                        )}
+
+                        <span className="text-xs text-gray-400 font-mono mt-0.5">
+                          {categoryName}
+                        </span>
+
                       </div>
 
                       {/* Right: Price & Stock Badge */}

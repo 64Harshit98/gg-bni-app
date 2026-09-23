@@ -27,6 +27,7 @@ import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
 import { IconClose } from '../../constants/Icons';
 import FilterSelect from '../Reports/SalesReportComponents/FilterSelect';
+import { useAuth } from '../../context/auth-context';
 
 interface SupportTicket {
   id: string;
@@ -40,12 +41,18 @@ interface SupportTicket {
   createdAt: any;
 }
 
+const SUPER_ADMIN_UIDS = [
+  "6vwZ1HRqX7VSnh5KP4JW0TKeuZm2",
+  "1AKioGfop8PmHhry6uXOz8Rw6qT2"
+];
+
 const SupportTicketLeads: React.FC = () => {
   const navigate = useNavigate();
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<'all' | 'received' | 'solved' | 'problem'>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const { currentUser } = useAuth();
 
   // Search
   const [searchQuery, setSearchQuery] = useState('');
@@ -95,6 +102,10 @@ const SupportTicketLeads: React.FC = () => {
   };
   // --- LIVE FIRESTORE LISTENER ---
   useEffect(() => {
+    if (!currentUser || !SUPER_ADMIN_UIDS.includes(currentUser.uid)) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
 
     let q = query(collection(db, "support_tickets"), orderBy("createdAt", "desc"));
@@ -108,10 +119,22 @@ const SupportTicketLeads: React.FC = () => {
     }
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const liveData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as SupportTicket[];
+      const liveData = snapshot.docs.map(doc => {
+        const data = doc.data();
+
+        // Fix: Generate a unique ticket number from the document ID if it's missing 
+        // or if a bug in the client app accidentally hardcoded it.
+        const dynamicTicketNumber = (data.referenceNumber && data.referenceNumber.length > 5)
+          ? data.referenceNumber
+          : `TKT-${doc.id.substring(0, 6).toUpperCase()}`;
+
+        return {
+          id: doc.id,
+          ...data,
+          referenceNumber: dynamicTicketNumber
+        };
+      }) as SupportTicket[];
+
       setTickets(liveData);
       setLoading(false);
     }, (err) => {
@@ -135,9 +158,10 @@ const SupportTicketLeads: React.FC = () => {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(t =>
-        t.referenceNumber?.toLowerCase().includes(q) ||
-        t.phone?.toLowerCase().includes(q) ||
-        t.fullName?.toLowerCase().includes(q)
+        (t.referenceNumber && t.referenceNumber.toLowerCase().includes(q)) ||
+        (t.id && t.id.toLowerCase().includes(q)) ||
+        (t.phone && t.phone.toLowerCase().includes(q)) ||
+        (t.fullName && t.fullName.toLowerCase().includes(q))
       );
     }
 
@@ -176,6 +200,18 @@ const SupportTicketLeads: React.FC = () => {
     }
   };
 
+  if (!currentUser || !SUPER_ADMIN_UIDS.includes(currentUser.uid)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="text-center">
+          <div className="text-5xl mb-3">⛔</div>
+          <p className="text-red-500 font-bold text-xl">ACCESS DENIED</p>
+          <p className="text-gray-500 mt-2">Super Admin Privileges Required</p>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) return <Loading />;
 
   return (
@@ -185,7 +221,7 @@ const SupportTicketLeads: React.FC = () => {
       <div className="flex items-center justify-between pb-3 border-b mb-6">
         <div className="w-8" />
         <h1 className="flex-1 text-xl text-center font-bold text-gray-800 md:text-2xl uppercase tracking-wider">
-          Support Ticket Leads
+          App Support Tickets
         </h1>
         <button onClick={() => navigate(-1)} className="p-2 rounded-sm hover:bg-gray-200 transition-colors">
           <IconClose />
@@ -255,7 +291,7 @@ const SupportTicketLeads: React.FC = () => {
       <div className="grid grid-cols-3 sm:grid-cols-3 gap-3 mb-6">
         <div onClick={() => toggleFilter('received')}
           className={`cursor-pointer rounded-sm transition-all border-2 ${activeFilter === 'received' ? 'border-blue-600 bg-blue-50 shadow-md scale-105' : 'border-transparent'}`}>
-          <CustomCard variant={CardVariant.Summary} title="Received" value={stats.received.toString()} />
+          <CustomCard variant={CardVariant.Summary} title="Pending" value={stats.received.toString()} />
         </div>
         <div onClick={() => toggleFilter('solved')}
           className={`cursor-pointer rounded-sm transition-all border-2 ${activeFilter === 'solved' ? 'border-green-600 bg-green-50 shadow-md scale-105' : 'border-transparent'}`}>
@@ -321,7 +357,7 @@ const SupportTicketLeads: React.FC = () => {
                       onClick={(e) => e.stopPropagation()}
                       className="appearance-none bg-gray-50 border border-gray-200 text-xs font-bold py-2 px-4 pr-10 rounded-sm cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none"
                     >
-                      <option value="received">RECEIVED</option>
+                      <option value="received">PENDING</option>
                       <option value="solved">SOLVED</option>
                       <option value="problem">PROBLEM</option>
                     </select>

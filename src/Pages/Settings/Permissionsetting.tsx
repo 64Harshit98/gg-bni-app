@@ -1,17 +1,36 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../../lib/Firebase';
 import { doc, getDoc, setDoc, collection } from 'firebase/firestore';
-import { Permissions, ROLES } from '../../enums';
+import { Permissions, PLANS, ROLES } from '../../enums';
 import Loading from '../Loading/Loading';
-import { useNavigate } from 'react-router';
 import { useAuth } from '../../context/auth-context';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
+import BackButton from '../../Components/BackButton';
 
 type RolePermissionsMap = Record<string, Permissions[]>;
 
 export const EXCLUDED_OWNER_PERMISSIONS = [
     Permissions.ViewAttendance,
+];
+export const BASIC_ALLOWED_PERMISSIONS = [
+    Permissions.ViewDashboard,
+    Permissions.ViewSalescard,
+    Permissions.ManageEditProfile,
+    Permissions.CreateSales,
+    Permissions.ViewTransactions,
+    Permissions.ViewHidebutton,
+    Permissions.ViewFilter,
+    Permissions.ViewSalesbarchart,
+    Permissions.ViewPaymentmethods,
+    Permissions.ViewReports,
+    Permissions.ViewSalesReport,
+    Permissions.CreateUsers,
+    Permissions.ViewAccount,
+    Permissions.ManageUsers,
+    Permissions.ViewAttendance,
+    Permissions.ManageSalesSetting,
+    Permissions.AllowDueBilling,
 ];
 
 export const DEFAULT_PERMISSIONS_MAP = {
@@ -20,29 +39,86 @@ export const DEFAULT_PERMISSIONS_MAP = {
         Permissions.ViewDashboard,
         Permissions.CreateSales,
         Permissions.CreateSalesReturn,
-        Permissions.ManageEditProfile
+        Permissions.ViewAccount,
+        Permissions.ViewCatalogue,
     ],
     [ROLES.MANAGER]: [
         Permissions.ViewDashboard,
         Permissions.ViewAttendance,
         Permissions.ViewAccount,
-        Permissions.ManageEditProfile,
+        Permissions.ManageItems,
         Permissions.Viewrestockcard,
         Permissions.ViewTransactions,
         Permissions.PrintQR,
-        Permissions.ManageItems,
-        Permissions.ManageItemGroup,
+        //Permissions.ManageItemGroup,
         Permissions.CreateSales,
         Permissions.CreateSalesReturn,
         Permissions.CreatePurchase,
         Permissions.CreatePurchaseReturn,
         Permissions.HiddenProFeatures,
+        Permissions.ViewCatalogue,
     ],
     [ROLES.OWNER]: Object.values(Permissions).filter(
         (permission) => !EXCLUDED_OWNER_PERMISSIONS.includes(permission)
     ),
 };
 
+
+const PERMISSION_DESCRIPTIONS: Partial<Record<Permissions, string>> = {
+    [Permissions.ViewDashboard]: 'Access to the main dashboard overview and summary stats.',
+    [Permissions.ViewCatalogue]: 'Browse the full product catalogue.',
+    [Permissions.ViewFilter]: 'Use date and category filters on dashboard widgets.',
+    [Permissions.ViewHidebutton]: 'Toggle visibility of sensitive data on dashboard cards.',
+    [Permissions.ViewTopSalesperson]: 'See the top-performing salesperson widget.',
+    [Permissions.ViewAttendance]: 'View staff check-in/check-out attendance records.',
+    [Permissions.ViewSalescard]: 'See the today\'s sales summary card on dashboard.',
+    [Permissions.ViewSalesbarchart]: 'See the sales bar chart on the dashboard.',
+    [Permissions.Viewrestockcard]: 'See the low-stock/restock alert card on dashboard.',
+    [Permissions.ViewTopSoldItems]: 'See the best-selling items widget on dashboard.',
+    [Permissions.ViewTopCustomers]: 'See the top customers widget on dashboard.',
+    [Permissions.CreateSales]: 'Process new sales transactions at the POS.',
+    [Permissions.CreateSalesReturn]: 'Process refunds and returns on sales.',
+    [Permissions.ViewTransactions]: 'Browse the full transaction history log.',
+    [Permissions.ViewPaymentmethods]: 'View and select payment types during checkout.',
+    [Permissions.ViewSalesReport]: 'Access the detailed sales report page.',
+    [Permissions.ViewPNLReport]: 'Access the profit & loss report — contains sensitive financial data.',
+    [Permissions.ViewPurchaseReport]: 'Access the purchase history report.',
+    [Permissions.ViewItemReport]: 'Access per-item sales and stock reports.',
+    [Permissions.ViewItemSoldReport]: 'View reports on items sold over a period.',
+    [Permissions.ViewCustomerReport]: 'View reports summarizing customer activity.',
+    [Permissions.ViewExpenseReport]: 'View reports on business expenses.',
+    [Permissions.ViewPartyLedger]: 'View the transaction ledger for each party/customer.',
+    [Permissions.ViewTaxReport]: 'View tax collected and payable reports.',
+    [Permissions.ViewStockTransferReport]: 'View reports on stock transferred between locations.',
+    [Permissions.CreatePurchase]: 'Create new purchase/stock-in orders from suppliers.',
+    [Permissions.CreatePurchaseReturn]: 'Process returns on supplier purchases.',
+    [Permissions.ManageItems]: 'Add, edit, and delete inventory items.',
+    [Permissions.ManageItemGroup]: 'Create and manage item categories and groups.',
+    [Permissions.PrintQR]: 'Print QR code labels for inventory items.',
+    [Permissions.ViewAccount]: 'Access to the account/profile page.',
+    [Permissions.ManageEditProfile]: 'Update own profile details such as name and photo.',
+    [Permissions.SetPermissions]: 'Configure role-based permissions — high privilege action.',
+    [Permissions.ManageUsers]: 'Add, edit, or deactivate staff user accounts.',
+    [Permissions.CreateUsers]: 'Invite and create new staff accounts.',
+    [Permissions.HiddenProFeatures]: 'Unlocks all advanced Pro-tier features across the app.',
+    [Permissions.ViewReports]: 'Access the reports section in the navigation.',
+    [Permissions.ViewFilterbutton]: 'Use date and category filters on dashboard widgets.',
+    [Permissions.ViewPurchaseTransactions]: 'View the purchase-side transaction history.',
+    [Permissions.ViewEditReturn]: 'View and edit processed return entries.',
+    [Permissions.ViewDownloadPDF]: 'Download transaction receipts and reports as PDF.',
+    [Permissions.SalesmanwiseBilling]: 'Assign a specific salesperson to each sale at billing.',
+    [Permissions.ItemwiseDiscount]: 'Apply different discount rates per item in a sale.',
+    [Permissions.PurchaseTaxtype]: 'Choose the tax type applied on purchase entries.',
+    [Permissions.ViewAddons]: 'Access and manage addon/plugin features.',
+    [Permissions.ChangeViewtype]: 'Switch between list and grid view on item screens.',
+    [Permissions.RoundingOff]: 'Automatically round off the final bill amount.',
+    [Permissions.LockDiscountPrice]: 'Prevent cashiers from manually editing discounted prices.',
+    [Permissions.AllowDueBilling]: 'Allow saving a sale with a pending/due payment.',
+};
+const PERMISSION_LABELS: Partial<Record<Permissions, string>> = {
+    [Permissions.ViewReports]: 'View Reports and Settings',
+    [Permissions.ViewCatalogue]: 'Access Catalogue',
+};
 export const getDefaultPermissions = (role: string): Permissions[] => {
     // @ts-ignore - allows string indexing if ROLES enum types mismatch slightly
     if (DEFAULT_PERMISSIONS_MAP[role]) {
@@ -53,11 +129,23 @@ export const getDefaultPermissions = (role: string): Permissions[] => {
     return [];
 };
 
-export const getSafePermissionsToSave = (role: string, currentPermissions: Permissions[]): Permissions[] => {
-    if (role === ROLES.OWNER) {
-        return currentPermissions.filter(p => !EXCLUDED_OWNER_PERMISSIONS.includes(p));
+export const getSafePermissionsToSave = (
+    role: string,
+    currentPermissions: Permissions[],
+    userPlan: string
+): Permissions[] => {
+
+    let safePermissions = currentPermissions;
+
+    if (userPlan === PLANS.POS_BASIC) {
+        safePermissions = safePermissions.filter(p => BASIC_ALLOWED_PERMISSIONS.includes(p));
     }
-    return currentPermissions;
+
+    if (role === ROLES.OWNER) {
+        return safePermissions.filter(p => !EXCLUDED_OWNER_PERMISSIONS.includes(p));
+    }
+
+    return safePermissions;
 };
 
 const permissionGroups = {
@@ -65,7 +153,6 @@ const permissionGroups = {
         title: 'Dashboard & General',
         permissions: [
             Permissions.ViewDashboard,
-            Permissions.ViewCatalogue,
             Permissions.ViewFilter,
             Permissions.ViewHidebutton,
             Permissions.ViewTopSalesperson,
@@ -79,10 +166,11 @@ const permissionGroups = {
         ],
     },
     sales: {
-        title: 'Sales & Reports',
+        title: 'Sales',
         permissions: [
             Permissions.CreateSales,
             Permissions.CreateSalesReturn,
+            //Permissions.SalesmanwiseBilling,
         ],
     },
     purchases: {
@@ -96,48 +184,105 @@ const permissionGroups = {
         title: 'Inventory Management',
         permissions: [
             Permissions.ManageItems,
-            Permissions.ManageItemGroup,
+            //Permissions.ManageItemGroup,
             Permissions.ViewCatalogue,
         ],
     },
     reports: {
-        title: 'Reports',
+        title: 'Report and Insight',
         permissions: [
+            Permissions.ViewReports,
             Permissions.ViewSalesReport,
             Permissions.ViewPNLReport,
             Permissions.ViewPurchaseReport,
             Permissions.ViewItemReport,
+            Permissions.ViewItemSoldReport,
+            Permissions.ViewCustomerReport,
+            Permissions.ViewExpenseReport,
+            Permissions.ViewPartyLedger,
+            Permissions.ViewTaxReport,
+            Permissions.ViewStockTransferReport,
         ],
     },
-    Settings: {
-        title: 'Settings',
+    settingsAccess: {
+        title: 'Settings Access',
         permissions: [
-            Permissions.SetPermissions,
-            Permissions.ManageUsers,
+            Permissions.ManageSalesSetting,
+            Permissions.ManagePurchaseSetting,
+            Permissions.ManageItemSetting,
+            Permissions.ManageBillSetting,
         ],
     },
-    admin: {
-        title: 'Adder',
-        permissions: [
-            Permissions.ViewTransactions,
-            Permissions.CreateUsers,
-            Permissions.PrintQR,
-        ],
-    },
+
     Account: {
-        title: 'Account',
+        title: 'Account & Management',
         permissions: [
             Permissions.ManageEditProfile,
+            Permissions.ViewAddons,
+            //Permissions.CreateUsers,
         ],
     },
+    // billing: {
+    //     title: 'Billing & POS Behaviour',
+    //     permissions: [
+    //         Permissions.ItemwiseDiscount,
+    //         Permissions.RoundingOff,
+    //         Permissions.LockDiscountPrice,
+    //         Permissions.AllowDueBilling,
+    //         //Permissions.ChangeViewtype,
+    //         //Permissions.ViewDownloadPDF,
+    //         Permissions.ViewEditReturn,
+    //         //Permissions.ViewPurchaseTransactions,
+    //     ],
+    // },
+    // stockControl: {
+    //     title: 'Stock Control',
+    //     permissions: [
+    //         Permissions.AllownegativeStock,
+    //         Permissions.PurchaseTaxtype,
+    //     ],
+    // },
+    // userManagement: {
+    //     title: 'User Management',
+    //     permissions: [
+    //         //Permissions.ViewPaymentmethods,
+    //         //Permissions.ViewFilterbutton,
+    //         Permissions.ViewAccount,
+    //         //Permissions.PrintQR,
+    //         //Permissions.ViewTransactions,
+    //     ],
+    // },
 };
-
+const HIDDEN_FROM_UI_PERMISSIONS = [
+    Permissions.HiddenProFeatures,
+    Permissions.ViewPartnerDashboard,
+    Permissions.SetPermissions,
+    Permissions.ManageUsers,
+    Permissions.ViewTransactions,
+    Permissions.ViewFilterbutton,
+    Permissions.PrintQR,
+    Permissions.ViewPaymentmethods,
+    Permissions.AllownegativeStock,
+    Permissions.PurchaseTaxtype,
+    Permissions.ViewDownloadPDF,
+    Permissions.ViewPurchaseTransactions,
+    Permissions.SalesmanwiseBilling,
+    Permissions.ChangeViewtype,
+    Permissions.ViewEditReturn,
+    Permissions.LockDiscountPrice,
+    Permissions.AllowDueBilling,
+    Permissions.ItemwiseDiscount,
+    Permissions.RoundingOff,
+    Permissions.ViewAccount,
+    Permissions.CreateUsers,
+    Permissions.ManageItemGroup,
+];
 const getUngroupedPermissions = (allPermissions: Permissions[]): Permissions[] => {
     const grouped = new Set<Permissions>();
     Object.values(permissionGroups).forEach(group => {
         group.permissions.forEach(perm => grouped.add(perm));
     });
-    return allPermissions.filter(perm => !grouped.has(perm));
+    return allPermissions.filter(perm => !grouped.has(perm) && !HIDDEN_FROM_UI_PERMISSIONS.includes(perm));
 };
 
 const ManagePermissionsPage: React.FC = () => {
@@ -145,11 +290,21 @@ const ManagePermissionsPage: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
-    const navigate = useNavigate();
     const { currentUser } = useAuth();
+    const currentPlan = currentUser?.plan || PLANS.POS_BASIC;
+    const isBasicPlan = currentPlan === PLANS.POS_BASIC;
 
     const [isResetOpen, setIsResetOpen] = useState(false);
 
+    // NEW: tooltip state for tap-based info icons (mobile-safe)
+    const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!activeTooltip) return;
+        const closeTooltip = () => setActiveTooltip(null);
+        document.addEventListener('click', closeTooltip);
+        return () => document.removeEventListener('click', closeTooltip);
+    }, [activeTooltip]);
     const handleResetPermissions = () => {
         const defaults = getDefaultPermissions(selectedRole);
         setRolePermissions(prev => ({
@@ -161,12 +316,18 @@ const ManagePermissionsPage: React.FC = () => {
 
     const ALL_ROLES = useMemo(() => Object.values(ROLES), []);
 
-    const VISIBLE_ROLES = useMemo(() => ALL_ROLES.filter(r => r !== ROLES.OWNER), [ALL_ROLES]);
+    // Define all roles you want to hide from this management screen
+    const EXCLUDED_ROLES_FROM_UI = [ROLES.OWNER, ROLES.AGENCY, ROLES.AGENT];
+
+    const VISIBLE_ROLES = useMemo(() => {
+        return ALL_ROLES.filter(r => !EXCLUDED_ROLES_FROM_UI.includes(r));
+    }, [ALL_ROLES]);
 
     const allPermissions = useMemo(() => Object.values(Permissions), []);
     const ungroupedPermissions = useMemo(() => getUngroupedPermissions(allPermissions), [allPermissions]);
 
     const [selectedRole, setSelectedRole] = useState<string>(VISIBLE_ROLES[0] || 'Manager');
+
 
     useEffect(() => {
         if (!currentUser?.companyId) {
@@ -174,6 +335,7 @@ const ManagePermissionsPage: React.FC = () => {
             return;
         }
         const companyId = currentUser.companyId;
+
 
         const fetchAndEnsurePermissions = async () => {
             try {
@@ -194,30 +356,21 @@ const ManagePermissionsPage: React.FC = () => {
                         }
 
                         if (role === ROLES.OWNER) {
-                            // Owners always get everything (minus exclusions)
-                            finalPermissions = getSafePermissionsToSave(role, Object.values(Permissions));
+                            finalPermissions = getSafePermissionsToSave(role, Object.values(Permissions), currentPlan);
                             shouldUpdateDB = true;
                         } else {
-                            // --- THE FIX STARTS HERE ---
+                            // Auto-merge in any default permission for this role that
+                            // isn't saved yet, so rollouts of new default capabilities
+                            // reach existing companies without a manual Reset + Save.
                             const defaults = getDefaultPermissions(role);
-
-                            // Combine stored permissions with defaults. 
-                            // This ensures new permissions added to DEFAULT_PERMISSIONS_MAP 
-                            // appear automatically without a manual save.
-                            finalPermissions = Array.from(new Set([...defaults, ...storedData]));
-
-                            // Optional: If you want to automatically save these new defaults 
-                            // back to Firestore immediately:
-                            if (finalPermissions.length !== storedData.length) {
-                                shouldUpdateDB = true;
-                            }
-                            // --- THE FIX ENDS HERE ---
+                            const merged = Array.from(new Set([...storedData, ...defaults]));
+                            if (merged.length !== storedData.length) shouldUpdateDB = true;
+                            finalPermissions = getSafePermissionsToSave(role, merged, currentPlan);
                         }
                     } else {
                         console.warn(`No permissions for ${role}, using defaults.`);
-
                         const defaults = getDefaultPermissions(role);
-                        finalPermissions = getSafePermissionsToSave(role, defaults);
+                        finalPermissions = getSafePermissionsToSave(role, defaults, currentPlan);
                         shouldUpdateDB = true;
                     }
 
@@ -262,11 +415,10 @@ const ManagePermissionsPage: React.FC = () => {
             setSuccessMessage(null); setError(null);
 
             const rawPermissions = rolePermissions[role] || [];
-            const permissionsToSave = getSafePermissionsToSave(role, rawPermissions);
+            const permissionsToSave = getSafePermissionsToSave(role, rawPermissions, currentPlan);
 
             const docRef = doc(db, 'companies', currentUser.companyId, 'permissions', role);
             await setDoc(docRef, { allowedPermissions: permissionsToSave }, { merge: true });
-
             setSuccessMessage(`Permissions for ${role} updated successfully!`);
             setTimeout(() => setSuccessMessage(null), 3000);
 
@@ -281,9 +433,7 @@ const ManagePermissionsPage: React.FC = () => {
     return (
         <div className="bg-gray-100 min-h-screen mb-16">
             <div className="flex items-center justify-between p-2 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30 mb-4">
-                <button onClick={() => navigate(-1)} className="rounded-full bg-gray-200 p-2 text-gray-700 hover:bg-gray-300">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
-                </button>
+                <BackButton />
                 <h1 className="text-center text-2xl md:text-3xl font-bold text-gray-800">Manage Permissions</h1>
             </div>
 
@@ -293,7 +443,7 @@ const ManagePermissionsPage: React.FC = () => {
                         <button
                             key={role}
                             onClick={() => setSelectedRole(role)}
-                            className={`px-6 py-2 rounded-md text-sm font-medium transition-all capitalize m-0.5 ${selectedRole === role ? 'bg-white text-sky-500 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                            className={`px-6 py-2 rounded-md text-sm font-medium transition-all capitalize m-0.5 ${selectedRole === role ? 'bg-white text-blue-500 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                         >
                             {role}
                         </button>
@@ -340,20 +490,60 @@ const ManagePermissionsPage: React.FC = () => {
                             <fieldset key={group.title} className={`p-4 border border-gray-200 rounded-lg bg-gray-50/50 ${index > 0 ? 'pt-4' : ''}`}>
                                 <legend className="text-md font-bold text-gray-700 px-2 bg-white">{group.title}</legend>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
-                                    {group.permissions.map((permission) => (
-                                        <label key={permission} className="flex items-center space-x-3 p-2 rounded transition hover:bg-white hover:shadow-sm cursor-pointer">
-                                            <div className="relative flex items-center">
-                                                <input
-                                                    type="checkbox"
-                                                    className="peer h-5 w-5 appearance-none rounded border border-gray-300 transition-all checked:border-sky-500 checked:bg-sky-500 hover:shadow-sm"
-                                                    checked={rolePermissions[selectedRole]?.includes(permission) || false}
-                                                    onChange={(e) => handlePermissionChange(selectedRole, permission, e.target.checked)}
-                                                />
-                                                <svg className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 peer-checked:opacity-100" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" width="12" height="12"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                            </div>
-                                            <span className="text-sm text-gray-600 select-none font-medium">{permission}</span>
-                                        </label>
-                                    ))}
+                                    {group.permissions.map((permission) => {
+                                        const isLockedByPlan = isBasicPlan && !BASIC_ALLOWED_PERMISSIONS.includes(permission);
+
+                                        return (
+                                            <label
+                                                key={permission}
+                                                className={`flex items-center space-x-3 p-2 rounded transition 
+                ${isLockedByPlan ? 'opacity-60 cursor-not-allowed bg-gray-50' : 'hover:bg-white hover:shadow-sm cursor-pointer'}`
+                                                }
+                                                title={isLockedByPlan ? "Upgrade to Pro/Enterprise to unlock" : ""}
+                                            >
+                                                <div className="relative flex items-center">
+                                                    <input
+                                                        type="checkbox"
+                                                        disabled={isLockedByPlan}
+                                                        className="peer h-5 w-5 appearance-none rounded border border-gray-300 transition-all checked:border-blue-500 checked:bg-blue-600 hover:shadow-sm disabled:bg-gray-200 disabled:border-gray-300"
+                                                        checked={rolePermissions[selectedRole]?.includes(permission) || false}
+                                                        onChange={(e) => handlePermissionChange(selectedRole, permission, e.target.checked)}
+                                                    />
+                                                    <svg className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 peer-checked:opacity-100" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" width="12" height="12"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                                </div>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-sm text-gray-600 select-none font-medium">
+                                                        {PERMISSION_LABELS[permission] || permission}
+                                                    </span>
+                                                    {PERMISSION_DESCRIPTIONS[permission] && (
+                                                        <div className="relative">
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                    setActiveTooltip(prev => prev === permission ? null : permission);
+                                                                }}
+                                                                className="flex items-center justify-center w-4 h-4 rounded-full border border-gray-500 text-gray-500 text-[8px] cursor-pointer select-none"
+                                                            >
+                                                                i
+                                                            </button>
+                                                            {activeTooltip === permission && (
+                                                                <div className="absolute right-0 sm:left-5 sm:right-auto top-full sm:top-1/2 mt-2 sm:mt-0 sm:-translate-y-1/2 z-50 w-48 max-w-[70vw] bg-white border border-gray-400 rounded-md shadow-lg px-3 py-2 text-[11px] text-gray-500 leading-snug">
+                                                                    {PERMISSION_DESCRIPTIONS[permission]}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    {isLockedByPlan && (
+                                                        <span className="text-[10px] font-bold text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded w-max border border-orange-200">
+                                                            UPGRADE REQUIRED
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </label>
+                                        );
+                                    })}
                                 </div>
                             </fieldset>
                         ))}
@@ -361,17 +551,49 @@ const ManagePermissionsPage: React.FC = () => {
                             <fieldset className="p-4 border border-gray-200 rounded-lg bg-gray-50/50">
                                 <legend className="text-md font-bold text-gray-700 px-2 bg-white border border-gray-200 rounded shadow-sm">Other</legend>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
-                                    {ungroupedPermissions.map((permission) => (
-                                        <label key={permission} className="flex items-center space-x-3 p-2 rounded transition hover:bg-white hover:shadow-sm cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                className="h-5 w-5 rounded border-gray-300 text-sky-500 focus:ring-sky-500"
-                                                checked={rolePermissions[selectedRole]?.includes(permission) || false}
-                                                onChange={(e) => handlePermissionChange(selectedRole, permission, e.target.checked)}
-                                            />
-                                            <span className="text-sm text-gray-600 font-medium">{permission}</span>
-                                        </label>
-                                    ))}
+                                    {ungroupedPermissions.map((permission) => {
+                                        const isLockedByPlan = isBasicPlan && !BASIC_ALLOWED_PERMISSIONS.includes(permission);
+                                        return (
+                                            <label
+                                                key={permission}
+                                                className={`flex items-center space-x-3 p-2 rounded transition 
+                ${isLockedByPlan ? 'opacity-60 cursor-not-allowed bg-gray-50' : 'hover:bg-white hover:shadow-sm cursor-pointer'}`
+                                                }
+                                                title={isLockedByPlan ? "Upgrade to Pro/Enterprise to unlock" : ""}
+                                            >
+                                                <div className="relative flex items-center">
+                                                    <input
+                                                        type="checkbox"
+                                                        disabled={isLockedByPlan}
+                                                        className="peer h-5 w-5 appearance-none rounded border border-gray-300 transition-all checked:border-blue-500 checked:bg-blue-600 hover:shadow-sm disabled:bg-gray-200 disabled:border-gray-300"
+                                                        checked={rolePermissions[selectedRole]?.includes(permission) || false}
+                                                        onChange={(e) => handlePermissionChange(selectedRole, permission, e.target.checked)}
+                                                    />
+                                                    <svg className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 peer-checked:opacity-100" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" width="12" height="12"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                                </div>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-sm text-gray-600 select-none font-medium">
+                                                        {PERMISSION_LABELS[permission] || permission}
+                                                    </span>
+                                                    {PERMISSION_DESCRIPTIONS[permission] && (
+                                                        <div className="relative group">
+                                                            <span className="flex items-center justify-center w-3 h-3 rounded-full border border-gray-500 text-gray-500 text-[8px] cursor-default select-none">
+                                                                i
+                                                            </span>
+                                                            <div className="absolute left-5 top-1/2 -translate-y-1/2 z-50 hidden group-hover:block w-52 bg-white border border-gray-400 rounded-md shadow-md px-3 py-2 text-[11px] text-gray-500 leading-snug pointer-events-none">
+                                                                {PERMISSION_DESCRIPTIONS[permission]}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {isLockedByPlan && (
+                                                        <span className="text-[10px] font-bold text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded w-max border border-orange-200">
+                                                            UPGRADE REQUIRED
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </label>
+                                        );
+                                    })}
                                 </div>
                             </fieldset>
                         )}
@@ -379,13 +601,15 @@ const ManagePermissionsPage: React.FC = () => {
                 </div>
             </div>
 
-            <div className="mt-4 text-center rounded-sm pt-4 sticky bottom-10 bg-transparent pb-4 mx-4">
-                <button
-                    onClick={() => handleSaveChanges(selectedRole)}
-                    className="w-auto bg-sky-500 text-white font-bold py-3 px-4 rounded-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-lg transition-transform active:scale-95"
-                >
-                    Save Changes for {selectedRole}
-                </button>
+            <div className="fixed inset-x-0 bottom-16 md:bottom-0 z-40 bg-transparent px-4 pb-2 md:p-4 pointer-events-none">
+                <div className="max-w-2xl mx-auto flex justify-center gap-4 pointer-events-auto">
+                    <button
+                        onClick={() => handleSaveChanges(selectedRole)}
+                        className="w-auto bg-blue-600 text-white font-bold py-3 px-4 rounded-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-lg transition-transform active:scale-95"
+                    >
+                        Save Changes for {selectedRole}
+                    </button>
+                </div>
             </div>
         </div>
     );

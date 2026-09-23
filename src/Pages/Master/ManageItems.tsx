@@ -1,10 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import useItemReport from '../Reports/ItemReportComponents/useItemReport';
 
 import FilterSelect from '../Reports/ItemReportComponents/FilterSelect';
 import { Spinner } from '../../constants/Spinner';
-import { IconClose } from '../../constants/Icons';
+import BackButton from '../../Components/BackButton';
+import { IconClose, IconSearch } from '../../constants/Icons';
 import { FiEdit2, FiTrash2 } from 'react-icons/fi';
 
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
@@ -26,7 +26,6 @@ type SortOption =
   | 'VALUE_DESC';
 
 const ManageItems: React.FC = () => {
-  const navigate = useNavigate();
 
   const {
     items,
@@ -56,12 +55,36 @@ const ManageItems: React.FC = () => {
   );
 
   const [sortOption, setSortOption] = useState<SortOption>('NAME_ASC');
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   /* -------------------- FILTER + SORT -------------------- */
   const filteredItems = useMemo(() => {
+    // 1. Create a quick lookup list of all currently valid category IDs
+    const validGroupIds = new Set(itemGroups.map((group) => group.id));
+
     let result = items.filter((item) => {
+      // Search logic
+      const matchesSearch =
+        !searchQuery ||
+        (item.name && item.name.toLowerCase().includes(searchQuery.toLowerCase()));
+
+      if (!matchesSearch) return false;
+
+      // If no category filter is applied, show everything
       if (!appliedItemGroupId) return true;
-      return (item.itemGroupId || UNASSIGNED_GROUP_NAME) === appliedItemGroupId;
+
+      // If "Uncategorized" is selected, catch all unassigned AND orphaned items
+      if (appliedItemGroupId === UNASSIGNED_GROUP_NAME) {
+        return (
+          !item.itemGroupId ||
+          item.itemGroupId === UNASSIGNED_GROUP_NAME ||
+          !validGroupIds.has(item.itemGroupId)
+        );
+      }
+
+      // If a specific, valid category is selected
+      return item.itemGroupId === appliedItemGroupId;
     });
 
     result = [...result].sort((a, b) => {
@@ -88,7 +111,7 @@ const ManageItems: React.FC = () => {
     });
 
     return result;
-  }, [items, appliedItemGroupId, sortOption]);
+  }, [items, itemGroups, appliedItemGroupId, sortOption, searchQuery]);
 
   const applyFilters = () => {
     setAppliedItemGroupId(itemGroupId);
@@ -139,16 +162,38 @@ const ManageItems: React.FC = () => {
 
       {/* -------------------- HEADER -------------------- */}
       <div className="flex items-center justify-between bg-white border-b px-4 py-3 shadow-sm">
+        <BackButton />
         <h1 className="text-xl font-bold text-gray-800 text-center flex-1">
           Manage Items
         </h1>
-        <button
-          onClick={() => navigate(-1)}
-          className="p-2 rounded-full bg-gray-200 hover:bg-gray-300"
-        >
-          <IconClose width={20} height={20} />
+        <button onClick={() => setShowSearch(true)} className="p-2">
+          <IconSearch />
         </button>
       </div>
+
+      {showSearch && (
+        <div className="flex justify-center px-3 py-2 bg-white border-b">
+          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-blue-700">
+            <input
+              type="text"
+              placeholder="Search by Item Name..."
+              className="flex-1 text-base font-light p-2 outline-none bg-transparent text-center"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              autoFocus
+            />
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setShowSearch(false);
+              }}
+              className="p-1 text-gray-500 hover:text-black"
+            >
+              <IconClose />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* -------------------- FILTERS -------------------- */}
       <div className="bg-white p-3 border-b flex flex-col gap-4">

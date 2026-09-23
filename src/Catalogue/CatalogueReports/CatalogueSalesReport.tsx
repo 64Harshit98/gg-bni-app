@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
 import {
     collection,
@@ -8,10 +7,22 @@ import {
     getDocs,
     Timestamp,
     orderBy, // 'orderBy' is now used
+    doc,
+    getDoc,
 } from 'firebase/firestore';
 import { useAuth } from '../../context/auth-context';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import XLSX from 'xlsx-js-style';
+import DownloadChoiceModal from '../../Pages/Reports/ItemReportComponents/DownloadChoiceModal';
+import { Modal } from '../../constants/Modal';
+import { State } from '../../enums';
+import { IconSearch, IconClose } from '../../constants/Icons';
+import BackButton from '../../Components/BackButton';
+import ReportDateFilter from '../../Components/ReportDateFilter';
+//import CataShowWrapper from '../../context/CataShowWrapper';
+//import { Cata_Permissions } from '../enum/cata_permissions.enum';
 
 // --- Data Types (now from Order documents) ---
 interface OrderItem { // Renamed from SalesItem
@@ -50,39 +61,21 @@ const formatDateForInput = (date: Date): string => {
 
 // --- Reusable Components (Unchanged) ---
 const SummaryCard: React.FC<{ title: string; value: string; note?: string }> = ({ title, value, note }) => (
-    <div className="bg-white p-4 rounded-lg shadow-md text-center">
+    <div className="bg-white p-4 rounded-sm shadow-md text-center">
         <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">{title}</h3>
         <p className="text-2xl font-bold text-gray-900 mt-2">{value}</p>
         {note && <p className="text-xs text-gray-400 mt-1">{note}</p>}
     </div>
 );
 
-const FilterSelect: React.FC<{
-    label?: string;
-    value: string;
-    onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
-    children: React.ReactNode;
-}> = ({ label, value, onChange, children }) => (
-    <div className="flex-1 min-w-0">
-        {label && <label className="block text-xs text-center font-medium text-gray-600 mb-1">{label}</label>}
-        <select
-            value={value}
-            onChange={onChange}
-            className="w-full p-2.5 text-sm text-center bg-gray-50 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-        >
-            {children}
-        </select>
-    </div>
-);
-
 const RankCircle: React.FC<{ rank: number }> = ({ rank }) => (
-    <div className="w-8 h-8 flex-shrink-0 flex items-center justify-center bg-blue-100 text-blue-700 rounded-full font-bold text-sm mr-4">
+    <div className="w-8 h-8 flex-shrink-0 flex items-center justify-center bg-blue-100 text-[#F97316] rounded-full font-bold text-sm mr-4">
         {rank}
     </div>
 );
 
 const TopCustomersList: React.FC<{ customers: [string, number][] }> = ({ customers }) => (
-    <div className="bg-white p-6 rounded-lg shadow-md">
+    <div className="bg-white p-6 rounded-sm shadow-md">
         <h3 className="text-lg font-bold text-gray-800 mb-5">Top 5 Customers</h3>
         <div className="space-y-4">
             {customers.length > 0 ? customers.map(([name, total], index) => (
@@ -109,7 +102,7 @@ const PaymentChart: React.FC<{ data: { [key: string]: number } }> = ({ data }) =
 
     if (visibleData.length === 0) {
         return (
-            <div className="bg-white p-6 rounded-lg shadow-md">
+            <div className="bg-white p-6 rounded-sm shadow-md">
                 <h3 className="text-lg font-bold text-gray-800 mb-5">Payment Methods</h3>
                 <p className="text-sm text-center text-gray-500">No payment data for this period.</p>
             </div>
@@ -117,7 +110,7 @@ const PaymentChart: React.FC<{ data: { [key: string]: number } }> = ({ data }) =
     }
 
     return (
-        <div className="bg-white p-6 rounded-lg shadow-md">
+        <div className="bg-white p-6 rounded-sm shadow-md">
             <h3 className="text-lg font-bold text-gray-800 mb-5">Payment Methods</h3>
             <div className="space-y-4">
                 {visibleData.map(([method, value]) => (
@@ -128,7 +121,7 @@ const PaymentChart: React.FC<{ data: { [key: string]: number } }> = ({ data }) =
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-2.5">
                             <div
-                                className="bg-blue-600 h-2.5 rounded-full transition-all duration-500"
+                                className="bg-[#F97316] h-2.5 rounded-full transition-all duration-500"
                                 style={{ width: `${(value / maxValue) * 100}%` }}
                             ></div>
                         </div>
@@ -148,19 +141,27 @@ const SalesListTable: React.FC<{
 }> = ({ sales, sortConfig, onSort }) => {
     const SortableHeader: React.FC<{ sortKey: keyof OrderRecord; children: React.ReactNode; className?: string; }> = ({ sortKey, children, className }) => {
         const isSorted = sortConfig.key === sortKey;
-        const directionIcon = sortConfig.direction === 'asc' ? '▲' : '▼';
+        const ASC_ICON = '∧';
+        const DESC_ICON = '∨';
+        const directionIcon = sortConfig.direction === 'asc' ? ASC_ICON : DESC_ICON;
 
         return (
-            <th className={`py-2 px-3 ${className || ''}`}>
-                <button onClick={() => onSort(sortKey)} className="flex items-center gap-2 uppercase">
-                    {children}
-                    <span className="w-0">
+            <th className={`py-2 px-3 text-center ${className || ''}`}>
+                <button
+                    onClick={() => onSort(sortKey)}
+                    className="w-full flex items-center justify-center gap-1 uppercase"
+                >
+                    <span>{children}</span>
+
+                    <span className="w-3 flex justify-center">
                         {isSorted ? (
-                            <span className="text-blue-600 text-xs">{directionIcon}</span>
+                            <span className="text-[#F97316] text-xs leading-none">
+                                {directionIcon}
+                            </span>
                         ) : (
-                            <span className="text-gray-400 hover:text-gray-600 text-xs inline-flex flex-col leading-3">
-                                <span>▲</span>
-                                <span className="-mt-1">▼</span>
+                            <span className="text-gray-400 text-[10px] inline-flex flex-col leading-[8px] opacity-60">
+                                <span>{ASC_ICON}</span>
+                                <span>{DESC_ICON}</span>
                             </span>
                         )}
                     </span>
@@ -170,7 +171,7 @@ const SalesListTable: React.FC<{
     };
 
     return (
-        <div className="bg-white p-2 rounded-lg shadow-md mt-2">
+        <div className="bg-white p-2 rounded-sm shadow-md mt-2">
             <div className="max-h-96 overflow-y-auto">
                 <table className="w-full text-sm text-center">
                     <thead className="text-xs text-slate-500 bg-slate-100 sticky top-0">
@@ -205,22 +206,55 @@ const ALL_PAYMENT_MODES = ['Cash', 'Card', 'UPI', 'Due'];
 
 // --- Main Component Renamed ---
 const OrdersReport: React.FC = () => {
-    const navigate = useNavigate();
     const { currentUser, loading: authLoading } = useAuth();
     const [sales, setSales] = useState<OrderRecord[]>([]); // Use OrderRecord
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
+    const [companyName, setCompanyName] = useState<string>('');
 
-    const [datePreset, setDatePreset] = useState<string>('today');
+    useEffect(() => {
+        const fetchCompanyName = async () => {
+            if (!currentUser?.companyId) return;
+            try {
+                const businessInfoRef = doc(
+                    db,
+                    'companies',
+                    currentUser.companyId,
+                    'business_info',
+                    currentUser.companyId,
+                );
+                const snap = await getDoc(businessInfoRef);
+                if (snap.exists()) {
+                    setCompanyName(snap.data().businessName || '');
+                }
+            } catch (e) {
+                console.error('Failed to fetch company name', e);
+            }
+        };
+        fetchCompanyName();
+    }, [currentUser?.companyId]);
+
+    const [datePreset, setDatePreset] = useState<string>('last30');
     const [customStartDate, setCustomStartDate] = useState<string>('');
     const [customEndDate, setCustomEndDate] = useState<string>('');
     const [appliedFilters, setAppliedFilters] = useState<{ start: number; end: number } | null>(null);
     const [isListVisible, setIsListVisible] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [showSearch, setShowSearch] = useState(false);
     const [sortConfig, setSortConfig] = useState<{ key: keyof OrderRecord; direction: 'asc' | 'desc' }>({ key: 'createdAt', direction: 'desc' });
+    const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+    const [feedbackModal, setFeedbackModal] = useState({
+        isOpen: false,
+        type: State.SUCCESS,
+        message: ''
+    });
 
     useEffect(() => {
         const today = new Date();
-        const startDateStr = formatDateForInput(today);
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+
+        const startDateStr = formatDateForInput(thirtyDaysAgo);
         const endDateStr = formatDateForInput(today);
         setCustomStartDate(startDateStr);
         setCustomEndDate(endDateStr);
@@ -252,14 +286,11 @@ const OrdersReport: React.FC = () => {
         const fetchSales = async () => {
             setIsLoading(true);
             try {
-                // --- FIX: Query 'Orders' collection AND filter by 'Completed' status ---
                 const q = query(
                     collection(db, 'companies', companyId, 'Orders'), // Changed to 'Orders'       
                     where('createdAt', '>=', Timestamp.fromDate(start)),
                     where('createdAt', '<=', Timestamp.fromDate(end)),
                     orderBy('createdAt', 'desc')
-                    // NOTE: This query requires a composite index.
-                    // The error in your console will provide a link to create it.
                 );
 
                 const querySnapshot = await getDocs(q);
@@ -268,7 +299,7 @@ const OrdersReport: React.FC = () => {
                         const data = doc.data();
                         return {
                             id: doc.id,
-                            partyName: data.userName || 'N/A', // Use userName from Order
+                            partyName: data.userName || data.billingDetails?.name || 'N/A', // Use userName from Order
                             totalAmount: data.totalAmount || 0,
                             status: data.status || "",
                             paymentMethods: data.paymentMethods || {}, // Use paymentMethods from Order
@@ -312,6 +343,15 @@ const OrdersReport: React.FC = () => {
         setAppliedFilters({ start: start.getTime(), end: end.getTime() });
     };
 
+    const handleStartDateChange = (value: string) => {
+        setCustomStartDate(value);
+        setDatePreset('custom');
+    };
+    const handleEndDateChange = (value: string) => {
+        setCustomEndDate(value);
+        setDatePreset('custom');
+    };
+
     const handleSort = (key: keyof OrderRecord) => {
         let direction: 'asc' | 'desc' = 'asc';
         if (sortConfig.key === key && sortConfig.direction === 'asc') {
@@ -323,6 +363,24 @@ const OrdersReport: React.FC = () => {
     const { filteredSales, summary, topCustomers, paymentModes } = useMemo(() => {
         // Date filtering is now done in the query, so 'sales' is already filtered.
         let newFilteredSales = [...sales];
+
+        const trimmedQuery = searchQuery.toLowerCase().trim();
+
+        if (trimmedQuery) {
+            const tokens = trimmedQuery.split(/\s+/);
+
+            newFilteredSales = newFilteredSales.filter((sale) => {
+                return tokens.every((token) => {
+                    return (
+                        sale.invoiceNumber?.toLowerCase().includes(token) ||
+                        sale.partyName?.toLowerCase().includes(token) ||
+                        sale.items?.some(item =>
+                            item.name?.toLowerCase().includes(token)
+                        )
+                    );
+                });
+            });
+        }
 
         newFilteredSales.sort((a, b) => {
             const key = sortConfig.key;
@@ -374,35 +432,392 @@ const OrdersReport: React.FC = () => {
             topCustomers,
             paymentModes: paymentModesData,
         };
-    }, [sales, sortConfig]); // Removed appliedFilters from here
+    }, [sales, sortConfig, searchQuery]); // Removed appliedFilters from here
 
-    const downloadAsPdf = () => {
+    const downloadAsPdf = async () => {
         if (!appliedFilters) return;
-        const doc = new jsPDF();
 
-        doc.setFontSize(18);
-        doc.text('Completed Orders Report', 14, 22); // Title changed
-        doc.setFontSize(11);
-        doc.setTextColor(100);
-        doc.text(`Date Range: ${formatDate(appliedFilters.start)} to ${formatDate(appliedFilters.end)}`, 14, 29);
+        try {
+            const doc = new jsPDF();
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const pageHeight = doc.internal.pageSize.getHeight();
 
-        autoTable(doc, {
-            startY: 35,
-            head: [['Date', 'Order ID', 'Customer', 'Items', 'Amount']], // Headers changed
-            body: filteredSales.map((sale) => [
-                formatDate(sale.createdAt),
-                sale.invoiceNumber,
-                sale.partyName,
-                sale.items.reduce((sum, i) => sum + i.quantity, 0),
-                `₹ ${sale.totalAmount.toLocaleString('en-IN')}`,
-            ]),
-            foot: [
-                ['Total', '', '', `${summary.totalItemsSold}`, `₹ ${summary.totalSales.toLocaleString('en-IN')}`]
-            ],
-            footStyles: { fontStyle: 'bold' },
-        });
+            // ===== GENERATION TAG (drawn first, reserves space on the right) =====
+            const generatedAt = new Date().toLocaleString();
+            const tagText = `Generated by SELLAR • ${generatedAt}`;
 
-        doc.save(`orders_report_${formatDateForInput(new Date())}.pdf`);
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(8);
+
+            const textWidth = doc.getTextWidth(tagText);
+            const paddingX = 2;
+
+            const boxWidth = textWidth + paddingX * 2;
+            const boxHeight = 5;
+
+            const logoReservedWidth = 18; // space reserved for logo + gap, so tag never overlaps it
+            const boxX = pageWidth - 14 - logoReservedWidth - boxWidth;
+            const boxY = 11;
+
+            doc.setFillColor(245, 245, 245);
+            doc.rect(boxX, boxY, boxWidth, boxHeight, "F");
+
+            doc.setTextColor(80, 80, 80);
+            doc.text(tagText, boxX + paddingX, boxY + 3.5);
+
+            doc.setTextColor(0, 0, 0);
+
+            // ===== LOGO (drawn after, in its own reserved slot at top-right corner) =====
+            try {
+                const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
+                if (base64Logo) {
+                    const img = new Image();
+                    img.src = base64Logo;
+                    await new Promise<void>((resolve) => {
+                        img.onload = () => {
+                            const logoWidth = 13;
+                            const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
+                            const logoX = pageWidth - logoWidth - 14;
+                            doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
+                            resolve();
+                        };
+                        img.onerror = () => resolve();
+                    });
+                }
+            } catch { }
+
+            // ===== ORANGE BAR =====
+            doc.setFillColor(249, 115, 22);
+            doc.rect(0, 0, pageWidth, 6, 'F');
+
+            // ===== HEADER =====
+            doc.setFontSize(22);
+            doc.setTextColor(17, 24, 39);
+            doc.setFont('helvetica', 'bold');
+            const reportTitle = companyName
+                ? `Orders Report — ${companyName}`
+                : 'Orders Report';
+            doc.text(reportTitle, 14, 24);
+
+            doc.setFontSize(10);
+            doc.setTextColor(107, 114, 128);
+            doc.setFont('helvetica', 'normal');
+
+            const generationDate = new Date().toLocaleDateString('en-IN', {
+                year: 'numeric', month: 'short', day: 'numeric',
+            });
+
+            let subtitleText = `Generated on: ${generationDate}`;
+            subtitleText += `   |   Period: ${formatDate(appliedFilters.start)} to ${formatDate(appliedFilters.end)}`;
+
+            doc.text(subtitleText, 14, 31);
+
+            // ===== TABLE =====
+            autoTable(doc, {
+                startY: 38,
+                head: [['DATE', 'ORDER ID', 'CUSTOMER', 'ITEMS', 'AMOUNT (Rs.)']],
+                body: filteredSales.map((sale) => [
+                    formatDate(sale.createdAt),
+                    sale.invoiceNumber,
+                    sale.partyName,
+                    sale.items.reduce((sum, i) => sum + i.quantity, 0).toString(),
+                    sale.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                ]),
+                foot: [
+                    [
+                        'TOTAL',
+                        '-',
+                        '-',
+                        summary.totalItemsSold.toString(),
+                        summary.totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                    ]
+                ],
+                showFoot: 'lastPage',
+                theme: 'plain',
+                styles: {
+                    font: 'helvetica',
+                    cellPadding: 5,
+                    fontSize: 10,
+                    textColor: [55, 65, 81],
+                    overflow: 'linebreak',
+                    valign: 'middle'
+                },
+                headStyles: {
+                    fillColor: [249, 250, 251],
+                    textColor: [17, 24, 39],
+                    fontStyle: 'bold',
+                    halign: 'center',
+                    lineWidth: { top: 1, bottom: 1 },
+                    lineColor: [229, 231, 235],
+                },
+                footStyles: {
+                    fillColor: [255, 255, 255],
+                    textColor: [17, 24, 39],
+                    fontStyle: 'bold',
+                    halign: 'right',
+                    lineWidth: { top: 1, bottom: 2 },
+                    lineColor: [17, 24, 39],
+                },
+                alternateRowStyles: {
+                    fillColor: [252, 252, 252],
+                },
+                columnStyles: {
+                    0: { halign: 'center', cellWidth: 25 },
+                    1: { halign: 'center', cellWidth: 30 },
+                    2: { halign: 'left', cellWidth: 50 },
+                    3: { halign: 'right', cellWidth: 25 },
+                    4: { halign: 'right', cellWidth: 30 },
+                },
+                // Ensure CUSTOMER column header and body align identically
+                didParseCell: function (data) {
+                    // Force SAME alignment for header and body in CUSTOMER column
+                    if (data.column.index === 2) {
+                        data.cell.styles.halign = 'left';
+                        data.cell.styles.cellPadding = 5; // keep symmetric padding
+                    }
+                },
+                didDrawPage: function () {
+                    const pageCount = doc.getNumberOfPages();
+                    doc.setFontSize(9);
+                    doc.setTextColor(156, 163, 175);
+                    doc.text(`Page ${pageCount}`, pageWidth - 14, pageHeight - 10, { align: 'right' });
+                },
+            });
+
+            doc.save(`Orders_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+
+            setIsDownloadModalOpen(false);
+            setFeedbackModal({
+                isOpen: true,
+                type: State.SUCCESS,
+                message: 'PDF downloaded successfully!',
+            });
+
+        } catch (err) {
+            setFeedbackModal({
+                isOpen: true,
+                type: State.ERROR,
+                message: 'Failed to generate PDF.',
+            });
+        }
+    };
+
+    const downloadAsExcel = () => {
+        try {
+            const s = (font: any, fill?: any, alignment?: any, border?: any) => ({
+                font: { name: 'Arial', ...font },
+                fill: fill ?? {},
+                alignment: alignment ?? { horizontal: 'center', vertical: 'center', wrapText: true },
+                border: border ?? {},
+            });
+            const solidFill = (rgb: string) => ({ patternType: 'solid', fgColor: { rgb } });
+            const allBorders = {
+                top: { style: 'thin', color: { rgb: 'FED7AA' } },
+                bottom: { style: 'thin', color: { rgb: 'FED7AA' } },
+                left: { style: 'thin', color: { rgb: 'FED7AA' } },
+                right: { style: 'thin', color: { rgb: 'FED7AA' } },
+            };
+            const bblr = {
+                bottom: { style: 'thin', color: { rgb: 'FED7AA' } },
+                left: { style: 'thin', color: { rgb: 'FED7AA' } },
+                right: { style: 'thin', color: { rgb: 'FED7AA' } },
+            };
+
+            const generationDate = new Date().toLocaleDateString('en-IN', {
+                year: 'numeric', month: 'short', day: 'numeric',
+            });
+
+            const periodLabel = appliedFilters
+                ? `Period: ${formatDate(appliedFilters.start)} – ${formatDate(appliedFilters.end)}`
+                : 'Period: All';
+
+            const COLS = [
+                { header: '#', width: 6 },
+                { header: 'Date', width: 16 },
+                { header: 'Order ID', width: 28 },
+                { header: 'Customer', width: 28 },
+                { header: 'Items', width: 14 },
+                { header: 'Amount (₹)', width: 26 },
+            ];
+            const colCount = COLS.length;
+
+            // Row layout:
+            // 0  → Title  (merged)
+            // 1  → Meta   (merged)
+            // 2  → blank spacer
+            // 3  → Summary label (merged)
+            // 4  → Summary values
+            // 5  → blank spacer
+            // 6  → Column headers
+            // 7+ → Data rows
+            // Last → Totals footer
+
+            const dataStartRow = 7;
+            const totalRows = dataStartRow + filteredSales.length + 1;
+            const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
+
+            // Row 0 – Title
+            aoa[0][0] = companyName
+                ? `Orders Report  —  ${companyName}`
+                : 'Orders Report';
+
+            // Row 1 – Meta
+            aoa[1][0] = `Generated: ${generationDate}   |   ${periodLabel}   |   Orders: ${summary.totalTransactions}`;
+
+            // Row 3 – Summary label
+            aoa[3][0] = 'SUMMARY';
+
+            // Row 4 – Summary values (single merged cell)
+            aoa[4][0] = `Total Orders: ${summary.totalTransactions}   |   Total Sales: ₹${summary.totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Items Sold: ${summary.totalItemsSold}`;
+
+            // Row 6 – Column headers
+            COLS.forEach((c, i) => { aoa[6][i] = c.header; });
+
+            // Rows 7+ – Data
+            filteredSales.forEach((sale, idx) => {
+                const r = dataStartRow + idx;
+                aoa[r][0] = idx + 1;
+                aoa[r][1] = formatDate(sale.createdAt);
+                aoa[r][2] = sale.invoiceNumber;
+                aoa[r][3] = sale.partyName;
+                aoa[r][4] = sale.items.reduce((sum, i) => sum + i.quantity, 0);
+                aoa[r][5] = Math.round(sale.totalAmount);
+            });
+
+            // Footer row
+            const footerRow = dataStartRow + filteredSales.length;
+            aoa[footerRow][0] = 'TOTAL';
+            aoa[footerRow][1] = `${filteredSales.length} orders`;
+            aoa[footerRow][4] = summary.totalItemsSold;
+            aoa[footerRow][5] = Math.round(summary.totalSales);
+
+            // ── BUILD WORKSHEET ─────────────────────────────────────────────
+            const worksheet = XLSX.utils.aoa_to_sheet(aoa);
+            worksheet['!cols'] = COLS.map(c => ({ wch: c.width }));
+            worksheet['!rows'] = [
+                { hpt: 36 }, // 0 title
+                { hpt: 20 }, // 1 meta
+                { hpt: 8 }, // 2 spacer
+                { hpt: 18 }, // 3 summary label
+                { hpt: 22 }, // 4 summary values
+                { hpt: 8 }, // 5 spacer
+                { hpt: 28 }, // 6 headers
+                ...filteredSales.map(() => ({ hpt: 20 })),
+                { hpt: 24 }, // footer
+            ];
+
+            worksheet['!merges'] = [
+                { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
+                { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
+                { s: { r: 3, c: 0 }, e: { r: 3, c: colCount - 1 } },
+                { s: { r: 4, c: 0 }, e: { r: 4, c: colCount - 1 } },
+                { s: { r: footerRow, c: 1 }, e: { r: footerRow, c: 3 } },
+            ];
+
+            const style = (addr: string, st: any) => {
+                if (!worksheet[addr]) worksheet[addr] = { t: 's', v: '' };
+                worksheet[addr].s = st;
+            };
+
+            // Title (row 0) — deep orange
+            style('A1', s(
+                { sz: 16, bold: true, color: { rgb: 'FFFFFF' } },
+                solidFill('EA580C'),
+                { horizontal: 'center', vertical: 'center' },
+            ));
+
+            // Meta (row 1) — light orange tint
+            style('A2', s(
+                { sz: 9, italic: true, color: { rgb: '7C2D12' } },
+                solidFill('FFEDD5'),
+                { horizontal: 'center', vertical: 'center' },
+            ));
+
+            // Summary label (row 3)
+            style('A4', s(
+                { sz: 10, bold: true, color: { rgb: 'C2410C' } },
+                solidFill('FFF7ED'),
+                { horizontal: 'left', vertical: 'center' },
+                allBorders,
+            ));
+
+            style('A5', s(
+                { sz: 10, bold: true, color: { rgb: '9A3412' } },
+                solidFill('FFF7ED'),
+                { horizontal: 'center', vertical: 'center' },
+                bblr,
+            ));
+
+            // Column headers (row 6) — dark orange header bar
+            COLS.forEach((_c, i) => {
+                const addr = XLSX.utils.encode_cell({ r: 6, c: i });
+                style(addr, s(
+                    { sz: 10, bold: true, color: { rgb: 'FFFFFF' } },
+                    solidFill('C2410C'),
+                    { horizontal: i <= 3 ? 'left' : 'center', vertical: 'center' },
+                    allBorders,
+                ));
+            });
+
+            // Data rows
+            filteredSales.forEach((_sale, idx) => {
+                const r = dataStartRow + idx;
+                const isAlt = idx % 2 === 1;
+                const rowBg = solidFill(isAlt ? 'FFF7ED' : 'FFFFFF');
+
+                for (let ci = 0; ci < colCount; ci++) {
+                    const addr = XLSX.utils.encode_cell({ r, c: ci });
+                    const isNumeric = ci === 4 || ci === 5;
+                    style(addr, s(
+                        { sz: 9, color: { rgb: '1E293B' } },
+                        rowBg,
+                        { horizontal: isNumeric ? 'center' : 'left', vertical: 'center' },
+                        bblr,
+                    ));
+                    if (ci === 5 && worksheet[addr]) {
+                        worksheet[addr].t = 'n';
+                        worksheet[addr].z = '₹#,##0.00';
+                    }
+                }
+            });
+
+            // Footer row
+            for (let ci = 0; ci < colCount; ci++) {
+                const addr = XLSX.utils.encode_cell({ r: footerRow, c: ci });
+                style(addr, s(
+                    { sz: 10, bold: true, color: { rgb: '1E293B' } },
+                    solidFill('FED7AA'),
+                    { horizontal: ci <= 3 ? 'left' : 'center', vertical: 'center' },
+                    {
+                        top: { style: 'medium', color: { rgb: '1E293B' } },
+                        bottom: { style: 'medium', color: { rgb: '1E293B' } },
+                        left: { style: 'thin', color: { rgb: 'FED7AA' } },
+                        right: { style: 'thin', color: { rgb: 'FED7AA' } },
+                    },
+                ));
+                if (ci === 5 && worksheet[addr]) {
+                    worksheet[addr].t = 'n';
+                    worksheet[addr].z = '₹#,##0.00';
+                }
+            }
+
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, 'Orders Report');
+            XLSX.writeFile(workbook, `Orders-Report-${formatDate(appliedFilters!.start)}-to-${formatDate(appliedFilters!.end)}.xlsx`);
+
+            setIsDownloadModalOpen(false);
+            setFeedbackModal({
+                isOpen: true,
+                type: State.SUCCESS,
+                message: 'Excel downloaded successfully!',
+            });
+        } catch {
+            setFeedbackModal({
+                isOpen: true,
+                type: State.ERROR,
+                message: 'Failed to generate Excel file.',
+            });
+        }
     };
 
     if (isLoading || authLoading) return <div className="p-4 text-center">Loading...</div>;
@@ -410,27 +825,81 @@ const OrdersReport: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-gray-100 p-2 pb-16">
+
+            {feedbackModal.isOpen && (
+                <Modal
+                    type={feedbackModal.type}
+                    message={feedbackModal.message}
+                    onClose={() => setFeedbackModal((p) => ({ ...p, isOpen: false }))}
+                    showConfirmButton={false}
+                />
+            )}
+
+            <DownloadChoiceModal
+                isOpen={isDownloadModalOpen}
+                onClose={() => setIsDownloadModalOpen(false)}
+                onDownloadPdf={downloadAsPdf}
+                onDownloadExcel={downloadAsExcel}
+            />
+
             <div className="flex items-center justify-between pb-3 border-b mb-2">
-                <h1 className="flex-1 text-xl text-center font-bold text-gray-800">Orders Report (Completed)</h1>
-                <button onClick={() => navigate(-1)} className="p-2"> <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg></button>
+                <BackButton />
+
+                {/* TITLE */}
+                <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
+                    Orders Report (Completed)
+                </h1>
+
+                <button
+                    onClick={() => setShowSearch(true)}
+                    className="p-2"
+                >
+                    <IconSearch />
+                </button>
+
             </div>
 
-            <div className="bg-white p-2 rounded-lg shadow-md mb-2">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <FilterSelect value={datePreset} onChange={(e) => handleDatePresetChange(e.target.value)}>
-                        <option value="today">Today</option>
-                        <option value="yesterday">Yesterday</option>
-                        <option value="last7">Last 7 Days</option>
-                        <option value="last30">Last 30 Days</option>
-                        <option value="custom">Custom</option>
-                    </FilterSelect>
-                    <div className='grid grid-cols-2 sm:grid-cols-2 gap-4'>
-                        <input type="date" value={customStartDate} onChange={e => { setCustomStartDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border rounded-md" placeholder="Start Date" />
-                        <input type="date" value={customEndDate} onChange={e => { setCustomEndDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border rounded-md" placeholder="End Date" />
+            {showSearch && (
+                <div className="flex justify-center mb-2 px-2">
+
+                    <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-[#F97316]">
+
+                        {/* INPUT */}
+                        <input
+                            type="text"
+                            placeholder="Search by Order ID, Customer..."
+                            className="flex-1 text-base font-light p-2 outline-none bg-transparent text-center"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            autoFocus
+                        />
+
+                        {/* ❌ CLOSE BUTTON (INPUT KE ANDAR RIGHT SIDE) */}
+                        <button
+                            onClick={() => {
+                                setSearchQuery('');
+                                setShowSearch(false);
+                            }}
+                            className="p-1 text-gray-500 hover:text-black"
+                        >
+                            <IconClose />
+                        </button>
+
                     </div>
+
                 </div>
-                <button onClick={handleApplyFilters} className="w-full mt-2 px-3 py-1 bg-blue-600 text-white text-lg font-semibold rounded-lg shadow-sm hover:bg-blue-700 transition">Apply</button>
-            </div>
+            )}
+
+            <ReportDateFilter
+                datePreset={datePreset}
+                startDate={customStartDate}
+                endDate={customEndDate}
+                onPresetChange={handleDatePresetChange}
+                onStartDateChange={handleStartDateChange}
+                onEndDateChange={handleEndDateChange}
+                onApply={handleApplyFilters}
+                theme="catalogue"
+            />
 
             <div className="grid grid-cols-2 gap-2 mb-2">
                 <SummaryCard title="Total Sales" value={`₹${Math.round(summary.totalSales || 0).toLocaleString('en-IN')}`} />
@@ -446,11 +915,27 @@ const OrdersReport: React.FC = () => {
                 <PaymentChart data={paymentModes} />
             </div>
 
-            <div className="bg-white p-4 rounded-lg shadow-md flex justify-between items-center">
+            <div className="bg-white p-4 rounded-sm shadow-md flex justify-between items-center">
                 <h2 className="text-lg font-semibold text-gray-700">Report Details</h2>
                 <div className="flex items-center space-x-3">
-                    <button onClick={() => setIsListVisible(!isListVisible)} className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition">{isListVisible ? 'Hide List' : 'Show List'}</button>
-                    <button onClick={downloadAsPdf} disabled={filteredSales.length === 0} className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 ">Download PDF</button>
+                    <button onClick={() => setIsListVisible(!isListVisible)} className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-sm hover:bg-slate-300 transition">{isListVisible ? 'Hide List' : 'Show List'}</button>
+
+                    <button
+                        onClick={() => {
+                            if (filteredSales.length === 0) {
+                                setFeedbackModal({
+                                    isOpen: true,
+                                    type: State.INFO,
+                                    message: 'No data available to download.'
+                                });
+                            } else {
+                                setIsDownloadModalOpen(true);
+                            }
+                        }}
+                        className="px-4 py-2 bg-[#F97316] text-white font-semibold rounded-sm shadow-sm hover:bg-[#F97316]"
+                    >
+                        Download Report
+                    </button>
                 </div>
             </div>
 
@@ -459,4 +944,4 @@ const OrdersReport: React.FC = () => {
     );
 };
 
-export default OrdersReport; // Renamed export
+export default OrdersReport;

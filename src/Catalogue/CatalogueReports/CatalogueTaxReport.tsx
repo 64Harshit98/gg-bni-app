@@ -113,8 +113,46 @@ const CatalogueTaxReport: React.FC = () => {
     if (!appliedFilters || gstScheme === 'None') return;
     const doc = new jsPDF('landscape');
 
+    // ===== CLEAN GENERATION TAG =====
+    const now = new Date();
+    const generatedAt = now.toLocaleString('en-IN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 14;
+
+    const tagText = `Generated using SELLAR • ${generatedAt}`;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+
+    const textWidth = doc.getTextWidth(tagText);
+    const paddingX = 2;
+
+    const boxWidth = textWidth + paddingX * 2;
+    const boxHeight = 5;
+
+    const boxX = pageWidth - margin - boxWidth;
+    const boxY = 10;
+
+    // light gray background
+    doc.setFillColor(245, 245, 245);
+    doc.rect(boxX, boxY, boxWidth, boxHeight, "F");
+
+    // text
+    doc.setTextColor(80, 80, 80);
+    doc.text(tagText, boxX + paddingX, boxY + 3.5);
+
+    // reset styles
+    doc.setTextColor(0, 0, 0);
+
     doc.setFontSize(18);
-    doc.text(`Tax Report (${gstScheme} Scheme)`, 14, 22);
+    doc.text(`Tax Report (${gstScheme} Scheme)`, 14, 20);
     doc.setFontSize(11);
     doc.text(
       `Period: ${formatDate(appliedFilters.start)} to ${formatDate(appliedFilters.end)}`,

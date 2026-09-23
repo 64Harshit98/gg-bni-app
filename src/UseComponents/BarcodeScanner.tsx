@@ -30,6 +30,11 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
                 // ✅ 1. Add experimental features for better 1D barcode detection
                 const config = {
                     verbose: false,
+                    // Keep this list to only what we actually scan: our own printed
+                    // labels (QR_CODE / CODE_128) plus common retail barcodes
+                    // (EAN/UPC). Every extra format here gets passed straight into
+                    // ZXing's MultiFormatReader and is retried on every single
+                    // frame, which is what was making scans feel slow.
                     formatsToSupport: [
                         Html5QrcodeSupportedFormats.QR_CODE,
                         Html5QrcodeSupportedFormats.CODE_128,
@@ -37,17 +42,6 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
                         Html5QrcodeSupportedFormats.EAN_8,
                         Html5QrcodeSupportedFormats.UPC_A,
                         Html5QrcodeSupportedFormats.UPC_E,
-                        Html5QrcodeSupportedFormats.ITF,
-                        Html5QrcodeSupportedFormats.CODE_39,
-                        Html5QrcodeSupportedFormats.CODE_93,
-                        Html5QrcodeSupportedFormats.CODABAR,
-                        Html5QrcodeSupportedFormats.PDF_417,
-                        Html5QrcodeSupportedFormats.DATA_MATRIX,
-                        Html5QrcodeSupportedFormats.AZTEC,
-                        Html5QrcodeSupportedFormats.RSS_14,
-                        Html5QrcodeSupportedFormats.RSS_EXPANDED,
-                        Html5QrcodeSupportedFormats.MAXICODE,
-                        Html5QrcodeSupportedFormats.UPC_EAN_EXTENSION,
                     ],
                     experimentalFeatures: {
                         useBarCodeDetectorIfSupported: true,

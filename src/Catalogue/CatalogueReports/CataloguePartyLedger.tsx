@@ -1683,9 +1683,9 @@ const CataloguePartyLedger: React.FC = () => {
             {/* HEADER — master list only */}
             {
                 !selectedPartyName && (
-                    <div className="flex items-center justify-between pb-4 border-b border-gray-200 mb-3">
+                    <div className="relative flex items-center justify-between pb-4 border-b border-gray-200 mb-3">
                         <BackButton className="mt-2 ml-3" />
-                        <h1 className="flex-1 text-xl text-center font-bold text-gray-800">Party Ledger</h1>
+                        <h1 className="absolute left-1/2 -translate-x-1/2 text-xl font-bold text-gray-800 whitespace-nowrap">Party Ledger</h1>
                         <button
                             onClick={() => setIsDeleteAllModalOpen(true)}
                             className="md:hidden text-xs font-semibold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 px-3 py-1.5 rounded-sm transition-colors mt-2 mr-3"
@@ -1920,9 +1920,9 @@ const CataloguePartyLedger: React.FC = () => {
 
                                     {/* STICKY HEADER */}
                                     <div className="sticky top-0 z-30 pt-2 pb-3 -mx-2 px-2 bg-gray-50">
-                                        <div className="flex items-center justify-between pb-2 mb-2">
+                                        <div className="relative flex items-center justify-between pb-2 mb-2">
                                             <BackButton onClick={goBack} />
-                                            <h1 className="flex-1 text-lg text-center font-bold text-gray-800 truncate px-2">
+                                            <h1 className="absolute left-1/2 -translate-x-1/2 max-w-[65%] text-lg font-bold text-gray-800 truncate text-center">
                                                 {selectedPartyName} - Ledger
                                             </h1>
                                             <div className="w-10 h-10" />

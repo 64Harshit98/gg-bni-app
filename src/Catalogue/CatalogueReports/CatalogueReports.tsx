@@ -11,10 +11,10 @@ const Reports = () => {
     return (
         <div className="flex flex-col h-screen w-full bg-gray-100 shadow-lg overflow-hidden font-poppins">
             {/* Header (Unchanged) */}
-            <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
-                <BackButton />
-                <h1 className="text-2xl font-bold text-gray-900 m-0 flex-grow text-center">Reports</h1>
-            </div>
+           <div className="relative flex items-center p-4 bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
+    <BackButton />
+    <h1 className="absolute left-1/2 -translate-x-1/2 text-2xl font-bold text-gray-900 m-0">Reports</h1>
+</div>
 
             <div className="grid grid-cols-2 p-4 gap-2 bg-gray-100 box-border">
                 {isDefaultReportsView ? (

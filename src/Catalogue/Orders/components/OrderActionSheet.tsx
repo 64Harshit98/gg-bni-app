@@ -75,7 +75,7 @@ export const OrderActionSheet: React.FC<OrderActionSheetProps> = ({
                             )}
                         </button>
                     )}
-                    {whatsappProvider === 'snapto' && (
+                    {(whatsappProvider === 'snapto' || whatsappProvider === 'sellar') && (
                         <button
                             onClick={() => handleSendWhatsappSnapto(selectedOrderForAction)}
                             disabled={sendingPdf || pdfLoadingOrderId === selectedOrderForAction.id}

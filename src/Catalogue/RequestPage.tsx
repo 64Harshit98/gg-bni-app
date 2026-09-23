@@ -8,7 +8,7 @@ import { Search, Phone, Filter, Reply, Trash2 } from 'lucide-react'
 import { State } from '../enums'
 import { Modal } from '../constants/Modal'
 import { botMasterService } from '../Pages/Additional/Whatsapp/WhatsappApi';
-import { snaptoService } from '../Pages/Additional/Whatsapp/SnaptoApi';
+import { sendCompanyWhatsappMessage } from '../Pages/Additional/Whatsapp/sendCompanyWhatsappMessage';
 import { useWhatsappProvider } from '../Pages/Additional/Whatsapp/useWhatsappProvider';
 import { ROUTES } from '../constants/routes.constants'
 
@@ -702,12 +702,13 @@ function RequestPage() {
         }
     };
 
-    // Sends the "back in stock" notification via Snapto's WhatsApp template
-    // API. Unlike sendDirectWhatsappMessage above (free-form text, edited by
-    // the merchant in the reply composer), this bypasses the composer since
-    // template messages can't carry arbitrary formatted text — item names are
-    // joined with " | " (not newlines) because Meta rejects newlines inside
-    // template variable values.
+    // Sends the "back in stock" notification through the server-side
+    // sendCompanyWhatsappMessage Cloud Function (covers both the 'snapto' and
+    // 'sellar' tiers). Unlike sendDirectWhatsappMessage above (free-form
+    // text, edited by the merchant in the reply composer), this bypasses the
+    // composer since template messages can't carry arbitrary formatted text —
+    // item names are joined with " | " (not newlines) because Meta rejects
+    // newlines inside template variable values.
     const sendStockAlertSnapto = async (
         customerNumber: string | undefined,
         customerName: string | undefined,
@@ -727,40 +728,26 @@ function RequestPage() {
 
         try {
             const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
-            const billSettingsRef = doc(db, 'companies', companyId, 'settings', 'bill');
-            const [businessSnap, billSettingsSnap] = await Promise.all([
-                getDoc(businessDocRef),
-                getDoc(billSettingsRef),
-            ]);
+            const businessSnap = await getDoc(businessDocRef);
             const businessData = businessSnap.exists() ? businessSnap.data() : {};
 
-            const billSettingsData = billSettingsSnap.exists() ? billSettingsSnap.data() : {};
-            const { snaptoApiKey, snaptoStockAlertTemplateName, snaptoLanguage } = billSettingsData;
-
-            if (!snaptoApiKey || !snaptoStockAlertTemplateName) {
-                setSendingId(null);
-                setModal({ message: "Add your Snapto API key and stock alert template name in Bill Settings first.", type: State.ERROR });
-                return false;
-            }
-
-            await snaptoService.sendTemplateMessage({
-                apiKey: snaptoApiKey,
+            await sendCompanyWhatsappMessage({
                 to: customerNumber,
-                templateName: snaptoStockAlertTemplateName,
-                language: snaptoLanguage || 'en',
+                messageType: 'stockAlert',
+                // stock_alert template order is {{1}}=company name, {{2}}=customer
+                // name, {{3}}=item list — company first, unlike the other templates.
                 templateVariables: [
-                    customerName || 'there',
                     businessData.businessName || businessData.name || '',
+                    customerName || 'there',
                     itemNames.join(' | '),
                 ],
             });
 
-            setModal({ message: "Stock alert sent via WhatsApp (Snapto)!", type: State.SUCCESS });
+            setModal({ message: "Stock alert sent via WhatsApp!", type: State.SUCCESS });
             return true;
         } catch (err: any) {
-            console.error("Snapto Stock Alert Send Error:", err);
-            const detail = err?.response?.data?.detail || err?.response?.data?.error?.error_data?.details;
-            setModal({ message: detail ? `Failed to send: ${detail}` : "Failed to send stock alert via Snapto.", type: State.ERROR });
+            console.error("Stock Alert Send Error:", err);
+            setModal({ message: err?.message ? `Failed to send: ${err.message}` : "Failed to send stock alert.", type: State.ERROR });
             return false;
         } finally {
             setSendingId(null);
@@ -1302,7 +1289,7 @@ function RequestPage() {
                                                                     <Reply size={11} /> Send In Stock
                                                                 </button>
                                                             )}
-                                                            {(req.items || []).some(i => i.inStock === true) && whatsappProvider === 'snapto' && (
+                                                            {(req.items || []).some(i => i.inStock === true) && (whatsappProvider === 'snapto' || whatsappProvider === 'sellar') && (
                                                                 <button
                                                                     disabled={sendingId === `stock_snapto_${req.id}`}
                                                                     onClick={(e) => {

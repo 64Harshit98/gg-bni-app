@@ -9,7 +9,7 @@ import { generatePdf, generatePdfBlob, compressImage } from '../../../UseCompone
 import { getFirestoreOperations } from '../../../lib/ItemsFirebase';
 import { resolveCompanyLogoBase64 } from '../../../Catalogue/hooks/useCompanyLogo';
 import { botMasterService } from '../../Additional/Whatsapp/WhatsappApi';
-import { snaptoService } from '../../Additional/Whatsapp/SnaptoApi';
+import { sendCompanyWhatsappMessage } from '../../Additional/Whatsapp/sendCompanyWhatsappMessage';
 import type { Invoice, PdfData } from '../journal.types';
 
 interface UseInvoiceCommunicationParams {
@@ -406,10 +406,11 @@ export const useInvoiceCommunication = ({
     }
   };
 
-  // Sends the invoice PDF via Snapto's WhatsApp template API — a separate
-  // path from BotMaster's handleSendWhatsapp above, since Snapto requires a
-  // pre-approved template (name/language/API key from Bill Settings) rather
-  // than free-form text.
+  // Sends the invoice PDF through the server-side sendCompanyWhatsappMessage
+  // Cloud Function — covers both the 'snapto' (company's own account,
+  // admin-entered) and 'sellar' (Sellar's shared number) tiers, since the
+  // function itself resolves which credential to use. No credential is ever
+  // read or held client-side any more.
   const handleSendWhatsappSnapto = async (invoice: Invoice) => {
     if (!invoice.partyNumber) {
       setModal({ message: "Customer phone number is missing.", type: State.ERROR });
@@ -421,22 +422,7 @@ export const useInvoiceCommunication = ({
     try {
       if (!currentUser?.companyId) throw new Error("User context missing.");
 
-      const billSettingsRef = doc(db, 'companies', currentUser.companyId, 'settings', 'bill');
-
-      const [billSettingsSnap, dataForPdf] = await Promise.all([
-        getDoc(billSettingsRef),
-        preparePdfData({ ...invoice, isEstimate: billType === 'estimate' } as any, isPosBasicPlan),
-      ]);
-
-      const billSettingsData = billSettingsSnap.exists() ? billSettingsSnap.data() : {};
-      const { snaptoApiKey, snaptoTemplateName, snaptoLanguage } = billSettingsData;
-
-      if (!snaptoApiKey || !snaptoTemplateName) {
-        setSendingPdf(false);
-        setModal({ message: "Add your Snapto API key and template name in Bill Settings first.", type: State.ERROR });
-        return;
-      }
-
+      const dataForPdf = await preparePdfData({ ...invoice, isEstimate: billType === 'estimate' } as any, isPosBasicPlan);
       if (!dataForPdf) throw new Error("Failed to prepare invoice data.");
 
       const pdfBlob = await generatePdfBlob(dataForPdf);
@@ -450,16 +436,16 @@ export const useInvoiceCommunication = ({
 
       const formattedAmount = invoice.amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-      await snaptoService.sendTemplateMessage({
-        apiKey: snaptoApiKey,
+      await sendCompanyWhatsappMessage({
         to: invoice.partyNumber,
-        templateName: snaptoTemplateName,
-        language: snaptoLanguage || 'en',
+        messageType: 'invoice',
         fileUrl,
         templateVariables: [invoice.partyName, dataForPdf.companyName || '', 'invoice', invoice.invoiceNumber, formattedAmount],
+        refCollection: 'sales',
+        refId: invoice.id,
       });
 
-      setModal({ message: "Invoice PDF sent via WhatsApp (Snapto)!", type: State.SUCCESS });
+      setModal({ message: "Invoice PDF sent via WhatsApp!", type: State.SUCCESS });
       setTimeout(async () => {
         try {
           await deleteObject(storageRef);
@@ -469,9 +455,8 @@ export const useInvoiceCommunication = ({
       }, 60000);
       setInvoiceToPrint(null);
     } catch (err: any) {
-      console.error("Snapto WhatsApp Send Error:", err);
-      const detail = err?.response?.data?.detail || err?.response?.data?.error?.error_data?.details;
-      setModal({ message: detail ? `Failed to send invoice: ${detail}` : "Failed to send WhatsApp invoice via Snapto.", type: State.ERROR });
+      console.error("WhatsApp Send Error:", err);
+      setModal({ message: err?.message ? `Failed to send invoice: ${err.message}` : "Failed to send WhatsApp invoice.", type: State.ERROR });
     } finally {
       setSendingPdf(false);
     }
@@ -560,8 +545,9 @@ export const useInvoiceCommunication = ({
     }
   };
 
-  // Snapto counterpart of handleSendReminder above — same PDF prep, sent as
-  // an approved reminder template instead of free-form text.
+  // Cloud counterpart of handleSendReminder above — same PDF prep, sent
+  // server-side (covers both the 'snapto' and 'sellar' tiers) as an approved
+  // reminder template instead of free-form text.
   const handleSendReminderSnapto = async (invoice: Invoice) => {
     if (!invoice.partyNumber) {
       setModal({ message: "Customer phone number is missing.", type: State.ERROR });
@@ -572,22 +558,7 @@ export const useInvoiceCommunication = ({
     setSendingPdf(true);
 
     try {
-      const billSettingsRef = doc(db, 'companies', currentUser.companyId, 'settings', 'bill');
-
-      const [billSettingsSnap, dataForPdf] = await Promise.all([
-        getDoc(billSettingsRef),
-        preparePdfData({ ...invoice, isEstimate: billType === 'estimate' } as any, isPosBasicPlan),
-      ]);
-
-      const billSettingsData = billSettingsSnap.exists() ? billSettingsSnap.data() : {};
-      const { snaptoApiKey, snaptoReminderTemplateName, snaptoLanguage } = billSettingsData;
-
-      if (!snaptoApiKey || !snaptoReminderTemplateName) {
-        setSendingPdf(false);
-        setModal({ message: "Add your Snapto API key and reminder template name in Bill Settings first.", type: State.ERROR });
-        return;
-      }
-
+      const dataForPdf = await preparePdfData({ ...invoice, isEstimate: billType === 'estimate' } as any, isPosBasicPlan);
       if (!dataForPdf) throw new Error("Failed to prepare invoice data.");
 
       const pdfBlob = await generatePdfBlob(dataForPdf);
@@ -602,16 +573,16 @@ export const useInvoiceCommunication = ({
       const dueAmt = (invoice.dueAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       const totalAmt = invoice.amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-      await snaptoService.sendTemplateMessage({
-        apiKey: snaptoApiKey,
+      await sendCompanyWhatsappMessage({
         to: invoice.partyNumber,
-        templateName: snaptoReminderTemplateName,
-        language: snaptoLanguage || 'en',
+        messageType: 'reminder',
         fileUrl,
         templateVariables: [invoice.partyName, dataForPdf.companyName || '', dueAmt, `invoice #${invoice.invoiceNumber}`, totalAmt],
+        refCollection: 'sales',
+        refId: invoice.id,
       });
 
-      setModal({ message: "Reminder sent via WhatsApp (Snapto)!", type: State.SUCCESS });
+      setModal({ message: "Reminder sent via WhatsApp!", type: State.SUCCESS });
       setTimeout(async () => {
         try {
           await deleteObject(storageRef);
@@ -620,9 +591,8 @@ export const useInvoiceCommunication = ({
         }
       }, 60000);
     } catch (err: any) {
-      console.error("Snapto Reminder Send Error:", err);
-      const detail = err?.response?.data?.detail || err?.response?.data?.error?.error_data?.details;
-      setModal({ message: detail ? `Failed to send reminder: ${detail}` : "Failed to send reminder via Snapto.", type: State.ERROR });
+      console.error("Reminder Send Error:", err);
+      setModal({ message: err?.message ? `Failed to send reminder: ${err.message}` : "Failed to send reminder.", type: State.ERROR });
     } finally {
       setSendingPdf(false);
     }

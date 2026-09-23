@@ -658,7 +658,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                                                 {sendingPdf ? <Spinner /> : "Remind"}
                                             </button>
                                         )}
-                                        {!isPaid && Order.status === 'Completed' && whatsappProvider === 'snapto' && (
+                                        {!isPaid && Order.status === 'Completed' && (whatsappProvider === 'snapto' || whatsappProvider === 'sellar') && (
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();

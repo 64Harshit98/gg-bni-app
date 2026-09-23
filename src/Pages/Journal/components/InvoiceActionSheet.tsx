@@ -90,7 +90,7 @@ export const InvoiceActionSheet: React.FC<InvoiceActionSheetProps> = ({
                   </button>
                 </ShowWrapper>
               )}
-              {whatsappProvider === 'snapto' && (
+              {(whatsappProvider === 'snapto' || whatsappProvider === 'sellar') && (
                 <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
                   <button
                     onClick={() => handleSendWhatsappSnapto({

@@ -187,11 +187,37 @@ service cloud.firestore {
         allow read, write: if isCompanyMember(companyId);
       }
 
+      // WhatsApp (Sellar/Snapto shared-tier) status mirror + message log —
+      // company members can read, but only Cloud Functions (Admin SDK, which
+      // bypasses rules) may write. Never holds credentials.
+      match /whatsappStatus/{document=**} {
+        allow read: if isCompanyMember(companyId);
+        allow write: if false;
+      }
+      match /whatsappMessages/{document=**} {
+        allow read: if isCompanyMember(companyId);
+        allow write: if false;
+      }
+
       // Catch-all for any other collections not explicitly listed above
       match /{collection}/{docId} {
         allow read, write: if isCompanyMember(companyId);
       }
     }
+
+    // WhatsApp activation requests — a company can create/update only its own
+    // request doc (doc id == companyId); reading the full list is admin-only
+    // (handled by the master-admin bypass above).
+    match /whatsappActivationRequests/{companyId} {
+      allow read: if isCompanyMember(companyId);
+      allow create, update: if isCompanyMember(companyId);
+    }
+
+    // adminWhatsappConfig/{companyId} and sellarWhatsappSharedConfig/global
+    // deliberately have NO rule block here — default-deny to everyone except
+    // the master-admin bypass at the top of this file and Cloud Functions
+    // (Admin SDK, which bypasses rules entirely). They hold Sellar's and
+    // companies' WhatsApp credentials and must never be client-readable.
 
     // --- Global Data ---
     match /permissions/{role} {

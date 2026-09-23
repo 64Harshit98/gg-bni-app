@@ -20,11 +20,6 @@ export interface BillSettingsData {
     enableTriplicate?: boolean;
     discountDisplayFormat?: 'amount' | 'percentage';
     enableItemImages?: boolean;
-    snaptoApiKey?: string;
-    snaptoTemplateName?: string;
-    snaptoReminderTemplateName?: string;
-    snaptoStockAlertTemplateName?: string;
-    snaptoLanguage?: string;
 }
 
 // The raw shape persisted at companies/{companyId}/settings/bill — a single
@@ -45,11 +40,6 @@ export interface RawBillSettings {
     catalogueTermsAndConditions: string;
     cataloguePrintFormat: 'A4' | 'A5' | 'THERMAL58' | 'THERMAL80';
     catalogueWhatsappExtraMessage: string;
-    snaptoApiKey: string;
-    snaptoTemplateName: string;
-    snaptoReminderTemplateName: string;
-    snaptoStockAlertTemplateName: string;
-    snaptoLanguage: string;
 }
 
 const DEFAULT_TERMS_AND_CONDITIONS =
@@ -75,11 +65,6 @@ export const getDefaultBillSettings = (companyId: string): RawBillSettings => ({
     catalogueTermsAndConditions: DEFAULT_TERMS_AND_CONDITIONS,
     cataloguePrintFormat: 'A4',
     catalogueWhatsappExtraMessage: '',
-    snaptoApiKey: '',
-    snaptoTemplateName: '',
-    snaptoReminderTemplateName: '',
-    snaptoStockAlertTemplateName: '',
-    snaptoLanguage: 'en',
 });
 
 interface BusinessInfoData {
@@ -136,11 +121,6 @@ const BillSettings: React.FC = () => {
         enableTriplicate: false,
         discountDisplayFormat: 'amount',
         enableItemImages: false,
-        snaptoApiKey: '',
-        snaptoTemplateName: '',
-        snaptoReminderTemplateName: '',
-        snaptoStockAlertTemplateName: '',
-        snaptoLanguage: 'en',
     });
 
     const formatAddress = (addr: any): string => {
@@ -204,11 +184,6 @@ const BillSettings: React.FC = () => {
                     enableTriplicate: sData.enableTriplicate || false,
                     discountDisplayFormat: sData.discountDisplayFormat || 'amount',
                     enableItemImages: sData.enableItemImages || false,
-                    snaptoApiKey: sData.snaptoApiKey || '',
-                    snaptoTemplateName: sData.snaptoTemplateName || '',
-                    snaptoReminderTemplateName: sData.snaptoReminderTemplateName || '',
-                    snaptoStockAlertTemplateName: sData.snaptoStockAlertTemplateName || '',
-                    snaptoLanguage: sData.snaptoLanguage || 'en',
                 };
 
                 setSettings(loadedSettings);
@@ -272,11 +247,6 @@ const BillSettings: React.FC = () => {
                 enableTriplicate: settings.enableTriplicate || false,
                 discountDisplayFormat: settings.discountDisplayFormat || 'amount',
                 enableItemImages: settings.enableItemImages || false,
-                snaptoApiKey: settings.snaptoApiKey || '',
-                snaptoTemplateName: settings.snaptoTemplateName || '',
-                snaptoReminderTemplateName: settings.snaptoReminderTemplateName || '',
-                snaptoStockAlertTemplateName: settings.snaptoStockAlertTemplateName || '',
-                snaptoLanguage: settings.snaptoLanguage || 'en',
 
                 // ✅ Always sync from businessInfo so these stay fresh
                 companyGstin: businessInfo.gstin,
@@ -678,86 +648,6 @@ const BillSettings: React.FC = () => {
                             rows={3}
                             className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-blue-500 focus:border-blue-500 outline-none text-sm leading-relaxed"
                         />
-                    </div>
-                </div>
-
-                <div className="bg-white rounded-sm shadow-sm border border-gray-200 overflow-hidden mb-6">
-                    <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-                        <h2 className="text-lg font-semibold text-gray-800">Snapto WhatsApp</h2>
-                        <p className="text-xs text-gray-500">
-                            Send invoices via Snapto using a WhatsApp template you've already created and had approved
-                            in your Snapto dashboard.
-                        </p>
-                    </div>
-                    <div className="p-6 space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Snapto API Key</label>
-                            <input
-                                type="password"
-                                name="snaptoApiKey"
-                                value={settings.snaptoApiKey || ''}
-                                onChange={handleChange}
-                                placeholder="Paste your Snapto API key"
-                                className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Bill / Order Template Name</label>
-                            <input
-                                type="text"
-                                name="snaptoTemplateName"
-                                value={settings.snaptoTemplateName || ''}
-                                onChange={handleChange}
-                                placeholder="e.g. business_document"
-                                className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-                            />
-                            <p className="mt-1 text-xs text-gray-500">
-                                Used for invoices, sales bills, and order confirmations. Must be APPROVED in Snapto
-                                with 5 variables, in order: customer name, your business name, document type
-                                (invoice/order), document number, amount. The PDF is attached as the document header.
-                            </p>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Reminder Template Name</label>
-                            <input
-                                type="text"
-                                name="snaptoReminderTemplateName"
-                                value={settings.snaptoReminderTemplateName || ''}
-                                onChange={handleChange}
-                                placeholder="e.g. payment_reminder"
-                                className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-                            />
-                            <p className="mt-1 text-xs text-gray-500">
-                                Used for unpaid-bill reminders (invoice, order, and party ledger). Must take 5
-                                variables: customer name, your business name, due amount, reference text, total amount.
-                            </p>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Stock Alert Template Name</label>
-                            <input
-                                type="text"
-                                name="snaptoStockAlertTemplateName"
-                                value={settings.snaptoStockAlertTemplateName || ''}
-                                onChange={handleChange}
-                                placeholder="e.g. stock_alert"
-                                className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-                            />
-                            <p className="mt-1 text-xs text-gray-500">
-                                Used for the Request page's "back in stock" notification. Must take 3 variables:
-                                customer name, your business name, item list.
-                            </p>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Template Language Code</label>
-                            <input
-                                type="text"
-                                name="snaptoLanguage"
-                                value={settings.snaptoLanguage || 'en'}
-                                onChange={handleChange}
-                                placeholder="en"
-                                className="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
-                            />
-                        </div>
                     </div>
                 </div>
 

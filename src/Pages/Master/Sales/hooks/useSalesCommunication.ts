@@ -8,7 +8,7 @@ import { generatePdfBlob, generatePdf, compressImage } from '../../../../UseComp
 import { getFirestoreOperations } from '../../../../lib/ItemsFirebase';
 import { resolveCompanyLogoBase64 } from '../../../../Catalogue/hooks/useCompanyLogo';
 import { botMasterService } from '../../../Additional/Whatsapp/WhatsappApi';
-import { snaptoService } from '../../../Additional/Whatsapp/SnaptoApi';
+import { sendCompanyWhatsappMessage } from '../../../Additional/Whatsapp/sendCompanyWhatsappMessage';
 import { calculatePdfItemDiscounts } from '../sales.calculations';
 import type { SalesItem } from '../sales.types';
 
@@ -259,8 +259,9 @@ export const useSalesCommunication = ({
         }
     };
 
-    // Snapto counterpart of handleSendWhatsapp above — sends the same bill
-    // PDF but via an approved WhatsApp template instead of free-form text.
+    // Cloud counterpart of handleSendWhatsapp above — sends the same bill
+    // PDF, server-side (covers both the 'snapto' and 'sellar' tiers), via an
+    // approved WhatsApp template instead of free-form text.
     const handleSendWhatsappSnapto = async (invoice: any) => {
         if (!invoice.partyNumber) {
             setModal({ message: "Customer phone number is missing.", type: State.ERROR });
@@ -270,21 +271,7 @@ export const useSalesCommunication = ({
         try {
             if (!currentUser?.companyId) throw new Error("User context missing.");
 
-            const billSettingsRef = doc(db, 'companies', currentUser.companyId, 'settings', 'bill');
-            const [billSettingsSnap, dataForPdf] = await Promise.all([
-                getDoc(billSettingsRef),
-                preparePdfData(invoice),
-            ]);
-
-            const billSettingsData = billSettingsSnap.exists() ? billSettingsSnap.data() : {};
-            const { snaptoApiKey, snaptoTemplateName, snaptoLanguage } = billSettingsData;
-
-            if (!snaptoApiKey || !snaptoTemplateName) {
-                setSendingPdf(false);
-                setModal({ message: "Add your Snapto API key and template name in Bill Settings first.", type: State.ERROR });
-                return;
-            }
-
+            const dataForPdf = await preparePdfData(invoice);
             if (!dataForPdf) throw new Error("Failed to prepare invoice data.");
             const pdfBlob = await generatePdfBlob(dataForPdf);
 
@@ -296,24 +283,23 @@ export const useSalesCommunication = ({
             const fileUrl = await getDownloadURL(storageRef);
             const formattedAmount = invoice.amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-            await snaptoService.sendTemplateMessage({
-                apiKey: snaptoApiKey,
+            await sendCompanyWhatsappMessage({
                 to: invoice.partyNumber,
-                templateName: snaptoTemplateName,
-                language: snaptoLanguage || 'en',
+                messageType: 'invoice',
                 fileUrl,
                 templateVariables: [invoice.partyName, dataForPdf.companyName || '', 'invoice', invoice.invoiceNumber, formattedAmount],
+                refCollection: 'sales',
+                refId: invoice.id,
             });
 
-            setModal({ message: "Invoice sent via WhatsApp (Snapto)!", type: State.SUCCESS });
+            setModal({ message: "Invoice sent via WhatsApp!", type: State.SUCCESS });
             setSavedBillData(null);
             setTimeout(async () => {
                 try { await deleteObject(storageRef); } catch (e) { console.warn("Could not auto-delete:", e); }
             }, 60000);
         } catch (err: any) {
-            console.error("Snapto WhatsApp Send Error:", err);
-            const detail = err?.response?.data?.detail || err?.response?.data?.error?.error_data?.details;
-            setModal({ message: detail ? `Failed to send invoice: ${detail}` : "Failed to send invoice via Snapto.", type: State.ERROR });
+            console.error("WhatsApp Send Error:", err);
+            setModal({ message: err?.message ? `Failed to send invoice: ${err.message}` : "Failed to send invoice.", type: State.ERROR });
         } finally {
             setSendingPdf(false);
         }

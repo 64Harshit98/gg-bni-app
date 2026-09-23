@@ -26,10 +26,10 @@ const CatalogueAdditionalServices: React.FC = () => {
         try {
             const companyId = (currentUser as any).companyId || currentUser.uid;
             const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
-            const billSettingsRef = doc(db, 'companies', companyId, 'settings', 'bill');
-            const [businessDoc, billSettingsDoc] = await Promise.all([
+            const statusRef = doc(db, 'companies', companyId, 'whatsappStatus', 'current');
+            const [businessDoc, statusDoc] = await Promise.all([
                 getDoc(businessDocRef),
-                getDoc(billSettingsRef),
+                getDoc(statusRef),
             ]);
 
             if (businessDoc.exists()) {
@@ -56,9 +56,9 @@ const CatalogueAdditionalServices: React.FC = () => {
                 }
             }
 
-            const billSettings = billSettingsDoc.exists() ? billSettingsDoc.data() : {};
-            if (billSettings.snaptoApiKey && billSettings.snaptoTemplateName) {
-                navigate(ROUTES.BILLSETTING);
+            const status = statusDoc.exists() ? statusDoc.data() : {};
+            if (status.active && (status.activeTier === 'snapto' || status.activeTier === 'sellar')) {
+                navigate(ROUTES.WHATSAPP_MESSAGE_LOG);
                 return;
             }
 

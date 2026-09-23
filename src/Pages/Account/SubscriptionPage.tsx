@@ -516,15 +516,14 @@ const SubscriptionPage: React.FC = () => {
                                             </div>
                                             <button
                                                 onClick={() => openCheckout(tier)}
-                                                disabled={isCurrentTier}
                                                 className={`mt-3 w-full py-1.5 rounded-sm text-xs sm:text-sm font-bold transition-colors ${isCurrentTier
-                                                    ? 'bg-green-100 text-green-700 cursor-default'
+                                                    ? 'bg-green-600 text-white hover:bg-green-700'
                                                     : tier.recommended
                                                         ? activeTab === 'pos' ? 'bg-blue-600 text-white hover:bg-gray-800' : activeTab === 'catalogue' ? 'bg-[#F97316] text-white hover:bg-sky-700' : 'bg-yellow-400 text-black hover:bg-yellow-500'
                                                         : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
                                                     }`}
                                             >
-                                                {isCurrentTier ? 'Current Plan' : 'Choose'}
+                                                {isCurrentTier ? 'Renew Plan' : 'Choose'}
                                             </button>
                                         </th>
                                         );

@@ -14,7 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { botMasterService } from '../Additional/Whatsapp/WhatsappApi';
-import { snaptoService } from '../Additional/Whatsapp/SnaptoApi';
+import { sendCompanyWhatsappMessage } from '../Additional/Whatsapp/sendCompanyWhatsappMessage';
 import { useWhatsappProvider } from '../Additional/Whatsapp/useWhatsappProvider';
 import { ROUTES } from '../../constants/routes.constants';
 
@@ -193,10 +193,11 @@ const PartyLedger: React.FC = () => {
         }
     };
 
-    // Snapto counterpart of handleSendPartyReminder above — same due-invoice
-    // list, sent as an approved reminder template. Meta rejects newlines
-    // inside template variable values, so invoice lines are joined with " | "
-    // instead of the "\n" used for the free-text BotMaster message.
+    // Cloud counterpart of handleSendPartyReminder above — same due-invoice
+    // list, sent server-side (covers both the 'snapto' and 'sellar' tiers) as
+    // an approved reminder template. Meta rejects newlines inside template
+    // variable values, so invoice lines are joined with " | " instead of the
+    // "\n" used for the free-text BotMaster message.
     const handleSendPartyReminderSnapto = async (party: typeof partySummaries[number]) => {
         if (!party.partyNumber || party.partyNumber === 'N/A') {
             showToast('Party phone number is missing.', 'error');
@@ -208,21 +209,8 @@ const PartyLedger: React.FC = () => {
 
         try {
             const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
-            const billSettingsRef = doc(db, 'companies', companyId, 'settings', 'bill');
-            const [businessSnap, billSettingsSnap] = await Promise.all([
-                getDoc(businessDocRef),
-                getDoc(billSettingsRef),
-            ]);
+            const businessSnap = await getDoc(businessDocRef);
             const businessData = businessSnap.exists() ? businessSnap.data() : {};
-
-            const billSettingsData = billSettingsSnap.exists() ? billSettingsSnap.data() : {};
-            const { snaptoApiKey, snaptoReminderTemplateName, snaptoLanguage } = billSettingsData;
-
-            if (!snaptoApiKey || !snaptoReminderTemplateName) {
-                setSendingReminderFor(null);
-                showToast('Add your Snapto API key and reminder template name in Bill Settings first.', 'error');
-                return;
-            }
 
             const unpaidTxns = party.transactions.filter(
                 (t: any) => t.dueAmount > 0 && !(t.isOpeningBalance && t.balanceType === 'advance')
@@ -244,11 +232,9 @@ const PartyLedger: React.FC = () => {
 
             const totalDueStr = party.totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-            await snaptoService.sendTemplateMessage({
-                apiKey: snaptoApiKey,
+            await sendCompanyWhatsappMessage({
                 to: party.partyNumber,
-                templateName: snaptoReminderTemplateName,
-                language: snaptoLanguage || 'en',
+                messageType: 'reminder',
                 templateVariables: [
                     party.partyName,
                     businessData.businessName || businessData.name || '',
@@ -258,11 +244,10 @@ const PartyLedger: React.FC = () => {
                 ],
             });
 
-            showToast('Reminder sent via WhatsApp (Snapto)!', 'success');
+            showToast('Reminder sent via WhatsApp!', 'success');
         } catch (err: any) {
-            console.error('Snapto Party Reminder Send Error:', err);
-            const detail = err?.response?.data?.detail || err?.response?.data?.error?.error_data?.details;
-            showToast(detail ? `Failed to send reminder: ${detail}` : 'Failed to send reminder via Snapto.', 'error');
+            console.error('Party Reminder Send Error:', err);
+            showToast(err?.message ? `Failed to send reminder: ${err.message}` : 'Failed to send reminder.', 'error');
         } finally {
             setSendingReminderFor(null);
         }
@@ -1267,7 +1252,7 @@ const PartyLedger: React.FC = () => {
                                                             {sendingReminderFor === party.partyNumber ? <Spinner /> : 'Remind'}
                                                         </button>
                                                     )}
-                                                    {party.totalDue > 0 && party.partyNumber && party.partyNumber !== 'N/A' && whatsappProvider === 'snapto' && (
+                                                    {party.totalDue > 0 && party.partyNumber && party.partyNumber !== 'N/A' && (whatsappProvider === 'snapto' || whatsappProvider === 'sellar') && (
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();

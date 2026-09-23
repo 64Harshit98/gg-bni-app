@@ -79,10 +79,10 @@ const AdditionalServices: React.FC = () => {
         try {
             const companyId = (currentUser as any).companyId || currentUser.uid;
             const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
-            const billSettingsRef = doc(db, 'companies', companyId, 'settings', 'bill');
-            const [businessDoc, billSettingsDoc] = await Promise.all([
+            const statusRef = doc(db, 'companies', companyId, 'whatsappStatus', 'current');
+            const [businessDoc, statusDoc] = await Promise.all([
                 getDoc(businessDocRef),
-                getDoc(billSettingsRef),
+                getDoc(statusRef),
             ]);
 
             if (businessDoc.exists()) {
@@ -109,11 +109,12 @@ const AdditionalServices: React.FC = () => {
                 }
             }
 
-            const billSettings = billSettingsDoc.exists() ? billSettingsDoc.data() : {};
-            if (billSettings.snaptoApiKey && billSettings.snaptoTemplateName) {
-                // Snapto is configured — there's no separate dashboard for it yet,
-                // so send them to Bill Settings where the key/template live.
-                navigate(ROUTES.BILLSETTING);
+            const status = statusDoc.exists() ? statusDoc.data() : {};
+            if (status.active && (status.activeTier === 'snapto' || status.activeTier === 'sellar')) {
+                // Admin-managed tier (their own Snapto account or Sellar's shared
+                // number) — no credentials to manage here any more, just their
+                // send history/quota.
+                navigate(ROUTES.WHATSAPP_MESSAGE_LOG);
                 return;
             }
 

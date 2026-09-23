@@ -25,6 +25,11 @@ type PrintableItem = Item & {
 
 type PrefilledItem = { barcode: string, quantity: number, name: string };
 
+// Falls back to salesPrice when mrp is missing/zero
+const getDisplayPrice = (item: Item): number => {
+  return item.mrp && item.mrp > 0 ? item.mrp : item.salesPrice;
+};
+
 // --- Preview Component ---
 // "both" layout: QR on LEFT, rotated barcode on RIGHT, equal visual height
 const LabelPreview: React.FC<{
@@ -119,7 +124,9 @@ const LabelPreview: React.FC<{
         <div className="text-[10px] font-semibold text-center w-full truncate px-1">{item.name}</div>
       )}
       {showMrp && (
-        <div className="text-xs font-bold text-center">{`MRP: ₹${item.mrp}`}</div>
+        <div className="text-xs font-bold text-center">
+          {item.mrp && item.mrp > 0 ? `MRP: ₹${item.mrp}` : `Price: ₹${item.salesPrice}`}
+        </div>
       )}
     </div>
   );
@@ -301,7 +308,7 @@ const QRCodeGeneratorPage: React.FC = () => {
               <div>
                 ${showBarcodeNum ? `<p class="item-barcode">${item.barcode}</p>` : ''}
                 ${showProductName ? `<p class="item-name">${item.name}</p>` : ''}
-                ${showMrp ? `<p class="item-mrp">MRP: ₹${item.mrp}</p>` : ''}
+               ${showMrp ? `<p class="item-mrp">${item.mrp && item.mrp > 0 ? `MRP: ₹${item.mrp}` : `Price: ₹${item.salesPrice}`}</p>` : ''}
               </div>
             </div>
           `;
@@ -539,7 +546,7 @@ const QRCodeGeneratorPage: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className="text-[12px] font-semibold text-gray-800">₹{item.mrp}</span>
+                  <span className="text-[12px] font-semibold text-gray-800">₹{getDisplayPrice(item)}</span>
                   <div className="flex items-center gap-1">
                     <span className="text-[11px] text-gray-500">Qty</span>
                     <div className="flex items-center border border-gray-200 rounded-sm overflow-hidden bg-gray-50 h-7">

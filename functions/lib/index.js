@@ -51,22 +51,18 @@ const HEADER_DICTIONARY = [
     ['HSN', /^(HSN|SAC)(\s*\/\s*(HSN|SAC))?(\s*(NO|CODE))?$/],
     ['QTY', /^(QTY|QUANTITY|QNTY)$/],
     ['UNIT', /^(UNIT|UNITS|UOM)$/],
-    ['RATE', /^(RATE|PRICE|SALES?\s*(PRICE|RATE)|UNIT\s*(PRICE|RATE)|SELLING\s*PRICE|(RATE|PRICE)\s*\/\s*UNIT)$/],
+    ['RATE', /^(RATE|PRICE|LIST\s*PRICE|SALES?\s*(PRICE|RATE)|UNIT\s*(PRICE|RATE)|SELLING\s*PRICE|(RATE|PRICE)\s*\/\s*UNIT)$/],
     ['MRP', /^MRP$/],
     ['DISCOUNT', /^(DISC(OUNT)?|DIS)\s*%?$/],
     ['TAX', /^(TAX|GST|VAT|IGST|CGST|SGST)(\s*(%|RATE|AMT|AMOUNT))?$/],
     ['AMOUNT', /^(AMOUNT|AMT|TOTAL|NET\s*(AMT|AMOUNT)|LINE\s*TOTAL|TOTAL\s*(AMT|AMOUNT))$/],
 ];
 
-// Rows that end the item table (only trusted when the row has no serial number)
 const SUMMARY_ROW =
-    /^(SUB\s*)?TOTAL\b|^GRAND\s*TOTAL|^TAXABLE|^ROUND(ED)?\s*OFF|^AMOUNT\s*(IN\s*WORDS|PAYABLE|PAID)|^BALANCE|^NET\s*(PAYABLE|AMOUNT)/i;
-// Lines that sit ABOVE the item table on the source document -- invoice/company
-// header info, billed-to/shipped-to addresses, GST details. These must never be
-// treated as a table row. This matters most when a page's own header isn't
-// detected and we fall back to a previous page's bands with endIndex = -1,
-// which otherwise treats every line on the page (including this boilerplate)
-// as table body.
+    /^(SUB\s*)?TOTAL\b|^GRAND\s*TOTAL|^TAXABLE|^(LESS\s*:?\s*)?ROUND(ED)?\s*OFF|^AMOUNT\s*(IN\s*WORDS|PAYABLE|PAID)|^BALANCE|^NET\s*(PAYABLE|AMOUNT)|^RUPEES\b/i;
+
+
+const GRAND_TOTAL_ANYWHERE = /\bGRAND\s*TOTAL\b|\bTOTAL\s*QTY\b/i;
 const PREAMBLE_ROW =
     /^(BILLED\s*TO|SHIPPED\s*TO|GSTIN|GST\s*NO|GST\s*TYPE|INVOICE\s*NO|PLACE\s*OF\s*SUPPLY|REVERSE\s*CHARGE|DATED?|TAX\s*INVOICE|ORIGINAL\s*COPY|TEL\b|PHONE|EMAIL|MSME)\b/i;
 const UNIT_WORD = /^(PCS?|NOS?|KGS?|GMS?|GRAMS?|MTRS?|METERS?|DZ|DOZEN|BAGS?|BTLS?|BOTTLES?|EA|EACH|UNITS?|ROLLS?|TABS?|STRIPS?|BOX(ES)?|PKTS?|PACKETS?|PACK|SETS?|LTRS?|LITERS?|LITRES?|L|ML|QTL|QUINTAL|TONS?|TONNES?|CTN|CARTONS?|BUNDLES?|PAIRS?|SQFT|SQM|FT)$/i;
@@ -74,7 +70,8 @@ const UNIT_WORD = /^(PCS?|NOS?|KGS?|GMS?|GRAMS?|MTRS?|METERS?|DZ|DOZEN|BAGS?|BTL
 const round2 = (n) => Math.round(n * 100) / 100;
 const normHeader = (s) => s.toUpperCase().replace(/[.:,()*₹]/g, '').replace(/\s+/g, ' ').trim();
 const classifyHeader = (text) => {
-    const t = normHeader(text);
+    // Some bills print "Item" with a wide gap ("I tem"), which OCR reads as two words.
+    const t = normHeader(text).replace(/\bI TEM/g, 'ITEM');
     const hit = HEADER_DICTIONARY.find(([, re]) => re.test(t));
     return hit ? hit[0] : null;
 };
@@ -116,11 +113,8 @@ function pickUnit(unitText, qtyText) {
     return custom ? custom.toUpperCase() : 'PCS';
 }
 
-// Effective discount so that qty x rate x (1 - d) equals the bill's own Amount.
-// If the bill charges GST per line, Amount includes tax, so we use the explicit Discount % instead.
-function resolveDiscount({ quantity, rate, amount, explicit, hasTax }) {
+function resolveDiscount({ quantity, rate, amount, explicit }) {
     const valid = (d) => Number.isFinite(d) && d >= 0 && d <= 95;
-    if (hasTax) return valid(explicit) ? explicit : 0;
     if (rate > 0 && quantity > 0 && amount > 0) {
         const effective = round2((1 - amount / (quantity * rate)) * 100);
         if (valid(effective)) return effective;
@@ -195,13 +189,25 @@ function readHeaderCells(words, medH) {
     const cells = [];
     groups.forEach(g => {
         g.words.sort((a, b) => (Math.abs(a.y - b.y) > medH * 0.6 ? a.y - b.y : a.x - b.x));
-        const text = g.words.map(w => w.text).join(' ');
-        const key = classifyHeader(text);
-        const parts = g.words.map(w => classifyHeader(w.text));
-        if (!key && g.words.length > 1 && parts.every(Boolean)) {
-            g.words.forEach((w, i) => cells.push({ key: parts[i], text: w.text, left: w.left, right: w.right }));
-        } else {
-            cells.push({ key: key || 'OTHER', text, left: g.left, right: g.right });
+        const ws = g.words;
+        let i = 0;
+        while (i < ws.length) {
+            // Try the longest run of words starting at i that is a known header
+            // ("I tem Description" -> DESCRIPTION, "Total Amt" -> AMOUNT, "S.No." -> SLNO).
+            let end = -1, key = null;
+            for (let j = ws.length; j > i; j--) {
+                const k = classifyHeader(ws.slice(i, j).map(w => w.text).join(' '));
+                if (k) { end = j; key = k; break; }
+            }
+            if (end < 0) { end = i + 1; key = 'OTHER'; }   // unknown word gets its own band
+            const span = ws.slice(i, end);
+            cells.push({
+                key,
+                text: span.map(w => w.text).join(' '),
+                left: Math.min(...span.map(w => w.left)),
+                right: Math.max(...span.map(w => w.right)),
+            });
+            i = end;
         }
     });
     return cells.sort((a, b) => a.left - b.left);
@@ -211,19 +217,29 @@ function buildBands(cells, medH) {
     const cuts = [];
     for (let i = 0; i < cells.length - 1; i++) {
         const a = cells[i], b = cells[i + 1];
-        const wideCol = (k) => k === 'DESCRIPTION' || k === 'IMAGE';   // NEW
-        if (wideCol(a.key)) cuts.push(b.left - medH * 0.4);
+        const wideCol = (k) => k === 'DESCRIPTION' || k === 'IMAGE';
+        if (b.key === 'DESCRIPTION') cuts.push(a.right + medH * 0.4);   // Description ka left edge = pichle column ka right edge
+        else if (a.key === 'DESCRIPTION') cuts.push(b.left - medH * 0.4);
+        else if (wideCol(a.key)) cuts.push(b.left - medH * 0.4);
         else if (wideCol(b.key)) cuts.push(a.right + medH * 0.4);
         else cuts.push((a.right + b.left) / 2);
     }
     return cells.map((c, i) => ({
         key: c.key,
+        label: c.text,               // NEW: fallback logic ko header text chahiye
         pct: /%/.test(c.text),
         xStart: i === 0 ? -Infinity : cuts[i - 1],
         xEnd: i === cells.length - 1 ? Infinity : cuts[i],
     }));
 }
-
+function ensureDescriptionCell(cells) {
+    if (cells.some(c => c.key === 'DESCRIPTION')) return cells;
+    const i = cells.findIndex(
+        c => c.key === 'OTHER' && /ITEM|DESC|PARTICULAR|PRODUCT|GOODS|NAME/i.test(c.text)
+    );
+    if (i >= 0) cells[i] = { ...cells[i], key: 'DESCRIPTION' };
+    return cells;
+}
 function findHeader(lines, medH) {
     const attempt = (words) => {
         const cells = readHeaderCells(words, medH);
@@ -242,7 +258,7 @@ function findHeader(lines, medH) {
                 endIndex = i + 2;
             }
         }
-        if (cells) return { bands: buildBands(cells, medH), endIndex };
+        if (cells) return { bands: buildBands(ensureDescriptionCell(cells), medH), endIndex };
     }
     return null;
 }
@@ -269,22 +285,56 @@ function mapWordsToBands(words, bands) {
     });
     return out;
 }
+// Last safety net: SLNO/Code ke baad aur HSN/Qty se pehle jo bhi letters wala text hai, wahi naam hai.
+function guessNameFromLeftBands(words, bands, allowDigits = false) {
+    const DATA_KEYS = ['HSN', 'QTY', 'UNIT', 'RATE', 'MRP', 'DISCOUNT', 'TAX', 'AMOUNT'];
+    const firstDataIdx = bands.findIndex(b => DATA_KEYS.includes(b.key));
+    if (firstDataIdx < 0) return '';
+    const parts = [];
+    words.forEach(w => {
+        const i = bands.findIndex(b => w.x >= b.xStart && w.x < b.xEnd);
+        if (i < 0 || i >= firstDataIdx) return;
+        const b = bands[i];
+        if (b.key === 'SLNO' || b.key === 'IMAGE') return;
+        if (b.key === 'OTHER' && /CODE|SKU/i.test(b.label || '')) return;   // Code column skip
+        if (allowDigits || /[A-Za-z\u0900-\u097F]/.test(w.text)) parts.push(w.text);
+    });
+    return parts.join(' ');
+}
 
+function guessNameAnyBand(words, bands) {
+    const DATA_KEYS = ['HSN', 'QTY', 'UNIT', 'RATE', 'MRP', 'DISCOUNT', 'TAX', 'AMOUNT'];
+    const firstDataIdx = bands.findIndex(b => DATA_KEYS.includes(b.key));
+    if (firstDataIdx < 0) return '';
+    const sl = bands.find(b => b.key === 'SLNO');
+    const xMin = sl ? sl.xEnd : -Infinity;
+    const xMax = bands[firstDataIdx].xStart;
+    return words
+        .filter(w => w.x >= xMin && w.x < xMax)
+        .map(w => w.text)
+        .join(' ');
+}
 // ---- Step 4: item rows --------------------------------------------------------
 function buildItems(lines, endIndex, bands, medH) {
     const serialBand = bands.some(b => b.key === 'SLNO');
     let body = lines.slice(endIndex + 1).map(line => {
         const own = mapWordsToBands(line.items, bands);
         const text = line.items.map(w => w.text).join(' ');
-        // A real serial number is a plain integer ("1", "2"...). A decimal like "4.000"
-        // (e.g. total quantity text bleeding into the S.N. column on a footer row) must
-        // NOT be treated as a serial number, or it wrongly cancels summary-row detection.
-        const hasSerial = serialBand && firstNumber(own.SLNO) > 0 && !/\./.test(own.SLNO || '');
-        // Preamble lines (address/GST/invoice-meta block) are ALWAYS treated as
-        // non-item, regardless of hasSerial -- a stray number like "59" from
-        // "Shop No. 59" landing in the S.N./Qty band must not let it slip through.
+        const firstToken = (line.items[0] && line.items[0].text) || '';
+        const startsWithSerial = /^\d{1,3}\.?$/.test(firstToken.trim());
+        const hasSerial = serialBand
+            && startsWithSerial
+            && firstNumber(own.SLNO) > 0
+            && !/\./.test((own.SLNO || '').replace(/\.$/, ''));
+
         const isPreamble = PREAMBLE_ROW.test(text) || PREAMBLE_ROW.test(own.DESCRIPTION || '');
-        const summary = isPreamble || (SUMMARY_ROW.test((own.DESCRIPTION || text).trim()) && !hasSerial);
+
+        const isGrandTotal = GRAND_TOTAL_ANYWHERE.test(text);
+
+        const summary =
+            isPreamble ||
+            isGrandTotal ||
+            (SUMMARY_ROW.test((own.DESCRIPTION || text).trim()) && !hasSerial);
         const qty = firstNumber(own.QTY);
         const amount = firstNumber(own.AMOUNT);
         return { line, own, qty, amount, summary, primary: !summary && qty > 0 && amount > 0 };
@@ -303,29 +353,37 @@ function buildItems(lines, endIndex, bands, medH) {
     if (firstPrimary < 0) return [];
     const stop = body.findIndex((r, i) => i > firstPrimary && r.summary);
     if (stop >= 0) body = body.slice(0, stop);
-
     const primaries = body.filter(r => r.primary);
-    const gaps = primaries.slice(1).map((r, i) => r.line.y - primaries[i].line.y).sort((a, b) => a - b);
-    const pitch = gaps.length ? gaps[Math.floor(gaps.length / 2)] : medH * 4;
-    const maxDist = pitch * 0.75;
 
-    // Each primary row starts life as its own single-line group; wrapped/orphan
-    // lines that belong to it (see below) get pushed into this array.
+    // Har primary row apni single-line group se shuru hoti hai
     primaries.forEach(p => { p.lines = [p.line]; });
 
-
-    const originalPrimaries = primaries.slice();
     const rescued = [];
+    const wrapped = [];
 
+    // PASS 1: jin rows me naam + amount hai (par qty OCR ne miss ki) unhe rescue karo
     body.filter(r => !r.primary && !r.summary).forEach(orphan => {
         const rowText = orphan.line.items.map(w => w.text).join(' ').trim();
         const looksLikeSummary =
+            GRAND_TOTAL_ANYWHERE.test(rowText) ||
             SUMMARY_ROW.test((orphan.own.DESCRIPTION || '').trim()) ||
             SUMMARY_ROW.test(rowText) ||
             PREAMBLE_ROW.test(rowText) ||
             PREAMBLE_ROW.test((orphan.own.DESCRIPTION || '').trim());
 
-        const hasName = !looksLikeSummary && cleanName(orphan.own.DESCRIPTION || '').length > 1;
+        // Naam IMAGE band me overflow ho gaya ho to bhi count karo
+        let orphanName = cleanName(
+            [extractNameOverflow(orphan.own.IMAGE), orphan.own.DESCRIPTION].filter(Boolean).join(' ')
+        );
+        // Naam sirf digits ka ho sakta hai (OCR ne "OOO" ko "000" padha)
+        if (orphanName.length <= 1) {
+            orphanName = cleanName(guessNameFromLeftBands(orphan.line.items, bands, true));
+        }
+        // Naam IMAGE band me gira ho to bhi milega (band key ignore)
+        if (orphanName.length <= 1) {
+            orphanName = cleanName(guessNameAnyBand(orphan.line.items, bands));
+        }
+        const hasName = !looksLikeSummary && orphanName.length > 1;
         const anyAmount =
             firstNumber(orphan.own.AMOUNT) ||
             firstNumber(orphan.own.RATE) ||
@@ -337,57 +395,87 @@ function buildItems(lines, endIndex, bands, medH) {
             orphan.amount = orphan.amount > 0 ? orphan.amount : anyAmount;
             orphan.lines = [orphan.line];
             rescued.push(orphan);
-            console.warn('RESCUED ROW (would have been silently merged):', orphan.own);
-            return;
+            console.warn('RESCUED ROW (qty missing in OCR):', orphan.own);
+        } else {
+            wrapped.push(orphan);
         }
+    });
 
+    primaries.push(...rescued);
+    primaries.sort((a, b) => a.line.y - b.line.y);
+
+    const gaps = primaries.slice(1).map((r, i) => r.line.y - primaries[i].line.y).sort((a, b) => a - b);
+    const pitch = gaps.length ? gaps[Math.floor(gaps.length / 2)] : medH * 4;
+    const maxDist = pitch * 0.75;
+
+    wrapped.forEach(orphan => {
         let best = null, bestD = Infinity;
-        originalPrimaries.forEach(p => {
+        primaries.forEach(p => {
             const d = Math.abs(p.line.y - orphan.line.y);
             if (d < bestD) { best = p; bestD = d; }
         });
         if (best && bestD <= maxDist) best.lines.push(orphan.line);
     });
 
-    primaries.push(...rescued);
-
-    // Rescued rows were appended at the end above — restore top-to-bottom order.
-    primaries.sort((a, b) => a.line.y - b.line.y);
-
     const discBand = bands.find(b => b.key === 'DISCOUNT');
-    return primaries.map(p => {
-        const full = mapWordsToBands(p.lines.sort((a, b) => a.y - b.y).flatMap(l => l.items), bands);
-        const own = p.own;
+    return primaries
+        .filter(p => !GRAND_TOTAL_ANYWHERE.test(p.line.items.map(w => w.text).join(' ')))
+        .map(p => {
+            const rowWords = p.lines.sort((a, b) => a.y - b.y).flatMap(l => l.items);
+            const full = mapWordsToBands(rowWords, bands);
+            const own = p.own;
 
-        let rate = firstNumber(own.RATE) || firstNumber(own.MRP);
-        if (!rate) rate = round2(p.amount / p.qty);
+            let rate = firstNumber(own.RATE) || firstNumber(own.MRP);
+            if (!rate) rate = round2(p.amount / p.qty);
 
-        const rawDisc = own.DISCOUNT || '';
-        const isPct = /%/.test(rawDisc) || (discBand && discBand.pct);
-        const explicit = isPct ? firstNumber(rawDisc) : NaN;
-        const hasTax = firstNumber(own.TAX) > 0;
+            const rawDisc = own.DISCOUNT || '';
+            const isPct = /%/.test(rawDisc) || (discBand && discBand.pct);
+            const explicit = isPct ? firstNumber(rawDisc) : NaN;
+            const hasTax = firstNumber(own.TAX) > 0;
 
-        // A long item name overflows the narrow Description column on BOTH sides:
-        // left into Image, right into HSN. extractNameOverflow() strips those two
-        // bands down to genuine leftover name words (real HSN numbers and image/QR
-        // noise get dropped), so "Artisanal Bread ( Sales Price ... only )" survives
-        // instead of collapsing to just the fragment that landed inside Description's
-        // exact pixel range.
-        const rawName = [
-            extractNameOverflow(full.IMAGE),
-            full.DESCRIPTION || '',
-            extractNameOverflow(full.HSN),
-        ].filter(Boolean).join(' ');
+            const slNoExtra = (full.SLNO || '').split(/\s+/).slice(1).join(' ');
 
-        return {
-            name: cleanName(rawName) || 'Unknown Item',
-            quantity: p.qty,
-            unit: pickUnit(full.UNIT, own.QTY),
-            purchasePrice: rate,
-            discountPercentage: resolveDiscount({ quantity: p.qty, rate, amount: p.amount, explicit, hasTax }),
-            totalAmount: p.amount,
-        };
-    });
+            const descText = full.DESCRIPTION
+                || guessNameFromLeftBands(rowWords, bands)
+                || guessNameFromLeftBands(rowWords, bands, true)
+                || guessNameAnyBand(rowWords, bands)
+                || slNoExtra;
+            const nameParts = [
+                extractNameOverflow(full.IMAGE),
+                descText,
+                extractNameOverflow(full.HSN),
+            ].filter(Boolean);
+
+            // Ek hi naam do jagah se aaye ("Kiwi" + "Kiwi") to sirf ek rakho
+            const normPart = (s) => s.toLowerCase().replace(/[^a-z0-9\u0900-\u097f]/g, '');
+            const uniqueParts = [];
+            nameParts.forEach(part => {
+                const n = normPart(part);
+                if (!n) return;
+                const idx = uniqueParts.findIndex(u => {
+                    const un = normPart(u);
+                    return un.includes(n) || n.includes(un);
+                });
+                if (idx >= 0) {
+                    if (n.length > normPart(uniqueParts[idx]).length) uniqueParts[idx] = part;
+                } else {
+                    uniqueParts.push(part);
+                }
+            });
+            const rawName = uniqueParts.join(' ');
+            if (!cleanName([extractNameOverflow(full.IMAGE), descText, extractNameOverflow(full.HSN)].filter(Boolean).join(' '))) {
+                console.warn('NAME EMPTY:', { full, words: rowWords.map(w => ({ t: w.text, x: Math.round(w.x) })), bands: bands.map(b => ({ k: b.key, s: Math.round(b.xStart), e: Math.round(b.xEnd) })) });
+            }
+            return {
+                name: cleanName(rawName) || 'Unknown Item',
+                quantity: p.qty,
+                unit: pickUnit(full.UNIT, own.QTY),
+                purchasePrice: rate,
+                discountPercentage: resolveDiscount({ quantity: p.qty, rate, amount: p.amount, explicit }),
+                totalAmount: p.amount,
+            };
+        })
+        .filter(it => !/^(GRAND\s*TOTAL|TOTAL)$/i.test(it.name));
 }
 
 exports.scanSmartInvoice = functions.https.onCall(async (data, context) => {

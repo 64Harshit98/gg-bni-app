@@ -527,11 +527,11 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     // NEW: image column ke wajah se baaki columns ka index +1 shift hota hai
     const activeColumnStyles = showImages
       ? (showTaxColumns
-        ? { 0: { cellWidth: 8 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto', halign: 'left' }, 3: { cellWidth: 12 }, 12: { cellWidth: 18, halign: 'right' } }
-        : { 0: { cellWidth: 8 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto', halign: 'left' }, 3: { cellWidth: 15 }, 9: { cellWidth: 20, halign: 'right' } })
+        ? { 0: { cellWidth: 8 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto', halign: 'left' }, 3: { cellWidth: 15, fontSize: 7, cellPadding: 0.5 }, 12: { cellWidth: 18, halign: 'right' } }
+        : { 0: { cellWidth: 8 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto', halign: 'left' }, 3: { cellWidth: 15, fontSize: 7, cellPadding: 0.5 }, 9: { cellWidth: 20, halign: 'right' } })
       : (showTaxColumns
-        ? { 0: { cellWidth: 8 }, 1: { cellWidth: 'auto', halign: 'left' }, 2: { cellWidth: 12 }, 11: { cellWidth: 18, halign: 'right' } }
-        : { 0: { cellWidth: 8 }, 1: { cellWidth: 'auto', halign: 'left' }, 2: { cellWidth: 15 }, 8: { cellWidth: 20, halign: 'right' } });
+        ? { 0: { cellWidth: 8 }, 1: { cellWidth: 'auto', halign: 'left' }, 2: { cellWidth: 15, fontSize: 7, cellPadding: 0.5 }, 11: { cellWidth: 18, halign: 'right' } }
+        : { 0: { cellWidth: 8 }, 1: { cellWidth: 'auto', halign: 'left' }, 2: { cellWidth: 15, fontSize: 7, cellPadding: 0.5 }, 8: { cellWidth: 20, halign: 'right' } });
 
     autoTable(doc, {
       startY: cursorY,

@@ -38,15 +38,16 @@ const normalizeNumberString = (raw: string): number => {
 // Never applied to item names, so "Milk", "Oil", "Bulb" etc. stay intact.
 const fixNumericOcrNoise = (token: string): string => token.replace(/[|lI]/g, '1');
 
-type ColumnKey = 'SLNO' | 'DESCRIPTION' | 'HSN' | 'QTY' | 'RATE' | 'DISCOUNT' | 'TAX' | 'AMOUNT';
+type ColumnKey = 'SLNO' | 'DESCRIPTION' | 'HSN' | 'QTY' | 'RATE' | 'DISCOUNT' | 'DISCOUNT2' | 'TAX' | 'AMOUNT';
 
 const COLUMN_DEFS: { key: ColumnKey; regex: RegExp }[] = [
-    { key: 'SLNO', regex: /SL\s*NO|SR\s*NO/i },
+    { key: 'SLNO', regex: /\bS\s*NO\b|SL\s*NO|SR\s*NO/i },        // "S.No." -> "S No"
     { key: 'DESCRIPTION', regex: /DESCRIPTION|PARTICULARS?|ITEM\s*NAME/i },
     { key: 'HSN', regex: /HSN(\s*NO)?|SAC/i },
     { key: 'QTY', regex: /QTY|QUANTITY/i },
     { key: 'RATE', regex: /RATE|PRICE|UNIT\s*PRICE/i },
     { key: 'DISCOUNT', regex: /DISC(OUNT)?\s*%?/i },
+    { key: 'DISCOUNT2', regex: /\b2\s*DIS\s*%?/i },              // NEW: "2DIS%" column
     { key: 'TAX', regex: /TAX|GST|VAT/i },
     { key: 'AMOUNT', regex: /AMOUNT|TOTAL|NET\s*AMT/i },
 ];
@@ -133,7 +134,9 @@ const parseRowWithHeaderMap = (
     // Item name = everything before the first trailing numeric column
     const nameEndPos = trailingMatches[0].index as number;
     let name = line.slice(0, nameEndPos).trim();
-    name = name.replace(/^\d+\s+/, '').trim(); // safety net for any stray leading number
+    name = name.replace(/\s+\d{4,8}\s*\+?$/, '').trim();   // trailing HSN (95030090)
+    name = name.replace(/^[A-Z]{0,6}\d+[A-Z0-9]*\s+(?=[A-Za-z]{2}\.)/, '').trim(); // leading Code (39776 / MM8230) jab "TK." / "MM." prefix aaye
+    name = name.replace(/^\d+\s+/, '').trim();
     if (!name) return null;
 
     const quantity = values.QTY ?? 0;
@@ -145,7 +148,10 @@ const parseRowWithHeaderMap = (
     // Prefer an explicit Discount% column if the header has one; otherwise reverse-engineer
     // the discount from rate vs. net-per-unit, same as before.
     let calculatedDiscount: number;
-    if (values.DISCOUNT !== undefined) {
+    if (finalAmount > 0 && purchasePrice > 0) {
+        // Amount GST se pehle ka hai, isliye ye Disc% + 2DIS% dono ko cover karta hai
+        calculatedDiscount = Math.round((1 - finalAmount / (quantity * purchasePrice)) * 10000) / 100;
+    } else if (values.DISCOUNT !== undefined) {
         calculatedDiscount = values.DISCOUNT;
     } else {
         const netPricePerUnit = finalAmount / quantity;

@@ -37,22 +37,55 @@ export const usePurchaseSmartScan = ({
 
             if (scannedData.items && scannedData.items.length > 0) {
 
-                const fuse = new Fuse(availableItems, {
-                    keys: ['name', 'barcode'],
-                    threshold: 0.4,
-                    distance: 100
-                });
+                // Words ka order ignore karke compare karo. OCR "0" aur "O" bhi mix karta hai.
+                const tokenKey = (s: string) =>
+                    (s || '')
+                        .toLowerCase()
+                        .replace(/0/g, 'o')
+                        .replace(/[^a-z0-9\u0900-\u097f]+/g, ' ')
+                        .split(' ')
+                        .filter(Boolean)
+                        .sort()
+                        .join(' ');
 
+                const searchable = availableItems.map(item => ({
+                    item,
+                    key: tokenKey(item.name),
+                    barcode: item.barcode || ''
+                }));
+
+                const fuse = new Fuse(searchable, {
+                    keys: ['key', 'barcode'],
+                    threshold: 0.3,
+                    distance: 100,
+                    ignoreLocation: true,
+                    includeScore: true
+                });
                 const newCartItems = scannedData.items.map(ocrItem => {
                     const ocrNetPrice = ocrItem.purchasePrice * (1 - (ocrItem.discountPercentage / 100));
                     const roundedOcrNetPrice = Math.round(ocrNetPrice * 100) / 100;
 
-                    const searchResults = fuse.search(ocrItem.name);
+                    // 3 se kam letters/digits wale naam par fuzzy match mat karo ("000" jaise)
+                    const cleanLen = ocrItem.name.replace(/[^A-Za-z0-9\u0900-\u097F]/g, '').length;
+                    const ocrKey = tokenKey(ocrItem.name);
+
+                    // Pehle exact match (order ignore), chhote naam jaise "OOO" ke liye bhi
+                    const exactMatch = ocrKey
+                        ? searchable.find(s => s.key === ocrKey)
+                        : undefined;
+
+                    const fuzzyMatch = !exactMatch && cleanLen >= 4
+                        ? fuse.search(ocrKey).find(r => (r.score ?? 1) <= 0.35)
+                        : undefined;
+
+                    const matched = exactMatch || (fuzzyMatch && fuzzyMatch.item);
+                    const goodMatch = matched ? { item: matched.item } : undefined;
 
                     // LINKED ITEM (Found in DB)
-                    if (searchResults.length > 0) {
-                        const dbItem = searchResults[0].item;
-                        const finalDiscount = ocrItem.discountPercentage || (dbItem as any).purchasediscount || 0;
+                    if (goodMatch) {
+                        const dbItem = goodMatch.item;
+                        // Bill ka discount ka hi use karo, 0% ho to bhi (|| se 0 replace ho jata tha)
+                        const finalDiscount = ocrItem.discountPercentage ?? (dbItem as any).purchasediscount ?? 0;
                         const finalMrp = dbItem.mrp || ocrItem.purchasePrice;
 
                         const finalDbNetPrice = finalMrp * (1 - (finalDiscount / 100));

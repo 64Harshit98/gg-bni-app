@@ -4,6 +4,8 @@ import type { Item } from '../../../../constants/models';
 import { State } from '../../../../enums';
 import { useSmartScanner } from '../../../hooks/SmartScanner';
 import type { PurchaseItem } from '../purchase.types';
+import { findTierByBarcode } from '../../../../Pages/utils/pricingUtils';
+import type { PriceTier } from '../../../../constants/models';
 
 interface UsePurchaseSmartScanParams {
     availableItems: Item[];
@@ -11,7 +13,7 @@ interface UsePurchaseSmartScanParams {
     // Owned by usePurchaseCart — handleBarcodeScanned re-uses the same
     // add-to-cart pricing logic rather than duplicating it, so it's threaded
     // in as a plain param instead of moving addItemToCart here.
-    addItemToCart: (itemToAdd: Item) => void;
+    addItemToCart: (itemToAdd: Item, tier?: PriceTier) => void;   // 👈 CHANGED — tier param add kiya
     setModal: (modal: { message: string; type: State } | null) => void;
 }
 
@@ -142,6 +144,15 @@ export const usePurchaseSmartScan = ({
 
     const handleBarcodeScanned = (barcode: string) => {
         setIsScannerOpen(false);
+
+        // 👇 NEW: pehle tier-level barcode check karo (box/combo ka apna barcode)
+        const tierMatch = findTierByBarcode(availableItems, barcode);
+        if (tierMatch) {
+            const tierToPass = tierMatch.tier.id === '__base__' ? undefined : tierMatch.tier;
+            addItemToCart(tierMatch.item, tierToPass);
+            return;
+        }
+
         const itemToAdd = availableItems.find(item => item.barcode === barcode);
         if (itemToAdd) {
             addItemToCart(itemToAdd);

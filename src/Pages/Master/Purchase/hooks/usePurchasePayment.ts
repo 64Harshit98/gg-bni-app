@@ -303,10 +303,11 @@ export const usePurchasePayment = ({
                 const perProductUpdates = new Map<string, { shopQty: number; godownQty: Map<string, number> }>();
                 items.forEach(cartItem => {
                     const pid = cartItem.productId || cartItem.id;
+                    const baseQty = (cartItem.quantity || 1) * (cartItem.tierQuantity || 1);
                     const splits = godownAssignments[cartItem.id];
                     const rows: GodownSplit[] = (splits && splits.length > 0)
                         ? splits
-                        : [{ godownId: SHOP_ID, quantity: cartItem.quantity || 1 }];
+                        : [{ godownId: SHOP_ID, quantity: baseQty }];
 
                     if (!perProductUpdates.has(pid)) {
                         perProductUpdates.set(pid, { shopQty: 0, godownQty: new Map() });
@@ -373,10 +374,11 @@ export const usePurchasePayment = ({
                 const shopDelta = items
                     .filter(i => (i.productId || i.id) === item.id)
                     .reduce((sum, i) => {
+                        const baseQty = (i.quantity || 1) * (i.tierQuantity || 1);
                         const splits = godownAssignments[i.id];
                         const rows: GodownSplit[] = (splits && splits.length > 0)
                             ? splits
-                            : [{ godownId: SHOP_ID, quantity: i.quantity || 1 }];
+                            : [{ godownId: SHOP_ID, quantity: baseQty }];
                         const shopQty = rows
                             .filter(r => r.godownId === SHOP_ID)
                             .reduce((s, r) => s + (r.quantity || 0), 0);
@@ -448,10 +450,14 @@ export const usePurchasePayment = ({
                 if (!purchaseDoc.exists()) throw new Error("Purchase not found.");
 
                 const originalItemsMap = new Map(
-                    (purchaseDoc.data().items as PurchaseItem[] || []).map(item => [item.id, item.quantity || 1])
+                    (purchaseDoc.data().items as PurchaseItem[] || []).map(item =>
+                        [item.id, (item.quantity || 1) * (item.tierQuantity || 1)]  // 👈 CHANGED
+                    )
                 );
                 const currentItemsMap = new Map(
-                    formattedItemsForDB.map(item => [item.id, item.quantity || 1])
+                    formattedItemsForDB.map(item =>
+                        [item.id, (item.quantity || 1) * (item.tierQuantity || 1)]  // 👈 CHANGED
+                    )
                 );
                 const allItemIds = new Set([...originalItemsMap.keys(), ...currentItemsMap.keys()]);
 

@@ -27,6 +27,9 @@ export interface SalesItem extends OriginalSalesItem {
     isCustomAmount?: boolean;
     isStagedCalcItem?: boolean;
     addedAt?: number;   // 👈 NEW:
+    tierId?: string;          // 👈 NEW — 
+    tierLabel?: string;       // 👈 NEW — "Box of 10" 
+    tierQuantity?: number;    // 👈 NEW — 
 }
 
 // Formalized shape of the invoice/sale-data object built in

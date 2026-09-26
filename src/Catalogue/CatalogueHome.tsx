@@ -16,7 +16,7 @@ import { FiRefreshCw, FiLoader } from 'react-icons/fi';
 import { fetchDashboardData, CACHE_DURATION } from '../lib/fetchDashboardData';
 import ShinyText from '../Components/ShinyText';
 import type { WithCacheMeta } from '../lib/fetchDashboardData';
-//import NotificationBell from '../Components/NotificationBell';
+import NotificationBell from '../Components/NotificationBell';
 import { TutorialStep } from '../Components/TutorialStep';
 import useTutorial from '../Catalogue/hooks/useTutorial';
 import { completeTutorial } from '../Catalogue/hooks/useCompleteTutorial';
@@ -390,11 +390,11 @@ const HomePageContent: React.FC = () => {
 
                 {/* Right: Notification bell + toggle button */}
                 <div className="w-28 flex justify-end items-center gap-2">
-                    {/* <ShowWrapper requiredPermission={Cata_Permissions.ViewNotification}>
-                        <div className="border border-slate-300 rounded-sm bg-gray-100 shadow-sm">
+                    <ShowWrapper requiredPermission={Cata_Permissions.ViewNotification}>
+                        <div className="hidden sm:flex border border-slate-300 rounded-sm bg-gray-100 shadow-sm">
                             <NotificationBell />
                         </div>
-                    </ShowWrapper> */}
+                    </ShowWrapper>
                     <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueHidebutton}>
                         <TutorialStep step={2} currentStep={tutorialStep} text="Toggle this to show or hide sensitive sales figures." onNext={() => next(3)} onSkip={skip}>
                             <button

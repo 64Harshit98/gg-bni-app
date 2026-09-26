@@ -59,13 +59,29 @@ export const usePurchaseCatalogueAndSettings = ({
 
     const [invoiceNumber, setInvoiceNumber] = useState<string>('');
     const isInvoiceNumberManuallyEdited = useRef(false);
-    const [invoiceDate, setInvoiceDate] = useState<string>(() => {
+
+    const getTodayString = () => {
         const today = new Date();
         const yyyy = today.getFullYear();
         const mm = String(today.getMonth() + 1).padStart(2, '0');
         const dd = String(today.getDate()).padStart(2, '0');
         return `${yyyy}-${mm}-${dd}`;
-    });
+    };
+
+    const [invoiceDate, setInvoiceDate] = useState<string>(getTodayString);
+
+    // Auto-refresh invoiceDate when the tab/app becomes visible again — same fix
+    // as on the Sales side, for the identical back-date bug.
+    useEffect(() => {
+        if (purchaseIdToEdit) return; // never override the original purchase's date
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                setInvoiceDate(getTodayString());
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [purchaseIdToEdit]);
 
     const [billTaxType, setBillTaxType] = useState<TaxOption>('exclusive');
 

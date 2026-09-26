@@ -1,9 +1,9 @@
 import React from 'react';
-import type { Item } from '../../../constants/models';
+import type { Item, PriceTier } from '../../../constants/models';
 
 interface DuplicateItemPromptModalProps {
-    duplicateOrderItemPrompt: { item: Item; existingCount: number };
-    setDuplicateOrderItemPrompt: (v: { item: Item; existingCount: number } | null) => void;
+    duplicateOrderItemPrompt: { item: Item; existingCount: number; tier?: PriceTier };
+    setDuplicateOrderItemPrompt: (v: { item: Item; existingCount: number; tier?: PriceTier } | null) => void;
     handleIncreaseExistingOrderItemQuantity: () => void;
     handleAddOrderItemAsNew: () => void;
 }
@@ -27,7 +27,11 @@ export const DuplicateItemPromptModal: React.FC<DuplicateItemPromptModalProps> =
                 </div>
                 <h3 className="text-lg font-bold text-gray-800 mb-1">Item Already in Order</h3>
                 <p className="text-sm text-gray-600 mb-6">
-                    "<span className="font-medium">{duplicateOrderItemPrompt.item.name}</span>" is already in this order
+                    "<span className="font-medium">{duplicateOrderItemPrompt.item.name}</span>"
+                    {duplicateOrderItemPrompt.tier?.label ? (
+                        <span className="font-medium"> ({duplicateOrderItemPrompt.tier.label})</span>
+                    ) : null}
+                    {' '}is already in this order
                     {duplicateOrderItemPrompt.existingCount > 1 ? ` (${duplicateOrderItemPrompt.existingCount} times)` : ''}.
                     What would you like to do?
                 </p>

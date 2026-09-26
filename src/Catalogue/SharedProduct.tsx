@@ -20,6 +20,7 @@ import { FaWhatsapp } from 'react-icons/fa';
 import { ensurePendingApprovalEntry } from './hooks/ensureApprovalEntry';
 import { deriveTaxContext, buildUpcomingSyncPayload } from './CheckOut/checkOut.calculations';
 import type { CartItem } from './CheckOut/checkOut.types';
+import { hasMultiplePricing } from '../Pages/utils/pricingUtils'
 
 const ITEMS_PER_BATCH_RENDER = 24;
 
@@ -64,7 +65,6 @@ const getEffectivePriceInfo = (item: Item) => {
         hasBothPrices: mrp > 0 && salePrice > 0 && salePrice < mrp
     };
 };
-// Self-contained slideshow for a grid card's image area.
 const ProductCardImage: React.FC<{ images: string[]; alt: string }> = ({ images, alt }) => {
     const [slideIndex, setSlideIndex] = useState(0);
     const [brokenUrls, setBrokenUrls] = useState<Set<string>>(new Set());
@@ -90,7 +90,7 @@ const ProductCardImage: React.FC<{ images: string[]; alt: string }> = ({ images,
         }
     }, [validImages.length, slideIndex]);
 
-    if (validImages.length === 0) {
+        if (validImages.length === 0) {
         return <FiPackage className="w-10 h-10 text-gray-200" />;
     }
 
@@ -485,7 +485,7 @@ const SharedProduct: React.FC = () => {
         return () => window.removeEventListener("scroll", handleScroll);
     }, []);
 
-    const addToCart = useCallback((item: Item) => {
+    const addToCart = useCallback((item: Item, tierId?: string) => {
         // Always require name+number before adding to cart
         const alreadyFilled = localStorage.getItem("leadSubmitted") === "true";
         if (!alreadyFilled) {
@@ -505,7 +505,11 @@ const SharedProduct: React.FC = () => {
 
         // lead filled → cart allow
         setCart(prev => {
-            const existing = prev.find(i => i.item.id === item.id);
+            // 👇 CHANGED — tierId ko bhi match karo, warna tier-wala item base item se merge ho jayega
+            const cartKey = (i: Item) => `${i.id}__${(i as any).tierId || '__base__'}`;
+            const newTierId = tierId || '__base__';
+            const existing = prev.find(i => cartKey(i.item) === `${item.id}__${newTierId}`);
+
             const moqQty = (item as any).moq || 1;
             const { salePrice, mrp } = getEffectivePriceInfo(item);
 
@@ -517,10 +521,12 @@ const SharedProduct: React.FC = () => {
                 mrp: mrp,
                 salesPrice: salePrice,
                 groupid: resolvedGroupId || item.itemGroupId,
+                tierId: newTierId === '__base__' ? undefined : newTierId,
+                tierLabel: newTierId === '__base__' ? undefined : (item as any).tierLabel,   // 👈 NEW
             };
             const newCart = existing
                 ? prev.map(i =>
-                    i.item.id === item.id
+                    cartKey(i.item) === `${item.id}__${newTierId}`
                         ? { ...i, quantity: i.quantity + moqQty }
                         : i
                 )
@@ -532,7 +538,7 @@ const SharedProduct: React.FC = () => {
                     newCart.map(c => ({
                         item: {
                             ...c.item,
-                            groupId: (c.item as any).groupid || c.item.itemGroupId  // preserve the captured group context
+                            groupId: (c.item as any).groupid || c.item.itemGroupId
                         },
                         quantity: c.quantity
                     }))
@@ -991,14 +997,18 @@ const SharedProduct: React.FC = () => {
             groups.get(root)!.push(String(item.id));
         });
 
-        const map: Record<string, string[]> = {};
+                const map: Record<string, string[]> = {};
         listedItems.forEach(item => {
             const root = find(String(item.id));
             const groupIds = groups.get(root) || [String(item.id)];
-            const images = groupIds
-                .map(gid => itemById.get(gid)?.imageUrl)
-                .filter((url): url is string => Boolean(url));
-            map[String(item.id)] = images.length > 0 ? images : (item.imageUrl ? [item.imageUrl] : []);
+            const images = groupIds.flatMap(gid => {
+                const gItem = itemById.get(gid);
+                if (!gItem) return [];
+                if (gItem.imageUrls && gItem.imageUrls.length > 0) return gItem.imageUrls;
+                return gItem.imageUrl ? [gItem.imageUrl] : [];
+            });
+            const ownFallback = item.imageUrls?.length ? item.imageUrls : (item.imageUrl ? [item.imageUrl] : []);
+            map[String(item.id)] = images.length > 0 ? images : ownFallback;
         });
 
         return map;
@@ -1658,6 +1668,13 @@ const SharedProduct: React.FC = () => {
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     if (disableAddToCart) return;
+
+                                                    // 👇 NEW: agar item mein multiple pricing options hain, seedha add na karo — detail drawer khol do jaha tier choose ho sake
+                                                    if (hasMultiplePricing(item)) {
+                                                        handleOpenDetailDrawer(item);
+                                                        return;
+                                                    }
+
                                                     const card = e.currentTarget.closest(".group");
                                                     const img = card?.querySelector("img") as HTMLImageElement;
                                                     const fallback = card?.querySelector(".aspect-square") as HTMLElement;

@@ -59,24 +59,43 @@ export const useSalesCatalogueAndSettings = ({
     const [activeTaxMode, setActiveTaxMode] = useState<'inclusive' | 'exclusive' | 'exempt'>('exclusive');
 
     const [invoiceNumber, setInvoiceNumber] = useState<string>('');
-    const isInvoiceNumberManuallyEdited = useRef(false);
-    const [invoiceDate, setInvoiceDate] = useState<string>(() => {
-        // In edit mode, use the original invoice's date
-        if (isEditMode && invoiceToEdit?.createdAt) {
-            const original = new Date(invoiceToEdit.createdAt);
-            if (!isNaN(original.getTime())) {
-                const yyyy = original.getFullYear();
-                const mm = String(original.getMonth() + 1).padStart(2, '0');
-                const dd = String(original.getDate()).padStart(2, '0');
-                return `${yyyy}-${mm}-${dd}`;
-            }
+const isInvoiceNumberManuallyEdited = useRef(false);
+
+const getTodayString = () => {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+};
+
+const [invoiceDate, setInvoiceDate] = useState<string>(() => {
+    // In edit mode, use the original invoice's date
+    if (isEditMode && invoiceToEdit?.createdAt) {
+        const original = new Date(invoiceToEdit.createdAt);
+        if (!isNaN(original.getTime())) {
+            const yyyy = original.getFullYear();
+            const mm = String(original.getMonth() + 1).padStart(2, '0');
+            const dd = String(original.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
         }
-        const today = new Date();
-        const yyyy = today.getFullYear();
-        const mm = String(today.getMonth() + 1).padStart(2, '0');
-        const dd = String(today.getDate()).padStart(2, '0');
-        return `${yyyy}-${mm}-${dd}`;
-    });
+    }
+    return getTodayString();
+});
+
+// Auto-refresh invoiceDate when the tab/app becomes visible again — fixes
+// the "phone stayed logged in overnight without a refresh" bug where the
+// date silently stayed on the old day and bills saved with a back-date.
+useEffect(() => {
+    if (isEditMode) return; // never override the original invoice's date
+    const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+            setInvoiceDate(getTodayString());
+        }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+}, [isEditMode]);
 
     // Local mirror of the shared catalogue items — kept as real state (not a
     // direct read of context) because callers (useSalesCart, useSalesPayment)

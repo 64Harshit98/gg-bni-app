@@ -22,6 +22,9 @@ import { FiSend } from 'react-icons/fi';
 import CalcDisplay from '../../../Components/CalcDisplay';
 import { useWhatsappProvider } from '../../Additional/Whatsapp/useWhatsappProvider';
 import type { SalesItem } from './sales.types';
+import { TierPickerModal } from '../../../Components/TierPickerModal';
+import { hasMultiplePricing } from '../../utils/pricingUtils';
+import type { Item } from '../../../constants/models';
 import { applyRounding, calculateSaleTotals } from './sales.calculations';
 import {
     useSalesCalculator,
@@ -94,7 +97,7 @@ const Sales: React.FC = () => {
 
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
     const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
-
+    const [tierPickerItem, setTierPickerItem] = useState<Item | null>(null);
     const {
         salesSettings,
         activeTaxMode, setActiveTaxMode,
@@ -177,7 +180,20 @@ const Sales: React.FC = () => {
         setModal,
         companyId: currentUser?.companyId,
     });
-
+    const handleAddOrPickTier = (item: Item) => {
+        if (hasMultiplePricing(item)) {
+            setTierPickerItem(item);
+        } else {
+            addItemToCart(item);
+        }
+    };
+    const handleItemSelectedWrapper = (item: Item | null) => {
+        if (item && hasMultiplePricing(item)) {
+            setTierPickerItem(item);
+            return;
+        }
+        handleItemSelected(item);
+    };
     const userRole = currentUser?.role || '';
     const isManager = userRole === ROLES.MANAGER || userRole === ROLES.OWNER;
     const hideMrp = (salesSettings as any)?.hideMrp ?? false;
@@ -639,7 +655,7 @@ const Sales: React.FC = () => {
                                             key={item.id}
                                             onClick={() => {
                                                 if (isSelected) handleQuantityChange(lastAddedCartItem.id, quantity + 1);
-                                                else addItemToCart(item);
+                                                else handleAddOrPickTier(item);   // 👈 CHANGED
                                             }}
                                             className={`bg-white rounded-sm flex flex-col w-full overflow-visible transition-all duration-200 relative group cursor-pointer
                                                 ${isSelected
@@ -751,7 +767,7 @@ const Sales: React.FC = () => {
                                                             <button
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
-                                                                    addItemToCart(item);
+                                                                    handleAddOrPickTier(item);
                                                                 }}
                                                                 className="w-full h-[26px] rounded-sm text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 transition-colors"
                                                             >
@@ -796,7 +812,7 @@ const Sales: React.FC = () => {
                                         key={item.id}
                                         onClick={() => {
                                             if (isSelected) handleQuantityChange(lastAddedCartItem.id, quantity + 1);
-                                            else addItemToCart(item);
+                                            else handleAddOrPickTier(item);   // 👈 CHANGED
                                         }}
                                         className={`bg-white rounded-sm border flex flex-col overflow-visible transition-all relative
                                       ${isSelected ? 'border-blue-400 ring-1 ring-blue-100' : 'border-gray-100 hover:shadow-sm'}`}
@@ -875,7 +891,7 @@ const Sales: React.FC = () => {
 
                                                 {!isSelected ? (
                                                     <button
-                                                        onClick={(e) => { e.stopPropagation(); addItemToCart(item); }}
+                                                        onClick={(e) => { e.stopPropagation(); handleAddOrPickTier(item); }}
                                                         className="w-full py-1.5 rounded-sm text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 transition-colors"
                                                     >
                                                         + Add
@@ -991,7 +1007,14 @@ const Sales: React.FC = () => {
                     enableTransportDetails={salesSettings?.enableTransportDetails ?? false}
                 />
                 <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
-
+                <TierPickerModal
+                    item={tierPickerItem}
+                    isOpen={!!tierPickerItem}
+                    onClose={() => setTierPickerItem(null)}
+                    onSelect={(item, tier) => {
+                        handleItemSelected(item, tier.id === '__base__' ? undefined : tier);   // 👈 CHANGED — ab duplicate-check ke through add hoga
+                    }}
+                />
                 {savedBillData && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
                         <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm flex flex-col items-center animate-in fade-in zoom-in duration-300">
@@ -1278,7 +1301,7 @@ const Sales: React.FC = () => {
                                     label="Search Item"
                                     placeholder="Search by name or barcode..."
                                     items={availableItems}
-                                    onItemSelected={handleItemSelected}
+                                    onItemSelected={handleItemSelectedWrapper}
                                     isLoading={pageIsLoading}
                                     error={error}
                                     onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })}
@@ -1440,6 +1463,14 @@ const Sales: React.FC = () => {
             />
             <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
 
+            <TierPickerModal
+                item={tierPickerItem}
+                isOpen={!!tierPickerItem}
+                onClose={() => setTierPickerItem(null)}
+                onSelect={(item, tier) => {
+                    handleItemSelected(item, tier.id === '__base__' ? undefined : tier);   // 👈 CHANGED — ab duplicate-check ke through add hoga
+                }}
+            />
             {savedBillData && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
                     <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm flex flex-col items-center animate-in fade-in zoom-in duration-300">

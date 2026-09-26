@@ -166,14 +166,14 @@ export const useSalesPayment = ({
             if (isEditMode && invoiceToEdit?.items) {
                 (invoiceToEdit.items as any[]).forEach((oldItem) => {
                     const pid = oldItem.productId || oldItem.id;
-                    const oldQty = oldItem.quantity || 1;
+                    const oldQty = (oldItem.quantity || 1) * (oldItem.tierQuantity || 1);
                     originalQuantities.set(pid, (originalQuantities.get(pid) || 0) + oldQty);
                 });
             }
             const stockNeeds = new Map<string, number>();
             items.filter(i => i.isEditable).forEach(i => {
                 const pid = i.productId;
-                const requiredStock = i.quantity || 1; // Multiplier removed. 1:1 mapping.
+                const requiredStock = (i.quantity || 1) * (i.tierQuantity || 1);
                 stockNeeds.set(pid, (stockNeeds.get(pid) || 0) + requiredStock);
             });
             const invalidItems: string[] = [];
@@ -269,14 +269,22 @@ export const useSalesPayment = ({
             return new Date();
         };
 
-        const formatItemsForDB = (itemsToFormat: SalesItem[]) => calculateFinalizedSaleItems(itemsToFormat, {
-            isRoundingEnabled,
-            roundingInterval,
-            finalGstScheme,
-            finalTaxType,
-            currentTaxRate,
-            billRatio,
-        });
+        const formatItemsForDB = (itemsToFormat: SalesItem[]) => {
+            const itemsWithTierNames = itemsToFormat.map(item =>
+                item.tierLabel
+                    ? { ...item, name: `${item.name} - ${item.tierLabel}` }
+                    : item
+            );
+
+            return calculateFinalizedSaleItems(itemsWithTierNames, {
+                isRoundingEnabled,
+                roundingInterval,
+                finalGstScheme,
+                finalTaxType,
+                currentTaxRate,
+                billRatio,
+            });
+        };
 
         const sanitizeForFirestore = (obj: any): any => {
             if (Array.isArray(obj)) return obj.map(sanitizeForFirestore);
@@ -419,7 +427,7 @@ export const useSalesPayment = ({
                     const oldQuantities = new Map<string, number>();
                     (invoiceToEdit.items || []).forEach((oldItem: any) => {
                         const pid = oldItem.productId || oldItem.id;
-                        const oldQty = oldItem.quantity || 1;
+                        const oldQty = (oldItem.quantity || 1) * (oldItem.tierQuantity || 1);
                         oldQuantities.set(pid, (oldQuantities.get(pid) || 0) + oldQty);
                     });
 
@@ -427,7 +435,7 @@ export const useSalesPayment = ({
                     items.forEach(newItem => {
                         const pid = newItem.productId || newItem.id;
                         if (pid) {
-                            const newQty = newItem.quantity || 1;
+                            const newQty = (newItem.quantity || 1) * (newItem.tierQuantity || 1);
                             newQuantities.set(pid, (newQuantities.get(pid) || 0) + newQty);
                         }
                     });
@@ -471,7 +479,7 @@ export const useSalesPayment = ({
                         const pid = i.productId || i.id;
                         if (pid && !i.isCustomAmount) {
                             const itemRef = doc(db, "companies", resolvedCompanyId, "items", pid);
-                            const totalToDeduct = i.quantity || 1;
+                            const totalToDeduct = (i.quantity || 1) * (i.tierQuantity || 1);
                             transaction.update(itemRef, { stock: firebaseIncrement(-totalToDeduct), updatedAt: serverTimestamp() });
                         }
                     });

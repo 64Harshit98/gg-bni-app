@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import type { Item } from '../../../../constants/models';
+import type { Item, PriceTier } from '../../../../constants/models';
 import { State } from '../../../../enums';
+import { findTierByBarcode } from '../../../utils/pricingUtils';
 import { applyRounding } from '../sales.calculations';
 import type { SalesItem } from '../sales.types';
 
@@ -38,7 +39,7 @@ export const useSalesCart = ({
     setAvailableItems,
     dbOperations,
     setModal,
-companyId, // 👈 NEW
+    companyId, // 👈 NEW
 }: UseSalesCartParams) => {
     const draftKey = companyId ? `sales_cart_draft_${companyId}` : null; // 👈 NEW
 
@@ -61,7 +62,7 @@ companyId, // 👈 NEW
     const [isPriceLocked, setIsPriceLocked] = useState(true);
     const [priceInfo, setPriceInfo] = useState<string | null>(null);
 
-    const [duplicateItemPrompt, setDuplicateItemPrompt] = useState<{ item: Item; existingCount: number } | null>(null);
+    const [duplicateItemPrompt, setDuplicateItemPrompt] = useState<{ item: Item; existingCount: number; tier?: PriceTier } | null>(null);
     const [isScannerOpen, setIsScannerOpen] = useState(false);
 
     const [barcodeToLink, setBarcodeToLink] = useState<string | null>(null);
@@ -122,10 +123,10 @@ companyId, // 👈 NEW
     }, [isEditMode, invoiceToEdit]);
 
     useEffect(() => {
-    if (!isEditMode && !pageIsLoading && draftKey) {
-        sessionStorage.setItem(draftKey, JSON.stringify(items));
-    }
-}, [items, isEditMode, pageIsLoading, draftKey]);
+        if (!isEditMode && !pageIsLoading && draftKey) {
+            sessionStorage.setItem(draftKey, JSON.stringify(items));
+        }
+    }, [items, isEditMode, pageIsLoading, draftKey]);
 
     const categories = useMemo(() => {
         const groups = new Set(availableItems.map(i => i.itemGroupId || 'uncategorized'));
@@ -154,33 +155,33 @@ companyId, // 👈 NEW
 
     }, [availableItems, selectedCategory, gridSearchQuery, items, sortOrder]);
 
-    const addItemToCart = (itemToAdd: Item) => {
+    const addItemToCart = (itemToAdd: Item, tier?: PriceTier) => {
         if (!itemToAdd || !itemToAdd.id) {
             setModal({ message: "Cannot add invalid item.", type: State.ERROR });
             return;
         }
 
+        const priceSource = tier
+            ? { mrp: tier.mrp, salesPrice: tier.salesPrice, discount: tier.discount ?? 0 }
+            : { mrp: itemToAdd.mrp, salesPrice: itemToAdd.salesPrice, discount: itemToAdd.discount };
+
         const itemTaxExtracted = Number(itemToAdd.tax ?? (itemToAdd as any).taxRate ?? salesSettings?.defaultTaxRate ?? 0);
 
-        const mrp = Number(itemToAdd.mrp || 0);
-        const salesPrice = Number(itemToAdd.salesPrice || 0);
-        const presetDiscount = Number(itemToAdd.discount || 0);
+        const mrp = Number(priceSource.mrp || 0);
+        const salesPrice = Number(priceSource.salesPrice || 0);
+        const presetDiscount = Number(priceSource.discount || 0);
         const initialMoq = Number((itemToAdd as any).moq || 1);
 
         let finalNetPrice = 0;
         let calculatedDiscount = 0;
 
-        // --- NEW 3-TIER LOGIC ---
         if (mrp > 0 && salesPrice > 0) {
-            // Case 1: Both exist. Ignore DB discount. Calculate diff.
             finalNetPrice = salesPrice;
             calculatedDiscount = ((mrp - salesPrice) / mrp) * 100;
         } else if (salesPrice > 0) {
-            // Case 2: Only Sales Price exists. Apply DB discount.
             calculatedDiscount = presetDiscount;
             finalNetPrice = salesPrice * (1 - (presetDiscount / 100));
         } else if (mrp > 0) {
-            // Case 3: Only MRP exists. Apply DB discount.
             calculatedDiscount = presetDiscount;
             finalNetPrice = mrp * (1 - (presetDiscount / 100));
         }
@@ -194,6 +195,8 @@ companyId, // 👈 NEW
             id: crypto.randomUUID(),
             productId: itemToAdd.id!,
             quantity: Math.max(1, initialMoq),
+            mrp: mrp,                    // 👈 NEW — tier ka MRP overwrite karo, warna base item ka purana MRP reh jata hai
+            salesPrice: salesPrice,      // 👈 NEW — tier ka salesPrice overwrite karo
             discount: calculatedDiscount,
             discount2: 0,
             customPrice: finalNetPrice,
@@ -203,12 +206,15 @@ companyId, // 👈 NEW
             itemGroupId: itemToAdd.itemGroupId || '',
             stock: itemToAdd.stock || (itemToAdd as any).Stock || 0,
             amount: itemToAdd.amount || 0,
-            barcode: itemToAdd.barcode || '',
+            barcode: tier?.barcode || itemToAdd.barcode || '',   // 👈 tier ka apna barcode ho to wahi
             restockQuantity: itemToAdd.restockQuantity || 0,
             unit: (itemToAdd as any).unit || '',
             unitMultiplier: 1,
             packetSize: (itemToAdd as any).packetSize || null,
             addedAt: Date.now(),
+            tierId: tier?.id,                              // 👈 NEW
+            tierLabel: tier?.label,                         // 👈 NEW
+            tierQuantity: tier?.quantity || itemToAdd.unitMultiplier || 1,  // 👈 NEW — base tier ka fallback
         };
 
         setItems(prev => {
@@ -243,33 +249,33 @@ companyId, // 👈 NEW
         setCartSearchQuery('');
         setShowClearCartConfirm(false);
     };
-    const handleItemSelected = (selectedItem: Item | null) => {
+    const handleItemSelected = (selectedItem: Item | null, tier?: PriceTier) => {
         if (!selectedItem) return;
 
-        // Cart mein ye item pehle se hai kya (ek ya zyada baar)?
-        const existingMatches = items.filter(i => i.productId === selectedItem.id);
+        // Tier-aware match: same item ka SAME tier pehle se cart mein hai kya?
+        // Alag tier waali same item ki lines alag maani jayengi (duplicate nahi).
+        const tierId = tier?.id;
+        const existingMatches = items.filter(i => i.productId === selectedItem.id && (i.tierId || undefined) === tierId);
 
         if (existingMatches.length > 0) {
-            // Direct add mat karo — pehle user se poocho
-            setDuplicateItemPrompt({ item: selectedItem, existingCount: existingMatches.length });
+            setDuplicateItemPrompt({ item: selectedItem, existingCount: existingMatches.length, tier });
             setGridSearchQuery('');
             return;
         }
 
-        addItemToCart(selectedItem);
+        addItemToCart(selectedItem, tier);
         setGridSearchQuery('');
     };
 
-    // User ne "Quantity Badhao" choose kiya
     const handleIncreaseExistingQuantity = () => {
         if (!duplicateItemPrompt) return;
         const targetProductId = duplicateItemPrompt.item.id;
+        const targetTierId = duplicateItemPrompt.tier?.id;   // 👈 NEW
 
         setItems(prev => {
-            const matches = prev.filter(i => i.productId === targetProductId);
+            const matches = prev.filter(i => i.productId === targetProductId && (i.tierId || undefined) === targetTierId);   // 👈 CHANGED
             if (matches.length === 0) return prev;
 
-            // Sabse "last added" (sabse recent) wala line dhoondo
             const lastAdded = matches.reduce((latest, current) =>
                 (current.addedAt || 0) > (latest.addedAt || 0) ? current : latest
             );
@@ -285,7 +291,7 @@ companyId, // 👈 NEW
     // User ne "Naya Item Add Karo" choose kiya
     const handleAddAsNewLine = () => {
         if (!duplicateItemPrompt) return;
-        addItemToCart(duplicateItemPrompt.item);
+        addItemToCart(duplicateItemPrompt.item, duplicateItemPrompt.tier);   // 👈 CHANGED — tier carry karo
         setDuplicateItemPrompt(null);
     };
     const closeBarcodeLinkModal = () => {
@@ -325,10 +331,16 @@ companyId, // 👈 NEW
         const cleanBarcode = barcode.trim();
 
         try {
-            // Explicitly type the variable to accept Item, undefined (from .find), or null (from DB)
+            // 👇 NEW: pehle check karo ki ye barcode kisi tier (combo/box pack) ka to nahi
+            const tierMatch = findTierByBarcode(availableItems, cleanBarcode);
+            if (tierMatch) {
+                const tierToPass = tierMatch.tier.id === '__base__' ? undefined : tierMatch.tier;
+                addItemToCart(tierMatch.item, tierToPass);
+                return;
+            }
+
             let itemToAdd: Item | null | undefined = availableItems.find(item => item.barcode === cleanBarcode);
 
-            // Fallback to the database if it's not in local state
             if (!itemToAdd) {
                 itemToAdd = await dbOperations.getItemByBarcode(cleanBarcode);
             }
@@ -336,7 +348,6 @@ companyId, // 👈 NEW
             if (itemToAdd) {
                 addItemToCart(itemToAdd);
 
-                // Only add to availableItems if it came from the DB fallback
                 setAvailableItems(prev => {
                     const exists = prev.find(p => p.id === itemToAdd!.id);
                     return exists ? prev : [...prev, itemToAdd!];

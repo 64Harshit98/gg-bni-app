@@ -6,7 +6,7 @@ import { IconChevronDown, IconClose, IconFilter, IconSearch } from '../../../con
 import { TutorialStep } from '../../../Components/TutorialStep';
 import { Permissions } from '../../../enums/permissions.enum';
 import ShowWrapper from '../../../context/ShowWrapper';
-//import NotificationBell from '../../../Components/NotificationBell';
+import NotificationBell from '../../../Components/NotificationBell';
 import { ROUTES } from '../../../constants/routes.constants';
 import { useNavigate } from 'react-router-dom';
 
@@ -103,11 +103,11 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
             </button>
           </ShowWrapper>
 
-          {/* <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-            <div className="border border-slate-300 rounded-sm bg-gray-100 shadow-sm flex items-center justify-center">
+          <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+            <div className="hidden sm:flex items-center justify-center border border-slate-300 rounded-sm bg-gray-100 shadow-sm">
               <NotificationBell />
             </div>
-          </ShowWrapper> */}
+          </ShowWrapper>
 
           <TutorialStep
             step={3}

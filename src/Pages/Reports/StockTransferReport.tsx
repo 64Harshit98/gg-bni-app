@@ -159,6 +159,10 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
     [stockRows]
   );
 
+  // GodownStockRow doesn't carry location — look it up from the godowns list.
+  const getGodownLocation = (godownId: string) =>
+    godowns.find(g => g.id === godownId)?.location || '-';
+
   // ---- filtered + sorted STOCK rows ----
   const { filteredStock, stockSummary } = useMemo(() => {
     let list = [...stockRows];
@@ -259,16 +263,16 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
       if (activeTab === 'stock') {
         autoTable(doc, {
           startY: 38,
-          head: [['GODOWN', 'ITEM', 'QUANTITY', 'UNIT']],
-          body: filteredStock.map(r => [r.godownName, r.itemName, r.quantity.toLocaleString('en-IN'), r.unit || '-']),
-          foot: [['TOTAL', '', stockSummary.totalQty.toLocaleString('en-IN'), '']],
+          head: [['GODOWN', 'ITEM', 'QUANTITY', 'UNIT', 'LOCATION']],
+          body: filteredStock.map(r => [r.godownName, r.itemName, r.quantity.toLocaleString('en-IN'), r.unit || '-', getGodownLocation(r.godownId)]),
+          foot: [['TOTAL', '', stockSummary.totalQty.toLocaleString('en-IN'), '', '']],
           showFoot: 'lastPage',
           theme: 'plain',
           styles: { font: 'helvetica', cellPadding: 7, fontSize: 10, textColor: [55, 65, 81] },
-          headStyles: { fillColor: [249, 250, 251], textColor: [17, 24, 39], fontStyle: 'bold', lineWidth: { top: 1, bottom: 1 }, lineColor: [229, 231, 235] },
+          headStyles: { fillColor: [249, 250, 251], textColor: [17, 24, 39], fontStyle: 'bold', fontSize: 9, cellPadding: { top: 6, right: 3, bottom: 6, left: 3 }, lineWidth: { top: 1, bottom: 1 }, lineColor: [229, 231, 235] },
           footStyles: { fillColor: [255, 255, 255], textColor: [17, 24, 39], fontStyle: 'bold', lineWidth: { top: 1, bottom: 2 }, lineColor: [17, 24, 39] },
           alternateRowStyles: { fillColor: [252, 252, 252] },
-          columnStyles: { 0: { cellWidth: 45 }, 1: { cellWidth: 'auto' }, 2: { halign: 'right', cellWidth: 35 }, 3: { halign: 'center', cellWidth: 25 } },
+          columnStyles: { 0: { cellWidth: 35 }, 1: { cellWidth: 'auto' }, 2: { halign: 'right', cellWidth: 32 }, 3: { halign: 'center', cellWidth: 22 }, 4: { halign: 'left', cellWidth: 35 } },
           didDrawPage: () => {
             doc.setFontSize(9); doc.setTextColor(156, 163, 175);
             doc.text(`Page ${doc.getNumberOfPages()}`, pw - 14, ph - 10, { align: 'right' });
@@ -278,13 +282,14 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
       } else {
         autoTable(doc, {
           startY: 38,
-          head: [['DATE', 'ITEM', 'FROM', 'TO', 'TYPE', 'QTY']],
+          head: [['DATE', 'ITEM', 'FROM', 'TO', 'TYPE', 'QTY', 'REMARKS']],
           body: filteredHistory.map(t => [
             formatDate(t.date), t.itemName, t.fromGodownName || '-', t.toGodownName,
             t.type === 'purchase-in' ? 'Purchase' : t.type === 'transfer' ? 'Transfer' : 'Adjustment',
             t.quantity.toLocaleString('en-IN'),
+            t.remarks || '-',
           ]),
-          foot: [['TOTAL', '', '', '', '', historySummary.totalQty.toLocaleString('en-IN')]],
+          foot: [['TOTAL', '', '', '', '', historySummary.totalQty.toLocaleString('en-IN'), '']],
           showFoot: 'lastPage',
           theme: 'plain',
           styles: { font: 'helvetica', cellPadding: 6, fontSize: 9.5, textColor: [55, 65, 81] },
@@ -316,8 +321,8 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
 
       const isStock = activeTab === 'stock';
       const COLS = isStock
-        ? [{ header: '#', width: 6 }, { header: 'Godown', width: 22 }, { header: 'Item', width: 26 }, { header: 'Quantity', width: 14 }, { header: 'Unit', width: 10 }]
-        : [{ header: '#', width: 6 }, { header: 'Date', width: 14 }, { header: 'Item', width: 22 }, { header: 'From', width: 18 }, { header: 'To', width: 18 }, { header: 'Type', width: 14 }, { header: 'Qty', width: 10 }];
+        ? [{ header: '#', width: 6 }, { header: 'Godown', width: 22 }, { header: 'Item', width: 26 }, { header: 'Quantity', width: 14 }, { header: 'Unit', width: 10 }, { header: 'Location', width: 20 }]
+        : [{ header: '#', width: 6 }, { header: 'Date', width: 14 }, { header: 'Item', width: 22 }, { header: 'From', width: 18 }, { header: 'To', width: 18 }, { header: 'Type', width: 14 }, { header: 'Qty', width: 10 }, { header: 'Remarks', width: 24 }];
       const colCount = COLS.length;
       const dataStartRow = 7;
       const rowsData = isStock ? filteredStock : filteredHistory;
@@ -337,13 +342,13 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
 
       if (isStock) {
         filteredStock.forEach((r, idx) => {
-          aoa[dataStartRow + idx] = [idx + 1, r.godownName, r.itemName, r.quantity, r.unit || ''];
+          aoa[dataStartRow + idx] = [idx + 1, r.godownName, r.itemName, r.quantity, r.unit || '', getGodownLocation(r.godownId)];
         });
       } else {
         filteredHistory.forEach((t, idx) => {
           aoa[dataStartRow + idx] = [
             idx + 1, formatDate(t.date), t.itemName, t.fromGodownName || '-', t.toGodownName,
-            t.type === 'purchase-in' ? 'Purchase' : t.type === 'transfer' ? 'Transfer' : 'Adjustment', t.quantity,
+            t.type === 'purchase-in' ? 'Purchase' : t.type === 'transfer' ? 'Transfer' : 'Adjustment', t.quantity, t.remarks || '-',
           ];
         });
       }
@@ -575,11 +580,12 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
                   );
                 })}
                 <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Unit</th>
+                <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Location</th>
               </tr>
             </thead>
             <tbody>
               {filteredStock.length === 0 ? (
-                <tr><td colSpan={4} className="text-center py-10 text-gray-400">No stock found. Add a godown and record a purchase or transfer.</td></tr>
+                <tr><td colSpan={5} className="text-center py-10 text-gray-400">No stock found. Add a godown and record a purchase or transfer.</td></tr>
               ) : filteredStock.map((r, i) => (
                 <tr key={`${r.godownId}-${r.itemId}`} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                   <td className="px-4 py-3 text-gray-700">
@@ -590,6 +596,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
                   <td className="px-4 py-3 text-gray-700 whitespace-normal break-words max-w-[180px]">{r.itemName}</td>
                   <td className="px-4 py-3 font-semibold text-gray-800">{r.quantity.toLocaleString('en-IN')}</td>
                   <td className="hidden md:table-cell px-4 py-3 text-gray-500">{r.unit || '-'}</td>
+                  <td className="hidden md:table-cell px-4 py-3 text-gray-500">{getGodownLocation(r.godownId)}</td>
                 </tr>
               ))}
             </tbody>
@@ -630,12 +637,13 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
                   );
                 })}
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Type</th>
+                <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Remarks</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Action</th>
               </tr>
             </thead>
             <tbody>
               {filteredHistory.length === 0 ? (
-                <tr><td colSpan={7} className="text-center py-10 text-gray-400">No transfers found for selected period.</td></tr>
+                <tr><td colSpan={8} className="text-center py-10 text-gray-400">No transfers found for selected period.</td></tr>
               ) : filteredHistory.map((t, i) => (
                 <tr key={t.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                   <td className="px-4 py-3 text-gray-700">{formatDate(t.date)}</td>
@@ -649,6 +657,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
                       {t.type === 'purchase-in' ? 'Purchase' : t.type === 'transfer' ? 'Transfer' : 'Adjustment'}
                     </span>
                   </td>
+                  <td className="hidden md:table-cell px-4 py-3 text-gray-500 whitespace-normal break-words max-w-[160px]">{t.remarks || '-'}</td>
                   <td className="px-4 py-3">
                     {t.type !== 'purchase-in' && (
                       <button onClick={() => setDeleteConfirm(t.id)} className="text-red-400 hover:text-red-600 text-xs font-medium">Delete</button>

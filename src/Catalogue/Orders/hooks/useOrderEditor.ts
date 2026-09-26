@@ -9,7 +9,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
 import { State } from '../../../enums';
-import type { Item } from '../../../constants/models';
+import type { Item, PriceTier } from '../../../constants/models';
 import type { Order } from '../orders.types';
 import { computeOrderTotals, computeLineTax, isTaxEnabled as computeIsTaxEnabled, resolveUnitPrice } from '../orders.calculations';
 
@@ -102,7 +102,7 @@ export const useOrderEditor = ({
     const [showAdjustmentPopup, setShowAdjustmentPopup] = useState(false);
     const [showZeroAmountModal, setShowZeroAmountModal] = useState(false);
     const [pendingZeroOrderId, setPendingZeroOrderId] = useState<string | null>(null);
-    const [duplicateOrderItemPrompt, setDuplicateOrderItemPrompt] = useState<{ item: Item; existingCount: number } | null>(null);
+    const [duplicateOrderItemPrompt, setDuplicateOrderItemPrompt] = useState<{ item: Item; existingCount: number; tier?: PriceTier } | null>(null);
     const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
     const [selectedItemForEdit, setSelectedItemForEdit] = useState<any>(null);
 
@@ -359,12 +359,13 @@ export const useOrderEditor = ({
 
     // ─── Add-new-item handler (SearchableItemInput's onItemSelected inside the
     // edit modal) — moved verbatim from the inline JSX handler. ──────────────
-    const addSelectedItemToOrder = (selectedItem: Item) => {
+    const addSelectedItemToOrder = (selectedItem: Item, tier?: PriceTier) => {
         if (!selectedItem.id || !editingOrder) return;
 
-        const newMrp = Number(selectedItem.mrp || 0);
-        const newSalesPrice = Number(selectedItem.salesPrice || 0);
-        const presetDiscount = Number(selectedItem.discount || 0);
+        // 👇 NEW: tier ki apni pricing use karo agar diya gaya hai
+        const newMrp = Number((tier?.mrp ?? selectedItem.mrp) || 0);
+        const newSalesPrice = Number((tier?.salesPrice ?? selectedItem.salesPrice) || 0);
+        const presetDiscount = Number((tier?.discount ?? selectedItem.discount) || 0);
 
         let finalNetPrice = 0;
         let calculatedDiscount = 0;
@@ -401,6 +402,7 @@ export const useOrderEditor = ({
             lineFinalPrice = lineBase + (lineBase * (taxRate / 100));
         }
 
+        // ✅ AFTER
         const newItem: any = {
             ...selectedItem,
             id: crypto.randomUUID(),
@@ -425,6 +427,10 @@ export const useOrderEditor = ({
             imageBase64: "",
             unitPrice: Number(finalNetPrice.toFixed(2)),
             finalPrice: Number(lineFinalPrice.toFixed(2)),
+            barcode: tier?.barcode || selectedItem.barcode || '',    // 👈 NEW
+            tierId: tier?.id,                                        // 👈 NEW
+            tierLabel: tier?.label,                                  // 👈 NEW
+            tierQuantity: tier?.quantity || selectedItem.unitMultiplier || 1,   // 👈 NEW
         };
 
         const updatedItems = [newItem, ...(editingOrder.items || [])];
@@ -446,19 +452,20 @@ export const useOrderEditor = ({
     // (was dropped during the refactor extraction). If the item being added
     // already exists in the order, prompt instead of silently adding a
     // second line. ───────────────────────────────────────────────────────
-    const handleAddItem = (selectedItem: Item) => {
+    const handleAddItem = (selectedItem: Item, tier?: PriceTier) => {
         if (!selectedItem.id || !editingOrder) return;
 
+        const tierId = tier?.id;
         const existingMatches = (editingOrder.items || []).filter(
-            (i) => (i.itemId || i.id) === selectedItem.id
+            (i) => (i.itemId || i.id) === selectedItem.id && ((i as any).tierId || undefined) === tierId   // 👈 CHANGED
         );
 
         if (existingMatches.length > 0) {
-            setDuplicateOrderItemPrompt({ item: selectedItem, existingCount: existingMatches.length });
+            setDuplicateOrderItemPrompt({ item: selectedItem, existingCount: existingMatches.length, tier });   // 👈 CHANGED
             return;
         }
 
-        addSelectedItemToOrder(selectedItem);
+        addSelectedItemToOrder(selectedItem, tier);   // 👈 CHANGED
     };
 
     // ─── "Increase Quantity" — bumps the most-recently-added matching line
@@ -467,9 +474,10 @@ export const useOrderEditor = ({
     const handleIncreaseExistingOrderItemQuantity = () => {
         if (!duplicateOrderItemPrompt || !editingOrder) return;
         const targetProductId = duplicateOrderItemPrompt.item.id;
+        const targetTierId = duplicateOrderItemPrompt.tier?.id;   // 👈 NEW
 
         const matchItem = (editingOrder.items || []).find(
-            (i) => (i.itemId || i.id) === targetProductId
+            (i) => (i.itemId || i.id) === targetProductId && ((i as any).tierId || undefined) === targetTierId   // 👈 CHANGED
         );
 
         if (matchItem) {
@@ -482,7 +490,7 @@ export const useOrderEditor = ({
     // ─── "Add as New Item" — adds a fresh line regardless of existing matches.
     const handleAddOrderItemAsNew = () => {
         if (!duplicateOrderItemPrompt) return;
-        addSelectedItemToOrder(duplicateOrderItemPrompt.item);
+        addSelectedItemToOrder(duplicateOrderItemPrompt.item, duplicateOrderItemPrompt.tier);   // 👈 CHANGED
         setDuplicateOrderItemPrompt(null);
     };
 

@@ -10,7 +10,7 @@ import { ROUTES } from '../constants/routes.constants';
 import { Permissions } from '../enums';
 import ShowWrapper from '../context/ShowWrapper';
 import ShinyText from '../Components/ShinyText';
-//import NotificationBell from '../Components/NotificationBell';
+import NotificationBell from '../Components/NotificationBell';
 //import { useMemo } from 'react';
 import BusinessCard from '../Catalogue/BusinessCards/BusinessCard';
 import { TutorialStep } from '../Components/TutorialStep';
@@ -226,11 +226,11 @@ const Account: React.FC = () => {
         <h1 className="text-2xl font-bold text-center text-slate-800">Account</h1>
 
         {/* Notification Bell */}
-        {/* <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-          <div className="relative border border-slate-300 rounded-sm bg-gray-100 shadow-sm justify-self-end">
+        <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+          <div className="hidden sm:flex relative border border-slate-300 rounded-sm bg-gray-100 shadow-sm justify-self-end">
             <NotificationBell />
           </div>
-        </ShowWrapper> */}
+        </ShowWrapper>
       </div>
 
       {/* Step 1 — Profile photo + edit */}

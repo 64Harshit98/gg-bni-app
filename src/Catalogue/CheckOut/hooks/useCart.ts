@@ -34,7 +34,9 @@ export const useCart = (
                     note: '',
                     unit: entry.item.unit ?? "pcs",
                     unitMultiplier: entry.item.unitMultiplier ?? entry.item.multiplier ?? 1,
-                }));
+                    tierId: entry.item.tierId || undefined,        // 👈 NEW
+                    tierLabel: entry.item.tierLabel || undefined,  // 👈 NEW
+                } as any));
                 setCartItems(formattedItems);
             } catch (error) {
                 console.error(error);

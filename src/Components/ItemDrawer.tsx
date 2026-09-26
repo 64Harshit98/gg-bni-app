@@ -15,6 +15,7 @@ import ShowWrapper from '../context/ShowWrapper';
 import { Permissions, State } from '../enums';
 import { Modal } from '../constants/Modal';
 import { VariantPicker } from './VariantPicker';
+import type { PriceTier } from '../constants/models';
 
 interface ItemEditDrawerProps {
     item: Item | null;
@@ -102,8 +103,12 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
     const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+    const [additionalImageFiles, setAdditionalImageFiles] = useState<File[]>([]);
+    const [additionalImagePreviews, setAdditionalImagePreviews] = useState<string[]>([]);
+    const [existingAdditionalUrls, setExistingAdditionalUrls] = useState<string[]>([]);
     const [unitChangeWarning, setUnitChangeWarning] = useState(false);
     const [variantIds, setVariantIds] = useState<string[]>([]);
+    const [priceTiers, setPriceTiers] = useState<PriceTier[]>([]);
     const [showCropModal, setShowCropModal] = useState(false);
     const [rawImageSrc, setRawImageSrc] = useState<string | null>(null);
     const [crop, setCrop] = useState<Crop>();
@@ -149,6 +154,14 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                         packetSize: (liveData as any).packetSize ?? undefined,
                         moq: (liveData as any).moq ?? 1,
                     });
+
+                    setPriceTiers((liveData as any).priceTiers || []);   // 👈 NEW
+
+                    // NEW — existing additional photos (imageUrls minus the cover photo)
+                    const savedImageUrls: string[] = (liveData as any).imageUrls || [];
+                    setExistingAdditionalUrls(savedImageUrls.filter((u: string) => u && u !== liveData.imageUrl));
+                    setAdditionalImageFiles([]);
+                    setAdditionalImagePreviews([]);
 
                     const rawVariants: string[] = (liveData as any).variants || [];
                     const visited = new Set<string>([item.id!]);
@@ -233,6 +246,10 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 setSelectedCategories([]);
                 setShowCategoryDropdown(false);
                 setVariantIds([]);
+                setPriceTiers([]);
+                setAdditionalImageFiles([]);
+                setAdditionalImagePreviews([]);
+                setExistingAdditionalUrls([]);
             }
         };
 
@@ -252,6 +269,31 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 ? checked
                 : (value === '' && isNumericField ? '' : (isNumericField ? parseFloat(value) : value))
         }));
+    };
+
+    const addPriceTier = () => {
+        setPriceTiers(prev => [
+            ...prev,
+            {
+                id: crypto.randomUUID(),
+                label: '',
+                quantity: 1,
+                mrp: 0,
+                salesPrice: 0,
+                purchasePrice: 0,
+                discount: 0,
+                purchasediscount: 0,
+                barcode: '',
+            },
+        ]);
+    };
+
+    const updatePriceTier = (id: string, field: keyof PriceTier, value: string | number) => {
+        setPriceTiers(prev => prev.map(t => (t.id === id ? { ...t, [field]: value } : t)));
+    };
+
+    const removePriceTier = (id: string) => {
+        setPriceTiers(prev => prev.filter(t => t.id !== id));
     };
 
     const getCroppedBlob = (image: HTMLImageElement, crop: Crop): Promise<Blob> => {
@@ -287,6 +329,29 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
             console.error("Image compression failed:", error);
             setModal({ message: "Image compression failed. Please try a different file.", type: State.ERROR });
         }
+    };
+    const handleAdditionalFilesChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []);
+        if (!files.length) return;
+        try {
+            const options = { maxSizeMB: 0.5, maxWidthOrHeight: 1024, useWebWorker: true };
+            const compressed = await Promise.all(files.map(f => imageCompression(f, options)));
+            setAdditionalImageFiles(prev => [...prev, ...compressed]);
+            setAdditionalImagePreviews(prev => [...prev, ...compressed.map(f => URL.createObjectURL(f))]);
+        } catch {
+            setModal({ message: 'Failed to process one or more images.', type: State.ERROR });
+        } finally {
+            if (e.target) e.target.value = '';
+        }
+    };
+
+    const removeNewAdditionalImage = (idx: number) => {
+        setAdditionalImageFiles(prev => prev.filter((_, i) => i !== idx));
+        setAdditionalImagePreviews(prev => prev.filter((_, i) => i !== idx));
+    };
+
+    const removeExistingAdditionalImage = (url: string) => {
+        setExistingAdditionalUrls(prev => prev.filter(u => u !== url));
     };
 
     const handleImageLoaded = (e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -348,6 +413,32 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
             setModal({ message: "Please enter a valid quantity for the Packet.", type: State.ERROR });
             return;
         }
+
+        // 👇 NEW — same validation jaisi ItemAdd.tsx mein hai
+        for (const tier of priceTiers) {
+            if (!tier.label.trim()) {
+                setModal({ message: 'Every pricing option needs a label (e.g. "Box of 10").', type: State.ERROR });
+                return;
+            }
+            if (!tier.quantity || tier.quantity <= 0) {
+                setModal({ message: `Pricing option "${tier.label}" needs a valid quantity.`, type: State.ERROR });
+                return;
+            }
+            if (tier.mrp === 0 && tier.salesPrice === 0) {
+                setModal({ message: `Pricing option "${tier.label}" needs either MRP or Sales Price.`, type: State.ERROR });
+                return;
+            }
+        }
+        const allTierBarcodes = priceTiers.map(t => t.barcode?.trim()).filter(Boolean);
+        if (new Set(allTierBarcodes).size !== allTierBarcodes.length) {
+            setModal({ message: 'Two pricing options cannot share the same barcode.', type: State.ERROR });
+            return;
+        }
+        if (allTierBarcodes.includes(String(formData.barcode || '').trim())) {
+            setModal({ message: 'A pricing option barcode cannot be the same as the item barcode.', type: State.ERROR });
+            return;
+        }
+
         const newBarcode = String(formData.barcode || '').trim();
         const oldBarcode = String((item as any).barcode || '').trim();
 
@@ -412,6 +503,20 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 });
             }
 
+            // NEW — upload any newly added additional photos
+            const newlyUploadedAdditionalUrls: string[] = [];
+            for (const file of additionalImageFiles) {
+                const extraPath = `companies/${companyId}/items/${item.id}/extra_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+                const extraRef = ref(storage, extraPath);
+                await new Promise<void>((resolve, reject) => {
+                    const task = uploadBytesResumable(extraRef, file);
+                    task.on('state_changed', undefined, reject, async () => {
+                        newlyUploadedAdditionalUrls.push(await getDownloadURL(task.snapshot.ref));
+                        resolve();
+                    });
+                });
+            }
+
             let currentMultiplier = 1;
             if (formData.unit === 'box') currentMultiplier = 10;
             if (formData.unit === 'doz') currentMultiplier = 12;
@@ -435,12 +540,14 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 barcode: String(formData.barcode || ''),
                 isListed: formData.isListed ?? false,
                 imageUrl: newImageUrl,
+                imageUrls: [newImageUrl, ...existingAdditionalUrls, ...newlyUploadedAdditionalUrls].filter((u): u is string => Boolean(u)),
                 description: String(formData.description || ''),
                 unit: String(formData.unit || ''),
                 unitMultiplier: currentMultiplier,
                 packetSize: formData.unit === 'pkt' ? parseInt(String(formData.packetSize), 10) : null,
                 moq: Number(formData.moq || 1),
                 variants: variantIds,
+                priceTiers: priceTiers,
             };
 
             await dbOperations.updateItem(item.id, dataToUpdate);
@@ -665,6 +772,45 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         Remove Selected File
                                     </button>
                                 )}
+
+                                {/* NEW — Additional photos for catalogue slider */}
+                                <div className="mt-4">
+                                    <label className="text-sm font-medium leading-none mb-1 block">Additional Photos (for catalogue slider)</label>
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        multiple
+                                        onChange={handleAdditionalFilesChange}
+                                        disabled={isSaving}
+                                        className="text-xs"
+                                    />
+                                    {(existingAdditionalUrls.length > 0 || additionalImagePreviews.length > 0) && (
+                                        <div className="flex gap-2 mt-2 flex-wrap">
+                                            {existingAdditionalUrls.map((url) => (
+                                                <div key={url} className="relative w-16 h-16">
+                                                    <img src={url} className="w-full h-full object-cover rounded-sm border" />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeExistingAdditionalImage(url)}
+                                                        disabled={isSaving}
+                                                        className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-5 h-5 text-xs leading-none"
+                                                    >✕</button>
+                                                </div>
+                                            ))}
+                                            {additionalImagePreviews.map((src, idx) => (
+                                                <div key={src + idx} className="relative w-16 h-16">
+                                                    <img src={src} className="w-full h-full object-cover rounded-sm border" />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeNewAdditionalImage(idx)}
+                                                        disabled={isSaving}
+                                                        className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-5 h-5 text-xs leading-none"
+                                                    >✕</button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
                             <div>
@@ -987,6 +1133,111 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                     activeTheme={{ text: 'text-sky-500', border: 'border-sky-500', primaryBg: 'bg-sky-500', focusRing: 'focus:ring-sky-500' } as any}
                                 />
                             </div>
+
+                            {/* 👇 NEW — Pricing Options (Tiers) */}
+                            <div>
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="text-sm font-medium leading-none block">
+                                        Pricing Options <span className="text-gray-400 font-normal text-xs">(e.g. Box of 10, Combo)</span>
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={addPriceTier}
+                                        className="text-xs font-semibold text-sky-500 hover:underline"
+                                    >
+                                        + Add Pricing Option
+                                    </button>
+                                </div>
+
+                                {priceTiers.length === 0 ? (
+                                    <p className="text-[11px] text-gray-400 italic">
+                                        No extra pricing added. Item will only sell at the single price set above.
+                                    </p>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {priceTiers.map((tier) => (
+                                            <div key={tier.id} className="border border-gray-200 rounded-sm p-3 bg-gray-50 relative">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removePriceTier(tier.id)}
+                                                    className="absolute top-2 right-2 text-gray-400 hover:text-red-500 text-sm font-bold leading-none"
+                                                >
+                                                    ✕
+                                                </button>
+
+                                                <div className="grid grid-cols-2 gap-3 mb-2">
+                                                    <div>
+                                                        <label className="text-[10px] font-medium text-gray-500 block mb-1">Label</label>
+                                                        <input
+                                                            type="text"
+                                                            value={tier.label}
+                                                            onChange={(e) => updatePriceTier(tier.id, 'label', e.target.value)}
+                                                            placeholder="e.g. Box of 10"
+                                                            className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[10px] font-medium text-gray-500 block mb-1">Quantity</label>
+                                                        <input
+                                                            type="number"
+                                                            value={tier.quantity}
+                                                            onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                            onChange={(e) => updatePriceTier(tier.id, 'quantity', parseInt(e.target.value) || 1)}
+                                                            min="1"
+                                                            className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid grid-cols-3 gap-3 mb-2">
+                                                    <div>
+                                                        <label className="text-[10px] font-medium text-gray-500 block mb-1">MRP</label>
+                                                        <input
+                                                            type="number"
+                                                            value={tier.mrp}
+                                                            onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                            onChange={(e) => updatePriceTier(tier.id, 'mrp', parseFloat(e.target.value) || 0)}
+                                                            className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[10px] font-medium text-gray-500 block mb-1">Sales Price</label>
+                                                        <input
+                                                            type="number"
+                                                            value={tier.salesPrice}
+                                                            onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                            onChange={(e) => updatePriceTier(tier.id, 'salesPrice', parseFloat(e.target.value) || 0)}
+                                                            className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[10px] font-medium text-gray-500 block mb-1">Purchase Price</label>
+                                                        <input
+                                                            type="number"
+                                                            value={tier.purchasePrice}
+                                                            onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                            onChange={(e) => updatePriceTier(tier.id, 'purchasePrice', parseFloat(e.target.value) || 0)}
+                                                            className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    <label className="text-[10px] font-medium text-gray-500 block mb-1">Barcode (optional)</label>
+                                                    <input
+                                                        type="text"
+                                                        value={tier.barcode}
+                                                        onChange={(e) => updatePriceTier(tier.id, 'barcode', e.target.value)}
+                                                        placeholder="Scan or type this pack's own barcode"
+                                                        className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                                                    />
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
                             <ShowWrapper requiredPermission={Permissions.ViewCatalogue}>
                                 <div className="flex items-center space-x-2 pt-2">
                                     <input

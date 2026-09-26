@@ -36,7 +36,8 @@ export interface Item {
   companyId?: string | null;
   restockQuantity: number;
   isListed?: boolean;
-  imageUrl?: string | null;
+    imageUrl?: string | null;
+  imageUrls?: string[]; 
   description?: string;
   firestoreDocId?: string;
   packetSize?: number;
@@ -47,6 +48,7 @@ export interface Item {
   expDate?: string;
   variants?: string[];
   godownStock?: Record<string, number>;
+  priceTiers?: PriceTier[];
 }
 
 export interface ItemGroup {
@@ -119,4 +121,16 @@ export interface SalesItem {
   finalPrice?: number;
   stock?: number;
   productId?: string
+}
+
+export interface PriceTier {
+  id: string;
+  label: string;              // "Piece", "Box of 10", "Combo Pack"
+  quantity: number;           // kitne base pcs = 1 tier (e.g. 10, 3, 1)
+  mrp: number;
+  salesPrice: number;
+  purchasePrice?: number;
+  discount?: number;
+  purchasediscount?: number;
+  barcode?: string;           // is tier ka apna alag barcode (optional)
 }

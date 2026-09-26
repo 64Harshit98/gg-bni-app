@@ -1320,7 +1320,7 @@ const MyShop: React.FC = () => {
                 item={selectedItemForDetails}
                 isOpen={isDetailDrawerOpen}
                 onClose={() => { setIsDetailDrawerOpen(false); setSelectedItemForDetails(null); }}
-                onAddToCart={addToCart}
+                onAddToCart={(item) => addToCart(item)}
                 initialQuantity={cart.find(i => i.item.id === selectedItemForDetails?.id)?.quantity || 0}
                 onUpdateQuantity={updateQuantity}
                 companyId={companyId}

@@ -1,11 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { FiX } from 'react-icons/fi';
 import SearchableItemInput from '../../../UseComponents/SearchIteminput';
 import { GenericCartList } from '../../../Components/CartItem';
 import { ItemEditDrawer } from '../../../Components/ItemDrawer';
 import { ROUTES } from '../../../constants/routes.constants';
 import { State } from '../../../enums';
-import type { Item } from '../../../constants/models';
+import type { Item, PriceTier } from '../../../constants/models';
+import { TierPickerModal } from '../../../Components/TierPickerModal';
+import { hasMultiplePricing } from '../../../Pages/utils/pricingUtils';
 import type { Order } from '../orders.types';
 import { formatAmount } from '../../../lib/format';
 
@@ -16,7 +18,7 @@ interface OrderEditModalProps {
     setActiveTab: (tab: 'billing' | 'shipping') => void;
     calculatedEditTotal: number;
     availableItems: Item[];
-    handleAddItem: (selectedItem: Item) => void;
+    handleAddItem: (selectedItem: Item, tier?: PriceTier) => void;
     setCartSearchQuery: (q: string) => void;
     displayedOrderItems: any[];
     enableItemWiseDiscount: boolean;
@@ -100,6 +102,16 @@ export const OrderEditModal: React.FC<OrderEditModalProps> = ({
     handleDiscountAmountInputChange,
     handleSaveChanges,
 }) => {
+    const [tierPickerItem, setTierPickerItem] = useState<Item | null>(null);
+
+    const handleItemSelectedWrapper = (item: Item | null) => {
+        if (!item) return;
+        if (hasMultiplePricing(item)) {
+            setTierPickerItem(item);
+            return;
+        }
+        handleAddItem(item);
+    };
     return (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-1 md:p-3">
             <div className="bg-white rounded-sm w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
@@ -281,7 +293,7 @@ export const OrderEditModal: React.FC<OrderEditModalProps> = ({
                                 <p className="text-[9px] font-black text-[#F97316] uppercase tracking-widest mb-2">Add New Item</p>
                                 <SearchableItemInput
                                     items={availableItems}
-                                    onItemSelected={handleAddItem}
+                                    onItemSelected={handleItemSelectedWrapper}   // 👈 CHANGED
                                     onSearchChange={setCartSearchQuery}
                                     placeholder="Search item to add..."
                                 />
@@ -323,7 +335,14 @@ export const OrderEditModal: React.FC<OrderEditModalProps> = ({
                                         onQuantityChange={handleQuantityChange}
                                     />
                                 </div>
-
+                                <TierPickerModal
+                                    item={tierPickerItem}
+                                    isOpen={!!tierPickerItem}
+                                    onClose={() => setTierPickerItem(null)}
+                                    onSelect={(item, tier) => {
+                                        handleAddItem(item, tier.id === '__base__' ? undefined : tier);
+                                    }}
+                                />
                                 {/* --- ITEM EDIT DRAWER COMPONENT --- */}
                                 {isEditDrawerOpen && selectedItemForEdit && (
                                     <ItemEditDrawer

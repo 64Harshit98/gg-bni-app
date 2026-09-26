@@ -21,6 +21,9 @@ export interface PurchaseItem extends Omit<SalesItem, 'finalPrice' | 'effectiveU
   unitMultiplier?: number;
   unit?: string;
   addedAt?: number;
+  tierId?: string;         // 👈 NEW
+  tierLabel?: string;      // 👈 NEW
+  tierQuantity?: number;   // 👈 NEW
 }
 
 // Moved verbatim from Purchase.tsx (was defined inline around L54-78). The

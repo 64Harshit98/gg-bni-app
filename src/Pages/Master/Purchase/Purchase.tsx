@@ -12,6 +12,8 @@ import { Spinner } from '../../../constants/Spinner';
 import { FiTrash2, FiEdit, FiCamera, FiX, FiSearch, FiMenu } from 'react-icons/fi';
 import { ItemEditDrawer } from '../../../Components/ItemDrawer';
 import ItemAdd from '../ItemAdd';
+import { TierPickerModal } from '../../../Components/TierPickerModal';
+import { hasMultiplePricing } from '../../utils/pricingUtils';
 import type { Item } from '../../../constants/models';
 import { usePurchaseSettings } from '../../../context/SettingsContext';
 import { GenericCartList } from '../../../Components/CartItem';
@@ -56,6 +58,7 @@ const PurchasePage: React.FC = () => {
 
   const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [tierPickerItem, setTierPickerItem] = useState<Item | null>(null);
   const [isSortOpen, setIsSortOpen] = useState(false);
   const [isFooterExpanded, setIsFooterExpanded] = useState(false);
 
@@ -155,7 +158,7 @@ const PurchasePage: React.FC = () => {
     isScannerOpen, setIsScannerOpen,
     handleApplySmartScan,
     handleBarcodeScanned,
-    } = usePurchaseSmartScan({
+  } = usePurchaseSmartScan({
     availableItems,
     setItems,
     addItemToCart,
@@ -168,7 +171,21 @@ const PurchasePage: React.FC = () => {
     name?: string; mrp?: number; purchasePrice?: number; purchasediscount?: number; tax?: number; barcode?: string; unit?: string;
   } | null>(null);
   const [unlinkedCartItemId, setUnlinkedCartItemId] = useState<string | null>(null);
+  const handleAddOrPickTier = (item: Item) => {
+    if (hasMultiplePricing(item)) {
+      setTierPickerItem(item);
+    } else {
+      addItemToCart(item);
+    }
+  };
 
+  const handleItemSelectedWrapper = (item: Item | null) => {
+    if (item && hasMultiplePricing(item)) {
+      setTierPickerItem(item);
+      return;
+    }
+    handleItemSelected(item);
+  };
   const handleAddUnlinkedItemToInventory = (cartItem: PurchaseItem) => {
     const cleanName = cartItem.name.replace(/^⚠️\s*/, '').replace(/\s*\(Not in DB\)\s*$/, '');
     setUnlinkedPrefill({
@@ -643,7 +660,7 @@ const PurchasePage: React.FC = () => {
                         key={item.id}
                         onClick={() => {
                           if (isSelected) handleQuantityChange(lastAddedCartItem.id, quantity + 1);
-                          else addItemToCart(item);
+                          else handleAddOrPickTier(item);   // 👈 CHANGED
                         }}
                         className={`bg-white rounded-sm flex flex-col w-full overflow-visible transition-all duration-200 relative group
         ${isSelected
@@ -755,7 +772,7 @@ const PurchasePage: React.FC = () => {
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    addItemToCart(item);
+                                    handleAddOrPickTier(item);   // 👈 CHANGED
                                   }}
                                   className="w-full h-[26px] rounded-md text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 transition-colors"
                                 >
@@ -990,11 +1007,19 @@ const PurchasePage: React.FC = () => {
           onClose={() => setIsGodownAssignOpen(false)}
         />
 
-                <ItemEditDrawer
+        <ItemEditDrawer
           item={selectedItemForEdit}
           isOpen={isItemDrawerOpen}
           onClose={handleCloseEditDrawer}
           onSaveSuccess={handleSaveSuccess}
+        />
+        <TierPickerModal
+          item={tierPickerItem}
+          isOpen={!!tierPickerItem}
+          onClose={() => setTierPickerItem(null)}
+          onSelect={(item, tier) => {
+            handleItemSelected(item, tier.id === '__base__' ? undefined : tier);   // 👈 CHANGED
+          }}
         />
         {showAddItemModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
@@ -1230,7 +1255,7 @@ const PurchasePage: React.FC = () => {
             <div className="flex gap-2 items-end">
 
               <div className="flex-grow">
-                <SearchableItemInput label="Search & Add Item" placeholder="Search by name or barcode..." items={availableItems} onItemSelected={handleItemSelected} isLoading={pageIsLoading} error={error} categories={categories}
+                <SearchableItemInput label="Search & Add Item" placeholder="Search by name or barcode..." items={availableItems} onItemSelected={handleItemSelectedWrapper} isLoading={pageIsLoading} error={error} categories={categories}
                   onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })}
                   itemGroupMap={itemGroupMap}
                   onSearchChange={setCartSearchQuery}
@@ -1280,7 +1305,7 @@ const PurchasePage: React.FC = () => {
                 applyRounding={(val) => val}
                 State={State}
                 setModal={setModal}
-                                onOpenEditDrawer={handleOpenEditDrawer}
+                onOpenEditDrawer={handleOpenEditDrawer}
                 onItemNotFound={(cartItem) => handleAddUnlinkedItemToInventory(cartItem as PurchaseItem)}
                 onDeleteItem={handleDeleteItem}
                 onDiscountChange={handleDiscountChange}
@@ -1372,11 +1397,19 @@ const PurchasePage: React.FC = () => {
         onClose={() => setIsGodownAssignOpen(false)}
       />
 
-            <ItemEditDrawer
+      <ItemEditDrawer
         item={selectedItemForEdit}
         isOpen={isItemDrawerOpen}
         onClose={handleCloseEditDrawer}
         onSaveSuccess={handleSaveSuccess}
+      />
+      <TierPickerModal
+        item={tierPickerItem}
+        isOpen={!!tierPickerItem}
+        onClose={() => setTierPickerItem(null)}
+        onSelect={(item, tier) => {
+          handleItemSelected(item, tier.id === '__base__' ? undefined : tier);   // 👈 CHANGED
+        }}
       />
       {showAddItemModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">

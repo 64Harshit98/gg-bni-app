@@ -210,6 +210,11 @@ export const GenericCartList = <T extends CartItem>({
                     <h3 className="font-semibold text-gray-800 text-sm" title={item.name}>
                       {item.name.slice(0, 30) || 'Unnamed Item'}
                     </h3>
+                    {item.tierLabel && (
+                      <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-sm font-semibold flex-shrink-0">
+                        {item.tierLabel}
+                      </span>
+                    )}
                     {item.unit ? (
                       <span className="text-[11px] text-gray-400 flex-shrink-0">{item.unit}</span>
                     ) : null}
@@ -384,6 +389,11 @@ export const GenericCartList = <T extends CartItem>({
                   <span className="text-sm font-medium text-gray-800 truncate">
                     {item.name || 'Unnamed Item'}
                   </span>
+                  {item.tierLabel && (
+                    <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-sm font-semibold flex-shrink-0">
+                      {item.tierLabel}
+                    </span>
+                  )}
                   {item.unit && (
                     <span className="text-[11px] text-gray-400 flex-shrink-0">{item.unit}</span>
                   )}

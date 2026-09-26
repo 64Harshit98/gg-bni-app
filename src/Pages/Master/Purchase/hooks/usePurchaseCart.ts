@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import type { Item } from '../../../../constants/models';
+import type { Item, PriceTier} from '../../../../constants/models';
 import { State } from '../../../../enums';
 import { applyPurchaseRounding } from '../purchase.calculations';
 import type { PurchaseItem } from '../purchase.types';
@@ -12,7 +12,7 @@ interface UsePurchaseCartParams {
     availableItems: Item[];
     setAvailableItems: React.Dispatch<React.SetStateAction<Item[]>>;
     setModal: (modal: { message: string; type: State } | null) => void;
-     companyId?: string;
+    companyId?: string;
 }
 
 // Owns item/cart management — moved verbatim from Purchase.tsx: the
@@ -60,7 +60,7 @@ export const usePurchaseCart = ({
     const [cartSearchQuery, setCartSearchQuery] = useState<string>('');
     const [sortOrder, setSortOrder] = useState<'az' | 'za' | 'price_asc' | 'price_desc'>('az');
 
-    const [duplicateItemPrompt, setDuplicateItemPrompt] = useState<{ item: Item; existingCount: number } | null>(null);
+    const [duplicateItemPrompt, setDuplicateItemPrompt] = useState<{ item: Item; existingCount: number; tier?: PriceTier } | null>(null);
 
     const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
     const [isItemDrawerOpen, setIsItemDrawerOpen] = useState(false);
@@ -68,10 +68,10 @@ export const usePurchaseCart = ({
     const [showClearCartConfirm, setShowClearCartConfirm] = useState(false);
 
     useEffect(() => {
-       if (!isEditMode && companyId) {
-        localStorage.setItem(`purchase_cart_draft_${companyId}`, JSON.stringify(items));
-    }
-}, [items, isEditMode, companyId]);
+        if (!isEditMode && companyId) {
+            localStorage.setItem(`purchase_cart_draft_${companyId}`, JSON.stringify(items));
+        }
+    }, [items, isEditMode, companyId]);
 
     const cartItemsAdapter = useMemo(() => {
         const mapped = items.map(item => ({
@@ -97,7 +97,7 @@ export const usePurchaseCart = ({
     }, [items, cartSearchQuery]);
 
     // --- LOGIC 1: ADD ITEM ---
-    const addItemToCart = (itemToAdd: Item) => {
+    const addItemToCart = (itemToAdd: Item, tier?: PriceTier) => {
         if (!itemToAdd || !itemToAdd.id) {
             setModal({ message: "Cannot add invalid item.", type: State.ERROR });
             return;
@@ -105,12 +105,10 @@ export const usePurchaseCart = ({
 
         const resolvedTax = itemToAdd.tax ?? itemToAdd.taxRate ?? 0;
 
-        // 1. Extract Values
-        const mrp = Number(itemToAdd.mrp || 0);
-        const masterPurchasePrice = Number(itemToAdd.purchasePrice || 0);
-
-        // FIX: Look ONLY for 'purchasediscount'. Ignore 'discount' (Sale Discount).
-        const masterPurchaseDiscount = (itemToAdd as any).purchasediscount || 0;
+        // 👇 NEW: tier ki apni purchase price/mrp/discount use karo agar diya gaya hai
+        const mrp = Number((tier?.mrp ?? itemToAdd.mrp) || 0);
+        const masterPurchasePrice = Number((tier?.purchasePrice ?? itemToAdd.purchasePrice) || 0);
+        const masterPurchaseDiscount = (tier?.purchasediscount ?? (itemToAdd as any).purchasediscount) || 0;
         const globalDefaultDiscount = purchaseSettings?.defaultDiscount ?? 0;
 
         let finalNetPrice = 0;
@@ -160,7 +158,7 @@ export const usePurchaseCart = ({
             purchasePrice: finalNetPrice,
             originalPurchasePrice: masterPurchasePrice,
             mrp: mrp,
-            barcode: itemToAdd.barcode || '',
+            barcode: tier?.barcode || itemToAdd.barcode || '',
             quantity: 1,
             unitMultiplier: 1,
             discount: parseFloat(calculatedDiscount.toFixed(2)),
@@ -170,6 +168,9 @@ export const usePurchaseCart = ({
             stock: itemToAdd.stock || (itemToAdd as any).Stock || 0,
             isEditable: true,
             addedAt: Date.now(),
+            tierId: tier?.id,                                            // 👈 NEW
+            tierLabel: tier?.label,                                      // 👈 NEW
+            tierQuantity: tier?.quantity || itemToAdd.unitMultiplier || 1, // 👈 NEW
         };
 
         setItems((prevItems) => {
@@ -338,48 +339,53 @@ export const usePurchaseCart = ({
         setShowClearCartConfirm(false);
     };
 
-    const handleItemSelected = (item: Item | null) => {
-        if (!item) return;
+const handleItemSelected = (item: Item | null, tier?: PriceTier) => {
+    if (!item) return;
 
-        const existingMatches = items.filter(i => i.productId === item.id);
+    const tierId = tier?.id;
+    const existingMatches = items.filter(i => i.productId === item.id && (i.tierId || undefined) === tierId);
 
-        if (existingMatches.length > 0) {
-            setDuplicateItemPrompt({ item, existingCount: existingMatches.length });
-            return;
-        }
+    if (existingMatches.length > 0) {
+        setDuplicateItemPrompt({ item, existingCount: existingMatches.length, tier });
+        return;
+    }
 
-        addItemToCart(item);
+    addItemToCart(item, tier);
+};
+
+const handleIncreaseExistingQuantity = () => {
+    if (!duplicateItemPrompt) return;
+    const targetProductId = duplicateItemPrompt.item.id;
+    const targetTierId = duplicateItemPrompt.tier?.id;   // 👈 NEW
+
+    setItems(prev => {
+        const matches = prev.filter(i => i.productId === targetProductId && (i.tierId || undefined) === targetTierId);   // 👈 CHANGED
+        if (matches.length === 0) return prev;
+
+        const lastAdded = matches.reduce((latest, current) =>
+            (current.addedAt || 0) > (latest.addedAt || 0) ? current : latest
+        );
+
+        return prev.map(i =>
+            i.id === lastAdded.id ? { ...i, quantity: (i.quantity || 1) + 1 } : i
+        );
+    });
+
+    setDuplicateItemPrompt(null);
+};
+
+const handleAddAsNewLine = () => {
+    if (!duplicateItemPrompt) return;
+    addItemToCart(duplicateItemPrompt.item, duplicateItemPrompt.tier);   // 👈 CHANGED
+    setDuplicateItemPrompt(null);
+};
+
+    const handleOpenEditDrawer = (item: Item) => {
+        const realProductId = (item as any).productId || item.id;
+        const masterItem = availableItems.find(a => a.id === realProductId);
+        setSelectedItemForEdit(masterItem || item);
+        setIsItemDrawerOpen(true);
     };
-
-    // User chose "Increase Quantity"
-    const handleIncreaseExistingQuantity = () => {
-        if (!duplicateItemPrompt) return;
-        const targetProductId = duplicateItemPrompt.item.id;
-
-        setItems(prev => {
-            const matches = prev.filter(i => i.productId === targetProductId);
-            if (matches.length === 0) return prev;
-
-            const lastAdded = matches.reduce((latest, current) =>
-                (current.addedAt || 0) > (latest.addedAt || 0) ? current : latest
-            );
-
-            return prev.map(i =>
-                i.id === lastAdded.id ? { ...i, quantity: (i.quantity || 1) + 1 } : i
-            );
-        });
-
-        setDuplicateItemPrompt(null);
-    };
-
-    // User chose "Add as New Item"
-    const handleAddAsNewLine = () => {
-        if (!duplicateItemPrompt) return;
-        addItemToCart(duplicateItemPrompt.item);
-        setDuplicateItemPrompt(null);
-    };
-
-    const handleOpenEditDrawer = (item: Item) => { setSelectedItemForEdit(item); setIsItemDrawerOpen(true); };
     const handleCloseEditDrawer = () => { setIsItemDrawerOpen(false); setTimeout(() => setSelectedItemForEdit(null), 300); };
     const handleSaveSuccess = (updatedItemData: Partial<Item>) => {
         // 1. Update the master available items list

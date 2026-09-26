@@ -138,104 +138,118 @@ export const TransferStockModal = ({ isOpen, onClose, godowns, stockRows, onSave
       <div className="bg-white w-full max-w-md rounded-sm shadow-xl p-5 max-h-[90vh] overflow-y-auto overflow-x-hidden">
         <h2 className="text-lg font-bold text-gray-800 mb-4">Transfer Stock</h2>
 
-        <label className="block text-sm font-medium text-gray-600 mb-1">From</label>
-        <select
-          value={fromGodownId}
-          onChange={e => handleFromGodownChange(e.target.value)}
-          className={`w-full border rounded-sm p-2 text-sm mb-3 bg-gray-50 focus:outline-none focus:ring-2 ${focusRing}`}
-        >
-          <option value="">Select source</option>
-          {fromLocationOptions.map(l => (
-            <option key={l.id} value={l.id}>{l.id === SHOP_ID ? `🏪 ${l.name}` : l.name}</option>
-          ))}
-        </select>
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-600 mb-1">From</label>
+            <select
+              value={fromGodownId}
+              onChange={e => handleFromGodownChange(e.target.value)}
+              className={`w-full border rounded-sm p-2 text-sm bg-gray-50 focus:outline-none focus:ring-2 ${focusRing}`}
+            >
+              <option value="">Select source</option>
+              {fromLocationOptions.map(l => (
+                <option key={l.id} value={l.id}>{l.id === SHOP_ID ? `🏪 ${l.name}` : l.name}</option>
+              ))}
+            </select>
+          </div>
 
-        <label className="block text-sm font-medium text-gray-600 mb-1">To</label>
-        <select
-          value={toGodownId}
-          onChange={e => setToGodownId(e.target.value)}
-          disabled={!fromGodownId}
-          className={`w-full border rounded-sm p-2 text-sm mb-3 bg-gray-50 focus:outline-none focus:ring-2 ${focusRing} disabled:opacity-50`}
-        >
-          <option value="">Select destination</option>
-          {fromGodownId !== SHOP_ID && (
-            <option value={SHOP_ID}>🏪 {SHOP_NAME}</option>
-          )}
-          {godowns.filter(g => g.id !== fromGodownId).map(g => (
-            <option key={g.id} value={g.id}>{g.name}</option>
-          ))}
-        </select>
+          <div>
+            <label className="block text-sm font-medium text-gray-600 mb-1">To</label>
+            <select
+              value={toGodownId}
+              onChange={e => setToGodownId(e.target.value)}
+              disabled={!fromGodownId}
+              className={`w-full border rounded-sm p-2 text-sm bg-gray-50 focus:outline-none focus:ring-2 ${focusRing} disabled:opacity-50`}
+            >
+              <option value="">Select destination</option>
+              {fromGodownId !== SHOP_ID && (
+                <option value={SHOP_ID}>🏪 {SHOP_NAME}</option>
+              )}
+              {godowns.filter(g => g.id !== fromGodownId).map(g => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
 
         {fromGodownId && itemsInFromGodown.length === 0 && (
           <p className="text-xs text-orange-500 mb-3">No stock available at this source location.</p>
         )}
 
         <label className="block text-sm font-medium text-gray-600 mb-1">Items</label>
-        <div className="space-y-2 mb-2">
-          {rows.map(row => {
-            //const stockRow = itemsInFromGodown.find(r => r.itemId === row.itemId);
-            const availableForRow = itemsInFromGodown.filter(
-              r => r.itemId === row.itemId || !usedItemIds.has(r.itemId)
-            );
-            return (
-              <div key={row.rowId} className="flex gap-2 items-start">
-                <select
-                  value={row.itemId}
-                  onChange={e => updateRow(row.rowId, { itemId: e.target.value, quantity: '' })}
-                  disabled={!fromGodownId}
-                  className={`flex-1 min-w-0 border rounded-sm p-2 text-sm bg-gray-50 focus:outline-none focus:ring-2 ${focusRing} disabled:opacity-50`}
-                >
-                  <option value="">Select item</option>
-                  {availableForRow.map(r => (
-                    <option key={r.itemId} value={r.itemId}>{r.itemName} (Avail: {r.quantity})</option>
-                  ))}
-                </select>
-                <input
-                  type="number"
-                  placeholder="Qty"
-                  value={row.quantity}
-                  onChange={e => updateRow(row.rowId, { quantity: e.target.value })}
-                  disabled={!row.itemId}
-                  className={`w-20 shrink-0 border rounded-sm p-1.5 text-sm bg-gray-50 focus:outline-none focus:ring-2 ${focusRing} disabled:opacity-50`}
-                />
-                {rows.length > 1 && (
-                  <button
-                    onClick={() => removeRow(row.rowId)}
-                    className="px-2 text-red-400 hover:text-red-600 text-sm"
-                    type="button"
+        <div className="border rounded-sm p-3 bg-gray-50/50 mb-4">
+          <div className="space-y-2 mb-2">
+            {rows.map(row => {
+              //const stockRow = itemsInFromGodown.find(r => r.itemId === row.itemId);
+              const availableForRow = itemsInFromGodown.filter(
+                r => r.itemId === row.itemId || !usedItemIds.has(r.itemId)
+              );
+              return (
+                <div key={row.rowId} className="flex gap-2 items-start">
+                  <select
+                    value={row.itemId}
+                    onChange={e => updateRow(row.rowId, { itemId: e.target.value, quantity: '' })}
+                    disabled={!fromGodownId}
+                    className={`flex-1 min-w-0 border rounded-sm p-2 text-sm bg-white focus:outline-none focus:ring-2 ${focusRing} disabled:opacity-50`}
                   >
-                    ✕
-                  </button>
-                )}
-              </div>
-            );
-          })}
+                    <option value="">Select item</option>
+                    {availableForRow.map(r => (
+                      <option key={r.itemId} value={r.itemId}>{r.itemName} (Avail: {r.quantity})</option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    placeholder="Qty"
+                    value={row.quantity}
+                    onChange={e => updateRow(row.rowId, { quantity: e.target.value })}
+                    disabled={!row.itemId}
+                    className={`w-20 shrink-0 border rounded-sm p-1.5 text-sm bg-white focus:outline-none focus:ring-2 ${focusRing} disabled:opacity-50`}
+                  />
+                  {rows.length > 1 && (
+                    <button
+                      onClick={() => removeRow(row.rowId)}
+                      className="px-2 text-red-400 hover:text-red-600 text-sm"
+                      type="button"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            onClick={addRow}
+            disabled={!fromGodownId || itemsInFromGodown.length === 0 || usedItemIds.size >= itemsInFromGodown.length}
+            className={`text-sm font-medium ${theme === 'orange' ? 'text-[#F97316]' : 'text-blue-600'} disabled:opacity-40 disabled:cursor-not-allowed`}
+          >
+            + Add another item
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={addRow}
-          disabled={!fromGodownId || itemsInFromGodown.length === 0 || usedItemIds.size >= itemsInFromGodown.length}
-          className={`text-sm font-medium mb-4 ${theme === 'orange' ? 'text-[#F97316]' : 'text-blue-600'} disabled:opacity-40 disabled:cursor-not-allowed`}
-        >
-          + Add another item
-        </button>
 
-        <label className="block text-sm font-medium text-gray-600 mb-1">Date</label>
-        <input
-          type="date"
-          value={date}
-          onChange={e => setDate(e.target.value)}
-          className={`w-full border rounded-sm p-2 text-sm mb-3 bg-gray-50 focus:outline-none focus:ring-2 ${focusRing}`}
-        />
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-600 mb-1">Date</label>
+            <input
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              className={`w-full border rounded-sm p-2 text-sm bg-gray-50 focus:outline-none focus:ring-2 ${focusRing}`}
+            />
+          </div>
 
-        <label className="block text-sm font-medium text-gray-600 mb-1">Remarks (optional)</label>
-        <input
-          type="text"
-          placeholder="e.g. Moved for restocking"
-          value={remarks}
-          onChange={e => setRemarks(e.target.value)}
-          className={`w-full border rounded-sm p-2 text-sm mb-4 bg-gray-50 focus:outline-none focus:ring-2 ${focusRing}`}
-        />
+          <div>
+            <label className="block text-sm font-medium text-gray-600 mb-1">Remarks (optional)</label>
+            <input
+              type="text"
+              placeholder="e.g. Moved for restocking"
+              value={remarks}
+              onChange={e => setRemarks(e.target.value)}
+              className={`w-full border rounded-sm p-2 text-sm bg-gray-50 focus:outline-none focus:ring-2 ${focusRing}`}
+            />
+          </div>
+        </div>
 
         {error && <p className="text-red-500 text-xs mb-3">{error}</p>}
 

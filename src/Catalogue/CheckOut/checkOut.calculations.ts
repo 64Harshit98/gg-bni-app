@@ -186,6 +186,8 @@ export const buildOrderLineItems = (
         const originalUnitPrice = Number(i.salesPrice);
         const qty = Number(i.quantity);
         const taxRate = Number(i.tax || 0);
+        const tierLabel = (i as any).tierLabel;
+        const displayName = tierLabel ? `${i.name} - ${tierLabel}` : i.name;
 
         let lineBaseAmount = originalUnitPrice * qty;
         let lineTaxAmount = 0;
@@ -223,7 +225,7 @@ export const buildOrderLineItems = (
             id: String(i.id),
             itemId: String(i.id),
             groupId: i.groupId || i.category,
-            name: i.name,
+            name: displayName,
             quantity: qty,
             mrp: Number(i.mrp),
             salesPrice: originalUnitPrice,

@@ -18,7 +18,7 @@ import { PaymentChart } from '../Components/PaymentChart';
 import { TopEntitiesList } from '../Components/TopFiveEntities';
 import { TutorialStep } from '../Components/TutorialStep';
 import ShinyText from '../Components/ShinyText';
-//import NotificationBell from '../Components/NotificationBell';
+import NotificationBell from '../Components/NotificationBell';
 import { CACHE_DURATION } from '../lib/fetchDashboardData';
 import useTutorial from '../Catalogue/hooks/useTutorial';
 import { completeTutorial } from '../Catalogue/hooks/useCompleteTutorial';
@@ -432,11 +432,11 @@ const DashboardContent = () => {
 
         {/* Step 2 — Eye / hide button and Notification Bell */}
         <div className="w-28 flex items-center gap-3 justify-end">
-          {/* <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-            <div className="relative border border-slate-300 rounded-sm bg-gray-100 shadow-sm">
+          <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+            <div className="hidden sm:flex relative border border-slate-300 rounded-sm bg-gray-100 shadow-sm">
               <NotificationBell />
             </div>
-          </ShowWrapper> */}
+          </ShowWrapper>
           <ShowWrapper requiredPermission={Permissions.ViewHidebutton}>
             <TutorialStep step={2} currentStep={tutorialStep} text="Toggle this to show or hide sensitive sales figures." onNext={() => next(3)} onSkip={skip}>
               <button ref={setTutorialRef(2)} onClick={() => setIsDataVisible(!isDataVisible)} className="p-2 rounded-sm border border-slate-400 hover:bg-slate-200 transition-colors">

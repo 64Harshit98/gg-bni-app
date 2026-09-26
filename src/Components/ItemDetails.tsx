@@ -6,6 +6,8 @@ import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSale
 import { collection, query, where, documentId, getDocs } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import { FiPackage } from 'react-icons/fi';
+import { hasMultiplePricing } from '../Pages/utils/pricingUtils'
+import { TierPickerModal } from './TierPickerModal';
 
 // --- ADDED: The exact same price logic from SharedProduct.tsx ---
 const getEffectivePriceInfo = (item: Item) => {
@@ -48,7 +50,7 @@ interface ItemDetailDrawerProps {
     isOpen: boolean;
     onClose: () => void;
     onUpdateQuantity: (itemId: string, delta: number) => void;
-    onAddToCart: (item: Item) => void;
+    onAddToCart: (item: Item, tierId?: string) => void;
     initialQuantity?: number;
     catalogueSettings?: CatalogueSalesSettings | null;
     isCustomerApproved?: boolean;
@@ -77,10 +79,12 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
 }) => {
     const [quantity, setQuantity] = useState(initialQuantity || 0);
     const [isAdding, setIsAdding] = useState(false);
+    const [showTierPicker, setShowTierPicker] = useState(false);
     const [variantItems, setVariantItems] = useState<Item[]>([]);
     const [variantLoading, setVariantLoading] = useState(false);
-    const [imageBroken, setImageBroken] = useState(false);
     const [brokenVariantIds, setBrokenVariantIds] = useState<Set<string>>(new Set());
+    const [mainSlideIndex, setMainSlideIndex] = useState(0);
+    const [brokenMainUrls, setBrokenMainUrls] = useState<Set<string>>(new Set());
 
     useEffect(() => {
         if (isOpen) {
@@ -89,10 +93,22 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
     }, [isOpen, initialQuantity]);
     // reset broken-image flags whenever a different item opens in the drawer
     useEffect(() => {
-        setImageBroken(false);
         setBrokenVariantIds(new Set());
+        setMainSlideIndex(0);
+        setBrokenMainUrls(new Set());
     }, [item?.id]);
-
+    // Auto-rotate this item's own photos when it has more than one (mirrors
+    // the grid-card slideshow behavior, but for this item's own imageUrls
+    // rather than variant-linked images)
+    useEffect(() => {
+        const urls = (item as any)?.imageUrls?.length ? (item as any).imageUrls : (item?.imageUrl ? [item.imageUrl] : []);
+        const valid = urls.filter((u: string) => !brokenMainUrls.has(u));
+        if (!isOpen || valid.length <= 1) return;
+        const timer = setInterval(() => {
+            setMainSlideIndex(prev => (prev + 1) % valid.length);
+        }, 3000);
+        return () => clearInterval(timer);
+    }, [isOpen, item, brokenMainUrls]);
     useEffect(() => {
         const fetchVariants = async () => {
             const idsToFetch = variantGroupIds.filter(id => String(id) !== String(item?.id));
@@ -123,6 +139,10 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
     }, [isOpen, item?.id, companyId, variantGroupIds]);
 
     if (!item) return null;
+
+    const mainImages: string[] = ((item as any).imageUrls?.length ? (item as any).imageUrls : (item.imageUrl ? [item.imageUrl] : []))
+        .filter((u: string) => !brokenMainUrls.has(u));
+    const clampedMainSlideIndex = mainSlideIndex >= mainImages.length ? 0 : mainSlideIndex;
 
     const multiplier = (item as any).unitMultiplier || 1;
     const unitLabel = `(${multiplier} pcs)`;
@@ -163,6 +183,10 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
     };
 
     const handleAddToCartClick = () => {
+        if (hasMultiplePricing(item)) {          // 👈 NEW
+            setShowTierPicker(true);              // 👈 NEW
+            return;                               // 👈 NEW
+        }                                         // 👈 NEW
         setIsAdding(true);
         onAddToCart(item);
         setQuantity(1);
@@ -193,17 +217,51 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
 
                 <div className="flex flex-col h-full">
                     <div className="w-full flex-[0.9] bg-gray-100 overflow-hidden relative">
-                        {item.imageUrl && !imageBroken ? (
-                            <img
-                                src={item.imageUrl}
-                                alt={item.name}
-                                className="w-full h-full object-contain"
-                                onError={() => setImageBroken(true)}
-                            />
+                        {mainImages.length > 0 ? (
+                            mainImages.map((url, idx) => (
+                                <img
+                                    key={url + idx}
+                                    src={url}
+                                    alt={item.name}
+                                    onError={() => {
+                                        setBrokenMainUrls(prev => {
+                                            if (prev.has(url)) return prev;
+                                            const next = new Set(prev);
+                                            next.add(url);
+                                            return next;
+                                        });
+                                    }}
+                                    className={`absolute inset-0 w-full h-full object-contain transition-opacity duration-700 ease-in-out ${idx === clampedMainSlideIndex ? 'opacity-100' : 'opacity-0'}`}
+                                />
+                            ))
                         ) : (
                             <div className="w-full h-full flex items-center justify-center text-gray-300">
                                 <FiPackage size={48} />
                             </div>
+                        )}
+                        {mainImages.length > 1 && (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={() => setMainSlideIndex(prev => (prev - 1 + mainImages.length) % mainImages.length)}
+                                    className="absolute left-2 top-1/2 -translate-y-1/2 z-10 bg-black/30 hover:bg-black/50 text-white rounded-full w-8 h-8 flex items-center justify-center text-lg leading-none"
+                                    aria-label="Previous photo"
+                                >‹</button>
+                                <button
+                                    type="button"
+                                    onClick={() => setMainSlideIndex(prev => (prev + 1) % mainImages.length)}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 z-10 bg-black/30 hover:bg-black/50 text-white rounded-full w-8 h-8 flex items-center justify-center text-lg leading-none"
+                                    aria-label="Next photo"
+                                >›</button>
+                                <div className="absolute bottom-2 left-0 right-0 flex items-center justify-center gap-1">
+                                    {mainImages.map((_, idx) => (
+                                        <span
+                                            key={idx}
+                                            className={`h-1 rounded-sm transition-all duration-300 ${idx === clampedMainSlideIndex ? 'w-3 bg-[#F97316]' : 'w-1 bg-gray-300'}`}
+                                        />
+                                    ))}
+                                </div>
+                            </>
                         )}
                         {showDiscountBadge && (
                             <div className="absolute top-4 right-4 bg-[#F97316] text-white px-2 py-0.5 rounded-sm text-[11px] font-black uppercase tracking-tight shadow-md">
@@ -386,6 +444,25 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
                     </div>
                 </div>
             </div>
+            <TierPickerModal
+                item={item}
+                isOpen={showTierPicker}
+                onClose={() => setShowTierPicker(false)}
+                hidePrice={shouldHidePrice}
+                onSelect={(selectedItem, tier) => {
+                    setIsAdding(true);
+                    const itemWithTierPrice: Item = tier.id === '__base__' ? selectedItem : {
+                        ...selectedItem,
+                        mrp: tier.mrp,
+                        salesPrice: tier.salesPrice,
+                        discount: tier.discount ?? 0,
+                        tierLabel: tier.label,   // 👈 NEW
+                    } as any;
+                    onAddToCart(itemWithTierPrice, tier.id === '__base__' ? undefined : tier.id);
+                    setQuantity(1);
+                    setTimeout(() => setIsAdding(false), 300);
+                }}
+            />
         </>
     );
 };

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import type { ItemGroup } from '../../constants/models';
+import type { ItemGroup, PriceTier } from '../../constants/models';
 import { CustomButton } from '../../Components';
 import { Variant, State } from '../../enums';
 import XLSX from 'xlsx-js-style';
@@ -28,6 +28,21 @@ interface ItemAddProps {
     itemAdd: string;
     itemGroup: string;
   };
+  // NEW: when used as a popup (e.g. from Purchase page for unlinked scanned items)
+  isModal?: boolean;
+  prefillData?: {
+    name?: string;
+    mrp?: number;
+    salesPrice?: number;
+    purchasePrice?: number;
+    discount?: number;
+    purchasediscount?: number;
+    tax?: number;
+    barcode?: string;
+    unit?: string;
+  };
+  onItemCreated?: (item: any) => void; // fired instead of normal reset flow when in modal mode
+  onCancel?: () => void; // close button handler for modal mode
 }
 
 const formatImageUrl = (url: string | null | undefined): string | null => {
@@ -71,7 +86,11 @@ const DRAFT_STORAGE_KEY = 'sellar_item_add_draft';
 
 const ItemAdd: React.FC<ItemAddProps> = ({
   theme = 'blue',
-  routes = { itemAdd: '/item-add', itemGroup: '/item-group' }
+  routes = { itemAdd: '/item-add', itemGroup: '/item-group' },
+  isModal = false,
+  prefillData,
+  onItemCreated,
+  onCancel,
 }) => {
   const themeStyles = {
     blue: {
@@ -139,8 +158,10 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   useEffect(() => { setAllItems(catalogueItems); }, [catalogueItems]);
   const [moq, setMoq] = useState<string>('1');
   const [imageUrl, setImageUrl] = useState<string>('');
-  const [imageFile, setImageFile] = useState<File | null>(null);
+    const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [additionalImageFiles, setAdditionalImageFiles] = useState<File[]>([]);
+  const [additionalImagePreviews, setAdditionalImagePreviews] = useState<string[]>([]);
   const [itemVariants, setItemVariants] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [pageIsLoading, setPageIsLoading] = useState<boolean>(true);
@@ -157,7 +178,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   const pendingRawFile = useRef<File | null>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
-
+  const [priceTiers, setPriceTiers] = useState<PriceTier[]>([]);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -182,12 +203,27 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   const successBannerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // NEW: If opened as a popup with prefill data (e.g. from Purchase Smart Scan),
+    // seed the form from that instead of the regular saved draft.
+    if (isModal && prefillData) {
+      if (prefillData.name) setItemName(prefillData.name);
+      if (prefillData.mrp) setItemMRP(String(prefillData.mrp));
+      if (prefillData.salesPrice) setItemSalesPrice(String(prefillData.salesPrice));
+      if (prefillData.purchasePrice) setItemPurchasePrice(String(prefillData.purchasePrice));
+      if (prefillData.discount) setItemDiscount(String(prefillData.discount));
+      if (prefillData.purchasediscount) setPurchaseDiscount(String(prefillData.purchasediscount));
+      if (prefillData.tax) setItemTax(String(prefillData.tax));
+      if (prefillData.barcode) setItemBarcode(prefillData.barcode);
+      if (prefillData.unit) setItemUnit(prefillData.unit);
+      return; // skip loading the regular draft in modal mode
+    }
     const draft = sessionStorage.getItem(DRAFT_STORAGE_KEY);
     if (draft) {
       try {
         const parsed = JSON.parse(draft);
         if (parsed.itemName) setItemName(parsed.itemName);
         if (parsed.itemMRP) setItemMRP(parsed.itemMRP);
+        if (parsed.priceTiers) setPriceTiers(parsed.priceTiers);
         if (parsed.itemSalesPrice) setItemSalesPrice(parsed.itemSalesPrice);
         if (parsed.itemPurchasePrice) setItemPurchasePrice(parsed.itemPurchasePrice);
         if (parsed.itemDiscount) setItemDiscount(parsed.itemDiscount);
@@ -210,10 +246,11 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   }, []);
 
   useEffect(() => {
+    if (isModal) return; // NEW: don't pollute the normal Add-Item draft when used as a popup
     const draft = {
       itemName, itemMRP, itemSalesPrice, itemPurchasePrice, itemDiscount,
       PurchaseDiscount, itemTax, itemAmount, restockQuantity, itemDescription, selectedCategories,
-      itemBarcode, hsnCode, itemUnit, packetSize, moq, imageUrl
+      itemBarcode, hsnCode, itemUnit, packetSize, moq, imageUrl, priceTiers
     };
     sessionStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
   }, [itemName, itemMRP, itemSalesPrice, itemPurchasePrice, itemDiscount, PurchaseDiscount, itemTax, itemAmount, restockQuantity, itemDescription, selectedCategories, itemBarcode, hsnCode, itemUnit, packetSize, moq, imageUrl]);
@@ -254,7 +291,10 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     if (!currentUser?.companyId || !itemSettings?.autoGenerateBarcode) return;
 
     if (!forceRefresh) {
-      const draft = sessionStorage.getItem(DRAFT_STORAGE_KEY);
+      // Modal mode never loads the saved draft, so a stale draft barcode must not block
+      // fetching one — but a prefilled barcode should be kept as-is.
+      if (isModal && prefillData?.barcode) return;
+      const draft = !isModal ? sessionStorage.getItem(DRAFT_STORAGE_KEY) : null;
       if (draft) {
         try {
           const parsed = JSON.parse(draft);
@@ -299,13 +339,16 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     setHsnCode('');
     setItemUnit('pcs');
     setPacketSize('');
-    setImageUrl('');
+        setImageUrl('');
     setImageFile(null);
     setImagePreview(null);
+    setAdditionalImageFiles([]);
+    setAdditionalImagePreviews([]);
     setMoq('1');
     setSelectedCategories([]);
     setShowCategoryDropdown(false);
     setItemVariants([]);
+    setPriceTiers([]);
     sessionStorage.removeItem(DRAFT_STORAGE_KEY);
     if (imageInputRef.current) imageInputRef.current.value = '';
     fetchNextBarcode();
@@ -346,6 +389,26 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     return new Promise((resolve, reject) => {
       canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Canvas is empty')), 'image/jpeg', 0.95);
     });
+  };
+    const handleAdditionalImagesChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setIsImageCompressing(true);
+    try {
+      const options = { maxSizeMB: 0.5, maxWidthOrHeight: 1024, useWebWorker: true };
+      const compressed = await Promise.all(files.map(f => imageCompression(f, options)));
+      setAdditionalImageFiles(prev => [...prev, ...compressed]);
+      setAdditionalImagePreviews(prev => [...prev, ...compressed.map(f => URL.createObjectURL(f))]);
+    } catch {
+      setModal({ message: 'Failed to process one or more images.', type: State.ERROR });
+    } finally {
+      setIsImageCompressing(false);
+    }
+  };
+
+  const removeAdditionalImage = (idx: number) => {
+    setAdditionalImageFiles(prev => prev.filter((_, i) => i !== idx));
+    setAdditionalImagePreviews(prev => prev.filter((_, i) => i !== idx));
   };
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -403,7 +466,32 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     );
     setCrop(centeredCrop);
   };
+  const addPriceTier = () => {
+    setPriceTiers(prev => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        label: '',
+        quantity: 1,
+        mrp: 0,
+        salesPrice: 0,
+        purchasePrice: 0,
+        discount: 0,
+        purchasediscount: 0,
+        barcode: '',
+      },
+    ]);
+  };
 
+  const updatePriceTier = (id: string, field: keyof PriceTier, value: string | number) => {
+    setPriceTiers(prev =>
+      prev.map(t => (t.id === id ? { ...t, [field]: value } : t))
+    );
+  };
+
+  const removePriceTier = (id: string) => {
+    setPriceTiers(prev => prev.filter(t => t.id !== id));
+  };
   const handleAddItem = async () => {
     if (!dbOperations || !currentUser || !itemSettings) {
       setModal({ message: 'App not ready.', type: State.ERROR }); return;
@@ -423,6 +511,32 @@ const ItemAdd: React.FC<ItemAddProps> = ({
 
     if (mrpValue === 0 && saleValue === 0) {
       setModal({ message: 'Please enter either MRP or Sales Price.', type: State.ERROR }); return;
+    }
+    // Validate price tiers
+    for (const tier of priceTiers) {
+      if (!tier.label.trim()) {
+        setModal({ message: 'Every pricing option needs a label (e.g. "Box of 10").', type: State.ERROR });
+        return;
+      }
+      if (!tier.quantity || tier.quantity <= 0) {
+        setModal({ message: `Pricing option "${tier.label}" needs a valid quantity.`, type: State.ERROR });
+        return;
+      }
+      if (tier.mrp === 0 && tier.salesPrice === 0) {
+        setModal({ message: `Pricing option "${tier.label}" needs either MRP or Sales Price.`, type: State.ERROR });
+        return;
+      }
+    }
+
+    // Check duplicate tier barcodes don't collide with each other or main barcode
+    const allTierBarcodes = priceTiers.map(t => t.barcode?.trim()).filter(Boolean);
+    if (new Set(allTierBarcodes).size !== allTierBarcodes.length) {
+      setModal({ message: 'Two pricing options cannot share the same barcode.', type: State.ERROR });
+      return;
+    }
+    if (allTierBarcodes.includes(itemBarcode.trim())) {
+      setModal({ message: 'A pricing option barcode cannot be the same as the item barcode.', type: State.ERROR });
+      return;
     }
     if (mrpValue > 0 && saleValue > 0 && saleValue > mrpValue) {
       setModal({ message: 'Sales Price cannot be greater than MRP', type: State.ERROR }); return;
@@ -505,13 +619,20 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       if (itemUnit === 'ton') currentMultiplier = 1000;
       if (itemUnit === 'pkt') currentMultiplier = parseInt(packetSize, 10) || 1;
 
-      let finalUploadedImageUrl = null;
+            let finalUploadedImageUrl = null;
       if (imageFile) {
         const storageRef = ref(storage, `companies/${currentUser.companyId}/items/${finalBarcode}_${Date.now()}`);
         await uploadBytes(storageRef, imageFile);
         finalUploadedImageUrl = await getDownloadURL(storageRef);
       } else if (imageUrl.trim()) {
         finalUploadedImageUrl = formatImageUrl(imageUrl);
+      }
+
+      const additionalUploadedUrls: string[] = [];
+      for (const file of additionalImageFiles) {
+        const extraRef = ref(storage, `companies/${currentUser.companyId}/items/${finalBarcode}_extra_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+        await uploadBytes(extraRef, file);
+        additionalUploadedUrls.push(await getDownloadURL(extraRef));
       }
 
       const newItemData: any = {
@@ -534,9 +655,11 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         unit: itemUnit.trim(),
         unitMultiplier: currentMultiplier,
         packetSize: itemUnit === 'pkt' ? parseInt(packetSize, 10) : null,
-        imageUrl: finalUploadedImageUrl,
+                imageUrl: finalUploadedImageUrl,
+        imageUrls: [finalUploadedImageUrl, ...additionalUploadedUrls].filter((u): u is string => Boolean(u)),
         isDeleted: false,
         variants: itemVariants,
+        priceTiers: priceTiers,
       };
 
       await dbOperations.createItem(newItemData, finalBarcode);
@@ -548,6 +671,13 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           const currentDBSeq = counterDoc.exists() ? (counterDoc.data().currentSequence || 1000) : 1000;
           transaction.set(counterRef, { currentSequence: currentDBSeq + 1 }, { merge: true });
         });
+      }
+
+      // NEW: modal mode — hand the created item back to the caller (e.g. Purchase page) and stop here
+      if (isModal && onItemCreated) {
+        onItemCreated({ ...newItemData, id: finalBarcode });
+        setIsSaving(false);
+        return;
       }
 
       setSuccess(`Item "${itemName}" added!`);
@@ -1075,19 +1205,29 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   if (pageIsLoading) return <Spinner />;
 
   const renderHeader = () => (
-    <div className="fixed top-0 left-0 right-0 z-10 p-4 bg-gray-100 border-b border-gray-300 flex flex-col md:static md:flex-row md:justify-between md:items-center md:p-3 md:bg-white md:shadow-sm">
-      <h1 className="text-2xl font-bold text-gray-800 text-center mb-4 md:mb-0 md:text-left">
+    <div className={isModal
+      ? "p-4 border-b border-gray-200 flex items-center justify-between"
+      : "relative z-10 p-4 bg-gray-100 border-b border-gray-300 flex flex-col md:static md:flex-row md:justify-between md:items-center md:p-3 md:bg-white md:shadow-sm"
+    }>
+      <h1 className={isModal ? "text-xl font-bold text-gray-800" : "text-2xl font-bold text-gray-800 text-center mb-4 md:mb-0 md:text-left"}>
         Add Item
       </h1>
-      <div className="flex items-center justify-center gap-6">
-        <CustomButton variant={Variant.Transparent} onClick={() => navigate(routes.itemAdd)} active={isActive(routes.itemAdd)}>Add Item</CustomButton>
-        <CustomButton variant={Variant.Transparent} onClick={() => navigate(routes.itemGroup)} active={isActive(routes.itemGroup)}>Item Groups</CustomButton>
-      </div>
+      {isModal ? (
+        <button onClick={onCancel} className="text-gray-400 hover:text-gray-700 text-xl leading-none px-2">✕</button>
+      ) : (
+        <div className="flex items-center justify-center gap-6">
+          <CustomButton variant={Variant.Transparent} onClick={() => navigate(routes.itemAdd)} active={isActive(routes.itemAdd)}>Add Item</CustomButton>
+          <CustomButton variant={Variant.Transparent} onClick={() => navigate(routes.itemGroup)} active={isActive(routes.itemGroup)}>Item Groups</CustomButton>
+        </div>
+      )}
     </div>
   );
 
   return (
-    <div className="flex flex-col h-screen w-full bg-gray-100 font-poppins text-gray-800 overflow-hidden relative">
+    <div className={isModal
+      ? "flex flex-col h-full w-full bg-white font-poppins text-gray-800 overflow-hidden relative"
+      : "flex flex-col h-screen w-full bg-gray-100 font-poppins text-gray-800 overflow-hidden relative"
+    }>
       <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
@@ -1206,24 +1346,30 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       <div className="flex-1 flex flex-col md:flex-row relative min-h-0">
 
         {/* LEFT PANEL */}
-        <div className="flex-1 h-full overflow-y-auto w-full md:w-[65%] bg-gray-100 md:bg-gray-50 md:border-r border-gray-200 pt-32 pb-10 px-4 md:pt-6 md:px-6 md:pb-6">
+        <div className={isModal
+          ? "flex-1 h-full overflow-y-auto w-full px-4 py-4"
+          : "flex-1 h-full overflow-y-auto w-full md:w-[65%] bg-gray-100 md:bg-gray-50 md:border-r border-gray-200 pt-4 pb-10 px-4 md:pt-6 md:px-6 md:pb-6"
+        }>
 
           {error && <div className="mb-4 text-center p-3 bg-red-100 text-red-700 rounded-sm">{error}</div>}
 
-          <div className="md:hidden bg-white p-2 rounded-sm shadow-md mb-4 mt-4">
-            <div className="flex flex-col items-center justify-center mb-4">
-              <h2 className="text-lg font-semibold text-gray-700 mb-2">Bulk Import</h2>
-              <input type="file" ref={fileInputRef} onChange={handleFileSelected} className="hidden" accept=".xlsx, .xls, .csv" />
-              <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className={`w-full max-w-xs ${activeTheme.primaryBg} text-white py-2 px-4 rounded-sm ${activeTheme.primaryHover} disabled:bg-gray-400 flex items-center justify-center gap-2`}>
-                {isUploading ? <Spinner /> : 'Import from Excel'}
-              </button>
-              <button type="button" onClick={handleDownloadSample} disabled={isUploading} className={`w-full max-w-xs bg-white ${activeTheme.text} border ${activeTheme.border} py-2 px-4 rounded-sm mt-4 hover:bg-gray-50`}>
-                Download Sample
-              </button>
+          {/* Bulk Import (mobile) — hidden in modal mode, it doesn't apply to single-item quick-add */}
+          {!isModal && (
+            <div className="md:hidden bg-white p-2 rounded-sm shadow-md mb-4">
+              <div className="flex flex-col items-center justify-center mb-4">
+                <h2 className="text-lg font-semibold text-gray-700 mb-2">Bulk Import</h2>
+                <input type="file" ref={fileInputRef} onChange={handleFileSelected} className="hidden" accept=".xlsx, .xls, .csv" />
+                <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className={`w-full max-w-xs ${activeTheme.primaryBg} text-white py-2 px-4 rounded-sm ${activeTheme.primaryHover} disabled:bg-gray-400 flex items-center justify-center gap-2`}>
+                  {isUploading ? <Spinner /> : 'Import from Excel'}
+                </button>
+                <button type="button" onClick={handleDownloadSample} disabled={isUploading} className={`w-full max-w-xs bg-white ${activeTheme.text} border ${activeTheme.border} py-2 px-4 rounded-sm mt-4 hover:bg-gray-50`}>
+                  Download Sample
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="bg-white p-6 rounded-sm shadow-md md:mb-0 md:rounded-sm md:shadow-sm md:border md:border-gray-200 mb-10">
+          <div className={isModal ? "" : "bg-white p-6 rounded-sm shadow-md md:mb-0 md:rounded-sm md:shadow-sm md:border md:border-gray-200 mb-10"}>
             {success && (
               <div ref={successBannerRef} className="mb-4 p-3 bg-green-100 text-green-700 rounded-sm flex items-center justify-between gap-2">
                 <span className="flex-1 text-center">{success}</span>
@@ -1249,7 +1395,27 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                   <label className={`text-sm font-medium leading-none block ${itemSettings?.requireImage ? reqClasses : ''} mb-1`}>Or paste Image URL</label>
                   <input type="text" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} disabled={!!imageFile} className={`w-full p-3 border border-gray-300 rounded-sm ${activeTheme.focusRing} outline-none disabled:bg-gray-100 disabled:text-gray-400`} placeholder="https://example.com/image.jpg" />
                 </div>
-                {imageFile && <button onClick={() => { setImageFile(null); setImagePreview(null); if (imageInputRef.current) imageInputRef.current.value = ''; }} className="text-xs text-red-500 hover:underline">Remove Selected Image</button>}
+                                {imageFile && <button onClick={() => { setImageFile(null); setImagePreview(null); if (imageInputRef.current) imageInputRef.current.value = ''; }} className="text-xs text-red-500 hover:underline">Remove Selected Image</button>}
+
+                {/* NEW: Additional photos for catalogue slider */}
+                <div className="mt-3">
+                  <label className="text-sm font-medium leading-none block mb-1">Additional Photos (for catalogue slider)</label>
+                  <input type="file" accept="image/*" multiple onChange={handleAdditionalImagesChange} className="text-xs" />
+                  {additionalImagePreviews.length > 0 && (
+                    <div className="flex gap-2 mt-2 flex-wrap">
+                      {additionalImagePreviews.map((src, idx) => (
+                        <div key={idx} className="relative w-16 h-16">
+                          <img src={src} className="w-full h-full object-cover rounded-sm border" />
+                          <button
+                            type="button"
+                            onClick={() => removeAdditionalImage(idx)}
+                            className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-5 h-5 text-xs leading-none"
+                          >✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1469,6 +1635,115 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                   activeTheme={activeTheme}
                 />
               </div>
+              {/* --- Pricing Tiers (Multiple Pricing) --- */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-medium leading-none block">
+                    Pricing Options <span className="text-gray-400 font-normal">(e.g. Box of 10, Combo)</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={addPriceTier}
+                    className={`text-xs font-semibold ${activeTheme.text} hover:underline`}
+                  >
+                    + Add Pricing Option
+                  </button>
+                </div>
+
+                {priceTiers.length === 0 ? (
+                  <p className="text-[11px] text-gray-400 italic">
+                    No extra pricing added. Item will only sell at the single price set above.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {priceTiers.map((tier) => (
+                      <div key={tier.id} className="border border-gray-200 rounded-sm p-3 bg-gray-50 relative">
+                        <button
+                          type="button"
+                          onClick={() => removePriceTier(tier.id)}
+                          className="absolute top-2 right-2 text-gray-400 hover:text-red-500 text-sm font-bold leading-none"
+                        >
+                          ✕
+                        </button>
+
+                        <div className="grid grid-cols-2 gap-3 mb-2">
+                          <div>
+                            <label className="text-[10px] font-medium text-gray-500 block mb-1">Label</label>
+                            <input
+                              type="text"
+                              value={tier.label}
+                              onChange={(e) => updatePriceTier(tier.id, 'label', e.target.value)}
+                              placeholder="e.g. Box of 10"
+                              className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-medium text-gray-500 block mb-1">
+                              Quantity (in {getUnitLabel()})
+                            </label>
+                            <input
+                              type="number"
+                              value={tier.quantity}
+                              onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                              onChange={(e) => updatePriceTier(tier.id, 'quantity', parseInt(e.target.value) || 1)}
+                              min="1"
+                              placeholder="10"
+                              className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-3 mb-2">
+                          <div>
+                            <label className="text-[10px] font-medium text-gray-500 block mb-1">MRP</label>
+                            <input
+                              type="number"
+                              value={tier.mrp}
+                              onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                              onChange={(e) => updatePriceTier(tier.id, 'mrp', parseFloat(e.target.value) || 0)}
+                              placeholder="0.00"
+                              className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-medium text-gray-500 block mb-1">Sales Price</label>
+                            <input
+                              type="number"
+                              value={tier.salesPrice}
+                              onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                              onChange={(e) => updatePriceTier(tier.id, 'salesPrice', parseFloat(e.target.value) || 0)}
+                              placeholder="0.00"
+                              className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-medium text-gray-500 block mb-1">Purchase Price</label>
+                            <input
+                              type="number"
+                              value={tier.purchasePrice}
+                              onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                              onChange={(e) => updatePriceTier(tier.id, 'purchasePrice', parseFloat(e.target.value) || 0)}
+                              placeholder="0.00"
+                              className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-medium text-gray-500 block mb-1">Barcode (optional)</label>
+                          <input
+                            type="text"
+                            value={tier.barcode}
+                            onChange={(e) => updatePriceTier(tier.id, 'barcode', e.target.value)}
+                            placeholder="Scan or type this pack's own barcode"
+                            className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
               {/* --- Description --- */}
               <div>
                 <div className="flex items-center mb-1">
@@ -1486,42 +1761,62 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           </div>
         </div>
 
-        {/* RIGHT PANEL: Sticky Sidebar on Desktop */}
-        <div className="hidden md:flex w-[35%] flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
-          <div className="flex-1 p-6 flex flex-col">
-            <div className={`${activeTheme.panelBg} rounded-sm p-5 border ${activeTheme.panelBorder}`}>
-              <h2 className={`text-lg font-bold ${activeTheme.panelHeader} mb-2`}>Bulk Import</h2>
-              <p className={`text-sm ${activeTheme.panelSubText} mb-4`}>
-                Upload Excel/CSV. Missing categories created automatically. You can embed images into rows.
-              </p>
-              <div className="flex flex-col gap-3">
-                <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className={`w-full bg-white ${activeTheme.panelBtn} border py-3 px-4 rounded-sm font-semibold disabled:bg-gray-100 flex items-center justify-center gap-2 transition-colors`}>
-                  {isUploading ? <Spinner /> : 'Upload Excel File'}
-                </button>
-                <button type="button" onClick={handleDownloadSample} disabled={isUploading} className={`text-sm ${activeTheme.text} ${activeTheme.textHover} underline text-center`}>
-                  Download Sample Template
+        {/* RIGHT PANEL: Sticky Sidebar on Desktop — Bulk Import skipped entirely in modal mode */}
+        {!isModal && (
+          <div className="hidden md:flex w-[35%] flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
+            <div className="flex-1 p-6 flex flex-col">
+              <div className={`${activeTheme.panelBg} rounded-sm p-5 border ${activeTheme.panelBorder}`}>
+                <h2 className={`text-lg font-bold ${activeTheme.panelHeader} mb-2`}>Bulk Import</h2>
+                <p className={`text-sm ${activeTheme.panelSubText} mb-4`}>
+                  Upload Excel/CSV. Missing categories created automatically. You can embed images into rows.
+                </p>
+                <div className="flex flex-col gap-3">
+                  <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className={`w-full bg-white ${activeTheme.panelBtn} border py-3 px-4 rounded-sm font-semibold disabled:bg-gray-100 flex items-center justify-center gap-2 transition-colors`}>
+                    {isUploading ? <Spinner /> : 'Upload Excel File'}
+                  </button>
+                  <button type="button" onClick={handleDownloadSample} disabled={isUploading} className={`text-sm ${activeTheme.text} ${activeTheme.textHover} underline text-center`}>
+                    Download Sample Template
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-grow"></div>
+
+              <div className="border-t border-gray-100 pb-10">
+                <button onClick={handleAddItem} disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)} className={`w-full ${activeTheme.primaryBg} text-white py-4 px-6 rounded-sm text-lg font-bold ${activeTheme.primaryHover} disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg transition-all active:scale-[0.98]`}>
+                  {isSaving ? <Spinner /> : 'Add Item'}
                 </button>
               </div>
             </div>
-
-            <div className="flex-grow"></div>
-
-            <div className="border-t border-gray-100 pb-10">
-              <button onClick={handleAddItem} disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)} className={`w-full ${activeTheme.primaryBg} text-white py-4 px-6 rounded-sm text-lg font-bold ${activeTheme.primaryHover} disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg transition-all active:scale-[0.98]`}>
-                {isSaving ? <Spinner /> : 'Add Item'}
-              </button>
-            </div>
           </div>
-        </div>
+        )}
 
-        {/* --- MOBILE FIXED FOOTER --- */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-transparent z-20 flex justify-center pb-20 pointer-events-none">
-          <button onClick={handleAddItem} disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)} className={`pointer-events-auto w-48 max-w-sm ${activeTheme.primaryBg} text-white py-3 px-6 rounded-sm text-lg font-semibold ${activeTheme.primaryHover} disabled:bg-gray-400 flex items-center justify-center gap-2 shadow-xl shadow-gray-400/50`}>
-            {isSaving ? <Spinner /> : 'Add Item'}
-          </button>
-        </div>
+        {/* --- MOBILE FIXED FOOTER (non-modal only — modal uses its own inline footer below) --- */}
+        {!isModal && (
+          <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-transparent z-20 flex justify-center pb-20 pointer-events-none">
+            <button onClick={handleAddItem} disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)} className={`pointer-events-auto w-48 max-w-sm ${activeTheme.primaryBg} text-white py-3 px-6 rounded-sm text-lg font-semibold ${activeTheme.primaryHover} disabled:bg-gray-400 flex items-center justify-center gap-2 shadow-xl shadow-gray-400/50`}>
+              {isSaving ? <Spinner /> : 'Add Item'}
+            </button>
+          </div>
+        )}
 
       </div>
+
+      {/* --- MODAL FOOTER: always-visible Save/Cancel bar when used as a popup --- */}
+      {isModal && (
+        <div className="border-t border-gray-200 p-4 flex justify-end gap-3 bg-white">
+          <button onClick={onCancel} className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-sm hover:bg-gray-200">
+            Cancel
+          </button>
+          <button
+            onClick={handleAddItem}
+            disabled={isSaving || pageIsLoading || (loading && itemGroups.length === 0)}
+            className={`px-6 py-2 text-sm font-bold text-white ${activeTheme.primaryBg} rounded-sm ${activeTheme.primaryHover} disabled:bg-gray-300 flex items-center justify-center gap-2`}
+          >
+            {isSaving ? <Spinner /> : 'Save & Add to Inventory'}
+          </button>
+        </div>
+      )}
     </div>
   );
 };

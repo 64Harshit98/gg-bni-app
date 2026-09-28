@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
 // --- ICONS ---
 // (Assuming you use Lucide-React like standard Tailwind projects. 
@@ -15,7 +15,7 @@ import {
   Send
 } from 'lucide-react';
 import { ROUTES } from '../../constants/routes.constants';
-import { IconClose } from '../../constants/Icons';
+import BackButton from '../../Components/BackButton';
 
 // --- TYPES ---
 interface AccordionItemProps {
@@ -24,6 +24,7 @@ interface AccordionItemProps {
   children: React.ReactNode;
   isOpen: boolean;
   onClick: () => void;
+  disabled?: boolean;
 }
 
 // --- REUSABLE ACCORDION COMPONENT ---
@@ -56,8 +57,6 @@ const AccordionItem: React.FC<AccordionItemProps> = ({ title, icon, children, is
 
 // --- MAIN PAGE COMPONENT ---
 const CatalogueSupport: React.FC = () => {
-  const navigate = useNavigate();
-
   const [openSection, setOpenSection] = useState<string | null>('faq-1');
 
   const toggleSection = (id: string) => {
@@ -71,12 +70,7 @@ const CatalogueSupport: React.FC = () => {
       <div className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-20">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
-            <button
-              onClick={() => navigate(-1)}
-              className="flex items-center gap-2 text-gray-500 hover:text-gray-900 transition-colors"
-            >
-              <IconClose />
-            </button>
+            <BackButton />
             <h1 className="text-xl font-bold text-gray-800">Help & Support</h1>
             <div className="w-10"></div>
           </div>
@@ -97,7 +91,7 @@ const CatalogueSupport: React.FC = () => {
             isOpen={openSection === 'faq-1'}
             onClick={() => toggleSection('faq-1')}
           >
-            Go to the <Link to={ROUTES.SUBSCRIPTION_PAGE}><strong>Subscription</strong></Link> page from your account menu. Toggle between Monthly or Yearly billing, select the plan that suits you (Basic or Pro), and click "Choose". Your benefits will be active after your payment is verified.
+            Go to the <Link to={ROUTES.SUBSCRIPTION_PAGE}><strong>Subscription</strong></Link> page from your account menu. Select the category (POS, Catalogue, or Both), choose the plan that best fits your business, and tap "Choose". Your benefits will be active after your payment is verified.
           </AccordionItem>
 
           <AccordionItem
@@ -115,7 +109,7 @@ const CatalogueSupport: React.FC = () => {
             isOpen={openSection === 'faq-3'}
             onClick={() => toggleSection('faq-3')}
           >
-            If you are logged out, click "Forgot Password" on the login screen. If you are logged in, go to <strong>Account Settings &gt; Security</strong> to change your password.
+            Click "Forgot Password" on the login screen and follow the instructions sent to your registered email to reset your password.
           </AccordionItem>
 
           <AccordionItem
@@ -173,7 +167,7 @@ const CatalogueSupport: React.FC = () => {
             onClick={() => toggleSection('contact-2')}
           >
             <p className="font-medium text-gray-800">Sellar HQ</p>
-            <p>Ground Floor, Harsha City Mall, G-46, Plot number 2B, Shakti Khand 2,</p>
+            <p>2nd Floor, Parsvnath Arcade, Unit 22, Vaibhav khand</p>
             <p> Indirapuram, Ghaziabad, Uttar Pradesh 201014</p>
             <p className="mt-2 text-xs text-gray-400">(Visits by appointment only)</p>
           </AccordionItem>
@@ -186,26 +180,18 @@ const CatalogueSupport: React.FC = () => {
             Report an Issue
           </h2>
 
-          <AccordionItem
-            title="Raise a Support Ticket"
-            icon={<Send className="w-5 h-5" />}
-            isOpen={openSection === 'ticket'}
-            onClick={() => toggleSection('ticket')}
-          >
-            <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); alert("Ticket Submitted!"); }}>
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Issue Subject</label>
-                <input type="text" placeholder="e.g., Cannot export sales report" className="w-full border border-gray-300 rounded-sm p-2 text-sm focus:ring-1 focus:ring-gray-900 outline-none" />
+          <div className="flex items-center justify-between bg-gray-50 p-4 rounded-lg border border-gray-200 mb-3 text-gray-400 cursor-not-allowed shadow-sm">
+            <div className="flex items-center gap-3">
+              <Send className="w-5 h-5 text-gray-300" />
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">
+                  Coming Soon
+                </span>
+                <span className="font-semibold text-sm sm:text-base">Raise a Support Ticket</span>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Description</label>
-                <textarea rows={4} placeholder="Describe what happened..." className="w-full border border-gray-300 rounded-sm p-2 text-sm focus:ring-1 focus:ring-gray-900 outline-none" />
-              </div>
-              <button className="w-full bg-gray-900 text-white font-bold py-2 rounded-sm hover:bg-gray-800 transition-colors">
-                Submit Ticket
-              </button>
-            </form>
-          </AccordionItem>
+            </div>
+            <span className="text-xl text-gray-300">→</span>
+          </div>
         </div>
 
       </div>

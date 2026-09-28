@@ -1,18 +1,25 @@
 import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import { useAuth } from './auth-context';
 import { type SalesSettings, getDefaultSalesSettings } from '../Pages/Settings/SalesSetting';
 import { type PurchaseSettings, getDefaultPurchaseSettings } from '../Pages/Settings/Purchasesetting';
 import { type ItemSettings, getDefaultItemSettings } from '../Pages/Settings/ItemSetting';
+import { ROLES } from '../enums';
+import { type CatalogueSalesSettings, getDefaultCatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting';
+import { type RawBillSettings, getDefaultBillSettings } from '../Pages/Settings/BillSetting';
 
 interface SettingsContextType {
     salesSettings: SalesSettings | null;
     purchaseSettings: PurchaseSettings | null;
     itemSettings: ItemSettings | null;
+    catalogueSettings: CatalogueSalesSettings | null;
+    billSettings: RawBillSettings | null;
+    loadingCatalogueSettings: boolean;
     loadingSalesSettings: boolean;
     loadingPurchaseSettings: boolean;
     loadingItemSettings: boolean;
+    loadingBillSettings: boolean;
     isLoadingSettings: boolean;
 }
 
@@ -29,8 +36,54 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
     const [loadingPurchaseSettings, setLoadingPurchaseSettings] = useState(true);
     const [loadingItemSettings, setLoadingItemSettings] = useState(true);
 
+    const [catalogueSettings, setCatalogueSettings] = useState<CatalogueSalesSettings | null>(null);
+    const [loadingCatalogueSettings, setLoadingCatalogueSettings] = useState(true);
+
+    const [billSettings, setBillSettings] = useState<RawBillSettings | null>(null);
+    const [loadingBillSettings, setLoadingBillSettings] = useState(true);
+
+    useEffect(() => {
+        if (!currentUser?.companyId) {
+            setLoadingCatalogueSettings(false);
+            setCatalogueSettings(null);
+            return;
+        }
+
+        setLoadingCatalogueSettings(true);
+        const companyId = currentUser.companyId;
+        const docRef = doc(db, 'companies', companyId, 'settings', 'catalogue-sales-settings');
+
+        const unsubscribe = onSnapshot(docRef, (docSnap) => {
+            if (docSnap.exists()) {
+                const dbSettings = docSnap.data();
+                const defaultSettings = getDefaultCatalogueSalesSettings(companyId);
+                const mergedSettings = { ...defaultSettings, ...dbSettings };
+
+                const missingKeys = Object.keys(defaultSettings).filter(key => !(key in dbSettings));
+                if (missingKeys.length > 0) {
+                    setDoc(docRef, mergedSettings).catch(err => console.error('Failed to sync missing catalogue settings:', err));
+                }
+
+                setCatalogueSettings(mergedSettings as CatalogueSalesSettings);
+            } else {
+                setCatalogueSettings(getDefaultCatalogueSalesSettings(companyId));
+            }
+            setLoadingCatalogueSettings(false);
+        }, (error) => {
+            console.error('Error fetching Catalogue Settings:', error);
+            setCatalogueSettings(getDefaultCatalogueSalesSettings(companyId));
+            setLoadingCatalogueSettings(false);
+        });
+
+        return () => unsubscribe();
+    }, [currentUser?.companyId]);
+
     // --- FETCH SALES SETTINGS ---
     useEffect(() => {
+        if (currentUser?.role === ROLES.AGENT || currentUser?.role === ROLES.AGENCY) {
+            return;
+        }
+
         if (!currentUser?.companyId) {
             setLoadingSalesSettings(false);
             setSalesSettings(null);
@@ -39,13 +92,25 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
 
         setLoadingSalesSettings(true);
         const companyId = currentUser.companyId;
-
-        // FIX: Target the exact document ID your page saves to
         const docRef = doc(db, 'companies', companyId, 'settings', 'sales-settings');
 
         const unsubscribeSales = onSnapshot(docRef, (docSnap) => {
             if (docSnap.exists()) {
-                setSalesSettings(docSnap.data() as SalesSettings);
+                const dbSettings = docSnap.data();
+                const defaultSettings = getDefaultSalesSettings(companyId);
+
+                // 1. dbSettings overwrites defaultSettings, keeping signup data perfectly safe
+                const mergedSettings = { ...defaultSettings, ...dbSettings };
+
+                // 2. Check if the database was missing any keys
+                const missingKeys = Object.keys(defaultSettings).filter(key => !(key in dbSettings));
+
+                if (missingKeys.length > 0) {
+                    // 3. Physically save the complete settings back to Firestore
+                    setDoc(docRef, mergedSettings).catch(err => console.error('Failed to sync missing sales settings:', err));
+                }
+
+                setSalesSettings(mergedSettings as SalesSettings);
             } else {
                 console.warn(`SettingsProvider: No 'sales' settings found. Using defaults.`);
                 setSalesSettings(getDefaultSalesSettings(companyId));
@@ -70,13 +135,20 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
 
         setLoadingPurchaseSettings(true);
         const companyId = currentUser.companyId;
-
-        // FIX: Target the exact document ID your page saves to
         const docRef = doc(db, 'companies', companyId, 'settings', 'purchase-settings');
 
         const unsubscribePurchase = onSnapshot(docRef, (docSnap) => {
             if (docSnap.exists()) {
-                setPurchaseSettings(docSnap.data() as PurchaseSettings);
+                const dbSettings = docSnap.data();
+                const defaultSettings = getDefaultPurchaseSettings(companyId);
+                const mergedSettings = { ...defaultSettings, ...dbSettings };
+
+                const missingKeys = Object.keys(defaultSettings).filter(key => !(key in dbSettings));
+                if (missingKeys.length > 0) {
+                    setDoc(docRef, mergedSettings).catch(err => console.error('Failed to sync missing purchase settings:', err));
+                }
+
+                setPurchaseSettings(mergedSettings as PurchaseSettings);
             } else {
                 console.warn(`SettingsProvider: No 'purchase' settings found. Using defaults.`);
                 setPurchaseSettings(getDefaultPurchaseSettings(companyId));
@@ -101,13 +173,20 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
 
         setLoadingItemSettings(true);
         const companyId = currentUser.companyId;
-
-        // FIX: Target the exact document ID your page saves to
         const docRef = doc(db, 'companies', companyId, 'settings', 'item-settings');
 
         const unsubscribeItem = onSnapshot(docRef, (docSnap) => {
             if (docSnap.exists()) {
-                setItemSettings(docSnap.data() as ItemSettings);
+                const dbSettings = docSnap.data();
+                const defaultSettings = getDefaultItemSettings(companyId);
+                const mergedSettings = { ...defaultSettings, ...dbSettings };
+
+                const missingKeys = Object.keys(defaultSettings).filter(key => !(key in dbSettings));
+                if (missingKeys.length > 0) {
+                    setDoc(docRef, mergedSettings).catch(err => console.error('Failed to sync missing item settings:', err));
+                }
+
+                setItemSettings(mergedSettings as ItemSettings);
             } else {
                 console.warn(`SettingsProvider: No 'item' settings found. Using defaults.`);
                 setItemSettings(getDefaultItemSettings(companyId));
@@ -122,16 +201,69 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
         return () => unsubscribeItem();
     }, [currentUser?.companyId]);
 
+    // --- FETCH BILL SETTINGS ---
+    // Unlike the other four settings docs above (which are provisioned by the
+    // registerCompanyAndUser Cloud Function at signup, so they always exist —
+    // this effect only ever needs to heal missing KEYS on them), settings/bill
+    // is never created at signup. So when the doc doesn't exist at all, this
+    // one also persists the defaults immediately (not just holds them in
+    // memory) — the first time any user from the company loads the app, the
+    // doc gets created for real. That means by the time anyone reaches print
+    // (which requires being logged in, i.e. this effect having already run),
+    // settings/bill reliably exists with real values — so
+    // CatalogueBill.tsx/pdfGenerator.ts no longer need a hardcoded
+    // terms-and-conditions fallback string of their own.
+    useEffect(() => {
+        if (!currentUser?.companyId) {
+            setLoadingBillSettings(false);
+            setBillSettings(null);
+            return;
+        }
 
-    const isLoadingSettings = loadingSalesSettings || loadingPurchaseSettings || loadingItemSettings;
+        setLoadingBillSettings(true);
+        const companyId = currentUser.companyId;
+        const docRef = doc(db, 'companies', companyId, 'settings', 'bill');
+
+        const unsubscribeBill = onSnapshot(docRef, (docSnap) => {
+            const defaultSettings = getDefaultBillSettings(companyId);
+
+            if (docSnap.exists()) {
+                const dbSettings = docSnap.data();
+                const mergedSettings = { ...defaultSettings, ...dbSettings };
+
+                const missingKeys = Object.keys(defaultSettings).filter(key => !(key in dbSettings));
+                if (missingKeys.length > 0) {
+                    setDoc(docRef, mergedSettings, { merge: true }).catch(err => console.error('Failed to sync missing bill settings:', err));
+                }
+
+                setBillSettings(mergedSettings as RawBillSettings);
+            } else {
+                setDoc(docRef, defaultSettings).catch(err => console.error('Failed to create default bill settings:', err));
+                setBillSettings(defaultSettings);
+            }
+            setLoadingBillSettings(false);
+        }, (error) => {
+            console.error('Error fetching Bill Settings:', error);
+            setBillSettings(getDefaultBillSettings(companyId));
+            setLoadingBillSettings(false);
+        });
+
+        return () => unsubscribeBill();
+    }, [currentUser?.companyId]);
+
+    const isLoadingSettings = loadingSalesSettings || loadingPurchaseSettings || loadingItemSettings || loadingCatalogueSettings || loadingBillSettings;
 
     const contextValue = {
         salesSettings,
         purchaseSettings,
         itemSettings,
+        catalogueSettings,
+        billSettings,
+        loadingCatalogueSettings,
         loadingSalesSettings,
         loadingPurchaseSettings,
         loadingItemSettings,
+        loadingBillSettings,
         isLoadingSettings
     };
 
@@ -140,6 +272,17 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
             {children}
         </SettingsContext.Provider>
     );
+};
+
+export const useCatalogueSettings = () => {
+    const context = useContext(SettingsContext);
+    if (context === undefined) {
+        throw new Error('useCatalogueSettings must be used within a SettingsProvider');
+    }
+    return {
+        catalogueSettings: context.catalogueSettings,
+        loadingSettings: context.loadingCatalogueSettings
+    };
 };
 
 export const useSalesSettings = () => {
@@ -164,6 +307,14 @@ export const useItemSettings = () => {
         throw new Error('useItemSettings must be used within a SettingsProvider');
     }
     return { itemSettings: context.itemSettings, loadingSettings: context.loadingItemSettings };
+};
+
+export const useBillSettings = () => {
+    const context = useContext(SettingsContext);
+    if (context === undefined) {
+        throw new Error('useBillSettings must be used within a SettingsProvider');
+    }
+    return { billSettings: context.billSettings, loadingSettings: context.loadingBillSettings };
 };
 
 export const useIsLoadingSettings = () => {

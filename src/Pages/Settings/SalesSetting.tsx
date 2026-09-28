@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
 import {
     doc,
     getDoc,
     setDoc,
+    serverTimestamp
 } from 'firebase/firestore';
 import { Spinner } from '../../constants/Spinner';
 import { Modal } from '../../constants/Modal';
@@ -14,6 +14,25 @@ import { FiCheck } from 'react-icons/fi';
 import { InfoTooltip } from '../../Components/InfoToolTip';
 import { ResetSettingsButton } from '../../Components/ResetSettingsButton';
 import ShowWrapper from '../../context/ShowWrapper';
+import BackButton from '../../Components/BackButton';
+import {
+    Monitor,
+    Percent,
+    PackageX,
+    Truck,
+    EyeOff,
+    ShieldCheck,
+    Hash,
+    Lock,
+    ArrowDownUp,
+    Wallet,
+    MapPin,
+    Receipt,
+    MessageSquare,
+    User,
+    Phone,
+    ArrowUpDown,
+} from 'lucide-react';
 
 export interface SalesSettings {
     settingType: 'sales';
@@ -27,6 +46,7 @@ export interface SalesSettings {
     roundingInterval?: number;
     hideMrp?: boolean;
     enableItemWiseDiscount?: boolean;
+    enableDiscount2?: boolean;
     lockDiscountEntry?: boolean;
     lockSalePriceEntry?: boolean;
     defaultDiscount?: number;
@@ -46,6 +66,7 @@ export interface SalesSettings {
     enableExtraExpense?: boolean;
     enableNarration?: boolean;
     enableCustomerInfoToggle?: boolean;
+    enableTransportDetails?: boolean;
     lastSavedPlan?: string;
 }
 
@@ -70,11 +91,12 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     gstScheme: 'none',
     taxType: 'inclusive',
     lockTaxToggle: false,
-    enableRounding: false,
+    enableRounding: true,
     roundingInterval: 1,
     cartInsertionOrder: 'bottom',
     hideMrp: false,
     enableItemWiseDiscount: true,
+    enableDiscount2: false,
     lockDiscountEntry: false,
     lockSalePriceEntry: false,
     defaultDiscount: 0,
@@ -84,46 +106,56 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     requireCustomerMobile: false,
     voucherName: 'Invoice',
     voucherPrefix: 'INV',
-    currentVoucherNumber: 1000,
+    currentVoucherNumber: 1,
     copyVoucherAfterSaving: false,
     enableShippingDetails: false,
     enableExtraExpense: false,
     enableNarration: false,
+    enableTransportDetails: false,
+    enableCustomerInfoToggle: true, // ✅ ON by default so POS & CALC both show it consistently
 });
 
 interface CardProps {
     title: string;
+    icon?: React.ReactNode;
     children: React.ReactNode;
     action?: React.ReactNode;
 }
 
-const SettingsCard: React.FC<CardProps> = ({ title, children, action }) => (
+const SettingsCard: React.FC<CardProps> = ({ title, icon, children, action }) => (
     <section className="bg-white rounded-sm border border-gray-200 shadow-sm p-5 md:p-6 space-y-5 transition-shadow">
         <div className="flex items-center justify-between gap-3">
-            <h2 className="text-base md:text-lg font-semibold text-gray-800">{title}</h2>
+            <div className="flex items-center gap-2">
+                {icon && <span className="text-blue-600">{icon}</span>}
+                <h2 className="text-base md:text-lg font-semibold text-gray-800">{title}</h2>
+            </div>
             {action}
         </div>
         {children}
     </section>
 );
 
-interface ToggleRowProps {
+export interface ToggleRowProps {
     id: string;
     label: string;
     description: string;
     checked: boolean;
     onChange: (checked: boolean) => void;
     tooltip?: string;
+    disabled?: boolean;
+    icon?: React.ReactNode;
 }
 
-const ToggleRow: React.FC<ToggleRowProps> = ({ id, label, description, checked, onChange, tooltip }) => (
-    <div className="flex items-start justify-between gap-4 rounded-sm bg-gray-50/60 border border-gray-100 p-3.5 md:p-4">
-        <div className="min-w-0">
-            <div className="flex items-center gap-2">
-                <label htmlFor={id} className="text-sm font-semibold text-gray-800 leading-5">{label}</label>
-                <InfoTooltip text={tooltip || description} />
+export const ToggleRow: React.FC<ToggleRowProps> = ({ id, label, description, checked, onChange, tooltip, disabled = false, icon }) => (
+    <div className={`flex items-start justify-between gap-4 rounded-sm bg-gray-50/60 border border-gray-100 p-3.5 md:p-4 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+        <div className="min-w-0 flex gap-3">
+            {icon && <span className="mt-0.5 shrink-0 text-blue-600">{icon}</span>}
+            <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                    <label htmlFor={id} className="text-sm font-semibold text-gray-800 leading-5">{label}</label>
+                    <InfoTooltip text={tooltip || description} />
+                </div>
             </div>
-            <p className="hidden md:block text-xs text-gray-500 mt-1 leading-relaxed">{description}</p>
         </div>
         <label htmlFor={id} className="relative inline-flex cursor-pointer items-center">
             <input
@@ -140,13 +172,17 @@ const ToggleRow: React.FC<ToggleRowProps> = ({ id, label, description, checked, 
 );
 
 const SalesSettingsPage: React.FC = () => {
-    const navigate = useNavigate();
     const { currentUser } = useAuth();
 
     const [settings, setSettings] = useState<SalesSettings | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [isSaving, setIsSaving] = useState<boolean>(false);
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
+
+    // GST number prompt states
+    const [showGstModal, setShowGstModal] = useState<boolean>(false);
+    const [gstNumberInput, setGstNumberInput] = useState<string>('');
+    const [pendingGstScheme, setPendingGstScheme] = useState<'regular' | 'composition' | null>(null);
 
     const activePlan = currentUser?.Subscription?.pack?.toLowerCase() || 'basic';
     // Added safe fallback for basic plan keying to prevent undefined errors
@@ -174,7 +210,15 @@ const SalesSettingsPage: React.FC = () => {
                 // 1. Start with safe defaults
                 let dbSettings = getDefaultSalesSettings(companyId);
 
-                // 2. FETCH AND APPLY ACTUAL DATA FROM BACKEND
+                // Plan-aware defaults, applied only when the doc is created for the first time
+                const planIsCalcOnly = activePlan === 'pos_basic';
+                if (planIsCalcOnly) {
+                    dbSettings.enableCustomerInfoToggle = true;
+                } else {
+                    dbSettings.requireCustomerName = true;
+                    dbSettings.requireCustomerMobile = true;
+                }
+
                 if (docSnap.exists()) {
                     dbSettings = { ...dbSettings, ...docSnap.data() };
                 } else {
@@ -217,7 +261,15 @@ const SalesSettingsPage: React.FC = () => {
             }
         }
     }, [settings?.gstScheme, settings?.taxType]);
-
+    useEffect(() => {
+        if (settings && !settings.enableCustomerInfoToggle) {
+            if (settings.requireCustomerName || settings.requireCustomerMobile) {
+                setSettings(prev => prev
+                    ? ({ ...prev, requireCustomerName: false, requireCustomerMobile: false })
+                    : null);
+            }
+        }
+    }, [settings?.enableCustomerInfoToggle]);
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
 
@@ -309,10 +361,67 @@ const SalesSettingsPage: React.FC = () => {
 
     const handleCheckboxChange = (field: keyof SalesSettings, checked: boolean) => {
         if (settings) {
+            // Turning on Due Billing without customer info being collected
+            // would let a cashier save a credit sale with no way to track
+            // who owes it — auto-enable the Customer Info section too.
+            if (field === 'allowDueBilling' && checked && !settings.enableCustomerInfoToggle) {
+                setSettings({ ...settings, allowDueBilling: true, enableCustomerInfoToggle: true });
+                return;
+            }
+            // The reverse must hold too: Due Billing depends on customer info
+            // being collectable at all, so turning that off must turn Due
+            // Billing off with it rather than leaving it silently on.
+            if (field === 'enableCustomerInfoToggle' && !checked && settings.allowDueBilling) {
+                setSettings({ ...settings, enableCustomerInfoToggle: false, allowDueBilling: false });
+                return;
+            }
             setSettings({ ...settings, [field]: checked });
         }
     };
 
+    const checkAndPromptGst = async (newScheme: 'regular' | 'composition') => {
+        if (!currentUser?.companyId) return;
+        try {
+            const companyId = currentUser.companyId;
+            const businessInfoRef = doc(db, 'companies', companyId, 'business_info', companyId);
+            const snap = await getDoc(businessInfoRef);
+            const existingGst = snap.exists() ? snap.data().gstin : undefined;
+
+            if (!existingGst) {
+                setPendingGstScheme(newScheme);
+                setGstNumberInput('');
+                setShowGstModal(true);
+            } else {
+                handleChange('gstScheme', newScheme);
+            }
+        } catch (err) {
+            console.error('Failed to check business GST info:', err);
+            setModal({ message: 'Failed to verify GST details.', type: State.ERROR });
+        }
+    };
+
+    const handleGstNumberSave = async () => {
+        if (!currentUser?.companyId || !pendingGstScheme) return;
+        const trimmed = gstNumberInput.trim().toUpperCase();
+
+        if (trimmed.length !== 15) {
+            setModal({ message: 'GST number must be exactly 15 characters.', type: State.ERROR });
+            return;
+        }
+
+        try {
+            const companyId = currentUser.companyId;
+            const businessInfoRef = doc(db, 'companies', companyId, 'business_info', companyId);
+            await setDoc(businessInfoRef, { gstin: trimmed, updatedAt: serverTimestamp() }, { merge: true });
+
+            handleChange('gstScheme', pendingGstScheme);
+            setShowGstModal(false);
+            setPendingGstScheme(null);
+        } catch (err) {
+            console.error('Failed to save GST number:', err);
+            setModal({ message: 'Failed to save GST number.', type: State.ERROR });
+        }
+    };
     if (isLoading || !settings) {
         return (
             <div className="flex flex-col min-h-screen items-center justify-center">
@@ -322,17 +431,51 @@ const SalesSettingsPage: React.FC = () => {
         );
     }
 
+    // 👇 true for pos_basic (catalog-forced calc) OR any plan where user manually picked calc view
+    const isCalcPlan = activePlan === 'pos_basic' || settings.salesViewType === 'calculator';
+
     return (
         <div className="flex flex-col min-h-screen bg-white w-full">
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
+            {showGstModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                    <div className="bg-white rounded-sm shadow-lg w-full max-w-sm p-5 space-y-4">
+                        <h3 className="text-base font-semibold text-gray-800">Enter GST Number</h3>
+                        <p className="text-xs text-gray-500">
+                            GST number is required to enable this tax scheme. This will be saved to your business profile.
+                        </p>
+                        <input
+                            type="text"
+                            value={gstNumberInput}
+                            onChange={(e) => setGstNumberInput(e.target.value.toUpperCase().slice(0, 15))}
+                            placeholder="e.g., 22AAAAA0000A1Z5"
+                            maxLength={15}
+                            className="w-full p-2.5 text-sm border border-gray-300 rounded-sm focus:ring-blue-500 focus:border-blue-500 outline-none"
+                            autoFocus
+                        />
+                        <div className="flex justify-end gap-2 pt-1">
+                            <button
+                                type="button"
+                                onClick={() => { setShowGstModal(false); setPendingGstScheme(null); }}
+                                className="px-4 py-2 text-sm font-semibold text-gray-600 rounded-sm hover:bg-gray-100"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleGstNumberSave}
+                                className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-sm hover:bg-blue-700"
+                            >
+                                Save & Continue
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
-                <button
-                    onClick={() => navigate(-1)}
-                    className="text-2xl font-bold text-gray-600 bg-transparent border-none cursor-pointer p-1"
-                >
-                    &times;
-                </button>
+                <BackButton />
                 <h1 className="text-base md:text-lg font-semibold text-gray-800">Sales Settings</h1>
                 <div className="w-6"></div>
             </div>
@@ -340,19 +483,34 @@ const SalesSettingsPage: React.FC = () => {
             <main className="flex-grow min-h-0 p-3 sm:p-4 md:p-5 bg-gray-50 w-full overflow-y-auto box-border pb-44 md:pb-24">
                 <form onSubmit={handleSave} className="max-w-5xl mx-auto space-y-5">
 
-                    <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-                        <div className="space-y-5">
+                    <div className="space-y-5">
+                        <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
                             {/* Display & Team — full width */}
                             <SettingsCard
                                 title="Display Settings"
+                                icon={<Monitor size={18} />}
                                 action={
                                     <ResetSettingsButton<SalesSettings>
                                         defaults={getDefaultSalesSettings(currentUser?.companyId ?? '')}
-                                        onReset={setSettings}
+                                        onReset={(defaults) =>
+                                            setSettings((prev) =>
+                                                prev
+                                                    ? {
+                                                        ...defaults,
+                                                        // Preserve tax/GST settings — Reset to Default should NOT touch these
+                                                        gstScheme: prev.gstScheme,
+                                                        taxType: prev.taxType,
+                                                        lockTaxToggle: prev.lockTaxToggle,
+                                                        enableRounding: prev.enableRounding,
+                                                        roundingInterval: prev.roundingInterval,
+                                                    }
+                                                    : defaults
+                                            )
+                                        }
                                     />
                                 }
                             >
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div className="grid grid-cols-2 gap-3">
                                     {/* List View */}
                                     <div
                                         onClick={() => handleChange('salesViewType', 'list')}
@@ -461,11 +619,35 @@ const SalesSettingsPage: React.FC = () => {
                                     checked={settings.enableSalesmanSelection ?? false}
                                     onChange={(checked) => handleCheckboxChange('enableSalesmanSelection', checked)}
                                     tooltip="Track which salesman handled each specific sale invoice."
+                                    icon={<Monitor size={18} />}
                                 />
+                                <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <ArrowUpDown size={16} className="text-blue-600" />
+                                        <p className="text-sm font-semibold text-gray-800 leading-5">Cart Item Sorting</p>
+                                        <InfoTooltip text="Choose where newly scanned items appear in the cart." />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleChange('cartInsertionOrder', 'top')}
+                                            className={`px-3 py-2 rounded-sm border text-sm font-semibold ${settings.cartInsertionOrder === 'top' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}
+                                        >
+                                            Newest First
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleChange('cartInsertionOrder', 'bottom')}
+                                            className={`px-3 py-2 rounded-sm border text-sm font-semibold ${settings.cartInsertionOrder === 'bottom' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}
+                                        >
+                                            Oldest First
+                                        </button>
+                                    </div>
+                                </div>
                             </SettingsCard>
 
                             {/* Pricing & Tax — full width */}
-                            <SettingsCard title="Pricing & Tax">
+                            <SettingsCard title="Pricing & Tax" icon={<Percent size={18} />}>
                                 <div className="space-y-3">
                                     <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">
                                         <div className="flex items-center gap-2 mb-2">
@@ -481,7 +663,13 @@ const SalesSettingsPage: React.FC = () => {
                                                 <button
                                                     key={opt.value}
                                                     type="button"
-                                                    onClick={() => handleChange('gstScheme', opt.value)}
+                                                    onClick={() => {
+                                                        if (opt.value !== 'none' && settings.gstScheme === 'none') {
+                                                            checkAndPromptGst(opt.value as 'regular' | 'composition');
+                                                        } else {
+                                                            handleChange('gstScheme', opt.value);
+                                                        }
+                                                    }}
                                                     className={`min-w-0 min-h-[42px] px-2 py-2 rounded-sm text-[11px] sm:text-sm font-semibold border leading-tight text-center whitespace-normal break-words ${settings.gstScheme === opt.value ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}
                                                 >
                                                     {opt.label}
@@ -514,6 +702,7 @@ const SalesSettingsPage: React.FC = () => {
                                         checked={settings.lockTaxToggle ?? false}
                                         onChange={(checked) => handleCheckboxChange('lockTaxToggle', checked)}
                                         tooltip="Prevent cashiers from modifying tax settings during checkout (Regular Scheme only)."
+                                        icon={<Lock size={18} />}
                                     />
 
                                     <ToggleRow
@@ -523,6 +712,7 @@ const SalesSettingsPage: React.FC = () => {
                                         checked={settings.enableRounding ?? false}
                                         onChange={(checked) => handleCheckboxChange('enableRounding', checked)}
                                         tooltip="Round bill totals to selected precision."
+                                        icon={<ArrowDownUp size={18} />}
                                     />
 
                                     {settings.enableRounding && (
@@ -544,80 +734,125 @@ const SalesSettingsPage: React.FC = () => {
                                     )}
 
                                     <ToggleRow
+                                        id="item-discount"
+                                        label="Enable Item-wise Discount"
+                                        description="Allow discount per item."
+                                        checked={settings.enableItemWiseDiscount ?? false}
+                                        onChange={(checked) => handleCheckboxChange('enableItemWiseDiscount', checked)}
+                                        tooltip="Allow discounts to be applied to individual cart items."
+                                        icon={<Percent size={18} />}
+                                    />
+                                    <ToggleRow
+                                        id="item-discount-2"
+                                        label="Enable Second Discount (Disc2)"
+                                        description="Show a second discount field, applied on top of Disc1."
+                                        checked={settings.enableDiscount2 ?? false}
+                                        onChange={(checked) => handleCheckboxChange('enableDiscount2', checked)}
+                                        tooltip="Adds a compounding second discount field (Disc2%) in the cart, on top of the existing item discount."
+                                        icon={<Percent size={18} />}
+                                        disabled={!settings.enableItemWiseDiscount}
+                                    />
+                                    <ToggleRow
+                                        id="lock-discount"
+                                        label="Lock Discount Entry"
+                                        description="Prevent editing discount in billing screen."
+                                        checked={settings.lockDiscountEntry ?? false}
+                                        onChange={(checked) => handleCheckboxChange('lockDiscountEntry', checked)}
+                                        tooltip="Stop staff from manually changing discounts during a sale."
+                                        icon={<Lock size={18} />}
+                                    />
+                                    <ToggleRow
+                                        id="lock-price"
+                                        label="Lock Sale Price"
+                                        description="Prevent editing sale price in billing screen."
+                                        checked={settings.lockSalePriceEntry ?? false}
+                                        onChange={(checked) => handleCheckboxChange('lockSalePriceEntry', checked)}
+                                        tooltip="Stop staff from manually altering item selling price."
+                                        icon={<Lock size={18} />}
+                                    />
+
+                                    <ToggleRow
                                         id="hide-mrp"
                                         label="Hide MRP in Sales List"
                                         description="Hide the MRP column from POS item list."
                                         checked={settings.hideMrp ?? false}
                                         onChange={(checked) => handleCheckboxChange('hideMrp', checked)}
                                         tooltip="Hide Maximum Retail Price column on sales screen."
+                                        icon={<EyeOff size={18} />}
                                     />
-
-                                    <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <p className="text-sm font-semibold text-gray-800 leading-5">Cart Item Sorting</p>
-                                            <InfoTooltip text="Choose where newly scanned items appear in the cart." />
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => handleChange('cartInsertionOrder', 'top')}
-                                                className={`px-3 py-2 rounded-sm border text-sm font-semibold ${settings.cartInsertionOrder === 'top' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}
-                                            >
-                                                Newest First
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleChange('cartInsertionOrder', 'bottom')}
-                                                className={`px-3 py-2 rounded-sm border text-sm font-semibold ${settings.cartInsertionOrder === 'bottom' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}
-                                            >
-                                                Oldest First
-                                            </button>
-                                        </div>
-                                    </div>
                                 </div>
                             </SettingsCard>
+                        </ShowWrapper>
 
-                            {/* Smaller cards in a 2x2 grid */}
-                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                                <SettingsCard title="Discounts & Price Control">
-                                    <ToggleRow id="item-discount" label="Enable Item-wise Discount" description="Allow discount per item." checked={settings.enableItemWiseDiscount ?? false} onChange={(checked) => handleCheckboxChange('enableItemWiseDiscount', checked)} tooltip="Allow discounts to be applied to individual cart items." />
-                                    <ToggleRow id="lock-discount" label="Lock Discount Entry" description="Prevent editing discount in billing screen." checked={settings.lockDiscountEntry ?? false} onChange={(checked) => handleCheckboxChange('lockDiscountEntry', checked)} tooltip="Stop staff from manually changing discounts during a sale." />
-                                    <ToggleRow id="lock-price" label="Lock Sale Price" description="Prevent editing sale price in billing screen." checked={settings.lockSalePriceEntry ?? false} onChange={(checked) => handleCheckboxChange('lockSalePriceEntry', checked)} tooltip="Stop staff from manually altering item selling price." />
+                        {/* Smaller cards in a 2x2 grid */}
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                            <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+                                {/* Order & Delivery */}
+                                <SettingsCard title="Order & Delivery" icon={<Truck size={18} />}>
+                                    <ToggleRow
+                                        id="allow-negative"
+                                        label="Allow Negative Inventory Billing"
+                                        description="Allow billing items even when stock is zero."
+                                        checked={settings.allowNegativeStock ?? false}
+                                        onChange={(checked) => handleCheckboxChange('allowNegativeStock', checked)}
+                                        tooltip="Allow selling items even if recorded stock is zero."
+                                        icon={<PackageX size={18} />}
+                                    />
+                                    <ToggleRow id="enable-shipping" label="Enable Shipping Details" description="Allow shipping address and GST capture." checked={settings.enableShippingDetails ?? false} onChange={(checked) => handleCheckboxChange('enableShippingDetails', checked)} tooltip="Allow capturing separate shipping address and GST for customers." icon={<MapPin size={18} />} />
+                                    <ToggleRow id="enable-expense" label="Enable Extra Expense" description="Allow additional charges like freight/packing." checked={settings.enableExtraExpense ?? false} onChange={(checked) => handleCheckboxChange('enableExtraExpense', checked)} tooltip="Add extra charge to final bill." icon={<Receipt size={18} />} />
+                                    <ToggleRow id="enable-narration" label="Enable Narration / Remarks" description="Allow adding custom note in invoice." checked={settings.enableNarration ?? false} onChange={(checked) => handleCheckboxChange('enableNarration', checked)} tooltip="Allow custom remarks on invoice." icon={<MessageSquare size={18} />} />
+                                    <ToggleRow
+                                        id="enable-transport"
+                                        label="Enable Transport Details"
+                                        description="Allow capturing transport info like GR/RR No, vehicle number etc."
+                                        checked={settings.enableTransportDetails ?? false}
+                                        onChange={(checked) => handleCheckboxChange('enableTransportDetails', checked)}
+                                        tooltip="Show transport details option in payment drawer."
+                                        icon={<Truck size={18} />}
+                                    />
                                 </SettingsCard>
+                            </ShowWrapper>
 
-                                <SettingsCard title="Billing & Inventory Rules">
-                                    <ToggleRow id="allow-negative" label="Allow Negative Inventory Billing" description="Allow billing items even when stock is zero." checked={settings.allowNegativeStock ?? false} onChange={(checked) => handleCheckboxChange('allowNegativeStock', checked)} tooltip="Allow selling items even if recorded stock is zero." />
-                                    <ToggleRow id="allow-due" label="Allow Due Billing" description="Allow partial or no payment billing (credit)." checked={settings.allowDueBilling ?? false} onChange={(checked) => handleCheckboxChange('allowDueBilling', checked)} tooltip="Allow finalizing sales with pending amount." />
+                            {/* Allow Due Billing — kept out of the HiddenProFeatures-gated
+                                card above so it's available on every plan (incl. Calc +
+                                Catalogue), not just Pro/Enterprise. */}
+                            <ShowWrapper requiredPermission={Permissions.AllowDueBilling}>
+                                <SettingsCard title="Due Billing" icon={<Wallet size={18} />}>
+                                    <ToggleRow
+                                        id="allow-due"
+                                        label="Allow Due Billing"
+                                        description="Allow partial or no payment billing (credit)."
+                                        checked={settings.allowDueBilling ?? false}
+                                        onChange={(checked) => handleCheckboxChange('allowDueBilling', checked)}
+                                        tooltip="Allow finalizing sales with pending amount."
+                                        icon={<Wallet size={18} />}
+                                    />
                                 </SettingsCard>
-
-                                <SettingsCard title="Additional Checkout Fields">
-                                    <ToggleRow id="enable-shipping" label="Enable Shipping Details" description="Allow shipping address and GST capture." checked={settings.enableShippingDetails ?? false} onChange={(checked) => handleCheckboxChange('enableShippingDetails', checked)} tooltip="Allow capturing separate shipping address and GST for customers." />
-                                    <ToggleRow id="enable-expense" label="Enable Extra Expense" description="Allow additional charges like freight/packing." checked={settings.enableExtraExpense ?? false} onChange={(checked) => handleCheckboxChange('enableExtraExpense', checked)} tooltip="Add extra charge to final bill." />
-                                    <ToggleRow id="enable-narration" label="Enable Narration / Remarks" description="Allow adding custom note in invoice." checked={settings.enableNarration ?? false} onChange={(checked) => handleCheckboxChange('enableNarration', checked)} tooltip="Allow custom remarks on invoice." />
-                                </SettingsCard>
-                            </div>
+                            </ShowWrapper>
+                            {/* Customer Access (Outside ShowWrapper to display for all plans) */}
+                            <SettingsCard title="Customer Access" icon={<ShieldCheck size={18} />}>
+                                {isCalcPlan && (
+                                    <ToggleRow
+                                        id="req-customer-info"
+                                        label="Enable Customer Info"
+                                        description="Enable and disable customer info during payment."
+                                        checked={settings.enableCustomerInfoToggle ?? false}
+                                        onChange={(checked) => handleCheckboxChange('enableCustomerInfoToggle', checked)}
+                                        tooltip="Toggles the customer information capture section during checkout."
+                                        icon={<ShieldCheck size={18} />}
+                                    />
+                                )}
+                                <ToggleRow id="req-customer" label="Require Customer Name" description="Force customer name before save." checked={settings.requireCustomerName ?? false} onChange={(checked) => handleCheckboxChange('requireCustomerName', checked)} tooltip="Force entering customer name before saving invoice." icon={<User size={18} />} />
+                                <ToggleRow id="req-mobile" label="Require Customer Mobile" description="Force customer mobile before save." checked={settings.requireCustomerMobile ?? false} onChange={(checked) => handleCheckboxChange('requireCustomerMobile', checked)} tooltip="Force entering customer mobile before saving invoice." icon={<Phone size={18} />} />
+                            </SettingsCard>
                         </div>
-                    </ShowWrapper>
-
-                    {/* Required Fields (Outside ShowWrapper to display for all plans) */}
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                        <SettingsCard title="Required Fields">
-                            <ToggleRow
-                                id="req-customer-info"
-                                label="Enable Customer Info"
-                                description="Enable and disable customer info during payment."
-                                checked={settings.enableCustomerInfoToggle ?? false}
-                                onChange={(checked) => handleCheckboxChange('enableCustomerInfoToggle', checked)}
-                                tooltip="Toggles the customer information capture section during checkout."
-                            />
-                            <ToggleRow id="req-customer" label="Require Customer Name" description="Force customer name before save." checked={settings.requireCustomerName ?? false} onChange={(checked) => handleCheckboxChange('requireCustomerName', checked)} tooltip="Force entering customer name before saving invoice." />
-                            <ToggleRow id="req-mobile" label="Require Customer Mobile" description="Force customer mobile before save." checked={settings.requireCustomerMobile ?? false} onChange={(checked) => handleCheckboxChange('requireCustomerMobile', checked)} tooltip="Force entering customer mobile before saving invoice." />
-                        </SettingsCard>
                     </div>
+
 
                     {/* Voucher Numbering (Outside ShowWrapper) */}
                     <SettingsCard
                         title="Voucher Numbering"
+                        icon={<Hash size={18} />}
                         action={
                             <button
                                 type="button"

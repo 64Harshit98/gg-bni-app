@@ -7,25 +7,28 @@ export interface InvoiceProps {
   invoiceDate: string;
   billedBy: string;
   terms: string;
-  
+
   // Party (Customer) Details
   partyName: string;
   partyAddress: string;
   partyNumber?: string;
-  
+
   // Company (Seller) Details
   companyName: string;
   companyAddress: string;
   companyEmail: string;
   companyContact: string;
   companyGstin: string;
+  companyLogoBase64?: string;
 
   // Financials
   subtotal: number;
   discount: number; // Percentage
   finalAmount: number;
+  advance?: number;   // NEW
+  due?: number;       // NEW
   paymentDetails: { [key: string]: number }; // e.g., { "Cash": 500 }
-  
+
   // Items
   items: {
     name: string;
@@ -42,7 +45,7 @@ const Invoice: React.FC<InvoiceProps> = (props) => {
   const {
     companyName, companyAddress, companyEmail, companyContact, companyGstin, terms,
     partyName, partyAddress, partyNumber, voucherId, invoiceDate, billedBy,
-    discount, finalAmount, items, paymentDetails
+    discount, finalAmount, items, paymentDetails, advance = 0, due = 0
   } = props;
 
   // Logic: Calculate discount amount based on the percentage provided
@@ -52,8 +55,8 @@ const Invoice: React.FC<InvoiceProps> = (props) => {
   };
 
   return (
-    <div 
-      id="invoice-bill" 
+    <div
+      id="invoice-bill"
       className="bg-white shadow-2xl mx-auto flex flex-col font-sans"
       style={{ width: '210mm', minHeight: '297mm' }} // A4 Standard
     >
@@ -63,7 +66,7 @@ const Invoice: React.FC<InvoiceProps> = (props) => {
       </header>
 
       <div className="p-10 flex-grow flex flex-col">
-        
+
         {/* --- META INFO ROW --- */}
         <div className="flex justify-between items-start mb-10 text-gray-800">
           {/* LEFT: BILL TO */}
@@ -85,10 +88,10 @@ const Invoice: React.FC<InvoiceProps> = (props) => {
             <div className="grid grid-cols-2 gap-y-2 items-center">
               <span className="text-gray-600 font-semibold text-left">Invoice No.</span>
               <span className="font-bold text-lg text-right text-gray-900">{voucherId}</span>
-              
+
               <span className="text-gray-600 font-semibold text-left">Date</span>
               <span className="text-gray-900 text-right">{invoiceDate}</span>
-              
+
               <span className="text-gray-600 font-semibold text-left">Billed By</span>
               <span className="text-gray-900 text-right">{billedBy}</span>
             </div>
@@ -115,7 +118,7 @@ const Invoice: React.FC<InvoiceProps> = (props) => {
               {items.map((item, index) => {
                 const discountAmount = calculateDiscountAmount(item.mrp, item.quantity);
                 const itemTotal = (item.mrp * item.quantity);
-                
+
                 return (
                   <tr key={index} className="border-b border-gray-300 last:border-b-0">
                     <td className="py-3 px-2 border-r border-gray-400 text-center">{index + 1}</td>
@@ -141,37 +144,60 @@ const Invoice: React.FC<InvoiceProps> = (props) => {
                   {finalAmount.toFixed(2)}
                 </td>
               </tr>
+              {/* NEW: Advance Paid row */}
+              {advance > 0 && (
+                <tr className="border-t border-gray-300">
+                  <td colSpan={8} className="py-2 px-4 text-right text-gray-600 text-xs border-r border-gray-400">
+                    Advance Paid
+                  </td>
+                  <td className="py-2 px-2 text-right text-gray-600 text-xs">
+                    {advance.toFixed(2)}
+                  </td>
+                </tr>
+              )}
+
+              {/* NEW: Balance Due row */}
+              {(advance > 0 || due > 0) && (
+                <tr className="border-t border-gray-400 bg-red-50">
+                  <td colSpan={8} className="py-2 px-4 text-right font-bold text-red-700 text-sm border-r border-gray-400">
+                    Balance Due
+                  </td>
+                  <td className="py-2 px-2 text-right font-bold text-red-700 text-sm">
+                    {due.toFixed(2)}
+                  </td>
+                </tr>
+              )}
             </tfoot>
           </table>
         </div>
 
         {/* --- PAYMENT & INFO SECTION --- */}
         <div className="flex justify-between mt-2 mb-8">
-            
+
           {/* Payment Info (Left) */}
           <div className="w-1/2 pr-4">
             <h3 className="font-bold text-[#0B2F4F] text-sm mb-2 border-b border-gray-300 pb-1">Payment Information</h3>
             <div className="text-xs text-gray-700 space-y-1">
-               {Object.entries(paymentDetails).length > 0 ? (
-                 Object.entries(paymentDetails).map(([mode, amount]) => (
-                    <div key={mode} className="flex justify-between w-64">
-                        <span className="font-semibold capitalize">{mode}:</span>
-                        <span>₹ {amount.toFixed(2)}</span>
-                    </div>
-                 ))
-               ) : (
-                 <p>Payment Status: Unpaid</p>
-               )}
+              {Object.entries(paymentDetails).length > 0 ? (
+                Object.entries(paymentDetails).map(([mode, amount]) => (
+                  <div key={mode} className="flex justify-between w-64">
+                    <span className="font-semibold capitalize">{mode}:</span>
+                    <span>₹ {amount.toFixed(2)}</span>
+                  </div>
+                ))
+              ) : (
+                <p>Payment Status: Unpaid</p>
+              )}
             </div>
           </div>
 
           {/* GSTIN (Right - Replaces Bank Details) */}
           <div className="w-1/2 pl-4 flex flex-col items-end">
-             <h3 className="font-bold text-[#0B2F4F] text-sm mb-2 border-b border-gray-300 pb-1 w-64 text-right">Tax Information</h3>
-             <div className="flex justify-between w-64 text-xs text-gray-700">
-                <span className="font-semibold">GSTIN:</span>
-                <span className="font-bold">{companyGstin}</span>
-             </div>
+            <h3 className="font-bold text-[#0B2F4F] text-sm mb-2 border-b border-gray-300 pb-1 w-64 text-right">Tax Information</h3>
+            <div className="flex justify-between w-64 text-xs text-gray-700">
+              <span className="font-semibold">GSTIN:</span>
+              <span className="font-bold">{companyGstin}</span>
+            </div>
           </div>
         </div>
 
@@ -185,24 +211,24 @@ const Invoice: React.FC<InvoiceProps> = (props) => {
 
         {/* --- SIGNATURE --- */}
         <div className="flex justify-end mt-auto">
-           <div className="text-center">
-              <div className="h-16"></div> {/* Space for signature */}
-              <p className="text-xs font-bold text-gray-800 border-t border-gray-400 pt-2 px-4">
-                 Authorised Sign
-              </p>
-           </div>
+          <div className="text-center">
+            <div className="h-16"></div> {/* Space for signature */}
+            <p className="text-xs font-bold text-gray-800 border-t border-gray-400 pt-2 px-4">
+              Authorised Sign
+            </p>
+          </div>
         </div>
       </div>
 
       {/* --- FOOTER --- */}
       <footer className="bg-[#0B2F4F] text-white py-4 px-10 text-xs flex justify-between items-center">
         <div className="text-left">
-           <p className="font-bold mb-1">{companyAddress}</p>
-           <p>Contact: {companyContact}</p>
+          <p className="font-bold mb-1">{companyAddress}</p>
+          <p>Contact: {companyContact}</p>
         </div>
         <div className="text-right">
-           <p className="mb-1">{companyEmail}</p>
-           <p className="opacity-80">Generated through SELLAR</p>
+          <p className="mb-1">{companyEmail}</p>
+          <p className="opacity-80">Generated through SELLAR</p>
         </div>
       </footer>
 

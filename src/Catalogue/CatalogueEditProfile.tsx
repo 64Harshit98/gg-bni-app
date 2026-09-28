@@ -1,20 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { createPortal } from 'react-dom';
 import { db, storage } from '../lib/Firebase';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../context/auth-context';
 import { FloatingLabelInput } from '../Components/ui/FloatingLabelInput';
 import { FloatingLabelSelect } from '../Components/FloatingLabelSelect';
-import { FiCamera, FiHome, FiTag } from 'react-icons/fi';
+import { FiCamera, FiCheck, FiX } from 'react-icons/fi';
+import BackButton from '../Components/BackButton';
 
 // --- Data Types ---
 interface CatalogueData {
   name: string;
+  email: string;
+  phone: string;
+  panNumber: string;
+  accountType: string;
   businessName: string;
   businessType: string;
   businessCategory: string;
   gstin: string;
+  msmeUdyamNumber: string;
 
   streetAddress: string;
   city: string;
@@ -30,8 +36,10 @@ interface CatalogueData {
   facebook?: string;
   twitter?: string;
   gmail?: string;
+  whatsappNumber?: string;
 
   profilePicture?: string;
+  companyLogo?: string;
 }
 
 // --- UTILITY: Aggressive Image Compression ---
@@ -116,6 +124,44 @@ const businessCategoryOptions = [
   { value: 'Food & Beverage', label: 'Food & Beverage' },
   { value: 'Other', label: 'Other' },
 ];
+const stateOptions = [
+  { value: 'Andhra Pradesh', label: 'Andhra Pradesh' },
+  { value: 'Arunachal Pradesh', label: 'Arunachal Pradesh' },
+  { value: 'Assam', label: 'Assam' },
+  { value: 'Bihar', label: 'Bihar' },
+  { value: 'Chhattisgarh', label: 'Chhattisgarh' },
+  { value: 'Goa', label: 'Goa' },
+  { value: 'Gujarat', label: 'Gujarat' },
+  { value: 'Haryana', label: 'Haryana' },
+  { value: 'Himachal Pradesh', label: 'Himachal Pradesh' },
+  { value: 'Jharkhand', label: 'Jharkhand' },
+  { value: 'Karnataka', label: 'Karnataka' },
+  { value: 'Kerala', label: 'Kerala' },
+  { value: 'Madhya Pradesh', label: 'Madhya Pradesh' },
+  { value: 'Maharashtra', label: 'Maharashtra' },
+  { value: 'Manipur', label: 'Manipur' },
+  { value: 'Meghalaya', label: 'Meghalaya' },
+  { value: 'Mizoram', label: 'Mizoram' },
+  { value: 'Nagaland', label: 'Nagaland' },
+  { value: 'Odisha', label: 'Odisha' },
+  { value: 'Punjab', label: 'Punjab' },
+  { value: 'Rajasthan', label: 'Rajasthan' },
+  { value: 'Sikkim', label: 'Sikkim' },
+  { value: 'Tamil Nadu', label: 'Tamil Nadu' },
+  { value: 'Telangana', label: 'Telangana' },
+  { value: 'Tripura', label: 'Tripura' },
+  { value: 'Uttar Pradesh', label: 'Uttar Pradesh' },
+  { value: 'Uttarakhand', label: 'Uttarakhand' },
+  { value: 'West Bengal', label: 'West Bengal' },
+  { value: 'Andaman and Nicobar Islands', label: 'Andaman and Nicobar Islands' },
+  { value: 'Chandigarh', label: 'Chandigarh' },
+  { value: 'Dadra and Nagar Haveli and Daman and Diu', label: 'Dadra and Nagar Haveli and Daman and Diu' },
+  { value: 'Delhi', label: 'Delhi' },
+  { value: 'Jammu and Kashmir', label: 'Jammu and Kashmir' },
+  { value: 'Ladakh', label: 'Ladakh' },
+  { value: 'Lakshadweep', label: 'Lakshadweep' },
+  { value: 'Puducherry', label: 'Puducherry' },
+];
 
 // --- Custom Hook ---
 const useCatalogueData = (companyId?: string, catalogueId?: string, userId?: string) => {
@@ -162,11 +208,15 @@ const useCatalogueData = (companyId?: string, catalogueId?: string, userId?: str
           ? userSnap.data()
           : {};
 
-        // 🔥 MERGE DATA (IMPORTANT)
+        //  MERGE DATA (IMPORTANT)
         setCatalogue({
           ...businessData,
           name: userData.name || "",
-          profilePicture: userData.profilePicture || "",
+          profilePicture: userData.profilePicture || businessData.profilePicture || "",
+          companyLogo: businessData.companyLogo || "",
+          msmeUdyamNumber: userData.msmeUdyamNumber || businessData.msmeUdyamNumber || "",
+          email: userData.email || "",
+          phone: userData.phoneNumber || userData.phone || "",
         });
 
       } catch (err) {
@@ -187,7 +237,7 @@ const useCatalogueData = (companyId?: string, catalogueId?: string, userId?: str
     }
 
     // 🔹 Separate owner fields
-    const { name, profilePicture, ...businessData } = data;
+    const { name, profilePicture, email, phone, msmeUdyamNumber, ...businessData } = data;
 
     // 🔹 BUSINESS INFO REF
     const businessDocRef = doc(
@@ -219,6 +269,8 @@ const useCatalogueData = (companyId?: string, catalogueId?: string, userId?: str
         businessDocRef,
         {
           ...cleanBusinessData,
+          ...(phone !== undefined && { phoneNumber: phone }),
+          ...(msmeUdyamNumber !== undefined && { msmeUdyamNumber }),
           updatedAt: serverTimestamp(),
         },
         { merge: true }
@@ -231,6 +283,9 @@ const useCatalogueData = (companyId?: string, catalogueId?: string, userId?: str
         {
           name,
           profilePicture,
+          ...(data.email !== undefined && { email: data.email }),
+          ...(data.phone !== undefined && { phoneNumber: data.phone }),
+          ...(data.msmeUdyamNumber !== undefined && { msmeUdyamNumber }),
         },
         { merge: true }
       )
@@ -242,55 +297,259 @@ const useCatalogueData = (companyId?: string, catalogueId?: string, userId?: str
   return { catalogue, loading, error, saveData };
 };
 
+// ─── SectionCard ───────────────────────────────────────────────────────────
+const SectionCard: React.FC<{ title: string; icon: string; children: React.ReactNode }> = ({
+  title,
+  icon,
+  children,
+}) => (
+  <div className="bg-white rounded-sm border border-slate-100 shadow-sm overflow-hidden flex flex-col h-full">
+    <div className="px-3 py-2 border-b border-slate-100 flex items-center gap-2">
+      <span className="text-xs">{icon}</span>
+      <span className="text-[9px] font-bold tracking-widest uppercase text-slate-500">{title}</span>
+    </div>
+    <div className="p-4 flex-1">{children}</div>
+  </div>
+);
+
+const inputClass =
+  'w-full border border-slate-200 rounded-sm text-sm bg-slate-50 outline-none ' +
+  'transition-all px-[14px] py-[14px] text-slate-800 ' +
+  'focus:border-slate-400 focus:bg-white';
+
+const LabeledField: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <div className="flex flex-col gap-1">
+    <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+      {label}
+    </label>
+    {children}
+  </div>
+);
+
+// ─── ImageOptionsModal (Instagram-style action sheet) ──────────────────────
+const ImageOptionsModal: React.FC<{
+  title: string;
+  hasImage: boolean;
+  onUpload: () => void;
+  onRemove: () => void;
+  onClose: () => void;
+}> = ({ title, hasImage, onUpload, onRemove, onClose }) => {
+  const modal = (
+    <div
+      className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center bg-black/40"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white w-[calc(100%-2rem)] max-w-sm sm:w-80 mx-4 sm:mx-0 mb-4 sm:mb-0 rounded-2xl sm:rounded-sm overflow-hidden shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-4 py-3 border-b border-slate-100 text-center">
+          <p className="text-sm font-semibold text-slate-700 m-0">{title}</p>
+        </div>
+        <button
+          type="button"
+          onClick={onUpload}
+          className="w-full text-center py-3 text-sm font-medium text-sky-600 border-b border-slate-100 cursor-pointer bg-white"
+        >
+          {hasImage ? 'Change Photo' : 'Add Photo'}
+        </button>
+        {hasImage && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="w-full text-center py-3 text-sm font-medium text-red-500 border-b border-slate-100 cursor-pointer bg-white"
+          >
+            Remove Current Photo
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full text-center py-3 text-sm font-semibold text-slate-500 cursor-pointer bg-white"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+
+  return createPortal(modal, document.body);
+};
+
 // --- Main Edit Profile Page Component ---
 const EditProfilePage: React.FC = () => {
-  const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
+  console.log('companyId:', currentUser?.companyId, 'uid:', currentUser?.uid);
   const { catalogue, loading: dataLoading, error: dataError, saveData } = useCatalogueData(currentUser?.companyId, currentUser?.companyId, currentUser?.uid);
   const [formData, setFormData] = useState<Partial<CatalogueData>>({});
-  const [businessType, setBusinessType] = useState('');
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null);
-  const [businessCategory, setBusinessCategory] = useState('');
+
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [postalError, setPostalError] = useState<string | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    setFormData(catalogue);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const [removeProfilePicture, setRemoveProfilePicture] = useState(false);
+  const [removeCompanyLogo, setRemoveCompanyLogo] = useState(false);
+  const [activeImageMenu, setActiveImageMenu] = useState<null | 'profile' | 'logo'>(null);
+  const [customBusinessType, setCustomBusinessType] = useState('');
+  const [customBusinessCategory, setCustomBusinessCategory] = useState('');
 
-    //  dropdown pre-select fix
-    setBusinessType(catalogue.businessType || "");
-    setBusinessCategory(catalogue.businessCategory || "");
+  useEffect(() => {
+    const isCustomType = catalogue.businessType &&
+      !businessTypeOptions.some(o => o.value === catalogue.businessType);
+    const isCustomCategory = catalogue.businessCategory &&
+      !businessCategoryOptions.some(o => o.value === catalogue.businessCategory);
+
+    if (isCustomType) setCustomBusinessType(catalogue.businessType!);
+    if (isCustomCategory) setCustomBusinessCategory(catalogue.businessCategory!);
+
+    setFormData({
+      ...catalogue,
+      businessType: isCustomType ? 'Other' : (catalogue.businessType || ''),
+      businessCategory: isCustomCategory ? 'Other' : (catalogue.businessCategory || ''),
+    });
 
     if (catalogue.profilePicture) {
       setPreviewUrl(catalogue.profilePicture);
     }
+    if (catalogue.companyLogo) {
+      setLogoPreviewUrl(catalogue.companyLogo);
+    }
   }, [catalogue]);
+  useEffect(() => {
+    if (!logoPreviewUrl && formData.companyLogo) {
+      setLogoPreviewUrl(formData.companyLogo);
+    }
+    if (!previewUrl && formData.profilePicture) {
+      setPreviewUrl(formData.profilePicture);
+    }
+  }, [formData]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
+
+    if (name === 'gstin') {
+      const upper = value.toUpperCase();
+      if (upper.length <= 15) {
+        setFormData(prev => ({ ...prev, gstin: upper }));
+      }
+      return;
+    }
+
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const handlePostalCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    if (/^\d{0,6}$/.test(value)) {
+      setFormData(prev => ({ ...prev, postalCode: value }));
+      if (value.length > 0 && value.length < 6) {
+        setPostalError('Postal code must be exactly 6 digits.');
+      } else {
+        setPostalError(null);
+      }
+    }
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    if (/^\d{0,10}$/.test(value)) {
+      setFormData(prev => ({ ...prev, phone: value }));
+      if (value.length > 0 && value.length < 10) {
+        setPhoneError('Phone number must be exactly 10 digits.');
+      } else {
+        setPhoneError(null);
+      }
+    }
+  };
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setLogoFile(file);
+      setLogoPreviewUrl(URL.createObjectURL(file));
+      setRemoveCompanyLogo(false);
+    }
+  };
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setImageFile(file);
       // We show the raw file in preview instantly for better UX
       setPreviewUrl(URL.createObjectURL(file));
+      setRemoveProfilePicture(false);
     }
   };
+  const handleRemoveProfilePicture = () => {
+    setPreviewUrl(null);
+    setImageFile(null);
+    setRemoveProfilePicture(true);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
+  const handleRemoveCompanyLogo = () => {
+    setLogoPreviewUrl(null);
+    setLogoFile(null);
+    setRemoveCompanyLogo(true);
+    if (logoInputRef.current) logoInputRef.current.value = '';
+  };
+  const openImageMenu = (type: 'profile' | 'logo') => setActiveImageMenu(type);
+  const closeImageMenu = () => setActiveImageMenu(null);
+
+  const handleMenuUpload = () => {
+    if (activeImageMenu === 'profile') fileInputRef.current?.click();
+    if (activeImageMenu === 'logo') logoInputRef.current?.click();
+    closeImageMenu();
+  };
+
+  const handleMenuRemove = () => {
+    if (activeImageMenu === 'profile') handleRemoveProfilePicture();
+    if (activeImageMenu === 'logo') handleRemoveCompanyLogo();
+    closeImageMenu();
+  };
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError(null);
     setSubmitSuccess(null);
-    setIsSubmitting(true);
 
+    // GSTIN can be edited but never fully removed once it has been saved
+    if (catalogue.gstin && catalogue.gstin.trim() !== '' && (!formData.gstin || formData.gstin.trim() === '')) {
+      setSubmitError('GSTIN cannot be removed once added. You can only edit/update it.');
+      return;
+    }
+    if (formData.postalCode && formData.postalCode.length !== 6) {
+      setSubmitError('Postal code must be exactly 6 digits.');
+      return;
+    }
+
+    if (formData.phone && formData.phone.length !== 10) {
+      setSubmitError('Phone number must be exactly 10 digits.');
+      return;
+    }
+    if (formData.msmeUdyamNumber && formData.msmeUdyamNumber.length !== 19) {
+      setSubmitError('MSME/Udyam number must be exactly 19 digits.');
+      return;
+    }
+    if (formData.panNumber && formData.panNumber.length !== 10) {
+      setSubmitError('PAN number must be exactly 10 digits.');
+      return;
+    }
+    if (formData.gstin && formData.gstin.length !== 15) {
+      setSubmitError('GSTIN must be exactly 15 characters.');
+      return;
+    }
+
+
+    setIsSubmitting(true);
     try {
-      let finalPhotoUrl = formData.profilePicture;
+      let finalPhotoUrl = removeProfilePicture ? '' : formData.profilePicture;
 
       if (imageFile && currentUser?.companyId && currentUser?.uid) {
         // Change extension to .jpg since we force JPEG compression
@@ -307,8 +566,19 @@ const EditProfilePage: React.FC = () => {
         await uploadBytes(storageRef, compressedBlob);
         finalPhotoUrl = await getDownloadURL(storageRef);
       }
-
-      await saveData({ ...formData, profilePicture: finalPhotoUrl });
+      let finalLogoUrl = removeCompanyLogo ? '' : formData.companyLogo;
+      if (logoFile && currentUser?.companyId) {
+        const logoPath = `companies/${currentUser.companyId}/branding/company_logo.jpg`;
+        const logoRef = ref(storage, logoPath);
+        const compressedLogo = await compressImage(logoFile);
+        await uploadBytes(logoRef, compressedLogo);
+        finalLogoUrl = await getDownloadURL(logoRef);
+      }
+      const finalBusinessType = formData.businessType === 'Other' ? customBusinessType : formData.businessType;
+      const finalBusinessCategory = formData.businessCategory === 'Other' ? customBusinessCategory : formData.businessCategory;
+      await saveData({ ...formData, profilePicture: finalPhotoUrl, companyLogo: finalLogoUrl, businessType: finalBusinessType, businessCategory: finalBusinessCategory });
+      setRemoveProfilePicture(false);
+      setRemoveCompanyLogo(false);
 
       setSubmitSuccess("Profile updated successfully!");
       setTimeout(() => setSubmitSuccess(null), 3000);
@@ -320,167 +590,374 @@ const EditProfilePage: React.FC = () => {
     }
   };
 
+  // ── Loading state ──
   if (authLoading || dataLoading) {
-    return <div className="flex min-h-screen items-center justify-center">Loading Profile...</div>;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <div className="w-10 h-10 rounded-sm border-[3px] border-slate-200 border-t-sky-500 animate-spin mx-auto mb-3" />
+          <p className="text-slate-500 text-sm">Loading profile…</p>
+        </div>
+      </div>
+    );
   }
 
   if (dataError) {
-    return <div className="flex min-h-screen items-center justify-center text-red-500">{dataError}</div>;
+    return (
+      <div className="flex min-h-screen items-center justify-center text-red-500">{dataError}</div>
+    );
   }
-  console.log("FORM DATA:", formData);
+
+  const submitBtnClass = submitSuccess
+    ? 'bg-gradient-to-br from-green-400 to-green-600 shadow-green-200/60'
+    : isSubmitting
+      ? 'bg-orange-200'
+      : 'bg-gradient-to-br from-orange-400 to-orange-600 shadow-orange-200/60';
+
   return (
-    <div className="min-h-screen bg-gray-100 mb-12 sm:p-6">
-      <div className="max-w-3xl mx-auto bg-gray-100 p-2 rounded-xl ">
-        <div className="flex items-center justify-between pb-2 border-b border-gray-200 mb-2">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Edit Profile</h1>
-          <button onClick={() => navigate(-1)} className="rounded-full bg-gray-200 p-2 text-gray-700 transition hover:bg-gray-300">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
-          </button>
+    <div className="min-h-screen bg-slate-100">
+      <div className="max-w-7xl mx-auto px-4 py-3 pb-24">
+
+        {/* ── Page Header ── */}
+        <div className="relative flex items-center justify-center mb-1">
+          <div className="absolute left-0">
+            <BackButton />
+          </div>
+          <h1 className="text-xl font-bold text-slate-900 m-0">Edit Profile</h1>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-8">
-          <fieldset>
-            <legend className="text-xl font-semibold text-gray-700 mb-4">Owner Details</legend>
-            <div className="flex justify-center mb-6">
-              <div className="relative cursor-pointer group" onClick={() => fileInputRef.current?.click()}>
-                <img
-                  src={previewUrl || "https://github.com/shadcn.png"}
-                  alt="Profile"
-                  className="w-42 h-42 rounded-full object-cover border-4 border-white shadow-md group-hover:opacity-75 transition"
-                />
-                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
-                  <FiCamera className="text-gray-800 w-8 h-8" />
+        <form onSubmit={handleSubmit} className="flex flex-col gap-1">
+
+          {/* ── IDENTITY BANNER: Avatar + Company Logo side by side ── */}
+          <div className="bg-white rounded-sm border border-slate-100 shadow-sm px-5 py-2 flex items-center gap-6">
+
+            {/* Profile Avatar */}
+            <div className="flex flex-col items-center gap-1.5 shrink-0">
+              <div className="relative">
+                <div
+                  onClick={() => openImageMenu('profile')}
+                  className="relative cursor-pointer"
+                >
+                  {previewUrl ? (
+                    <img
+                      src={previewUrl}
+                      alt="Profile"
+                      className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-md shadow-sky-200 block"
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded-full border-2 border-white shadow-md shadow-sky-200 bg-gray-200 flex items-center justify-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-9 h-9 text-gray-400">
+                        <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                  )}
+                  <div className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-sky-500 border-2 border-white flex items-center justify-center text-white">
+                    <FiCamera size={8} />
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png, image/jpeg, image/jpg"
+                    className="hidden"
+                    aria-label="Upload profile photo"
+                    onChange={handleImageChange}
+                  />
                 </div>
-                <div className="absolute bottom-0 right-0 bg-sky-500 p-2 rounded-full text-white shadow-sm">
-                  <FiCamera className="w-4 h-4" />
+              </div>
+              <span className="text-[10px] text-slate-400 font-medium">Profile Photo</span>
+            </div>
+
+            {/* Divider */}
+            <div className="w-px self-stretch bg-slate-100" />
+
+            {/* Company Logo */}
+            <div className="flex items-center gap-4 flex-1">
+              <div className="relative shrink-0">
+                <div
+                  onClick={() => openImageMenu('logo')}
+                  className="relative cursor-pointer"
+                >
+                  {logoPreviewUrl ? (
+                    <img
+                      src={logoPreviewUrl}
+                      alt="Company Logo"
+                      className="w-14 h-14 rounded-sm object-contain border border-slate-200 bg-slate-50 p-1.5 shadow-sm"
+                    />
+                  ) : (
+                    <div className="w-14 h-14 rounded-sm border-2 border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center text-slate-300 gap-0.5">
+                      <FiCamera size={14} />
+                      <span className="text-[8px] font-bold tracking-wider">LOGO</span>
+                    </div>
+                  )}
+                  <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-sky-500 border-[1.5px] border-white flex items-center justify-center text-white">
+                    <FiCamera size={7} />
+                  </div>
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/png, image/jpeg, image/jpg, image/svg+xml"
+                    className="hidden"
+                    aria-label="Upload company logo"
+                    onChange={handleLogoChange}
+                  />
                 </div>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  className="hidden"
-                  accept="image/png, image/jpeg, image/jpg"
-                  onChange={handleImageChange}
+              </div>
+              <div>
+                <p className="text-[12px] font-semibold text-slate-700 m-0">Company Logo</p>
+                <p className="text-[11px] text-slate-400 m-0 mt-0.5 leading-relaxed">
+                  Appears on invoices, reports & PDFs.<br />
+                  PNG or JPG recommended.
+                </p>
+              </div>
+            </div>
+
+          </div>
+
+          {/* ── TOP ROW: Personal | Business | Address (desktop 3-col) ── */}
+          {/* ── TABLET: Personal | Business (row1), Address | Bank (row2), Social (row3) ── */}
+
+          {/* Row 1 on tablet: Personal + Business | Row 1 on desktop: Personal + Business + Address */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[1fr_1.4fr_1fr] gap-1 items-stretch">
+
+            {/* Card 1 — Personal Information */}
+            <SectionCard title="Personal Information" icon=''>
+              <div className="flex flex-col gap-4">
+                <FloatingLabelInput
+                  type="text" name="name" value={formData.name || ''}
+                  onChange={handleInputChange} label="Your Full Name"
                 />
+                <div>
+                  <FloatingLabelInput
+                    type="text" name="phone" value={formData.phone || ''}
+                    onChange={handlePhoneChange} label="Phone Number"
+                    maxLength={10} inputMode="numeric"
+                  />
+                  {phoneError && <p className="text-red-500 text-[11px] mt-1 mb-0">{phoneError}</p>}
+                </div>
+                <LabeledField label="Email Address">
+                  <input
+                    type="email" name="email" value={formData.email || ''} readOnly
+                    className={`${inputClass} bg-slate-100 text-slate-400 cursor-not-allowed`}
+                    placeholder="Email Address"
+                  />
+                </LabeledField>
+                <FloatingLabelInput type="text" name="panNumber" maxLength={10} value={formData.panNumber || ''} onChange={handleInputChange} label="PAN No." />
               </div>
-            </div>
-            <div className="space-y-4">
-              <FloatingLabelInput type="text" name="name" value={formData.name || ''} onChange={handleInputChange} label="Your Full Name" />
-            </div>
-          </fieldset>
+            </SectionCard>
 
-          <fieldset>
-            <legend className="text-xl font-semibold text-gray-700 mb-4">Business Information</legend>
-            <div className="grid grid-cols-2 md:grid-cols-2 gap-6 mb-6">
-              <div className="md:col-span-2">
-                <FloatingLabelInput type="text" name="businessName" value={formData.businessName || ''} onChange={handleInputChange} label="Business Name" />
+            {/* Card 2 — Business Information */}
+            <SectionCard title="Business Information" icon=''>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <FloatingLabelInput type="text" name="businessName" value={formData.businessName || ''} onChange={handleInputChange} label="Business Name" />
+                </div>
+                <div className={formData.businessType === 'Other' ? 'col-span-2 sm:col-span-1' : 'col-span-2 sm:col-span-1'}>
+                  <FloatingLabelSelect
+                    id="businessType"
+                    label="Business Type"
+                    value={formData.businessType || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, businessType: e.target.value }))}
+                    options={businessTypeOptions}
+                  />
+                </div>
+                {formData.businessType === 'Other' && (
+                  <div className="col-span-2 sm:col-span-1">
+                    <FloatingLabelInput
+                      label="Specify Type"
+                      name="customBusinessType"
+                      value={customBusinessType}
+                      onChange={(e) => setCustomBusinessType(e.target.value)}
+                    />
+                  </div>
+                )}
+
+                <div className={formData.businessCategory === 'Other' ? 'col-span-2 sm:col-span-1' : 'col-span-2 sm:col-span-1'}>
+                  <FloatingLabelSelect
+                    id="businessCategory"
+                    label="Category"
+                    value={formData.businessCategory || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, businessCategory: e.target.value }))}
+                    options={businessCategoryOptions}
+                  />
+                </div>
+                {formData.businessCategory === 'Other' && (
+                  <div className="col-span-2 sm:col-span-1">
+                    <FloatingLabelInput
+                      label="Specify Category"
+                      name="customBusinessCategory"
+                      value={customBusinessCategory}
+                      onChange={(e) => setCustomBusinessCategory(e.target.value)}
+                    />
+                  </div>
+                )}
+                <FloatingLabelInput type="text" name="gstin" value={formData.gstin || ''} onChange={handleInputChange} label="GSTIN" />
+
+                <FloatingLabelInput type="text" name="msmeUdyamNumber" maxLength={19} value={formData.msmeUdyamNumber || ''} onChange={handleInputChange} label="MSME No." />
               </div>
-              <FloatingLabelSelect id="businessType" label="Business Type" value={businessType} onChange={(e) => {
-                setBusinessType(e.target.value);
-                setFormData(prev => ({
-                  ...prev,
-                  businessType: e.target.value
-                }));
-              }}
-                options={businessTypeOptions}
-                required
-                icon={<FiHome size={20} />}
-              />
-              <FloatingLabelSelect
-                id="businessCategory"
-                label="Category"
-                value={businessCategory}
-                onChange={(e) => {
-                  setBusinessCategory(e.target.value);
-                  setFormData(prev => ({
-                    ...prev,
-                    businessCategory: e.target.value
-                  }));
-                }}
-                options={businessCategoryOptions}
-                required
-                icon={<FiTag size={20} />}
-              />
-              <FloatingLabelInput type="text" name="gstin" value={formData.gstin || ''} onChange={handleInputChange} label="GSTIN" />
-            </div>
-          </fieldset>
+            </SectionCard>
 
-          <fieldset>
-            <legend className="text-xl font-semibold text-gray-700 mb-2">Business Address</legend>
-            <div className="grid grid-cols-2 md:grid-cols-2 gap-6">
-              <div className="md:col-span-2">
-                <FloatingLabelInput name="streetAddress" value={formData.streetAddress || ''} onChange={handleInputChange} label="Street Address" />
+            {/* Card 3 — Business Address (on tablet: hidden here, shown below) */}
+            {/* On desktop xl: shows in this 3-col row. On tablet: col-span-2 in next grid */}
+            <div className="hidden xl:block h-full">
+              <SectionCard title="Business Address" icon="">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <FloatingLabelInput name="streetAddress" value={formData.streetAddress || ''} onChange={handleInputChange} label="Street Address" />
+                  </div>
+                  <FloatingLabelInput type="text" name="city" value={formData.city || ''} onChange={handleInputChange} label="City" />
+                  <FloatingLabelSelect
+                    id="state"
+                    label="State"
+                    value={formData.state || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, state: e.target.value }))}
+                    options={stateOptions}
+                  />
+                  <div>
+                    <FloatingLabelInput type="text" name="postalCode" value={formData.postalCode || ''} onChange={handlePostalCodeChange} label="Postal Code" maxLength={6} inputMode="numeric" />
+                    {postalError && <p className="text-red-500 text-[11px] mt-1 mb-0">{postalError}</p>}
+                  </div>
+                </div>
+              </SectionCard>
+            </div>
+          </div>
+
+          {/* Row 2 on tablet: Address | Bank Details — hidden on desktop (Address already in row above) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:hidden gap-1">
+
+            {/* Card 3 — Business Address (tablet & mobile only) */}
+            <div className="xl:hidden">
+              <SectionCard title="Business Address" icon="">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <FloatingLabelInput name="streetAddress" value={formData.streetAddress || ''} onChange={handleInputChange} label="Street Address" />
+                  </div>
+                  <FloatingLabelInput type="text" name="city" value={formData.city || ''} onChange={handleInputChange} label="City" />
+                  <FloatingLabelSelect
+                    id="state"
+                    label="State"
+                    value={formData.state || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, state: e.target.value }))}
+                    options={stateOptions}
+                  />
+                  <div className='col-span-2'>
+                    <FloatingLabelInput type="text" name="postalCode" value={formData.postalCode || ''} onChange={handlePostalCodeChange} label="Postal Code" maxLength={6} inputMode="numeric" />
+                    {postalError && <p className="text-red-500 text-[11px] mt-1 mb-0">{postalError}</p>}
+                  </div>
+                </div>
+              </SectionCard>
+            </div>
+
+            {/* Card 4 — Bank Details */}
+            <SectionCard title="Bank Details" icon="">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <FloatingLabelInput type="text" name="accountHolderName" value={formData.accountHolderName || ''} onChange={handleInputChange} label="Acc Holder Name" />
+                </div>
+                <FloatingLabelInput type="text" name="bankName" value={formData.bankName || ''} onChange={handleInputChange} label="Bank" />
+                <FloatingLabelInput type="text" name="ifscCode" value={formData.ifscCode || ''} onChange={handleInputChange} label="IFSC Code" />
+                <div className="col-span-2">
+                  <FloatingLabelInput type="text" name="accountNumber" value={formData.accountNumber || ''} onChange={handleInputChange} label="Account No." />
+                </div>
               </div>
-              <FloatingLabelInput type="text" name="city" value={formData.city || ''} onChange={handleInputChange} label="City" />
-              <FloatingLabelInput type="text" name="state" value={formData.state || ''} onChange={handleInputChange} label="State" />
-              <FloatingLabelInput type="text" name="postalCode" value={formData.postalCode || ''} onChange={handleInputChange} label="Postal Code" />
-            </div>
-          </fieldset>
+            </SectionCard>
+          </div>
 
-          <fieldset>
-            <legend className="text-xl font-semibold text-gray-700 mb-2">Bank Details</legend>
-            <div className="grid grid-cols-2 md:grid-cols-2 gap-6">
-              <div className="md:col-span-2">
+          {/* Row 3: Social Media — always full width on tablet, right half on desktop */}
+          {/* On xl desktop: merge Bank+Social as 2-col. On tablet: Social is full width row */}
+          <div className="grid grid-cols-1 xl:hidden gap-2">
+            {/* Card 5 — Social Media (tablet: full width row) */}
+            <SectionCard title="Social Media" icon="">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FloatingLabelInput type="text" name="instagram" value={formData.instagram || ''} onChange={handleInputChange} label="Instagram" />
+                <FloatingLabelInput type="text" name="facebook" value={formData.facebook || ''} onChange={handleInputChange} label="Facebook" />
+                <FloatingLabelInput type="text" name="twitter" value={formData.twitter || ''} onChange={handleInputChange} label="Twitter / X" />
+                <FloatingLabelInput type="text" name="whatsappNumber" value={formData.whatsappNumber || ''} onChange={handleInputChange} label="WhatsApp No." maxLength={10} inputMode="numeric" />
+              </div>
+            </SectionCard>
+          </div>
+
+          {/* Desktop xl: Bank + Social side by side (original desktop layout) */}
+          <div className="hidden xl:grid xl:grid-cols-2 gap-2">
+            <SectionCard title="Bank Details" icon="">
+              <div className="grid grid-cols-2 gap-4">
                 <FloatingLabelInput type="text" name="accountHolderName" value={formData.accountHolderName || ''} onChange={handleInputChange} label="Account Name" />
-              </div>
-              <FloatingLabelInput type="text" name="bankName" value={formData.bankName || ''} onChange={handleInputChange} label="Bank Name" />
-              <FloatingLabelInput type="text" name="ifscCode" value={formData.ifscCode || ''} onChange={handleInputChange} label="IFSC Code" />
-              <div className="md:col-span-2">
+                <FloatingLabelInput type="text" name="bankName" value={formData.bankName || ''} onChange={handleInputChange} label="Bank Name" />
+                <FloatingLabelInput type="text" name="ifscCode" value={formData.ifscCode || ''} onChange={handleInputChange} label="IFSC Code" />
                 <FloatingLabelInput type="text" name="accountNumber" value={formData.accountNumber || ''} onChange={handleInputChange} label="Account No." />
               </div>
+            </SectionCard>
+            <SectionCard title="Social Media" icon="">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FloatingLabelInput type="text" name="instagram" value={formData.instagram || ''} onChange={handleInputChange} label="Instagram" />
+                <FloatingLabelInput type="text" name="facebook" value={formData.facebook || ''} onChange={handleInputChange} label="Facebook" />
+                <FloatingLabelInput type="text" name="twitter" value={formData.twitter || ''} onChange={handleInputChange} label="Twitter / X" />
+                <FloatingLabelInput type="text" name="whatsappNumber" value={formData.whatsappNumber || ''} onChange={handleInputChange} label="WhatsApp No." maxLength={10} inputMode="numeric" />
+              </div>
+            </SectionCard>
+          </div>
+
+          {/* ── Error banner ── */}
+          {submitError && (
+            <div className="bg-red-50 border border-red-200 rounded-sm px-4 py-2.5 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSubmitError(null)}
+                className="text-red-500 shrink-0 cursor-pointer"
+              >
+                <FiX size={14} />
+              </button>
+              <p className="text-red-500 text-sm m-0">{submitError}</p>
             </div>
-          </fieldset>
+          )}
 
-          <fieldset>
-            <legend className="text-xl font-semibold text-gray-700 mb-2">
-              Social Media
-            </legend>
-
-            <div className="grid grid-cols-2 md:grid-cols-2 gap-6">
-              <FloatingLabelInput
-                type="text"
-                name="instagram"
-                value={formData.instagram || ""}
-                onChange={handleInputChange}
-                label="Instagram"
-              />
-
-              <FloatingLabelInput
-                type="text"
-                name="facebook"
-                value={formData.facebook || ""}
-                onChange={handleInputChange}
-                label="Facebook"
-              />
-
-              <FloatingLabelInput
-                type="text"
-                name="twitter"
-                value={formData.twitter || ""}
-                onChange={handleInputChange}
-                label="Twitter / X"
-              />
-
-              <FloatingLabelInput
-                type="email"
-                name="gmail"
-                value={formData.gmail || ""}
-                onChange={handleInputChange}
-                label="Gmail"
-              />
-            </div>
-          </fieldset>
-
-          {submitError && <p className="text-sm text-center text-red-600">{submitError}</p>}
-          {submitSuccess && <p className="text-sm text-center text-green-600">{submitSuccess}</p>}
-
-          <div className="flex justify-left ">
-            <button type="submit" disabled={isSubmitting} className="inline-flex items-center= justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-sky-500 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-blue-400">
-              {isSubmitting ? 'Saving...' : 'Save All Changes'}
+          {/* ── Submit button ── */}
+          <div className="sticky bottom-0 left-0 right-0 sm:static bg-slate-100 sm:bg-transparent pt-2 sm:pt-0 -mx-4 sm:mx-0 px-4 sm:px-0 pb-2 sm:pb-0 z-10">
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className={[
+                'w-full py-4 rounded-sm text-white text-[15px] font-semibold border-0',
+                'flex items-center justify-center gap-2 shadow-lg transition-all duration-300',
+                isSubmitting ? 'cursor-not-allowed' : 'cursor-pointer',
+                submitBtnClass,
+              ].join(' ')}
+            >
+              {isSubmitting ? (
+                <>
+                  <div className="w-4 h-4 rounded-sm border-2 border-white/40 border-t-white animate-spin" />
+                  Saving…
+                </>
+              ) : submitSuccess ? (
+                <>
+                  <FiCheck size={18} />
+                  {submitSuccess}
+                </>
+              ) : (
+                'Save All Changes'
+              )}
             </button>
           </div>
         </form>
-      </div>
-    </div>
+        {activeImageMenu === 'profile' && (
+          <ImageOptionsModal
+            title="Profile Photo"
+            hasImage={!!previewUrl}
+            onUpload={handleMenuUpload}
+            onRemove={handleMenuRemove}
+            onClose={closeImageMenu}
+          />
+        )}
+        {activeImageMenu === 'logo' && (
+          <ImageOptionsModal
+            title="Company Logo"
+            hasImage={!!logoPreviewUrl}
+            onUpload={handleMenuUpload}
+            onRemove={handleMenuRemove}
+            onClose={closeImageMenu}
+          />
+        )}
+      </div >
+    </div >
   );
 };
 

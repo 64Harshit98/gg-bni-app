@@ -20,7 +20,8 @@ export interface Item {
   purchasediscount?: number;
   tax: number;
   taxRate?: number;
-  itemGroupId: string;
+  itemGroupId?: string;
+  itemGroupIds?: string[];
   isDeleted?: boolean;
   salesPrice: number;
   stock: number;
@@ -35,12 +36,19 @@ export interface Item {
   companyId?: string | null;
   restockQuantity: number;
   isListed?: boolean;
-  imageUrl?: string | null;
+    imageUrl?: string | null;
+  imageUrls?: string[]; 
   description?: string;
   firestoreDocId?: string;
   packetSize?: number;
   unitMultiplier?: number;
-  moq?:number;
+  moq?: number;
+  mrpOriginal?: number;
+  mfgDate?: string;
+  expDate?: string;
+  variants?: string[];
+  godownStock?: Record<string, number>;
+  priceTiers?: PriceTier[];
 }
 
 export interface ItemGroup {
@@ -58,6 +66,9 @@ export interface PurchaseItem {
   purchasePrice: number;
   quantity: number;
   stock?: number;
+  taxType?: 'inclusive' | 'exclusive' | 'exempt';
+  taxRate?: number;
+  tax?: number;
 }
 
 export interface Purchase {
@@ -109,4 +120,17 @@ export interface SalesItem {
   discountPercentage?: number;
   finalPrice?: number;
   stock?: number;
+  productId?: string
+}
+
+export interface PriceTier {
+  id: string;
+  label: string;              // "Piece", "Box of 10", "Combo Pack"
+  quantity: number;           // kitne base pcs = 1 tier (e.g. 10, 3, 1)
+  mrp: number;
+  salesPrice: number;
+  purchasePrice?: number;
+  discount?: number;
+  purchasediscount?: number;
+  barcode?: string;           // is tier ka apna alag barcode (optional)
 }

@@ -6,7 +6,7 @@ import { ROUTES } from '../constants/routes.constants';
 import { CatItems, CatMobileNavItems } from '../routes/CatalougeRoutes';
 import { useAuth } from '../context/auth-context';
 import sellarLogo from '../assets/sellar-logo-heading.png';
-import { Share2, Store, Package, RotateCcw, Inbox, Wallet, UserPlus } from "lucide-react"; // <-- Add Globe icon
+import { Share2, Store, Package, RotateCcw, Inbox, Wallet, UserPlus, Search, PackagePlus } from "lucide-react";
 import { useOrderSound } from '../Catalogue/hooks/useOrderSound';
 import { useConfirmedOrdersCount } from '../Catalogue/hooks/useConfirmedOrdersCount';
 import GlobalCatalogueModal from '../Components/CatalogueShareCard';
@@ -25,6 +25,9 @@ import { Cata_Permissions } from '../Catalogue/enum/cata_permissions.enum';
 import { TutorialStep } from '../Components/TutorialStep';
 import PosCataSwitcher from '../Components/PosCataSwitcher';
 import NotificationBell from '../Components/NotificationBell';
+import { Sidebar, type QuickAction } from '../Components/layout/SideBar';
+import { Header } from '../Components/layout/Header';
+import { CommandPalette, type Destination } from '../Components/layout/CommandPalette';
 
 const CatalogueLayout = () => {
     const navigate = useNavigate();
@@ -54,6 +57,7 @@ const CatalogueLayout = () => {
     const [storeLink, setStoreLink] = useState(`${window.location.origin}/catalogue/${currentUser?.companyId}`);
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
     const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
+    const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
     const { addExpense } = useExpenses(currentUser?.companyId, 'catalogue');
 
     const { settings: shopSettings, isClosingSoon, shouldAutoClose, needsReset } = useShopHours(currentUser?.companyId);
@@ -188,7 +192,7 @@ const CatalogueLayout = () => {
                         {icon}
 
                         {label === "Orders" && confirmedCount > 0 && (
-                            <span className="absolute -top-2 -right-2 min-w-[16px] h-[16px] px-1 flex items-center justify-center text-[9px] font-bold bg-red-500 text-white rounded-full">
+                            <span className="absolute -top-2 -right-2 min-w-[16px] h-[16px] px-1 flex items-center justify-center text-[9px] font-bold bg-red-500 text-white rounded-sm">
                                 {confirmedCount}
                             </span>
                         )}
@@ -207,18 +211,43 @@ const CatalogueLayout = () => {
         ) : link;
     };
 
-    const sidebarLinkClass = (isActive: boolean) =>
-        `flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium transition-all ${isActive
-            ? 'bg-orange-50 text-[#F97316] shadow-sm border border-orange-100'
-            : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent'
-        }`;
+    // const sidebarLinkClass = (isActive: boolean) =>
+    //     `flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium transition-all ${isActive
+    //         ? 'bg-orange-50 text-[#F97316] shadow-sm border border-orange-100'
+    //         : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent'
+    //     }`;
 
-    // 3. Pass the dynamic link into the Custom Event!
     const handleShare = () => {
         window.dispatchEvent(new CustomEvent("open-catalogue-share", {
             detail: { link: storeLink }
         }));
     };
+
+    // Sidebar main nav (Orders pe red badge ke saath)
+    const sidebarNavItems = CatItems.map((item) => ({
+        ...item,
+        badge: item.label === 'Orders' ? confirmedCount : undefined,
+    }));
+
+    // Sidebar quick actions
+    const quickActions: QuickAction[] = [
+        { key: 'catalog', to: `${ROUTES.CHOME}/${ROUTES.ORDER}`, icon: <Store className="size-4" />, label: 'Edit Catalog', permission: Cata_Permissions.ViewShop },
+        { key: 'item', to: `${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`, icon: <PackagePlus className="size-4" />, label: 'Add Item', permission: Cata_Permissions.ManageItems },
+        { key: 'requests', to: `${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`, icon: <Inbox className="size-4" />, label: 'Requests', permission: Cata_Permissions.ViewCatalogueRequests },
+        { key: 'returns', to: `${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`, icon: <RotateCcw className="size-4" />, label: 'Orders Return', permission: Cata_Permissions.ViewOrdersReturn },
+        { key: 'expense', icon: <Wallet className="size-4" />, label: 'Add Expense', permission: Cata_Permissions.ViewExpenseReport, onClick: () => setIsExpenseModalOpen(true) },
+        { key: 'user', icon: <UserPlus className="size-4" />, label: 'Add User', permission: Cata_Permissions.ManageUserSettings, onClick: () => setIsAddUserModalOpen(true) },
+        { key: 'share', icon: <Share2 className="size-4" />, label: 'Share', onClick: handleShare },
+    ];
+
+    // Search (Ctrl+K / mobile icon) me kya-kya milega
+    const searchDestinations: Destination[] = [
+        ...CatItems.map(({ to, label }) => ({ label, hint: 'Go to page', to })),
+        { label: 'Edit Catalog', hint: 'Manage your catalogue', to: `${ROUTES.CHOME}/${ROUTES.ORDER}` },
+        { label: 'Add Item', hint: 'Add a new product', to: `${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}` },
+        { label: 'Requests', hint: 'Catalogue requests', to: `${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}` },
+        { label: 'Orders Return', hint: 'Returned orders', to: `${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}` },
+    ];
 
     const fabActionClass = 'w-full mb-2 rounded-sm bg-white shadow-sm';
     const fabIconBadgeClass = 'w-10 h-10 rounded-full bg-orange-100 text-[#F97316] flex items-center justify-center';
@@ -284,7 +313,7 @@ const CatalogueLayout = () => {
     );
 
     return (
-        <div className="h-dvh w-screen flex flex-col md:flex-row overflow-hidden bg-gray-100">
+        <div className="relative h-dvh w-screen flex flex-col md:flex-row overflow-hidden bg-gray-100 md:bg-gradient-to-br md:from-orange-50 md:via-white md:to-slate-100">
             {showReminder && shopSettings && (
                 <ShopClosingReminderModal
                     closeTime={shopSettings.closeTime}
@@ -311,17 +340,29 @@ const CatalogueLayout = () => {
                     alt="Sellar Logo"
                     className="h-6 absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
                 />
-                <ShowWrapper requiredPermission={Cata_Permissions.ViewNotification}>
-                    <NotificationBell />
-                </ShowWrapper>
+                <div className="flex items-center gap-1">
+                    <button
+                        type="button"
+                        aria-label="Search"
+                        onClick={() => setIsMobileSearchOpen(true)}
+                        className="flex size-9 items-center justify-center rounded-sm text-slate-600 transition-colors active:bg-slate-100"
+                    >
+                        <Search size={20} />
+                    </button>
+                    <ShowWrapper requiredPermission={Cata_Permissions.ViewNotification}>
+                        <NotificationBell />
+                    </ShowWrapper>
+                </div>
             </header>
 
             {/* --- DESKTOP SIDEBAR --- */}
-            <aside className="hidden md:flex flex-col w-56 bg-white border-r border-slate-200 h-full flex-shrink-0 z-20">
-                <div className="p-6 border-b border-slate-100">
-                    <img src={sellarLogo} alt="Sellar Logo" className="w-48" />
-                </div>
-                <div className="px-4 pb-2">
+            <Sidebar
+                theme="orange"
+                navItems={sidebarNavItems}
+                quickActions={quickActions}
+                userName={currentUser?.name}
+                userRole={currentUser?.role}
+                switcher={
                     <TutorialStep
                         step={1}
                         currentStep={!isMobileView ? switcherStep : -1}
@@ -333,108 +374,18 @@ const CatalogueLayout = () => {
                             <PosCataSwitcher current="CATALOG" />
                         </div>
                     </TutorialStep>
-                </div>
-
-                <nav className="flex-1 overflow-y-auto p-4 space-y-1">
-                    {/* MAIN NAV */}
-                    {CatItems.map(({ to, icon, label }) => (
-                        <NavLink
-                            key={to}
-                            to={to}
-                            end
-                            className={({ isActive }) => sidebarLinkClass(isActive)}
-                        >
-                            <span className="text-lg">{icon}</span>
-
-                            <div className="flex items-center justify-between w-full">
-                                <span>{label}</span>
-
-                                {label === "Orders" && confirmedCount > 0 && (
-                                    <span className="ml-2 px-2 py-[2px] text-[10px] font-bold bg-red-500 text-white rounded-full">
-                                        {confirmedCount}
-                                    </span>
-                                )}
-                            </div>
-                        </NavLink>
-                    ))}
-
-                    {/* QUICK ACTIONS */}
-                    <div className="pt-4 pb-2">
-                        <div className="border-t border-dashed border-slate-200" />
-                        <p className="px-4 pt-4 pb-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                            Quick Actions
-                        </p>
-                    </div>
-                    <ShowWrapper requiredPermission={Cata_Permissions.ViewShop}>
-                        <NavLink
-                            to={`${ROUTES.CHOME}/${ROUTES.ORDER}`}
-                            end
-                            className={({ isActive }) => sidebarLinkClass(isActive)}
-                        >
-                            <span className="text-lg">+</span>
-                            <span>Edit Catalog</span>
-                        </NavLink>
-                    </ShowWrapper>
-                    <ShowWrapper requiredPermission={Cata_Permissions.ManageItems}>
-                        <NavLink
-                            to={`${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`}
-                            end
-                            className={({ isActive }) => sidebarLinkClass(isActive)}
-                        >
-                            <span className="text-lg">+</span>
-                            <span>Add Item</span>
-                        </NavLink>
-                    </ShowWrapper>
-                    <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueRequests}>
-                        <NavLink
-                            to={`${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`}
-                            end
-                            className={({ isActive }) => sidebarLinkClass(isActive)}
-                        >
-                            <span className="text-lg">+</span>
-                            <span>Requests</span>
-                        </NavLink>
-                    </ShowWrapper>
-                    <ShowWrapper requiredPermission={Cata_Permissions.ViewOrdersReturn}>
-                        <NavLink
-                            to={`${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`}
-                            end
-                            className={({ isActive }) => sidebarLinkClass(isActive)}
-                        >
-                            <span className="text-lg">+</span>
-                            <span>Orders Return</span>
-                        </NavLink>
-                    </ShowWrapper>
-                    <ShowWrapper requiredPermission={Cata_Permissions.ViewExpenseReport}>
-                        <button
-                            onClick={() => setIsExpenseModalOpen(true)}
-                            className={sidebarLinkClass(false)}
-                        >
-                            <span className="text-lg">+</span>
-                            <span>Add Expense</span>
-                        </button>
-                    </ShowWrapper>
-                    <ShowWrapper requiredPermission={Cata_Permissions.ManageUserSettings}>
-                        <button
-                            onClick={() => setIsAddUserModalOpen(true)}
-                            className={sidebarLinkClass(false)}
-                        >
-                            <span className="text-lg">+</span>
-                            <span>Add User</span>
-                        </button>
-                    </ShowWrapper>
-                    <button
-                        onClick={handleShare}
-                        className={sidebarLinkClass(false)} // same design, no active
-                    >
-                        <Share2 size={18} />
-                        <span>Share</span>
-                    </button>
-                </nav>
-            </aside>
+                }
+            />
 
             {/* --- MAIN CONTENT --- */}
             <main className="flex-1 relative flex flex-col min-w-0 overflow-hidden">
+                <Header
+                    theme="orange"
+                    navItems={CatItems}
+                    userName={currentUser?.name}
+                    destinations={searchDestinations}
+                    notificationPermission={Cata_Permissions.ViewNotification}
+                />
                 <div ref={scrollRef} className="flex-1 overflow-y-auto pb-20 md:pb-4 scroll-smooth">
                     <Suspense fallback={<div>Loading...</div>}>
                         <Outlet />
@@ -445,7 +396,7 @@ const CatalogueLayout = () => {
                 <div className="md:hidden absolute bottom-20 right-4 z-50">
                     <button
                         onClick={handleShare}
-                        className="bg-white border border-gray-300 shadow-md rounded-full p-3"
+                        className="bg-white border border-gray-300 shadow-md rounded-sm p-3"
                     >
                         <Share2 size={20} />
                     </button>
@@ -489,6 +440,11 @@ const CatalogueLayout = () => {
             <AddUserModal
                 isOpen={isAddUserModalOpen}
                 onClose={() => setIsAddUserModalOpen(false)}
+            />
+            <CommandPalette
+                open={isMobileSearchOpen}
+                onOpenChange={setIsMobileSearchOpen}
+                destinations={searchDestinations}
             />
         </div>
     );

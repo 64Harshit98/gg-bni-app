@@ -4,7 +4,7 @@ import { db } from '../lib/Firebase'; // adjust path if your db export differs
 import { useAuth } from '../context/auth-context'; // adjust if your auth hook path/name differs
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '../Components/ui/button';
-import { Receipt, ShoppingCart, Package, ScanLine, UserPlus, Wallet } from 'lucide-react';
+import { Receipt, ShoppingCart, Package, ScanLine, UserPlus, Wallet, PackagePlus, Plus, Scan, Search } from 'lucide-react';
 import { navItems, mobileNavItems } from '../routes/bottomRoutes';
 import { FloatingButton } from '../Components/FloatingButton';
 import { ROUTES } from '../constants/routes.constants';
@@ -20,16 +20,18 @@ import { ROLES } from '../enums';
 import ShopClosingReminderModal from '../Components/ShopClosingReminderModal';
 import PosCataSwitcher from '../Components/PosCataSwitcher';
 import NotificationBell from '../Components/NotificationBell';
+import { Sidebar, type QuickAction } from '../Components/layout/SideBar';
+import { Header } from '../Components/layout/Header';
+import { CommandPalette } from '../Components/layout/CommandPalette';
 
 
 const MainLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  //const isHomePage = location.pathname === ROUTES.HOME; // <-- adjust to actual home route constant
   const scrollRef = useRef<HTMLDivElement>(null);
   const [tutorialStep, setTutorialStep] = useState(-1); // -1 = hidden by default
 
-  // Dashboard tutorial step 1 (POS/Catalogue switcher) is rendered here in the strip
+  // Dashboard tutorial step 1 (POS/Catalogue switcher)
   const [switcherStep, setSwitcherStep] = useState(-1);
   const isMobileView = window.innerWidth < 768;
 
@@ -44,6 +46,7 @@ const MainLayout = () => {
 
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const { currentUser } = useAuth();
   const { addExpense } = useExpenses(currentUser?.companyId, 'pos');
 
@@ -115,12 +118,8 @@ const MainLayout = () => {
       }
     };
 
-    // run once when user is available
     checkTutorial();
-
-    // keep listening for dashboard completion
     window.addEventListener("dashboard_tutorial_done", checkTutorial);
-
     return () => window.removeEventListener("dashboard_tutorial_done", checkTutorial);
   }, [currentUser]);
 
@@ -156,7 +155,7 @@ const MainLayout = () => {
   const isActive = (path: string) => location.pathname === path;
 
   const fabActionClass = 'w-full mb-2 rounded-sm bg-white shadow-sm';
-  const fabIconBadgeClass = 'w-10 h-10 rounded-full bg-sky-100 text-sky-600 flex items-center justify-center';
+  const fabIconBadgeClass = 'w-10 h-10 rounded-sm bg-sky-100 text-sky-600 flex items-center justify-center';
   const fabLabelClass = 'text-[11px] font-medium text-gray-700';
 
   const MobileActionButtons = () => (
@@ -222,15 +221,19 @@ const MainLayout = () => {
     ) : link;
   };
 
-  const sidebarLinkClass = (path: string) =>
-    `flex items-center gap-3 px-4 py-3 rounded-sm text-sm font-medium transition-all ${isActive(path)
-      ? 'bg-sky-50 text-sky-600 shadow-sm border border-sky-100'
-      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent'
-    }`;
+  // Desktop sidebar quick actions
+  const quickActions: QuickAction[] = [
+    { key: 'sales', to: ROUTES.SALES, icon: <ShoppingCart className="size-4" />, label: 'Add Sales', permission: Permissions.CreateSales },
+    { key: 'purchase', to: ROUTES.PURCHASE, icon: <PackagePlus className="size-4" />, label: 'Add Purchase', permission: Permissions.CreatePurchase },
+    { key: 'item', to: ROUTES.ITEM_ADD, icon: <Plus className="size-4" />, label: 'Add Item', permission: Permissions.ManageItems },
+    { key: 'barcode', to: ROUTES.PRINTQR, icon: <Scan className="size-4" />, label: 'Add Barcode', permission: Permissions.PrintQR },
+    { key: 'user', icon: <UserPlus className="size-4" />, label: 'Add User', permission: Permissions.CreateUsers, onClick: () => setIsAddUserModalOpen(true) },
+    { key: 'expense', icon: <Receipt className="size-4" />, label: 'Add Expense', permission: Permissions.ViewReports, onClick: () => setIsExpenseModalOpen(true) },
+  ];
 
   return (
-    <div className="h-dvh w-screen flex flex-col md:flex-row overflow-hidden bg-gray-100">
-      {/* NEW: Closing Reminder Modal */}
+    <div className="relative h-dvh w-screen flex flex-col md:flex-row overflow-hidden bg-gray-100 md:bg-gradient-to-br md:from-sky-50 md:via-white md:to-slate-100">
+      {/* Closing Reminder Modal */}
       {showReminder && shopSettings && (
         <ShopClosingReminderModal
           closeTime={shopSettings.closeTime}
@@ -238,6 +241,8 @@ const MainLayout = () => {
           onSnooze={handleSnooze}
         />
       )}
+
+      {/* MOBILE HEADER (unchanged) */}
       <header className="md:hidden relative flex items-center justify-between px-3 py-2 bg-white border-b border-slate-200 z-[150]">
         <TutorialStep
           step={1}
@@ -256,19 +261,28 @@ const MainLayout = () => {
           alt="Sellar Logo"
           className="h-6 absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
         />
-        <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-          <NotificationBell />
-        </ShowWrapper>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            aria-label="Search"
+            onClick={() => setIsMobileSearchOpen(true)}
+            className="flex size-9 items-center justify-center rounded-sm text-slate-600 transition-colors active:bg-slate-100"
+          >
+            <Search size={20} />
+          </button>
+          <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+            <NotificationBell />
+          </ShowWrapper>
+        </div>
       </header>
 
-      {/* DESKTOP SIDEBAR */}
-      <aside className="hidden md:flex flex-col w-56 bg-white border-r border-slate-200 h-full flex-shrink-0 z-20">
-        <div className="p-6 border-b border-slate-100">
-          <h1 className="text-xl font-bold text-slate-800">
-            <img src={sellarLogo} alt="Sellar Logo" className="w-48" />
-          </h1>
-        </div>
-        <div className="px-4 pb-2">
+      {/* DESKTOP SIDEBAR (new) */}
+      <Sidebar
+        navItems={navItems}
+        quickActions={quickActions}
+        userName={currentUser?.name}
+        userRole={currentUser?.role}
+        switcher={
           <TutorialStep
             step={1}
             currentStep={!isMobileView ? switcherStep : -1}
@@ -280,50 +294,22 @@ const MainLayout = () => {
               <PosCataSwitcher current="POS" />
             </div>
           </TutorialStep>
-        </div>
-        <nav className="flex-1 overflow-y-auto p-4 space-y-1">
-          {navItems.map(({ to, icon, label }) => (
-            <Link key={to} to={to} className={sidebarLinkClass(to)}>
-              <span className="text-lg">{icon}</span>
-              <span>{label}</span>
-            </Link>
-          ))}
-          <div className="pt-4 pb-2">
-            <div className="border-t border-slate-200" />
-            <p className="px-4 pt-4 pb-2 text-xs font-semibold text-slate-400 uppercase tracking-wider">Quick Actions</p>
-          </div>
-          <ShowWrapper requiredPermission={Permissions.CreateSales}>
-            <Link to={ROUTES.SALES} className={sidebarLinkClass(ROUTES.SALES)}><span className="text-lg">+</span><span>Add Sales</span></Link>
-          </ShowWrapper>
-          <ShowWrapper requiredPermission={Permissions.CreatePurchase}>
-            <Link to={ROUTES.PURCHASE} className={sidebarLinkClass(ROUTES.PURCHASE)}><span className="text-lg">+</span><span>Add Purchase</span></Link>
-          </ShowWrapper>
-          <ShowWrapper requiredPermission={Permissions.ManageItems}>
-            <Link to={ROUTES.ITEM_ADD} className={sidebarLinkClass(ROUTES.ITEM_ADD)}><span className="text-lg">+</span><span>Add Item</span></Link>
-          </ShowWrapper>
-          <ShowWrapper requiredPermission={Permissions.PrintQR}>
-            <Link to={ROUTES.PRINTQR} className={sidebarLinkClass(ROUTES.PRINTQR)}><span className="text-lg">+</span><span>Add Barcode</span></Link>
-          </ShowWrapper>
-          <ShowWrapper requiredPermission={Permissions.CreateUsers}>
-            <button onClick={() => setIsAddUserModalOpen(true)} className={sidebarLinkClass('')}><span className="text-lg">+</span><span>Add User</span></button>
-          </ShowWrapper>
-          <ShowWrapper requiredPermission={Permissions.ViewReports}>
-            <button onClick={() => setIsExpenseModalOpen(true)} className={sidebarLinkClass('')}><span className="text-lg">+</span><span>Add Expense</span></button>
-          </ShowWrapper>
-        </nav>
-      </aside>
+        }
+      />
 
       {/* MAIN CONTENT */}
       <main className="flex-1 relative flex flex-col min-w-0 overflow-hidden">
+        {/* DESKTOP TOP BAR + SEARCH (new) — renders on every page */}
+        <Header navItems={navItems} userName={currentUser?.name} />
+
         <div ref={scrollRef} className="flex-1 overflow-y-auto pb-16 md:pb-4 scroll-smooth">
           <Suspense fallback={<div>Loading...</div>}>
             <Outlet />
           </Suspense>
         </div>
-
       </main>
 
-      {/* MOBILE BOTTOM NAV */}
+      {/* MOBILE BOTTOM NAV (unchanged) */}
       <nav className="md:hidden fixed bottom-0 left-0 w-full bg-white z-40">
         <div className="flex justify-around items-center gap-2 px-2 pt-2 pb-3">
           {mobileNavItems.slice(0, 2).map((item) => renderMobileNavLink(item))}
@@ -359,6 +345,7 @@ const MainLayout = () => {
         isOpen={isAddUserModalOpen}
         onClose={() => setIsAddUserModalOpen(false)}
       />
+      <CommandPalette open={isMobileSearchOpen} onOpenChange={setIsMobileSearchOpen} />
     </div>
   );
 };

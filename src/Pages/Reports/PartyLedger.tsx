@@ -252,6 +252,12 @@ const PartyLedger: React.FC = () => {
             setSendingReminderFor(null);
         }
     };
+    // Reminder sirf Customer / Both ko jayega — pure Supplier ko nahi
+    const canRemind = (party: PartySummary) =>
+        party.partyType !== 'Supplier' &&
+        party.totalDue > 0 &&
+        !!party.partyNumber &&
+        party.partyNumber !== 'N/A';
 
     useEffect(() => {
         // Set default to last 30 days (acts as last month)
@@ -1239,9 +1245,9 @@ const PartyLedger: React.FC = () => {
                                                         </p>
                                                     </div>
                                                 </div>
-                                                {/* Remind + Delete row */}
+                                                {/* Remind + Settle + Delete row */}
                                                 <div className="mt-2 pt-2 border-t border-slate-100 flex gap-2">
-                                                    {party.totalDue > 0 && party.partyNumber && party.partyNumber !== 'N/A' && whatsappProvider === 'botmaster' && (
+                                                    {canRemind(party) && whatsappProvider === 'botmaster' && (
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
@@ -1253,7 +1259,7 @@ const PartyLedger: React.FC = () => {
                                                             {sendingReminderFor === party.partyNumber ? <Spinner /> : 'Remind'}
                                                         </button>
                                                     )}
-                                                    {party.totalDue > 0 && party.partyNumber && party.partyNumber !== 'N/A' && (whatsappProvider === 'snapto' || whatsappProvider === 'sellar') && (
+                                                    {canRemind(party) && (whatsappProvider === 'snapto' || whatsappProvider === 'sellar') && (
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
@@ -1265,7 +1271,53 @@ const PartyLedger: React.FC = () => {
                                                             {sendingReminderFor === party.partyNumber ? <Spinner /> : 'Remind'}
                                                         </button>
                                                     )}
-                                                    {/* NEW: per-party delete button */}
+
+                                                    
+                                                    {party.totalDue > 0 && (
+                                                        <button
+                                                            onClick={async (e) => {
+                                                                e.stopPropagation();
+
+                                                                // Party ka type decide karo: pure Supplier => 'purchase', warna 'sale'
+                                                                const isSupplierParty = party.partyType === 'Supplier';
+
+                                                                setSelectedInvoiceForPayment({
+                                                                    id: `settle-all-${party.partyNumber || party.partyName}`,
+                                                                    invoiceNumber: undefined,
+                                                                    type: isSupplierParty ? 'purchase' : 'sale',
+                                                                    totalAmount: party.totalDue,
+                                                                    dueAmount: party.totalDue,
+                                                                    partyName: party.partyName,
+                                                                    partyNumber: party.partyNumber,
+                                                                    createdAt: Date.now(),
+                                                                    isSettleAll: true,   // PaymentModal onSubmit routing isi flag se hoti hai
+                                                                    partyRef: party,     // handleSettleAllPayment isi se party.transactions padhta hai
+                                                                });
+
+                                                                // availableCredit fetch (Customer => creditBalance, Supplier => debitBalance)
+                                                                const partyNum = (party.partyNumber || '').replace(/\D/g, '').slice(-10);
+                                                                if (partyNum && companyId) {
+                                                                    try {
+                                                                        const collectionName = isSupplierParty ? 'suppliers' : 'customers';
+                                                                        const balanceField = isSupplierParty ? 'debitBalance' : 'creditBalance';
+                                                                        const partyDocRef = doc(db, 'companies', companyId, collectionName, partyNum);
+                                                                        const snap = await getDoc(partyDocRef);
+                                                                        setAvailableCredit(snap.exists() ? Number(snap.data()[balanceField] || 0) : 0);
+                                                                    } catch {
+                                                                        setAvailableCredit(0);
+                                                                    }
+                                                                } else {
+                                                                    setAvailableCredit(0);
+                                                                }
+
+                                                                setIsPaymentModalOpen(true);
+                                                            }}
+                                                            className="flex-1 py-1.5 text-[11px] font-bold text-white bg-blue-600 rounded-sm hover:bg-blue-700 transition-colors"
+                                                        >
+                                                            Settle
+                                                        </button>
+                                                    )}
+
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();

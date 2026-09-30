@@ -104,6 +104,9 @@ interface PaymentDrawerProps {
     onTaxModeChange?: (mode: 'inclusive' | 'exclusive' | 'exempt') => void;
     isTaxToggleLocked?: boolean;
     totalMrp?: number;
+    // Sales Setting cap on the Bill Discount field below — 0/undefined means no cap.
+    maxBillDiscountValue?: number;
+    maxBillDiscountType?: 'percent' | 'amount';
 }
 
 // --- SESSION STORAGE KEYS ---
@@ -174,6 +177,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     onTaxModeChange,
     isTaxToggleLocked = false,
     totalMrp = 0,
+    maxBillDiscountValue = 0,
+    maxBillDiscountType = 'percent',
 }) => {
     const { currentUser } = useAuth();
 
@@ -801,8 +806,26 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const handleDiscountPressStart = () => longPressTimer.current = setTimeout(() => setIsDiscountLocked(false), 500);
     const handleDiscountPressEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
     const handleDiscountClick = () => { if (isDiscountLocked) { setDiscountInfo("Cannot edit"); setTimeout(() => setDiscountInfo(null), 3000); } };
+    // Sales Setting cap on Bill Discount — 0/unset means no cap. Converts
+    // whichever unit the owner configured (% or ₹) to both, against the
+    // current bill total, so either input can be clamped directly.
+    const getBillDiscountCap = () => {
+        if (!maxBillDiscountValue || maxBillDiscountValue <= 0) return null;
+        if (maxBillDiscountType === 'amount') {
+            const maxAmount = maxBillDiscountValue;
+            const maxPercent = billTotal > 0 ? (maxAmount / billTotal) * 100 : 0;
+            return { maxAmount, maxPercent };
+        }
+        const maxPercent = maxBillDiscountValue;
+        const maxAmount = (maxPercent / 100) * billTotal;
+        return { maxAmount, maxPercent };
+    };
+
     const handleDiscountAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const amt = parseFloat(e.target.value) || 0;
+        let amt = parseFloat(e.target.value) || 0;
+        if (amt < 0) amt = 0;
+        const cap = getBillDiscountCap();
+        if (cap && amt > cap.maxAmount) amt = cap.maxAmount;
         setDiscount(amt);
         setDiscountPercent(billTotal > 0 ? parseFloat(((amt / billTotal) * 100).toFixed(2)) : 0);
     };
@@ -811,6 +834,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         let pct = parseFloat(e.target.value) || 0;
         if (pct > 100) pct = 100;
         if (pct < 0) pct = 0;
+        const cap = getBillDiscountCap();
+        if (cap && pct > cap.maxPercent) pct = cap.maxPercent;
         setDiscountPercent(pct);
         setDiscount(parseFloat(((pct / 100) * billTotal).toFixed(2)));
     };

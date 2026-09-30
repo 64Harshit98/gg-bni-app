@@ -77,6 +77,10 @@ export const generateA5Invoice = async (
     const showGstinDetails = !resolvedIsEstimate && safeScheme !== 'UNREGISTERED' && safeScheme !== 'NONE' && safeScheme !== '' && safeTaxType !== 'EXEMPT' && safeTaxType !== 'NONE';
     // Tax math is enabled if Composition OR (Regular + Not Exempt)
     // const isTaxEnabled = !resolvedIsEstimate && safeScheme !== 'UNREGISTERED' && safeScheme !== 'NONE' && safeScheme !== '' && (safeScheme === 'COMPOSITION' || (safeTaxType !== 'EXEMPT' && safeTaxType !== 'NONE'));
+    // Inter-state (IGST) vs intra-state (CGST+SGST) — same comparison as A4 (pdfGenerator.ts).
+    const safeCompanyState = (data.companyState || '').trim().toLowerCase();
+    const safePos = (data.placeOfSupply || '').trim().toLowerCase();
+    const isIgst = Boolean(safeCompanyState && safePos && safeCompanyState !== safePos);
 
     const hasImages = data.items.some(
         (item: any) =>
@@ -505,7 +509,7 @@ export const generateA5Invoice = async (
                 "Product",
                 "Qty.",
                 "Price",
-                ...(resolvedIsEstimate ? [] : ["GST (%)", "GST Amt"]),
+                ...(resolvedIsEstimate ? [] : [isIgst ? "IGST (%)" : "GST (%)", isIgst ? "IGST Amt" : "GST Amt"]),
                 "Discount",
                 "Amount"
             ]],
@@ -612,17 +616,21 @@ export const generateA5Invoice = async (
         let gstTableBottomY = finalY;
         // --- 4. TAX BREAKDOWN TABLE (BEFORE PAYMENT INFO) ---
         if (!resolvedIsEstimate && showGstinDetails) {
-            const taxBreakdownData: Record<string, { taxable: number, cgst: number, sgst: number }> = {};
+            const taxBreakdownData: Record<string, { taxable: number, cgst: number, sgst: number, igst: number }> = {};
 
             processedItems.forEach(item => {
                 if (item.effectiveTaxRate > 0) {
                     const rateKey = item.effectiveTaxRate.toString();
                     if (!taxBreakdownData[rateKey]) {
-                        taxBreakdownData[rateKey] = { taxable: 0, cgst: 0, sgst: 0 };
+                        taxBreakdownData[rateKey] = { taxable: 0, cgst: 0, sgst: 0, igst: 0 };
                     }
                     taxBreakdownData[rateKey].taxable += item.taxableValue;
-                    taxBreakdownData[rateKey].cgst += (item.taxAmt / 2);
-                    taxBreakdownData[rateKey].sgst += (item.taxAmt / 2);
+                    if (isIgst) {
+                        taxBreakdownData[rateKey].igst += item.taxAmt;
+                    } else {
+                        taxBreakdownData[rateKey].cgst += (item.taxAmt / 2);
+                        taxBreakdownData[rateKey].sgst += (item.taxAmt / 2);
+                    }
                 }
             });
 
@@ -637,29 +645,29 @@ export const generateA5Invoice = async (
                     finalY = 20;
                 }
 
+                const fmt = (n: number) => n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
                 autoTable(doc, {
                     startY: finalY,
                     margin: { left: 5 },
-                    head: [["Tax Rate", "Taxable Amt.", "CGST", "SGST", "Total Tax"]],
-                    body: [
-                        ...Object.keys(taxBreakdownData).map(rate => {
-                            const d = taxBreakdownData[rate];
-                            return [
-                                `${rate}%`,
-                                d.taxable.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                                (d.cgst).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                                (d.sgst).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                                (d.cgst + d.sgst).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                            ];
-                        }),
-                        [
-                            "TOTAL",
-                            totalTaxable.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                            (totalTaxAmt / 2).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                            (totalTaxAmt / 2).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                            totalTaxAmt.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                    head: isIgst
+                        ? [["Tax Rate", "Taxable Amt.", "IGST", "Total Tax"]]
+                        : [["Tax Rate", "Taxable Amt.", "CGST", "SGST", "Total Tax"]],
+                    body: isIgst
+                        ? [
+                            ...Object.keys(taxBreakdownData).map(rate => {
+                                const d = taxBreakdownData[rate];
+                                return [`${rate}%`, fmt(d.taxable), fmt(d.igst), fmt(d.igst)];
+                            }),
+                            ["TOTAL", fmt(totalTaxable), fmt(totalTaxAmt), fmt(totalTaxAmt)]
                         ]
-                    ],
+                        : [
+                            ...Object.keys(taxBreakdownData).map(rate => {
+                                const d = taxBreakdownData[rate];
+                                return [`${rate}%`, fmt(d.taxable), fmt(d.cgst), fmt(d.sgst), fmt(d.cgst + d.sgst)];
+                            }),
+                            ["TOTAL", fmt(totalTaxable), fmt(totalTaxAmt / 2), fmt(totalTaxAmt / 2), fmt(totalTaxAmt)]
+                        ],
                     theme: 'grid',
                     styles: {
                         fontSize: 6,

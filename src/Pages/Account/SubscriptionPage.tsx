@@ -7,9 +7,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { logoutUser } from '../../lib/AuthOperations';
 import { ROUTES } from '../../constants/routes.constants';
-import { validateCoupon, createRazorpayOrder, verifyRazorpayPayment } from '../../lib/PaymentOperations';
-import { loadRazorpayCheckoutScript, openRazorpayCheckout } from '../../lib/Razorpay';
-import PaymentActivationScreen from './PaymentActivationScreen';
+import { validateCoupon, createIciciOrder } from '../../lib/PaymentOperations';
 
 // --- HELPER: Feature Descriptions ---
 const FEATURE_DESCRIPTIONS: Record<string, string> = {
@@ -209,7 +207,6 @@ const SubscriptionPage: React.FC = () => {
     const [isDetailsOpen] = useState(true);
     const [selectedTooltip, setSelectedTooltip] = useState<string | null>(null);
     const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number } | null>(null);
-    const [isActivating, setIsActivating] = useState(false);
 
     const subData = (currentUser as any)?.subscription || (currentUser as any)?.Subscription;
     const currentPack = subData?.pack || PLANS.POS_BASIC;
@@ -309,36 +306,8 @@ const SubscriptionPage: React.FC = () => {
         setPaying(true);
         setPayError('');
         try {
-            const scriptLoaded = await loadRazorpayCheckoutScript();
-            if (!scriptLoaded) throw new Error('Could not load the payment gateway. Check your connection and try again.');
-
-            const order = await createRazorpayOrder(checkoutTier.id, appliedCoupon?.code);
-
-            openRazorpayCheckout({
-                keyId: order.keyId,
-                orderId: order.orderId,
-                amount: order.amount,
-                currency: order.currency,
-                name: 'Subscription',
-                description: checkoutTier.name,
-                prefill: { name: (currentUser as any)?.name, email: userEmail },
-                onSuccess: async (response) => {              // ← YAHAN, isi jagah replace karo
-                    setIsActivating(true);
-                    try {
-                        await verifyRazorpayPayment(response.razorpay_order_id, response.razorpay_payment_id, response.razorpay_signature);
-                        setCheckoutTier(null);
-                        window.setTimeout(() => {
-                            window.location.href = ROUTES.LANDING;
-                        }, 1600);
-                    } catch (err: any) {
-                        setIsActivating(false);
-                        setPayError(err.message || 'Payment was received but activation failed. Please contact support.');
-                    } finally {
-                        setPaying(false);
-                    }
-                },
-                onDismiss: () => setPaying(false),
-            });
+            const order = await createIciciOrder(checkoutTier.id, appliedCoupon?.code);
+            window.location.href = order.redirectURI;
         } catch (err: any) {
             setPayError(err.message || 'Failed to start payment.');
             setPaying(false);
@@ -697,7 +666,6 @@ const SubscriptionPage: React.FC = () => {
                     </div>
                 </div>
             )}
-            {isActivating && <PaymentActivationScreen />}
             {isContactModalOpen && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-lg shadow-2xl max-w-md w-full p-6">

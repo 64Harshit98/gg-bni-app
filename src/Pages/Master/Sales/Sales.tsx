@@ -1005,6 +1005,8 @@ const Sales: React.FC = () => {
                     enableExtraExpense={salesSettings?.enableExtraExpense}
                     enableNarration={salesSettings?.enableNarration}
                     enableTransportDetails={salesSettings?.enableTransportDetails ?? false}
+                    maxBillDiscountValue={salesSettings?.maxBillDiscountValue}
+                    maxBillDiscountType={salesSettings?.maxBillDiscountType}
                 />
                 <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
                 <TierPickerModal
@@ -1202,6 +1204,8 @@ const Sales: React.FC = () => {
                     initialPartyNumber={''}
                     totalItemDiscount={totalDiscount}
                     totalQuantity={totalQuantity}
+                    maxBillDiscountValue={salesSettings?.maxBillDiscountValue}
+                    maxBillDiscountType={salesSettings?.maxBillDiscountType}
                 />
 
             </div>
@@ -1460,6 +1464,8 @@ const Sales: React.FC = () => {
                 onTaxModeChange={setActiveTaxMode}
                 isTaxToggleLocked={(salesSettings?.gstScheme !== 'regular' || salesSettings?.lockTaxToggle)}
                 totalMrp={totalMrp}
+                maxBillDiscountValue={salesSettings?.maxBillDiscountValue}
+                maxBillDiscountType={salesSettings?.maxBillDiscountType}
             />
             <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
 

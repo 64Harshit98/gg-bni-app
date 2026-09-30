@@ -36,11 +36,15 @@ export const generateThermalReceipt = (
     const isComposition = safeScheme === 'COMPOSITION';
     const showGstinDetails = !isEstimate && safeScheme !== 'NONE' && safeTaxType !== 'EXEMPT' && safeTaxType !== 'NONE';
     const showTaxDetails = !isEstimate && safeScheme !== 'NONE' && (safeScheme === 'COMPOSITION' || (safeTaxType !== 'EXEMPT' && safeTaxType !== 'NONE'));
+    // Inter-state (IGST) vs intra-state (CGST+SGST) — same comparison as A4 (pdfGenerator.ts).
+    const safeCompanyState = (data.companyState || '').trim().toLowerCase();
+    const safePos = (data.placeOfSupply || '').trim().toLowerCase();
+    const isIgst = Boolean(safeCompanyState && safePos && safeCompanyState !== safePos);
 
     let subTotal = 0;
     let totalTaxAmt = 0;
     let grossTotal = 0;
-    const taxBreakdown: Record<string, { taxable: number; cgst: number; sgst: number }> = {};
+    const taxBreakdown: Record<string, { taxable: number; cgst: number; sgst: number; igst: number }> = {};
 
     // Estimate item height requirements
     let itemsAreaHeight = 0;
@@ -87,10 +91,14 @@ export const generateThermalReceipt = (
 
         if (taxRate > 0 && !isComposition) {
             const rateKey = taxRate.toString();
-            if (!taxBreakdown[rateKey]) taxBreakdown[rateKey] = { taxable: 0, cgst: 0, sgst: 0 };
+            if (!taxBreakdown[rateKey]) taxBreakdown[rateKey] = { taxable: 0, cgst: 0, sgst: 0, igst: 0 };
             taxBreakdown[rateKey].taxable += taxableAmt;
-            taxBreakdown[rateKey].cgst += (taxAmt / 2);
-            taxBreakdown[rateKey].sgst += (taxAmt / 2);
+            if (isIgst) {
+                taxBreakdown[rateKey].igst += taxAmt;
+            } else {
+                taxBreakdown[rateKey].cgst += (taxAmt / 2);
+                taxBreakdown[rateKey].sgst += (taxAmt / 2);
+            }
         }
 
         // Estimate line wrap for height
@@ -113,7 +121,7 @@ export const generateThermalReceipt = (
 
     // Dynamic Height calculation
     const baseHeight = 75; // Headers & basic layout
-    const taxLinesCount = Object.keys(taxBreakdown).length * 2; // CGST + SGST per rate
+    const taxLinesCount = Object.keys(taxBreakdown).length * (isIgst ? 1 : 2); // 1 IGST line, or CGST + SGST per rate
     const taxAreaHeight = 15 + (taxLinesCount * 3);
     const narrationHeight = data.narration ? Math.ceil(data.narration.length / 30) * 3 + 5 : 0;
     const termsHeight = data.terms ? Math.ceil(data.terms.length / 30) * 3 + 10 : 10;
@@ -233,13 +241,19 @@ export const generateThermalReceipt = (
     if (showTaxDetails) {
         Object.keys(taxBreakdown).forEach((rate) => {
             const tax = taxBreakdown[rate];
-            doc.text(`CGST @${(Number(rate) / 2)}% :`, colPrice, currentY, { align: 'right' });
-            doc.text(tax.cgst.toFixed(2), colAmount, currentY, { align: 'right' });
-            currentY += 3.5;
+            if (isIgst) {
+                doc.text(`IGST @${rate}% :`, colPrice, currentY, { align: 'right' });
+                doc.text(tax.igst.toFixed(2), colAmount, currentY, { align: 'right' });
+                currentY += 3.5;
+            } else {
+                doc.text(`CGST @${(Number(rate) / 2)}% :`, colPrice, currentY, { align: 'right' });
+                doc.text(tax.cgst.toFixed(2), colAmount, currentY, { align: 'right' });
+                currentY += 3.5;
 
-            doc.text(`SGST @${(Number(rate) / 2)}% :`, colPrice, currentY, { align: 'right' });
-            doc.text(tax.sgst.toFixed(2), colAmount, currentY, { align: 'right' });
-            currentY += 3.5;
+                doc.text(`SGST @${(Number(rate) / 2)}% :`, colPrice, currentY, { align: 'right' });
+                doc.text(tax.sgst.toFixed(2), colAmount, currentY, { align: 'right' });
+                currentY += 3.5;
+            }
         });
     }
 

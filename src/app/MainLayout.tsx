@@ -44,7 +44,7 @@ const MainLayout = () => {
 
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
-  const { currentUser } = useAuth();
+  const { currentUser, hasPermission } = useAuth();
   const { addExpense } = useExpenses(currentUser?.companyId, 'pos');
 
   const { settings: shopSettings, isClosingSoon, shouldAutoClose, needsReset } = useShopHours(currentUser?.companyId);
@@ -205,21 +205,27 @@ const MainLayout = () => {
     }`;
 
   const renderMobileNavLink = ({ to, icon, label, permission }: { to: string; icon: ReactNode; label: string; permission?: Permissions }) => {
-    const link = (
-      <Link
-        key={to}
-        to={to}
-        className={mobileNavLinkClass(to)}
-      >
+    const isAllowed = !permission || hasPermission(permission);
+
+    if (!isAllowed) {
+      return (
+        <div
+          key={to}
+          aria-disabled="true"
+          className={`${mobileNavLinkClass(to)} opacity-40 pointer-events-none`}
+        >
+          <div className="flex-shrink-0">{icon}</div>
+          <span className="font-medium truncate text-[10px] sm:text-xs">{label}</span>
+        </div>
+      );
+    }
+
+    return (
+      <Link key={to} to={to} className={mobileNavLinkClass(to)}>
         <div className="flex-shrink-0">{icon}</div>
         <span className="font-medium truncate text-[10px] sm:text-xs">{label}</span>
       </Link>
     );
-    return permission ? (
-      <ShowWrapper key={to} requiredPermission={permission} mode="disable">
-        {link}
-      </ShowWrapper>
-    ) : link;
   };
 
   const sidebarLinkClass = (path: string) =>

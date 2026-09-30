@@ -817,6 +817,7 @@ const SharedCataloguePage: React.FC = () => {
                 facebook={socialLinks.facebook}
                 twitter={socialLinks.twitter}
                 gmail={socialLinks.gmail}
+                brandingText={socialLinks.brandingText}
             />
         </div>
     );

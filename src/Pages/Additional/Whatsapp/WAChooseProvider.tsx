@@ -7,6 +7,7 @@ import { useAuth } from '../../../context/auth-context';
 import { ROUTES } from '../../../constants/routes.constants';
 import BackButton from '../../../Components/BackButton';
 import { SELLAR_WHATSAPP_PLANS } from './SellarWhatsappPlans';
+import { createIciciOrder } from '../../../lib/PaymentOperations';
 
 // The Snapto signup link carries our referral/account id so signups from
 // inside the app are attributed correctly.
@@ -36,14 +37,17 @@ const WAChooseProvider: React.FC = () => {
 
   const selectedPlan = SELLAR_WHATSAPP_PLANS.find(p => p.id === selectedPlanId);
 
-  // TODO: online payment for this plan is temporarily unavailable — the
-  // gateway integration it depended on was reverted. Wire this back up to
-  // whatever payment gateway replaces it.
   const handlePayNow = async () => {
     if (!companyId || !selectedPlanId) return;
     setPaying(true);
-    setPayError('Online payment for this plan is temporarily unavailable. Please contact support.');
-    setPaying(false);
+    setPayError('');
+    try {
+      const order = await createIciciOrder(selectedPlanId, undefined, 'whatsapp');
+      window.location.href = order.redirectURI;
+    } catch (err: any) {
+      setPayError(err.message || 'Failed to start payment.');
+      setPaying(false);
+    }
   };
 
   return (
@@ -179,11 +183,6 @@ const WAChooseProvider: React.FC = () => {
               </div>
             )}
           </div>
-        </div>
-
-        <div className="mt-6 bg-blue-50 border border-blue-100 rounded-sm p-4 text-xs text-blue-800">
-          After signing up on Snapto, contact Sellar support with your <strong>API key</strong> and{' '}
-          <strong>template names</strong> to get your WhatsApp Business number activated.
         </div>
       </div>
     </div>

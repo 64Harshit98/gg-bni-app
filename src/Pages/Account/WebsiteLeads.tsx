@@ -1,307 +1,364 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { arrayUnion, collection, doc, onSnapshot, orderBy, query, Timestamp, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
-import { collection, query, where, orderBy, onSnapshot, Timestamp, doc, updateDoc } from 'firebase/firestore';
 import { useAuth } from '../../context/auth-context';
-import { CustomCard } from '../../Components/CustomCard';
-import { CardVariant } from '../../enums';
-import { IconClose } from '../../constants/Icons';
-import FilterSelect from '../Reports/SalesReportComponents/FilterSelect';
+import Loading from '../Loading/Loading';
+import type { AdminCompany, RangeKey } from './superAdmin/data';
+import { DAY_MS, ageText, downloadCsv, fmtDate, fmtDateTime, last10, loadCompanies, rangeFor, toDate, waLink } from './superAdmin/data';
+import { Alert, Btn, Card, Chip, EmptyRow, Field, LinkBtn, PageHeader, PageShell, RangeTabs, SearchBox, SelectBox, StatCard, inputCls } from './superAdmin/ui';
 
-interface Lead {
+type QueryStatus = 'new' | 'contacted' | 'issue' | 'converted' | 'not_interested';
+
+const STATUS_META: Record<QueryStatus, { label: string; cls: string; dot: string; sub: string }> = {
+  new: { label: 'NEW', cls: 'bg-blue-50 text-blue-700', dot: 'bg-blue-600', sub: 'not replied yet' },
+  contacted: { label: 'PENDING', cls: 'bg-amber-100 text-amber-800', dot: 'bg-amber-500', sub: 'in conversation' },
+  issue: { label: 'ISSUE', cls: 'bg-red-100 text-red-700', dot: 'bg-red-600', sub: 'needs a fix' },
+  converted: { label: 'CONVERTED', cls: 'bg-green-100 text-green-700', dot: 'bg-green-600', sub: '' },
+  not_interested: { label: 'NOT INTERESTED', cls: 'bg-gray-200 text-gray-700', dot: 'bg-gray-400', sub: 'closed' },
+};
+
+// The old page defaulted every query to "pending" whether or not anyone replied.
+const normalizeStatus = (s?: string): QueryStatus =>
+  s === 'contacted' || s === 'issue' || s === 'converted' || s === 'not_interested' ? s : 'new';
+
+interface Activity { type: string; text: string; at: Date | null; by?: string }
+
+interface WebQuery {
   id: string;
   fullName: string;
   email: string;
   phone: string;
   city: string;
+  businessName: string;
   message: string;
-  status: 'pending' | 'issue' | 'converted' | 'not_interested';
-  submittedAt?: any;
+  type: string;
+  sourcePage: string;
+  campaign: string;
+  status: QueryStatus;
+  submittedAt: Date | null;
+  firstRepliedAt: Date | null;
+  followUpAt: Date | null;
+  activity: Activity[];
 }
 
-const SUPER_ADMIN_UIDS = [
-  "6vwZ1HRqX7VSnh5KP4JW0TKeuZm2",
-  "1AKioGfop8PmHhry6uXOz8Rw6qT2"
-];
+const toQuery = (id: string, d: any): WebQuery => ({
+  id,
+  fullName: d.fullName || d.name || '',
+  email: d.email || '',
+  phone: d.phone || d.phoneNumber || '',
+  city: d.city || '',
+  businessName: d.businessName || d.company || '',
+  message: d.message || '',
+  type: d.type || d.queryType || '',
+  sourcePage: d.sourcePage || d.page || '',
+  campaign: d.campaign || d.utm_campaign || '',
+  status: normalizeStatus(d.status),
+  submittedAt: toDate(d.submittedAt),
+  firstRepliedAt: toDate(d.firstRepliedAt),
+  followUpAt: toDate(d.followUpAt),
+  activity: (Array.isArray(d.activity) ? d.activity : []).map((a: any) => ({ ...a, at: toDate(a.at) })),
+});
+
+const TYPE_CLS = (t: string) => {
+  const s = t.toLowerCase();
+  if (s.includes('demo')) return 'bg-violet-100 text-violet-700';
+  if (s.includes('support')) return 'bg-red-100 text-red-700';
+  return 'bg-blue-50 text-blue-700';
+};
+
+const hoursWaiting = (q: WebQuery) => q.submittedAt ? (Date.now() - q.submittedAt.getTime()) / 3_600_000 : 0;
 
 const WebsiteLeadsDashboard: React.FC = () => {
-  const navigate = useNavigate();
-
   const { currentUser } = useAuth();
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [activeStatus, setActiveStatus] = useState<string>('all');
-  const [datePreset, setDatePreset] = useState('today');
-
-  const toDateStr = (date: Date) => date.toISOString().split('T')[0];
-
-  const [startDate, setStartDate] = useState(() => toDateStr(new Date()));
-  const [endDate, setEndDate] = useState(() => toDateStr(new Date()));
-
-  const [appliedFilters, setAppliedFilters] = useState<{ start: number; end: number }>(() => {
-    const start = new Date(); start.setHours(0, 0, 0, 0);
-    const end = new Date(); end.setHours(23, 59, 59, 999);
-    return { start: start.getTime(), end: end.getTime() };
-  });
+  const [queries, setQueries] = useState<WebQuery[]>([]);
+  const [companies, setCompanies] = useState<AdminCompany[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null);
 
-  // 1. Handle Date Presets
-  const handleDatePresetChange = (preset: string) => {
-    setDatePreset(preset);
-    if (preset === 'custom') return;
+  const [rangeKey, setRangeKey] = useState<RangeKey>('30d');
+  const [custom, setCustom] = useState({ from: '', to: '' });
+  const [statusFilter, setStatusFilter] = useState<'all' | QueryStatus | 'stale'>('all');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [sortKey, setSortKey] = useState<'oldest_unreplied' | 'newest' | 'oldest'>('oldest_unreplied');
+  const [search, setSearch] = useState('');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-    const start = new Date();
-    const end = new Date();
+  const range = useMemo(() => rangeFor(rangeKey, custom), [rangeKey, custom]);
 
-    switch (preset) {
-      case 'yesterday':
-        start.setDate(start.getDate() - 1);
-        end.setDate(end.getDate() - 1);
-        break;
-      case 'last7':
-        start.setDate(start.getDate() - 6);
-        break;
-      case 'last30':
-        start.setDate(start.getDate() - 29);
-        break;
-      // 'today' — start/end already today
-    }
+  useEffect(() => { loadCompanies().then(setCompanies).catch(console.error); }, []);
 
-    setStartDate(toDateStr(start));
-    setEndDate(toDateStr(end));
-  };
-
-  const handleApplyFilters = () => {
-    const s = startDate ? new Date(startDate) : new Date(0);
-    const e = endDate ? new Date(endDate) : new Date();
-    s.setHours(0, 0, 0, 0);
-    e.setHours(23, 59, 59, 999);
-    setAppliedFilters({ start: s.getTime(), end: e.getTime() });
-  };
   useEffect(() => {
-    const today = new Date();
-    const start = new Date(today);
-    const end = new Date(today);
-    start.setHours(0, 0, 0, 0);
-    end.setHours(23, 59, 59, 999);
-    setAppliedFilters({ start: start.getTime(), end: end.getTime() });
-  }, []);
-
-  // 2. Firebase Listener
-  useEffect(() => {
-    if (!currentUser || !SUPER_ADMIN_UIDS.includes(currentUser.uid)) {
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     const q = query(
-      collection(db, "contacts"),
-      where("submittedAt", ">=", Timestamp.fromMillis(appliedFilters.start)),
-      where("submittedAt", "<=", Timestamp.fromMillis(appliedFilters.end)),
-      orderBy("submittedAt", "desc")
+      collection(db, 'contacts'),
+      where('submittedAt', '>=', Timestamp.fromMillis(range.start)),
+      where('submittedAt', '<=', Timestamp.fromMillis(range.end)),
+      orderBy('submittedAt', 'desc')
     );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setLeads(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Lead[]);
+    return onSnapshot(q, snap => {
+      setQueries(snap.docs.map(d => toQuery(d.id, d.data())));
       setLoading(false);
-    });
-    return () => unsubscribe();
-  }, [appliedFilters]);
+    }, err => { console.error(err); setLoading(false); });
+  }, [range]);
 
-  // 3. Status Update Logic
-  const updateStatus = async (id: string, newStatus: string) => {
+  const stats = useMemo(() => {
+    const by = (s: QueryStatus) => queries.filter(q => q.status === s).length;
+    const replied = queries.filter(q => q.firstRepliedAt && q.submittedAt);
+    const avgH = replied.length
+      ? replied.reduce((s, q) => s + (q.firstRepliedAt!.getTime() - q.submittedAt!.getTime()), 0) / replied.length / 3_600_000
+      : null;
+    const stale = queries.filter(q => q.status === 'new' && hoursWaiting(q) > 24).length;
+    return { new: by('new'), contacted: by('contacted'), issue: by('issue'), converted: by('converted'), notInterested: by('not_interested'), avgH, stale };
+  }, [queries]);
+
+  const types = useMemo(() => Array.from(new Set(queries.map(q => q.type).filter(Boolean))).sort(), [queries]);
+  const hasSource = queries.some(q => q.sourcePage);
+
+  const filtered = useMemo(() => {
+    const s = search.trim().toLowerCase();
+    const list = queries.filter(q => {
+      if (statusFilter === 'stale' && !(q.status === 'new' && hoursWaiting(q) > 24)) return false;
+      if (statusFilter !== 'all' && statusFilter !== 'stale' && q.status !== statusFilter) return false;
+      if (typeFilter !== 'all' && q.type !== typeFilter) return false;
+      if (s && ![q.fullName, q.email, q.phone, q.businessName, q.city].some(x => x && x.toLowerCase().includes(s))) return false;
+      return true;
+    });
+    const t = (d: Date | null) => d?.getTime() ?? 0;
+    return [...list].sort((a, b) => {
+      if (sortKey === 'newest') return t(b.submittedAt) - t(a.submittedAt);
+      if (sortKey === 'oldest') return t(a.submittedAt) - t(b.submittedAt);
+      const ra = a.status === 'new' ? 0 : 1, rb = b.status === 'new' ? 0 : 1;
+      return ra - rb || (ra === 0 ? t(a.submittedAt) - t(b.submittedAt) : t(b.submittedAt) - t(a.submittedAt));
+    });
+  }, [queries, statusFilter, typeFilter, sortKey, search]);
+
+  useEffect(() => {
+    if (!selectedId && filtered[0]) setSelectedId(filtered[0].id);
+  }, [filtered, selectedId]);
+
+  const selected = queries.find(q => q.id === selectedId) || null;
+
+  // Every contact action is logged; the first one also stamps the reply time
+  // and moves a new query into conversation.
+  const logActivity = async (q: WebQuery, type: string, text: string, extra: Record<string, any> = {}) => {
+    const entry = { type, text, at: Timestamp.now(), by: currentUser?.name || 'Admin' };
+    const payload: Record<string, any> = { activity: arrayUnion(entry), ...extra };
+    const isReply = ['call', 'whatsapp', 'email'].includes(type);
+    if (isReply && !q.firstRepliedAt) payload.firstRepliedAt = Timestamp.now();
+    if (isReply && q.status === 'new' && !('status' in extra)) payload.status = 'contacted';
     try {
-      await updateDoc(doc(db, "contacts", id), { status: newStatus as any });
+      await updateDoc(doc(db, 'contacts', q.id), payload);
     } catch (err) {
-      console.error("Update failed", err);
+      console.error(err);
+      alert('Failed to save.');
     }
   };
 
-  // 4. Stats & Filtering
-  // Stats always reflect active date range (already filtered by Firebase query)
-  const stats = useMemo(() => ({
-    pending: leads.filter(l => !l.status || l.status === 'pending').length,
-    issue: leads.filter(l => l.status === 'issue').length,
-    converted: leads.filter(l => l.status === 'converted').length,
-    not_interested: leads.filter(l => l.status === 'not_interested').length,
-  }), [leads]);
+  const exportCsv = () => downloadCsv(
+    `sellar-web-queries-${new Date().toISOString().slice(0, 10)}.csv`,
+    ['Received', 'Name', 'Email', 'Phone', 'Business', 'City', 'Type', 'Source page', 'Status', 'First reply', 'Message'],
+    filtered.map(q => [q.submittedAt?.toISOString() || '', q.fullName, q.email, q.phone, q.businessName, q.city, q.type,
+      q.sourcePage, STATUS_META[q.status].label, q.firstRepliedAt?.toISOString() || '', q.message]),
+  );
 
-  // Status filter applied on top of already date-filtered leads
-  const filteredLeads = useMemo(() => {
-    if (activeStatus === 'all') return leads;
-    return leads.filter(l => (l.status || 'pending') === activeStatus);
-  }, [leads, activeStatus]);
+  if (loading && queries.length === 0) return <Loading />;
 
-  const toggleExpand = (id: string) => {
-    setExpandedLeadId(prev => (prev === id ? null : id));
-  };
+  const fmtHours = (h: number | null) => h === null ? '—' : h < 1 ? `${Math.max(1, Math.round(h * 60))}m` : h < 48 ? `${Math.round(h)}h` : `${Math.round(h / 24)}d`;
+  const total = queries.length;
 
   return (
-    <div className="min-h-screen bg-gray-100 p-2 pb-16 md:p-6 md:pb-16 font-sans">
+    <PageShell wide>
+      <PageHeader
+        title="Web Customer Queries"
+        subtitle="Enquiries from the Sellar website, with who replied and how fast"
+        actions={<>
+          <RangeTabs value={rangeKey} options={['today', '7d', '30d', '90d', 'custom']} onChange={setRangeKey} custom={custom} onCustomChange={setCustom} />
+          <Btn onClick={exportCsv}>Export CSV</Btn>
+        </>}
+      />
 
-      {/* HEADER */}
-      <div className="flex items-center justify-between pb-3 border-b mb-2 md:mb-4">
-        <h1 className="flex-1 text-xl text-center font-bold text-gray-800 md:text-2xl">
-          Website Query
-        </h1>
-        <button onClick={() => navigate(-1)} className="p-2">
-          <IconClose width={20} height={20} />
-        </button>
-      </div>
-
-      {/* FILTERS */}
-      <div className="bg-white p-2 rounded-sm shadow-md mb-2 md:p-5 md:mb-4 md:rounded-sm">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 md:grid-cols-1 md:gap-3">
-          <div className="sm:col-span-1 md:col-span-1">
-            <FilterSelect value={datePreset} onChange={(e) => handleDatePresetChange(e.target.value)}>
-              <option value="today">Today</option>
-              <option value="yesterday">Yesterday</option>
-              <option value="last7">Last 7 Days</option>
-              <option value="last30">Last 30 Days</option>
-              <option value="custom">Custom</option>
-            </FilterSelect>
-          </div>
-          <div className="grid grid-cols-2 gap-4 sm:col-span-2 md:col-span-1 md:grid-cols-2 md:gap-4">
-            <input type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border rounded-sm md:p-2.5" />
-            <input type="date" value={endDate} onChange={(e) => { setEndDate(e.target.value); setDatePreset('custom'); }} className="w-full p-2 text-sm bg-gray-50 border rounded-sm md:p-2.5" />
-          </div>
-        </div>
-        <div className="mt-2 md:mt-3 md:flex md:justify-center">
-          <button onClick={handleApplyFilters} className="w-full px-3 py-1 bg-blue-600 text-white text-lg font-semibold rounded-sm hover:bg-blue-700 md:w-auto md:px-10 md:py-2">
-            Apply
-          </button>
-        </div>
-      </div>
-
-      {/* SUMMARY CARDS */}
-      <div className="grid grid-cols-2 gap-2 mb-4 md:grid-cols-4 md:gap-4">
-        <div
-          onClick={() => setActiveStatus('pending')}
-          className={`cursor-pointer rounded-sm transition-all border-2 ${activeStatus === 'pending' ? 'border-blue-600 bg-blue-50 shadow-md scale-105' : 'border-transparent'}`}
-        >
-          <CustomCard variant={CardVariant.Summary} title="Pending" value={stats.pending.toString()} />
-        </div>
-
-        <div
-          onClick={() => setActiveStatus('issue')}
-          className={`cursor-pointer rounded-sm transition-all border-2 ${activeStatus === 'issue' ? 'border-red-600 bg-red-50 shadow-md scale-105' : 'border-transparent'}`}
-        >
-          <CustomCard variant={CardVariant.Summary} title="Issue" value={stats.issue.toString()} />
-        </div>
-
-        <div
-          onClick={() => setActiveStatus('converted')}
-          className={`cursor-pointer rounded-sm transition-all border-2 ${activeStatus === 'converted' ? 'border-green-600 bg-green-50 shadow-md scale-105' : 'border-transparent'}`}
-        >
-          <CustomCard variant={CardVariant.Summary} title="Converted" value={stats.converted.toString()} />
-        </div>
-
-        <div
-          onClick={() => setActiveStatus('not_interested')}
-          className={`cursor-pointer rounded-sm transition-all border-2 ${activeStatus === 'not_interested' ? 'border-gray-600 bg-gray-100 shadow-md scale-105' : 'border-transparent'}`}
-        >
-          <CustomCard variant={CardVariant.Summary} title="Not Interested" value={stats.not_interested.toString()} />
-        </div>
-      </div>
-
-      {/* RECTANGLE ROW LIST */}
-      <div className="flex flex-col gap-3">
-        {filteredLeads.map((lead) => {
-          const isExpanded = expandedLeadId === lead.id;
-
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+        {(['new', 'contacted', 'issue', 'converted', 'not_interested'] as QueryStatus[]).map(s => {
+          const n = s === 'new' ? stats.new : s === 'contacted' ? stats.contacted : s === 'issue' ? stats.issue : s === 'converted' ? stats.converted : stats.notInterested;
           return (
-            <div
-              key={lead.id}
-              className="bg-white rounded-sm shadow-sm border border-gray-100 transition-all hover:shadow-md overflow-hidden"
-            >
-              {/* MAIN ROW */}
-              <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer" onClick={() => toggleExpand(lead.id)}>
-
-                {/* Left: Name, Status, Email, Phone, City */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <h3 className="text-base font-bold text-gray-800">{lead.fullName}</h3>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-sm font-bold uppercase ${lead.status === 'converted' ? 'bg-green-100 text-green-600' :
-                      lead.status === 'issue' ? 'bg-red-100 text-red-600' :
-                        lead.status === 'not_interested' ? 'bg-gray-100 text-gray-500' :
-                          'bg-orange-100 text-orange-600'
-                      }`}>
-                      {lead.status || 'pending'}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5">
-                    <p className="text-sm text-gray-500 font-medium">{lead.email}</p>
-                    {lead.phone && (
-                      <p className="text-sm text-gray-500 font-medium flex items-center gap-1">
-                        📞 {lead.phone}
-                      </p>
-                    )}
-                    {lead.city && (
-                      <p className="text-sm text-gray-400 font-medium flex items-center gap-1">
-                        📍 {lead.city}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Right: Dropdown + Expand Arrow */}
-                <div className="flex items-center gap-2 mt-1 md:mt-0">
-                  <div className="relative flex-1 md:flex-none">
-                    <select
-                      value={lead.status || 'pending'}
-                      onChange={(e) => updateStatus(lead.id, e.target.value)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="w-full md:w-56 text-xs font-bold bg-gray-50 border border-gray-200 rounded-sm px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
-                    >
-                      <option value="pending">PENDING</option>
-                      <option value="issue">PENDING ISSUE</option>
-                      <option value="converted">CONVERTED</option>
-                      <option value="not_interested">NOT INTERESTED</option>
-                    </select>
-                    <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-400">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </div>
-                  </div>
-
-                  {/* Expand/Collapse Arrow */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); toggleExpand(lead.id); }}
-                    className="p-2 rounded-sm hover:bg-gray-100 transition-colors flex-shrink-0"
-                    aria-label={isExpanded ? 'Collapse message' : 'Expand message'}
-                  >
-                    <svg
-                      className={`w-5 h-5 text-gray-500 transition-transform duration-300 ${isExpanded ? 'rotate-180' : 'rotate-0'}`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              {/* EXPANDABLE MESSAGE */}
-              {isExpanded && (
-                <div className="px-4 pb-4 pt-3 border-t border-gray-100 bg-gray-50">
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Message</p>
-                  <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-                    {lead.message || <span className="text-gray-400 italic">No message provided.</span>}
-                  </p>
-                </div>
-              )}
-            </div>
+            <StatCard key={s} dot={STATUS_META[s].dot} label={STATUS_META[s].label} value={n}
+              sub={s === 'converted' ? `${total ? Math.round((n / total) * 100) : 0}% of queries` : STATUS_META[s].sub}
+              active={statusFilter === s} onClick={() => setStatusFilter(f => f === s ? 'all' : s)} />
           );
         })}
+        <StatCard dot="bg-violet-600" label="Avg. first reply" value={fmtHours(stats.avgH)} sub="target: under 2 hrs"
+          valueCls={stats.avgH !== null && stats.avgH > 2 ? 'text-red-600' : 'text-gray-900'} />
       </div>
 
-      {leads.length === 0 && !loading && (
-        <div className="text-center p-10 text-gray-400">No queries found for this period.</div>
+      {stats.stale > 0 && (
+        <Alert tone="red" action={<Btn size="sm" onClick={() => { setStatusFilter('stale'); setSortKey('oldest_unreplied'); }}>Show them</Btn>}>
+          <b>{stats.stale} quer{stats.stale === 1 ? 'y has' : 'ies have'} had no reply for over 24 hours.</b> Website leads go cold fast — reply first, sort later.
+        </Alert>
       )}
-    </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-[1.4fr_1fr] gap-4 items-start">
+        <Card>
+          <div className="p-4 flex flex-col md:flex-row gap-3 md:items-center border-b border-gray-200">
+            <SearchBox className="flex-1" value={search} onChange={setSearch} placeholder="Search name, phone, email…" />
+            <div className="grid grid-cols-2 sm:flex gap-2">
+              {types.length > 0 && (
+                <SelectBox label="Type" value={typeFilter} onChange={setTypeFilter}>
+                  <option value="all">All types</option>
+                  {types.map(t => <option key={t} value={t}>{t}</option>)}
+                </SelectBox>
+              )}
+              <SelectBox label="Sort" value={sortKey} onChange={v => setSortKey(v as any)}>
+                <option value="oldest_unreplied">Oldest unreplied</option>
+                <option value="newest">Newest</option>
+                <option value="oldest">Oldest</option>
+              </SelectBox>
+            </div>
+          </div>
+          <div className={`hidden md:grid ${hasSource ? 'grid-cols-[1.6fr_1fr_1fr_0.9fr_0.9fr]' : 'grid-cols-[1.8fr_1fr_1fr_1fr]'} gap-3 px-4 py-2.5 bg-gray-50 text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200`}>
+            <span>From</span><span>Type</span>{hasSource && <span>Source page</span>}<span>Waiting</span><span>Status</span>
+          </div>
+          {filtered.length === 0 ? <EmptyRow>No queries in this period.</EmptyRow> : filtered.map(q => {
+            const waiting = q.status === 'new'
+              ? { text: `${ageText(q.submittedAt)}${hoursWaiting(q) > 24 ? ' · no reply' : ''}`, cls: hoursWaiting(q) > 24 ? 'text-red-600' : 'text-gray-900' }
+              : q.firstRepliedAt && q.submittedAt
+                ? { text: `replied in ${fmtHours((q.firstRepliedAt.getTime() - q.submittedAt.getTime()) / 3_600_000)}`, cls: 'text-gray-600' }
+                : { text: ageText(q.submittedAt), cls: 'text-gray-600' };
+            return (
+              <button key={q.id} onClick={() => setSelectedId(q.id)}
+                className={`w-full text-left grid grid-cols-[1fr_auto] ${hasSource ? 'md:grid-cols-[1.6fr_1fr_1fr_0.9fr_0.9fr]' : 'md:grid-cols-[1.8fr_1fr_1fr_1fr]'} gap-x-3 gap-y-1 px-4 py-3 border-b border-gray-100 items-center ${selectedId === q.id ? 'bg-blue-50/60' : 'hover:bg-gray-50'}`}>
+                <div className="min-w-0">
+                  <p className="font-semibold text-gray-900 truncate">{q.fullName || 'No name'}</p>
+                  <p className="text-xs text-gray-500 truncate">{[q.phone, q.email].filter(Boolean).join(' · ')}</p>
+                </div>
+                <div className="hidden md:block">{q.type ? <Chip cls={TYPE_CLS(q.type)}>{q.type}</Chip> : <span className="text-gray-400 text-sm">—</span>}</div>
+                {hasSource && <div className="hidden md:block font-mono text-xs text-gray-700 truncate">{q.sourcePage || '—'}</div>}
+                <div className={`hidden md:block text-sm font-semibold ${waiting.cls}`}>{waiting.text}</div>
+                <div><Chip cls={STATUS_META[q.status].cls}>{STATUS_META[q.status].label}</Chip></div>
+              </button>
+            );
+          })}
+          <p className="px-4 py-3 text-sm text-gray-600">Showing {filtered.length} of {total} · click a row to open it</p>
+        </Card>
+
+        {selected ? (
+          <QueryDetail key={selected.id} q={selected} companies={companies} onLog={logActivity} />
+        ) : (
+          <Card className="p-8 text-center text-sm text-gray-500">Select a query to see it here.</Card>
+        )}
+      </div>
+    </PageShell>
   );
 };
+
+const QueryDetail: React.FC<{
+  q: WebQuery;
+  companies: AdminCompany[];
+  onLog: (q: WebQuery, type: string, text: string, extra?: Record<string, any>) => Promise<void>;
+}> = ({ q, companies, onLog }) => {
+  const [status, setStatus] = useState<QueryStatus>(q.status);
+  const [note, setNote] = useState('');
+  const [followUp, setFollowUp] = useState(q.followUpAt ? q.followUpAt.toISOString().slice(0, 10) : '');
+  const [saving, setSaving] = useState(false);
+
+  const match = useMemo(() => {
+    const p = last10(q.phone);
+    const e = q.email.toLowerCase();
+    return companies.find(c => (p && last10(c.phone) === p) || (e && c.email.toLowerCase() === e)) || null;
+  }, [companies, q.phone, q.email]);
+
+  const firstName = q.fullName.split(' ')[0] || 'there';
+  const waText = `Hi ${firstName}, this is the Sellar team — thanks for reaching out on our website. `;
+
+  const save = async () => {
+    setSaving(true);
+    const extra: Record<string, any> = {};
+    const parts: string[] = [];
+    if (status !== q.status) {
+      extra.status = status;
+      parts.push(`Status → ${STATUS_META[status].label}`);
+      if (q.status === 'new' && !q.firstRepliedAt) extra.firstRepliedAt = Timestamp.now();
+    }
+    const fu = followUp ? new Date(`${followUp}T10:00:00`) : null;
+    if ((fu?.getTime() ?? null) !== (q.followUpAt?.getTime() ?? null)) {
+      extra.followUpAt = fu ? Timestamp.fromDate(fu) : null;
+      parts.push(fu ? `Follow-up set for ${fmtDate(fu)}` : 'Follow-up cleared');
+    }
+    if (note.trim()) parts.push(note.trim());
+    if (parts.length) await onLog(q, note.trim() ? 'note' : 'status', parts.join(' · '), extra);
+    setNote('');
+    setSaving(false);
+  };
+
+  const timeline = [
+    { type: 'received', text: 'Query received', at: q.submittedAt, by: '' },
+    ...[...q.activity].sort((a, b) => (a.at?.getTime() ?? 0) - (b.at?.getTime() ?? 0)),
+  ];
+
+  return (
+    <Card className="p-5 xl:sticky xl:top-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold text-gray-900 truncate">{q.fullName || 'No name'}</h2>
+          <p className="text-sm text-gray-600 truncate">{[q.phone, q.email].filter(Boolean).join(' · ')}</p>
+          {(q.businessName || q.city) && <p className="text-sm text-gray-600">{[q.businessName, q.city].filter(Boolean).join(' · ')}</p>}
+        </div>
+        <Chip cls={STATUS_META[q.status].cls}>{STATUS_META[q.status].label}</Chip>
+      </div>
+
+      <div className="flex flex-wrap gap-2 mt-3">
+        {q.phone && <LinkBtn href={`tel:${q.phone}`} target="_self" onClick={() => onLog(q, 'call', 'Called')}>Call</LinkBtn>}
+        {q.phone && <LinkBtn variant="green" href={waLink(q.phone, waText)} onClick={() => onLog(q, 'whatsapp', 'Opened WhatsApp')}>WhatsApp</LinkBtn>}
+        {q.email && <LinkBtn href={`mailto:${q.email}?subject=${encodeURIComponent('Your Sellar enquiry')}`} target="_self" onClick={() => onLog(q, 'email', 'Emailed')}>Email</LinkBtn>}
+        {q.status !== 'converted' && <Btn size="sm" variant="primary" onClick={() => { setStatus('converted'); onLog(q, 'status', 'Status → CONVERTED', { status: 'converted' }); }}>Mark converted</Btn>}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 mt-4">
+        <Tile label="Asked about" value={q.type || '—'} />
+        <Tile label="Came from" value={[q.sourcePage, q.campaign].filter(Boolean).join(' · ') || '—'} mono />
+        <Tile label="Received" value={fmtDateTime(q.submittedAt)} />
+        <Tile label="Existing customer?" value={match ? `${match.name} · ${match.id}` : 'No match found'} />
+      </div>
+
+      <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mt-4 mb-1.5">Their message</p>
+      <div className="border border-gray-200 rounded-lg p-3 text-sm text-gray-800 whitespace-pre-wrap">{q.message || <span className="text-gray-400 italic">No message.</span>}</div>
+
+      <p className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mt-4 mb-1.5">Activity</p>
+      <ul className="space-y-1.5 max-h-48 overflow-y-auto">
+        {timeline.map((a, i) => (
+          <li key={i} className="flex gap-2 text-sm">
+            <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${i === 0 ? 'bg-blue-600' : 'bg-gray-300'}`} />
+            <span><b className="font-semibold">{a.text}</b> <span className="text-gray-500">· {fmtDateTime(a.at)}{a.by ? ` · ${a.by}` : ''}</span></span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-4 space-y-3">
+        <Field label="Status">
+          <select value={status} onChange={e => setStatus(e.target.value as QueryStatus)} className={inputCls}>
+            {(Object.keys(STATUS_META) as QueryStatus[]).map(s => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
+          </select>
+        </Field>
+        <Field label="Add a note">
+          <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} placeholder="What did they say? Next step?" className={inputCls} />
+        </Field>
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <Field label="Follow-up">
+            <input type="date" value={followUp} onChange={e => setFollowUp(e.target.value)} className={inputCls} />
+          </Field>
+          <Btn variant="primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Btn>
+        </div>
+        {q.followUpAt && q.followUpAt.getTime() < Date.now() + DAY_MS && q.status !== 'converted' && q.status !== 'not_interested' && (
+          <p className="text-xs font-semibold text-amber-700">Follow-up due {fmtDate(q.followUpAt)}</p>
+        )}
+      </div>
+    </Card>
+  );
+};
+
+const Tile: React.FC<{ label: string; value: string; mono?: boolean }> = ({ label, value, mono }) => (
+  <div className="rounded-lg bg-gray-50 p-2.5 min-w-0">
+    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{label}</p>
+    <p className={`text-sm font-semibold text-gray-900 truncate ${mono ? 'font-mono text-xs' : ''}`} title={value}>{value}</p>
+  </div>
+);
 
 export default WebsiteLeadsDashboard;

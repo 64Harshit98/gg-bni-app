@@ -53,6 +53,7 @@ export const ROUTES = {
   CATALOGUE_USER_REPORT: 'user-report',
   CATALOGUE_TAX_REPORT: 'tax-report',
   SUBSCRIPTION_PAGE: '/subscription',
+  SUBSCRIPTION_PAYMENT_RETURN: '/subscription/payment-return',
   SUPPORT_PAGE: '/support',
   ADDITIONAL_FEATURES: '/additional-features',
   WHATSAPP_DETAILS: '/whatsapp-details',

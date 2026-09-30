@@ -50,6 +50,9 @@ export interface SalesSettings {
     lockDiscountEntry?: boolean;
     lockSalePriceEntry?: boolean;
     defaultDiscount?: number;
+    // 0 (or unset) means no cap — cashiers can enter any Bill Discount.
+    maxBillDiscountValue?: number;
+    maxBillDiscountType?: 'percent' | 'amount';
     allowNegativeStock?: boolean;
     allowDueBilling?: boolean;
     requireCustomerName?: boolean;
@@ -100,6 +103,8 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     lockDiscountEntry: false,
     lockSalePriceEntry: false,
     defaultDiscount: 0,
+    maxBillDiscountValue: 0,
+    maxBillDiscountType: 'percent',
     allowNegativeStock: true,
     allowDueBilling: true,
     requireCustomerName: false,
@@ -349,6 +354,7 @@ const SalesSettingsPage: React.FC = () => {
             'defaultDiscount',
             'currentVoucherNumber',
             'roundingInterval',
+            'maxBillDiscountValue',
         ];
 
         if (numericFields.includes(field)) {
@@ -770,6 +776,38 @@ const SalesSettingsPage: React.FC = () => {
                                         tooltip="Stop staff from manually altering item selling price."
                                         icon={<Lock size={18} />}
                                     />
+
+                                    <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <Percent size={18} className="text-gray-500 flex-shrink-0" />
+                                            <div>
+                                                <p className="text-xs font-semibold text-gray-700">Max Bill Discount</p>
+                                                <p className="text-[11px] text-gray-500">Cap the Bill Discount a cashier can apply in Payment Drawer. Leave at 0 for no limit.</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                value={settings.maxBillDiscountValue || ''}
+                                                onChange={(e) => handleChange('maxBillDiscountValue', e.target.value)}
+                                                placeholder="No limit"
+                                                className="flex-1 min-w-0 px-2 py-1.5 border border-gray-300 rounded-sm text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                            />
+                                            <div className="flex bg-white border border-gray-300 rounded-sm overflow-hidden flex-shrink-0">
+                                                {(['percent', 'amount'] as const).map((type) => (
+                                                    <button
+                                                        key={type}
+                                                        type="button"
+                                                        onClick={() => handleChange('maxBillDiscountType', type)}
+                                                        className={`px-3 py-1.5 text-xs font-semibold ${(settings.maxBillDiscountType ?? 'percent') === type ? 'bg-blue-600 text-white' : 'text-gray-600'}`}
+                                                    >
+                                                        {type === 'percent' ? '%' : '₹'}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
 
                                     <ToggleRow
                                         id="hide-mrp"

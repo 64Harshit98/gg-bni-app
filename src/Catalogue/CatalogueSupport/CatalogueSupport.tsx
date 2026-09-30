@@ -12,7 +12,8 @@ import {
   Phone,
   MessageCircle,
   FileText,
-  Send
+  Send,
+  Building2
 } from 'lucide-react';
 import { ROUTES } from '../../constants/routes.constants';
 import BackButton from '../../Components/BackButton';
@@ -139,6 +140,16 @@ const CatalogueSupport: React.FC = () => {
               <p>Our team is available Mon-Fri, 10 AM - 6 PM.</p>
 
               <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-md border border-gray-100">
+                <div className="bg-purple-100 p-2 rounded-full text-purple-600">
+                  <Building2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 font-bold uppercase">Company Name</p>
+                  <a href="https://www.sellar.in/" className="text-blue-600 font-medium hover:underline">SELLAR SOLUTIONS</a>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-md border border-gray-100">
                 <div className="bg-blue-100 p-2 rounded-full text-blue-600">
                   <Mail className="w-4 h-4" />
                 </div>
@@ -166,8 +177,19 @@ const CatalogueSupport: React.FC = () => {
             isOpen={openSection === 'contact-2'}
             onClick={() => toggleSection('contact-2')}
           >
-            <p className="font-medium text-gray-800">Sellar HQ</p>
+            <p className="font-medium text-gray-800">Sellar Solutions</p>
             <p>2nd Floor, Parsvnath Arcade, Unit 22, Vaibhav khand</p>
+            <p> Indirapuram, Ghaziabad, Uttar Pradesh 201014</p>
+            <p className="mt-2 text-xs text-gray-400">(Visits by appointment only)</p>
+          </AccordionItem>
+          <AccordionItem
+            title="Registered Address"
+            icon={<FileText className="w-5 h-5" />}
+            isOpen={openSection === 'contact-3'}
+            onClick={() => toggleSection('contact-3')}
+          >
+            <p className="font-medium text-gray-800">Sellar Solutions</p>
+            <p> Lower Ground Floor, Shipra Shopping Center, Shop No, SPL-036, Vaibhav Khand,</p>
             <p> Indirapuram, Ghaziabad, Uttar Pradesh 201014</p>
             <p className="mt-2 text-xs text-gray-400">(Visits by appointment only)</p>
           </AccordionItem>

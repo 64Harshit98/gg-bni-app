@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect } from 'react';
 import { createBrowserRouter, Outlet, RouterProvider, ScrollRestoration, useLocation } from 'react-router-dom';
 import MainLayout from '../app/MainLayout';
 import CatalogueLayout from '../app/CatalougeLayout';
+import SuperAdminLayout from '../app/SuperAdminLayout';
 import { ROUTES } from '../constants/routes.constants';
 import PermissionWrapper from '../context/PermissionWrapper';
 import { RequireSubscription } from '../UseComponents/RequiredSubscription';
@@ -39,6 +40,7 @@ const ForgotPasswordPage = lazy(() => import('../Pages/Auth/ForgotPassword'));
 const ResetPasswordPage = lazy(() => import('../Pages/Auth/ResetPassword'));
 const DownloadBill = lazy(() => import('../Pages/Auth/DownloadBill'));
 const SubscriptionPage = lazy(() => import('../Pages/Account/SubscriptionPage'));
+const PaymentReturnPage = lazy(() => import('../Pages/Account/PaymentReturnPage'));
 const SuperAdminCompanies = lazy(() => import('../Pages/Account/SuperAdmin'));
 const SuperAdminCoupons = lazy(() => import('../Pages/Account/SuperAdminCoupons'));
 const SuperAdminWhatsapp = lazy(() => import('../Pages/Account/SuperAdminWhatsapp'));
@@ -113,14 +115,23 @@ const router = createBrowserRouter(
               { path: ROUTES.BUSINESS_INFO, element: <BusInfo />, handle: { isPublic: true } },
               { path: ROUTES.FORGOT_PASSWORD, element: <ForgotPasswordPage />, handle: { isPublic: true } },
               { path: ROUTES.RESET_PASSWORD, element: <ResetPasswordPage />, handle: { isPublic: true } },
-              { path: ROUTES.SUPER_ADMIN, element: <SuperAdminCompanies /> },
-              { path: ROUTES.SUPER_ADMIN_COUPONS, element: <SuperAdminCoupons /> },
-              { path: ROUTES.SUPER_ADMIN_WHATSAPP, element: <SuperAdminWhatsapp /> },
               { path: ROUTES.SUBSCRIPTION_PAGE, element: <SubscriptionPage />, handle: { isPublic: false } },
-              { path: ROUTES.SUPER_ADMINHUB, element: <SuperAdminHub /> },
-              { path: ROUTES.SUPPORT_TICKET, element: <SuperAdminSupportTicket /> },
-              { path: ROUTES.WEBSITE_QUERY, element: <WebsiteLeads /> },
-              { path: ROUTES.APP_LEADS, element: <LeadPage /> },
+              { path: ROUTES.SUBSCRIPTION_PAYMENT_RETURN, element: <PaymentReturnPage />, handle: { isPublic: false } },
+
+              // SUPER ADMIN — one shell + access guard for every page
+              {
+                element: <SuperAdminLayout />,
+                children: [
+                  { path: ROUTES.SUPER_ADMINHUB, element: <SuperAdminHub /> },
+                  { path: ROUTES.SUPER_ADMIN, element: <SuperAdminCompanies /> },
+                  { path: ROUTES.APP_LEADS, element: <LeadPage /> },
+                  { path: ROUTES.WEBSITE_QUERY, element: <WebsiteLeads /> },
+                  { path: ROUTES.SUPPORT_TICKET, element: <SuperAdminSupportTicket /> },
+                  { path: ROUTES.AGENT_DASHBOARD, element: <AgentDashboard /> },
+                  { path: ROUTES.SUPER_ADMIN_COUPONS, element: <SuperAdminCoupons /> },
+                  { path: ROUTES.SUPER_ADMIN_WHATSAPP, element: <SuperAdminWhatsapp /> },
+                ],
+              },
               {
                 children: [
                   { path: ROUTES.WHATSAPP_LANDING, element: <WALanding />, handle: { isPublic: false } },
@@ -140,21 +151,10 @@ const router = createBrowserRouter(
                   { path: ROUTES.BUSINESS_INFO, element: <BusInfo />, handle: { isPublic: true } },
                   { path: ROUTES.FORGOT_PASSWORD, element: <ForgotPasswordPage />, handle: { isPublic: true } },
                   { path: ROUTES.RESET_PASSWORD, element: <ResetPasswordPage />, handle: { isPublic: true } },
-                  { path: ROUTES.SUPER_ADMIN, element: <SuperAdminCompanies /> },
-                  { path: ROUTES.SUPER_ADMIN_COUPONS, element: <SuperAdminCoupons /> },
-                  { path: ROUTES.SUPER_ADMIN_WHATSAPP, element: <SuperAdminWhatsapp /> },
                   { path: ROUTES.SUBSCRIPTION_PAGE, element: <SubscriptionPage />, handle: { isPublic: false } },
-                  { path: ROUTES.SUPER_ADMINHUB, element: <SuperAdminHub /> },
-                  { path: ROUTES.SUPPORT_TICKET, element: <SuperAdminSupportTicket /> },
-                  { path: ROUTES.WEBSITE_QUERY, element: <WebsiteLeads /> },
-                  { path: ROUTES.APP_LEADS, element: <LeadPage /> },
+                  { path: ROUTES.SUBSCRIPTION_PAYMENT_RETURN, element: <PaymentReturnPage />, handle: { isPublic: false } },
                   { path: ROUTES.AGENT_SIGNUP, element: <AgentSignup />, handle: { isPublic: true } },
                   { path: ROUTES.PARTNER_DASHBOARD, element: <PartnerDashboard /> },
-                  { path: ROUTES.AGENT_DASHBOARD, element: <AgentDashboard /> },
-                  { path: ROUTES.SUPER_ADMINHUB, element: <SuperAdminHub /> },
-                  { path: ROUTES.SUPPORT_TICKET, element: <SuperAdminSupportTicket /> },
-                  { path: ROUTES.WEBSITE_QUERY, element: <WebsiteLeads /> },
-                  { path: ROUTES.APP_LEADS, element: <LeadPage /> },
 
                   {
                     children: [

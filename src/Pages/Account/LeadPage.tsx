@@ -1,418 +1,403 @@
-import { useEffect, useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
-import { collection, getDocs, doc, updateDoc, deleteDoc } from "firebase/firestore";
-import { db } from "../../lib/Firebase";
-import { IconClose } from "../../constants/Icons";
-import { CustomCard } from "../../Components/CustomCard";
-import { CardVariant } from "../../enums";
-import { useAuth } from "../../context/auth-context";
-import { Search } from "lucide-react"; // Imported Search Icon
+import React, { useEffect, useMemo, useState } from 'react';
+import { collection, deleteDoc, doc, getDocs, Timestamp, updateDoc } from 'firebase/firestore';
+import { LineChart, Trash2, X } from 'lucide-react';
+import { db } from '../../lib/Firebase';
+import Loading from '../Loading/Loading';
+import type { AdminLead, DateRange, LeadSalesStatus, LeadStage, RangeKey } from './superAdmin/data';
+import {
+  LEAD_SALES_META, LEAD_STAGE_META, ageText, buildLeads, daysUntil, downloadCsv, fmtDate,
+  inRange, loadCompanies, previousRange, rangeFor, waLink,
+} from './superAdmin/data';
+import { Btn, Card, CardTitle, Chip, EmptyRow, LinkBtn, Pager, PageHeader, PageShell, RangeTabs, SearchBox, SelectBox, StatCard } from './superAdmin/ui';
 
-type LeadType = {
-  id: string;
-  email?: string;
-  fullName?: string;
-  phoneNumber?: string;
-  currentStep?: string; // "Step 1", "Step 2", "Completed", etc.
-  salesStatus?: string; // "Pending", "Interested", "Not interested", "Issue"
-  isWorking?: boolean;  // Mark true in your DB if the company is live/working
-  lastUpdated?: any;
+type CardFilter = 'all' | 'new' | 'follow_today' | 'converted' | 'not_interested';
+type SortKey = 'followup' | 'newest' | 'oldest' | 'stuck';
+
+const PAGE_SIZE = 25;
+const STEPS = 3;
+
+const isClosed = (l: AdminLead) => l.sales === 'converted' || l.sales === 'not_interested';
+
+const endOfToday = () => { const d = new Date(); d.setHours(23, 59, 59, 999); return d.getTime(); };
+const followUpDue = (l: AdminLead) => !isClosed(l) && !!l.followUpAt && l.followUpAt.getTime() <= endOfToday();
+
+const nudgeText = (l: AdminLead) => {
+  const name = l.fullName.split(' ')[0] || 'there';
+  if (l.stage === 'details') return `Hi ${name}, this is the Sellar team. You started setting up your Sellar account but didn't finish the business details. Can we help you complete it? It takes 2 minutes.`;
+  if (l.stage === 'trial') return `Hi ${name}, this is the Sellar team. How is your free trial going? Happy to help you set up billing, stock or your catalogue.`;
+  if (l.stage === 'trial_ended') return `Hi ${name}, this is the Sellar team. Your free trial has ended — want to continue with a plan? We can help you pick the right one.`;
+  return `Hi ${name}, this is the Sellar team. Thanks for choosing Sellar! Anything we can help with?`;
 };
 
-const SUPER_ADMIN_UIDS = [
-  "6vwZ1HRqX7VSnh5KP4JW0TKeuZm2",
-  "1AKioGfop8PmHhry6uXOz8Rw6qT2"
-];
+const stepTime = (l: AdminLead) => {
+  if (l.stage === 'paid') return { text: `Converted ${fmtDate(l.convertedAt || l.lastUpdated)}`, cls: 'text-green-700' };
+  if (l.stage === 'trial' && l.company) {
+    const d = daysUntil(l.company.expiry);
+    return { text: d === null ? 'On trial' : `Trial ends in ${d} day${d === 1 ? '' : 's'}`, cls: 'text-green-700' };
+  }
+  if (l.stage === 'trial_ended') return { text: `Trial ended ${fmtDate(l.company?.expiry)}`, cls: 'text-red-600' };
+  return { text: `Stuck ${ageText(l.lastUpdated)}`, cls: 'text-red-600' };
+};
 
-type FilterType = "all" | "Registration" | "Trial Plan" | "Abandoned";
+const LeadsPage: React.FC = () => {
+  const [loading, setLoading] = useState(true);
+  const [leads, setLeads] = useState<AdminLead[]>([]);
 
-const toDateStr = (date: Date) => date.toISOString().split("T")[0];
+  const [rangeKey, setRangeKey] = useState<RangeKey>('30d');
+  const [custom, setCustom] = useState({ from: '', to: '' });
+  const [compare, setCompare] = useState(false);
 
-function LeadsPage() {
-  const navigate = useNavigate();
-  const [leads, setLeads] = useState<LeadType[]>([]);
-  const [activeFilter, setActiveFilter] = useState<FilterType>("all");
-  const { currentUser } = useAuth();
-  const [datePreset, setDatePreset] = useState("today");
-
-  // Search & Sorter State
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
-
-  const [customStartDate, setCustomStartDate] = useState(() => toDateStr(new Date()));
-  const [customEndDate, setCustomEndDate] = useState(() => toDateStr(new Date()));
-
-  const [appliedFilters, setAppliedFilters] = useState<{ start: number; end: number }>(() => {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    const end = new Date();
-    end.setHours(23, 59, 59, 999);
-    return { start: start.getTime(), end: end.getTime() };
-  });
-
-  const handleDatePresetChange = (preset: string) => {
-    setDatePreset(preset);
-    if (preset === "custom") return;
-
-    const start = new Date();
-    const end = new Date();
-
-    switch (preset) {
-      case "yesterday":
-        start.setDate(start.getDate() - 1);
-        end.setDate(end.getDate() - 1);
-        break;
-      case "last7":
-        start.setDate(start.getDate() - 6);
-        break;
-      case "last30":
-        start.setDate(start.getDate() - 29);
-        break;
-    }
-
-    setCustomStartDate(toDateStr(start));
-    setCustomEndDate(toDateStr(end));
-  };
-
-  const handleApplyFilters = () => {
-    const start = customStartDate ? new Date(customStartDate) : new Date(0);
-    start.setHours(0, 0, 0, 0);
-    const end = customEndDate ? new Date(customEndDate) : new Date();
-    end.setHours(23, 59, 59, 999);
-    setAppliedFilters({ start: start.getTime(), end: end.getTime() });
-    setActiveFilter("all");
-  };
+  const [cardFilter, setCardFilter] = useState<CardFilter>('all');
+  const [stepFilter, setStepFilter] = useState<'all' | LeadStage>('all');
+  const [assignedFilter, setAssignedFilter] = useState('all');
+  const [sortKey, setSortKey] = useState<SortKey>('followup');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [nudgeOpen, setNudgeOpen] = useState(false);
 
   useEffect(() => {
-    if (!currentUser || !SUPER_ADMIN_UIDS.includes(currentUser.uid)) {
-      return;
-    }
+    Promise.all([getDocs(collection(db, 'leads')), loadCompanies()])
+      .then(([snap, companies]) => setLeads(buildLeads(snap.docs.map(d => ({ id: d.id, ...d.data() })), companies)))
+      .catch(err => { console.error(err); alert('Failed to load leads.'); })
+      .finally(() => setLoading(false));
+  }, []);
 
-    const fetchLeads = async () => {
-      const snap = await getDocs(collection(db, "leads"));
-      const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as LeadType[];
-      setLeads(list);
-    };
+  useEffect(() => { setPage(0); }, [rangeKey, custom, cardFilter, stepFilter, assignedFilter, sortKey, search]);
 
-    fetchLeads();
-  }, [currentUser]);
+  const range: DateRange = useMemo(() => rangeFor(rangeKey, custom), [rangeKey, custom]);
+  // Leads carry no creation date, only lastUpdated — the range filters on last activity.
+  const inR = useMemo(() => leads.filter(l => inRange(l.lastUpdated, range)), [leads, range]);
+  const inPrev = useMemo(() => leads.filter(l => inRange(l.lastUpdated, previousRange(range))), [leads, range]);
 
-  // =========================================================================
-  // DYNAMIC CATEGORY LOGIC
-  // Based strictly on step progress, age of the lead, and working status
-  // =========================================================================
-  const getLeadCategory = (lead: LeadType): FilterType | "Hide" => {
-    // 1. If company is working, do not show in any filter
-    if (lead.isWorking || lead.salesStatus === "Converted") {
-      return "Hide";
-    }
-
-    let leadDate = new Date();
-    if (lead.lastUpdated) {
-      leadDate = typeof lead.lastUpdated.toDate === "function"
-        ? lead.lastUpdated.toDate()
-        : new Date(lead.lastUpdated);
-    }
-
-    // Calculate how many days old this lead is
-    const daysOld = (new Date().getTime() - leadDate.getTime()) / (1000 * 60 * 60 * 24);
-
-    // 2. If older than 10 days, it automatically becomes Abandoned
-    if (daysOld > 10) {
-      return "Abandoned";
-    }
-
-    // 3. If step is Completed, they are in Trial Plan
-    const step = lead.currentStep?.toLowerCase() || "";
-    if (step === "completed") {
-      return "Trial Plan";
-    }
-
-    // 4. Default: If Step 1 or 2 (or anything else active), they are in Registration
-    return "Registration";
+  const funnel = (list: AdminLead[]) => {
+    const started = list.length;
+    const registered = list.filter(l => l.stage !== 'details').length;
+    const paid = list.filter(l => l.stage === 'paid').length;
+    return { started, registered, paid, rate: started ? paid / started : 0 };
   };
+  const f = useMemo(() => funnel(inR), [inR]);
+  const fPrev = useMemo(() => funnel(inPrev), [inPrev]);
 
-  const handleStatusChange = async (id: string, newSalesStatus: string) => {
-    try {
-      await updateDoc(doc(db, "leads", id), { salesStatus: newSalesStatus });
-      setLeads(prev => prev.map(l => l.id === id ? { ...l, salesStatus: newSalesStatus } : l));
-    } catch (error) {
-      console.error("Error updating status:", error);
-      alert("Failed to update status.");
-    }
-  };
+  const dropOff = useMemo(() => {
+    const rows = [
+      { label: 'Business details', n: inR.filter(l => l.stage === 'details').length, hint: 'made an account, never finished setup' },
+      { label: 'Trial ended, not paid', n: inR.filter(l => l.stage === 'trial_ended').length, hint: 'used the trial, didn’t buy' },
+      { label: 'On trial now', n: inR.filter(l => l.stage === 'trial').length, hint: 'still deciding' },
+    ];
+    const max = Math.max(1, ...rows.map(r => r.n));
+    const biggest = rows.slice(0, 2).sort((a, b) => b.n - a.n)[0];
+    return { rows, max, biggest };
+  }, [inR]);
 
-  const handleDeleteLead = async (id: string) => {
-    const confirmDelete = window.confirm("Are you sure you want to permanently delete this lead?");
-    if (!confirmDelete) return;
-
-    try {
-      await deleteDoc(doc(db, "leads", id));
-      setLeads(prev => prev.filter(l => l.id !== id));
-    } catch (error) {
-      console.error("Error deleting lead:", error);
-      alert("Failed to delete lead.");
-    }
-  };
-
-  const formatDate = (timestamp: any) => {
-    if (!timestamp) return "--";
-    const date = typeof timestamp.toDate === "function" ? timestamp.toDate() : new Date(timestamp);
-    const day = String(date.getDate()).padStart(2, "0");
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const year = String(date.getFullYear()).slice(-2);
-    const hours = String(date.getHours()).padStart(2, "0");
-    const minutes = String(date.getMinutes()).padStart(2, "0");
-    return `${day}/${month}/${year} ${hours}:${minutes}`;
-  };
-
-  // Base list of leads filtered by Date AND completely hiding "Working" companies
-  const dateFilteredLeads = useMemo(() => {
-    return leads.filter(lead => {
-      // Throw out companies that shouldn't show in any filter
-      if (getLeadCategory(lead) === "Hide") return false;
-
-      if (!lead.lastUpdated) return false;
-      const date = typeof lead.lastUpdated.toDate === "function"
-        ? lead.lastUpdated.toDate()
-        : new Date(lead.lastUpdated);
-      return (
-        date.getTime() >= appliedFilters.start &&
-        date.getTime() <= appliedFilters.end
-      );
-    });
-  }, [leads, appliedFilters]);
-
-  // Generate Stats dynamically
   const stats = useMemo(() => ({
-    total: dateFilteredLeads.length,
-    registration: dateFilteredLeads.filter(l => getLeadCategory(l) === "Registration").length,
-    trial: dateFilteredLeads.filter(l => getLeadCategory(l) === "Trial Plan").length,
-    abandoned: dateFilteredLeads.filter(l => getLeadCategory(l) === "Abandoned").length,
-  }), [dateFilteredLeads]);
+    all: inR.length,
+    new: inR.filter(l => l.sales === 'new').length,
+    followToday: leads.filter(followUpDue).length,
+    converted: inR.filter(l => l.sales === 'converted').length,
+    notInterested: inR.filter(l => l.sales === 'not_interested').length,
+  }), [inR, leads]);
 
-  // Apply Big Box Filter -> Apply Search Query -> Apply Sorter
-  const filteredLeads = useMemo(() => {
-    // 1. Filter by Big Box
-    let list = activeFilter === "all"
-      ? dateFilteredLeads
-      : dateFilteredLeads.filter(l => getLeadCategory(l) === activeFilter);
+  const assignees = useMemo(() => Array.from(new Set(leads.map(l => l.assignedTo).filter(Boolean))).sort(), [leads]);
 
-    // 2. Filter by Search Query
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      list = list.filter(l =>
-        l.fullName?.toLowerCase().includes(q) ||
-        l.email?.toLowerCase().includes(q) ||
-        l.phoneNumber?.toLowerCase().includes(q)
-      );
-    }
-
-    // 3. Sort Results
-    return list.sort((a, b) => {
-      const dateA = a.lastUpdated?.toDate ? a.lastUpdated.toDate().getTime() : new Date(a.lastUpdated || 0).getTime();
-      const dateB = b.lastUpdated?.toDate ? b.lastUpdated.toDate().getTime() : new Date(b.lastUpdated || 0).getTime();
-
-      return sortOrder === "newest" ? dateB - dateA : dateA - dateB;
+  const filtered = useMemo(() => {
+    // "Follow-up today" looks across all dates — an overdue call from last month still needs making.
+    const base = cardFilter === 'follow_today' ? leads.filter(followUpDue) : inR;
+    const q = search.trim().toLowerCase();
+    const list = base.filter(l => {
+      if (cardFilter === 'new' && l.sales !== 'new') return false;
+      if (cardFilter === 'converted' && l.sales !== 'converted') return false;
+      if (cardFilter === 'not_interested' && l.sales !== 'not_interested') return false;
+      if (stepFilter !== 'all' && l.stage !== stepFilter) return false;
+      if (assignedFilter === 'none' && l.assignedTo) return false;
+      if (assignedFilter !== 'all' && assignedFilter !== 'none' && l.assignedTo !== assignedFilter) return false;
+      if (q && ![l.fullName, l.email, l.phone].some(x => x && x.toLowerCase().includes(q))) return false;
+      return true;
     });
-  }, [dateFilteredLeads, activeFilter, sortOrder, searchQuery]);
+    const t = (d: Date | null) => d?.getTime() ?? 0;
+    return [...list].sort((a, b) => {
+      switch (sortKey) {
+        case 'newest': return t(b.lastUpdated) - t(a.lastUpdated);
+        case 'oldest': return t(a.lastUpdated) - t(b.lastUpdated);
+        case 'stuck': return (a.stage === 'details' ? 0 : 1) - (b.stage === 'details' ? 0 : 1) || t(a.lastUpdated) - t(b.lastUpdated);
+        default: {
+          // Due follow-ups first (earliest first), then open leads without one, closed last.
+          const rank = (l: AdminLead) => (isClosed(l) ? 3 : l.followUpAt ? (followUpDue(l) ? 0 : 1) : 2);
+          return rank(a) - rank(b) || t(a.followUpAt) - t(b.followUpAt) || t(b.lastUpdated) - t(a.lastUpdated);
+        }
+      }
+    });
+  }, [inR, leads, cardFilter, stepFilter, assignedFilter, sortKey, search]);
 
-  const toggleFilter = (f: FilterType) =>
-    setActiveFilter(prev => (prev === f ? "all" : f));
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const rows = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  const update = async (l: AdminLead, payload: Record<string, any>, patch: Partial<AdminLead>) => {
+    setLeads(prev => prev.map(x => (x.id === l.id ? { ...x, ...patch } : x)));
+    try {
+      await updateDoc(doc(db, 'leads', l.id), payload);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to save. Reverting.');
+      setLeads(prev => prev.map(x => (x.id === l.id ? l : x)));
+    }
+  };
+
+  const setSales = (l: AdminLead, s: LeadSalesStatus) => update(l, { salesStatus: s }, { sales: s });
+  const setAssignee = (l: AdminLead, v: string) => update(l, { assignedTo: v.trim() }, { assignedTo: v.trim() });
+  const setFollowUp = (l: AdminLead, v: string) => {
+    const d = v ? new Date(`${v}T10:00:00`) : null;
+    update(l, { followUpAt: d ? Timestamp.fromDate(d) : null }, { followUpAt: d });
+  };
+  const markContacted = (l: AdminLead) => { if (l.sales === 'new') setSales(l, 'contacted'); };
+
+  const remove = async (l: AdminLead) => {
+    if (!window.confirm(`Permanently delete the lead for ${l.fullName || l.email}?`)) return;
+    try {
+      await deleteDoc(doc(db, 'leads', l.id));
+      setLeads(prev => prev.filter(x => x.id !== l.id));
+    } catch (err) {
+      console.error(err);
+      alert('Failed to delete lead.');
+    }
+  };
+
+  const toggleSel = (id: string) => setSelected(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const exportCsv = () => downloadCsv(
+    `sellar-app-leads-${new Date().toISOString().slice(0, 10)}.csv`,
+    ['Name', 'Email', 'Phone', 'Step', 'Sales status', 'Assigned to', 'Follow-up', 'Last activity', 'Company'],
+    filtered.map(l => [l.fullName, l.email, l.phone, LEAD_STAGE_META[l.stage].label, LEAD_SALES_META[l.sales].label,
+      l.assignedTo, l.followUpAt?.toISOString().slice(0, 10) || '', l.lastUpdated?.toISOString() || '', l.company?.id || '']),
+  );
+
+  if (loading) return <Loading />;
+
+  const pct = (n: number, d: number) => (d ? `${Math.round((n / d) * 100)}%` : '—');
+  const deltaPts = compare ? Math.round((f.rate - fPrev.rate) * 100) : null;
+  const lastLead = [...leads].sort((a, b) => (b.lastUpdated?.getTime() ?? 0) - (a.lastUpdated?.getTime() ?? 0))[0];
+  const selectedLeads = leads.filter(l => selected.has(l.id) && l.phone);
+
+  const funnelRows = [
+    { label: 'Started signup', sub: '100%', n: f.started, prevN: fPrev.started, drop: null as number | null, color: 'bg-blue-700' },
+    { label: 'Registered · trial started', sub: `${pct(f.registered, f.started)} of started`, n: f.registered, prevN: fPrev.registered, drop: f.started - f.registered, color: 'bg-blue-500' },
+    { label: 'Became paid', sub: `${pct(f.paid, f.registered)} of trials`, n: f.paid, prevN: fPrev.paid, drop: f.registered - f.paid, color: 'bg-green-600' },
+  ];
 
   return (
-    <div className="min-h-screen bg-gray-100 p-4 md:p-8 pb-16">
+    <PageShell>
+      <PageHeader
+        title="App Registration Leads"
+        subtitle="Everyone who started signing up in the Sellar app, and where they stopped"
+        actions={<>
+          <RangeTabs value={rangeKey} options={['today', '7d', '30d', '90d', 'custom']} onChange={setRangeKey} custom={custom} onCustomChange={setCustom} />
+          <label className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-700 cursor-pointer">
+            <input type="checkbox" checked={compare} onChange={e => setCompare(e.target.checked)} /> Compare to previous
+          </label>
+          <Btn onClick={exportCsv}>Export CSV</Btn>
+        </>}
+      />
 
-      {/* HEADER */}
-      <div className="flex items-center justify-between pb-3 border-b mb-2">
-        <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
-          App Registration Leads
-        </h1>
-        <button onClick={() => navigate(-1)} className="p-2">
-          <IconClose width={20} height={20} />
-        </button>
+      {inR.length === 0 && cardFilter !== 'follow_today' ? (
+        <Card className="p-6 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center shrink-0"><LineChart className="w-5 h-5 text-blue-600" /></div>
+          <div className="flex-1">
+            <p className="font-semibold text-gray-900">No leads in this period</p>
+            <p className="text-sm text-gray-600">
+              {lastLead ? `The last lead came in ${ageText(lastLead.lastUpdated)} ago.` : 'No leads yet.'} {stats.followToday} lead{stats.followToday === 1 ? '' : 's'} need a follow-up.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Btn onClick={() => setRangeKey('7d')}>Show last 7 days</Btn>
+            <Btn variant="primary" onClick={() => setCardFilter('follow_today')}>Open follow-ups</Btn>
+          </div>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-4 mb-4">
+          <Card className="p-5">
+            <CardTitle title="Signup funnel" right={
+              <Chip cls="bg-green-100 text-green-800" className="text-xs">
+                Overall {pct(f.paid, f.started)} paid{deltaPts !== null && ` · ${deltaPts >= 0 ? '+' : ''}${deltaPts} pts vs prev.`}
+              </Chip>
+            } />
+            {funnelRows.map(r => (
+              <div key={r.label} className="grid grid-cols-[minmax(0,140px)_1fr_auto] sm:grid-cols-[180px_1fr_110px] items-center gap-3 mb-3">
+                <div><p className="text-sm font-semibold text-gray-900">{r.label}</p><p className="text-xs text-gray-500">{r.sub}</p></div>
+                <div className="h-8 rounded-md bg-gray-100 overflow-hidden">
+                  <div className={`h-full ${r.color} text-white text-sm font-semibold flex items-center px-3`}
+                    style={{ width: f.started ? `${Math.max((r.n / f.started) * 100, 8)}%` : '8%' }}>{r.n}</div>
+                </div>
+                <div className="text-xs">
+                  {r.drop !== null ? <span className="text-red-600">{r.drop} dropped</span> : <span className="text-gray-400">—</span>}
+                  {compare && <p className="text-gray-500">prev: {r.prevN}</p>}
+                </div>
+              </div>
+            ))}
+            <p className="text-xs text-gray-500">Registering starts the free trial automatically, so those are one step. The period filters on each lead’s last activity.</p>
+          </Card>
+
+          <Card className="p-5">
+            <CardTitle title="Where people drop off" sub="Leads in this period by the step they’re stuck at" />
+            {dropOff.rows.map(r => (
+              <div key={r.label} className="mb-3">
+                <div className="flex justify-between text-sm"><span className="font-medium text-gray-800">{r.label}</span><span className="font-semibold">{r.n} here</span></div>
+                <div className="h-2 rounded-full bg-red-100 mt-1 overflow-hidden"><div className="h-full bg-red-600" style={{ width: `${(r.n / dropOff.max) * 100}%` }} /></div>
+                <p className="text-xs text-gray-500 mt-0.5">{r.hint}</p>
+              </div>
+            ))}
+            {dropOff.biggest.n > 0 && (
+              <p className="text-sm bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-amber-900">
+                <b>Biggest leak: {dropOff.biggest.label}.</b> {dropOff.biggest.n} people stopped here — worth a WhatsApp nudge.{' '}
+                <button className="underline font-semibold" onClick={() => setStepFilter(dropOff.biggest.label === 'Business details' ? 'details' : 'trial_ended')}>Show them</button>
+              </p>
+            )}
+          </Card>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 my-4">
+        <StatCard dot="bg-gray-500" label="All leads" value={stats.all} sub="in selected range" active={cardFilter === 'all'} onClick={() => setCardFilter('all')} />
+        <StatCard dot="bg-blue-600" label="New" value={stats.new} sub="not contacted yet" active={cardFilter === 'new'} onClick={() => setCardFilter(c => c === 'new' ? 'all' : 'new')} />
+        <StatCard dot="bg-amber-500" label="Follow-up due" value={stats.followToday} sub="today or overdue" active={cardFilter === 'follow_today'} onClick={() => setCardFilter(c => c === 'follow_today' ? 'all' : 'follow_today')} />
+        <StatCard dot="bg-green-600" label="Converted" value={stats.converted} sub="became paid" active={cardFilter === 'converted'} onClick={() => setCardFilter(c => c === 'converted' ? 'all' : 'converted')} />
+        <StatCard dot="bg-gray-400" label="Not interested" value={stats.notInterested} sub="closed" active={cardFilter === 'not_interested'} onClick={() => setCardFilter(c => c === 'not_interested' ? 'all' : 'not_interested')} />
       </div>
 
-      {/* DATE FILTER */}
-      <div className="bg-white p-4 rounded-sm shadow-md mb-2">
-        <div className="grid grid-cols-1 gap-3">
-          <select
-            value={datePreset}
-            onChange={(e) => handleDatePresetChange(e.target.value)}
-            className="w-full p-2 text-sm bg-gray-50 border rounded-sm outline-none focus:ring-1 focus:ring-gray-400"
-          >
-            <option value="today">Today</option>
-            <option value="yesterday">Yesterday</option>
-            <option value="last7">Last 7 Days</option>
-            <option value="last30">Last 30 Days</option>
-            <option value="custom">Custom</option>
-          </select>
-
-          <div className="grid grid-cols-2 gap-4">
-            <input
-              type="date"
-              value={customStartDate}
-              onChange={(e) => { setCustomStartDate(e.target.value); setDatePreset("custom"); }}
-              className="w-full p-2 text-sm bg-gray-50 border rounded-sm outline-none focus:ring-1 focus:ring-gray-400"
-            />
-            <input
-              type="date"
-              value={customEndDate}
-              onChange={(e) => { setCustomEndDate(e.target.value); setDatePreset("custom"); }}
-              className="w-full p-2 text-sm bg-gray-50 border rounded-sm outline-none focus:ring-1 focus:ring-gray-400"
-            />
+      <Card>
+        <div className="p-4 flex flex-col lg:flex-row gap-3 lg:items-center border-b border-gray-200">
+          <SearchBox className="flex-1" value={search} onChange={setSearch} placeholder="Search by name, email or phone…" />
+          <div className="grid grid-cols-2 sm:flex gap-2 items-center">
+            <SelectBox label="Step" value={stepFilter} onChange={v => setStepFilter(v as any)}>
+              <option value="all">All steps</option>
+              {(Object.keys(LEAD_STAGE_META) as LeadStage[]).map(s => <option key={s} value={s}>{LEAD_STAGE_META[s].label}</option>)}
+            </SelectBox>
+            <SelectBox label="Assigned" value={assignedFilter} onChange={setAssignedFilter}>
+              <option value="all">Anyone</option>
+              <option value="none">Unassigned</option>
+              {assignees.map(a => <option key={a} value={a}>{a}</option>)}
+            </SelectBox>
+            <SelectBox label="Sort" value={sortKey} onChange={v => setSortKey(v as SortKey)}>
+              <option value="followup">Follow-up due</option>
+              <option value="newest">Newest activity</option>
+              <option value="oldest">Oldest activity</option>
+              <option value="stuck">Stuck longest</option>
+            </SelectBox>
           </div>
         </div>
-
-        <div className="flex justify-center mt-2">
-          <button
-            onClick={handleApplyFilters}
-            className="w-full md:w-fit mt-2 px-10 py-2 bg-blue-600 text-white text-sm font-semibold rounded-sm hover:bg-blue-700"
-          >
-            Apply
-          </button>
-        </div>
-      </div>
-
-      {/* FILTER CARDS */}
-      <div className="grid grid-cols-2 gap-2 mb-4 md:grid-cols-4 md:gap-4">
-        <div
-          onClick={() => toggleFilter("all" as FilterType)}
-          className={`cursor-pointer rounded-sm transition-all border-2 ${activeFilter === "all"
-            ? "border-gray-600 bg-gray-100 shadow-md scale-105"
-            : "border-transparent"
-            }`}
-        >
-          <CustomCard variant={CardVariant.Summary} title="Total Leads" value={stats.total.toString()} />
-        </div>
-
-        <div
-          onClick={() => toggleFilter("Registration")}
-          className={`cursor-pointer rounded-sm transition-all border-2 ${activeFilter === "Registration"
-            ? "border-green-600 bg-green-50 shadow-md scale-105"
-            : "border-transparent"
-            }`}
-        >
-          <CustomCard variant={CardVariant.Summary} title="Registration" value={stats.registration.toString()} />
-        </div>
-
-        <div
-          onClick={() => toggleFilter("Trial Plan")}
-          className={`cursor-pointer rounded-sm transition-all border-2 ${activeFilter === "Trial Plan"
-            ? "border-blue-600 bg-blue-50 shadow-md scale-105"
-            : "border-transparent"
-            }`}
-        >
-          <CustomCard variant={CardVariant.Summary} title="Trial Plan" value={stats.trial.toString()} />
-        </div>
-
-        <div
-          onClick={() => toggleFilter("Abandoned")}
-          className={`cursor-pointer rounded-sm transition-all border-2 ${activeFilter === "Abandoned"
-            ? "border-red-600 bg-red-50 shadow-md scale-105"
-            : "border-transparent"
-            }`}
-        >
-          <CustomCard variant={CardVariant.Summary} title="Abandoned" value={stats.abandoned.toString()} />
-        </div>
-      </div>
-
-      {/* SEARCH, SORTER & TABLE */}
-      <div className="bg-white p-4 rounded-sm shadow-md mb-2">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-3 mb-4">
-
-          {/* Main Search Bar */}
-          <div className="relative w-full md:max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by name, email, or phone..."
-              className="w-full pl-9 pr-4 py-2 text-sm bg-white border border-gray-200 rounded-sm shadow-sm focus:ring-1 focus:ring-gray-400 outline-none"
-            />
+        {selected.size > 0 && (
+          <div className="px-4 py-2.5 border-b border-gray-200 flex items-center gap-3 bg-green-50/50">
+            <Btn size="sm" variant="green" onClick={() => setNudgeOpen(true)}>Nudge selected on WhatsApp ({selected.size})</Btn>
+            <button className="text-sm text-gray-600" onClick={() => setSelected(new Set())}>Clear</button>
           </div>
-
-          {/* Sorter Dropdown */}
-          <select
-            value={sortOrder}
-            onChange={(e) => setSortOrder(e.target.value as "newest" | "oldest")}
-            className="w-full md:w-auto p-2 text-sm bg-gray-50 border border-gray-200 rounded-sm outline-none cursor-pointer focus:ring-1 focus:ring-gray-400"
-          >
-            <option value="newest">Newest First</option>
-            <option value="oldest">Oldest First</option>
-          </select>
-        </div>
+        )}
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[800px] text-sm">
-            <thead className="bg-gray-50 text-gray-600">
+          <table className="w-full text-sm min-w-[1000px]">
+            <thead className="bg-gray-50 text-[11px] font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200">
               <tr>
-                <th className="p-3 text-left">Name</th>
-                <th className="p-3 text-left">Phone</th>
-                <th className="p-3 text-left">Current Step</th>
-                <th className="p-3 text-left">Last Updated</th>
-                <th className="p-3 text-left">Sales Status</th>
-                <th className="p-3 text-center">Action</th>
+                <th className="w-10 px-4 py-2.5">
+                  <input type="checkbox" aria-label="Select all on page"
+                    checked={rows.length > 0 && rows.every(r => selected.has(r.id))}
+                    onChange={e => setSelected(prev => {
+                      const next = new Set(prev);
+                      rows.forEach(r => e.target.checked ? next.add(r.id) : next.delete(r.id));
+                      return next;
+                    })} />
+                </th>
+                <th className="text-left py-2.5">Lead</th><th className="text-left py-2.5">Progress</th><th className="text-left py-2.5">Time at step</th>
+                <th className="text-left py-2.5">Sales status</th><th className="text-left py-2.5">Assigned to</th><th className="text-left py-2.5">Follow-up</th>
+                <th className="text-right px-4 py-2.5">Contact</th>
               </tr>
             </thead>
-
             <tbody>
-              {filteredLeads.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="p-6 text-center text-gray-400">No leads found.</td>
-                </tr>
-              ) : (
-                filteredLeads.map((lead) => (
-                  <tr key={lead.id} className="border-t hover:bg-gray-50 transition-colors">
-                    <td className="p-3">
-                      <p className="font-bold text-gray-800">{lead.fullName || "-"}</p>
-                      <p className="text-xs text-gray-500">{lead.email || "-"}</p>
+              {rows.length === 0 ? (
+                <tr><td colSpan={8}><EmptyRow>No leads match these filters.</EmptyRow></td></tr>
+              ) : rows.map(l => {
+                const st = stepTime(l);
+                const step = LEAD_STAGE_META[l.stage].step;
+                return (
+                  <tr key={l.id} className="border-b border-gray-100 align-top">
+                    <td className="px-4 py-3"><input type="checkbox" checked={selected.has(l.id)} onChange={() => toggleSel(l.id)} aria-label={`Select ${l.fullName}`} /></td>
+                    <td className="py-3 pr-3">
+                      <p className="font-semibold text-gray-900">{l.fullName || '—'}</p>
+                      <p className="text-xs text-gray-500">{l.phone || 'no phone'} · {fmtDate(l.lastUpdated)}</p>
+                      <p className="text-xs text-gray-400 truncate max-w-[200px]">{l.email}</p>
                     </td>
-                    <td className="p-3 font-medium">{lead.phoneNumber || "-"}</td>
-                    <td className="p-3">
-                      <span className="bg-gray-100 px-2 py-1 rounded-sm text-xs font-bold text-gray-600">
-                        {lead.currentStep || "-"}
-                      </span>
+                    <td className="py-3 pr-3">
+                      <div className="flex gap-1 mb-1">
+                        {Array.from({ length: STEPS }).map((_, i) => (
+                          <span key={i} className={`h-1.5 w-6 rounded-full ${i < step ? (l.stage === 'trial_ended' ? 'bg-red-500' : 'bg-blue-600') : 'bg-gray-200'}`} />
+                        ))}
+                      </div>
+                      <p className="text-xs font-medium text-gray-800">{LEAD_STAGE_META[l.stage].label} · {step}/{STEPS}</p>
+                      {l.company && <p className="text-[11px] font-mono text-gray-500">{l.company.id}</p>}
                     </td>
-                    <td className="p-3 text-gray-500">{formatDate(lead.lastUpdated)}</td>
-
-                    {/* Call Dispositions Dropdown */}
-                    <td className="p-3">
-                      <select
-                        value={lead.salesStatus || "Pending"}
-                        onChange={(e) => handleStatusChange(lead.id, e.target.value)}
-                        className={`text-xs font-bold p-1.5 rounded-sm border cursor-pointer outline-none ${lead.salesStatus === "Interested" ? "bg-green-50 text-green-700 border-green-200" :
-                            lead.salesStatus === "Not interested" ? "bg-red-50 text-red-700 border-red-200" :
-                              lead.salesStatus === "Issue" ? "bg-orange-50 text-orange-700 border-orange-200" :
-                                "bg-blue-50 text-blue-700 border-blue-200"
-                          }`}
-                      >
-                        <option value="Pending">Pending</option>
-                        <option value="Interested">Interested</option>
-                        <option value="Not interested">Not interested</option>
-                        <option value="Issue">Issue</option>
+                    <td className={`py-3 pr-3 text-xs font-semibold ${st.cls}`}>{st.text}</td>
+                    <td className="py-3 pr-3">
+                      <select value={l.sales} onChange={e => setSales(l, e.target.value as LeadSalesStatus)}
+                        className={`text-[11px] font-bold rounded-full px-2 py-1 border-0 cursor-pointer ${LEAD_SALES_META[l.sales].cls}`}>
+                        {(Object.keys(LEAD_SALES_META) as LeadSalesStatus[]).map(s => <option key={s} value={s}>{LEAD_SALES_META[s].label}</option>)}
                       </select>
                     </td>
-
-                    {/* Delete Lead */}
-                    <td className="p-3 text-center">
-                      <button
-                        onClick={() => handleDeleteLead(lead.id)}
-                        className="text-red-500 hover:text-red-700 p-1.5 bg-red-50 hover:bg-red-100 rounded-sm transition-colors text-xs font-bold"
-                      >
-                        Delete
-                      </button>
+                    <td className="py-3 pr-3">
+                      <input list="lead-assignees" defaultValue={l.assignedTo} placeholder="—"
+                        onBlur={e => { if (e.target.value.trim() !== l.assignedTo) setAssignee(l, e.target.value); }}
+                        className="w-28 text-sm border border-transparent hover:border-gray-300 focus:border-gray-300 rounded px-1.5 py-1 bg-transparent" />
+                    </td>
+                    <td className="py-3 pr-3">
+                      {!isClosed(l) ? (
+                        <input type="date" value={l.followUpAt ? l.followUpAt.toISOString().slice(0, 10) : ''}
+                          onChange={e => setFollowUp(l, e.target.value)}
+                          className={`text-xs border rounded px-1.5 py-1 ${followUpDue(l) ? 'border-amber-400 text-amber-800 bg-amber-50 font-semibold' : 'border-gray-200'}`} />
+                      ) : <span className="text-gray-400">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      {l.phone && <>
+                        <LinkBtn href={`tel:${l.phone}`} target="_self" onClick={() => markContacted(l)}>Call</LinkBtn>{' '}
+                        <LinkBtn variant="green" href={waLink(l.phone, nudgeText(l))} onClick={() => markContacted(l)}>WhatsApp</LinkBtn>{' '}
+                      </>}
+                      <button onClick={() => remove(l)} className="p-1.5 text-gray-400 hover:text-red-600 align-middle" aria-label="Delete lead"><Trash2 className="w-4 h-4" /></button>
                     </td>
                   </tr>
-                ))
-              )}
+                );
+              })}
             </tbody>
           </table>
+          <datalist id="lead-assignees">{assignees.map(a => <option key={a} value={a} />)}</datalist>
         </div>
-      </div>
-    </div>
+        <Pager page={page} pageCount={pageCount} total={filtered.length} pageSize={PAGE_SIZE} onPage={setPage} />
+      </Card>
+
+      {/* Browsers block opening many WhatsApp tabs at once, so bulk nudging is a click-through queue. */}
+      {nudgeOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setNudgeOpen(false)}>
+          <div className="bg-white rounded-xl w-full max-w-lg max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <div>
+                <h2 className="font-semibold text-gray-900">Nudge {selectedLeads.length} lead{selectedLeads.length === 1 ? '' : 's'} on WhatsApp</h2>
+                <p className="text-xs text-gray-500">Each opens WhatsApp with a message for their step. Opening marks the lead contacted.</p>
+              </div>
+              <button onClick={() => setNudgeOpen(false)} aria-label="Close"><X className="w-5 h-5 text-gray-500" /></button>
+            </div>
+            <div className="overflow-y-auto divide-y divide-gray-100">
+              {selectedLeads.map(l => (
+                <div key={l.id} className="flex items-center justify-between gap-3 px-4 py-3">
+                  <div className="min-w-0"><p className="font-semibold text-sm truncate">{l.fullName || l.phone}</p><p className="text-xs text-gray-500">{LEAD_STAGE_META[l.stage].label}</p></div>
+                  <LinkBtn variant="green" href={waLink(l.phone, nudgeText(l))} onClick={() => markContacted(l)}>Open WhatsApp</LinkBtn>
+                </div>
+              ))}
+              {selected.size > selectedLeads.length && <p className="px-4 py-3 text-xs text-gray-500">{selected.size - selectedLeads.length} selected lead(s) have no phone number.</p>}
+            </div>
+            <div className="p-4 border-t border-gray-200 flex justify-end"><Btn onClick={() => { setNudgeOpen(false); setSelected(new Set()); }}>Done</Btn></div>
+          </div>
+        </div>
+      )}
+    </PageShell>
   );
-}
+};
 
 export default LeadsPage;

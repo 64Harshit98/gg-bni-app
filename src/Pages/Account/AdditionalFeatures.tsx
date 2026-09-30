@@ -102,9 +102,8 @@ const AdditionalServices: React.FC = () => {
                         }
                     }
                     // BotMaster token exists but isn't actively connected — send
-                    // them back into the plan/QR flow to reconnect, not the
-                    // choose-provider screen (they've already made their choice).
-                    navigate(ROUTES.WHATSAPP_PLAN);
+                    // them back through the choose-provider screen to reconnect.
+                    navigate(ROUTES.WHATSAPP_CHOOSE);
                     return;
                 }
             }

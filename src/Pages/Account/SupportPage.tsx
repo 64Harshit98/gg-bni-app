@@ -15,7 +15,8 @@ import {
   Phone,
   MessageCircle,
   FileText,
-  Send
+  Send,
+  Building2
 } from 'lucide-react';
 import { ROUTES } from '../../constants/routes.constants';
 import BackButton from '../../Components/BackButton';
@@ -96,19 +97,18 @@ const SupportPage: React.FC = () => {
   //   fetchProfile();
   // }, []);
 
+  // NOTE: must stay a transaction — the earlier getDoc-then-setDoc version
+  // let concurrent submits read the same count. Needs runTransaction imported
+  // when re-enabled, AND firestore.rules currently has no rule letting normal
+  // users touch top-level counters/ or support_tickets/ (only super admins).
   // const generateRefNumber = async () => {
   //   const counterRef = doc(db, "counters", "support_tickets");
-  //   const counterSnap = await getDoc(counterRef);
-
-  //   let nextNumber = 1;
-  //   if (counterSnap.exists()) {
-  //     nextNumber = (counterSnap.data().count || 0) + 1;
-  //   }
-
-  //   // FIX: setDoc safely creates "support_tickets" if it's missing, 
-  //   // or updates the count if it already exists.
-  //   await setDoc(counterRef, { count: nextNumber });
-
+  //   const nextNumber = await runTransaction(db, async (tx) => {
+  //     const snap = await tx.get(counterRef);
+  //     const next = (snap.exists() ? snap.data().count || 0 : 0) + 1;
+  //     tx.set(counterRef, { count: next }, { merge: true });
+  //     return next;
+  //   });
   //   return `TKT-${String(nextNumber).padStart(4, '0')}`; // TKT-0001, TKT-0002...
   // };
 
@@ -220,6 +220,15 @@ const SupportPage: React.FC = () => {
               <p>Our team is available Mon-Fri, 10 AM - 6 PM.</p>
 
               <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-md border border-gray-100">
+                <div className="bg-purple-100 p-2 rounded-full text-purple-600">
+                  <Building2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 font-bold uppercase">Company Name</p>
+                  <a href="https://www.sellar.in/" className="text-blue-600 font-medium hover:underline">SELLAR SOLUTIONS</a>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-md border border-gray-100">
                 <div className="bg-blue-100 p-2 rounded-full text-blue-600">
                   <Mail className="w-4 h-4" />
                 </div>
@@ -247,8 +256,19 @@ const SupportPage: React.FC = () => {
             isOpen={openSection === 'contact-2'}
             onClick={() => toggleSection('contact-2')}
           >
-            <p className="font-medium text-gray-800">Sellar HQ</p>
+            <p className="font-medium text-gray-800">Sellar Solutions</p>
             <p>2nd Floor, Parsvnath Arcade, Unit 22, Vaibhav khand</p>
+            <p> Indirapuram, Ghaziabad, Uttar Pradesh 201014</p>
+            <p className="mt-2 text-xs text-gray-400">(Visits by appointment only)</p>
+          </AccordionItem>
+          <AccordionItem
+            title="Registered Address"
+            icon={<FileText className="w-5 h-5" />}
+            isOpen={openSection === 'contact-3'}
+            onClick={() => toggleSection('contact-3')}
+          >
+            <p className="font-medium text-gray-800">Sellar Solutions</p>
+            <p> Lower Ground Floor, Shipra Shopping Center, Shop No, SPL-036, Vaibhav Khand,</p>
             <p> Indirapuram, Ghaziabad, Uttar Pradesh 201014</p>
             <p className="mt-2 text-xs text-gray-400">(Visits by appointment only)</p>
           </AccordionItem>

@@ -135,7 +135,19 @@ const TermsContent = () => (
       </p>
     </Section>
 
-    <Section num="06" title="Data Ownership & Usage">
+    <Section num="06" title="Cancellation & Refund Policy">
+      <p>
+        As our services are provided on a yearly subscription basis, once a payment has been made, no refund will be available. This is because the necessary services, infrastructure, technical arrangements, and resources are established and paid for in advance for the entire subscription year.
+      </p>
+      <p className="mt-3">
+        Once a yearly subscription has been activated, cancellation of the subscription is not permitted.
+      </p>
+      <p className="mt-3">
+        However, in the event of a special emergency or exceptional circumstance, you may contact our support team using the contact details provided within the application. While the subscription cannot be cancelled or refunded, our team may provide appropriate support and assistance based on the circumstances.
+      </p>
+    </Section>
+
+    <Section num="07" title="Data Ownership & Usage">
       <p>
         You retain full ownership of your business data, including but not limited to customer information, invoices, product listings, and transaction records.
       </p>
@@ -145,7 +157,7 @@ const TermsContent = () => (
       </p>
     </Section>
 
-    <Section num="07" title="Prohibited Activities">
+    <Section num="08" title="Prohibited Activities">
       <p>
         Users are strictly prohibited from engaging in activities that compromise the integrity, security, or lawful use of the Sellar platform.
       </p>
@@ -162,7 +174,7 @@ const TermsContent = () => (
       </p>
     </Section>
 
-    <Section num="08" title="Service Availability & Reliability">
+    <Section num="09" title="Service Availability & Reliability">
       <p>
         Sellar strives to provide a stable, secure, and uninterrupted platform experience. However, we do not guarantee that the service will always be available, uninterrupted, timely, or error-free.
       </p>
@@ -177,7 +189,7 @@ const TermsContent = () => (
       </p>
     </Section>
 
-    <Section num="09" title="Limitation of Liability">
+    <Section num="10" title="Limitation of Liability">
       <p>
         To the maximum extent permitted by applicable law, Sellar shall not be liable for any indirect, incidental, special, consequential, or punitive damages.
       </p>
@@ -195,7 +207,7 @@ const TermsContent = () => (
       </p>
     </Section>
 
-    <Section num="10" title="Intellectual Property Rights">
+    <Section num="11" title="Intellectual Property Rights">
       <p>
         All content, features, designs, trademarks, logos, software, and technology associated with Sellar are the exclusive property of Sellar and are protected under applicable intellectual property laws.
       </p>
@@ -210,7 +222,7 @@ const TermsContent = () => (
       </p>
     </Section>
 
-    <Section num="11" title="Termination & Suspension">
+    <Section num="12" title="Termination & Suspension">
       <p>
         Sellar reserves the right to suspend, restrict, or terminate your account at its sole discretion, with or without prior notice.
       </p>
@@ -225,7 +237,7 @@ const TermsContent = () => (
       </p>
     </Section>
 
-    <Section num="12" title="Governing Law">
+    <Section num="13" title="Governing Law">
       <p>These Terms & Conditions shall be governed by and interpreted in accordance with the laws of India.</p>
       <p className="mt-3">
         Any disputes, claims, or legal proceedings arising out of or relating to these Terms or the use of the platform shall be subject to the exclusive jurisdiction of the courts located in Ghaziabad, Uttar Pradesh.
@@ -235,7 +247,7 @@ const TermsContent = () => (
       </p>
     </Section>
 
-    <Section num="13" title="Changes to Terms">
+    <Section num="14" title="Changes to Terms">
       <p>
         Sellar reserves the right to update, modify, or replace these Terms & Conditions at any time to reflect changes in legal requirements, business practices, or platform features.
       </p>

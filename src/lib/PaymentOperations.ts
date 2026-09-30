@@ -34,6 +34,22 @@ export const createRazorpayOrder = async (planId: string, couponCode?: string): 
     return result.data as RazorpayOrderResult;
 };
 
+export interface IciciOrderResult {
+    redirectURI: string;
+    merchantTxnNo: string;
+}
+
+export const createIciciOrder = async (
+    planId: string,
+    couponCode?: string,
+    product?: 'subscription' | 'whatsapp'
+): Promise<IciciOrderResult> => {
+    const functions = getFunctions();
+    const fn = httpsCallable(functions, 'createIciciOrder');
+    const result = await fn({ planId, couponCode: couponCode || null, product: product || 'subscription' });
+    return result.data as IciciOrderResult;
+};
+
 export const verifyRazorpayPayment = async (
     orderId: string,
     paymentId: string,

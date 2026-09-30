@@ -5,35 +5,71 @@ const API_BASE_URL = import.meta.env.VITE_BMS_BASE_URL; // Define the base URL h
 const PARTNER_UID = import.meta.env.VITE_BMS_PARTNER_UID; // Define the partner UID here
 const API_SEND_URL = import.meta.env.VITE_BMS_BASE_SEND_URL; // Define the send URL here
 
+// The API requires a password on every account but the app never exposes one to the user,
+// so every account is created/logged into with this fixed value.
+export const BMS_FIXED_PASSWORD = "A1!123456789";
+
 export const botMasterService = {
 
-  // Matches image_059bc0.png
+  // POST /api/v1/?action=register_customer
+  // Response includes user.auth_token (a persistent UUID) — that IS the token used by
+  // get_qr_code/update_webhook etc. It is NOT the login JWT ("token") from loginCustomer.
   registerUser: async (data: any) => {
     const response = await axios.post(`${API_BASE_URL}/`, {
-      partnerUid: PARTNER_UID,
+      partner_uid: PARTNER_UID,
       username: data.name.toLowerCase().replace(/\s/g, ''),
       name: data.name,
       phone: data.phone.replace(/\D/g, ''),
       password: data.password,
-      email: data.email,
-      country: "India"
-    }, { params: { action: 'register' } });
+      email: data.email
+    }, { params: { action: 'register_customer' } });
     return response.data;
   },
 
-  // Matches image_059ba2.png
-  createSession: async (authToken: string, senderId: string) => {
+  // POST /api/v1/?action=login_customer — used when the account already exists
+  // (resuming an abandoned signup). Its user.auth_token is the same persistent UUID
+  // register_customer returns.
+  loginCustomer: async (phone: string, password: string) => {
     const response = await axios.post(`${API_BASE_URL}/`, {
-      auth_token: authToken, // Key from image_059ba2.png
-      senderId: senderId.replace(/\D/g, '')
-    }, { params: { action: 'createsession' } });
+      partner_uid: PARTNER_UID,
+      phone: phone.replace(/\D/g, ''),
+      password
+    }, { params: { action: 'login_customer' } });
     return response.data;
   },
 
-  getQrCode: async (authToken: string, senderId: string) => {
-    const response = await axios.get(`${API_BASE_URL}/`, {
-      params: { action: 'getqrcode', authToken, senderId: senderId.replace(/\D/g, '') }
-    });
+  // POST /api/v1/?action=get_customer
+  getCustomer: async (customerUid: string) => {
+    const response = await axios.post(`${API_BASE_URL}/`, {
+      partner_uid: PARTNER_UID,
+      customer_uid: customerUid
+    }, { params: { action: 'get_customer' } });
+    return response.data;
+  },
+
+  // POST /api/v1/?action=create_session
+  // CONFIRMED (2026-09-15): do NOT send any auth token here — in body OR header.
+  // Doing so makes the API incorrectly reject the request with "Auth token is required",
+  // even with a token proven valid against get_qr_code. The bare 3 fields below are the
+  // full and correct request.
+  createSession: async (customerUid: string, senderId: string) => {
+    const response = await axios.post(`${API_BASE_URL}/`, {
+      partner_uid: PARTNER_UID,
+      customer_uid: customerUid,
+      session_id: senderId.replace(/\D/g, '')
+    }, { params: { action: 'create_session' } });
+    return response.data;
+  },
+
+  // POST /api/v1/?action=get_qr_code — authToken here IS required, and is the
+  // user.auth_token UUID (not the login JWT).
+  getQrCode: async (authToken: string, customerUid: string, senderId: string) => {
+    const response = await axios.post(`${API_BASE_URL}/`, {
+      partner_uid: PARTNER_UID,
+      auth_token: authToken,
+      customer_uid: customerUid,
+      session_id: senderId.replace(/\D/g, '')
+    }, { params: { action: 'get_qr_code' } });
     return response.data;
   },
 

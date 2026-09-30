@@ -37,6 +37,7 @@ interface CatalogueData {
   twitter?: string;
   gmail?: string;
   whatsappNumber?: string;
+  brandingText?: string;
 
   profilePicture?: string;
   companyLogo?: string;
@@ -872,6 +873,10 @@ const EditProfilePage: React.FC = () => {
                 <FloatingLabelInput type="text" name="facebook" value={formData.facebook || ''} onChange={handleInputChange} label="Facebook" />
                 <FloatingLabelInput type="text" name="twitter" value={formData.twitter || ''} onChange={handleInputChange} label="Twitter / X" />
                 <FloatingLabelInput type="text" name="whatsappNumber" value={formData.whatsappNumber || ''} onChange={handleInputChange} label="WhatsApp No." maxLength={10} inputMode="numeric" />
+                <div className="sm:col-span-2">
+                  <FloatingLabelInput type="text" name="brandingText" value={formData.brandingText || ''} onChange={handleInputChange} label="Branding Text" maxLength={50} />
+                  <p className="text-[11px] text-gray-400 mt-1 mb-0 text-right">{(formData.brandingText || '').length}/50</p>
+                </div>
               </div>
             </SectionCard>
           </div>
@@ -892,6 +897,10 @@ const EditProfilePage: React.FC = () => {
                 <FloatingLabelInput type="text" name="facebook" value={formData.facebook || ''} onChange={handleInputChange} label="Facebook" />
                 <FloatingLabelInput type="text" name="twitter" value={formData.twitter || ''} onChange={handleInputChange} label="Twitter / X" />
                 <FloatingLabelInput type="text" name="whatsappNumber" value={formData.whatsappNumber || ''} onChange={handleInputChange} label="WhatsApp No." maxLength={10} inputMode="numeric" />
+                <div className="sm:col-span-2">
+                  <FloatingLabelInput type="text" name="brandingText" value={formData.brandingText || ''} onChange={handleInputChange} label="Branding Text" maxLength={50} />
+                  <p className="text-[11px] text-gray-400 mt-1 mb-0 text-right">{(formData.brandingText || '').length}/50</p>
+                </div>
               </div>
             </SectionCard>
           </div>

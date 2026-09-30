@@ -207,11 +207,13 @@ exports.botmasterProxy = functions.https.onRequest((req, res) => {
     cors(req, res, async () => {
         try {
             const targetUrl = `https://api.botmastersender.com${req.url}`;
+            const headers = { "Content-Type": "application/json" };
+            if (req.headers.authorization) headers.Authorization = req.headers.authorization;
             const response = await axios({
                 method: req.method,
                 url: targetUrl,
                 data: req.body,
-                headers: { "Content-Type": "application/json" }
+                headers
             });
             res.status(response.status).send(response.data);
         } catch (error) {
@@ -455,7 +457,7 @@ exports.setSellarSharedWhatsappConfig = functions.https.onCall(async (data, cont
     if (!context.auth || !SUPER_ADMIN_UIDS.includes(context.auth.uid)) {
         throw new functions.https.HttpsError('permission-denied', 'Only Super Admins can perform this action.');
     }
-    const { snaptoApiKey, whatsappNumber, templateName, reminderTemplateName, stockAlertTemplateName, language } = data;
+    const { snaptoApiKey, whatsappNumber, templateName, reminderTemplateName, stockAlertTemplateName, renewalTemplateName, language } = data;
 
     await db.doc('sellarWhatsappSharedConfig/global').set({
         snaptoApiKey: snaptoApiKey || '',
@@ -463,12 +465,97 @@ exports.setSellarSharedWhatsappConfig = functions.https.onCall(async (data, cont
         templateName: templateName || '',
         reminderTemplateName: reminderTemplateName || '',
         stockAlertTemplateName: stockAlertTemplateName || '',
+        renewalTemplateName: renewalTemplateName || '',
         language: language || 'en',
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedByUid: context.auth.uid,
     }, { merge: true });
 
     return { success: true };
+});
+
+// Super-admin renewal reminder to a company OWNER about their Sellar
+// subscription. Always sent from Sellar's shared number — never through the
+// company's own WhatsApp tier, which may itself be expired and would bill the
+// company for our message. Recipient is resolved server-side from the
+// company's owner so the client can't redirect it.
+// renewal template order: {{1}}=owner name, {{2}}=plan name, {{3}}=expiry phrase
+// ("expires on 26 Sep 2026" / "expired on 2 Jul 2026").
+exports.sendRenewalReminder = functions.https.onCall(async (data, context) => {
+    if (!context.auth || !SUPER_ADMIN_UIDS.includes(context.auth.uid)) {
+        throw new functions.https.HttpsError('permission-denied', 'Only Super Admins can perform this action.');
+    }
+    const { companyId } = data || {};
+    if (!companyId) throw new functions.https.HttpsError('invalid-argument', 'Missing companyId.');
+
+    const [sharedSnap, companySnap, ownerSnap] = await Promise.all([
+        db.doc('sellarWhatsappSharedConfig/global').get(),
+        db.doc(`companies/${companyId}`).get(),
+        db.collection(`companies/${companyId}/users`).where('role', 'in', ['Owner', 'owner']).limit(1).get(),
+    ]);
+
+    const shared = sharedSnap.exists ? sharedSnap.data() : {};
+    if (!shared.snaptoApiKey || !shared.renewalTemplateName) {
+        throw new functions.https.HttpsError('failed-precondition', 'Renewal template is not configured in Sellar shared WhatsApp settings.');
+    }
+    if (!companySnap.exists) throw new functions.https.HttpsError('not-found', 'Company not found.');
+
+    const company = companySnap.data();
+    const owner = ownerSnap.empty ? {} : ownerSnap.docs[0].data();
+
+    const rawPhone = owner.phoneNumber || company.ownerPhoneNumber || '';
+    let to = String(rawPhone).replace(/\D/g, '');
+    if (to.length === 10) to = `91${to}`;
+    if (to.length < 11) {
+        throw new functions.https.HttpsError('failed-precondition', 'Company owner has no valid phone number.');
+    }
+
+    const expiry = company.expiryDate && company.expiryDate.toDate ? company.expiryDate.toDate() : null;
+    const expiryStr = expiry
+        ? expiry.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
+        : null;
+    const expiryPhrase = !expiryStr
+        ? 'is due for renewal'
+        : expiry.getTime() < Date.now() ? `expired on ${expiryStr}` : `expires on ${expiryStr}`;
+    const planName = String(company.pack || 'Sellar').toUpperCase().replace(/_/g, ' ');
+    const templateVariables = [owner.name || company.name || 'Customer', planName, expiryPhrase];
+
+    const logRef = db.collection('renewalReminders').doc();
+    const logBase = {
+        companyId, to, templateVariables,
+        sentByUid: context.auth.uid,
+        sentAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    try {
+        const response = await axios.post(
+            'https://app.snapto.ai/api/v1/whatsapp/sendMessage',
+            {
+                templateName: shared.renewalTemplateName,
+                language: shared.language || 'en',
+                to,
+                templateVariables,
+            },
+            {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': shared.snaptoApiKey,
+                },
+            }
+        );
+        const waMessageId = (response.data && response.data.waMessageId) || null;
+        await logRef.set({ ...logBase, status: 'sent', waMessageId, errorDetail: null });
+        await db.doc(`companies/${companyId}`).set(
+            { lastRenewalReminderAt: admin.firestore.FieldValue.serverTimestamp() },
+            { merge: true }
+        );
+        return { success: true, waMessageId, to };
+    } catch (err) {
+        const errData = err.response && err.response.data;
+        const errorDetail = (errData && (errData.detail || (errData.error && errData.error.message))) || err.message || 'Unknown error';
+        await logRef.set({ ...logBase, status: 'failed', waMessageId: null, errorDetail });
+        throw new functions.https.HttpsError('internal', `Failed to send reminder: ${errorDetail}`);
+    }
 });
 
 // One-off migration: carries forward any company that had already self-
@@ -911,6 +998,7 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data) => {
         await batch.commit();
         return { status: "success", userId: userRecord.uid, companyId: newCompanyId };
     } catch (error) {
+        console.error("registerCompanyAndUser failed:", error.code, error.message, error);
         if (error.message === "Invalid referral code.") throw new functions.https.HttpsError("invalid-argument", error.message);
         if (error.code === 'auth/email-already-exists') throw new functions.https.HttpsError("already-exists", "Email registered.");
         throw new functions.https.HttpsError("internal", "Registration failed.");
@@ -1000,6 +1088,101 @@ exports.getPublicItem = functions
         }
     });
 
+// Must match generateSlug() in Shop.tsx / SharedProduct.tsx — category links
+// carry the slugified group name, not the group id.
+function slugify(name) {
+    return String(name || "")
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, "-")
+        .replace(/[^a-z0-9-]/g, "");
+}
+
+// Link-preview (og:*) data for whole-catalogue and single-category share
+// links, consumed by the App Hosting server (index.js) when a crawler like
+// WhatsApp fetches the page. Company is identified by `cId`, or by `sub`
+// (merchant subdomain, resolved via domainAliases like the storefront does).
+// `cat` is the category slug from the URL path; omit it for the whole store.
+exports.getPublicPreview = functions
+    .region("us-central1")
+    .https.onRequest(async (req, res) => {
+        const { cId, sub, cat } = req.query;
+
+        if (!cId && !sub) {
+            res.status(400).json({ error: "Missing cId or sub" });
+            return;
+        }
+
+        try {
+            let companyId = cId ? String(cId) : null;
+            if (!companyId) {
+                const snap = await db.collection("companies")
+                    .where("domainAliases", "array-contains", String(sub).toLowerCase())
+                    .limit(1)
+                    .get();
+                if (snap.empty) {
+                    res.status(404).json({ error: "Store not found" });
+                    return;
+                }
+                companyId = snap.docs[0].id;
+            }
+
+            const companyRef = db.collection("companies").doc(companyId);
+            const infoSnap = await companyRef.collection("business_info").doc(companyId).get();
+            const info = infoSnap.exists ? infoSnap.data() : {};
+
+            const businessName = info.businessName || "Catalogue";
+            const logoUrl = info.companyLogo || null;
+
+            let preview = {
+                title: businessName,
+                description: info.brandingText || `Browse the full catalogue of ${businessName}`,
+                imageUrl: logoUrl,
+            };
+
+            if (cat) {
+                const catKey = String(cat).toLowerCase();
+                const groupsSnap = await companyRef.collection("itemGroups").get();
+                const group = groupsSnap.docs.find(
+                    (d) => slugify(d.data().name) === catKey || d.id === String(cat)
+                );
+
+                if (group) {
+                    const g = group.data();
+                    let imageUrl = g.imageUrl || null;
+
+                    // No category image set — use the first listed item in it that has one.
+                    if (!imageUrl) {
+                        const itemsRef = companyRef.collection("items");
+                        const [byId, byIds] = await Promise.all([
+                            itemsRef.where("itemGroupId", "==", group.id).limit(25).get(),
+                            itemsRef.where("itemGroupIds", "array-contains", group.id).limit(25).get(),
+                        ]);
+                        const withImage = [...byId.docs, ...byIds.docs]
+                            .map((d) => d.data())
+                            .find((i) => i.isListed && i.imageUrl);
+                        imageUrl = withImage ? withImage.imageUrl : null;
+                    }
+
+                    preview = {
+                        title: `${g.name} | ${businessName}`,
+                        description: g.description || `Explore ${g.name} from ${businessName}`,
+                        imageUrl: imageUrl || logoUrl,
+                    };
+                }
+            }
+
+            res.set(
+                "Cache-Control",
+                "public, max-age=60, s-maxage=3600, stale-while-revalidate=600"
+            );
+            res.status(200).json(preview);
+        } catch (error) {
+            console.error("Error fetching public preview:", error);
+            res.status(500).json({ error: "Internal Server Error" });
+        }
+    });
+
 // =========================================================
 // Razorpay Subscription Payments + Coupons
 // =========================================================
@@ -1012,6 +1195,17 @@ const PLAN_PRICING = {
     enterprise: 7999,
 };
 const PLAN_DAYS = 365;
+
+// Sellar WhatsApp message-quota plans — mirrors SELLAR_WHATSAPP_PLANS in
+// src/Pages/Additional/Whatsapp/SellarWhatsappPlans.ts. A completely separate
+// product from the subscription plans above: no expiry/pack change on the
+// company doc, just a paid flag on the company's whatsappActivationRequests
+// doc for the team to manually activate (see WAChooseProvider.tsx).
+const WHATSAPP_PLAN_PRICING = {
+    sellar_10k: 2100,
+    sellar_25k: 4500,
+    sellar_50k: 7999,
+};
 const TAX_RATE = 0.18; // 18% GST, applied on every plan after any coupon discount
 
 // Applies GST to the post-discount amount. Rounded to the nearest rupee.
@@ -1159,6 +1353,127 @@ exports.createRazorpayOrder = functions.https.onCall(async (data, context) => {
         console.error("Error creating Razorpay order:", error);
         throw new functions.https.HttpsError("internal", "Failed to create payment order.");
     }
+});
+
+// Must stay identical to computeSecureHashV1 in functions/src/paymentWebhook.ts
+// (ICICI Hash Calc V1: sort field names, concat values, HMAC-SHA256, hex, lowercase).
+function computeIciciSecureHashV1(fields, secretKey) {
+    const concatenated = Object.keys(fields)
+        .filter((k) => k !== "secureHash")
+        .filter((k) => fields[k] !== null && fields[k] !== undefined && String(fields[k]) !== "")
+        .sort()
+        .map((k) => String(fields[k]))
+        .join("");
+    return crypto.createHmac("sha256", secretKey).update(concatenated, "ascii").digest("hex").toLowerCase();
+}
+
+// Per ICICI's Gateway Interface Spec (Chapter 3): txnDate is YYYYMMDDHHMISS,
+// numeric only, no separators.
+function formatIciciTxnDate(date) {
+    const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+    const ist = new Date(date.getTime() + IST_OFFSET_MS);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${ist.getUTCFullYear()}${pad(ist.getUTCMonth() + 1)}${pad(ist.getUTCDate())}${pad(ist.getUTCHours())}${pad(ist.getUTCMinutes())}${pad(ist.getUTCSeconds())}`;
+}
+
+exports.createIciciOrder = functions.runWith({ secrets: ["ICICI_PG_SECRET_KEY"] }).https.onCall(async (data, context) => {
+    if (!context.auth || !context.auth.token.companyId) {
+        throw new functions.https.HttpsError("unauthenticated", "Must be logged in.");
+    }
+    const companyId = context.auth.token.companyId;
+
+    const { planId, couponCode, product } = data;
+    // "subscription" (default) = the yearly POS/Catalogue plans, activated by
+    // extending the company's own expiryDate/pack below. "whatsapp" = a
+    // Sellar WhatsApp message-quota top-up — a different product entirely,
+    // never touches the company's subscription fields; see the
+    // targetCollection branch below and paymentWebhook.ts's matching branch.
+    const isWhatsapp = product === "whatsapp";
+    const baseAmount = isWhatsapp ? WHATSAPP_PLAN_PRICING[planId] : PLAN_PRICING[planId];
+    if (!baseAmount) throw new functions.https.HttpsError("invalid-argument", "Unknown plan.");
+
+    let taxableAmount = baseAmount;
+    let discountAmount = 0;
+    let appliedCode = null;
+
+    if (couponCode) {
+        const result = await resolveCoupon(couponCode, planId, companyId, baseAmount);
+        if (!result.valid) throw new functions.https.HttpsError("failed-precondition", result.message);
+        taxableAmount = result.taxableAmount;
+        discountAmount = result.discountAmount;
+        appliedCode = result.code;
+    }
+
+    const tax = applyTax(taxableAmount);
+
+    // ICICI merchantTxnNo must be alphanumeric and <=20 chars.
+    const merchantTxnNo = `S${Date.now().toString(36)}${crypto.randomBytes(3).toString("hex")}`.toUpperCase();
+
+    // Firebase Auth ID tokens carry an `email` claim when the user signed up
+    // with email/password (or verified email via another provider) — ICICI
+    // requires customerEmailID; fall back to a placeholder like their own
+    // docs do ("guest@ICICIBank.com") when it's genuinely unavailable.
+    const customerEmail = context.auth.token.email || "guest@icici.com";
+
+    // Field list/casing/txnDate format confirmed against ICICI's Gateway
+    // Interface Specification (Chapter 3: Initiate Sale) and their sample
+    // requests — not a guess.
+    const fields = {
+        merchantId: process.env.ICICI_MERCHANT_ID,
+        aggregatorID: process.env.ICICI_AGGREGATOR_ID,
+        merchantTxnNo,
+        amount: tax.finalAmount.toFixed(2),
+        currencyCode: "356",
+        payType: "0",
+        customerEmailID: customerEmail,
+        transactionType: "SALE",
+        returnURL: process.env.ICICI_RETURN_URL,
+        txnDate: formatIciciTxnDate(new Date()),
+    };
+    fields.secureHash = computeIciciSecureHashV1(fields, process.env.ICICI_PG_SECRET_KEY);
+
+    let iciciResponse;
+    try {
+        const { data: resp } = await axios.post(`${process.env.ICICI_BASE_URL}/v2/initiateSale`, fields, {
+            headers: { "Content-Type": "application/json" },
+        });
+        iciciResponse = resp;
+    } catch (error) {
+        console.error("Error calling ICICI initiateSale:", (error && error.response && error.response.data) || error);
+        throw new functions.https.HttpsError("internal", "Failed to start ICICI payment.");
+    }
+    // R1000 is ICICI's success code for initiateSale specifically (not
+    // 000/0000 as elsewhere) — any other value is a failure.
+    if (!iciciResponse || iciciResponse.responseCode !== "R1000" || !iciciResponse.redirectURI || !iciciResponse.tranCtx) {
+        console.error("ICICI initiateSale did not succeed:", iciciResponse);
+        throw new functions.https.HttpsError(
+            "internal",
+            (iciciResponse && iciciResponse.responseDescription) || "Payment gateway did not return a redirect URL."
+        );
+    }
+    // Per spec: the actual payment page URL is redirectURI + "?tranCtx=" +
+    // tranCtx, not redirectURI alone.
+    const redirectURI = `${iciciResponse.redirectURI}?tranCtx=${encodeURIComponent(iciciResponse.tranCtx)}`;
+
+    await db.doc(`paymentOrders/${merchantTxnNo}`).set({
+        targetCollection: isWhatsapp ? "whatsappActivationRequests" : "companies",
+        targetDocId: companyId,
+        companyId,
+        uid: context.auth.uid,
+        planId,
+        ...(isWhatsapp ? {} : { planDays: PLAN_DAYS }),
+        baseAmount,
+        discountAmount,
+        taxRate: TAX_RATE,
+        taxAmount: tax.taxAmount,
+        finalAmount: tax.finalAmount,
+        couponCode: appliedCode,
+        gateway: "icici",
+        status: "created",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return { redirectURI, merchantTxnNo };
 });
 
 exports.verifyRazorpayPayment = functions.https.onCall(async (data, context) => {

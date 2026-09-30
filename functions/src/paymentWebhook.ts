@@ -59,11 +59,26 @@ const ICICI_SECRET_KEY = defineSecret("ICICI_PG_SECRET_KEY");
 // check that the advice actually belongs to this merchant account.
 const ICICI_MERCHANT_ID = defineString("ICICI_MERCHANT_ID");
 
+// The customer-facing app domain, used only to redirect the *browser* back
+// into the app after a Payment Response — never used for the webhook's own
+// identity (that's the whitelisted returnURL itself).
+const APP_BASE_URL = defineString("APP_BASE_URL");
+
 // Top-level collections a paymentOrders lookup is allowed to point at.
 // Defense in depth: the paymentOrders doc is written by our own code, but
 // this still stops a corrupted/malicious paymentOrders record from steering
 // a write at an arbitrary collection.
-const ALLOWED_COLLECTIONS = new Set(["companies", "Invoices"]);
+const ALLOWED_COLLECTIONS = new Set(["companies", "Invoices", "whatsappActivationRequests"]);
+
+// IST is UTC+5:30. Must stay in sync with istEndOfDay in functions/lib/index.js.
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+function istEndOfDay(baseDate: Date, addDays: number): Date {
+    const baseIST = new Date(baseDate.getTime() + IST_OFFSET_MS);
+    const y = baseIST.getUTCFullYear();
+    const m = baseIST.getUTCMonth();
+    const d = baseIST.getUTCDate();
+    return new Date(Date.UTC(y, m, d + addDays, 23, 59, 59, 999) - IST_OFFSET_MS);
+}
 
 type PaymentStatus = "success" | "failure";
 
@@ -138,28 +153,71 @@ function parseAdvice(body: Record<string, unknown>): ParsedAdvice | null {
     };
 }
 
-async function resolveTargetDoc(merchantTxnNo: string): Promise<FirebaseFirestore.DocumentReference | null> {
-    const orderSnap = await db.collection("paymentOrders").doc(merchantTxnNo).get();
+interface PaymentOrder {
+    targetCollection?: string;
+    targetDocId?: string;
+    planId?: string;
+    planDays?: number;
+    couponCode?: string | null;
+}
+
+interface ResolvedOrder {
+    orderRef: FirebaseFirestore.DocumentReference;
+    order: PaymentOrder;
+    targetRef: FirebaseFirestore.DocumentReference;
+}
+
+async function resolveOrder(merchantTxnNo: string): Promise<ResolvedOrder | null> {
+    const orderRef = db.collection("paymentOrders").doc(merchantTxnNo);
+    const orderSnap = await orderRef.get();
     if (!orderSnap.exists) return null;
 
-    const order = orderSnap.data() as { targetCollection?: string; targetDocId?: string };
+    const order = orderSnap.data() as PaymentOrder;
     if (!order.targetCollection || !order.targetDocId) return null;
     if (!ALLOWED_COLLECTIONS.has(order.targetCollection)) return null;
 
-    return db.doc(`${order.targetCollection}/${order.targetDocId}`);
+    return {orderRef, order, targetRef: db.doc(`${order.targetCollection}/${order.targetDocId}`)};
 }
 
 export const paymentWebhook = onRequest(
     {secrets: [ICICI_SECRET_KEY], region: "us-central1"},
     async (req: Request, res: Response) => {
+        // ICICI's whitelisted returnURL is this same webhook for both the
+        // server-to-server Payment Advice (Chapter 8, which expects a plain
+        // 200/500 status — never redirect this one, since a redirect isn't a
+        // successful-delivery status and would make ICICI retry forever) and
+        // the browser-redirect Payment Response (Chapter 7, which should land
+        // the customer somewhere friendly). This also covers the customer
+        // hitting "back" on ICICI's hosted page, which re-navigates the
+        // browser to this same URL, sometimes with a stale/invalid signature.
+        // Heuristic: a browser navigation sends an HTML-accepting Accept
+        // header; a server-to-server call doesn't.
+        const acceptsHtml = String(req.headers["accept"] || "").includes("text/html");
+        const configuredBaseUrl = APP_BASE_URL.value();
+        const withScheme = configuredBaseUrl && !/^https?:\/\//i.test(configuredBaseUrl) ?
+            `https://${configuredBaseUrl}` :
+            configuredBaseUrl;
+        const appBaseUrl = withScheme ? withScheme.replace(/\/$/, "") : null;
+
+        // Every exit point goes through here: server-to-server calls get the
+        // plain status/text ICICI's spec expects, browser navigations get
+        // redirected to a friendly status page instead of raw text.
+        const finish = (httpStatus: number, text: string, redirectStatusParam: string) => {
+            if (acceptsHtml && appBaseUrl) {
+                res.redirect(302, `${appBaseUrl}/subscription/payment-return?status=${redirectStatusParam}`);
+                return;
+            }
+            res.status(httpStatus).send(text);
+        };
+
         if (req.method !== "POST") {
-            res.status(405).send("Method Not Allowed");
+            finish(405, "Method Not Allowed", "failure");
             return;
         }
 
         if (!verifySignature(req, ICICI_SECRET_KEY.value())) {
             logger.warn("paymentWebhook: secureHash verification failed");
-            res.status(400).send("Invalid signature");
+            finish(400, "Invalid signature", "failure");
             return;
         }
 
@@ -167,7 +225,7 @@ export const paymentWebhook = onRequest(
 
         if (ICICI_MERCHANT_ID.value() && String(body.merchantId ?? "") !== ICICI_MERCHANT_ID.value()) {
             logger.warn("paymentWebhook: merchantId mismatch", {received: body.merchantId});
-            res.status(400).send("Unknown merchant");
+            finish(400, "Unknown merchant", "failure");
             return;
         }
 
@@ -177,18 +235,19 @@ export const paymentWebhook = onRequest(
             // actionable) — ack so ICICI doesn't retry a payload we don't
             // need to act on.
             logger.info("paymentWebhook: nothing to process", {body});
-            res.status(200).send("OK");
+            finish(200, "OK", "pending");
             return;
         }
 
-        const targetRef = await resolveTargetDoc(advice.merchantTxnNo);
-        if (!targetRef) {
+        const resolved = await resolveOrder(advice.merchantTxnNo);
+        if (!resolved) {
             logger.error("paymentWebhook: no paymentOrders record for merchantTxnNo", {
                 merchantTxnNo: advice.merchantTxnNo,
             });
-            res.status(400).send("Unknown reference");
+            finish(400, "Unknown reference", "failure");
             return;
         }
+        const {orderRef, order, targetRef} = resolved;
 
         // Idempotency: one doc per ICICI txnID, created in the same
         // transaction as the target update. A redelivered advice for a
@@ -202,6 +261,12 @@ export const paymentWebhook = onRequest(
                     logger.info("paymentWebhook: duplicate txnID, skipping", {txnID: advice.txnID});
                     return;
                 }
+
+                // Activation (mirrors verifyRazorpayPayment's transaction in
+                // functions/lib/index.js) needs the company's current expiry
+                // before we can extend it — read before any writes.
+                const shouldActivate = advice.status === "success" && order.targetCollection === "companies";
+                const targetSnap = shouldActivate ? await tx.get(targetRef) : null;
 
                 tx.set(idempotencyRef, {
                     merchantTxnNo: advice.merchantTxnNo,
@@ -221,13 +286,80 @@ export const paymentWebhook = onRequest(
                     },
                     {merge: true}
                 );
+
+                tx.set(
+                    orderRef,
+                    {
+                        status: advice.status === "success" ? "paid" : "failed",
+                        ...(advice.status === "success" ? {paidAt: admin.firestore.FieldValue.serverTimestamp()} : {}),
+                    },
+                    {merge: true}
+                );
+
+                if (shouldActivate && targetSnap && order.planId) {
+                    const companyData = targetSnap.data() || {};
+                    const currentExpiry = companyData.expiryDate && companyData.expiryDate.toDate ?
+                        companyData.expiryDate.toDate() :
+                        new Date();
+                    const baseDate = currentExpiry > new Date() ? currentExpiry : new Date();
+                    const newExpiryDate = istEndOfDay(baseDate, order.planDays || 365);
+
+                    tx.set(
+                        targetRef,
+                        {
+                            expiryDate: admin.firestore.Timestamp.fromDate(newExpiryDate),
+                            pack: order.planId,
+                            validity: "active",
+                            isTrial: false,
+                        },
+                        {merge: true}
+                    );
+
+                    if (order.couponCode) {
+                        const redemptionRef = db.doc(`couponRedemptions/${order.couponCode}_${order.targetDocId}`);
+                        const couponRef = db.doc(`coupons/${order.couponCode}`);
+                        tx.set(
+                            redemptionRef,
+                            {
+                                code: order.couponCode,
+                                companyId: order.targetDocId,
+                                orderId: orderRef.id,
+                                redeemedAt: admin.firestore.FieldValue.serverTimestamp(),
+                            },
+                            {merge: true}
+                        );
+                        tx.set(couponRef, {redemptionCount: admin.firestore.FieldValue.increment(1)}, {merge: true});
+                    }
+                }
+
+                // Sellar WhatsApp plan top-up — separate product from the
+                // subscription above, never touches expiryDate/pack. Field
+                // names (status/requestedPlanId) match what WAChooseProvider.tsx
+                // and the super-admin WhatsApp page already read.
+                if (
+                    advice.status === "success" &&
+                    order.targetCollection === "whatsappActivationRequests" &&
+                    order.planId
+                ) {
+                    tx.set(
+                        targetRef,
+                        {
+                            status: "paid",
+                            requestedPlanId: order.planId,
+                            paidAt: admin.firestore.FieldValue.serverTimestamp(),
+                        },
+                        {merge: true}
+                    );
+                }
             });
 
-            res.status(200).send("OK");
+            finish(200, "OK", advice.status);
         } catch (error) {
             logger.error("paymentWebhook: failed to process advice", {error, txnID: advice.txnID});
-            // 500 so ICICI's advice retry mechanism gets a chance to redeliver.
-            res.status(500).send("Internal Error");
+            // 500 so ICICI's advice retry mechanism gets a chance to redeliver
+            // (only matters for the server-to-server path — finish() never
+            // redirects a real advice call to a 200-only browser page).
+            finish(500, "Internal Error", "failure");
         }
     }
 );

@@ -9,6 +9,7 @@ type FooterProps = {
     facebook?: string;
     twitter?: string;
     gmail?: string;
+    brandingText?: string;
 };
 
 function Footer({
@@ -17,6 +18,7 @@ function Footer({
     facebook,
     twitter,
     gmail,
+    brandingText,
 }: FooterProps) {
     return (
         <div>
@@ -73,6 +75,11 @@ function Footer({
                         )}
 
                     </div>
+                    {brandingText && (
+                        <p className="mb-6 max-w-xs text-[10px] font-medium text-gray-500 tracking-wide px-4">
+                            {brandingText}
+                        </p>
+                    )}
                     <div className="space-y-2">
                         <div className="border-t border-gray-100 w-48 mx-auto">
                             <p className="text-[8px] font-medium text-gray-600 uppercase tracking-[0.15em]">© 2026 All Rights Reserved</p>

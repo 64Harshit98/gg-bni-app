@@ -1,3 +1,5 @@
+import type { QuantitySlab } from '../../constants/models';
+
 // Types moved verbatim out of CheckOut.tsx (formatting/hoisting only — no
 // behavior changes). Unlike Orders/Sales/Purchase, CheckOut's cart item is a
 // self-contained shape used only within this public-facing checkout flow —
@@ -21,8 +23,10 @@ export interface CartItem {
     imageUrl?: string
     moq?: number
     unit?: string
-    unitMultiplier?: number
+       unitMultiplier?: number
     tax?: number
+    quantitySlabs?: QuantitySlab[]   // volume pricing, carried over from the catalogue cart
+    baseSalesPrice?: number          // price used when qty is outside every slab
 }
 
 export interface CatalogueSalesSettings {

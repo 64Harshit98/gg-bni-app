@@ -1,4 +1,4 @@
-import type { SalesItem as OriginalSalesItem } from '../../../constants/models';
+import type { SalesItem as OriginalSalesItem, QuantitySlab } from '../../../constants/models';
 
 // Moved verbatim from Sales.tsx (was defined inline around L36-60). Extends
 // the base SalesItem from constants/models with all the extra fields the
@@ -30,6 +30,8 @@ export interface SalesItem extends OriginalSalesItem {
     tierId?: string;          // 👈 NEW — 
     tierLabel?: string;       // 👈 NEW — "Box of 10" 
     tierQuantity?: number;    // 👈 NEW — 
+    quantitySlabs?: QuantitySlab[];  // copied from Item at add-to-cart time
+    slabAutoPrice?: number;          // last auto-applied slab price; if customPrice differs, user overrode it
 }
 
 // Formalized shape of the invoice/sale-data object built in

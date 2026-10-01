@@ -1,4 +1,4 @@
-import type { Item, PriceTier } from '../../constants/models';
+import type { Item, PriceTier, QuantitySlab } from '../../constants/models';
 
 export interface EffectivePriceInfo {
   mrp: number;
@@ -44,6 +44,9 @@ export const getEffectivePriceInfo = (
 
 export const hasMultiplePricing = (item: Item): boolean =>
   Array.isArray(item.priceTiers) && item.priceTiers.length > 0;
+
+export const hasQuantitySlabs = (item: { quantitySlabs?: QuantitySlab[] }): boolean =>
+  Array.isArray(item.quantitySlabs) && item.quantitySlabs.length > 0;
 
 // The item's own price, represented as a pseudo-tier — so the picker can
 // show "Piece" as one selectable option alongside the real tiers, uniformly.

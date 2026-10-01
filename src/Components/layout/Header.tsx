@@ -21,6 +21,7 @@ interface HeaderProps {
   destinations?: Destination[];
   /** Permission that shows the notification bell */
   notificationPermission?: any;
+  joinedBelow?: boolean; 
 }
 
 export function Header({
@@ -52,7 +53,7 @@ export function Header({
 
   return (
     <>
-      <header className="sticky top-0 z-30 mx-3 mt-3 hidden shrink-0 items-center gap-3 rounded-sm border border-slate-200/80 bg-white/80 px-4 py-3 shadow-sm backdrop-blur-md md:flex">
+      <header className="sticky top-0 z-30 mx-3 mt-3 hidden shrink-0 items-center gap-3 ${joinedBelow ? 'rounded-t-sm' : 'rounded-sm'} border border-slate-200/80 bg-white/80 px-4 py-3 shadow-sm backdrop-blur-md md:flex">
         <p className="min-w-0 truncate text-sm font-semibold text-slate-800">{pageLabel}</p>
 
         <button

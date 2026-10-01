@@ -49,6 +49,7 @@ export interface Item {
   variants?: string[];
   godownStock?: Record<string, number>;
   priceTiers?: PriceTier[];
+  quantitySlabs?: QuantitySlab[];
 }
 
 export interface ItemGroup {
@@ -132,5 +133,65 @@ export interface PriceTier {
   purchasePrice?: number;
   discount?: number;
   purchasediscount?: number;
-  barcode?: string;           // is tier ka apna alag barcode (optional)
+    barcode?: string;           // is tier ka apna alag barcode (optional)
 }
+
+export interface QuantitySlab {
+  id: string;
+  minQty: number;
+  maxQty: number | null;      // null = "and above"
+  salesPrice: number;         // per-unit price for the WHOLE quantity when qty falls in this slab
+}
+
+/** Returns the slab matching this quantity, or null if none matches. */
+export const getSlabForQty = (
+  item: { quantitySlabs?: QuantitySlab[] },
+  qty: number
+): QuantitySlab | null => {
+  const slabs = item.quantitySlabs;
+  if (!slabs || slabs.length === 0) return null;
+  return (
+    slabs.find(s => qty >= s.minQty && (s.maxQty === null || qty <= s.maxQty)) ?? null
+  );
+};
+
+/** Per-unit sales price before discount. Falls back to base salesPrice if no slab matches. */
+export const getEffectiveSalesPrice = (
+  item: { salesPrice: number; quantitySlabs?: QuantitySlab[] },
+  qty: number
+): number => getSlabForQty(item, qty)?.salesPrice ?? item.salesPrice;
+
+/** Returns an English error message if slabs are invalid, otherwise null. */
+export const validateQuantitySlabs = (
+  slabs: QuantitySlab[],
+  mrp: number
+): string | null => {
+  if (slabs.length === 0) return null;
+  const sorted = [...slabs].sort((a, b) => a.minQty - b.minQty);
+
+  for (let i = 0; i < sorted.length; i++) {
+    const s = sorted[i];
+    if (!s.minQty || s.minQty < 1) return 'Quantity slab "From Qty" must be at least 1.';
+    if (s.maxQty !== null && s.maxQty < s.minQty) {
+      return `Quantity slab starting at ${s.minQty}: "To Qty" cannot be less than "From Qty".`;
+    }
+    if (!s.salesPrice || s.salesPrice <= 0) {
+      return `Quantity slab starting at ${s.minQty} needs a valid price.`;
+    }
+    if (mrp > 0 && s.salesPrice > mrp) {
+      return `Quantity slab starting at ${s.minQty}: price cannot be greater than MRP.`;
+    }
+    if (s.maxQty === null && i !== sorted.length - 1) {
+      return 'Only the last slab can be "and above" (blank To Qty).';
+    }
+    if (i > 0) {
+      const prev = sorted[i - 1];
+      if (prev.maxQty !== null && s.minQty !== prev.maxQty + 1) {
+        return prev.maxQty >= s.minQty
+          ? 'Quantity slabs cannot overlap.'
+          : `Gap found between ${prev.maxQty} and ${s.minQty}. Slabs must be continuous.`;
+      }
+    }
+  }
+  return null;
+};

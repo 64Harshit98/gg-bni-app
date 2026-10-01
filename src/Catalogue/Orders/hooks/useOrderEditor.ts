@@ -10,6 +10,8 @@ import {
 import { db } from '../../../lib/Firebase';
 import { State } from '../../../enums';
 import type { Item, PriceTier } from '../../../constants/models';
+import { getSlabForQty } from '../../../constants/models';
+import { useCatalogueData } from '../../../context/CatalogueDataContext';
 import type { Order } from '../orders.types';
 import { computeOrderTotals, computeLineTax, isTaxEnabled as computeIsTaxEnabled, resolveUnitPrice } from '../orders.calculations';
 
@@ -107,6 +109,7 @@ export const useOrderEditor = ({
     const [selectedItemForEdit, setSelectedItemForEdit] = useState<any>(null);
 
     const liveMoqMap = useLiveMoqMapHook(companyId, editingOrder);
+    const { items: catalogueItems } = useCatalogueData();
 
     // ─── Opens the editor for a given order, restoring saved expenses/discount/
     // transport details — moved verbatim from the card's pencil-edit button.
@@ -237,6 +240,52 @@ export const useOrderEditor = ({
         });
     }, [mappedOrderItems, cartSearchQuery]);
 
+    // Quantity-slab pricing for an order line while editing.
+    // Reprices ONLY if the line's current unit price still equals the auto price
+    // for its OLD qty (i.e. nobody edited price/discount by hand).
+    const repriceLineForQty = (line: any, oldQty: number, newQty: number) => {
+        const source = catalogueItems.find(
+            (c) => String(c.id) === String(line.itemId || line.productId || line.id)
+        );
+        if (!source || !source.quantitySlabs?.length || line.tierId) return line;
+        if (Number(line.discount2 || 0) !== 0) return line;
+
+        const autoPriceAt = (qty: number): number => {
+            const slab = getSlabForQty(source, qty);
+            if (slab) return slab.salesPrice;
+            const mrp = Number(source.mrp || 0);
+            const sp = Number(source.salesPrice || 0);
+            const d = Number(source.discount || 0);
+            if (mrp > 0 && sp > 0) return sp;
+            if (sp > 0) return sp * (1 - d / 100);
+            if (mrp > 0) return mrp * (1 - d / 100);
+            return 0;
+        };
+
+        const currentUnit = Number(line.effectiveUnitPrice ?? line.customPrice ?? 0);
+        if (Math.abs(currentUnit - autoPriceAt(oldQty)) > 0.01) return line; // manually edited
+
+        const newUnit = Number(autoPriceAt(newQty).toFixed(2));
+        const basePrice = Number(line.mrp || 0) > 0 ? Number(line.mrp) : Number(line.salesPrice || 0);
+        const newDiscount = basePrice > 0 ? ((basePrice - newUnit) / basePrice) * 100 : 0;
+
+        const taxRate = Number(line.tax || line.taxRate || 0);
+        const taxType = (line.taxType || '').toLowerCase();
+        const lineTotal = newUnit * newQty;
+        const newFinalPrice =
+            taxType === 'exclusive' || taxType === 'regular'
+                ? lineTotal + lineTotal * (taxRate / 100)
+                : lineTotal;
+
+        return {
+            ...line,
+            effectiveUnitPrice: newUnit,
+            customPrice: newUnit,
+            discount: Number(newDiscount.toFixed(2)),
+            finalPrice: Number(newFinalPrice.toFixed(2)),
+        };
+    };
+
     const handleQuantityChange = (id: string, newQuantity: number) => {
         if (!editingOrder) return;
 
@@ -250,10 +299,11 @@ export const useOrderEditor = ({
 
             if (isNaN(qty) || qty < minQty) qty = minQty;
 
-            return {
-                ...item,
-                quantity: qty,
-            };
+            return repriceLineForQty(
+                { ...item, quantity: qty },
+                Number(item.quantity || 0),
+                qty
+            );
         });
 
         setEditingOrder({
@@ -383,6 +433,17 @@ export const useOrderEditor = ({
         }
 
         const qty = selectedItem.moq && selectedItem.moq > 0 ? selectedItem.moq : 1;
+
+        // Quantity slabs: initial qty (MOQ) may already fall inside a slab
+        if (!tier) {
+            const slab = getSlabForQty(selectedItem, qty);
+            if (slab) {
+                finalNetPrice = slab.salesPrice;
+                const slabBase = newMrp > 0 ? newMrp : newSalesPrice;
+                calculatedDiscount = slabBase > 0 ? ((slabBase - slab.salesPrice) / slabBase) * 100 : 0;
+            }
+        }
+
         const taxRate = Number(selectedItem.tax ?? selectedItem.taxRate ?? 0);
 
         // --- FIX: Inherit the Tax Type from the existing order ---

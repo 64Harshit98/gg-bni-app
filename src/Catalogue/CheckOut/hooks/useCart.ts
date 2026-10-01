@@ -3,11 +3,18 @@ import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
 import type { CartItem, CatalogueSalesSettings } from '../checkOut.types';
 import { deriveTaxContext, buildUpcomingSyncPayload } from '../checkOut.calculations';
+import { getSlabForQty } from '../../../constants/models';
 
-// Owns cart state + the localStorage-backed temp cart + the live "upcoming"
-// draft-order sync to Firestore — moved verbatim from CheckOut.tsx's
-// CartPage body (cartItems state + its localStorage-restore effect,
-// updateItemNote, updateQuantity, removeFromCart, syncToUpcoming).
+// Quantity-slab pricing for a checkout line.
+// - qty inside a slab  -> slab price
+// - qty outside slabs  -> base price saved when the item was added in the catalogue
+const repriceCartLine = (line: CartItem, qty: number): CartItem => {
+    if (!line.quantitySlabs || line.quantitySlabs.length === 0) return line;
+    const slab = getSlabForQty({ quantitySlabs: line.quantitySlabs }, qty);
+    if (slab) return { ...line, salesPrice: slab.salesPrice };
+    return { ...line, salesPrice: line.baseSalesPrice ?? line.salesPrice };
+};
+
 export const useCart = (
     effectiveCompanyId: string | null,
     salesSettings: CatalogueSalesSettings | null
@@ -34,8 +41,10 @@ export const useCart = (
                     note: '',
                     unit: entry.item.unit ?? "pcs",
                     unitMultiplier: entry.item.unitMultiplier ?? entry.item.multiplier ?? 1,
-                    tierId: entry.item.tierId || undefined,        // 👈 NEW
+                                        tierId: entry.item.tierId || undefined,        // 👈 NEW
                     tierLabel: entry.item.tierLabel || undefined,  // 👈 NEW
+                    quantitySlabs: entry.item.quantitySlabs || undefined,
+                    baseSalesPrice: entry.item.baseSalesPrice ?? undefined,
                 } as any));
                 setCartItems(formattedItems);
             } catch (error) {
@@ -94,8 +103,8 @@ export const useCart = (
                 if (item.id === id) {
                     const moqQty = item.moq || 1;
                     let newQty = item.quantity + delta;
-                    newQty = Math.max(moqQty, newQty);
-                    return { ...item, quantity: newQty };
+                                        newQty = Math.max(moqQty, newQty);
+                    return repriceCartLine({ ...item, quantity: newQty }, newQty);
                 }
                 return item;
             })

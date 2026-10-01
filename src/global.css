@@ -1,40 +1,13 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
-@font-face {
-  font-family: 'Comfortaa';
-  src: url('./assets/fonts/Comfortaa-Regular.ttf') format('truetype');
-  font-weight: normal;
-  font-style: normal;
-}
-
-@font-face {
-  font-family: 'Comfortaa';
-  src: url('./assets/fonts/Comfortaa-Bold.ttf') format('truetype');
-  font-weight: bold;
-  font-style: normal;
-}
-
-@font-face {
-  font-family: 'Comfortaa';
-  src: url('./assets/fonts/Comfortaa-Light.ttf') format('truetype');
-  font-weight: 300;
-  font-style: normal;
-}
-
-@font-face {
-  font-family: 'Comfortaa';
-  src: url('./assets/fonts/Comfortaa-Medium.ttf') format('truetype');
-  font-weight: 500;
-  font-style: normal;
-}
-
-@font-face {
-  font-family: 'Comfortaa';
-  src: url('./assets/fonts/Comfortaa-SemiBold.ttf') format('truetype');
-  font-weight: 600;
-  font-style: normal;
-}
+/* Poppins — self-hosted via npm (run once: npm i @fontsource/poppins).
+   400 body · 500 labels/buttons · 600 titles/amounts · 700 kept only so
+   older pages that still use `font-bold` don't get a faux-bold. */
+@import '@fontsource/poppins/400.css';
+@import '@fontsource/poppins/500.css';
+@import '@fontsource/poppins/600.css';
+@import '@fontsource/poppins/700.css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -77,7 +50,7 @@
 }
 
 :root {
-  --font-sans: 'Comfortaa', sans-serif;
+  --font-sans: 'Poppins', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -113,7 +86,7 @@
 }
 
 .dark {
-  --font-sans: 'Comfortaa', sans-serif;
+  --font-sans: 'Poppins', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);

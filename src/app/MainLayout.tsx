@@ -23,7 +23,7 @@ import NotificationBell from '../Components/NotificationBell';
 import { Sidebar, type QuickAction } from '../Components/layout/SideBar';
 import { Header } from '../Components/layout/Header';
 import { CommandPalette } from '../Components/layout/CommandPalette';
-
+import { SubscriptionBanner, useSubscriptionBanner } from '../Components/layout/SubscriptionBanner';
 
 const MainLayout = () => {
   const location = useLocation();
@@ -48,6 +48,8 @@ const MainLayout = () => {
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const { currentUser } = useAuth();
+  const banner = useSubscriptionBanner();
+const showBanner = banner.visible && location.pathname === ROUTES.HOME;
   const { addExpense } = useExpenses(currentUser?.companyId, 'pos');
 
   const { settings: shopSettings, isClosingSoon, shouldAutoClose, needsReset } = useShopHours(currentUser?.companyId);
@@ -155,7 +157,7 @@ const MainLayout = () => {
   const isActive = (path: string) => location.pathname === path;
 
   const fabActionClass = 'w-full mb-2 rounded-sm bg-white shadow-sm';
-  const fabIconBadgeClass = 'w-10 h-10 rounded-sm bg-sky-100 text-sky-600 flex items-center justify-center';
+  const fabIconBadgeClass = 'w-10 h-10 rounded-sm bg-[#e6eeff] text-[#155dfc] flex items-center justify-center';
   const fabLabelClass = 'text-[11px] font-medium text-gray-700';
 
   const MobileActionButtons = () => (
@@ -232,7 +234,7 @@ const MainLayout = () => {
   ];
 
   return (
-    <div className="relative h-dvh w-screen flex flex-col md:flex-row overflow-hidden bg-gray-100 md:bg-gradient-to-br md:from-sky-50 md:via-white md:to-slate-100">
+    <div className="relative h-dvh w-screen flex flex-col md:flex-row overflow-hidden bg-white">
       {/* Closing Reminder Modal */}
       {showReminder && shopSettings && (
         <ShopClosingReminderModal
@@ -275,6 +277,7 @@ const MainLayout = () => {
           </ShowWrapper>
         </div>
       </header>
+      {showBanner && <SubscriptionBanner variant="mobile" days={banner.days!} urgent={banner.urgent} />}
 
       {/* DESKTOP SIDEBAR (new) */}
       <Sidebar
@@ -291,7 +294,7 @@ const MainLayout = () => {
             onSkip={handleSwitcherSkip}
           >
             <div>
-              <PosCataSwitcher current="POS" />
+              <PosCataSwitcher current="POS" showCompany />
             </div>
           </TutorialStep>
         }
@@ -300,7 +303,8 @@ const MainLayout = () => {
       {/* MAIN CONTENT */}
       <main className="flex-1 relative flex flex-col min-w-0 overflow-hidden">
         {/* DESKTOP TOP BAR + SEARCH (new) — renders on every page */}
-        <Header navItems={navItems} userName={currentUser?.name} />
+        <Header navItems={navItems} userName={currentUser?.name} joinedBelow={showBanner} />
+{showBanner && <SubscriptionBanner variant="desktop" days={banner.days!} urgent={banner.urgent} />}
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto pb-16 md:pb-4 scroll-smooth">
           <Suspense fallback={<div>Loading...</div>}>
@@ -325,7 +329,7 @@ const MainLayout = () => {
                 isLast={true}
                 position="top"
               >
-                <FloatingButton className="static shadow-lg">
+                <FloatingButton className="static">
                   <MobileActionButtons />
                 </FloatingButton>
               </TutorialStep>

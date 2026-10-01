@@ -396,7 +396,7 @@ const CatalogueLayout = () => {
                 <div className="md:hidden absolute bottom-20 right-4 z-50">
                     <button
                         onClick={handleShare}
-                        className="bg-white border border-gray-300 shadow-md rounded-sm p-3"
+                        className="bg-white border border-gray-300 shadow-md rounded-full p-3"
                     >
                         <Share2 size={20} />
                     </button>
@@ -440,6 +440,7 @@ const CatalogueLayout = () => {
             <AddUserModal
                 isOpen={isAddUserModalOpen}
                 onClose={() => setIsAddUserModalOpen(false)}
+                theme="orange"
             />
             <CommandPalette
                 open={isMobileSearchOpen}

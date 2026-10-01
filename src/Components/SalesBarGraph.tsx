@@ -1,183 +1,80 @@
 import React, { useState, useMemo } from 'react';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer
-} from 'recharts';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from './ui/card';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { FiEyeOff } from 'react-icons/fi';
+import { SlCard, SlCardHead, SegControl, EmptyState, inr } from './Dashboardprimitives';
 
 interface SalesBarChartProps {
   isDataVisible: boolean;
-  data: {
-    name: string;
-    sales: number;
-    previousSales?: number;
-    count?: number; // <-- Added this so TypeScript knows about the count
-  }[];
+  data: { name: string; sales: number; previousSales?: number; count?: number }[];
 }
 
+const DarkTip = ({ active, payload, label, mode }: any) => {
+  if (!active || !payload?.length) return null;
+  const row = payload[0].payload;
+  return (
+    <div className="rounded-sm bg-[#0f172b] px-3 py-1.5 text-center shadow-[0_10px_28px_rgba(21,48,140,0.14)]">
+      <div className="text-[10px] text-white/80">{label}</div>
+      <div className="text-[11px] font-semibold text-white">
+        {mode === 'amount' ? `${inr(row.sales)} · ${row.bills} ${row.bills === 1 ? 'bill' : 'bills'}` : `${row.bills} ${row.bills === 1 ? 'bill' : 'bills'}`}
+      </div>
+    </div>
+  );
+};
+
 export const SalesBarChartReport: React.FC<SalesBarChartProps> = ({ isDataVisible, data }) => {
-  const [viewMode, setViewMode] = useState<'amount' | 'quantity'>('amount');
+  const [mode, setMode] = useState<'amount' | 'quantity'>('amount');
 
-  // Map Data
-  const chartData = useMemo(() => {
-    const mappedData = data.map(item => ({
-      date: item.name,
-      sales: item.sales,
-      previous: item.previousSales || 0,
-      bills: item.count || 0
-    }));
+  const chartData = useMemo(
+    () => data.map(i => ({ date: i.name, sales: i.sales, bills: i.count || 0 })),
+    [data]
+  );
 
-    // If only today data exists, prepend yesterday with zero values
-    if (mappedData.length === 1) {
-      const todayItem = mappedData[0];
-
-      const parsedDate = new Date(todayItem.date);
-
-      // Ensure valid date parsing before applying yesterday logic
-      if (!isNaN(parsedDate.getTime())) {
-        const yesterday = new Date(parsedDate);
-        yesterday.setDate(yesterday.getDate() - 1);
-
-        const yesterdayKey = yesterday.toLocaleDateString('en-CA');
-
-        return [
-          {
-            date: yesterdayKey,
-            sales: 0,
-            previous: 0,
-            bills: 0
-          },
-          todayItem
-        ];
-      }
-    }
-
-    return mappedData;
-  }, [data]);
-
-  // Custom Tooltip to match the clean look
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-white border border-gray-200 p-2 rounded-lg shadow-sm text-sm">
-          <p className="font-semibold mb-1">{label}</p>
-          {payload.map((entry: any, index: number) => (
-            <div key={index} className="flex items-center gap-2" style={{ color: entry.color }}>
-              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }}></span>
-              <span>{entry.name}:</span>
-              <span className="font-medium">
-                {entry.name === 'Sales' || entry.name === 'Previous'
-                  ? `₹${entry.value.toLocaleString()}`
-                  : entry.value}
-              </span>
-            </div>
-          ))}
-        </div>
-      );
-    }
-    return null;
-  };
+  const head = (
+    <SlCardHead
+      title="Daily performance"
+      subtitle={mode === 'amount' ? 'Sales amount per day' : 'Number of bills per day'}
+      right={isDataVisible ? (
+        <SegControl value={mode} onChange={setMode} options={[{ value: 'amount', label: 'Amount' }, { value: 'quantity', label: 'Qty' }]} />
+      ) : undefined}
+    />
+  );
 
   if (!isDataVisible) {
     return (
-      <Card className="h-full">
-        <CardHeader>
-          <CardTitle>Daily Performance</CardTitle>
-        </CardHeader>
-        <CardContent className="flex h-full min-h-[240px] flex-col items-center justify-center bg-gray-50 rounded-lg">
-          <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 mb-2">
-            <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
-            <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
-            <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
-            <line x1="2" x2="22" y1="2" y2="22" />
-          </svg>
-          <p className="text-gray-500">Data is hidden</p>
-        </CardContent>
-      </Card>
+      <SlCard className="h-full">
+        {head}
+        <div className="grid min-h-[150px] place-items-center rounded-sm bg-[#f5f7ff] md:min-h-[240px]"><EmptyState className="py-0" icon={<FiEyeOff />} title="Chart hidden" /></div>
+      </SlCard>
     );
   }
 
+  const key = mode === 'amount' ? 'sales' : 'bills';
   return (
-    <Card className="h-full flex flex-col">
-      <CardHeader className="flex flex-row items-center justify-between pb-4">
-        <div className="space-y-1">
-          <CardTitle>Daily Performance</CardTitle>
-          <CardDescription>
-            {viewMode === 'amount' ? 'Sales amount' : 'Number of bills'}
-          </CardDescription>
-        </div>
-        <div className="flex items-center p-1 bg-gray-100 rounded-lg">
-          <button
-            onClick={() => setViewMode('amount')}
-            className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${viewMode === 'amount' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
-          >
-            Amt
-          </button>
-          <button
-            onClick={() => setViewMode('quantity')}
-            className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${viewMode === 'quantity' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
-          >
-            Qty
-          </button>
-        </div>
-      </CardHeader>
-
-      <CardContent className="pl-0 flex-1 min-h-0">
-        <div className="h-full w-full min-h-[240px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart
-              data={chartData}
-              margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
-            >
-              <CartesianGrid vertical={false} stroke="#e5e7eb" strokeDasharray="3 3" />
-
-              <XAxis
-                dataKey="date"
-                axisLine={false}
-                tickLine={false}
-                tick={{ fill: '#6b7280', fontSize: 12 }}
-                dy={10}
-              />
-
-              <YAxis
-                axisLine={false}
-                tickLine={false}
-                tick={{ fill: '#6b7280', fontSize: 12 }}
-                tickFormatter={(value) => {
-                  if (viewMode === 'quantity') return value;
-                  if (value === 0) return '₹0';
-                  if (value >= 1000) return `₹${(value / 1000).toFixed(1).replace('.0', '')}k`;
-                  return `₹${value}`;
-                }}
-              />
-
-              <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#9ca3af', strokeWidth: 1, strokeDasharray: '4 4' }} />
-
-              <Line
-                type="linear"
-                dataKey={viewMode === 'amount' ? 'sales' : 'bills'}
-                name={viewMode === 'amount' ? 'Sales' : 'Bills'}
-                stroke={viewMode === 'amount' ? '#3b82f6' : '#16a34a'}
-                strokeWidth={2}
-                dot={{ fill: 'white', stroke: viewMode === 'amount' ? '#3b82f6' : '#16a34a', strokeWidth: 2, r: 4 }}
-                activeDot={{ r: 6, strokeWidth: 2 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </CardContent>
-
-    </Card>
+    <SlCard className="h-full">
+      {head}
+      <div className="h-[200px] w-full md:h-[260px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={chartData} margin={{ top: 10, right: 12, left: 0, bottom: 0 }}>
+            <CartesianGrid vertical={false} stroke="#dfe6fb" strokeDasharray="3 4" />
+            <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#5b6b86', fontSize: 11 }} dy={8} />
+            <YAxis
+              axisLine={false} tickLine={false} tick={{ fill: '#5b6b86', fontSize: 11 }} allowDecimals={false}
+              tickFormatter={(v: number) => {
+                if (mode === 'quantity') return String(v);
+                if (v === 0) return '₹0';
+                return v >= 1000 ? `₹${(v / 1000).toFixed(1).replace('.0', '')}k` : `₹${v}`;
+              }}
+            />
+            <Tooltip content={<DarkTip mode={mode} />} cursor={{ stroke: '#7a8aa3', strokeWidth: 1, strokeDasharray: '2 3' }} />
+            <Area
+              type="linear" dataKey={key} stroke="#155dfc" strokeWidth={2}
+              fill="rgba(21,93,252,0.10)"
+              dot={{ r: 3.5, fill: '#ffffff', stroke: '#155dfc', strokeWidth: 2 }}
+              activeDot={{ r: 5, fill: '#155dfc', stroke: '#ffffff', strokeWidth: 2 }}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </SlCard>
   );
 };

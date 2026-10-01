@@ -1,63 +1,47 @@
-import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import React from 'react';
+import { FiEyeOff } from 'react-icons/fi';
+import { SlCard, SlCardHead, EmptyState, inr } from './Dashboardprimitives';
 
-interface PaymentMethod {
-    name: string;
-    amount: number;
-    quantity: number;
-}
+interface PaymentMethod { name: string; amount: number; quantity: number; }
 
 interface PaymentChartProps {
-    isDataVisible: boolean;
-    data: PaymentMethod[];
+  isDataVisible: boolean;
+  data: PaymentMethod[];
+  unpaidAmount?: number;   // udhaar (sum of dueAmount) — shown as an amber row
 }
 
-export const PaymentChart: React.FC<PaymentChartProps> = ({ isDataVisible, data }) => {
-    const [viewMode, setViewMode] = useState<'amount' | 'quantity'>('amount');
+export const PaymentChart: React.FC<PaymentChartProps> = ({ isDataVisible, data, unpaidAmount = 0 }) => {
+  const whole = data.reduce((s, d) => s + d.amount, 0) + unpaidAmount;
+  const pct = (n: number) => (whole > 0 ? (n / whole) * 100 : 0);
 
-    const maxValue = Math.max(...data.map(d => viewMode === 'amount' ? d.amount : d.quantity), 1);
+  const Row = ({ label, amount, showPct, warn }: { label: string; amount: number; showPct: boolean; warn?: boolean }) => (
+    <div className="grid gap-1.5">
+      <div className="flex justify-between text-[13px] text-[#0f172b]">
+        <span>{label}</span>
+        <span className="tabular-nums">
+          <b className="font-semibold">{inr(amount)}</b>
+          {showPct && <span className="ml-1 text-[#5b6b86]">{Math.round(pct(amount))}%</span>}
+        </span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-sm bg-[#f5f7ff]">
+        <div className="h-full rounded-sm" style={{ width: `${pct(amount)}%`, background: warn ? '#bb4d00' : '#155dfc' }} />
+      </div>
+    </div>
+  );
 
-    return (
-        <Card className="shadow-sm border-gray-200">
-            <CardHeader className="flex flex-row items-start justify-between ">
-                <CardTitle className="text-base font-semibold text-gray-900 w-32 leading-tight">
-                    Sales Payment Methods
-                </CardTitle>
-                <div className="flex bg-gray-50 p-1 rounded-lg border border-gray-100">
-                    <button onClick={() => setViewMode('amount')} className={`px-2 py-1 text-xs font-medium rounded-md ${viewMode === 'amount' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500'}`}>Amt</button>
-                    <button onClick={() => setViewMode('quantity')} className={`px-2 py-1 text-xs font-medium rounded-md ${viewMode === 'quantity' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500'}`}>Qty</button>
-                </div>
-            </CardHeader>
-
-            <CardContent className="space-y-5">
-                {isDataVisible ? (
-                    data.length > 0 ? (
-                        data.map((item, index) => {
-                            const val = viewMode === 'amount' ? item.amount : item.quantity;
-                            return (
-                                <div key={index} className="space-y-1">
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-gray-700 font-medium">{item.name}</span>
-                                        <span className="font-semibold text-gray-900">
-                                            {viewMode === 'amount' ? `₹${val.toLocaleString()}` : val}
-                                        </span>
-                                    </div>
-                                    <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
-                                        <div
-                                            className="h-full bg-blue-600 rounded-full"
-                                            style={{ width: `${(val / maxValue) * 100}%` }}
-                                        />
-                                    </div>
-                                </div>
-                            );
-                        })
-                    ) : (
-                        <p className="text-sm text-gray-500 text-center py-4">No data</p>
-                    )
-                ) : (
-                    <div className="text-center py-8 text-gray-400 text-sm">Data hidden</div>
-                )}
-            </CardContent>
-        </Card>
-    );
+  return (
+    <SlCard className="h-full">
+      <SlCardHead title="Payment methods" subtitle="How customers paid" />
+      {!isDataVisible ? (
+        <EmptyState icon={<FiEyeOff />} title="Figures are hidden" />
+      ) : data.length === 0 && unpaidAmount === 0 ? (
+        <EmptyState icon={<FiEyeOff />} title="No payments yet" text="Payments show up here once you make a bill." />
+      ) : (
+        <div className="grid gap-[18px]">
+          {data.map(m => <Row key={m.name} label={m.name} amount={m.amount} showPct />)}
+          {unpaidAmount > 0 && <Row label="Udhaar (unpaid)" amount={unpaidAmount} showPct={false} warn />}
+        </div>
+      )}
+    </SlCard>
+  );
 };

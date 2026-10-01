@@ -8,9 +8,9 @@ import {
     MenubarTrigger,
 } from "./ui/menubar";
 import { useLocation } from 'react-router-dom';
+import { FiCalendar } from 'react-icons/fi';
 
-// 1. ADD THIS HELPER FUNCTION AT THE TOP
-// This offsets the UTC time by the user's local timezone so the date string is accurate to their clock
+// Offsets UTC by the user's timezone so the date string matches their clock
 const getLocalDateString = (date: Date = new Date()) => {
     const offset = date.getTimezoneOffset() * 60000;
     const localDate = new Date(date.getTime() - offset);
@@ -57,7 +57,6 @@ interface FilterContextType {
 const FilterContext = createContext<FilterContextType | undefined>(undefined);
 
 export const FilterProvider = ({ children }: { children: ReactNode }) => {
-    // 2. UPDATE INITIAL STATE to use our new helper
     const [filters, setFilters] = useState<FilterState>({
         startDate: getLocalDateString(),
         endDate: getLocalDateString(),
@@ -67,14 +66,9 @@ export const FilterProvider = ({ children }: { children: ReactNode }) => {
     const refreshDateFilters = useCallback(() => {
         setFilters((prev) => {
             if (prev.filterType === 'today') {
-                // 3. UPDATE REFRESH LOGIC to use our new helper
                 const todayFormatted = getLocalDateString();
                 if (prev.startDate !== todayFormatted) {
-                    return {
-                        ...prev,
-                        startDate: todayFormatted,
-                        endDate: todayFormatted
-                    };
+                    return { ...prev, startDate: todayFormatted, endDate: todayFormatted };
                 }
             }
             return prev;
@@ -96,6 +90,188 @@ export const useFilter = (): FilterContextType => {
     return context;
 };
 
+/* ════════════════════════════════════════════════════════════════
+   NEW — DateChips (SELLAR design): one row of chips, no Apply button.
+   Used on the redesigned Dashboard. FilterControls below is left
+   as-is for pages that haven't been redesigned yet.
+   ════════════════════════════════════════════════════════════════ */
+
+const PRESET_CHIPS: { id: string; label: string }[] = [
+    { id: 'today', label: 'Today' },
+    { id: 'yesterday', label: 'Yesterday' },
+    { id: 'last7days', label: '7 days' },
+    { id: 'last30days', label: '30 days' },
+    { id: 'thisMonth', label: 'This month' },
+];
+
+const rangeForPreset = (id: string): { startDate: string; endDate: string } | null => {
+    const today = new Date();
+    const d = (n: number) => { const x = new Date(); x.setDate(x.getDate() - n); return getLocalDateString(x); };
+    switch (id) {
+        case 'today': return { startDate: getLocalDateString(today), endDate: getLocalDateString(today) };
+        case 'yesterday': return { startDate: d(1), endDate: d(1) };
+        case 'last7days': return { startDate: d(6), endDate: getLocalDateString(today) };
+        case 'last30days': return { startDate: d(29), endDate: getLocalDateString(today) };
+        case 'thisMonth': {
+            const first = new Date(today.getFullYear(), today.getMonth(), 1);
+            return { startDate: getLocalDateString(first), endDate: getLocalDateString(today) };
+        }
+        default: return null;
+    }
+};
+
+const fmt = (s: string, withYear = false) =>
+    new Date(s + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', ...(withYear ? { year: 'numeric' } : {}) });
+
+export const DateChips: React.FC = () => {
+    const { filters, setFilters } = useFilter();
+    const isCustom = filters.filterType === 'custom';
+    const [customOpen, setCustomOpen] = useState(false);
+    const [draft, setDraft] = useState({ start: '', end: '' });
+    const rootRef = React.useRef<HTMLDivElement>(null);
+    const customBtnRef = React.useRef<HTMLButtonElement>(null);
+    const [popLeft, setPopLeft] = useState(0);
+    const POP_W = 328; // From | To side by side, Cancel + Apply
+
+    // close the dropdown on outside tap / Esc (filters stay as they were)
+    useEffect(() => {
+        if (!customOpen) return;
+        const onDown = (e: MouseEvent | TouchEvent) => {
+            if (rootRef.current && !rootRef.current.contains(e.target as Node)) setCustomOpen(false);
+        };
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setCustomOpen(false); };
+        document.addEventListener('mousedown', onDown);
+        document.addEventListener('touchstart', onDown);
+        document.addEventListener('keydown', onKey);
+        return () => {
+            document.removeEventListener('mousedown', onDown);
+            document.removeEventListener('touchstart', onDown);
+            document.removeEventListener('keydown', onKey);
+        };
+    }, [customOpen]);
+
+    const pick = (id: string) => {
+        const r = rangeForPreset(id);
+        if (r) setFilters({ ...r, filterType: id });
+        setCustomOpen(false);
+    };
+
+    const onCustomClick = () => {
+        if (customOpen) { setCustomOpen(false); return; }
+        // open right under the Custom chip (clamped so it never leaves the row)
+        const root = rootRef.current, btn = customBtnRef.current;
+        if (root && btn) {
+            const rr = root.getBoundingClientRect(), br = btn.getBoundingClientRect();
+            setPopLeft(Math.min(Math.max(0, br.left - rr.left), Math.max(0, rr.width - POP_W)));
+        }
+        // start from the range currently on screen
+        setDraft({ start: filters.startDate, end: filters.endDate });
+        setCustomOpen(true);
+    };
+
+    const canApply = !!draft.start && !!draft.end;
+    const applyCustom = () => {
+        if (!canApply) return;
+        const [s, e] = draft.start <= draft.end ? [draft.start, draft.end] : [draft.end, draft.start];
+        setFilters({ startDate: s, endDate: e, filterType: 'custom' });
+        setCustomOpen(false);
+    };
+
+    // "21 Sep – 28 Sep 2026 · compared with 13 Sep – 20 Sep"
+    const rangeText = (() => {
+        if (!filters.startDate || !filters.endDate) return '';
+        const s = new Date(filters.startDate + 'T00:00:00');
+        const e = new Date(filters.endDate + 'T00:00:00');
+        const days = Math.round((e.getTime() - s.getTime()) / 86400000) + 1;
+        const pe = new Date(s); pe.setDate(pe.getDate() - 1);
+        const ps = new Date(pe); ps.setDate(ps.getDate() - (days - 1));
+        const cur = days === 1 ? fmt(filters.startDate, true) : `${fmt(filters.startDate)} – ${fmt(filters.endDate, true)}`;
+        const prev = days === 1 ? fmt(getLocalDateString(pe)) : `${fmt(getLocalDateString(ps))} – ${fmt(getLocalDateString(pe))}`;
+        return `${cur} · compared with ${prev}`;
+    })();
+
+    // Mobile: the Custom chip shows the applied range itself, so no extra line is needed
+    const shortRange = filters.startDate === filters.endDate
+        ? fmt(filters.startDate)
+        : `${fmt(filters.startDate)} – ${fmt(filters.endDate)}`;
+
+    const chip = (on: boolean) =>
+        `inline-flex h-[34px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-sm border px-3.5 text-[13px] font-medium transition-colors ${
+            on
+                ? 'border-[#0f172b] bg-[#0f172b] text-white'
+                : 'border-[#7a8aa3] bg-white text-[#45556c] hover:bg-[#f5f7ff] hover:text-[#0f172b]'
+        }`;
+
+    const dateInput =
+        'h-10 w-full min-w-0 rounded-sm border border-[#7a8aa3] bg-white px-3 text-sm text-[#0f172b] outline-none focus-visible:ring-2 focus-visible:ring-[#155dfc]';
+
+    return (
+        <div ref={rootRef} className="relative">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <div role="group" className="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none] md:mx-0 md:flex-wrap md:overflow-visible md:px-0 [&::-webkit-scrollbar]:hidden">
+                    {PRESET_CHIPS.map(c => {
+                        const on = filters.filterType === c.id && !customOpen;
+                        return (
+                            <button key={c.id} type="button" aria-pressed={on} onClick={() => pick(c.id)} className={chip(on)}>
+                                {c.label}
+                            </button>
+                        );
+                    })}
+                    <button ref={customBtnRef} type="button" aria-pressed={isCustom || customOpen} aria-expanded={customOpen} onClick={onCustomClick} className={chip(isCustom || customOpen)}>
+                        <FiCalendar size={16} />
+                        <span className="md:hidden">{isCustom ? shortRange : 'Custom'}</span>
+                        <span className="hidden md:inline">Custom</span>
+                    </button>
+                </div>
+                <div className="hidden text-xs text-[#45556c] md:ml-auto md:block">{rangeText}</div>
+            </div>
+
+            {/* Custom range dropdown — header, two stacked dates, Apply (same on mobile + desktop) */}
+            {customOpen && (
+                <div
+                    style={{ left: popLeft, width: POP_W, maxWidth: '100%' }}
+                    className="absolute top-full z-40 mt-1.5 rounded-sm border border-[#dfe6fb] bg-white p-4 shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]"
+                >
+                    <div className="grid grid-cols-2 gap-3">
+                        <label className="grid gap-1.5 text-[13px] font-medium text-[#45556c]">
+                            From
+                            <input
+                                type="date" value={draft.start} max={getLocalDateString()}
+                                onChange={e => setDraft(d => ({ ...d, start: e.target.value }))} className={dateInput}
+                            />
+                        </label>
+                        <label className="grid gap-1.5 text-[13px] font-medium text-[#45556c]">
+                            To
+                            <input
+                                type="date" value={draft.end} max={getLocalDateString()}
+                                onChange={e => setDraft(d => ({ ...d, end: e.target.value }))} className={dateInput}
+                            />
+                        </label>
+                    </div>
+                    <div className="mt-4 flex justify-end gap-2">
+                        <button
+                            type="button" onClick={() => setCustomOpen(false)}
+                            className="h-10 rounded-sm border border-[#dfe6fb] bg-white px-4 text-sm font-medium text-[#45556c] transition-colors hover:bg-[#f5f7ff] hover:text-[#0f172b]"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button" onClick={applyCustom} disabled={!canApply}
+                            className="h-10 rounded-sm bg-[#0f172b] px-4 text-sm font-medium text-white transition-colors hover:bg-[#1d2a44] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            Apply
+                        </button>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+/* ════════════════════════════════════════════════════════════════
+   OLD FilterControls — unchanged, except 'thisMonth' label/case added
+   so it doesn't break if that filterType is ever passed in.
+   ════════════════════════════════════════════════════════════════ */
 export const FilterControls: React.FC = () => {
     const { filters, setFilters } = useFilter();
     const [localFilters, setLocalFilters] = useState<FilterState>(filters);
@@ -109,7 +285,6 @@ export const FilterControls: React.FC = () => {
         setLocalFilters(filters);
     }, [filters]);
 
-    // 4. UPDATE FORMATTER IN CONTROLS to use our new helper
     const formatDate = (date: Date) => getLocalDateString(date);
 
     useEffect(() => {
@@ -129,6 +304,9 @@ export const FilterControls: React.FC = () => {
             case 'last30days':
                 const l30 = new Date(); l30.setDate(l30.getDate() - 29);
                 newStartDate = formatDate(l30); newEndDate = formatDate(today); break;
+            case 'thisMonth':
+                newStartDate = formatDate(new Date(today.getFullYear(), today.getMonth(), 1));
+                newEndDate = formatDate(today); break;
             case 'custom':
                 return;
         }
@@ -152,7 +330,7 @@ export const FilterControls: React.FC = () => {
 
     const presetLabels: { [key: string]: string } = {
         today: "Today", yesterday: "Yesterday", last7days: "Last 7 Days",
-        last30days: "Last 30 Days", custom: "Custom Range"
+        last30days: "Last 30 Days", thisMonth: "This Month", custom: "Custom Range"
     };
 
     return (

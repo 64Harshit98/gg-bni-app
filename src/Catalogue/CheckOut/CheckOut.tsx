@@ -340,6 +340,9 @@ const CartPage: React.FC = () => {
                                                             <div className="leading-tight">
                                                                 <h3 className="text-[12px] font-black text-[#1A3B5D] uppercase">
                                                                     {item.name}
+                                                                    {(item as any).tierLabel && (
+                                                                        <span className="normal-case font-semibold text-gray-500"> - {(item as any).tierLabel}</span>
+                                                                    )}
                                                                 </h3>
 
                                                                 <span className="text-[10px] font-semibold text-gray-500">
@@ -356,8 +359,15 @@ const CartPage: React.FC = () => {
                                                         </div>
 
                                                         <div className="flex flex-wrap items-center justify-between mt-2 gap-2">
-                                                            <span className="font-black text-[#1A3B5D] text-sm shrink-0">
-                                                                {shouldShowPrice ? `₹${item.salesPrice}` : "---"}
+                                                            <span className="font-black text-[#1A3B5D] text-sm shrink-0 flex items-center gap-1.5">
+                                                                {shouldShowPrice && item.quantitySlabs && item.quantitySlabs.length > 0
+                                                                    && item.baseSalesPrice !== undefined
+                                                                    && item.salesPrice < item.baseSalesPrice && (
+                                                                        <span className="text-xs font-bold text-gray-400 line-through">
+                                                                            ₹{item.baseSalesPrice}
+                                                                        </span>
+                                                                    )}
+                                                                <span>{shouldShowPrice ? `₹${item.salesPrice}` : "---"}</span>
                                                             </span>
                                                             <input
                                                                 type="text"

@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import type { Item } from '../constants/models';
+import { getSlabForQty } from '../constants/models';
 import { X, ShoppingCart, Plus, Minus } from 'lucide-react';
 import { Spinner } from '../constants/Spinner';
 import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting'
 import { collection, query, where, documentId, getDocs } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 import { FiPackage } from 'react-icons/fi';
-import { hasMultiplePricing } from '../Pages/utils/pricingUtils'
+import { hasMultiplePricing, hasQuantitySlabs } from '../Pages/utils/pricingUtils'
 import { TierPickerModal } from './TierPickerModal';
 
 // --- ADDED: The exact same price logic from SharedProduct.tsx ---
@@ -155,6 +156,10 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
     const approvalEnabled = catalogueSettings?.requireApproval === true;
     const shouldHidePrice = hidePriceEnabled || (approvalEnabled && !isCustomerApproved);
 
+    // Quantity slab active for the qty currently in cart?
+    const activeSlab = quantity > 0 && hasQuantitySlabs(item) ? getSlabForQty(item, quantity) : null;
+    const activeSlabPrice = activeSlab && activeSlab.salesPrice < salePrice ? activeSlab.salesPrice : null;
+
     const showDiscountBadge =
         !hidePriceEnabled &&
         catalogueSettings?.showDiscountBadge &&
@@ -286,19 +291,26 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
                                         )}
 
                                         {priceMode === 'salePrice' && (
-                                            <p className="text-xl font-black text-[#F97316]">
-                                                ₹{salePrice}
-                                                <span className="text-xs text-gray-500 ml-1 font-semibold">{unitLabel}</span>
-                                            </p>
+                                            <>
+                                                {activeSlabPrice !== null && (
+                                                    <p className="text-sm font-bold text-gray-400 line-through">
+                                                        ₹{salePrice}
+                                                    </p>
+                                                )}
+                                                <p className="text-xl font-black text-[#F97316]">
+                                                    ₹{activeSlabPrice ?? salePrice}
+                                                    <span className="text-xs text-gray-500 ml-1 font-semibold">{unitLabel}</span>
+                                                </p>
+                                            </>
                                         )}
 
-                                        {priceMode === 'both' && hasBothPrices ? (
+                                        {priceMode === 'both' && (hasBothPrices || activeSlabPrice !== null) ? (
                                             <>
                                                 <p className="text-sm font-bold text-gray-400 line-through">
-                                                    ₹{mrp}
+                                                    ₹{activeSlabPrice !== null ? salePrice : mrp}
                                                 </p>
                                                 <p className="text-xl font-black text-[#F97316]">
-                                                    ₹{salePrice}
+                                                    ₹{activeSlabPrice ?? salePrice}
                                                     <span className="text-xs text-gray-500 ml-1 font-semibold">{unitLabel}</span>
                                                 </p>
                                             </>
@@ -317,6 +329,31 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
                                 )}
                             </div>
                         </div>
+
+                        {!shouldHidePrice && hasQuantitySlabs(item) && (
+                            <div className="mt-3">
+                                <h4 className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Bulk Pricing</h4>
+                                <div className="border border-gray-100 rounded-sm overflow-hidden">
+                                    {[...(item.quantitySlabs || [])]
+                                        .sort((a, b) => a.minQty - b.minQty)
+                                        .map(slab => {
+                                            const isActive = quantity > 0 && getSlabForQty(item, quantity)?.id === slab.id;
+                                            const rangeLabel = slab.maxQty === null
+                                                ? `${slab.minQty}+ qty`
+                                                : `${slab.minQty} - ${slab.maxQty} qty`;
+                                            return (
+                                                <div
+                                                    key={slab.id}
+                                                    className={`flex items-center justify-between px-3 py-1.5 text-xs border-t border-gray-100 first:border-t-0 ${isActive ? 'bg-[#F97316]/10 font-black text-[#F97316]' : 'font-semibold text-gray-700'}`}
+                                                >
+                                                    <span>{rangeLabel}</span>
+                                                    <span>₹{slab.salesPrice} / unit</span>
+                                                </div>
+                                            );
+                                        })}
+                                </div>
+                            </div>
+                        )}
 
                         <div className="mt-3">
                             <h4 className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Description</h4>
@@ -405,7 +442,14 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
                                         {quantity}
                                     </span>
                                     <button
-                                        onClick={() => updateQuantity(1)}
+                                        onClick={() => {
+                                            // 👇 NEW: agar item mein multiple pricing options hain, tier picker dobara khol do
+                                            if (hasMultiplePricing(item)) {
+                                                setShowTierPicker(true);
+                                                return;
+                                            }
+                                            updateQuantity(1);
+                                        }}
                                         className="p-1.5 text-gray-500 hover:text-[#F97316]"
                                     >
                                         <Plus size={16} />
@@ -456,7 +500,8 @@ export const ItemDetailDrawer: React.FC<ItemDetailDrawerProps> = ({
                         mrp: tier.mrp,
                         salesPrice: tier.salesPrice,
                         discount: tier.discount ?? 0,
-                        tierLabel: tier.label,   // 👈 NEW
+                        tierLabel: tier.label,
+                        unitMultiplier: tier.quantity,   // 👈 NEW — tier ka apna quantity (jaise box=10, combo=2)
                     } as any;
                     onAddToCart(itemWithTierPrice, tier.id === '__base__' ? undefined : tier.id);
                     setQuantity(1);

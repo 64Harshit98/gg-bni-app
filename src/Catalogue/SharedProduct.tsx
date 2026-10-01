@@ -3,6 +3,7 @@ import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSale
 import { ShoppingCart, Minus, Plus, Pin } from 'lucide-react';
 import { useAuth } from '../context/auth-context';
 import type { Item, ItemGroup } from '../constants/models';
+import { getSlabForQty } from '../constants/models';
 import { FiPackage, FiPlus } from 'react-icons/fi';
 import { ItemDetailDrawer } from '../Components/ItemDetails';
 import { Spinner } from '../constants/Spinner';
@@ -20,7 +21,8 @@ import { FaWhatsapp } from 'react-icons/fa';
 import { ensurePendingApprovalEntry } from './hooks/ensureApprovalEntry';
 import { deriveTaxContext, buildUpcomingSyncPayload } from './CheckOut/checkOut.calculations';
 import type { CartItem } from './CheckOut/checkOut.types';
-import { hasMultiplePricing } from '../Pages/utils/pricingUtils'
+import { hasMultiplePricing, hasQuantitySlabs } from '../Pages/utils/pricingUtils'
+import { TierPickerModal } from '../Components/TierPickerModal';
 
 const ITEMS_PER_BATCH_RENDER = 24;
 
@@ -62,9 +64,26 @@ const getEffectivePriceInfo = (item: Item) => {
         salePrice,
         discountPercent: Math.round(calculatedDiscount),
         hasDiscount: calculatedDiscount > 0,
-        hasBothPrices: mrp > 0 && salePrice > 0 && salePrice < mrp
+                hasBothPrices: mrp > 0 && salePrice > 0 && salePrice < mrp
     };
 };
+
+// Quantity-slab pricing for a cart line. `source` = the ORIGINAL catalogue item
+// (its salesPrice isn't overwritten by a slab price), `cartItem` = the line stored in cart.
+// - qty inside a slab  -> slab price becomes the line's salesPrice (discount % auto = MRP vs slab price)
+// - qty outside slabs  -> back to the normal base price logic
+// discount is set to 0 on slab lines so later getEffectivePriceInfo() calls
+// (cartTotal / syncToUpcoming) don't apply the preset discount a second time.
+const repriceForQty = (cartItem: Item, qty: number, source: Item): Item => {
+    if (!hasQuantitySlabs(source)) return cartItem;
+    const slab = getSlabForQty(source, qty);
+    if (slab) {
+        return { ...cartItem, mrp: Number(source.mrp || 0), salesPrice: slab.salesPrice, discount: 0 };
+    }
+    const { salePrice, mrp } = getEffectivePriceInfo(source);
+    return { ...cartItem, mrp, salesPrice: salePrice, discount: source.discount };
+};
+
 const ProductCardImage: React.FC<{ images: string[]; alt: string }> = ({ images, alt }) => {
     const [slideIndex, setSlideIndex] = useState(0);
     const [brokenUrls, setBrokenUrls] = useState<Set<string>>(new Set());
@@ -90,7 +109,7 @@ const ProductCardImage: React.FC<{ images: string[]; alt: string }> = ({ images,
         }
     }, [validImages.length, slideIndex]);
 
-        if (validImages.length === 0) {
+    if (validImages.length === 0) {
         return <FiPackage className="w-10 h-10 text-gray-200" />;
     }
 
@@ -241,6 +260,7 @@ const SharedProduct: React.FC = () => {
     const [pendingPersonalizationItem, setPendingPersonalizationItem] = useState<Item | null>(null);
     const [pendingNotifyItem, setPendingNotifyItem] = useState<Item | null>(null);
     const [pendingCartItem, setPendingCartItem] = useState<Item | null>(null);
+    const [tierPickerItem, setTierPickerItem] = useState<Item | null>(null);
 
     useEffect(() => {
         if (!effectiveCompanyId) return;
@@ -521,16 +541,21 @@ const SharedProduct: React.FC = () => {
                 mrp: mrp,
                 salesPrice: salePrice,
                 groupid: resolvedGroupId || item.itemGroupId,
-                tierId: newTierId === '__base__' ? undefined : newTierId,
+                                tierId: newTierId === '__base__' ? undefined : newTierId,
                 tierLabel: newTierId === '__base__' ? undefined : (item as any).tierLabel,   // 👈 NEW
+                baseSalesPrice: salePrice,   // price outside any quantity slab (used by checkout to reprice)
             };
-            const newCart = existing
+                        const newCart = existing
                 ? prev.map(i =>
                     cartKey(i.item) === `${item.id}__${newTierId}`
-                        ? { ...i, quantity: i.quantity + moqQty }
+                        ? {
+                            ...i,
+                            item: repriceForQty(i.item, i.quantity + moqQty, item),
+                            quantity: i.quantity + moqQty,
+                        }
                         : i
                 )
-                : [...prev, { item: itemWithPrice, quantity: moqQty }];
+                : [...prev, { item: repriceForQty(itemWithPrice, moqQty, item), quantity: moqQty }];
 
             localStorage.setItem(
                 'temp_cart',
@@ -816,7 +841,12 @@ const SharedProduct: React.FC = () => {
                         //  UNIVERSAL REMOVE RULE
                         if (newQty < moqQty) return null;
 
-                        return { ...i, quantity: newQty };
+                                                const sourceItem = allItems.find(a => a.id === i.item.id) ?? i.item;
+                        return {
+                            ...i,
+                            item: repriceForQty(i.item, newQty, sourceItem),
+                            quantity: newQty,
+                        };
                     }
                     return i;
                 })
@@ -997,7 +1027,7 @@ const SharedProduct: React.FC = () => {
             groups.get(root)!.push(String(item.id));
         });
 
-                const map: Record<string, string[]> = {};
+        const map: Record<string, string[]> = {};
         listedItems.forEach(item => {
             const root = find(String(item.id));
             const groupIds = groups.get(root) || [String(item.id)];
@@ -1517,7 +1547,13 @@ const SharedProduct: React.FC = () => {
                             catalogueSettings?.enableOutOfStockNotification && isActuallyOutOfStock;
                         const disableAddToCart = isOutOfStock;
                         const { mrp, salePrice, discountPercent, hasDiscount, hasBothPrices } = getEffectivePriceInfo(item);
-                        const showDiscountBadge = !hidePriceEnabled && catalogueSettings?.showDiscountBadge && hasDiscount;
+                                                const showDiscountBadge = !hidePriceEnabled && catalogueSettings?.showDiscountBadge && hasDiscount;
+
+                        // Quantity slab active for the qty currently in cart?
+                        const activeSlab = cartItem && hasQuantitySlabs(item)
+                            ? getSlabForQty(item, cartItem.quantity)
+                            : null;
+                        const slabPrice = activeSlab && activeSlab.salesPrice < salePrice ? activeSlab.salesPrice : null;
                         return (
                             <div
                                 id={item.id}
@@ -1588,8 +1624,20 @@ const SharedProduct: React.FC = () => {
 
                                             {/* PRICE (only when allowed) */}
                                             {!hidePriceEnabled && (!approvalEnabled || isUserApproved) && (
-                                                <>
-                                                    {hasBothPrices ? (
+                                                                                                <>
+                                                    {slabPrice !== null ? (
+                                                        <div className="flex flex-wrap items-center gap-x-1 leading-tight min-w-0">
+                                                            {/* ORIGINAL PRICE (kata hua) */}
+                                                            <p className="text-[14px] font-bold text-gray-400 line-through whitespace-nowrap shrink-0">
+                                                                ₹{salePrice}
+                                                            </p>
+
+                                                            {/* SLAB PRICE */}
+                                                            <p className="text-[14px] font-black text-[#F97316] whitespace-nowrap shrink-0">
+                                                                ₹{slabPrice}
+                                                            </p>
+                                                        </div>
+                                                    ) : hasBothPrices ? (
                                                         <div className="flex flex-wrap items-center gap-x-1 leading-tight min-w-0">
 
                                                             {/* MRP */}
@@ -1618,6 +1666,10 @@ const SharedProduct: React.FC = () => {
                                         </div>
                                     </div>
 
+                                                                        {!hidePriceEnabled && (!approvalEnabled || isUserApproved) && hasQuantitySlabs(item) && (
+                                        <p className="text-[10px] font-bold text-green-600 mt-1">Bulk rates available</p>
+                                    )}
+
                                     {/* CART AREA */}
                                     <div className="mt-auto flex gap-1">
                                         {cartItem ? (
@@ -1639,6 +1691,11 @@ const SharedProduct: React.FC = () => {
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation();
+                                                        // 👇 NEW: agar item mein multiple pricing options hain, tier picker dobara khol do
+                                                        if (hasMultiplePricing(item)) {
+                                                            setTierPickerItem(item);
+                                                            return;
+                                                        }
                                                         updateQuantity(item.id!, 1);
                                                     }}
                                                     className="p-1.5 bg-white shadow-sm text-[#F97316] hover:bg-[#F97316] hover:text-white rounded-sm transition-all"
@@ -1810,6 +1867,23 @@ const SharedProduct: React.FC = () => {
                     </div>
                 </div>
             )}
+            <TierPickerModal
+                item={tierPickerItem}
+                isOpen={!!tierPickerItem}
+                onClose={() => setTierPickerItem(null)}
+                hidePrice={hidePriceEnabled}
+                onSelect={(selectedItem, tier) => {
+                    const itemWithTierPrice: Item = tier.id === '__base__' ? selectedItem : {
+                        ...selectedItem,
+                        mrp: tier.mrp,
+                        salesPrice: tier.salesPrice,
+                        discount: tier.discount ?? 0,
+                        tierLabel: tier.label,
+                        unitMultiplier: tier.quantity,   // 👈 NEW
+                    } as any;
+                    addToCart(itemWithTierPrice, tier.id === '__base__' ? undefined : tier.id);
+                }}
+            />
             <ItemDetailDrawer
                 catalogueSettings={catalogueSettings}
                 item={selectedItemForDetails}

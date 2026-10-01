@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type { Item, PriceTier } from '../../../../constants/models';
+import { getSlabForQty } from '../../../../constants/models';
 import { State } from '../../../../enums';
-import { findTierByBarcode } from '../../../utils/pricingUtils';
+import { findTierByBarcode, hasQuantitySlabs } from '../../../utils/pricingUtils';
 import { applyRounding } from '../sales.calculations';
 import type { SalesItem } from '../sales.types';
 
@@ -155,6 +156,54 @@ export const useSalesCart = ({
 
     }, [availableItems, selectedCategory, gridSearchQuery, items, sortOrder]);
 
+    // Quantity-slab pricing: auto price + discount% for a cart line at a given qty.
+    // Outside all slabs it falls back to the normal 3-tier logic (same as addItemToCart).
+    const getSlabPricing = (line: SalesItem, qty: number, presetDiscount: number) => {
+        const isRoundingEnabled = salesSettings?.enableRounding ?? true;
+        const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
+        const mrp = Number(line.mrp || 0);
+        const baseSales = Number(line.salesPrice || 0);
+        const slab = getSlabForQty(line, qty);
+
+        let net = 0;
+        let disc = 0;
+        if (slab) {
+            net = slab.salesPrice;
+            const base = mrp > 0 ? mrp : baseSales;
+            disc = base > 0 ? ((base - net) / base) * 100 : 0;
+        } else if (mrp > 0 && baseSales > 0) {
+            net = baseSales;
+            disc = ((mrp - baseSales) / mrp) * 100;
+        } else if (baseSales > 0) {
+            disc = presetDiscount;
+            net = baseSales * (1 - presetDiscount / 100);
+        } else if (mrp > 0) {
+            disc = presetDiscount;
+            net = mrp * (1 - presetDiscount / 100);
+        }
+
+        net = applyRounding(net, isRoundingEnabled, roundingInterval);
+        return { customPrice: net, discount: parseFloat(disc.toFixed(2)) };
+    };
+
+    // Single place that changes a line's quantity AND re-prices it if slab pricing is still auto.
+    const applyQuantity = (line: SalesItem, qty: number): SalesItem => {
+        const updated: SalesItem = { ...line, quantity: qty };
+        const isAutoPriced =
+            !isEditMode &&
+            line.slabAutoPrice !== undefined &&
+            Number(line.customPrice) === line.slabAutoPrice;
+
+        if (isAutoPriced && qty > 0) {
+            const source = availableItems.find(a => a.id === line.productId);
+            const p = getSlabPricing(line, qty, Number(source?.discount ?? 0));
+            updated.customPrice = p.customPrice;
+            updated.discount = p.discount;
+            updated.slabAutoPrice = p.customPrice;
+        }
+        return updated;
+    };
+
     const addItemToCart = (itemToAdd: Item, tier?: PriceTier) => {
         if (!itemToAdd || !itemToAdd.id) {
             setModal({ message: "Cannot add invalid item.", type: State.ERROR });
@@ -216,6 +265,14 @@ export const useSalesCart = ({
             tierLabel: tier?.label,                         // 👈 NEW
             tierQuantity: tier?.quantity || itemToAdd.unitMultiplier || 1,  // 👈 NEW — base tier ka fallback
         };
+
+        // Quantity slabs: initial qty (MOQ) might already fall in a slab
+        if (!tier && hasQuantitySlabs(itemToAdd)) {
+            const p = getSlabPricing(newSalesItem, newSalesItem.quantity, presetDiscount);
+            newSalesItem.customPrice = p.customPrice;
+            newSalesItem.discount = p.discount;
+            newSalesItem.slabAutoPrice = p.customPrice;
+        }
 
         setItems(prev => {
             const insertionOrder = salesSettings?.cartInsertionOrder || 'top';
@@ -281,7 +338,7 @@ export const useSalesCart = ({
             );
 
             return prev.map(i =>
-                i.id === lastAdded.id ? { ...i, quantity: (i.quantity || 1) + 1 } : i
+                i.id === lastAdded.id ? applyQuantity(i, (i.quantity || 1) + 1) : i
             );
         });
 
@@ -369,7 +426,11 @@ export const useSalesCart = ({
             setModal({ message: 'Scan error occurred.', type: State.ERROR });
         }
     };
-    const handleQuantityChange = (id: string, newQuantity: number) => { setItems(prev => prev.map(item => item.id === id ? { ...item, quantity: Math.max(0, newQuantity) } : item)); };
+    const handleQuantityChange = (id: string, newQuantity: number) => {
+        setItems(prev => prev.map(item =>
+            item.id === id ? applyQuantity(item, Math.max(0, newQuantity)) : item
+        ));
+    };
     const handleDeleteItem = (id: string) => { setItems(prev => prev.filter(item => item.id !== id)); };
     const handleDiscountPressStart = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); longPressTimer.current = setTimeout(() => setIsDiscountLocked(false), 500); };
     const handleDiscountPressEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };

@@ -31,6 +31,8 @@ export interface ItemSettings {
     // Barcode
     requireBarcode: boolean;
     autoGenerateBarcode: boolean;
+    enablePriceTiers: boolean;
+    enableQuantitySlabs: boolean;
 }
 
 export const getDefaultItemSettings = (companyId: string): ItemSettings => ({
@@ -50,6 +52,8 @@ export const getDefaultItemSettings = (companyId: string): ItemSettings => ({
     requireUnit: false,
     requireBarcode: false,
     autoGenerateBarcode: true,
+    enablePriceTiers: false,
+    enableQuantitySlabs: false,
 });
 
 // --- Embedded ToggleRow Component ---
@@ -340,6 +344,27 @@ const SharedItemSettings: React.FC<SharedItemSettingsProps> = ({ theme = 'blue' 
                             description="A unique barcode will be generated if the barcode field is left blank."
                             checked={settings.autoGenerateBarcode}
                             onChange={(checked: boolean) => handleCheckboxChange('autoGenerateBarcode', checked)}
+                        />
+                    </section>
+
+                    {/* Optional Features */}
+                    <section className="bg-white rounded-sm border border-gray-200 shadow-sm p-4 md:p-6 space-y-1">
+                        <h3 className="text-md font-semibold text-gray-800 mb-2 border-b pb-2">Optional Features</h3>
+                        <ToggleRow
+                            id="enable-price-tiers"
+                            label="Enable Multiple Pricing Options"
+                            description="Show the Pricing Options section (e.g. Box of 10, Combo) when adding or editing an item."
+                            tooltip="Lets you add extra pack sizes with their own price and barcode."
+                            checked={settings.enablePriceTiers}
+                                                        onChange={(checked: boolean) => handleCheckboxChange('enablePriceTiers', checked)}
+                        />
+                        <ToggleRow
+                            id="enable-quantity-slabs"
+                            label="Enable Quantity Pricing"
+                            description="Show the Quantity Pricing section (e.g. 1-10 @ ₹100, 11-20 @ ₹95) when adding or editing an item."
+                            tooltip="Price per unit changes automatically based on the quantity billed."
+                            checked={settings.enableQuantitySlabs}
+                            onChange={(checked: boolean) => handleCheckboxChange('enableQuantitySlabs', checked)}
                         />
                     </section>
 

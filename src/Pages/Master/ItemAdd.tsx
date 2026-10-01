@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import type { ItemGroup, PriceTier } from '../../constants/models';
+import type { ItemGroup, PriceTier, QuantitySlab } from '../../constants/models';
+import { validateQuantitySlabs } from '../../constants/models';
 import { CustomButton } from '../../Components';
 import { Variant, State } from '../../enums';
 import XLSX from 'xlsx-js-style';
@@ -158,7 +159,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   useEffect(() => { setAllItems(catalogueItems); }, [catalogueItems]);
   const [moq, setMoq] = useState<string>('1');
   const [imageUrl, setImageUrl] = useState<string>('');
-    const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [additionalImageFiles, setAdditionalImageFiles] = useState<File[]>([]);
   const [additionalImagePreviews, setAdditionalImagePreviews] = useState<string[]>([]);
@@ -179,6 +180,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [priceTiers, setPriceTiers] = useState<PriceTier[]>([]);
+  const [quantitySlabs, setQuantitySlabs] = useState<QuantitySlab[]>([]);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -227,6 +229,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         if (parsed.itemName) setItemName(parsed.itemName);
         if (parsed.itemMRP) setItemMRP(parsed.itemMRP);
         if (parsed.priceTiers) setPriceTiers(parsed.priceTiers);
+        if (parsed.quantitySlabs) setQuantitySlabs(parsed.quantitySlabs);
         if (parsed.itemSalesPrice) setItemSalesPrice(parsed.itemSalesPrice);
         if (parsed.itemPurchasePrice) setItemPurchasePrice(parsed.itemPurchasePrice);
         if (parsed.itemDiscount) setItemDiscount(parsed.itemDiscount);
@@ -258,10 +261,10 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     const draft = {
       itemName, itemMRP, itemSalesPrice, itemPurchasePrice, itemDiscount,
       PurchaseDiscount, itemTax, itemAmount, restockQuantity, itemDescription, selectedCategories,
-      itemBarcode, hsnCode, itemUnit, packetSize, moq, imageUrl, priceTiers
+      itemBarcode, hsnCode, itemUnit, packetSize, moq, imageUrl, priceTiers, quantitySlabs
     };
     sessionStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
-  }, [itemName, itemMRP, itemSalesPrice, itemPurchasePrice, itemDiscount, PurchaseDiscount, itemTax, itemAmount, restockQuantity, itemDescription, selectedCategories, itemBarcode, hsnCode, itemUnit, packetSize, moq, imageUrl]);
+  }, [itemName, itemMRP, itemSalesPrice, itemPurchasePrice, itemDiscount, PurchaseDiscount, itemTax, itemAmount, restockQuantity, itemDescription, selectedCategories, itemBarcode, hsnCode, itemUnit, packetSize, moq, imageUrl, priceTiers, quantitySlabs]);
 
   const getUnitLabel = () => {
     if (itemUnit === 'box') return '10 pcs';
@@ -347,7 +350,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     setHsnCode('');
     setItemUnit('pcs');
     setPacketSize('');
-        setImageUrl('');
+    setImageUrl('');
     setImageFile(null);
     setImagePreview(null);
     setAdditionalImageFiles([]);
@@ -357,6 +360,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     setShowCategoryDropdown(false);
     setItemVariants([]);
     setPriceTiers([]);
+    setQuantitySlabs([]);
     sessionStorage.removeItem(DRAFT_STORAGE_KEY);
     if (imageInputRef.current) imageInputRef.current.value = '';
     fetchNextBarcode();
@@ -398,7 +402,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Canvas is empty')), 'image/jpeg', 0.95);
     });
   };
-    const handleAdditionalImagesChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAdditionalImagesChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
     setIsImageCompressing(true);
@@ -500,6 +504,33 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   const removePriceTier = (id: string) => {
     setPriceTiers(prev => prev.filter(t => t.id !== id));
   };
+
+  const addQuantitySlab = () => {
+    setQuantitySlabs(prev => {
+      // Auto-suggest next "From Qty" = previous "To Qty" + 1
+      const last = prev[prev.length - 1];
+      const nextMin = prev.length === 0 ? 1 : (last.maxQty !== null ? last.maxQty + 1 : last.minQty + 1);
+      return [
+        ...prev,
+        { id: crypto.randomUUID(), minQty: nextMin, maxQty: null, salesPrice: 0 },
+      ];
+    });
+  };
+
+  const updateQuantitySlab = (id: string, field: 'minQty' | 'maxQty' | 'salesPrice', raw: string) => {
+    setQuantitySlabs(prev =>
+      prev.map(s => {
+        if (s.id !== id) return s;
+        if (field === 'maxQty') return { ...s, maxQty: raw === '' ? null : (parseInt(raw, 10) || 0) };
+        if (field === 'minQty') return { ...s, minQty: parseInt(raw, 10) || 0 };
+        return { ...s, salesPrice: parseFloat(raw) || 0 };
+      })
+    );
+  };
+
+  const removeQuantitySlab = (id: string) => {
+    setQuantitySlabs(prev => prev.filter(s => s.id !== id));
+  };
   const handleAddItem = async () => {
     if (!dbOperations || !currentUser || !itemSettings) {
       setModal({ message: 'App not ready.', type: State.ERROR }); return;
@@ -520,8 +551,11 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     if (mrpValue === 0 && saleValue === 0) {
       setModal({ message: 'Please enter either MRP or Sales Price.', type: State.ERROR }); return;
     }
+    // Only validate/save tiers when the feature is enabled in settings
+    const activeTiers = itemSettings.enablePriceTiers ? priceTiers : [];
+
     // Validate price tiers
-    for (const tier of priceTiers) {
+    for (const tier of activeTiers) {
       if (!tier.label.trim()) {
         setModal({ message: 'Every pricing option needs a label (e.g. "Box of 10").', type: State.ERROR });
         return;
@@ -537,13 +571,25 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     }
 
     // Check duplicate tier barcodes don't collide with each other or main barcode
-    const allTierBarcodes = priceTiers.map(t => t.barcode?.trim()).filter(Boolean);
+    const allTierBarcodes = activeTiers.map(t => t.barcode?.trim()).filter(Boolean);
     if (new Set(allTierBarcodes).size !== allTierBarcodes.length) {
       setModal({ message: 'Two pricing options cannot share the same barcode.', type: State.ERROR });
       return;
     }
     if (allTierBarcodes.includes(itemBarcode.trim())) {
       setModal({ message: 'A pricing option barcode cannot be the same as the item barcode.', type: State.ERROR });
+      return;
+    }
+
+    // Quantity slabs (volume pricing) — only when enabled in settings
+    const activeSlabs = (itemSettings as any).enableQuantitySlabs ? quantitySlabs : [];
+    if (activeSlabs.length > 0 && activeTiers.length > 0) {
+      setModal({ message: 'Use either Pricing Options or Quantity Pricing, not both.', type: State.ERROR });
+      return;
+    }
+    const slabError = validateQuantitySlabs(activeSlabs, mrpValue);
+    if (slabError) {
+      setModal({ message: slabError, type: State.ERROR });
       return;
     }
     if (mrpValue > 0 && saleValue > 0 && saleValue > mrpValue) {
@@ -627,7 +673,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       if (itemUnit === 'ton') currentMultiplier = 1000;
       if (itemUnit === 'pkt') currentMultiplier = parseInt(packetSize, 10) || 1;
 
-            let finalUploadedImageUrl = null;
+      let finalUploadedImageUrl = null;
       if (imageFile) {
         const storageRef = ref(storage, `companies/${currentUser.companyId}/items/${finalBarcode}_${Date.now()}`);
         await uploadBytes(storageRef, imageFile);
@@ -663,11 +709,12 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         unit: itemUnit.trim(),
         unitMultiplier: currentMultiplier,
         packetSize: itemUnit === 'pkt' ? parseInt(packetSize, 10) : null,
-                imageUrl: finalUploadedImageUrl,
+        imageUrl: finalUploadedImageUrl,
         imageUrls: [finalUploadedImageUrl, ...additionalUploadedUrls].filter((u): u is string => Boolean(u)),
         isDeleted: false,
         variants: itemVariants,
-        priceTiers: priceTiers,
+        priceTiers: activeTiers,
+        quantitySlabs: [...activeSlabs].sort((a, b) => a.minQty - b.minQty),
       };
 
       await dbOperations.createItem(newItemData, finalBarcode);
@@ -1403,7 +1450,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                   <label className={`text-sm font-medium leading-none block ${itemSettings?.requireImage ? reqClasses : ''} mb-1`}>Or paste Image URL</label>
                   <input type="text" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} disabled={!!imageFile} className={`w-full p-3 border border-gray-300 rounded-sm ${activeTheme.focusRing} outline-none disabled:bg-gray-100 disabled:text-gray-400`} placeholder="https://example.com/image.jpg" />
                 </div>
-                                {imageFile && <button onClick={() => { setImageFile(null); setImagePreview(null); if (imageInputRef.current) imageInputRef.current.value = ''; }} className="text-xs text-red-500 hover:underline">Remove Selected Image</button>}
+                {imageFile && <button onClick={() => { setImageFile(null); setImagePreview(null); if (imageInputRef.current) imageInputRef.current.value = ''; }} className="text-xs text-red-500 hover:underline">Remove Selected Image</button>}
 
                 {/* NEW: Additional photos for catalogue slider */}
                 <div className="mt-3">
@@ -1644,114 +1691,198 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                 />
               </div>
               {/* --- Pricing Tiers (Multiple Pricing) --- */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-medium leading-none block">
-                    Pricing Options <span className="text-gray-400 font-normal">(e.g. Box of 10, Combo)</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={addPriceTier}
-                    className={`text-xs font-semibold ${activeTheme.text} hover:underline`}
-                  >
-                    + Add Pricing Option
-                  </button>
-                </div>
+              {itemSettings?.enablePriceTiers && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-medium leading-none block">
+                      Pricing Options <span className="text-gray-400 font-normal">(e.g. Box of 10, Combo)</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={addPriceTier}
+                      disabled={quantitySlabs.length > 0}
+                      title={quantitySlabs.length > 0 ? 'Remove Quantity Pricing slabs to use Pricing Options' : ''}
+                      className={`text-xs font-semibold ${activeTheme.text} hover:underline disabled:text-gray-300 disabled:no-underline disabled:cursor-not-allowed`}
+                    >
+                      + Add Pricing Option
+                    </button>
+                  </div>
 
-                {priceTiers.length === 0 ? (
-                  <p className="text-[11px] text-gray-400 italic">
-                    No extra pricing added. Item will only sell at the single price set above.
-                  </p>
-                ) : (
-                  <div className="space-y-3">
-                    {priceTiers.map((tier) => (
-                      <div key={tier.id} className="border border-gray-200 rounded-sm p-3 bg-gray-50 relative">
-                        <button
-                          type="button"
-                          onClick={() => removePriceTier(tier.id)}
-                          className="absolute top-2 right-2 text-gray-400 hover:text-red-500 text-sm font-bold leading-none"
-                        >
-                          ✕
-                        </button>
+                  {priceTiers.length === 0 ? (
+                    <p className="text-[11px] text-gray-400 italic">
+                      No extra pricing added. Item will only sell at the single price set above.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {priceTiers.map((tier) => (
+                        <div key={tier.id} className="border border-gray-200 rounded-sm p-3 bg-gray-50 relative">
+                          <button
+                            type="button"
+                            onClick={() => removePriceTier(tier.id)}
+                            className="absolute top-2 right-2 text-gray-400 hover:text-red-500 text-sm font-bold leading-none"
+                          >
+                            ✕
+                          </button>
 
-                        <div className="grid grid-cols-2 gap-3 mb-2">
+                          <div className="grid grid-cols-2 gap-3 mb-2">
+                            <div>
+                              <label className="text-[10px] font-medium text-gray-500 block mb-1">Label</label>
+                              <input
+                                type="text"
+                                value={tier.label}
+                                onChange={(e) => updatePriceTier(tier.id, 'label', e.target.value)}
+                                placeholder="e.g. Box of 10"
+                                className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-medium text-gray-500 block mb-1">
+                                Quantity (in {getUnitLabel()})
+                              </label>
+                              <input
+                                type="number"
+                                value={tier.quantity}
+                                onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                onChange={(e) => updatePriceTier(tier.id, 'quantity', parseInt(e.target.value) || 1)}
+                                min="1"
+                                placeholder="10"
+                                className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-3 mb-2">
+                            <div>
+                              <label className="text-[10px] font-medium text-gray-500 block mb-1">MRP</label>
+                              <input
+                                type="number"
+                                value={tier.mrp}
+                                onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                onChange={(e) => updatePriceTier(tier.id, 'mrp', parseFloat(e.target.value) || 0)}
+                                placeholder="0.00"
+                                className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-medium text-gray-500 block mb-1">Sales Price</label>
+                              <input
+                                type="number"
+                                value={tier.salesPrice}
+                                onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                onChange={(e) => updatePriceTier(tier.id, 'salesPrice', parseFloat(e.target.value) || 0)}
+                                placeholder="0.00"
+                                className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-medium text-gray-500 block mb-1">Purchase Price</label>
+                              <input
+                                type="number"
+                                value={tier.purchasePrice}
+                                onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                onChange={(e) => updatePriceTier(tier.id, 'purchasePrice', parseFloat(e.target.value) || 0)}
+                                placeholder="0.00"
+                                className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                              />
+                            </div>
+                          </div>
+
                           <div>
-                            <label className="text-[10px] font-medium text-gray-500 block mb-1">Label</label>
+                            <label className="text-[10px] font-medium text-gray-500 block mb-1">Barcode (optional)</label>
                             <input
                               type="text"
-                              value={tier.label}
-                              onChange={(e) => updatePriceTier(tier.id, 'label', e.target.value)}
-                              placeholder="e.g. Box of 10"
-                              className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-[10px] font-medium text-gray-500 block mb-1">
-                              Quantity (in {getUnitLabel()})
-                            </label>
-                            <input
-                              type="number"
-                              value={tier.quantity}
-                              onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                              onChange={(e) => updatePriceTier(tier.id, 'quantity', parseInt(e.target.value) || 1)}
-                              min="1"
-                              placeholder="10"
+                              value={tier.barcode}
+                              onChange={(e) => updatePriceTier(tier.id, 'barcode', e.target.value)}
+                              placeholder="Scan or type this pack's own barcode"
                               className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
                             />
                           </div>
                         </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* --- Quantity Pricing (Volume Slabs) --- */}
+              {(itemSettings as any)?.enableQuantitySlabs && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-medium leading-none block">
+                      Quantity Pricing <span className="text-gray-400 font-normal">(e.g. 1-10 @ ₹100, 11-20 @ ₹95)</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={addQuantitySlab}
+                      disabled={priceTiers.length > 0}
+                      title={priceTiers.length > 0 ? 'Remove Pricing Options to use Quantity Pricing' : ''}
+                      className={`text-xs font-semibold ${activeTheme.text} hover:underline disabled:text-gray-300 disabled:no-underline disabled:cursor-not-allowed`}
+                    >
+                      + Add Slab
+                    </button>
+                  </div>
 
-                        <div className="grid grid-cols-3 gap-3 mb-2">
-                          <div>
-                            <label className="text-[10px] font-medium text-gray-500 block mb-1">MRP</label>
-                            <input
-                              type="number"
-                              value={tier.mrp}
-                              onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                              onChange={(e) => updatePriceTier(tier.id, 'mrp', parseFloat(e.target.value) || 0)}
-                              placeholder="0.00"
-                              className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-[10px] font-medium text-gray-500 block mb-1">Sales Price</label>
-                            <input
-                              type="number"
-                              value={tier.salesPrice}
-                              onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                              onChange={(e) => updatePriceTier(tier.id, 'salesPrice', parseFloat(e.target.value) || 0)}
-                              placeholder="0.00"
-                              className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-[10px] font-medium text-gray-500 block mb-1">Purchase Price</label>
-                            <input
-                              type="number"
-                              value={tier.purchasePrice}
-                              onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                              onChange={(e) => updatePriceTier(tier.id, 'purchasePrice', parseFloat(e.target.value) || 0)}
-                              placeholder="0.00"
-                              className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
-                            />
-                          </div>
-                        </div>
+                  {priceTiers.length > 0 && (
+                    <p className="text-[11px] text-amber-600 mb-2">
+                      Pricing Options are in use. Remove them to add Quantity Pricing.
+                    </p>
+                  )}
 
-                        <div>
-                          <label className="text-[10px] font-medium text-gray-500 block mb-1">Barcode (optional)</label>
+                  {quantitySlabs.length === 0 ? (
+                    <p className="text-[11px] text-gray-400 italic">
+                      No quantity slabs added. Item will always sell at the single price set above.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-[1fr_1fr_1fr_24px] gap-2 text-[10px] font-medium text-gray-500">
+                        <span>From Qty</span>
+                        <span>To Qty (blank = and above)</span>
+                        <span>Price / unit</span>
+                        <span></span>
+                      </div>
+                      {quantitySlabs.map((slab) => (
+                        <div key={slab.id} className="grid grid-cols-[1fr_1fr_1fr_24px] gap-2 items-center">
                           <input
-                            type="text"
-                            value={tier.barcode}
-                            onChange={(e) => updatePriceTier(tier.id, 'barcode', e.target.value)}
-                            placeholder="Scan or type this pack's own barcode"
+                            type="number"
+                            min="1"
+                            value={slab.minQty || ''}
+                            onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                            onChange={(e) => updateQuantitySlab(slab.id, 'minQty', e.target.value)}
+                            placeholder="1"
                             className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
                           />
+                          <input
+                            type="number"
+                            min="1"
+                            value={slab.maxQty ?? ''}
+                            onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                            onChange={(e) => updateQuantitySlab(slab.id, 'maxQty', e.target.value)}
+                            placeholder="And above"
+                            className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                          />
+                          <input
+                            type="number"
+                            value={slab.salesPrice || ''}
+                            onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                            onChange={(e) => updateQuantitySlab(slab.id, 'salesPrice', e.target.value)}
+                            placeholder="0.00"
+                            className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeQuantitySlab(slab.id)}
+                            className="text-gray-400 hover:text-red-500 text-sm font-bold leading-none"
+                          >
+                            ✕
+                          </button>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                      ))}
+                      <p className="text-[10px] text-gray-400">
+                        The slab price applies to the whole quantity. Quantities outside all slabs use the base Sales Price.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
               {/* --- Description --- */}
               <div>
                 <div className="flex items-center mb-1">

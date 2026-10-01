@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import type { Item } from '../constants/models';
 import { useAuth, useDatabase } from '../context/auth-context';
 import { useCatalogueData } from '../context/CatalogueDataContext';
+import { useItemSettings } from '../context/SettingsContext';
 import { doc, getDoc, collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { db, storage } from '../lib/Firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
@@ -15,7 +16,8 @@ import ShowWrapper from '../context/ShowWrapper';
 import { Permissions, State } from '../enums';
 import { Modal } from '../constants/Modal';
 import { VariantPicker } from './VariantPicker';
-import type { PriceTier } from '../constants/models';
+import type { PriceTier, QuantitySlab } from '../constants/models';
+import { validateQuantitySlabs } from '../constants/models';
 
 interface ItemEditDrawerProps {
     item: Item | null;
@@ -42,7 +44,7 @@ const formatImageUrl = (url: string | null | undefined): string | null => {
         }
 
         if (fileId) {
-            return `https://lh3.googleusercontent.com/d/$${fileId}`;
+            return `https://lh3.googleusercontent.com/d/${fileId}`;
         }
     }
 
@@ -86,6 +88,9 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
     const fileInputRef = useRef<HTMLInputElement>(null); // Added ref for the standard file input
     const dbOperations = useDatabase();
     const { currentUser } = useAuth();
+    const { itemSettings } = useItemSettings();
+    const enablePriceTiers = !!itemSettings?.enablePriceTiers;
+    const enableQuantitySlabs = !!itemSettings?.enableQuantitySlabs;
     const [formData, setFormData] = useState<Partial<Item>>({});
     const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
     const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
@@ -109,6 +114,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
     const [unitChangeWarning, setUnitChangeWarning] = useState(false);
     const [variantIds, setVariantIds] = useState<string[]>([]);
     const [priceTiers, setPriceTiers] = useState<PriceTier[]>([]);
+    const [quantitySlabs, setQuantitySlabs] = useState<QuantitySlab[]>([]);
     const [showCropModal, setShowCropModal] = useState(false);
     const [rawImageSrc, setRawImageSrc] = useState<string | null>(null);
     const [crop, setCrop] = useState<Crop>();
@@ -156,6 +162,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                     });
 
                     setPriceTiers((liveData as any).priceTiers || []);   // 👈 NEW
+                    setQuantitySlabs(liveData.quantitySlabs || []);
 
                     // NEW — existing additional photos (imageUrls minus the cover photo)
                     const savedImageUrls: string[] = (liveData as any).imageUrls || [];
@@ -247,6 +254,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 setShowCategoryDropdown(false);
                 setVariantIds([]);
                 setPriceTiers([]);
+                setQuantitySlabs([]);
                 setAdditionalImageFiles([]);
                 setAdditionalImagePreviews([]);
                 setExistingAdditionalUrls([]);
@@ -294,6 +302,29 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
 
     const removePriceTier = (id: string) => {
         setPriceTiers(prev => prev.filter(t => t.id !== id));
+    };
+
+    const addQuantitySlab = () => {
+        setQuantitySlabs(prev => {
+            const last = prev[prev.length - 1];
+            const nextMin = prev.length === 0 ? 1 : (last.maxQty !== null ? last.maxQty + 1 : last.minQty + 1);
+            return [...prev, { id: crypto.randomUUID(), minQty: nextMin, maxQty: null, salesPrice: 0 }];
+        });
+    };
+
+    const updateQuantitySlab = (id: string, field: 'minQty' | 'maxQty' | 'salesPrice', raw: string) => {
+        setQuantitySlabs(prev =>
+            prev.map(s => {
+                if (s.id !== id) return s;
+                if (field === 'maxQty') return { ...s, maxQty: raw === '' ? null : (parseInt(raw, 10) || 0) };
+                if (field === 'minQty') return { ...s, minQty: parseInt(raw, 10) || 0 };
+                return { ...s, salesPrice: parseFloat(raw) || 0 };
+            })
+        );
+    };
+
+    const removeQuantitySlab = (id: string) => {
+        setQuantitySlabs(prev => prev.filter(s => s.id !== id));
     };
 
     const getCroppedBlob = (image: HTMLImageElement, crop: Crop): Promise<Blob> => {
@@ -415,7 +446,8 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
         }
 
         // 👇 NEW — same validation jaisi ItemAdd.tsx mein hai
-        for (const tier of priceTiers) {
+        const activeTiers = enablePriceTiers ? priceTiers : [];
+        for (const tier of activeTiers) {
             if (!tier.label.trim()) {
                 setModal({ message: 'Every pricing option needs a label (e.g. "Box of 10").', type: State.ERROR });
                 return;
@@ -429,7 +461,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 return;
             }
         }
-        const allTierBarcodes = priceTiers.map(t => t.barcode?.trim()).filter(Boolean);
+        const allTierBarcodes = activeTiers.map(t => t.barcode?.trim()).filter(Boolean);
         if (new Set(allTierBarcodes).size !== allTierBarcodes.length) {
             setModal({ message: 'Two pricing options cannot share the same barcode.', type: State.ERROR });
             return;
@@ -439,6 +471,16 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
             return;
         }
 
+        const activeSlabs = enableQuantitySlabs ? quantitySlabs : [];
+        if (activeSlabs.length > 0 && activeTiers.length > 0) {
+            setModal({ message: 'Use either Pricing Options or Quantity Pricing, not both.', type: State.ERROR });
+            return;
+        }
+        const slabError = validateQuantitySlabs(activeSlabs, currentMRP);
+        if (slabError) {
+            setModal({ message: slabError, type: State.ERROR });
+            return;
+        }
         const newBarcode = String(formData.barcode || '').trim();
         const oldBarcode = String((item as any).barcode || '').trim();
 
@@ -547,7 +589,12 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 packetSize: formData.unit === 'pkt' ? parseInt(String(formData.packetSize), 10) : null,
                 moq: Number(formData.moq || 1),
                 variants: variantIds,
-                priceTiers: priceTiers,
+                // When feature is disabled, don't touch existing tiers saved on the item
+                ...(enablePriceTiers ? { priceTiers } : {}),
+                // Same rule as tiers: if feature is disabled, don't touch existing slabs on the item
+                ...(enableQuantitySlabs
+                    ? { quantitySlabs: [...activeSlabs].sort((a, b) => a.minQty - b.minQty) }
+                    : {}),
             };
 
             await dbOperations.updateItem(item.id, dataToUpdate);
@@ -1135,108 +1182,197 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                             </div>
 
                             {/* 👇 NEW — Pricing Options (Tiers) */}
-                            <div>
-                                <div className="flex items-center justify-between mb-2">
-                                    <label className="text-sm font-medium leading-none block">
-                                        Pricing Options <span className="text-gray-400 font-normal text-xs">(e.g. Box of 10, Combo)</span>
-                                    </label>
-                                    <button
-                                        type="button"
-                                        onClick={addPriceTier}
-                                        className="text-xs font-semibold text-sky-500 hover:underline"
-                                    >
-                                        + Add Pricing Option
-                                    </button>
-                                </div>
+                            {enablePriceTiers && (
+                                <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <label className="text-sm font-medium leading-none block">
+                                            Pricing Options <span className="text-gray-400 font-normal text-xs">(e.g. Box of 10, Combo)</span>
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={addPriceTier}
+                                            disabled={quantitySlabs.length > 0}
+                                            title={quantitySlabs.length > 0 ? 'Remove Quantity Pricing slabs to use Pricing Options' : ''}
+                                            className="text-xs font-semibold text-sky-500 hover:underline disabled:text-gray-300 disabled:no-underline disabled:cursor-not-allowed"
+                                        >
+                                            + Add Pricing Option
+                                        </button>
+                                    </div>
 
-                                {priceTiers.length === 0 ? (
-                                    <p className="text-[11px] text-gray-400 italic">
-                                        No extra pricing added. Item will only sell at the single price set above.
-                                    </p>
-                                ) : (
-                                    <div className="space-y-3">
-                                        {priceTiers.map((tier) => (
-                                            <div key={tier.id} className="border border-gray-200 rounded-sm p-3 bg-gray-50 relative">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => removePriceTier(tier.id)}
-                                                    className="absolute top-2 right-2 text-gray-400 hover:text-red-500 text-sm font-bold leading-none"
-                                                >
-                                                    ✕
-                                                </button>
+                                    {priceTiers.length === 0 ? (
+                                        <p className="text-[11px] text-gray-400 italic">
+                                            No extra pricing added. Item will only sell at the single price set above.
+                                        </p>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {priceTiers.map((tier) => (
+                                                <div key={tier.id} className="border border-gray-200 rounded-sm p-3 bg-gray-50 relative">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removePriceTier(tier.id)}
+                                                        className="absolute top-2 right-2 text-gray-400 hover:text-red-500 text-sm font-bold leading-none"
+                                                    >
+                                                        ✕
+                                                    </button>
 
-                                                <div className="grid grid-cols-2 gap-3 mb-2">
+                                                    <div className="grid grid-cols-2 gap-3 mb-2">
+                                                        <div>
+                                                            <label className="text-[10px] font-medium text-gray-500 block mb-1">Label</label>
+                                                            <input
+                                                                type="text"
+                                                                value={tier.label}
+                                                                onChange={(e) => updatePriceTier(tier.id, 'label', e.target.value)}
+                                                                placeholder="e.g. Box of 10"
+                                                                className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[10px] font-medium text-gray-500 block mb-1">Quantity</label>
+                                                            <input
+                                                                type="number"
+                                                                value={tier.quantity}
+                                                                onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                                onChange={(e) => updatePriceTier(tier.id, 'quantity', parseInt(e.target.value) || 1)}
+                                                                min="1"
+                                                                className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-3 gap-3 mb-2">
+                                                        <div>
+                                                            <label className="text-[10px] font-medium text-gray-500 block mb-1">MRP</label>
+                                                            <input
+                                                                type="number"
+                                                                value={tier.mrp}
+                                                                onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                                onChange={(e) => updatePriceTier(tier.id, 'mrp', parseFloat(e.target.value) || 0)}
+                                                                className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[10px] font-medium text-gray-500 block mb-1">Sales Price</label>
+                                                            <input
+                                                                type="number"
+                                                                value={tier.salesPrice}
+                                                                onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                                onChange={(e) => updatePriceTier(tier.id, 'salesPrice', parseFloat(e.target.value) || 0)}
+                                                                className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[10px] font-medium text-gray-500 block mb-1">Purchase Price</label>
+                                                            <input
+                                                                type="number"
+                                                                value={tier.purchasePrice}
+                                                                onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                                onChange={(e) => updatePriceTier(tier.id, 'purchasePrice', parseFloat(e.target.value) || 0)}
+                                                                className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                                                            />
+                                                        </div>
+                                                    </div>
+
                                                     <div>
-                                                        <label className="text-[10px] font-medium text-gray-500 block mb-1">Label</label>
+                                                        <label className="text-[10px] font-medium text-gray-500 block mb-1">Barcode (optional)</label>
                                                         <input
                                                             type="text"
-                                                            value={tier.label}
-                                                            onChange={(e) => updatePriceTier(tier.id, 'label', e.target.value)}
-                                                            placeholder="e.g. Box of 10"
-                                                            className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <label className="text-[10px] font-medium text-gray-500 block mb-1">Quantity</label>
-                                                        <input
-                                                            type="number"
-                                                            value={tier.quantity}
-                                                            onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                                            onChange={(e) => updatePriceTier(tier.id, 'quantity', parseInt(e.target.value) || 1)}
-                                                            min="1"
+                                                            value={tier.barcode}
+                                                            onChange={(e) => updatePriceTier(tier.id, 'barcode', e.target.value)}
+                                                            placeholder="Scan or type this pack's own barcode"
                                                             className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
                                                         />
                                                     </div>
                                                 </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
-                                                <div className="grid grid-cols-3 gap-3 mb-2">
-                                                    <div>
-                                                        <label className="text-[10px] font-medium text-gray-500 block mb-1">MRP</label>
-                                                        <input
-                                                            type="number"
-                                                            value={tier.mrp}
-                                                            onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                                            onChange={(e) => updatePriceTier(tier.id, 'mrp', parseFloat(e.target.value) || 0)}
-                                                            className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <label className="text-[10px] font-medium text-gray-500 block mb-1">Sales Price</label>
-                                                        <input
-                                                            type="number"
-                                                            value={tier.salesPrice}
-                                                            onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                                            onChange={(e) => updatePriceTier(tier.id, 'salesPrice', parseFloat(e.target.value) || 0)}
-                                                            className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <label className="text-[10px] font-medium text-gray-500 block mb-1">Purchase Price</label>
-                                                        <input
-                                                            type="number"
-                                                            value={tier.purchasePrice}
-                                                            onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                                            onChange={(e) => updatePriceTier(tier.id, 'purchasePrice', parseFloat(e.target.value) || 0)}
-                                                            className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
-                                                        />
-                                                    </div>
-                                                </div>
+                            {/* --- Quantity Pricing (Volume Slabs) --- */}
+                            {enableQuantitySlabs && (
+                                <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <label className="text-sm font-medium leading-none block">
+                                            Quantity Pricing <span className="text-gray-400 font-normal text-xs">(e.g. 1-10 @ ₹100, 11-20 @ ₹95)</span>
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={addQuantitySlab}
+                                            disabled={priceTiers.length > 0}
+                                            title={priceTiers.length > 0 ? 'Remove Pricing Options to use Quantity Pricing' : ''}
+                                            className="text-xs font-semibold text-sky-500 hover:underline disabled:text-gray-300 disabled:no-underline disabled:cursor-not-allowed"
+                                        >
+                                            + Add Slab
+                                        </button>
+                                    </div>
 
-                                                <div>
-                                                    <label className="text-[10px] font-medium text-gray-500 block mb-1">Barcode (optional)</label>
+                                    {priceTiers.length > 0 && (
+                                        <p className="text-[11px] text-amber-600 mb-2">
+                                            Pricing Options are in use. Remove them to add Quantity Pricing.
+                                        </p>
+                                    )}
+
+                                    {quantitySlabs.length === 0 ? (
+                                        <p className="text-[11px] text-gray-400 italic">
+                                            No quantity slabs added. Item will always sell at the single price set above.
+                                        </p>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            <div className="grid grid-cols-[1fr_1fr_1fr_24px] gap-2 text-[10px] font-medium text-gray-500">
+                                                <span>From Qty</span>
+                                                <span>To Qty (blank = above)</span>
+                                                <span>Price / unit</span>
+                                                <span></span>
+                                            </div>
+                                            {quantitySlabs.map((slab) => (
+                                                <div key={slab.id} className="grid grid-cols-[1fr_1fr_1fr_24px] gap-2 items-center">
                                                     <input
-                                                        type="text"
-                                                        value={tier.barcode}
-                                                        onChange={(e) => updatePriceTier(tier.id, 'barcode', e.target.value)}
-                                                        placeholder="Scan or type this pack's own barcode"
+                                                        type="number"
+                                                        min="1"
+                                                        value={slab.minQty || ''}
+                                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                        onChange={(e) => updateQuantitySlab(slab.id, 'minQty', e.target.value)}
+                                                        placeholder="1"
+                                                        disabled={isSaving}
                                                         className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
                                                     />
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        value={slab.maxQty ?? ''}
+                                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                        onChange={(e) => updateQuantitySlab(slab.id, 'maxQty', e.target.value)}
+                                                        placeholder="And above"
+                                                        disabled={isSaving}
+                                                        className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                                                    />
+                                                    <input
+                                                        type="number"
+                                                        value={slab.salesPrice || ''}
+                                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                        onChange={(e) => updateQuantitySlab(slab.id, 'salesPrice', e.target.value)}
+                                                        placeholder="0.00"
+                                                        disabled={isSaving}
+                                                        className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeQuantitySlab(slab.id)}
+                                                        disabled={isSaving}
+                                                        className="text-gray-400 hover:text-red-500 text-sm font-bold leading-none"
+                                                    >
+                                                        ✕
+                                                    </button>
                                                 </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
+                                            ))}
+                                            <p className="text-[10px] text-gray-400">
+                                                The slab price applies to the whole quantity. Quantities outside all slabs use the base Sales Price.
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             <ShowWrapper requiredPermission={Permissions.ViewCatalogue}>
                                 <div className="flex items-center space-x-2 pt-2">

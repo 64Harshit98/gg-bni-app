@@ -26,6 +26,7 @@ interface PaymentMethods {
 export interface SaleRecord {
   id: string;
   partyName: string;
+  invoiceNumber: string;
   totalAmount: number;
   paymentMethods: PaymentMethods;
   createdAt: number;

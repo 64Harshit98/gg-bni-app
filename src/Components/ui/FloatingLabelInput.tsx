@@ -41,7 +41,7 @@ const FloatingLabelInput = React.forwardRef<
       <label
         htmlFor={inputId}
         className={cn(
-          'absolute pointer-events-none left-3 -top-2.5 text-sm text-gray-600 bg-gray-100 px-1 transition-all',
+          'absolute pointer-events-none left-3 -top-2.5 text-sm text-gray-600 bg-white px-1 transition-all',
           'peer-placeholder-shown:text-base peer-focus:-top-2.5 peer-focus:text-sm',
           // Dynamic positioning: 
           // If icon exists, shift label right when inside (placeholder-shown). 

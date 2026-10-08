@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from 'react';
 import { useAuth } from '../../../context/auth-context';
+import { useCatalogueData } from '../../../context/CatalogueDataContext';
 import { getFirestoreOperations } from '../../../lib/ItemsFirebase';
 import type { Item, ItemGroup } from '../../../constants/models';
 import { State } from '../../../enums';
@@ -14,8 +15,14 @@ export default function useItemReport() {
     return null;
   }, [currentUser?.companyId]);
 
-  const [items, setItems] = useState<Item[]>([]);
-  const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
+  const { items: catalogueItems, itemsLoading: catalogueItemsLoading, itemGroups: catalogueItemGroups, itemGroupsLoading: catalogueGroupsLoading } = useCatalogueData();
+  // Local mirrors (not direct context reads) — deleteItem/deleteItemsByCategory/
+  // deleteAllItems below optimistically remove items/groups from these ahead
+  // of the shared listener echoing the deletes back.
+  const [items, setItems] = useState<Item[]>(catalogueItems);
+  const [itemGroups, setItemGroups] = useState<ItemGroup[]>(catalogueItemGroups);
+  useEffect(() => { setItems(catalogueItems); }, [catalogueItems]);
+  useEffect(() => { setItemGroups(catalogueItemGroups); }, [catalogueItemGroups]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // State for the Generic Modal (Success/Error messages)
@@ -40,34 +47,11 @@ export default function useItemReport() {
   }>({ key: 'name', direction: 'asc' });
   const [isListVisible, setIsListVisible] = useState(false);
 
+  // items/itemGroups now come from the shared CatalogueDataContext instead
+  // of this hook fetching them itself (mirrored into local state above).
   useEffect(() => {
-    if (!firestoreApi) {
-      setIsLoading(authLoading);
-      return;
-    }
-    const fetchAllData = async () => {
-      setIsLoading(true);
-      try {
-        const [fetchedItems, fetchedGroups] = await Promise.all([
-          firestoreApi.syncItems(),
-          firestoreApi.getItemGroups(),
-        ]);
-        setItems(fetchedItems);
-        setItemGroups(fetchedGroups);
-      } catch (err) {
-        console.error(err);
-        // Use Generic Modal for Error
-        setFeedbackModal({
-          isOpen: true,
-          type: State.ERROR,
-          message: 'Failed to load item data from the server.',
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchAllData();
-  }, [firestoreApi, authLoading]);
+    setIsLoading(authLoading || catalogueItemsLoading || catalogueGroupsLoading);
+  }, [authLoading, catalogueItemsLoading, catalogueGroupsLoading]);
 
   const deleteItemsByCategory = async (categoryId: string) => {
     if (!firestoreApi) return;

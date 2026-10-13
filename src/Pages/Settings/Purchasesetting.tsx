@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
 import {
     doc,
@@ -13,6 +12,7 @@ import { useAuth } from '../../context/auth-context';
 import { FiCheck } from 'react-icons/fi';
 import { InfoTooltip } from '../../Components/InfoToolTip';
 import { ResetSettingsButton } from '../../Components/ResetSettingsButton';
+import BackButton from '../../Components/BackButton';
 
 export interface PurchaseSettings {
     companyId?: string;
@@ -23,6 +23,7 @@ export interface PurchaseSettings {
     enableBarcodePrinting: boolean;
     copyVoucherAfterSaving: boolean;
     roundingOff: boolean;
+    enableDiscount2?: boolean;
     voucherName: string;
     voucherPrefix: string;
     currentVoucherNumber: number;
@@ -31,6 +32,7 @@ export interface PurchaseSettings {
     requireSupplierMobile: boolean;
     cartInsertionOrder?: 'top' | 'bottom';
     cardViewWithPhoto?: boolean;
+    enableGodownAssignment?: boolean;
 }
 
 export const getDefaultPurchaseSettings = (companyId: string): PurchaseSettings => ({
@@ -42,14 +44,16 @@ export const getDefaultPurchaseSettings = (companyId: string): PurchaseSettings 
     enableBarcodePrinting: true,
     copyVoucherAfterSaving: false,
     roundingOff: false,
+    enableDiscount2: false,
     voucherName: 'Purchase',
-    voucherPrefix: 'PRC',
-    currentVoucherNumber: 1000,
+    voucherPrefix: 'PUR',
+    currentVoucherNumber: 1,
     purchaseViewType: 'list',
     requireSupplierName: true,
     requireSupplierMobile: false,
-    cartInsertionOrder: 'top',
+    cartInsertionOrder: 'bottom',
     cardViewWithPhoto: true,
+    enableGodownAssignment: false,
 });
 
 interface CardProps {
@@ -84,7 +88,6 @@ const ToggleRow: React.FC<ToggleRowProps> = ({ id, label, description, checked, 
                 <label htmlFor={id} className="text-sm font-semibold text-gray-800 leading-5">{label}</label>
                 <InfoTooltip text={tooltip || description} />
             </div>
-            <p className="hidden md:block text-xs text-gray-500 mt-1 leading-relaxed">{description}</p>
         </div>
         <label htmlFor={id} className="relative inline-flex cursor-pointer items-center">
             <input
@@ -94,14 +97,13 @@ const ToggleRow: React.FC<ToggleRowProps> = ({ id, label, description, checked, 
                 checked={checked}
                 onChange={(e) => onChange(e.target.checked)}
             />
-            <span className="h-6 w-11 rounded-full bg-gray-300 transition peer-checked:bg-sky-500" />
+            <span className="h-6 w-11 rounded-full bg-gray-300 transition peer-checked:bg-blue-600" />
             <span className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white transition peer-checked:translate-x-5" />
         </label>
     </div>
 );
 
 const PurchaseSettingsPage: React.FC = () => {
-    const navigate = useNavigate();
     const { currentUser } = useAuth();
 
     const [settings, setSettings] = useState<PurchaseSettings | null>(null);
@@ -207,7 +209,7 @@ const PurchaseSettingsPage: React.FC = () => {
             setSettings({
                 ...settings,
                 voucherName: 'Purchase',
-                voucherPrefix: 'PRC',
+                voucherPrefix: 'PUR',
                 currentVoucherNumber: backendCounter
             });
 
@@ -216,7 +218,7 @@ const PurchaseSettingsPage: React.FC = () => {
             setSettings({
                 ...settings,
                 voucherName: 'Purchase',
-                voucherPrefix: 'PRC'
+                voucherPrefix: 'PUR'
             });
         }
     };
@@ -256,7 +258,7 @@ const PurchaseSettingsPage: React.FC = () => {
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
             <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
-                <button onClick={() => navigate(-1)} className="text-2xl font-bold text-gray-600 bg-transparent border-none cursor-pointer p-1">&times;</button>
+                <BackButton />
                 <h1 className="text-base md:text-lg font-semibold text-gray-800">Purchase Settings</h1>
                 <div className="w-6"></div>
             </div>
@@ -278,10 +280,10 @@ const PurchaseSettingsPage: React.FC = () => {
                             {/* List View */}
                             <div
                                 onClick={() => handleChange('purchaseViewType', 'list')}
-                                className={`cursor-pointer relative rounded-sm border-2 p-3 flex flex-col items-center gap-3 transition-all ${settings.purchaseViewType === 'list' ? 'border-sky-500 bg-sky-50 shadow-sm' : 'border-gray-200 bg-white hover:border-sky-300'}`}
+                                className={`cursor-pointer relative rounded-sm border-2 p-3 flex flex-col items-center gap-3 transition-all ${settings.purchaseViewType === 'list' ? 'border-blue-600 bg-blue-50 shadow-sm' : 'border-gray-200 bg-white hover:border-blue-300'}`}
                             >
                                 {settings.purchaseViewType === 'list' && (
-                                    <div className="absolute top-2 right-2 bg-sky-500 text-white rounded-full p-0.5">
+                                    <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-0.5">
                                         <FiCheck size={12} />
                                     </div>
                                 )}
@@ -300,10 +302,10 @@ const PurchaseSettingsPage: React.FC = () => {
                             {/* Card View */}
                             <div
                                 onClick={() => handleChange('purchaseViewType', 'card')}
-                                className={`cursor-pointer relative rounded-sm border-2 p-3 flex flex-col items-center gap-3 transition-all ${settings.purchaseViewType === 'card' ? 'border-sky-500 bg-sky-50 shadow-sm' : 'border-gray-200 bg-white hover:border-sky-300'}`}
+                                className={`cursor-pointer relative rounded-sm border-2 p-3 flex flex-col items-center gap-3 transition-all ${settings.purchaseViewType === 'card' ? 'border-blue-600 bg-blue-50 shadow-sm' : 'border-gray-200 bg-white hover:border-blue-300'}`}
                             >
                                 {settings.purchaseViewType === 'card' && (
-                                    <div className="absolute top-2 right-2 bg-sky-500 text-white rounded-full p-0.5">
+                                    <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-0.5">
                                         <FiCheck size={12} />
                                     </div>
                                 )}
@@ -327,17 +329,17 @@ const PurchaseSettingsPage: React.FC = () => {
                                     {/* With Photo */}
                                     <div
                                         onClick={() => handleCheckboxChange('cardViewWithPhoto', true)}
-                                        className={`cursor-pointer relative rounded-sm border p-2 sm:p-3 flex flex-col sm:flex-row items-center gap-2 sm:gap-3 transition-all ${settings.cardViewWithPhoto ? 'border-sky-500 bg-white shadow-sm' : 'border-gray-200 bg-gray-50 hover:border-gray-300'}`}
+                                        className={`cursor-pointer relative rounded-sm border p-2 sm:p-3 flex flex-col sm:flex-row items-center gap-2 sm:gap-3 transition-all ${settings.cardViewWithPhoto ? 'border-blue-600 bg-white shadow-sm' : 'border-gray-200 bg-gray-50 hover:border-gray-300'}`}
                                     >
                                         {settings.cardViewWithPhoto && (
-                                            <div className="absolute top-2 right-2 bg-sky-500 text-white rounded-full p-0.5">
+                                            <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-0.5">
                                                 <FiCheck size={10} />
                                             </div>
                                         )}
                                         <div className="w-full sm:w-[6.5rem] sm:shrink-0 h-10 sm:h-12 bg-gray-100 border border-gray-200 rounded-sm p-1 grid grid-cols-3 gap-1">
                                             {[...Array(3)].map((_, i) => (
                                                 <div key={i} className="flex flex-col items-center gap-0.5">
-                                                    <div className="w-full aspect-square bg-sky-200 rounded-sm"></div>
+                                                    <div className="w-full aspect-square bg-blue-200 rounded-sm"></div>
                                                     <div className="h-1 w-full bg-gray-300 rounded-sm"></div>
                                                 </div>
                                             ))}
@@ -351,10 +353,10 @@ const PurchaseSettingsPage: React.FC = () => {
                                     {/* Without Photo */}
                                     <div
                                         onClick={() => handleCheckboxChange('cardViewWithPhoto', false)}
-                                        className={`cursor-pointer relative rounded-sm border p-2 sm:p-3 flex flex-col sm:flex-row items-center gap-2 sm:gap-3 transition-all ${!settings.cardViewWithPhoto ? 'border-sky-500 bg-white shadow-sm' : 'border-gray-200 bg-gray-50 hover:border-gray-300'}`}
+                                        className={`cursor-pointer relative rounded-sm border p-2 sm:p-3 flex flex-col sm:flex-row items-center gap-2 sm:gap-3 transition-all ${!settings.cardViewWithPhoto ? 'border-blue-600 bg-white shadow-sm' : 'border-gray-200 bg-gray-50 hover:border-gray-300'}`}
                                     >
                                         {!settings.cardViewWithPhoto && (
-                                            <div className="absolute top-2 right-2 bg-sky-500 text-white rounded-full p-0.5">
+                                            <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-0.5">
                                                 <FiCheck size={10} />
                                             </div>
                                         )}
@@ -386,14 +388,14 @@ const PurchaseSettingsPage: React.FC = () => {
                                 <button
                                     type="button"
                                     onClick={() => handleChange('cartInsertionOrder', 'top')}
-                                    className={`px-3 py-2 rounded-sm border text-sm font-semibold ${settings.cartInsertionOrder === 'top' ? 'bg-sky-500 text-white border-sky-500' : 'bg-white text-gray-700 border-gray-300'}`}
+                                    className={`px-3 py-2 rounded-sm border text-sm font-semibold ${settings.cartInsertionOrder === 'top' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}
                                 >
                                     Newest First
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => handleChange('cartInsertionOrder', 'bottom')}
-                                    className={`px-3 py-2 rounded-sm border text-sm font-semibold ${settings.cartInsertionOrder === 'bottom' ? 'bg-sky-500 text-white border-sky-500' : 'bg-white text-gray-700 border-gray-300'}`}
+                                    className={`px-3 py-2 rounded-sm border text-sm font-semibold ${settings.cartInsertionOrder === 'bottom' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}
                                 >
                                     Oldest First
                                 </button>
@@ -411,6 +413,22 @@ const PurchaseSettingsPage: React.FC = () => {
                                 checked={settings.enableBarcodePrinting}
                                 onChange={(checked) => handleCheckboxChange('enableBarcodePrinting', checked)}
                                 tooltip="Show an option to print barcodes after saving a purchase."
+                            />
+                            <ToggleRow
+                                id="item-discount-2"
+                                label="Enable Second Discount (Disc2)"
+                                description="Show a second discount field, applied on top of Disc1."
+                                checked={settings.enableDiscount2 ?? false}
+                                onChange={(checked) => handleCheckboxChange('enableDiscount2', checked)}
+                                tooltip="Adds a compounding second discount field (Disc2%) in the purchase cart, on top of the existing item discount."
+                            />
+                            <ToggleRow
+                                id="godown-assignment"
+                                label="Enable Godown Assignment"
+                                description="Show the Assign Godown modal after Pay Now."
+                                checked={settings.enableGodownAssignment ?? true}
+                                onChange={(checked) => handleCheckboxChange('enableGodownAssignment', checked)}
+                                tooltip="When enabled, tapping Pay Now opens a modal to split purchased quantity across godowns. When disabled, the modal is skipped and all purchased stock is added directly to the Shop."
                             />
                         </SettingsCard>
 
@@ -465,14 +483,14 @@ const PurchaseSettingsPage: React.FC = () => {
                             <div>
                                 <div className="flex items-center mb-1 gap-2">
                                     <label htmlFor="voucher-prefix" className="text-sm font-medium text-gray-700">Voucher Prefix</label>
-                                    <InfoTooltip text="Letters added before the purchase invoice number (e.g., PRC-)." />
+                                    <InfoTooltip text="Letters added before the purchase invoice number (e.g., PUR-)." />
                                 </div>
                                 <input
                                     type="text"
                                     id="voucher-prefix"
                                     value={settings.voucherPrefix || ''}
                                     onChange={(e) => handleChange('voucherPrefix', e.target.value)}
-                                    className="w-full p-2.5 text-sm border border-gray-300 rounded-sm focus:ring-sky-500 focus:border-sky-500 outline-none"
+                                    className="w-full p-2.5 text-sm border border-gray-300 rounded-sm focus:ring-blue-600 focus:border-blue-600 outline-none"
                                     placeholder="e.g., PRC"
                                 />
                             </div>
@@ -486,7 +504,7 @@ const PurchaseSettingsPage: React.FC = () => {
                                     id="current-number"
                                     value={settings.currentVoucherNumber ?? 1000}
                                     onChange={(e) => handleChange('currentVoucherNumber', e.target.value)}
-                                    className="w-full p-2.5 text-sm border border-gray-300 rounded-sm focus:ring-sky-500 focus:border-sky-500 outline-none"
+                                    className="w-full p-2.5 text-sm border border-gray-300 rounded-sm focus:ring-blue-600 focus:border-blue-600 outline-none"
                                     min="1"
                                     step="1"
                                 />
@@ -502,7 +520,7 @@ const PurchaseSettingsPage: React.FC = () => {
                     <button
                         onClick={handleSave}
                         disabled={isSaving || isLoading}
-                        className="w-auto min-w-[150px] flex items-center justify-center bg-sky-500 text-white font-bold py-3 px-6 rounded-sm hover:bg-sky-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed shadow-lg"
+                        className="w-auto min-w-[150px] flex items-center justify-center bg-blue-600 text-white font-bold py-3 px-6 rounded-sm hover:bg-blue-600 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed shadow-lg"
                     >
                         {isSaving ? <Spinner /> : 'Save Settings'}
                     </button>

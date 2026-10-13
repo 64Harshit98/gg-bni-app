@@ -1,13 +1,15 @@
 import { FiEdit, FiTrash2 } from 'react-icons/fi';
 import { useState, useEffect } from 'react';
 import type { Item } from '../constants/models';
-import { State } from '../enums';
+import { Permissions, State } from '../enums';
+import ShowWrapper from '../context/ShowWrapper';
 
 export interface CartItem extends Partial<Item> {
   id: string;
   productId?: string;
   name: string;
   discount?: number;
+  discount2?: number;
   customPrice?: number | string;
   quantity: number;
   isEditable?: boolean;
@@ -17,12 +19,14 @@ export interface CartItem extends Partial<Item> {
 interface GenericCartListProps<T extends CartItem> {
   items: T[];
   availableItems: Item[];
+  scrollRef?: React.RefObject<HTMLDivElement | null>;
   basePriceKey: keyof T;
   priceLabel: string;
   settings: {
     enableRounding: boolean;
     roundingInterval: number;
     enableItemWiseDiscount: boolean;
+    enableDiscount2: boolean;
     lockDiscount: boolean;
     lockPrice: boolean;
     hideMrp?: boolean;
@@ -31,8 +35,10 @@ interface GenericCartListProps<T extends CartItem> {
   State: typeof State;
   setModal: (modal: { message: string; type: State } | null) => void;
   onOpenEditDrawer: (item: Item) => void;
+  onItemNotFound?: (cartItem: T) => void;
   onDeleteItem: (id: string) => void;
   onDiscountChange: (id: string, value: number | string) => void;
+  onDiscount2Change: (id: string, value: number | string) => void;
   onCustomPriceChange: (id: string, value: string) => void;
   onCustomPriceBlur: (id: string) => void;
   onQuantityChange: (id: string, newQuantity: number) => void;
@@ -106,6 +112,7 @@ const FloatingInput = ({
 export const GenericCartList = <T extends CartItem>({
   items,
   availableItems,
+  scrollRef,
   basePriceKey,
   priceLabel,
   settings,
@@ -113,8 +120,10 @@ export const GenericCartList = <T extends CartItem>({
   State,
   setModal,
   onOpenEditDrawer,
+  onItemNotFound,
   onDeleteItem,
   onDiscountChange,
+  onDiscount2Change,
   onCustomPriceChange,
   onCustomPriceBlur,
   onQuantityChange,
@@ -127,7 +136,7 @@ export const GenericCartList = <T extends CartItem>({
 }: GenericCartListProps<T>) => {
 
   return (
-    <div className="flex-1 overflow-y-auto space-y-4 pb-20 px-3 pt-4">
+    <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-1 sm:space-y-4 pb-2 px-1 pt-1 sm:pt-4">
       {items.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-40 text-gray-400">
           <p>Cart is empty</p>
@@ -136,7 +145,9 @@ export const GenericCartList = <T extends CartItem>({
         items.map((item) => {
           const currentBasePrice = Number(item[basePriceKey]) || 0;
           const currentDiscount = item.discount || 0;
-          const priceAfterDiscount = currentBasePrice * (1 - currentDiscount / 100);
+          const currentDiscount2 = item.discount2 || 0;
+          const priceAfterFirstDiscount = currentBasePrice * (1 - currentDiscount / 100);
+          const priceAfterDiscount = priceAfterFirstDiscount * (1 - currentDiscount2 / 100);
 
           const calculatedRoundedPrice = (currentDiscount > 0)
             ? applyRounding(priceAfterDiscount, settings.enableRounding, settings.roundingInterval)
@@ -150,14 +161,31 @@ export const GenericCartList = <T extends CartItem>({
           const priceLocked = settings.lockPrice || !item.isEditable;
 
           const isZeroPrice = displayPrice !== '' && Number(displayPrice) === 0;
+          const isUnlinked = typeof item.name === 'string' && item.name.includes('(Not in DB)');
 
           const netPrice = parseFloat(displayPrice) || 0;
           const lineSubtotal = Math.round((netPrice * (item.quantity || 1)) * 100) / 100;
+          const handleDiscountChange = (val: string) => {
+            if (val === '') {
+              onDiscountChange(item.id, val);
+              return;
+            }
+            const numVal = parseFloat(val);
+            if (numVal > 100) {
+              onDiscountChange(item.id, '100');
+            } else {
+              onDiscountChange(item.id, val);
+            }
+          };
 
           return (
             <div
               key={item.id}
-              className={`rounded-sm border overflow-hidden shadow-sm ${isZeroPrice ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100'
+              className={`rounded-sm border overflow-hidden shadow-sm ${isZeroPrice
+                ? 'bg-red-50 border-red-200'
+                : isUnlinked
+                  ? 'bg-yellow-50 border-yellow-300'
+                  : 'bg-white border-gray-100'
                 } ${!item.isEditable ? 'opacity-75' : ''}`}
             >
 
@@ -182,6 +210,11 @@ export const GenericCartList = <T extends CartItem>({
                     <h3 className="font-semibold text-gray-800 text-sm" title={item.name}>
                       {item.name.slice(0, 30) || 'Unnamed Item'}
                     </h3>
+                    {item.tierLabel && (
+                      <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-sm font-semibold flex-shrink-0">
+                        {item.tierLabel}
+                      </span>
+                    )}
                     {item.unit ? (
                       <span className="text-[11px] text-gray-400 flex-shrink-0">{item.unit}</span>
                     ) : null}
@@ -195,30 +228,29 @@ export const GenericCartList = <T extends CartItem>({
                         ₹{lineSubtotal.toLocaleString('en-IN')}
                       </span>
                     </div>
-                    <button
-                      onClick={() => {
-                        const originalItem = availableItems.find(a => a.id === item.productId || a.id === item.id);
-                        if (originalItem) onOpenEditDrawer(originalItem);
-                        else setModal({ message: "Original item not found.", type: State.ERROR });
-                      }}
-                      className=" w-[26px] h-[26px] border rounded-md  text-gray-400 hover:text-blue-600 disabled:text-gray-200 disabled:cursor-not-allowed shadow-sm z-20"
-                    >
-                      <FiEdit size={14} />
-                    </button>
-
+                    <ShowWrapper requiredPermission={Permissions.ViewTransactions}>
+                      <button
+                        onClick={() => {
+                          const originalItem = availableItems.find(a => a.id === item.productId || a.id === item.id);
+                          if (originalItem) onOpenEditDrawer(originalItem);
+                          else if (onItemNotFound) onItemNotFound(item);
+                          else setModal({ message: "Original item not found.", type: State.ERROR });
+                        }}
+                        className="flex items-center justify-center w-[26px] h-[26px] text-gray-400 hover:text-blue-600 disabled:text-gray-200 disabled:cursor-not-allowed z-20"
+                      >
+                        <FiEdit size={14} />
+                      </button>
+                    </ShowWrapper>
                   </div>
                 </div>
 
                 {/* Row 2: MRP | Disc% | Net Price | Qty */}
-                <div className="border-t border-gray-100 px-2.5 py-2 flex items-center gap-1.5 flex-nowrap overflow-x-auto">
+                <div className="border-t border-gray-100 px-2 py-2 flex items-center gap-1 flex-nowrap overflow-x-auto">
 
                   {!settings.hideMrp && (
-                    <div className="relative flex-shrink-0">
-                      <label className="absolute -top-1 left-3.5 bg-white px-1 text-[10px] text-gray-500 leading-none z-10">{priceLabel}</label>
-                      <div className="flex items-center border border-slate-300 rounded h-9 px-2 bg-white min-w-[60px] cursor-not-allowed">
-                        <span className="text-xs text-gray-400 mr-1">₹</span>
-                        <span className="text-sm text-gray-400 text-center w-full">{currentBasePrice.toFixed()}</span>
-                      </div>
+                    <div className="flex flex-col items-center flex-shrink-0 min-w-[34px]">
+                      <span className="text-[9px] text-gray-500 leading-none mb-0.5">{priceLabel}</span>
+                      <span className="text-[9px] text-gray-500 leading-none">₹{currentBasePrice.toFixed()}</span>
                     </div>
                   )}
 
@@ -235,7 +267,7 @@ export const GenericCartList = <T extends CartItem>({
                       <label className="absolute -top-1 left-2 bg-white px-1 text-[10px] text-gray-500 leading-none z-10">Disc%</label>
                       <FloatingInput
                         value={item.discount !== undefined ? String(item.discount) : ''}
-                        onChange={(val) => onDiscountChange(item.id, val)}
+                        onChange={handleDiscountChange}
                         onBlur={() => {
                           if ((item.discount as any) === '' || item.discount === undefined) {
                             onDiscountChange(item.id, 0);
@@ -248,7 +280,24 @@ export const GenericCartList = <T extends CartItem>({
                       />
                     </div>
                   )}
-
+                  {settings.enableItemWiseDiscount && settings.enableDiscount2 && (
+                    <div className="relative w-13 flex-shrink-0">
+                      <label className="absolute -top-1 left-2 bg-white px-1 text-[10px] text-gray-500 leading-none z-10">Disc2%</label>
+                      <FloatingInput
+                        value={item.discount2 !== undefined ? String(item.discount2) : ''}
+                        onChange={(val) => onDiscount2Change(item.id, val)}
+                        onBlur={() => {
+                          if ((item.discount2 as any) === '' || item.discount2 === undefined) {
+                            onDiscount2Change(item.id, 0);
+                          }
+                        }}
+                        locked={discountLocked}
+                        placeholder="0"
+                        className={`w-full px-1 py-1 text-center text-sm border border-slate-300 rounded h-9 ${discountLocked ? 'bg-gray-50 cursor-not-allowed' : 'focus:border-blue-500'
+                          }`}
+                      />
+                    </div>
+                  )}
                   <div
                     className="relative flex-1 min-w-[70px]"
                     onMouseDown={onPricePressStart}
@@ -276,13 +325,16 @@ export const GenericCartList = <T extends CartItem>({
                     </div>
                   </div>
 
-                  <div className=" flex items-center border border-slate-300 rounded h-9 w-24 flex-shrink-0">
+                  <div className=" flex items-center border border-slate-300 rounded h-9 w-22 flex-shrink-0">
                     <button
                       onClick={() => {
-                        const step = item.unitMultiplier || 1;
-                        onQuantityChange(item.id, Math.max(step, (item.quantity || step) - step));
+                        const step = 1;
+                        const moq = Number(item.moq) || 1;
+                        const currentQty = item.quantity || step;
+                        const nextQty = currentQty - step;
+                        onQuantityChange(item.id, Math.max(moq, nextQty));
                       }}
-                      disabled={item.quantity <= (item.unitMultiplier || 1) || !item.isEditable}
+                      disabled={item.quantity <= (Number(item.moq) || 1) || !item.isEditable}
                       className="px-2 text-gray-600 hover:bg-gray-100 disabled:text-gray-300 disabled:cursor-not-allowed text-lg leading-none flex items-center justify-center h-full w-8 border-r border-slate-300"
                     >−</button>
                     <div className="flex-1 h-full flex items-center justify-center">
@@ -293,9 +345,9 @@ export const GenericCartList = <T extends CartItem>({
                           onQuantityChange(item.id, isNaN(num) ? '' as any : num);
                         }}
                         onBlur={() => {
-                          const step = item.unitMultiplier || 1;
-                          if (!item.quantity || item.quantity < step) {
-                            onQuantityChange(item.id, step);
+                          const moq = Number(item.moq) || 1;
+                          if (!item.quantity || item.quantity < moq) {
+                            onQuantityChange(item.id, moq);
                           }
                         }}
                         locked={!item.isEditable}
@@ -304,7 +356,7 @@ export const GenericCartList = <T extends CartItem>({
                     </div>
                     <button
                       onClick={() => {
-                        const step = item.unitMultiplier || 1;
+                        const step = 1;
                         onQuantityChange(item.id, (item.quantity || step) + step);
                       }}
                       disabled={!item.isEditable}
@@ -337,24 +389,33 @@ export const GenericCartList = <T extends CartItem>({
                   <span className="text-sm font-medium text-gray-800 truncate">
                     {item.name || 'Unnamed Item'}
                   </span>
+                  {item.tierLabel && (
+                    <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-sm font-semibold flex-shrink-0">
+                      {item.tierLabel}
+                    </span>
+                  )}
                   {item.unit && (
                     <span className="text-[11px] text-gray-400 flex-shrink-0">{item.unit}</span>
                   )}
-                  <button
-                    onClick={() => {
-                      const originalItem = availableItems.find(a => a.id === item.productId || a.id === item.id);
-                      if (originalItem) onOpenEditDrawer(originalItem);
-                      else setModal({ message: "Original item not found.", type: State.ERROR });
-                    }}
-                    className="text-gray-400 hover:text-blue-600 flex-shrink-0 ml-0.5"
-                  >
-                    <FiEdit size={16} />
-                  </button>
+                  <ShowWrapper requiredPermission={Permissions.ViewTransactions}>
+                    <button
+                      onClick={() => {
+                        const originalItem = availableItems.find(a => a.id === item.productId || a.id === item.id);
+                        if (originalItem) onOpenEditDrawer(originalItem);
+                        else if (onItemNotFound) onItemNotFound(item);
+                        else setModal({ message: "Original item not found.", type: State.ERROR });
+                      }}
+                      className="text-gray-400 hover:text-blue-600 flex-shrink-0 ml-0.5"
+                    >
+                      <FiEdit size={16} />
+                    </button>
+                  </ShowWrapper>
+
                 </div>
 
                 {/* MRP — label above amount */}
                 {!settings.hideMrp && (
-                  <div className="flex flex-col items-center flex-shrink-0 min-w-[48px]">
+                  <div className="flex flex-col items-center flex-shrink-0 min-w-[36px]">
                     <span className="text-[10px] text-gray-500 leading-none mb-0.5">{priceLabel}</span>
                     <span className="text-xs text-gray-500 leading-none">₹{currentBasePrice.toFixed()}</span>
                   </div>
@@ -387,7 +448,25 @@ export const GenericCartList = <T extends CartItem>({
                     />
                   </div>
                 )}
-
+                {/* Disc2% — floating label box */}
+                {settings.enableItemWiseDiscount && settings.enableDiscount2 && (
+                  <div className="relative w-14 flex-shrink-0">
+                    <label className="absolute -top-1 left-2 bg-white px-1 text-[10px] text-gray-500 leading-none z-10">Disc2%</label>
+                    <FloatingInput
+                      value={item.discount2 !== undefined ? String(item.discount2) : ''}
+                      onChange={(val) => onDiscount2Change(item.id, val)}
+                      onBlur={() => {
+                        if ((item.discount2 as any) === '' || item.discount2 === undefined) {
+                          onDiscount2Change(item.id, 0);
+                        }
+                      }}
+                      locked={discountLocked}
+                      placeholder="0"
+                      className={`w-full px-1 py-1 text-center text-sm border border-slate-300 rounded h-9 ${discountLocked ? 'bg-gray-50 cursor-not-allowed' : 'focus:border-blue-500'
+                        }`}
+                    />
+                  </div>
+                )}
                 {/* Net Price — floating label box */}
                 <div
                   className="relative w-24 flex-shrink-0"
@@ -420,10 +499,14 @@ export const GenericCartList = <T extends CartItem>({
                 <div className="flex items-center border border-slate-300 rounded h-9 w-24 flex-shrink-0">
                   <button
                     onClick={() => {
-                      const step = item.unitMultiplier || 1;
-                      onQuantityChange(item.id, Math.max(step, (item.quantity || step) - step));
+                      const step = 1;
+                      const moq = Number(item.moq) || 1;
+                      const currentQty = item.quantity || step;
+
+                      const nextQty = currentQty - step;
+                      onQuantityChange(item.id, Math.max(moq, nextQty));
                     }}
-                    disabled={item.quantity <= (item.unitMultiplier || 1) || !item.isEditable}
+                    disabled={item.quantity <= (Number(item.moq) || 1) || !item.isEditable}
                     className="px-2 text-gray-600 hover:bg-gray-100 disabled:text-gray-300 disabled:cursor-not-allowed text-lg leading-none flex items-center justify-center h-full w-8 border-r border-slate-300"
                   >−</button>
                   <div className="flex-1 h-full flex items-center justify-center">
@@ -434,9 +517,9 @@ export const GenericCartList = <T extends CartItem>({
                         onQuantityChange(item.id, isNaN(num) ? '' as any : num);
                       }}
                       onBlur={() => {
-                        const step = item.unitMultiplier || 1;
-                        if (!item.quantity || item.quantity < step) {
-                          onQuantityChange(item.id, step);
+                        const moq = Number(item.moq) || 1;
+                        if (!item.quantity || item.quantity < moq) {
+                          onQuantityChange(item.id, moq);
                         }
                       }}
                       locked={!item.isEditable}
@@ -445,7 +528,7 @@ export const GenericCartList = <T extends CartItem>({
                   </div>
                   <button
                     onClick={() => {
-                      const step = item.unitMultiplier || 1;
+                      const step = 1;
                       onQuantityChange(item.id, (item.quantity || step) + step);
                     }}
                     disabled={!item.isEditable}

@@ -53,7 +53,7 @@ export const FloatingLabelSelect = React.forwardRef<
       <label
         htmlFor={inputId}
         className={cn(
-          'absolute pointer-events-none bg-gray-100 px-1 transition-all duration-200 ease-out origin-[0]',
+          'absolute pointer-events-none bg-white px-1 transition-all duration-200 ease-out origin-[0]',
           
           // --- LOGIC FIX START ---
           // When floated (hasValue or focus): Always reset left position to align with border

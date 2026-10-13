@@ -12,6 +12,11 @@ interface SearchableItemInputProps {
     isLoading?: boolean;
     error?: string | null;
     onAddItem?: (searchQuery: String) => void;
+    selectedCategory?: string;
+    onCategoryChange?: (category: string) => void;
+    categories?: string[];
+    itemGroupMap?: Record<string, string>;
+    onSearchChange?: (query: string) => void;
 }
 
 const THROTTLE_DELAY = 500;
@@ -23,6 +28,11 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
     isLoading = false,
     error = null,
     onAddItem,
+    selectedCategory = 'All',
+    onCategoryChange,
+    categories = [],
+    itemGroupMap = {},
+    onSearchChange,
 }) => {
     const [searchQuery, setSearchQuery] = useState<string>('');
     const [throttledQuery, setThrottledQuery] = useState<string>('');
@@ -72,12 +82,18 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
 
         const searchTokens = trimmedQuery.split(/\s+/);
 
-        const matches = items.filter(item => {
+        const categoryFilteredItems = selectedCategory === 'All'
+            ? items
+            : items.filter(item => (item.itemGroupId || 'Others') === selectedCategory);
+
+        const matches = categoryFilteredItems.filter(item => {
             const lowerName = item.name.toLowerCase();
             const lowerBarcode = item.barcode ? item.barcode.toLowerCase() : '';
+            const categoryName = (itemGroupMap[(item.itemGroupId || '')] || '').toLowerCase();
             const matchesName = searchTokens.every(token => lowerName.includes(token));
             const matchesBarcode = lowerBarcode.includes(trimmedQuery);
-            return matchesName || matchesBarcode;
+            const matchesCategory = categoryName.includes(trimmedQuery);
+            return matchesName || matchesBarcode || matchesCategory;
         });
 
         return matches.sort((a, b) => {
@@ -89,7 +105,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
             if (!aStartsWith && bStartsWith) return 1;
             return lowerA.localeCompare(lowerB);
         });
-    }, [items, throttledQuery]);
+    }, [items, throttledQuery, selectedCategory, itemGroupMap]);
 
     // --- AUTO SCROLL LOGIC ---
     useEffect(() => {
@@ -112,6 +128,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
         onItemSelected(item);
         setSearchQuery('');
         setThrottledQuery('');
+        onSearchChange?.('');
         setIsDropdownOpen(false);
         setActiveIndex(-1);
     };
@@ -119,6 +136,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
     const handleClear = () => {
         setSearchQuery('');
         setThrottledQuery('');
+        onSearchChange?.('');
         inputRef.current?.focus();
         setIsDropdownOpen(false);
     };
@@ -175,7 +193,23 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
 
     return (
         <div className="relative w-full group" ref={dropdownRef}>
-
+            {categories.length > 1 && onCategoryChange && (
+                <div className="flex gap-1.5 overflow-x-auto pb-1.5 mb-1.5 scrollbar-none">
+                    {categories.map(cat => (
+                        <button
+                            key={cat}
+                            type="button"
+                            onClick={() => onCategoryChange(cat)}
+                            className={`px-2.5 py-1 rounded-sm text-xs whitespace-nowrap border flex-shrink-0 transition ${selectedCategory === cat
+                                ? 'bg-blue-600 text-white border-blue-600'
+                                : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                                }`}
+                        >
+                            {cat === 'All' ? 'All' : itemGroupMap[cat] || cat}
+                        </button>
+                    ))}
+                </div>
+            )}
             {/* INPUT CONTAINER */}
             <div className="relative flex items-center">
                 <div className="absolute left-3 text-gray-400 pointer-events-none">
@@ -188,6 +222,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
                     value={searchQuery}
                     onChange={(e) => {
                         setSearchQuery(e.target.value);
+                        onSearchChange?.(e.target.value);
                         setIsDropdownOpen(true);
                         setActiveIndex(-1);
                     }}
@@ -247,11 +282,12 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
                                     )}
                                 </div>
                             ) : (
-                                filteredItems.map((item, index) => {
+                                filteredItems.slice(0, 50).map((item, index) => {
                                     const isSelected = index === activeIndex;
                                     const stock = item.stock || (item as any).Stock || 0;
                                     const stockColor = stock <= 0 ? 'text-red-600 bg-red-50' : stock < 10 ? 'text-orange-600 bg-orange-50' : 'text-green-700 bg-green-50';
-
+                                    const categoryName = itemGroupMap[(item.itemGroupId || '')] || '';
+                                    const trimmedQ = throttledQuery.toLowerCase().trim();
                                     return (
                                         <div
                                             key={item.id}
@@ -266,11 +302,21 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
                                                 <span className="text-sm font-medium text-gray-800 truncate">
                                                     {item.name}
                                                 </span>
-                                                {item.barcode && (
-                                                    <span className="text-xs text-gray-400 font-mono mt-0.5">
-                                                        {item.barcode}
-                                                    </span>
-                                                )}
+                                                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                                    {item.barcode && (
+                                                        <span className="text-xs text-gray-400 font-mono">
+                                                            {item.barcode}
+                                                        </span>
+                                                    )}
+                                                    {categoryName && (
+                                                        <span className={`text-[10px] px-1.5 py-0.3 rounded font-medium ${categoryName.toLowerCase().includes(trimmedQ)
+                                                            ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                                                            : 'bg-gray-100 text-gray-500'
+                                                            }`}>
+                                                            {categoryName}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </div>
 
                                             {/* Right: Price & Stock Badge */}
@@ -287,7 +333,8 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
                                 })
                             )}
                         </>
-                    )}
+                    )
+                    }
                 </div>
             )}
         </div>

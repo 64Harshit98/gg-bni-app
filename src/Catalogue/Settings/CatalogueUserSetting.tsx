@@ -7,7 +7,8 @@ import { Spinner } from '../../constants/Spinner';
 import { Permissions, ROLES, State, Variant } from '../../enums'; // Import ROLES
 import { CustomButton } from '../../Components';
 import { Modal } from '../../constants/Modal';
-import { IconClose } from '../../constants/Icons';
+import BackButton from '../../Components/BackButton';
+import { AddUserModal } from '../../Components/AddUserModal';
 
 
 interface AppUser {
@@ -37,6 +38,7 @@ const CatalogueUserSetting: React.FC = () => {
 
     const [editingUserId, setEditingUserId] = useState<string | null>(null);
     const [editFormData, setEditFormData] = useState<EditFormData>({});
+    const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
 
     const canManageUsers = hasPermission(Permissions.ManageUsers);
 
@@ -62,41 +64,42 @@ const CatalogueUserSetting: React.FC = () => {
         }
 
 
-        const fetchUsers = async () => {
-            setIsLoading(true);
-            setError(null);
-            try {
-                // --- FIX: Use the correct multi-tenant path ---
-                const usersCollectionRef = collection(db, 'companies', currentUser.companyId, 'users');
-
-                // --- FIX: No 'where' clause for companyId is needed ---
-                const q = query(usersCollectionRef);
-
-                const querySnapshot = await getDocs(q);
-                const fetchedUsers: AppUser[] = [];
-                querySnapshot.forEach((doc) => {
-                    const data = doc.data();
-                    fetchedUsers.push({
-                        uid: doc.id,
-                        name: data.name || '',
-                        email: data.email || '',
-                        phoneNumber: data.phoneNumber || '',
-                        role: data.role || '',
-                        companyId: data.companyId || '',
-                    } as AppUser);
-                });
-                setUsers(fetchedUsers);
-            } catch (err) {
-                console.error("Error fetching users:", err);
-                setError("Failed to load user data. Please try again.");
-                setModal({ message: "Failed to load users.", type: State.ERROR });
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
         fetchUsers();
     }, [currentUser, currentUser?.companyId, canManageUsers, authLoading, navigate]);
+
+    const fetchUsers = async () => {
+        if (!currentUser?.companyId) return;
+        setIsLoading(true);
+        setError(null);
+        try {
+            // --- FIX: Use the correct multi-tenant path ---
+            const usersCollectionRef = collection(db, 'companies', currentUser.companyId, 'users');
+
+            // --- FIX: No 'where' clause for companyId is needed ---
+            const q = query(usersCollectionRef);
+
+            const querySnapshot = await getDocs(q);
+            const fetchedUsers: AppUser[] = [];
+            querySnapshot.forEach((doc) => {
+                const data = doc.data();
+                fetchedUsers.push({
+                    uid: doc.id,
+                    name: data.name || '',
+                    email: data.email || '',
+                    phoneNumber: data.phoneNumber || '',
+                    role: data.role || '',
+                    companyId: data.companyId || '',
+                } as AppUser);
+            });
+            setUsers(fetchedUsers);
+        } catch (err) {
+            console.error("Error fetching users:", err);
+            setError("Failed to load user data. Please try again.");
+            setModal({ message: "Failed to load users.", type: State.ERROR });
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     const handleEditClick = (user: AppUser) => {
         setEditingUserId(user.uid);
@@ -179,12 +182,20 @@ const CatalogueUserSetting: React.FC = () => {
     return (
         <div className="flex flex-col min-h-screen bg-gray-100 w-full mb-15">
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+            <AddUserModal
+                isOpen={isAddUserModalOpen}
+                onClose={() => setIsAddUserModalOpen(false)}
+                onUserAdded={fetchUsers}
+            />
 
-            <div className="flex items-center p-3 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
-                <button onClick={() => navigate(-1)} className="text-gray-600 hover:text-gray-900 p-1">
-                    <IconClose />
-                </button>
-                <h1 className="text-lg font-semibold text-gray-800">Manage Users</h1>
+            <div className="flex items-center justify-between p-3 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
+                <div className="flex items-center">
+                    <BackButton/>
+                    <h1 className="text-lg font-semibold text-gray-800 ml-3">Manage Users</h1>
+                </div>
+                <CustomButton onClick={() => setIsAddUserModalOpen(true)} variant={Variant.Save}>
+                    Add User
+                </CustomButton>
             </div>
 
 
@@ -214,6 +225,7 @@ const CatalogueUserSetting: React.FC = () => {
                                                 type="tel"
                                                 id={`phoneNumber-${user.uid}`}
                                                 name="phoneNumber"
+                                                maxLength={10}
                                                 value={editFormData.phoneNumber || ''}
                                                 onChange={handleInputChange}
                                                 className="w-full p-2 border border-gray-300 rounded text-sm"

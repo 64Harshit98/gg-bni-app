@@ -21,6 +21,7 @@ interface QuotaData {
   refreshDate: string;
   isActive: boolean;
   botMasterToken: string;
+  botMasterCustomerUid: string;
   phoneNumber: string;
 }
 
@@ -45,9 +46,9 @@ const MessageQuotaPage: React.FC = () => {
       const userSnap = await getDoc(userDocRef);
 
       if (userSnap.exists()) {
-        const { botMasterToken, phoneNumber } = userSnap.data();
+        const { botMasterToken, botMasterCustomerUid, phoneNumber } = userSnap.data();
 
-        if (botMasterToken && phoneNumber) {
+        if (botMasterToken && botMasterCustomerUid && phoneNumber) {
           // Format phone strictly to 91 prefix
           let formattedPhone = phoneNumber.replace(/\D/g, '');
           if (formattedPhone.length === 10) formattedPhone = `91${formattedPhone}`;
@@ -64,7 +65,7 @@ const MessageQuotaPage: React.FC = () => {
             let preloadedQR = null;
 
             try {
-              const qrRes = await botMasterService.getQrCode(botMasterToken, formattedPhone);
+              const qrRes = await botMasterService.getQrCode(botMasterToken, botMasterCustomerUid, formattedPhone);
 
               if (qrRes?.error?.data?.state === 'ALREADY_CONNECTED' || qrRes?.message?.toLowerCase().includes('already connected')) {
                 isLive = true;
@@ -90,6 +91,7 @@ const MessageQuotaPage: React.FC = () => {
               refreshDate: sub?.expires_at || 'N/A',
               isActive: isLive, // Driven entirely by the live ping
               botMasterToken,
+              botMasterCustomerUid,
               phoneNumber: formattedPhone
             });
 
@@ -108,7 +110,7 @@ const MessageQuotaPage: React.FC = () => {
 
   // --- Logic: Fetch QR Code (Inside Modal) ---
   const handleFetchQR = async () => {
-    if (!quota?.botMasterToken || !quota?.phoneNumber) return;
+    if (!quota?.botMasterToken || !quota?.botMasterCustomerUid || !quota?.phoneNumber) return;
     setQrLoading(true);
 
     const markAsConnected = () => {
@@ -117,7 +119,7 @@ const MessageQuotaPage: React.FC = () => {
     };
 
     try {
-      const response = await botMasterService.getQrCode(quota.botMasterToken, quota.phoneNumber);
+      const response = await botMasterService.getQrCode(quota.botMasterToken, quota.botMasterCustomerUid, quota.phoneNumber);
 
       if (response?.error?.data?.state === 'ALREADY_CONNECTED' || response?.message?.toLowerCase().includes('already')) {
         markAsConnected();

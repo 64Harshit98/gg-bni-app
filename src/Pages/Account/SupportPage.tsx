@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { db } from '../../lib/Firebase';
-import { collection, addDoc, serverTimestamp, doc, getDoc, getDocs, updateDoc } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
+// import { db } from '../../lib/Firebase';
+// import { collection, addDoc, serverTimestamp, doc, getDoc, getDocs, setDoc } from 'firebase/firestore';
+// import { getAuth } from 'firebase/auth';
 
 // --- ICONS ---
 // (Assuming you use Lucide-React like standard Tailwind projects. 
@@ -15,10 +15,11 @@ import {
   Phone,
   MessageCircle,
   FileText,
-  Send
+  Send,
+  Building2
 } from 'lucide-react';
 import { ROUTES } from '../../constants/routes.constants';
-import { IconClose } from '../../constants/Icons';
+import BackButton from '../../Components/BackButton';
 
 // --- TYPES ---
 interface AccordionItemProps {
@@ -27,6 +28,7 @@ interface AccordionItemProps {
   children: React.ReactNode;
   isOpen: boolean;
   onClick: () => void;
+  disabled?: boolean;
 }
 
 // --- REUSABLE ACCORDION COMPONENT ---
@@ -59,87 +61,84 @@ const AccordionItem: React.FC<AccordionItemProps> = ({ title, icon, children, is
 
 // --- MAIN PAGE COMPONENT ---
 const SupportPage: React.FC = () => {
-  const navigate = useNavigate();
-
   const [openSection, setOpenSection] = useState<string | null>('faq-1');
 
   // --- NEW STATES ---
-  const [userProfile, setUserProfile] = useState({ fullName: '', email: '', phone: '' });
-  const [formData, setFormData] = useState({ subject: '', description: '' });
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  //const [userProfile, setUserProfile] = useState({ fullName: '', email: '', phone: '' });
+  //const [formData, setFormData] = useState({ subject: '', description: '' });
+  //const [submitting, setSubmitting] = useState(false);
+  //const [submitted, setSubmitted] = useState(false);
 
   // --- FETCH LOGGED-IN USER PROFILE ---
-  useEffect(() => {
-    const auth = getAuth();
-    const currentUser = auth.currentUser;
-    if (!currentUser) return;
+  // useEffect(() => {
+  //   const auth = getAuth();
+  //   const currentUser = auth.currentUser;
+  //   if (!currentUser) return;
 
-    const fetchProfile = async () => {
-      const companiesSnapshot = await getDocs(collection(db, "companies"));
+  //   const fetchProfile = async () => {
+  //     const companiesSnapshot = await getDocs(collection(db, "companies"));
 
-      for (const companyDoc of companiesSnapshot.docs) {
-        const userDoc = await getDoc(doc(db, "companies", companyDoc.id, "users", currentUser.uid));
+  //     for (const companyDoc of companiesSnapshot.docs) {
+  //       const userDoc = await getDoc(doc(db, "companies", companyDoc.id, "users", currentUser.uid));
 
-        if (userDoc.exists()) {
-          const data = userDoc.data();
+  //       if (userDoc.exists()) {
+  //         const data = userDoc.data();
 
-          setUserProfile({
-            fullName: data.name || currentUser.email || 'Unknown', // ← use data.name instead of displayName
-            email: currentUser.email || 'N/A',
-            phone: data.phoneNumber || 'N/A', // ← this is correct
-          });
-          break; // Stop once found
-        }
-      }
-    };
+  //         setUserProfile({
+  //           fullName: data.name || currentUser.email || 'Unknown', // ← use data.name instead of displayName
+  //           email: currentUser.email || 'N/A',
+  //           phone: data.phoneNumber || 'N/A', // ← this is correct
+  //         });
+  //         break; // Stop once found
+  //       }
+  //     }
+  //   };
 
-    fetchProfile();
-  }, []);
+  //   fetchProfile();
+  // }, []);
 
-  const generateRefNumber = async () => {
-  const counterRef = doc(db, "counters", "support_tickets");
-  const counterSnap = await getDoc(counterRef);
-  
-  let nextNumber = 1;
-  if (counterSnap.exists()) {
-    nextNumber = (counterSnap.data().count || 0) + 1;
-  }
-  
-  await updateDoc(counterRef, { count: nextNumber }).catch(() =>
-    addDoc(collection(db, "counters"), { count: nextNumber })
-  );
-  
-  return `TKT-${String(nextNumber).padStart(4, '0')}`; // TKT-0001, TKT-0002...
-};
+  // NOTE: must stay a transaction — the earlier getDoc-then-setDoc version
+  // let concurrent submits read the same count. Needs runTransaction imported
+  // when re-enabled, AND firestore.rules currently has no rule letting normal
+  // users touch top-level counters/ or support_tickets/ (only super admins).
+  // const generateRefNumber = async () => {
+  //   const counterRef = doc(db, "counters", "support_tickets");
+  //   const nextNumber = await runTransaction(db, async (tx) => {
+  //     const snap = await tx.get(counterRef);
+  //     const next = (snap.exists() ? snap.data().count || 0 : 0) + 1;
+  //     tx.set(counterRef, { count: next }, { merge: true });
+  //     return next;
+  //   });
+  //   return `TKT-${String(nextNumber).padStart(4, '0')}`; // TKT-0001, TKT-0002...
+  // };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.subject || !formData.description) {
-      alert("Please fill all fields.");
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const refNumber = await generateRefNumber(); 
-      await addDoc(collection(db, "support_tickets"), {
-        referenceNumber: refNumber,
-        fullName: userProfile.fullName,
-        email: userProfile.email,
-        phone: userProfile.phone,
-        subject: formData.subject,
-        description: formData.description,
-        status: 'received',
-        createdAt: serverTimestamp(),
-      });
-      setSubmitted(true);
-      setFormData({ subject: '', description: '' });
-    } catch (err) {
-      alert("Failed to submit ticket. Please try again.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  // const handleSubmit = async (e: React.FormEvent) => {
+  //   e.preventDefault();
+  //   if (!formData.subject || !formData.description) {
+  //     alert("Please fill all fields.");
+  //     return;
+  //   }
+  //   setSubmitting(true);
+  //   try {
+  //     const refNumber = await generateRefNumber();
+  //     await addDoc(collection(db, "support_tickets"), {
+  //       referenceNumber: refNumber,
+  //       fullName: userProfile.fullName,
+  //       email: userProfile.email,
+  //       phone: userProfile.phone,
+  //       subject: formData.subject,
+  //       description: formData.description,
+  //       status: 'received',
+  //       createdAt: serverTimestamp(),
+  //     });
+  //     setSubmitted(true);
+  //     setFormData({ subject: '', description: '' });
+  //   } catch (err) {
+  //     alert("Failed to submit ticket. Please try again.");
+  //   } finally {
+  //     setSubmitting(false);
+  //   }
+  // };
 
   const toggleSection = (id: string) => {
     setOpenSection(prev => (prev === id ? null : id));
@@ -152,12 +151,7 @@ const SupportPage: React.FC = () => {
       <div className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-20">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
-            <button
-              onClick={() => navigate(-1)}
-              className="flex items-center gap-2 text-gray-500 hover:text-gray-900 transition-colors"
-            >
-              <IconClose />
-            </button>
+            <BackButton />
             <h1 className="text-xl font-bold text-gray-800">Help & Support</h1>
             <div className="w-10"></div>
           </div>
@@ -178,7 +172,7 @@ const SupportPage: React.FC = () => {
             isOpen={openSection === 'faq-1'}
             onClick={() => toggleSection('faq-1')}
           >
-            Go to the <Link to={ROUTES.SUBSCRIPTION_PAGE}><strong>Subscription</strong></Link> page from your account menu. Toggle between Monthly or Yearly billing, select the plan that suits you (Basic or Pro), and click "Choose". Your benefits will be active after your payment is verified.
+            Go to the <Link to={ROUTES.SUBSCRIPTION_PAGE}><strong>Subscription</strong></Link> page from your account menu. Select the category (POS, Catalogue, or Both), choose the plan that best fits your business, and tap "Choose". Your benefits will be active after your payment is verified.
           </AccordionItem>
 
           <AccordionItem
@@ -196,7 +190,7 @@ const SupportPage: React.FC = () => {
             isOpen={openSection === 'faq-3'}
             onClick={() => toggleSection('faq-3')}
           >
-            If you are logged out, click "Forgot Password" on the login screen. If you are logged in, go to <strong>Account Settings &gt; Security</strong> to change your password.
+            Click "Forgot Password" on the login screen and follow the instructions sent to your registered email to reset your password.
           </AccordionItem>
 
           <AccordionItem
@@ -226,6 +220,15 @@ const SupportPage: React.FC = () => {
               <p>Our team is available Mon-Fri, 10 AM - 6 PM.</p>
 
               <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-md border border-gray-100">
+                <div className="bg-purple-100 p-2 rounded-full text-purple-600">
+                  <Building2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 font-bold uppercase">Company Name</p>
+                  <a href="https://www.sellar.in/" className="text-blue-600 font-medium hover:underline">SELLAR SOLUTIONS</a>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-md border border-gray-100">
                 <div className="bg-blue-100 p-2 rounded-full text-blue-600">
                   <Mail className="w-4 h-4" />
                 </div>
@@ -253,8 +256,19 @@ const SupportPage: React.FC = () => {
             isOpen={openSection === 'contact-2'}
             onClick={() => toggleSection('contact-2')}
           >
-            <p className="font-medium text-gray-800">Sellar HQ</p>
-            <p>Ground Floor, Harsha City Mall, G-46, Plot number 2B, Shakti Khand 2,</p>
+            <p className="font-medium text-gray-800">Sellar Solutions</p>
+            <p>2nd Floor, Parsvnath Arcade, Unit 22, Vaibhav khand</p>
+            <p> Indirapuram, Ghaziabad, Uttar Pradesh 201014</p>
+            <p className="mt-2 text-xs text-gray-400">(Visits by appointment only)</p>
+          </AccordionItem>
+          <AccordionItem
+            title="Registered Address"
+            icon={<FileText className="w-5 h-5" />}
+            isOpen={openSection === 'contact-3'}
+            onClick={() => toggleSection('contact-3')}
+          >
+            <p className="font-medium text-gray-800">Sellar Solutions</p>
+            <p> Lower Ground Floor, Shipra Shopping Center, Shop No, SPL-036, Vaibhav Khand,</p>
             <p> Indirapuram, Ghaziabad, Uttar Pradesh 201014</p>
             <p className="mt-2 text-xs text-gray-400">(Visits by appointment only)</p>
           </AccordionItem>
@@ -267,55 +281,18 @@ const SupportPage: React.FC = () => {
             Report an Issue
           </h2>
 
-          <AccordionItem
-            title="Raise a Support Ticket"
-            icon={<Send className="w-5 h-5" />}
-            isOpen={openSection === 'ticket'}
-            onClick={() => toggleSection('ticket')}
-          >
-            {submitted ? (
-              <div className="text-center py-6">
-                <p className="text-green-600 font-bold text-lg">✓ Ticket Submitted!</p>
-                <p className="text-gray-500 text-sm mt-1">Our team will reach out to you soon.</p>
-                <button
-                  onClick={() => setSubmitted(false)}
-                  className="mt-4 text-sm text-blue-600 hover:underline"
-                >
-                  Raise another ticket
-                </button>
+          <div className="flex items-center justify-between bg-gray-50 p-4 rounded-lg border border-gray-200 mb-3 text-gray-400 cursor-not-allowed shadow-sm">
+            <div className="flex items-center gap-3">
+              <Send className="w-5 h-5 text-gray-300" />
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">
+                  Coming Soon
+                </span>
+                <span className="font-semibold text-sm sm:text-base">Raise a Support Ticket</span>
               </div>
-            ) : (
-              <form className="space-y-4" onSubmit={handleSubmit}>
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Issue Subject</label>
-                  <input
-                    type="text"
-                    value={formData.subject}
-                    onChange={(e) => setFormData(p => ({ ...p, subject: e.target.value }))}
-                    placeholder="e.g., Cannot export sales report"
-                    className="w-full border border-gray-300 rounded-sm p-2 text-sm focus:ring-1 focus:ring-gray-900 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Description</label>
-                  <textarea
-                    rows={4}
-                    value={formData.description}
-                    onChange={(e) => setFormData(p => ({ ...p, description: e.target.value }))}
-                    placeholder="Describe what happened..."
-                    className="w-full border border-gray-300 rounded-sm p-2 text-sm focus:ring-1 focus:ring-gray-900 outline-none"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="w-full bg-gray-900 text-white font-bold py-2 rounded-sm hover:bg-gray-800 transition-colors disabled:opacity-50"
-                >
-                  {submitting ? 'Submitting...' : 'Submit Ticket'}
-                </button>
-              </form>
-            )}
-          </AccordionItem>
+            </div>
+            <span className="text-xl text-gray-300">→</span>
+          </div>
         </div>
 
       </div>

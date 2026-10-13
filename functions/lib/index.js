@@ -213,6 +213,8 @@ function readHeaderCells(words, medH) {
     return cells.sort((a, b) => a.left - b.left);
 }
 
+const BAND_EDGE = 1e9;
+
 function buildBands(cells, medH) {
     const cuts = [];
     for (let i = 0; i < cells.length - 1; i++) {
@@ -228,8 +230,11 @@ function buildBands(cells, medH) {
         key: c.key,
         label: c.text,               // NEW: fallback logic ko header text chahiye
         pct: /%/.test(c.text),
-        xStart: i === 0 ? -Infinity : cuts[i - 1],
-        xEnd: i === cells.length - 1 ? Infinity : cuts[i],
+        // Finite sentinels instead of +/-Infinity: these bands are returned to the
+        // client as `previousBands` for continuation pages, and onCall responses
+        // can't JSON-encode Infinity.
+        xStart: i === 0 ? -BAND_EDGE : cuts[i - 1],
+        xEnd: i === cells.length - 1 ? BAND_EDGE : cuts[i],
     }));
 }
 function ensureDescriptionCell(cells) {

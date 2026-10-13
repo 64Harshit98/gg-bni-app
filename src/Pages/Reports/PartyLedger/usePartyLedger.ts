@@ -1,7 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../../context/auth-context';
-import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, Timestamp, doc, setDoc } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
+import { clearSalesReportCache } from '../SalesReportComponents/salesReportCache';
+import { clearPurchaseReportCache } from '../PurchaseReportComponents/purchaseReportCache';
+import { clearOpeningBalanceCache, saveCustomerName } from '../CustomerReportComponents/customerReportCache';
 import { formatDateForInput } from '../SalesReportComponents/salesReport.utils';
 
 export const normalizePartyNumber = (num?: string): string => {
@@ -9,6 +12,17 @@ export const normalizePartyNumber = (num?: string): string => {
     const digits = num.replace(/\D/g, '');
     return digits.length >= 10 ? digits.slice(-10) : digits;
 };
+/** A customers/ or suppliers/ document. */
+interface MasterRecord {
+    name: string;
+    number: string;
+    createdAt?: number;
+    address?: string;
+    gstNumber?: string;
+    /** Set once the name was typed in "Edit party" — it then beats names on old bills. */
+    nameEdited?: boolean;
+}
+
 export interface PaymentRecord {
     amount: number;
     method: string;
@@ -97,8 +111,8 @@ export default function usePartyLedger() {
     // NEW: lightweight master records for customers/suppliers who may have NO transactions
     // or opening balance yet (e.g. bulk-imported with a zero balance) — without this,
     // such parties would never appear in partySummaries at all.
-    const [customersMaster, setCustomersMaster] = useState<{ name: string; number: string; createdAt?: number; address?: string; gstNumber?: string }[]>([]);
-    const [suppliersMaster, setSuppliersMaster] = useState<{ name: string; number: string; createdAt?: number; address?: string; gstNumber?: string }[]>([]);
+    const [customersMaster, setCustomersMaster] = useState<MasterRecord[]>([]);
+    const [suppliersMaster, setSuppliersMaster] = useState<MasterRecord[]>([]);
     const [isLoading, setIsLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -296,6 +310,7 @@ export default function usePartyLedger() {
                         createdAt: createdAtMillis,
                         address: data.address || '',      // NEW
                         gstNumber: data.gstNumber || '',  // NEW
+                        nameEdited: !!data.nameEditedAt,
                     };
                 }));
                 setSuppliersMaster(supSnap.docs.map(d => {
@@ -307,6 +322,7 @@ export default function usePartyLedger() {
                         createdAt: createdAtMillis,
                         address: data.address || '',      // NEW
                         gstNumber: data.gstNumber || '',  // NEW
+                        nameEdited: !!data.nameEditedAt,
                     };
                 }));
             } catch (err) {
@@ -438,6 +454,30 @@ export default function usePartyLedger() {
             return acc;
         }, seed);
 
+        // Details saved on the customer / supplier record (edit party, "Add name") apply to
+        // every party, not only those created inside the period. A name typed in "Edit party"
+        // beats the name on old bills; otherwise the record only fills a missing name.
+        const masterByNumber = new Map<string, MasterRecord>();
+        [...suppliersMaster, ...customersMaster].forEach(m => {
+            const n = normalizePartyNumber(m.number);
+            if (!n) return;
+            const prev = masterByNumber.get(n);
+            masterByNumber.set(n, {
+                ...m,
+                address: m.address || prev?.address,
+                gstNumber: m.gstNumber || prev?.gstNumber,
+                nameEdited: m.nameEdited || prev?.nameEdited,
+            });
+        });
+        const hasName = (name?: string) => !!name && name !== 'N/A' && name !== 'Unknown';
+        Object.values(grouped).forEach(p => {
+            const m = masterByNumber.get(normalizePartyNumber(p.partyNumber));
+            if (!m) return;
+            if (hasName(m.name) && (m.nameEdited || !hasName(p.partyName))) p.partyName = m.name;
+            p.address = p.address || m.address || undefined;
+            p.gstNumber = p.gstNumber || m.gstNumber || undefined;
+        });
+
         return Object.values(grouped).sort((a, b) => a.partyName.localeCompare(b.partyName));
     }, [transactions, openingBalances, appliedFilters, customersMaster, suppliersMaster]);
 
@@ -510,6 +550,7 @@ export default function usePartyLedger() {
             createdAt: serverTimestamp(),
         };
         await setDoc(obRef, newOB);
+        clearOpeningBalanceCache(currentUser.companyId);
 
         // ✅ NEW: always sync the customers/suppliers master doc (name, number, type + the
         // matching balance field), not just for advances. This keeps the party's master
@@ -627,6 +668,7 @@ export default function usePartyLedger() {
                         createdAt: createdAtValue,
                     };
                     await setDoc(obRef, newOB);
+                    clearOpeningBalanceCache(companyId);
 
                     newLocalOBs.push({
                         id: obRef.id,
@@ -741,8 +783,11 @@ export default function usePartyLedger() {
         };
 
         await deleteMatchingDocs('sales');
+        clearSalesReportCache(companyId);
         await deleteMatchingDocs('purchases');
+        clearPurchaseReportCache(companyId);
         await deleteMatchingDocs('openingBalances');
+        clearOpeningBalanceCache(companyId);
 
         // Delete the master record(s) — a party can have both if they're 'Both' type
         if (normalizedNumber) {
@@ -781,8 +826,11 @@ export default function usePartyLedger() {
         };
 
         await wipeCollection('sales');
+        clearSalesReportCache(companyId);
         await wipeCollection('purchases');
+        clearPurchaseReportCache(companyId);
         await wipeCollection('openingBalances');
+        clearOpeningBalanceCache(companyId);
         await wipeCollection('customers');
         await wipeCollection('suppliers');
 
@@ -795,7 +843,46 @@ export default function usePartyLedger() {
         return { deleted: deletedCount };
     };
 
+    // Name / GSTIN / address live on the customers/ and suppliers/ docs (keyed by the
+    // 10-digit phone). A "Both" party has one of each, so both get the same details.
+    // Bills keep the name they were printed with; the ledger shows the saved one.
+    const updatePartyDetails = async (
+        party: Pick<PartySummary, 'partyNumber' | 'partyType'>,
+        details: { name: string; gstNumber: string; address: string },
+    ) => {
+        const companyId = currentUser?.companyId;
+        const phone = normalizePartyNumber(party.partyNumber);
+        if (!companyId || phone.length !== 10) throw new Error('This party has no phone number to save details against.');
+
+        const name = details.name.trim();
+        const gstNumber = details.gstNumber.trim().toUpperCase();
+        const address = details.address.trim();
+        const targets: ('customers' | 'suppliers')[] =
+            party.partyType === 'Both' ? ['customers', 'suppliers'] : [party.partyType === 'Customer' ? 'customers' : 'suppliers'];
+
+        await Promise.all(targets.map(async (col) => {
+            const fields = { number: phone, gstNumber, address, ...(name ? { name, nameEditedAt: Date.now() } : {}) };
+            // Customers also refresh the name cache the Customer report uses.
+            if (col === 'customers' && name) await saveCustomerName(companyId, phone, name);
+            await setDoc(doc(db, 'companies', companyId, col, phone), fields, { merge: true });
+        }));
+
+        const apply = (prev: MasterRecord[], wanted: boolean) => {
+            if (!wanted) return prev;
+            const i = prev.findIndex(m => normalizePartyNumber(m.number) === phone);
+            const patch = { gstNumber, address, ...(name ? { name, nameEdited: true } : {}) };
+            // A party known only from bills has no record yet — add one without createdAt,
+            // so it isn't counted as created in the period.
+            return i >= 0
+                ? prev.map((m, idx) => (idx === i ? { ...m, ...patch } : m))
+                : [...prev, { name: name || 'Unknown', number: phone, ...patch }];
+        };
+        setCustomersMaster(prev => apply(prev, targets.includes('customers')));
+        setSuppliersMaster(prev => apply(prev, targets.includes('suppliers')));
+    };
+
     return {
+        updatePartyDetails,
         isLoading, authLoading, error,
         companyId: currentUser?.companyId,
         updateTransactionLocally,
@@ -808,7 +895,7 @@ export default function usePartyLedger() {
         datePreset, setDatePreset,
         customStartDate, setCustomStartDate,
         customEndDate, setCustomEndDate,
-        setAppliedFilters,
+        appliedFilters, setAppliedFilters,
         partySummaries,
         selectedPartyName, setSelectedPartyName,
         selectedPartyLedger,

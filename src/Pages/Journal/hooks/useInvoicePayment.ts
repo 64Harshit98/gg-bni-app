@@ -7,6 +7,8 @@ import {
   increment,
 } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
+import { clearSalesReportCache } from '../../Reports/SalesReportComponents/salesReportCache';
+import { clearPurchaseReportCache } from '../../Reports/PurchaseReportComponents/purchaseReportCache';
 import type { Invoice } from '../journal.types';
 
 interface UseInvoicePaymentParams {
@@ -141,6 +143,8 @@ export const useInvoicePayment = ({ currentUser }: UseInvoicePaymentParams) => {
         );
       }
     });
+    if (collectionName === 'sales') clearSalesReportCache(companyId);
+    else clearPurchaseReportCache(companyId);
 
     // ✅ Transaction complete hone ke BAAD React state update karo
     if (isCreditNote && normalizedPhone) {

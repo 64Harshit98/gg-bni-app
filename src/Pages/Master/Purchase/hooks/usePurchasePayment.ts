@@ -7,6 +7,8 @@ import {
     serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../../../../lib/Firebase';
+import { clearPurchaseReportCache } from '../../../Reports/PurchaseReportComponents/purchaseReportCache';
+import { clearStockTransferCache } from '../../../Reports/stockTransferCache';
 import type { Item } from '../../../../constants/models';
 import { State } from '../../../../enums';
 import { ROUTES } from '../../../../constants/routes.constants';
@@ -370,6 +372,8 @@ export const usePurchasePayment = ({
                     });
                 });
             });
+            clearPurchaseReportCache(companyId);
+            clearStockTransferCache(companyId);
             setAvailableItems(prev => prev.map(item => {
                 const shopDelta = items
                     .filter(i => (i.productId || i.id) === item.id)
@@ -526,6 +530,8 @@ export const usePurchasePayment = ({
                 return { ...item, stock: (item.stock || 0) + delta };
             }));
 
+            clearPurchaseReportCache(companyId);
+            clearStockTransferCache(companyId);
             showSuccessModal('Purchase updated successfully!', ROUTES.JOURNAL);
         } catch (err: any) {
             console.error('Error updating purchase:', err?.code, err?.message);

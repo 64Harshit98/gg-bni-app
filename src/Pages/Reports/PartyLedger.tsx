@@ -1,21 +1,52 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import FilterSelect from './SalesReportComponents/FilterSelect';
-import { formatDate, formatDateForInput } from './SalesReportComponents/salesReport.utils';
-import usePartyLedger, { type LedgerTransaction, type PaymentRecord, type PartySummary, normalizePartyNumber } from './PartyLedger/usePartyLedger';
+import {
+    AlertTriangle,
+    ArrowDownToLine,
+    CalendarDays,
+    Check,
+    ChevronDown,
+    ChevronLeft,
+    ExternalLink,
+    FileSpreadsheet,
+    FileText,
+    MessageCircle,
+    MoreHorizontal,
+    Pencil,
+    Plus,
+    Scale,
+    Search,
+    Trash2,
+    Upload,
+    UserPlus,
+    Users,
+    Wallet,
+    X,
+} from 'lucide-react';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import {
+    DATE_PRESETS,
+    formatDateForInput,
+    formatDayMonth,
+    formatFullDate,
+    formatPhone,
+    formatRangeLabel,
+    getPresetRange,
+    parseInputDate,
+} from './SalesReportComponents/salesReport.utils';
+import CustomRangePanel from './SalesReportComponents/CustomRangePanel';
+import DetailPanel, { DetailItems, DetailRows, DetailSection } from './SalesReportComponents/DetailPanel';
+import usePartyLedger, { type LedgerTransaction, type PartySummary, type PaymentRecord, normalizePartyNumber } from './PartyLedger/usePartyLedger';
 import XLSX from 'xlsx-js-style';
 import ExcelJS from 'exceljs';
 import { Spinner } from '../../constants/Spinner';
-import { CustomCard } from '../../Components/CustomCard';
 import { PaymentModal } from '../../constants/Modal';
-import { IconChevronDown } from '../../constants/Icons';
-import BackButton from '../../Components/BackButton';
-//import { useAuth } from '../../context/auth-context';
-import { useNavigate } from 'react-router-dom';
-import { db } from '../../lib/Firebase';
-import { doc, getDoc } from 'firebase/firestore';
-import { botMasterService } from '../Additional/Whatsapp/WhatsappApi';
-import { sendCompanyWhatsappMessage } from '../Additional/Whatsapp/sendCompanyWhatsappMessage';
-import { useWhatsappProvider } from '../Additional/Whatsapp/useWhatsappProvider';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { clearSalesReportCache } from './SalesReportComponents/salesReportCache';
+import { clearPurchaseReportCache } from './PurchaseReportComponents/purchaseReportCache';
+import { clearOpeningBalanceCache } from './CustomerReportComponents/customerReportCache';
+import { sendDueReminder } from '../Additional/Whatsapp/sendDueReminder';
+import { useWhatsappProvider, type WhatsappProvider } from '../Additional/Whatsapp/useWhatsappProvider';
 import { ROUTES } from '../../constants/routes.constants';
 
 interface BulkOpeningBalanceRow {
@@ -29,13 +60,41 @@ interface BulkOpeningBalanceRow {
     gstNumber?: string;  // NEW
     date?: number;
 }
+/* ---------- BALANCES ---------- */
+
+type LedgerTxn = LedgerTransaction & { balanceType?: 'due' | 'advance' };
+
+const isAdvance = (t: LedgerTxn) => !!t.isOpeningBalance && t.balanceType === 'advance';
+
+// What a party owes you: unpaid sale bills + "due" opening balances (an opening
+// due on a supplier still means they owe you — see the warning in the detail view).
+const receivableTxns = (party: PartySummary) =>
+    (party.transactions as LedgerTxn[]).filter(
+        (t) => t.dueAmount > 0 && (t.isOpeningBalance ? !isAdvance(t) : t.type === 'sale'),
+    );
+
+// What you owe a party: unpaid purchase bills.
+const payableTxns = (party: PartySummary) =>
+    (party.transactions as LedgerTxn[]).filter((t) => t.dueAmount > 0 && !t.isOpeningBalance && t.type === 'purchase');
+
+const balanceOf = (party: PartySummary) => {
+    const receivable = receivableTxns(party).reduce((s, t) => s + t.dueAmount, 0);
+    const payable = payableTxns(party).reduce((s, t) => s + t.dueAmount, 0);
+    return { receivable, payable, net: receivable - payable };
+};
+
+const partyKey = (party: Pick<PartySummary, 'partyNumber' | 'partyName'>) =>
+    normalizePartyNumber(party.partyNumber) || party.partyName.trim().toLowerCase();
+
+const inr = (n: number) => `₹${Math.round(Math.abs(n)).toLocaleString('en-IN')}`;
+
 const PartyLedger: React.FC = () => {
     const {
         companyId, isLoading, authLoading, error,
         datePreset, setDatePreset,
         customStartDate, setCustomStartDate,
         customEndDate, setCustomEndDate,
-        setAppliedFilters, partySummaries,
+        appliedFilters, setAppliedFilters, partySummaries,
         selectedPartyName, setSelectedPartyName,
         selectedPartyLedger,
         updateTransactionLocally,
@@ -44,6 +103,7 @@ const PartyLedger: React.FC = () => {
         addBulkOpeningBalances,
         deleteParty,
         deleteAllParties,
+        updatePartyDetails,
     } = usePartyLedger();
 
     //const { currentUser } = useAuth();
@@ -52,7 +112,18 @@ const PartyLedger: React.FC = () => {
     const [sendingReminderFor, setSendingReminderFor] = useState<string | null>(null);
 
     const [expandedBillId, setExpandedBillId] = useState<string | null>(null);
-    const [showTransactionList, setShowTransactionList] = useState(false);
+    const [isListVisible, setIsListVisible] = useState(true);
+    const [isRangeOpen, setIsRangeOpen] = useState(false);
+    const [pageMenuOpen, setPageMenuOpen] = useState(false);
+    const [rowMenuKey, setRowMenuKey] = useState<string | null>(null);
+    const [isRemindingAll, setIsRemindingAll] = useState(false);
+    // Edit party (name / GSTIN / address); also opened by "Add name" and the GSTIN / Address "Add" links.
+    const [partyToEdit, setPartyToEdit] = useState<PartySummary | null>(null);
+    const [editForm, setEditForm] = useState({ name: '', gstNumber: '', address: '' });
+    const [editFocus, setEditFocus] = useState<'name' | 'gstNumber' | 'address'>('name');
+    const [isSavingParty, setIsSavingParty] = useState(false);
+    // The opening-balance dialog doubles as "Add party" (editable name/number/type, amount optional).
+    const [obMode, setObMode] = useState<'opening' | 'newParty'>('opening');
     const [searchQuery, setSearchQuery] = useState('');
     const [partyTypeFilter, setPartyTypeFilter] = useState<'all' | 'Customer' | 'Supplier' | 'Both'>('all');
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -75,7 +146,6 @@ const PartyLedger: React.FC = () => {
     const bulkFileInputRef = useRef<HTMLInputElement>(null);
     const [isBulkUploading, setIsBulkUploading] = useState(false);
     const [bulkUploadProgress, setBulkUploadProgress] = useState<{ current: number; total: number } | null>(null);
-    const [showBulkImport, setShowBulkImport] = useState(false);
 
     // NEW: delete-party / delete-all state
     const [partyToDelete, setPartyToDelete] = useState<PartySummary | null>(null);
@@ -121,196 +191,166 @@ const PartyLedger: React.FC = () => {
         }
     };
 
-    // NEW: Send a combined WhatsApp due-reminder for a party, listing all unpaid invoice numbers
-    const handleSendPartyReminder = async (party: typeof partySummaries[number]) => {
+    // Send a combined WhatsApp due-reminder for a party, listing all unpaid
+    // invoice numbers. The sending itself (BotMaster free text, or the cloud
+    // 'snapto'/'sellar' reminder template) lives in sendDueReminder, shared
+    // with the Customer report.
+    // Send a combined WhatsApp due-reminder for a party, listing what they owe
+    // you (sale bills + "due" opening balances — never purchase bills, which are
+    // money you owe them). The sending itself lives in sendDueReminder, shared
+    // with the Customer report. Returns true when a reminder went out.
+    const sendReminderFor = async (party: PartySummary, provider: WhatsappProvider, silent = false) => {
         if (!party.partyNumber || party.partyNumber === 'N/A') {
-            showToast('Party phone number is missing.', 'error');
-            return;
+            if (!silent) showToast('Party phone number is missing.', 'error');
+            return false;
         }
-        if (!companyId) return;
+        if (!companyId) return false;
+
+        const owedToYou = receivableTxns(party);
+        if (owedToYou.length === 0) {
+            if (!silent) showToast('This party owes you nothing.', 'error');
+            return false;
+        }
 
         setSendingReminderFor(party.partyNumber);
-
         try {
-            const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
-            const businessSnap = await getDoc(businessDocRef);
-            const { botMasterToken, whatsappNumber } = businessSnap.data() || {};
-
-            if (!botMasterToken || !whatsappNumber) {
-                setSendingReminderFor(null);
-                navigate(ROUTES.WHATSAPP_PLAN);
-                return;
-            }
-
-            // Build list of unpaid (due > 0) transactions, excluding advance opening balances
-            const unpaidTxns = party.transactions.filter(
-                (t: any) => t.dueAmount > 0 && !(t.isOpeningBalance && t.balanceType === 'advance')
-            );
-
-            if (unpaidTxns.length === 0) {
-                showToast('No due invoices found for this party.', 'error');
-                setSendingReminderFor(null);
-                return;
-            }
-
-            const invoiceLines = unpaidTxns
-                .map((t: any) => {
-                    const label = t.isOpeningBalance ? 'Opening Due' : (t.invoiceNumber || `#${t.id.slice(0, 6).toUpperCase()}`);
-                    const due = Number(t.dueAmount).toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
-                    return `• ${label}: ${due}`;
-                })
-                .join('\n');
-
-            const totalDueStr = party.totalDue.toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
-
-            const message = `Dear ${party.partyName},\n\nThis is a gentle reminder that a total amount of ${totalDueStr} is due against the following invoice(s):\n\n${invoiceLines}\n\nKindly clear the due amount at your earliest convenience. Thank you!`;
-
-            const response = await botMasterService.sendMessage(
-                botMasterToken,
-                whatsappNumber,
-                party.partyNumber,
-                message
-            );
-
-            let isSuccess = false;
-            if (Array.isArray(response) && response.length > 0) {
-                const res = response[0];
-                if (res.status === 'sent' || res.status === 'delivered') isSuccess = true;
-            } else if (response?.status === 'sent' || response?.status === 'success' || response?.status === 200) {
-                isSuccess = true;
-            }
-
-            if (isSuccess) {
-                showToast('Reminder sent via WhatsApp!', 'success');
-            } else {
-                throw new Error('API reported failure.');
-            }
-        } catch (err) {
-            console.error('Party Reminder Send Error:', err);
-            showToast('Failed to send reminder.', 'error');
-        } finally {
-            setSendingReminderFor(null);
-        }
-    };
-
-    // Cloud counterpart of handleSendPartyReminder above — same due-invoice
-    // list, sent server-side (covers both the 'snapto' and 'sellar' tiers) as
-    // an approved reminder template. Meta rejects newlines inside template
-    // variable values, so invoice lines are joined with " | " instead of the
-    // "\n" used for the free-text BotMaster message.
-    const handleSendPartyReminderSnapto = async (party: typeof partySummaries[number]) => {
-        if (!party.partyNumber || party.partyNumber === 'N/A') {
-            showToast('Party phone number is missing.', 'error');
-            return;
-        }
-        if (!companyId) return;
-
-        setSendingReminderFor(party.partyNumber);
-
-        try {
-            const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
-            const businessSnap = await getDoc(businessDocRef);
-            const businessData = businessSnap.exists() ? businessSnap.data() : {};
-
-            const unpaidTxns = party.transactions.filter(
-                (t: any) => t.dueAmount > 0 && !(t.isOpeningBalance && t.balanceType === 'advance')
-            );
-
-            if (unpaidTxns.length === 0) {
-                showToast('No due invoices found for this party.', 'error');
-                setSendingReminderFor(null);
-                return;
-            }
-
-            const invoiceList = unpaidTxns
-                .map((t: any) => {
-                    const label = t.isOpeningBalance ? 'Opening Due' : (t.invoiceNumber || `#${t.id.slice(0, 6).toUpperCase()}`);
-                    const due = Number(t.dueAmount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                    return `${label}: ₹${due}`;
-                })
-                .join(' | ');
-
-            const totalDueStr = party.totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-            await sendCompanyWhatsappMessage({
-                to: party.partyNumber,
-                messageType: 'reminder',
-                templateVariables: [
-                    party.partyName,
-                    businessData.businessName || businessData.name || '',
-                    totalDueStr,
-                    invoiceList,
-                    totalDueStr,
-                ],
+            const result = await sendDueReminder({
+                companyId,
+                provider,
+                partyName: party.partyName,
+                partyNumber: party.partyNumber,
+                totalDue: owedToYou.reduce((s, t) => s + t.dueAmount, 0),
+                dueLines: owedToYou.map((t) => ({
+                    label: t.isOpeningBalance ? 'Opening Due' : (t.invoiceNumber || `#${t.id.slice(0, 6).toUpperCase()}`),
+                    amount: Number(t.dueAmount),
+                })),
             });
-
-            showToast('Reminder sent via WhatsApp!', 'success');
+            if (result === 'needs_setup') {
+                navigate(ROUTES.WHATSAPP_PLAN);
+                return false;
+            }
+            if (result === 'sent' && !silent) showToast('Reminder sent via WhatsApp!', 'success');
+            return result === 'sent';
         } catch (err: any) {
             console.error('Party Reminder Send Error:', err);
-            showToast(err?.message ? `Failed to send reminder: ${err.message}` : 'Failed to send reminder.', 'error');
+            if (!silent) showToast(err?.message ? `Failed to send reminder: ${err.message}` : 'Failed to send reminder.', 'error');
+            return false;
         } finally {
             setSendingReminderFor(null);
         }
     };
-    // Reminder sirf Customer / Both ko jayega — pure Supplier ko nahi
+    // Reminder sirf Customer / Both ko jayega — pure Supplier ko nahi.
+    // Only what they owe you (sale dues + opening due) counts, not purchase dues you owe them.
     const canRemind = (party: PartySummary) =>
         party.partyType !== 'Supplier' &&
-        party.totalDue > 0 &&
-        !!party.partyNumber &&
-        party.partyNumber !== 'N/A';
+        balanceOf(party).receivable > 0 &&
+        !!normalizePartyNumber(party.partyNumber);
 
     useEffect(() => {
-        // Set default to last 30 days (acts as last month)
-        handleDatePresetChange('last30');
+        // The hook loads the last 30 days; show that preset as selected.
+        setDatePreset('last30');
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const toggleBillExpansion = (billId: string) => {
-        setExpandedBillId(prev => prev === billId ? null : billId);
+    // "Party ledger" buttons on other reports open that party straight away (state.openParty = phone).
+    const location = useLocation();
+    const openPartyFromState = (location.state as { openParty?: string } | null)?.openParty;
+    const handledOpenParty = useRef(false);
+    useEffect(() => {
+        if (!openPartyFromState || handledOpenParty.current || isLoading) return;
+        const match = partySummaries.find((p) => normalizePartyNumber(p.partyNumber) === openPartyFromState);
+        if (match) {
+            handledOpenParty.current = true;
+            setSelectedPartyName(match.partyNumber);
+            setSearchQuery('');
+        } else {
+            // Not loaded yet, or outside the period: show the list searched to that number
+            // (a longer period can then be picked). Opens the party if it turns up.
+            setSearchQuery(openPartyFromState);
+        }
+    }, [openPartyFromState, isLoading, partySummaries, setSelectedPartyName]);
+
+    // Period chips apply straight away — no Apply button.
+    const handleDatePresetChange = (preset: string) => {
+        const range = getPresetRange(preset);
+        if (!range) return;
+        setDatePreset(preset);
+        setIsRangeOpen(false);
+        setCustomStartDate(formatDateForInput(range.start));
+        setCustomEndDate(formatDateForInput(range.end));
+        setAppliedFilters({ start: range.start.getTime(), end: range.end.getTime() });
+        setExpandedBillId(null);
     };
 
-    const handleDatePresetChange = (preset: string) => {
-        setDatePreset(preset);
-        const start = new Date();
-        const end = new Date();
+    const handleApplyCustomRange = (startValue: string, endValue: string) => {
+        const start = parseInputDate(startValue);
+        start.setHours(0, 0, 0, 0);
+        const end = parseInputDate(endValue);
+        end.setHours(23, 59, 59, 999);
+        setDatePreset('custom');
+        setCustomStartDate(startValue);
+        setCustomEndDate(endValue);
+        setAppliedFilters({ start: start.getTime(), end: end.getTime() });
+        setIsRangeOpen(false);
+        setExpandedBillId(null);
+    };
 
-        switch (preset) {
-            case 'today':
-                break;
-            case 'yesterday':
-                start.setDate(start.getDate() - 1);
-                end.setDate(end.getDate() - 1);
-                break;
-            case 'last7':
-                start.setDate(start.getDate() - 6);
-                break;
-            case 'last30':
-                start.setDate(start.getDate() - 29);
-                break;
-            case 'thisMonth':
-                start.setDate(1);
-                end.setFullYear(end.getFullYear(), end.getMonth() + 1, 0);
-                break;
-            case 'custom':
-                return;
+    const emptyObForm = { partyName: '', partyNumber: '', partyType: 'Customer' as const, balanceType: 'due' as const, amount: '', note: '' };
+
+    const openAddParty = () => {
+        setObMode('newParty');
+        setObForm(emptyObForm);
+        setIsOBModalOpen(true);
+    };
+
+    const openAddOpeningBalance = (party: PartySummary) => {
+        setObMode('opening');
+        setObForm({
+            partyName: party.partyName || '',
+            partyNumber: party.partyNumber || '',
+            partyType: party.partyType === 'Supplier' ? 'Supplier' : 'Customer',
+            balanceType: 'due',
+            amount: '',
+            note: '',
+        });
+        setIsOBModalOpen(true);
+    };
+
+    const handleAddOpeningBalance = async () => {
+        const amount = Number(obForm.amount) || 0;
+        if (obMode === 'newParty') {
+            // A new party: name + 10-digit number required, opening balance optional.
+            if (!obForm.partyName.trim()) return showToast('Enter the party name.', 'error');
+            if (obForm.partyNumber.replace(/\D/g, '').length !== 10) return showToast('Enter a 10-digit phone number.', 'error');
+            setObLoading(true);
+            try {
+                const result = await addBulkOpeningBalances([{
+                    partyName: obForm.partyName.trim(),
+                    partyNumber: obForm.partyNumber.trim(),
+                    partyType: obForm.partyType,
+                    amount,
+                    balanceType: obForm.balanceType,
+                    note: obForm.note.trim(),
+                    date: Date.now(),
+                }]);
+                if (result.duplicates) {
+                    showToast('That number already belongs to another party.', 'error');
+                } else if (result.failed) {
+                    showToast('Failed to add the party.', 'error');
+                } else {
+                    setIsOBModalOpen(false);
+                    setObForm(emptyObForm);
+                    showToast(`${obForm.partyName.trim()} added.`, 'success');
+                }
+            } catch {
+                showToast('Failed to add the party.', 'error');
+            } finally {
+                setObLoading(false);
+            }
+            return;
         }
 
-        setCustomStartDate(formatDateForInput(start));
-        setCustomEndDate(formatDateForInput(end));
-    };
-
-    const handleApplyFilters = () => {
-        const start = customStartDate ? new Date(customStartDate) : new Date(0);
-        start.setHours(0, 0, 0, 0);
-        const end = customEndDate ? new Date(customEndDate) : new Date();
-        end.setHours(23, 59, 59, 999);
-
-        setAppliedFilters({ start: start.getTime(), end: end.getTime() });
-        setSelectedPartyName(null);
-        setExpandedBillId(null);
-        setShowTransactionList(false);
-    };
-    const handleAddOpeningBalance = async () => {
-        if (!obForm.partyName.trim() || !obForm.amount || Number(obForm.amount) <= 0) {
+        if (!obForm.partyName.trim() || amount <= 0) {
             showToast('Please fill in party name and a valid amount.', 'error');
             return;
         }
@@ -320,12 +360,12 @@ const PartyLedger: React.FC = () => {
                 obForm.partyName.trim(),
                 obForm.partyNumber.trim(),
                 obForm.partyType,
-                Number(obForm.amount),
+                amount,
                 obForm.note.trim(),
                 obForm.balanceType  // ✅ pass balanceType
             );
             setIsOBModalOpen(false);
-            setObForm({ partyName: '', partyNumber: '', partyType: 'Customer', balanceType: 'due', amount: '', note: '' });
+            setObForm(emptyObForm);
             showToast('Opening balance added successfully!', 'success');
         } catch (e) {
             showToast('Failed to add opening balance.', 'error');
@@ -653,6 +693,7 @@ const PartyLedger: React.FC = () => {
                         }, { merge: true });
                     }
                 });
+                clearOpeningBalanceCache(companyId);
                 const paymentRecord: PaymentRecord = {
                     amount, method: method.toLowerCase(), date: new Date(paymentDate).toISOString(), timestamp: Date.now(),
                     ...(method.toUpperCase() === 'PDC' && { chequeNumber: chequeNumber || '', chequeDate: chequeDate || '' }),
@@ -752,6 +793,8 @@ const PartyLedger: React.FC = () => {
                     paymentHistory: [...(data.paymentHistory || []), paymentRecord],
                 });
             });
+            if (collectionName === 'sales') clearSalesReportCache(companyId);
+            else clearPurchaseReportCache(companyId);
 
             // ✅ Update local state immediately — no refresh needed
             const paymentRecord: PaymentRecord = {
@@ -843,845 +886,1232 @@ const PartyLedger: React.FC = () => {
             showToast(`₹${amount} settled across ${successCount} bill(s)!`, 'success');
         }
     };
+    /* ---------- LIST: FILTERS + COUNTS ---------- */
+    const parties = useMemo(
+        () => partySummaries.map((p) => ({ party: p, ...balanceOf(p), lastEntry: Math.max(0, ...p.transactions.map((t) => t.createdAt)) })),
+        [partySummaries],
+    );
+
+    const totals = useMemo(() => {
+        const owing = parties.filter((p) => p.net > 0);
+        const owed = parties.filter((p) => p.net < 0);
+        return {
+            toCollect: owing.reduce((s, p) => s + p.net, 0),
+            collectCount: owing.length,
+            toPay: owed.reduce((s, p) => s - p.net, 0),
+            payCount: owed.length,
+            customers: parties.filter((p) => p.party.partyType === 'Customer').length,
+            suppliers: parties.filter((p) => p.party.partyType === 'Supplier').length,
+            both: parties.filter((p) => p.party.partyType === 'Both').length,
+            due: parties.filter((p) => p.receivable > 0 || p.payable > 0).length,
+            settled: parties.filter((p) => p.receivable === 0 && p.payable === 0).length,
+        };
+    }, [parties]);
+
     const filteredParties = useMemo(() => {
-        const lowerQuery = searchQuery.toLowerCase();
-        return partySummaries.filter(party => {
-            const matchesSearch =
-                !searchQuery.trim() ||
-                party.partyName.toLowerCase().includes(lowerQuery) ||
-                party.partyNumber.toLowerCase().includes(lowerQuery);
+        const q = searchQuery.trim().toLowerCase();
+        return parties
+            .filter(({ party, receivable, payable }) => {
+                const matchesSearch = !q || party.partyName.toLowerCase().includes(q) || party.partyNumber.toLowerCase().includes(q);
+                const matchesType = partyTypeFilter === 'all' || party.partyType === partyTypeFilter;
+                const hasBalance = receivable > 0 || payable > 0;
+                const matchesStatus = statusFilter === 'all' || (statusFilter === 'due' ? hasBalance : !hasBalance);
+                return matchesSearch && matchesType && matchesStatus;
+            })
+            // Biggest balance first, then by name.
+            .sort((a, b) => Math.abs(b.net) - Math.abs(a.net) || a.party.partyName.localeCompare(b.party.partyName));
+    }, [parties, searchQuery, partyTypeFilter, statusFilter]);
 
-            const matchesType =
-                partyTypeFilter === 'all' ||
-                party.partyType === partyTypeFilter ||
-                party.partyType === 'Both';
+    const canBulkRemind = whatsappProvider === 'botmaster' || whatsappProvider === 'snapto' || whatsappProvider === 'sellar';
+    const remindableParties = parties.filter((p) => canRemind(p.party));
 
-            const matchesStatus =
-                statusFilter === 'all' ||
-                (statusFilter === 'due' && party.totalDue > 0) ||
-                (statusFilter === 'settled' && party.totalDue === 0);
+    /* ---------- PAYMENTS ---------- */
+    // Credit / debit notes the party already holds, offered in the payment modal.
+    const loadAvailableCredit = async (partyNumber: string, isSupplier: boolean) => {
+        const partyNum = (partyNumber || '').replace(/\D/g, '').slice(-10);
+        if (!partyNum || !companyId) return setAvailableCredit(0);
+        try {
+            const { doc, getDoc } = await import('firebase/firestore');
+            const { db } = await import('../../lib/Firebase');
+            const snap = await getDoc(doc(db, 'companies', companyId, isSupplier ? 'suppliers' : 'customers', partyNum));
+            setAvailableCredit(snap.exists() ? Number(snap.data()[isSupplier ? 'debitBalance' : 'creditBalance'] || 0) : 0);
+        } catch {
+            setAvailableCredit(0);
+        }
+    };
 
-            return matchesSearch && matchesType && matchesStatus;
+    // One bill or opening balance.
+    const openSettleForTxn = async (party: PartySummary, txn: LedgerTxn) => {
+        setSelectedInvoiceForPayment({
+            id: txn.id,
+            invoiceNumber: txn.invoiceNumber,
+            type: txn.type,
+            totalAmount: txn.totalAmount,
+            dueAmount: txn.dueAmount,
+            partyName: party.partyName,
+            partyNumber: txn.partyNumber,
+            createdAt: txn.createdAt,
+            isOpeningBalance: txn.isOpeningBalance === true,
+            balanceType: txn.balanceType || 'due',
         });
-    }, [searchQuery, partyTypeFilter, partySummaries, statusFilter]);
+        await loadAvailableCredit(txn.partyNumber, txn.type === 'purchase');
+        setIsPaymentModalOpen(true);
+    };
 
-    if (isLoading || authLoading) return <div className="p-4 text-center">Loading Ledger...</div>;
+    // Every due of one direction at once — what they owe you, or (if nothing) what you owe them.
+    // Reuses handleSettleAllPayment, which spreads the amount oldest-first.
+    const openSettleAll = async (party: PartySummary) => {
+        const owedToYou = receivableTxns(party);
+        const direction = owedToYou.length ? 'receive' : 'pay';
+        const txns = direction === 'receive' ? owedToYou : payableTxns(party);
+        const total = txns.reduce((s, t) => s + t.dueAmount, 0);
+        if (total <= 0) return showToast('Nothing due for this party.', 'error');
+        setSelectedInvoiceForPayment({
+            isSettleAll: true,
+            partyRef: { ...party, transactions: txns, totalDue: total },
+            id: `settle-all-${partyKey(party)}`,
+            invoiceNumber: direction === 'receive' ? 'All dues' : 'All bills to pay',
+            type: direction === 'receive' ? 'sale' : 'purchase',
+            totalAmount: total,
+            dueAmount: total,
+            partyName: party.partyName,
+            partyNumber: party.partyNumber,
+            isOpeningBalance: false,
+        });
+        await loadAvailableCredit(party.partyNumber, direction === 'pay');
+        setIsPaymentModalOpen(true);
+    };
+
+    const remindAll = async () => {
+        if (!canBulkRemind || remindableParties.length === 0) return;
+        setIsRemindingAll(true);
+        let sent = 0;
+        for (const p of remindableParties) {
+            if (await sendReminderFor(p.party, whatsappProvider, true)) sent += 1;
+        }
+        setIsRemindingAll(false);
+        showToast(
+            sent === remindableParties.length ? `Reminders sent to ${sent} parties.` : `Sent ${sent} of ${remindableParties.length} reminders.`,
+            sent === remindableParties.length ? 'success' : 'error',
+        );
+    };
+
+    /* ---------- SINGLE PARTY: STATEMENT ---------- */
+    interface StatementEntry {
+        key: string;
+        date: number;
+        title: string;
+        sub: string;
+        mode: string;
+        /** Effect on "they owe you": + raises it, − lowers it. */
+        effect: number;
+        isPayment: boolean;
+        txn: LedgerTxn;
+    }
+
+    const modeLabel = (m: string) => (m.toLowerCase() === 'upi' ? 'UPI' : m.replace(/_/g, ' ').toUpperCase());
+
+    const statement = useMemo(() => {
+        if (!selectedPartyLedger) return null;
+        const entries: StatementEntry[] = [];
+        (selectedPartyLedger.transactions as LedgerTxn[]).forEach((t) => {
+            const advance = isAdvance(t);
+            const purchase = !t.isOpeningBalance && t.type === 'purchase';
+            entries.push({
+                key: `b-${t.id}`,
+                date: t.createdAt,
+                title: t.isOpeningBalance ? (advance ? 'Advance (you owe them)' : 'Opening balance') : t.invoiceNumber || `#${t.id.slice(0, 6).toUpperCase()}`,
+                sub: t.isOpeningBalance ? (t.note ? `Note: ${t.note}` : '') : purchase ? 'Purchase bill' : `Sale${t.items?.length ? ` · ${t.items.length} items` : ''}`,
+                mode: '',
+                effect: advance || purchase ? -t.totalAmount : t.totalAmount,
+                isPayment: false,
+                txn: t,
+            });
+            (t.paymentHistory || []).forEach((p, i) => {
+                const when = p.timestamp || Date.parse(p.date) || t.createdAt;
+                entries.push({
+                    key: `p-${t.id}-${i}`,
+                    date: when,
+                    title: advance ? 'Advance adjusted' : purchase ? 'Payment made' : 'Payment received',
+                    sub: t.isOpeningBalance ? 'against opening balance' : `against ${t.invoiceNumber || 'bill'}`,
+                    mode: modeLabel(p.method || ''),
+                    // Received money lowers what they owe; money you paid out raises it back.
+                    effect: advance || purchase ? p.amount : -p.amount,
+                    isPayment: true,
+                    txn: t,
+                });
+            });
+        });
+        // Oldest first; a bill before its own payments on the same moment.
+        entries.sort((a, b) => a.date - b.date || Number(a.isPayment) - Number(b.isPayment));
+        let running = 0;
+        const rows = entries.map((e) => {
+            running += e.effect;
+            return { ...e, balance: running };
+        });
+
+        const received = entries.filter((e) => e.isPayment && e.effect < 0).reduce((s, e) => s - e.effect, 0);
+        const paidOut = entries.filter((e) => e.isPayment && e.effect > 0).reduce((s, e) => s + e.effect, 0);
+        const receivableBilled = entries.filter((e) => !e.isPayment && e.effect > 0).reduce((s, e) => s + e.effect, 0);
+        const payableBilled = entries.filter((e) => !e.isPayment && e.effect < 0).reduce((s, e) => s - e.effect, 0);
+        const payments = entries.filter((e) => e.isPayment);
+        const lastPayment = payments.length ? payments[payments.length - 1] : null;
+        const bal = balanceOf(selectedPartyLedger);
+        const oldestDue = [...receivableTxns(selectedPartyLedger), ...payableTxns(selectedPartyLedger)].reduce(
+            (min, t) => Math.min(min, t.createdAt),
+            Infinity,
+        );
+        return {
+            rows,
+            closing: running,
+            received,
+            paidOut,
+            receivableBilled,
+            payableBilled,
+            payments,
+            lastPayment,
+            modes: [...new Set(payments.map((p) => p.mode).filter(Boolean))],
+            firstEntry: entries.length ? entries[0].date : 0,
+            oldestDue: Number.isFinite(oldestDue) ? oldestDue : 0,
+            ...bal,
+        };
+    }, [selectedPartyLedger]);
+
+    const balanceWords = (net: number) =>
+        net > 0 ? { label: 'They owe you', value: inr(net), cls: 'text-amber-700' }
+            : net < 0 ? { label: 'You owe', value: inr(net), cls: 'text-slate-900' }
+                : { label: 'Balance', value: 'Settled ✓', cls: 'text-green-700' };
+
+    const daysSince = (t: number) => Math.max(0, Math.floor((Date.now() - t) / 86_400_000));
+
+    const downloadStatementPdf = () => {
+        if (!selectedPartyLedger || !statement) return;
+        try {
+            const pdf = new jsPDF();
+            const pw = pdf.internal.pageSize.getWidth();
+            pdf.setFillColor(21, 93, 252);
+            pdf.rect(0, 0, pw, 6, 'F');
+            pdf.setFont('helvetica', 'bold');
+            pdf.setFontSize(20);
+            pdf.setTextColor(17, 24, 39);
+            pdf.text(`Statement — ${selectedPartyLedger.partyName}`, 14, 22);
+            pdf.setFont('helvetica', 'normal');
+            pdf.setFontSize(10);
+            pdf.setTextColor(107, 114, 128);
+            pdf.text(
+                [
+                    selectedPartyLedger.partyNumber && selectedPartyLedger.partyNumber !== 'N/A' ? `Phone: ${formatPhone(selectedPartyLedger.partyNumber)}` : '',
+                    appliedFilters ? `Period: ${formatRangeLabel(appliedFilters.start, appliedFilters.end)}` : '',
+                    `Generated: ${formatFullDate(Date.now())}`,
+                ].filter(Boolean).join('   |   '),
+                14,
+                29,
+            );
+            const money = (n: number) => `Rs. ${Math.round(Math.abs(n)).toLocaleString('en-IN')}`;
+            autoTable(pdf, {
+                startY: 36,
+                head: [['DATE', 'ENTRY', 'MODE', 'BILLED', 'PAID', 'BALANCE']],
+                body: statement.rows.map((r) => [
+                    formatFullDate(r.date),
+                    r.title + (r.sub ? `\n${r.sub}` : ''),
+                    r.mode || '-',
+                    r.isPayment ? '' : `${r.effect < 0 ? '- ' : ''}${money(r.effect)}`,
+                    r.isPayment ? `${r.effect < 0 ? '+ ' : '- '}${money(r.effect)}` : '',
+                    `${money(r.balance)}${r.balance > 0 ? ' due to you' : r.balance < 0 ? ' you owe' : ''}`,
+                ]),
+                foot: [[
+                    'Closing balance', '', '', '', '',
+                    statement.closing === 0 ? 'Settled' : `${money(statement.closing)}${statement.closing > 0 ? ' due to you' : ' you owe'}`,
+                ]],
+                showFoot: 'lastPage',
+                theme: 'plain',
+                styles: { font: 'helvetica', fontSize: 9, cellPadding: 4, textColor: [55, 65, 81] },
+                headStyles: { fillColor: [245, 247, 255], textColor: [17, 24, 39], fontStyle: 'bold' },
+                footStyles: { textColor: [17, 24, 39], fontStyle: 'bold', lineWidth: { top: 1 }, lineColor: [17, 24, 39] },
+                columnStyles: { 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' } },
+            });
+            pdf.save(`Statement_${selectedPartyLedger.partyName.replace(/[^\w]+/g, '_')}_${formatDateForInput(new Date())}.pdf`);
+        } catch (err) {
+            console.error('Statement PDF failed:', err);
+            showToast('Failed to create the statement PDF.', 'error');
+        }
+    };
+
+    /* ---------- RENDER HELPERS ---------- */
+    const typeBadge = (type: PartySummary['partyType']) => {
+        const cls = type === 'Customer' ? 'bg-blue-50 text-blue-700' : type === 'Supplier' ? 'bg-pink-50 text-pink-700' : 'bg-amber-50 text-amber-700';
+        return <span className={`shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${cls}`}>{type}</span>;
+    };
+
+    const avatar = (name: string, size = 'h-9 w-9') => (
+        <span className={`flex ${size} shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-semibold text-blue-700`}>
+            {name && name !== 'N/A' ? name[0].toUpperCase() : '?'}
+        </span>
+    );
+
+    const openParty = (party: PartySummary) => {
+        // Parties without a phone share 'N/A', so those are found by name instead.
+        setSelectedPartyName(party.partyNumber && party.partyNumber !== 'N/A' ? party.partyNumber : party.partyName);
+        setExpandedBillId(null);
+        setRowMenuKey(null);
+    };
+
+    const hasPhone = (party: PartySummary) => normalizePartyNumber(party.partyNumber).length === 10;
+    const hasRealName = (party: PartySummary) => !!party.partyName && party.partyName !== 'N/A' && party.partyName !== 'Unknown';
+
+    const openEditParty = (party: PartySummary, focus: 'name' | 'gstNumber' | 'address' = 'name') => {
+        setRowMenuKey(null);
+        setPartyToEdit(party);
+        setEditFocus(focus);
+        setEditForm({ name: hasRealName(party) ? party.partyName : '', gstNumber: party.gstNumber || '', address: party.address || '' });
+    };
+
+    const saveParty = async () => {
+        if (!partyToEdit) return;
+        const gst = editForm.gstNumber.trim();
+        if (gst && !/^[0-9]{2}[A-Z0-9]{13}$/i.test(gst)) return showToast('GSTIN should be 15 characters, e.g. 09ABCDE1234F1Z5.', 'error');
+        setIsSavingParty(true);
+        try {
+            await updatePartyDetails(partyToEdit, editForm);
+            showToast('Party details saved.', 'success');
+            setPartyToEdit(null);
+        } catch (err) {
+            showToast(err instanceof Error ? err.message : 'Could not save. Try again.', 'error');
+        } finally {
+            setIsSavingParty(false);
+        }
+    };
+
+    // New sale for a customer, new purchase for a supplier; "Both" defaults to a sale.
+    const addBill = (party: PartySummary) => {
+        const prefillParty = { name: hasRealName(party) ? party.partyName : '', number: hasPhone(party) ? normalizePartyNumber(party.partyNumber) : '' };
+        navigate(party.partyType === 'Supplier' ? ROUTES.PURCHASE : ROUTES.SALES, { state: { prefillParty } });
+    };
+
+    const chipClass = (active: boolean) =>
+        `shrink-0 whitespace-nowrap rounded-sm border px-3 py-1.5 text-sm font-medium transition ${active
+            ? 'border-slate-900 bg-slate-900 text-white'
+            : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+        }`;
+    const segClass = (active: boolean) =>
+        `whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition ${active ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-white'}`;
+
+    const rowMenu = (party: PartySummary, key: string) => (
+        <div className="relative">
+            <button
+                onClick={(e) => { e.stopPropagation(); setRowMenuKey((k) => (k === key ? null : key)); }}
+                aria-label="More actions"
+                className="rounded-sm p-1.5 text-slate-500 transition hover:bg-slate-100"
+            >
+                <MoreHorizontal size={16} />
+            </button>
+            {rowMenuKey === key && (
+                <>
+                    <div className="fixed inset-0 z-20" onClick={(e) => { e.stopPropagation(); setRowMenuKey(null); }} />
+                    <div className="absolute right-0 top-full z-30 mt-1 w-48 rounded-sm border border-line bg-white p-1 shadow-float">
+                        {key !== 'detail' && (
+                            <button onClick={(e) => { e.stopPropagation(); openParty(party); }} className="flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-sm text-slate-700 hover:bg-sunken">
+                                <FileText size={14} /> Open statement
+                            </button>
+                        )}
+                        {hasPhone(party) && (
+                            <button onClick={(e) => { e.stopPropagation(); openEditParty(party); }} className="flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-sm text-slate-700 hover:bg-sunken">
+                                <Pencil size={14} /> Edit party
+                            </button>
+                        )}
+                        <button onClick={(e) => { e.stopPropagation(); setRowMenuKey(null); addBill(party); }} className="flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-sm text-slate-700 hover:bg-sunken">
+                            <FileText size={14} /> Add bill
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); setRowMenuKey(null); openAddOpeningBalance(party); }} className="flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-sm text-slate-700 hover:bg-sunken">
+                            <Plus size={14} /> Add opening balance
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); setRowMenuKey(null); setPartyToDelete(party); }} className="flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-sm text-red-600 hover:bg-red-50">
+                            <Trash2 size={14} /> Delete party
+                        </button>
+                    </div>
+                </>
+            )}
+        </div>
+    );
+
+    if (authLoading || (isLoading && partySummaries.length === 0)) return <Spinner />;
     if (error) return <div className="p-4 text-center text-red-500">{error}</div>;
 
-    return (
-        <div className="min-h-screen bg-gray-50 pb-16 flex flex-col">
-            {/* Opening Balance Modal */}
+    const rangeLabel = appliedFilters ? formatRangeLabel(appliedFilters.start, appliedFilters.end) : '';
+    const dimClass = isLoading ? 'pointer-events-none opacity-50 transition-opacity' : 'transition-opacity';
+
+    /* ---------- MODALS (shared by both views) ---------- */
+    const modals = (
+        <>
+            {/* Opening balance / Add party */}
             {isOBModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-                    <div className="bg-white rounded-sm shadow-xl w-full max-w-sm p-5">
-                        {/* Title row + Customer/Supplier badge */}
-                        <div className="flex items-center justify-between mb-4">
-                            <h2 className="text-base font-bold text-gray-800">Add Opening Balance</h2>
-                            <span className={`text-xs font-bold px-2.5 py-1 rounded border tracking-wide
-    ${obForm.partyType === 'Customer'
-                                    ? 'bg-blue-50 text-blue-600 border-blue-200'
-                                    : 'bg-purple-50 text-purple-600 border-purple-200'
-                                }`}>
-                                {obForm.partyType}
+                <div className="fixed inset-0 z-[9000] flex items-end justify-center bg-black/40 md:items-center md:px-4" onClick={() => setIsOBModalOpen(false)}>
+                    <div onClick={(e) => e.stopPropagation()} className="w-full rounded-t-sm bg-white shadow-float md:max-w-md md:rounded-sm">
+                        <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-slate-300 md:hidden" />
+                        <div className="flex items-start gap-3 border-b border-line px-5 py-4">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-blue-50 text-blue-600">
+                                {obMode === 'newParty' ? <UserPlus size={18} /> : <Scale size={18} />}
                             </span>
-                        </div>
-
-                        <div className="space-y-3">
-                            {/* Name + Number in same row */}
-                            <div className="flex gap-2">
-                                <input
-                                    placeholder="Party Name *"
-                                    value={obForm.partyName}
-                                    readOnly
-                                    className="flex-1 p-2 border border-gray-200 rounded-sm text-sm bg-gray-50 text-gray-500 cursor-not-allowed"
-                                />
-                                <input
-                                    placeholder="Phone"
-                                    value={obForm.partyNumber}
-                                    readOnly
-                                    maxLength={10}
-                                    className="w-28 p-2 border border-gray-200 rounded-sm text-sm bg-gray-50 text-gray-500 cursor-not-allowed"
-                                />
-                            </div>
-
-                            {/* Due vs Advance toggle */}
-                            <div>
-                                <p className="text-xs font-semibold text-gray-500 mb-1.5">Balance Type</p>
-                                <div className="flex border border-gray-200 rounded-sm overflow-hidden text-sm">
-                                    <button
-                                        onClick={() => setObForm(f => ({ ...f, balanceType: 'due' }))}
-                                        className={`flex-1 px-3 py-2 font-medium transition ${obForm.balanceType === 'due' ? 'bg-red-500 text-white' : 'bg-white text-gray-500'}`}
-                                    >
-                                        Due(They Owe You)
-                                    </button>
-                                    <button
-                                        onClick={() => setObForm(f => ({ ...f, balanceType: 'advance' }))}
-                                        className={`flex-1 px-3 py-2 font-medium border-l border-gray-200 transition ${obForm.balanceType === 'advance' ? 'bg-emerald-500 text-white' : 'bg-white text-gray-500'}`}
-                                    >
-                                        Debt(You Owe Them)
-                                    </button>
-                                </div>
-                                <p className="text-[10px] text-gray-400 mt-1">
-                                    {obForm.balanceType === 'due'
-                                        ? 'Party owes you money — receivable/debit balance.'
-                                        : 'You owe the party — payable/credit balance.'}
+                            <div className="min-w-0 flex-1">
+                                <h2 className="text-base font-semibold text-slate-900">{obMode === 'newParty' ? 'Add party' : 'Add opening balance'}</h2>
+                                <p className="text-xs text-slate-500">
+                                    {obMode === 'newParty' ? 'A customer or supplier, with any old balance' : `${obForm.partyName} · ${obForm.partyType}`}
                                 </p>
                             </div>
-
-                            <input
-                                type="number"
-                                placeholder="Amount (₹) *"
-                                value={obForm.amount}
-                                onChange={e => setObForm(f => ({ ...f, amount: e.target.value }))}
-                                className="w-full p-2 border border-gray-300 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                            />
-                            <input
-                                placeholder="Note (optional)"
-                                value={obForm.note}
-                                onChange={e => setObForm(f => ({ ...f, note: e.target.value }))}
-                                className="w-full p-2 border border-gray-300 rounded-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                            />
+                            <button onClick={() => setIsOBModalOpen(false)} aria-label="Close" className="rounded-sm p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                                <X size={18} />
+                            </button>
                         </div>
-
-                        <div className="flex gap-2 mt-4">
-                            <button
-                                onClick={() => { setIsOBModalOpen(false); setObForm({ partyName: '', partyNumber: '', partyType: 'Customer', balanceType: 'due', amount: '', note: '' }); }}
-                                className="flex-1 px-3 py-2 text-sm font-semibold text-gray-600 bg-gray-100 rounded-sm hover:bg-gray-200"
-                            >Cancel</button>
-                            <button
-                                onClick={handleAddOpeningBalance}
-                                disabled={obLoading}
-                                className="flex-1 px-3 py-2 text-sm font-semibold text-white bg-blue-500 rounded-sm hover:bg-blue-600 disabled:opacity-50"
-                            >{obLoading ? 'Saving...' : 'Save'}</button>
+                        <div className="space-y-4 px-5 py-4">
+                            {obMode === 'newParty' && (
+                                <>
+                                    <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_9rem]">
+                                        <label className="block text-xs font-medium text-slate-600">
+                                            Party name <span className="text-red-500">*</span>
+                                            <input value={obForm.partyName} onChange={(e) => setObForm((f) => ({ ...f, partyName: e.target.value }))} autoFocus placeholder="e.g. Ramesh Traders" className="mt-1 w-full rounded-sm border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                                        </label>
+                                        <label className="block text-xs font-medium text-slate-600">
+                                            Phone <span className="text-red-500">*</span>
+                                            <input value={obForm.partyNumber} inputMode="numeric" maxLength={10} onChange={(e) => setObForm((f) => ({ ...f, partyNumber: e.target.value.replace(/\D/g, '') }))} placeholder="10 digits" className="mt-1 w-full rounded-sm border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                                        </label>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-medium text-slate-600">Type</p>
+                                        <div className="mt-1 flex gap-1 rounded-sm bg-sunken p-1">
+                                            {(['Customer', 'Supplier'] as const).map((t) => (
+                                                <button key={t} onClick={() => setObForm((f) => ({ ...f, partyType: t }))} className={`flex-1 ${segClass(obForm.partyType === t)}`}>{t}</button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                            <div>
+                                <p className="text-xs font-medium text-slate-600">{obMode === 'newParty' ? 'Old balance' : 'Balance type'}</p>
+                                <div className="mt-1 flex gap-1 rounded-sm bg-sunken p-1">
+                                    <button onClick={() => setObForm((f) => ({ ...f, balanceType: 'due' }))} className={`flex-1 ${segClass(obForm.balanceType === 'due')}`}>They owe you</button>
+                                    <button onClick={() => setObForm((f) => ({ ...f, balanceType: 'advance' }))} className={`flex-1 ${segClass(obForm.balanceType === 'advance')}`}>You owe them</button>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 gap-3 md:grid-cols-[9rem_1fr]">
+                                <label className="block text-xs font-medium text-slate-600">
+                                    Amount (₹) {obMode === 'opening' ? <span className="text-red-500">*</span> : <span className="font-normal text-slate-400">· optional</span>}
+                                    <input type="number" value={obForm.amount} onChange={(e) => setObForm((f) => ({ ...f, amount: e.target.value }))} placeholder="0" className="mt-1 w-full rounded-sm border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                                </label>
+                                <label className="block text-xs font-medium text-slate-600">
+                                    Note <span className="font-normal text-slate-400">· optional</span>
+                                    <input value={obForm.note} onChange={(e) => setObForm((f) => ({ ...f, note: e.target.value }))} placeholder="e.g. Pending from last year" className="mt-1 w-full rounded-sm border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                                </label>
+                            </div>
+                        </div>
+                        <div className="flex gap-2 border-t border-line px-5 py-4 md:justify-end">
+                            <button onClick={() => setIsOBModalOpen(false)} className="hidden rounded-sm px-3.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 md:block">Cancel</button>
+                            <button onClick={handleAddOpeningBalance} disabled={obLoading} className="w-full rounded-sm bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50 md:w-auto md:py-2">
+                                {obLoading ? 'Saving…' : obMode === 'newParty' ? 'Add party' : 'Save opening balance'}
+                            </button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* NEW: Delete single party confirmation modal */}
+            {/* Edit party */}
+            {partyToEdit && (
+                <div className="fixed inset-0 z-[9000] flex items-end justify-center bg-black/40 md:items-center md:px-4" onClick={() => !isSavingParty && setPartyToEdit(null)}>
+                    <form
+                        onClick={(e) => e.stopPropagation()}
+                        onSubmit={(e) => { e.preventDefault(); saveParty(); }}
+                        className="w-full rounded-t-sm bg-white shadow-float md:max-w-md md:rounded-sm"
+                    >
+                        <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-slate-300 md:hidden" />
+                        <div className="flex items-start gap-3 border-b border-line px-5 py-4">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-blue-50 text-blue-600"><Pencil size={18} /></span>
+                            <div className="min-w-0 flex-1">
+                                <h2 className="text-base font-semibold text-slate-900">Edit party</h2>
+                                <p className="text-xs text-slate-500">{partyToEdit.partyType} · {formatPhone(partyToEdit.partyNumber)}</p>
+                            </div>
+                            <button type="button" onClick={() => setPartyToEdit(null)} aria-label="Close" className="rounded-sm p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div className="space-y-4 px-5 py-4">
+                            <label className="block text-xs font-medium text-slate-600">
+                                Party name
+                                <input value={editForm.name} autoFocus={editFocus === 'name'} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} placeholder="e.g. Ramesh Traders" className="mt-1 w-full rounded-sm border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                                <span className="mt-1 block font-normal text-slate-500">Shown in the ledger and on new bills. Old bills keep the name they were printed with.</span>
+                            </label>
+                            <label className="block text-xs font-medium text-slate-600">
+                                GSTIN <span className="font-normal text-slate-400">· optional</span>
+                                <input value={editForm.gstNumber} autoFocus={editFocus === 'gstNumber'} maxLength={15} onChange={(e) => setEditForm((f) => ({ ...f, gstNumber: e.target.value.toUpperCase() }))} placeholder="09ABCDE1234F1Z5" className="mt-1 w-full rounded-sm border border-slate-300 px-3 py-2 font-mono text-sm uppercase outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                            </label>
+                            <label className="block text-xs font-medium text-slate-600">
+                                Address <span className="font-normal text-slate-400">· optional</span>
+                                <textarea value={editForm.address} autoFocus={editFocus === 'address'} rows={2} onChange={(e) => setEditForm((f) => ({ ...f, address: e.target.value }))} placeholder="Shop no., street, city" className="mt-1 w-full resize-none rounded-sm border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                            </label>
+                            <p className="text-xs text-slate-500">The phone number can't be changed here — every bill is filed under it.</p>
+                        </div>
+                        <div className="flex gap-2 border-t border-line px-5 py-4 md:justify-end">
+                            <button type="button" onClick={() => setPartyToEdit(null)} className="hidden rounded-sm px-3.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 md:block">Cancel</button>
+                            <button type="submit" disabled={isSavingParty} className="w-full rounded-sm bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50 md:w-auto md:py-2">
+                                {isSavingParty ? 'Saving…' : 'Save details'}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* Delete one party */}
             {partyToDelete && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-                    <div className="bg-white rounded-sm shadow-xl w-full max-w-sm p-5">
-                        <h2 className="text-base font-bold text-gray-800 mb-2">Delete Party?</h2>
-                        <p className="text-sm text-gray-600 mb-4">
-                            This permanently deletes <span className="font-semibold">{partyToDelete.partyName}</span> and all of their sales, purchases, and opening balance records. This cannot be undone.
-                        </p>
-                        <div className="flex gap-2">
-                            <button
-                                onClick={() => setPartyToDelete(null)}
-                                disabled={isDeletingParty}
-                                className="flex-1 px-3 py-2 text-sm font-semibold text-gray-600 bg-gray-100 rounded-sm hover:bg-gray-200 disabled:opacity-50"
-                            >Cancel</button>
-                            <button
-                                onClick={confirmDeleteParty}
-                                disabled={isDeletingParty}
-                                className="flex-1 px-3 py-2 text-sm font-semibold text-white bg-red-600 rounded-sm hover:bg-red-700 disabled:opacity-50 flex items-center justify-center gap-2"
-                            >{isDeletingParty ? <Spinner /> : 'Delete'}</button>
+                <div className="fixed inset-0 z-[9000] flex items-center justify-center bg-black/40 px-4" onClick={() => !isDeletingParty && setPartyToDelete(null)}>
+                    <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-sm bg-white p-5 shadow-float">
+                        <div className="mb-2 flex items-center gap-2 text-red-600">
+                            <AlertTriangle size={18} />
+                            <h2 className="text-base font-semibold">Delete {partyToDelete.partyName}?</h2>
+                        </div>
+                        <p className="text-sm text-slate-600">This permanently deletes their sales, purchases and opening balance records. It can't be undone.</p>
+                        <div className="mt-4 flex justify-end gap-2">
+                            <button onClick={() => setPartyToDelete(null)} disabled={isDeletingParty} className="rounded-sm border border-slate-300 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-700 hover:border-slate-400 disabled:opacity-50">Cancel</button>
+                            <button onClick={async () => { const wasOpen = selectedPartyName; await confirmDeleteParty(); if (wasOpen) setSelectedPartyName(null); }} disabled={isDeletingParty} className="inline-flex items-center gap-2 rounded-sm bg-red-600 px-3.5 py-1.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50">
+                                {isDeletingParty ? <Spinner /> : 'Delete party'}
+                            </button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* NEW: Delete-all-parties confirmation modal (requires typing DELETE) */}
+            {/* Delete all parties — type DELETE */}
             {isDeleteAllModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-                    <div className="bg-white rounded-sm shadow-xl w-full max-w-sm p-5">
-                        <h2 className="text-base font-bold text-red-700 mb-2">Delete ALL Parties?</h2>
-                        <p className="text-sm text-gray-600 mb-3">
-                            This permanently deletes every sale, purchase, opening balance, customer, and supplier record for your company. This cannot be undone.
-                        </p>
-                        <p className="text-xs text-gray-500 mb-1">Type <span className="font-mono font-bold">DELETE</span> to confirm:</p>
-                        <input
-                            value={deleteAllConfirmText}
-                            onChange={e => setDeleteAllConfirmText(e.target.value)}
-                            placeholder="DELETE"
-                            className="w-full p-2 border border-gray-300 rounded-sm text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-red-400"
-                        />
-                        <div className="flex gap-2">
-                            <button
-                                onClick={() => { setIsDeleteAllModalOpen(false); setDeleteAllConfirmText(''); }}
-                                disabled={isDeletingAll}
-                                className="flex-1 px-3 py-2 text-sm font-semibold text-gray-600 bg-gray-100 rounded-sm hover:bg-gray-200 disabled:opacity-50"
-                            >Cancel</button>
-                            <button
-                                onClick={confirmDeleteAll}
-                                disabled={deleteAllConfirmText !== 'DELETE' || isDeletingAll}
-                                className="flex-1 px-3 py-2 text-sm font-semibold text-white bg-red-600 rounded-sm hover:bg-red-700 disabled:opacity-50 flex items-center justify-center gap-2"
-                            >{isDeletingAll ? <Spinner /> : 'Delete All'}</button>
+                <div className="fixed inset-0 z-[9000] flex items-center justify-center bg-black/40 px-4" onClick={() => !isDeletingAll && setIsDeleteAllModalOpen(false)}>
+                    <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-sm bg-white p-5 shadow-float">
+                        <div className="mb-2 flex items-center gap-2 text-red-600">
+                            <AlertTriangle size={18} />
+                            <h2 className="text-base font-semibold">Delete all parties?</h2>
+                        </div>
+                        <p className="text-sm text-slate-600">This permanently deletes every sale, purchase, opening balance, customer and supplier record for your company. It can't be undone.</p>
+                        <label className="mt-4 block text-xs font-medium text-slate-600">
+                            Type <span className="font-mono font-bold text-slate-900">DELETE</span> to confirm
+                            <input value={deleteAllConfirmText} onChange={(e) => setDeleteAllConfirmText(e.target.value)} autoFocus className="mt-1 w-full rounded-sm border border-slate-300 px-3 py-2 text-sm outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500" />
+                        </label>
+                        <div className="mt-4 flex justify-end gap-2">
+                            <button onClick={() => { setIsDeleteAllModalOpen(false); setDeleteAllConfirmText(''); }} disabled={isDeletingAll} className="rounded-sm border border-slate-300 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-700 hover:border-slate-400 disabled:opacity-50">Cancel</button>
+                            <button onClick={confirmDeleteAll} disabled={deleteAllConfirmText !== 'DELETE' || isDeletingAll} className="inline-flex items-center gap-2 rounded-sm bg-red-600 px-3.5 py-1.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-40">
+                                {isDeletingAll ? <Spinner /> : 'Delete everything'}
+                            </button>
                         </div>
                     </div>
                 </div>
             )}
-            {/* NEW: Lightweight overlay while a "Settle All" submission loops through bills.
-                The actual input UI is the same PaymentModal used for individual bills — see below. */}
-            {isSettlingAll && (
-                <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center">
-                    <div className="bg-white p-8 rounded-sm shadow-xl w-72 text-center flex flex-col items-center gap-3">
+
+            {(isSettlingAll || isRemindingAll) && (
+                <div className="fixed inset-0 z-[9000] flex items-center justify-center bg-black/40">
+                    <div className="flex w-72 flex-col items-center gap-3 rounded-sm bg-white p-8 text-center shadow-float">
                         <Spinner />
-                        <p className="text-sm font-semibold text-gray-700">Settling all due bills...</p>
+                        <p className="text-sm font-semibold text-slate-700">{isSettlingAll ? 'Settling all due bills…' : 'Sending reminders…'}</p>
+                    </div>
+                </div>
+            )}
+
+            {bulkUploadProgress && (
+                <div className="fixed inset-0 z-[9000] flex items-center justify-center bg-black/40">
+                    <div className="w-80 rounded-sm bg-white p-8 text-center shadow-float">
+                        <h3 className="mb-4 text-base font-semibold text-slate-900">Importing old balances…</h3>
+                        <div className="mb-2 h-3 w-full overflow-hidden rounded-sm bg-slate-100">
+                            <div className="h-3 rounded-sm bg-blue-600 transition-all duration-100" style={{ width: `${(bulkUploadProgress.current / bulkUploadProgress.total) * 100}%` }} />
+                        </div>
+                        <p className="font-mono text-sm text-slate-600">{bulkUploadProgress.current} / {bulkUploadProgress.total} processed</p>
                     </div>
                 </div>
             )}
 
             {toast && (
-                <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-sm shadow-lg text-sm font-semibold text-white transition-all
-                ${toast.type === 'success' ? 'bg-blue-500' : 'bg-red-500'}`}>
+                <div className={`fixed left-1/2 top-4 z-[9500] -translate-x-1/2 rounded-sm px-5 py-3 text-sm font-semibold text-white shadow-float ${toast.type === 'success' ? 'bg-slate-900' : 'bg-red-600'}`}>
                     {toast.message}
                 </div>
             )}
-            {/* NEW: Bulk import progress overlay */}
-            {bulkUploadProgress && (
-                <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center">
-                    <div className="bg-white p-8 rounded-sm shadow-xl w-80 text-center">
-                        <h3 className="text-lg font-bold mb-4 text-gray-800">Importing Old Invoices...</h3>
-                        <div className="w-full bg-gray-200 rounded-sm h-4 mb-2 overflow-hidden">
-                            <div
-                                className="bg-blue-600 h-4 rounded-sm transition-all duration-100"
-                                style={{ width: `${(bulkUploadProgress.current / bulkUploadProgress.total) * 100}%` }}
-                            ></div>
-                        </div>
-                        <p className="text-sm text-gray-600 font-mono">
-                            {bulkUploadProgress.current} / {bulkUploadProgress.total} processed
-                        </p>
-                    </div>
-                </div>
-            )}
+
             <PaymentModal
                 isOpen={isPaymentModalOpen}
                 onClose={() => {
                     setIsPaymentModalOpen(false);
                     setSelectedInvoiceForPayment(null);
-                    setAvailableCredit(0); // ✅ Reset on close
+                    setAvailableCredit(0);
                 }}
                 invoice={selectedInvoiceForPayment}
-                // ✅ NEW: same modal is reused for "Settle All" from the list —
-                // route to the bulk handler only when the pseudo-invoice flags it
                 onSubmit={selectedInvoiceForPayment?.isSettleAll ? handleSettleAllPayment : handleSettlePayment}
                 availableCredit={availableCredit}
                 isDebitNote={selectedInvoiceForPayment?.type === 'purchase'}
             />
-            {/* Hidden file input lives at the top level so both mobile & desktop triggers can use it */}
+            {/* Hidden file input shared by every "Upload Excel" trigger */}
             <input type="file" ref={bulkFileInputRef} onChange={handleBulkFileSelected} className="hidden" accept=".xlsx, .xls" />
-            {/* HEADER FOR MASTER LIST ONLY */}
-            {!selectedPartyName && (
-                <div className="relative flex items-center justify-between p-3 border-b border-gray-200 mb-3 mt-2">
-                    <BackButton />
-                    <h1 className="absolute left-1/2 -translate-x-1/2 text-xl font-bold text-gray-800 whitespace-nowrap">
-                        Party Ledger
-                    </h1>
-                    <button
-                        onClick={() => setIsDeleteAllModalOpen(true)}
-                        className="md:hidden text-xs font-semibold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 px-3 py-1.5 rounded-sm transition-colors"
-                        title="Delete all parties"
-                    >
-                        Delete All
-                    </button>
-                </div>
-            )}
-            <div className="flex-1 flex flex-col md:flex-row gap-0 px-0">
+        </>
+    );
 
-                {/* LEFT: main column */}
-                <div className="flex-1 w-full md:w-[65%]">
+    /* =====================================================================
+       VIEW 2 — SINGLE PARTY
+       ===================================================================== */
+    if (selectedPartyName && selectedPartyLedger && statement) {
+        const party = selectedPartyLedger;
+        const words = balanceWords(statement.net);
+        const side = statement.net < 0 || (statement.net === 0 && statement.receivableBilled === 0 && statement.payableBilled > 0) ? 'pay' : 'receive';
+        const progressBilled = side === 'receive' ? statement.receivableBilled : statement.payableBilled;
+        const progressPaid = side === 'receive' ? statement.received : statement.paidOut;
+        const progressPct = progressBilled > 0 ? Math.min(100, (progressPaid / progressBilled) * 100) : 0;
+        const hasDue = statement.receivable > 0 || statement.payable > 0;
+        const showRemind = canRemind(party);
+        const supplierOwesYou = party.partyType === 'Supplier' && statement.receivable > 0;
 
-                    {/* MOBILE-ONLY bulk import — collapsed by default, single-row toggle */}
-                    {!selectedPartyName && (
-                        <div className="md:hidden bg-white border border-gray-200 rounded-sm mb-3 mx-3 overflow-hidden">
-                            <button
-                                onClick={() => setShowBulkImport(prev => !prev)}
-                                className="w-full relative flex items-center justify-center px-3 py-2.5 text-sm font-bold text-blue-600 hover:bg-blue-50 transition-colors"
-                            >
-                                <span>Bulk Upload</span>
-                                <span className={`absolute right-3 inline-block transition-transform duration-200 ${showBulkImport ? 'rotate-180' : ''}`}>▼</span>
-                            </button>
-                            {showBulkImport && (
-                                <div className="bg-blue-50 border-t border-blue-100 p-3">
-                                    <p className="text-xs text-blue-600 mb-2">Upload an Excel sheet of old dues/advances as opening balances.</p>
-                                    <div className="flex flex-col gap-2">
-                                        <button
-                                            onClick={() => bulkFileInputRef.current?.click()}
-                                            disabled={isBulkUploading}
-                                            className="w-full bg-blue-600 text-white py-2 px-3 rounded-sm text-sm font-semibold hover:bg-blue-700 disabled:bg-gray-400 flex items-center justify-center gap-2"
-                                        >
-                                            {isBulkUploading ? <Spinner /> : 'Upload Excel File'}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={handleDownloadBulkSample}
-                                            disabled={isBulkUploading}
-                                            className="text-sm text-blue-600 underline text-center"
-                                        >
-                                            Download Sample Template
-                                        </button>
-                                    </div>
-                                </div>
+        // One bill / opening balance from the statement, in the detail panel.
+        const openTxn = expandedBillId ? (party.transactions as LedgerTxn[]).find((t) => t.id === expandedBillId) : undefined;
+        const billPanel = openTxn && (() => {
+            const t = openTxn;
+            const advance = isAdvance(t);
+            const purchase = !t.isOpeningBalance && t.type === 'purchase';
+            const canSettle = t.dueAmount > 0 && !advance;
+            const paid = Math.max(t.totalAmount - t.dueAmount, 0);
+            const time = new Date(t.createdAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+            return (
+                <DetailPanel
+                    open
+                    onClose={() => setExpandedBillId(null)}
+                    title={t.isOpeningBalance ? (advance ? 'Advance (you owe them)' : 'Opening balance') : t.invoiceNumber || `#${t.id.slice(0, 6).toUpperCase()}`}
+                    badge={t.dueAmount > 0 && !advance
+                        ? <span className="rounded-sm bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-700">Unpaid</span>
+                        : undefined}
+                    subtitle={`${formatFullDate(t.createdAt)}, ${time} · ${t.isOpeningBalance ? 'Opening balance' : purchase ? 'Purchase' : 'Sale'}`}
+                    footer={(canSettle || (!t.isOpeningBalance && !purchase && companyId)) ? (
+                        <div className="flex gap-2">
+                            {canSettle && (
+                                <button onClick={() => { setExpandedBillId(null); openSettleForTxn(party, t); }} className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">
+                                    <Check size={15} /> Settle {inr(t.dueAmount)}
+                                </button>
+                            )}
+                            {!t.isOpeningBalance && !purchase && companyId && (
+                                <a href={`/download-bill/${companyId}/${t.id}`} target="_blank" rel="noreferrer" className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:border-slate-400">
+                                    <ExternalLink size={15} /> View bill
+                                </a>
                             )}
                         </div>
-                    )}
-                    {/* FILTERS & SEARCH (Hidden when viewing detail) */}
-                    {!selectedPartyName && (
-                        <div className="bg-white p-3 rounded-sm shadow-sm border border-gray-200 mb-4 mx-3 md:mx-0">
-                            <div className="mb-3">
-                                <input
-                                    type="text"
-                                    placeholder="Search by Party Name or Number..."
-                                    value={searchQuery}
-                                    onChange={(e) => { setSearchQuery(e.target.value); if (e.target.value.trim()) setShowTransactionList(true); }}
-                                    className="w-full p-2 border border-gray-300 rounded-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                                />
-                            </div>
+                    ) : undefined}
+                >
+                    {t.note && <p className="rounded-sm bg-sunken px-3 py-2.5 text-sm text-slate-600">Note: {t.note}</p>}
 
-                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-                                <FilterSelect value={datePreset} onChange={(e) => handleDatePresetChange(e.target.value)}>
-                                    <option value="today">Today</option>
-                                    <option value="yesterday">Yesterday</option>
-                                    <option value="last7">Last 7 Days</option>
-                                    <option value="last30">Last 30 Days</option>
-                                    <option value="thisMonth">This Month</option>
-                                    <option value="custom">Custom</option>
-                                </FilterSelect>
-                                <div className="grid grid-cols-2 gap-2 sm:gap-3 sm:col-span-3">
-                                    <input type="date" value={customStartDate} onChange={(e) => { setCustomStartDate(e.target.value); setDatePreset('custom'); }} className="w-full min-w-0 p-2 text-sm bg-gray-50 border border-gray-200 rounded-sm" />
-                                    <input type="date" value={customEndDate} onChange={(e) => { setCustomEndDate(e.target.value); setDatePreset('custom'); }} className="w-full min-w-0 p-2 text-sm bg-gray-50 border border-gray-200 rounded-sm" />
-                                </div>
-                            </div>
-                            <div className="flex gap-2 mt-3">
-                                <button onClick={handleApplyFilters} className="flex-1 px-3 py-2 bg-blue-600 text-white text-sm font-semibold rounded-sm hover:bg-blue-700 transition-colors">
-                                    Apply
-                                </button>
-                            </div>
-                            <div className="flex flex-col items-center gap-2 mt-3">
-                                <div className="flex border border-gray-200 rounded-sm overflow-hidden text-sm w-1/2 max-[480px]:w-full">
-                                    <button
-                                        onClick={() => { setPartyTypeFilter(prev => prev === 'Customer' ? 'all' : 'Customer'); setShowTransactionList(true); }}
-                                        className={`flex-1 px-3 max-[480px]:px-1.5 py-1.5 transition font-medium whitespace-nowrap ${partyTypeFilter === 'Customer' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
-                                    >
-                                        Customer
-                                    </button>
-                                    <button
-                                        onClick={() => { setPartyTypeFilter(prev => prev === 'Supplier' ? 'all' : 'Supplier'); setShowTransactionList(true); }}
-                                        className={`flex-1 px-3 max-[480px]:px-1.5 py-1.5 transition font-medium border-l border-gray-200 whitespace-nowrap ${partyTypeFilter === 'Supplier' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
-                                    >
-                                        Supplier
-                                    </button>
-                                    <button
-                                        onClick={() => { setPartyTypeFilter(prev => prev === 'Both' ? 'all' : 'Both'); setShowTransactionList(true); }}
-                                        className={`flex-1 px-3 max-[480px]:px-1.5 py-1.5 transition font-medium border-l border-gray-200 whitespace-nowrap ${partyTypeFilter === 'Both' ? 'bg-blue-500 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
-                                    >
-                                        Both
-                                    </button>
-                                </div>
-                                <div className="flex bg-gray-100 rounded-sm p-1 text-sm">
-                                    <button
-                                        onClick={() => { setStatusFilter(prev => prev === 'due' ? 'all' : 'due'); setShowTransactionList(true); }}
-                                        className={`px-3 py-1.5 rounded-sm transition ${statusFilter === 'due' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600'}`}
-                                    >
-                                        Due
-                                    </button>
-                                    <button
-                                        onClick={() => { setStatusFilter(prev => prev === 'settled' ? 'all' : 'settled'); setShowTransactionList(true); }}
-                                        className={`px-3 py-1.5 rounded-sm transition ${statusFilter === 'settled' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600'}`}
-                                    >
-                                        Settled
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
+                    {!t.isOpeningBalance && (
+                        <DetailSection title={`Items · ${(t.items || []).length}`}>
+                            <DetailItems
+                                items={(t.items || []).map((item) => {
+                                    const raw = item as unknown as Record<string, unknown>;
+                                    const unit = Number(purchase ? raw.purchasePrice : raw.mrp) || Number(raw.mrp) || 0;
+                                    return { name: String(raw.name ?? ''), quantity: Number(raw.quantity) || 0, unitPrice: unit };
+                                })}
+                            />
+                        </DetailSection>
                     )}
 
-                    {/* MAIN VIEW */}
-                    <div className="px-3 md:px-0">
-                        {!selectedPartyName ? (
-                            // VIEW 1: MASTER LIST (Unified List Container with Card-like row layouts)
-                            <div className="space-y-2 mt-2">
-                                {filteredParties.length === 0 ? (
-                                    <div className="p-6 text-center text-gray-500 bg-white">No parties found for this period.</div>
-                                ) : (
-                                    <>
-                                        <button
-                                            onClick={() => setShowTransactionList(prev => !prev)}
-                                            className="w-full flex items-center justify-between px-4 py-2.5 bg-white border border-slate-200 rounded-sm text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
-                                        >
-                                            <span>{showTransactionList ? 'Hide' : 'Show'} List ({filteredParties.length} parties)</span>
-                                            <span className={`inline-block transition-transform duration-200 ${showTransactionList ? 'rotate-180' : ''}`}>▼</span>
-                                        </button>
-
-                                        {showTransactionList && filteredParties.map((party) => (
-                                            <CustomCard
-                                                key={`${normalizePartyNumber(party.partyNumber) || party.partyName}-${party.partyType}`}
-                                                onClick={() => { setSelectedPartyName(party.partyNumber || party.partyName); setShowTransactionList(false); }}
-                                                className="cursor-pointer transition-shadow hover:shadow-md p-3.5 bg-white"
-                                            >
-                                                {/* Top Row: Badge and Total */}
-                                                <div className="flex items-start justify-between mb-1.5">
-                                                    <span className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider whitespace-nowrap ${party.partyType === 'Customer' ? 'bg-blue-50 text-blue-600 border-blue-200' :
-                                                        party.partyType === 'Supplier' ? 'bg-purple-50 text-purple-600 border-purple-200' :
-                                                            'bg-orange-50 text-orange-600 border-orange-200'
-                                                        }`}>
-                                                        {party.partyType}
-                                                    </span>
-                                                    <p className="text-xs text-slate-400">
-                                                        Total: ₹{party.totalBilled.toLocaleString('en-IN')}
-                                                    </p>
-                                                </div>
-
-                                                {/* Bottom Row: Name/Number and Pending Due */}
-                                                <div className="flex items-end justify-between">
-                                                    <div>
-                                                        <p className="text-base font-semibold text-slate-800">{party.partyName}</p>
-                                                        <p className="text-sm text-slate-500 mt-0.5">
-                                                            {party.partyNumber || 'N/A'} <span className="mx-1 text-slate-300">•</span> {party.totalTransactions} Bills
-                                                        </p>
-                                                        {/* NEW: address + GST number, only if present */}
-                                                        {party.address && (
-                                                            <p className="text-xs text-slate-400 mt-0.5">{party.address}</p>
-                                                        )}
-                                                        {party.gstNumber && (
-                                                            <p className="text-[11px] text-slate-400 mt-0.5">GSTIN: {party.gstNumber}</p>
-                                                        )}
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <p className={`text-lg font-bold ${party.totalDue > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                                                            {party.totalDue > 0 ? 'Due: ' : ''}₹{party.totalDue.toLocaleString('en-IN')}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                                {/* Remind + Settle + Delete row */}
-                                                <div className="mt-2 pt-2 border-t border-slate-100 flex gap-2">
-                                                    {canRemind(party) && whatsappProvider === 'botmaster' && (
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleSendPartyReminder(party);
-                                                            }}
-                                                            disabled={sendingReminderFor === party.partyNumber}
-                                                            className="flex-1 py-1.5 text-[11px] font-bold text-white bg-blue-500 rounded-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
-                                                        >
-                                                            {sendingReminderFor === party.partyNumber ? <Spinner /> : 'Remind'}
-                                                        </button>
-                                                    )}
-                                                    {canRemind(party) && (whatsappProvider === 'snapto' || whatsappProvider === 'sellar') && (
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleSendPartyReminderSnapto(party);
-                                                            }}
-                                                            disabled={sendingReminderFor === party.partyNumber}
-                                                            className="flex-1 py-1.5 text-[11px] font-bold text-white bg-blue-500 rounded-sm hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
-                                                        >
-                                                            {sendingReminderFor === party.partyNumber ? <Spinner /> : 'Remind'}
-                                                        </button>
-                                                    )}
-
-                                                    
-                                                    {party.totalDue > 0 && (
-                                                        <button
-                                                            onClick={async (e) => {
-                                                                e.stopPropagation();
-
-                                                                // Party ka type decide karo: pure Supplier => 'purchase', warna 'sale'
-                                                                const isSupplierParty = party.partyType === 'Supplier';
-
-                                                                setSelectedInvoiceForPayment({
-                                                                    id: `settle-all-${party.partyNumber || party.partyName}`,
-                                                                    invoiceNumber: undefined,
-                                                                    type: isSupplierParty ? 'purchase' : 'sale',
-                                                                    totalAmount: party.totalDue,
-                                                                    dueAmount: party.totalDue,
-                                                                    partyName: party.partyName,
-                                                                    partyNumber: party.partyNumber,
-                                                                    createdAt: Date.now(),
-                                                                    isSettleAll: true,   // PaymentModal onSubmit routing isi flag se hoti hai
-                                                                    partyRef: party,     // handleSettleAllPayment isi se party.transactions padhta hai
-                                                                });
-
-                                                                // availableCredit fetch (Customer => creditBalance, Supplier => debitBalance)
-                                                                const partyNum = (party.partyNumber || '').replace(/\D/g, '').slice(-10);
-                                                                if (partyNum && companyId) {
-                                                                    try {
-                                                                        const collectionName = isSupplierParty ? 'suppliers' : 'customers';
-                                                                        const balanceField = isSupplierParty ? 'debitBalance' : 'creditBalance';
-                                                                        const partyDocRef = doc(db, 'companies', companyId, collectionName, partyNum);
-                                                                        const snap = await getDoc(partyDocRef);
-                                                                        setAvailableCredit(snap.exists() ? Number(snap.data()[balanceField] || 0) : 0);
-                                                                    } catch {
-                                                                        setAvailableCredit(0);
-                                                                    }
-                                                                } else {
-                                                                    setAvailableCredit(0);
-                                                                }
-
-                                                                setIsPaymentModalOpen(true);
-                                                            }}
-                                                            className="flex-1 py-1.5 text-[11px] font-bold text-white bg-blue-600 rounded-sm hover:bg-blue-700 transition-colors"
-                                                        >
-                                                            Settle
-                                                        </button>
-                                                    )}
-
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setPartyToDelete(party);
-                                                        }}
-                                                        className="flex-1 py-1.5 text-[11px] font-bold text-red-600 bg-red-50 border border-red-200 rounded-sm hover:bg-red-100 transition-colors"
-                                                    >
-                                                        Delete
-                                                    </button>
-                                                </div>
-                                            </CustomCard>
-                                        ))}
-                                    </>
-                                )}
-                            </div>
+                    <DetailSection title="Payments">
+                        {(t.paymentHistory || []).length === 0 ? (
+                            <p className="rounded-sm bg-sunken px-3 py-2.5 text-sm text-slate-500">No payments recorded against this yet.</p>
                         ) : (
-                            // VIEW 2: DETAILED LEDGER
-                            <div className="flex flex-col gap-2">
-
-                                {/* UNIFIED STICKY HEADER: Title + Summary Card */}
-                                <div className="sticky top-0 z-30 pt-2 pb-3 -mx-2 px-2 bg-gray-50">
-                                    {/* Top Bar with Title and Close */}
-                                    <div className="relative flex items-center justify-between pb-2 mb-2">
-                                        <BackButton onClick={() => { setSelectedPartyName(null); setExpandedBillId(null); setShowTransactionList(false); }} />
-                                        <h1 className="absolute left-1/2 -translate-x-1/2 max-w-[65%] text-lg font-bold text-gray-800 truncate text-center">
-                                            {selectedPartyLedger?.partyName || selectedPartyName} - Ledger
-                                        </h1>
-                                        <button
-                                            onClick={() => { if (selectedPartyLedger) setPartyToDelete(selectedPartyLedger); }}
-                                            className="text-xs font-semibold text-red-500 hover:text-red-700 px-2 py-1 whitespace-nowrap"
-                                            title="Delete this party"
-                                        >
-                                            Delete
-                                        </button>
-                                    </div>
-
-                                    {/* Summary Card */}
-                                    <div className="rounded-sm border border-slate-200 bg-white overflow-hidden">
-                                        <div className="bg-sky-100 border-b border-slate-100 px-4 py-2 flex justify-between items-center">
-                                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Ledger Summary</span>
-                                            <div className="flex items-center gap-3">
-                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{selectedPartyLedger?.transactions.length} Bills</span>
-                                                <button
-                                                    onClick={() => {
-                                                        // ✅ Pre-fill party details from the selected party
-                                                        setObForm({
-                                                            partyName: selectedPartyLedger?.partyName || '',
-                                                            partyNumber: selectedPartyLedger?.partyNumber || '',
-                                                            partyType: selectedPartyLedger?.partyType === 'Supplier' ? 'Supplier' : 'Customer',
-                                                            balanceType: 'due',
-                                                            amount: '',
-                                                            note: '',
-                                                        });
-                                                        setIsOBModalOpen(true);
-                                                    }}
-                                                    className="text-[10px] font-bold px-2 py-0.5 bg-blue-500 text-white rounded hover:bg-blue-600 transition whitespace-nowrap"
-                                                >
-                                                    + Opening Balance
-                                                </button>
+                            <ul className="divide-y divide-line rounded-sm border border-line">
+                                {(t.paymentHistory || []).map((p, i) => {
+                                    const when = p.timestamp || Date.parse(p.date) || t.createdAt;
+                                    return (
+                                        <li key={i} className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
+                                            <div>
+                                                <p className="font-medium text-slate-800">{formatFullDate(when)}</p>
+                                                <p className="text-xs text-slate-500">
+                                                    {new Date(when).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}
+                                                    {p.method ? ` · ${modeLabel(p.method)}` : ''}
+                                                </p>
                                             </div>
-                                        </div>
-                                        <div className="p-4 flex justify-between items-center">
-                                            <div className="flex flex-col flex-1">
-                                                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Total Billed</span>
-                                                <span className="text-lg sm:text-xl font-extrabold text-slate-800 truncate">
-                                                    ₹{selectedPartyLedger?.totalBilled.toLocaleString('en-IN')}
-                                                </span>
-                                            </div>
-                                            <div className="h-10 w-px bg-slate-200 mx-3"></div>
-                                            <div className="flex flex-col flex-1 text-right">
-                                                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Total Pending</span>
-                                                <span className={`text-lg sm:text-xl font-extrabold truncate ${selectedPartyLedger && selectedPartyLedger.totalDue > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                                                    ₹{selectedPartyLedger?.totalDue.toLocaleString('en-IN')}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+                                            <span className="font-semibold text-green-700">{inr(p.amount)}</span>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                        )}
+                    </DetailSection>
 
-                                {/* Bill Cards */}
-                                <div className="px-1 space-y-3">
-                                    {selectedPartyLedger?.transactions.map((txn: LedgerTransaction) => {
-                                        const isExpanded = expandedBillId === txn.id;
+                    <DetailSection title="Total">
+                        <DetailRows
+                            rows={[
+                                { label: t.isOpeningBalance ? 'Amount' : 'Bill total', value: inr(t.totalAmount) },
+                                { label: purchase || advance ? 'Paid' : 'Received', value: inr(paid), tone: 'text-green-700' },
+                                { label: 'Pending', value: t.dueAmount > 0 ? inr(t.dueAmount) : 'Settled ✓', tone: t.dueAmount > 0 ? 'text-amber-700' : 'text-green-700', strong: true },
+                            ]}
+                        />
+                    </DetailSection>
+                </DetailPanel>
+            );
+        })();
 
-                                        return (
-                                            <CustomCard key={txn.id} onClick={() => toggleBillExpansion(txn.id)} className="cursor-pointer transition-shadow hover:shadow-md bg-white">
-                                                <div className="flex justify-between items-end w-full -mt-5 relative pointer-events-none">
-                                                    {/* LEFT: Transaction Type Badge */}
-                                                    <div className="flex justify-start gap-1 flex-wrap max-w-[50%] pointer-events-auto">
-                                                        {txn.isOpeningBalance ? (
-                                                            <span className={`text-[8px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider whitespace-nowrap 
-        ${(txn as any).balanceType === 'advance'
-                                                                    ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
-                                                                    : 'bg-orange-50 text-orange-600 border-orange-200'
-                                                                }`}>
-                                                                {(txn as any).balanceType === 'advance' ? 'Advance' : 'Opening Balance'}
-                                                            </span>
-                                                        ) : (
-                                                            <span className={`text-[8px] uppercase font-bold px-1.5 py-0.5 rounded border tracking-wider whitespace-nowrap ${txn.type === 'sale' ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-purple-50 text-purple-600 border-purple-200'}`}>
-                                                                {txn.type}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </div>
+        const kpis = [
+            { label: 'Total billed', value: inr(party.totalBilled), hint: `${party.transactions.length} ${party.transactions.length === 1 ? 'entry' : 'entries'}${party.totalTransactions === 0 ? ' · opening balance' : ''}`, icon: FileText, iconClass: 'bg-blue-50 text-blue-600', valueClass: 'text-slate-900' },
+            { label: side === 'receive' ? 'Received' : 'Paid', value: inr(side === 'receive' ? statement.received : statement.paidOut), hint: `${statement.payments.length} ${statement.payments.length === 1 ? 'payment' : 'payments'}${statement.modes.length ? ` · ${statement.modes.join(', ').toLowerCase()}` : ''}`, icon: Wallet, iconClass: 'bg-green-50 text-green-600', valueClass: 'text-slate-900' },
+            { label: 'Pending', value: statement.net === 0 ? '₹0' : inr(statement.net), hint: statement.net > 0 ? `they owe you${statement.oldestDue ? ` · ${daysSince(statement.oldestDue)} days` : ''}` : statement.net < 0 ? 'you owe them' : 'settled', icon: Scale, iconClass: 'bg-amber-50 text-amber-600', valueClass: statement.net > 0 ? 'text-amber-700' : 'text-slate-900' },
+            { label: 'Last payment', value: statement.lastPayment ? formatDayMonth(statement.lastPayment.date) : '—', hint: statement.lastPayment ? `${inr(statement.lastPayment.effect)} · ${daysSince(statement.lastPayment.date)} days ago` : 'no payments yet', icon: CalendarDays, iconClass: 'bg-blue-50 text-blue-600', valueClass: 'text-slate-900' },
+        ];
 
-                                                <div className="flex items-center justify-between mt-2">
-                                                    {/* LEFT ALIGNED INFO */}
-                                                    <div className="flex-1">
-                                                        {txn.isOpeningBalance ? (
-                                                            <>
-                                                                <p className="text-base font-semibold text-slate-800">Opening Due</p>
-                                                                <p className="text-sm text-slate-500 mt-1">{formatDate(txn.createdAt)}</p>
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <p className="text-base font-semibold text-slate-800">{txn.invoiceNumber || txn.id.slice(0, 8)}</p>
-                                                                <p className="text-sm text-slate-500 mt-1">{formatDate(txn.createdAt)}</p>
-                                                            </>
-                                                        )}
-                                                    </div>
+        return (
+            <div className="min-h-screen bg-canvas px-3 pb-28 pt-3 md:px-6 md:pb-8 md:pt-5">
+                {modals}
+                {billPanel}
 
-                                                    {/* CENTER SETTLED BADGE */}
-                                                    <div className="flex-shrink-0 px-2 sm:px-4 flex items-center justify-center">
-                                                        {txn.isOpeningBalance && (txn as any).balanceType === 'advance' ? (
-                                                            // ✅ NEW: Advance OBs aren't "settled" — you're holding their money, not collecting from them
-                                                            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded uppercase tracking-widest">
-                                                                Advance Held
-                                                            </span>
-                                                        ) : txn.dueAmount <= 0 ? (
-                                                            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded uppercase tracking-widest">
-                                                                Settled
-                                                            </span>
-                                                        ) : (
-                                                            <span className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded uppercase tracking-widest">
-                                                                Due
-                                                            </span>
-                                                        )}
-                                                    </div>
-
-                                                    {/* RIGHT ALIGNED AMOUNTS & CHEVRON */}
-                                                    <div className="flex items-center justify-end space-x-3 flex-1">
-                                                        <div className="text-right">
-                                                            {txn.dueAmount > 0 ? (
-                                                                <>
-                                                                    <p className="text-lg font-bold text-red-600">{txn.dueAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })}</p>
-                                                                    <p className="text-xs text-slate-400">Total: {txn.totalAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })}</p>
-                                                                </>
-                                                            ) : (
-                                                                <p className="text-lg font-bold text-slate-800">{txn.totalAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })}</p>
-                                                            )}
-                                                        </div>
-                                                        {IconChevronDown ? (
-                                                            <IconChevronDown className={`w-5 h-5 text-slate-400 transition-transform duration-200 flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
-                                                        ) : (
-                                                            <div className={`transition-transform duration-200 text-slate-400 flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`}>▼</div>
-                                                        )}
-                                                    </div>
-                                                </div>
-
-                                                {isExpanded && (
-                                                    <div className="mt-3">
-                                                        {/* Show note for Opening Balance */}
-                                                        {txn.isOpeningBalance && (txn as any).note && (
-                                                            <p className="text-xs text-slate-500 italic mb-2 px-1">
-                                                                Note: {(txn as any).note}
-                                                            </p>
-                                                        )}
-                                                        {/* NEW: Item-level breakdown — same style as Transactions page card */}
-                                                        {!txn.isOpeningBalance && (txn as any).items && (txn as any).items.length > 0 && (
-                                                            <>
-                                                                <div className="relative py-2">
-                                                                    <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                                                                        <div className="w-full border-t border-slate-200"></div>
-                                                                    </div>
-                                                                    <div className="relative flex justify-center">
-                                                                        <span className="bg-white px-2 text-xs font-bold text-slate-400 uppercase tracking-widest">Items</span>
-                                                                    </div>
-                                                                </div>
-                                                                <div className="space-y-2 text-sm">
-                                                                    {(txn as any).items.map((item: any, idx: number) => {
-                                                                        const netUnitPrice = item.taxableAmount && item.quantity > 0
-                                                                            ? item.taxableAmount / item.quantity
-                                                                            : item.effectiveUnitPrice
-                                                                                ? item.effectiveUnitPrice
-                                                                                : (item.quantity > 0 ? (item.finalPrice || 0) / item.quantity : 0);
-                                                                        const lineAmount = netUnitPrice * item.quantity;
-                                                                        return (
-                                                                            <div key={idx} className="flex justify-between items-center text-slate-700">
-                                                                                <div className="flex-1 pr-4">
-                                                                                    <p className="font-medium">{item.name}</p>
-                                                                                    <p className="text-xs text-slate-400 flex items-center gap-1">
-                                                                                        <span>MRP: {(item.mrp || 0).toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}</span>
-                                                                                        <span className="text-slate-400">|</span>
-                                                                                        <span className="font-medium">Net: {netUnitPrice.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}</span>
-                                                                                    </p>
-                                                                                </div>
-                                                                                <div className="text-right">
-                                                                                    <p className="font-semibold">{lineAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}</p>
-                                                                                    <p className="text-xs text-slate-400">Qty: {item.quantity}</p>
-                                                                                </div>
-                                                                            </div>
-                                                                        );
-                                                                    })}
-                                                                </div>
-                                                            </>
-                                                        )}
-
-                                                        {/* NEW: Paid via breakdown — same style as Transactions page card */}
-                                                        {!txn.isOpeningBalance && (txn as any).paymentMethods &&
-                                                            Object.entries((txn as any).paymentMethods).some(([k, v]) => k !== 'due' && Number(v) > 0) && (
-                                                                <div className="flex justify-end flex-wrap gap-x-2 gap-y-1 mt-2 pt-2 border-t border-slate-200 text-xs text-slate-500">
-                                                                    <span>Paid via:</span>
-                                                                    {Object.entries((txn as any).paymentMethods)
-                                                                        .filter(([key, val]) => key !== 'due' && Number(val) > 0)
-                                                                        .map(([key, val]) => (
-                                                                            <span key={key} className="font-medium text-slate-700 whitespace-nowrap">
-                                                                                {key === 'upi' ? 'UPI' : key.charAt(0).toUpperCase() + key.slice(1)}: {Number(val).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
-                                                                            </span>
-                                                                        ))}
-                                                                </div>
-                                                            )}
-                                                        <div className="relative py-2">
-                                                            <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                                                                <div className="w-full border-t border-slate-200"></div>
-                                                            </div>
-                                                            <div className="relative flex justify-center">
-                                                                <span className="bg-white px-2 text-xs font-bold text-slate-400 uppercase tracking-widest">Payment History</span>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="space-y-1 mt-2">
-                                                            {txn.paymentHistory && txn.paymentHistory.length > 0 ? (
-                                                                txn.paymentHistory.map((payment: PaymentRecord, index: number) => (
-                                                                    <div key={index} className="flex justify-between items-center text-slate-700 py-2 border-b border-slate-50 last:border-0">
-                                                                        <div className="flex items-center gap-4">
-                                                                            <div className="flex flex-col">
-                                                                                <span className="font-medium text-sm text-slate-600">
-                                                                                    {new Date(payment.date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' })}
-                                                                                </span>
-                                                                                <span className="text-[10px] text-slate-400">
-                                                                                    {new Date(payment.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
-                                                                                </span>
-                                                                            </div>
-
-                                                                            <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border bg-blue-50 text-blue-600 border-blue-200">
-                                                                                {payment.method === 'upi' ? 'UPI' : payment.method.replace(/_/g, ' ')}
-                                                                            </span>
-                                                                        </div>
-                                                                        <div className="text-right">
-                                                                            <span className="font-semibold text-emerald-600 text-sm">
-                                                                                + {payment.amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })}
-                                                                            </span>
-                                                                        </div>
-                                                                    </div>
-                                                                ))
-                                                            ) : (
-                                                                <p className="text-xs text-slate-400 text-center py-3">No payment records found.</p>
-                                                            )}
-                                                        </div>
-                                                        {/* ✅ FIXED: Settle button with corrected invoice object */}
-                                                        {txn.dueAmount > 0 && !(txn.isOpeningBalance && (txn as any).balanceType === 'advance') && (
-                                                            <div className="mt-3 pt-3 border-t border-slate-200">
-                                                                <button
-                                                                    onClick={async (e) => {
-                                                                        e.stopPropagation();
-
-                                                                        setSelectedInvoiceForPayment({
-                                                                            id: txn.id,
-                                                                            invoiceNumber: txn.invoiceNumber,
-                                                                            type: txn.type,
-                                                                            totalAmount: txn.totalAmount,
-                                                                            dueAmount: txn.dueAmount,
-                                                                            partyName: selectedPartyName,
-                                                                            partyNumber: txn.partyNumber,
-                                                                            createdAt: txn.createdAt,
-                                                                            isOpeningBalance: txn.isOpeningBalance === true,
-                                                                            balanceType: (txn as any).balanceType || 'due',
-                                                                        });
-
-                                                                        // ✅ Fetch creditBalance from customers collection
-                                                                        const partyNum = (txn.partyNumber || '').replace(/\D/g, '').slice(-10);
-                                                                        if (partyNum && companyId) {
-                                                                            try {
-                                                                                const { doc, getDoc } = await import('firebase/firestore');
-                                                                                const { db } = await import('../../lib/Firebase');
-                                                                                // Purchase (Supplier) → debitBalance, Sales (Customer) → creditBalance
-                                                                                const isSupplier = txn.type === 'purchase';
-                                                                                const collectionName = isSupplier ? 'suppliers' : 'customers';
-                                                                                const balanceField = isSupplier ? 'debitBalance' : 'creditBalance';
-
-                                                                                const partyRef = doc(db, 'companies', companyId, collectionName, partyNum);
-                                                                                const snap = await getDoc(partyRef);
-                                                                                setAvailableCredit(snap.exists() ? Number(snap.data()[balanceField] || 0) : 0);
-                                                                            } catch {
-                                                                                setAvailableCredit(0);
-                                                                            }
-                                                                        } else {
-                                                                            setAvailableCredit(0);
-                                                                        }
-
-                                                                        setIsPaymentModalOpen(true);
-                                                                    }}
-                                                                    className="w-full px-4 py-2 text-sm font-semibold text-white bg-blue-500 rounded-sm hover:bg-blue-600 transition-colors"
-                                                                >
-                                                                    Settle Payment
-                                                                </button>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </CustomCard>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
+                {/* HEADER */}
+                <header className="mb-4 flex items-center gap-2 md:gap-3">
+                    <button onClick={() => { setSelectedPartyName(null); setExpandedBillId(null); }} aria-label="Back to party list" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-slate-700 transition hover:bg-slate-200 md:border md:border-slate-300 md:bg-white">
+                        <ChevronLeft size={20} />
+                    </button>
+                    <span className="hidden md:block">{avatar(party.partyName)}</span>
+                    <div className="min-w-0 flex-1">
+                        <p className="hidden text-xs text-slate-500 md:block">Party ledger /</p>
+                        <div className="flex min-w-0 items-center gap-2">
+                            <h1 className="truncate text-lg font-bold text-slate-900 md:text-xl">{hasRealName(party) ? party.partyName : 'No name'}</h1>
+                            <span className="hidden md:inline">{typeBadge(party.partyType)}</span>
+                        </div>
+                        <p className="truncate text-xs text-slate-500 md:hidden">
+                            {party.partyType}{party.partyNumber && party.partyNumber !== 'N/A' ? ` · ${formatPhone(party.partyNumber)}` : ''}
+                        </p>
+                    </div>
+                    <div className="hidden items-center gap-2 md:flex">
+                        <button onClick={downloadStatementPdf} className="inline-flex items-center gap-1.5 rounded-sm border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-400">
+                            <ArrowDownToLine size={15} /> Statement PDF
+                        </button>
+                        {showRemind && (
+                            <button onClick={() => sendReminderFor(party, whatsappProvider)} disabled={sendingReminderFor === party.partyNumber} className="inline-flex items-center gap-1.5 rounded-sm border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-400 disabled:opacity-50">
+                                <MessageCircle size={15} className="text-green-600" /> {sendingReminderFor === party.partyNumber ? 'Sending…' : 'Remind on WhatsApp'}
+                            </button>
+                        )}
+                        {hasDue && (
+                            <button onClick={() => openSettleAll(party)} className="inline-flex items-center gap-1.5 rounded-sm bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">
+                                <Check size={15} /> Settle payment
+                            </button>
                         )}
                     </div>
-                </div>
+                    <button onClick={downloadStatementPdf} aria-label="Statement PDF" className="rounded-sm p-2 text-slate-700 hover:bg-slate-200 md:hidden">
+                        <ArrowDownToLine size={20} />
+                    </button>
+                    {rowMenu(party, 'detail')}
+                </header>
 
-                {/* RIGHT: white sidebar panel — Bulk Import (desktop only, master list only) */}
-                {!selectedPartyName && (
-                    <div className="hidden md:flex w-[35%] flex-col bg-white border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
-                        <div className="p-6 sticky top-4 self-start w-full">
-                            <div className="bg-blue-50 rounded-sm p-5 border border-blue-100">
-                                <h2 className="text-lg font-bold text-blue-800 mb-2">Bulk Import</h2>
-                                <p className="text-sm text-blue-600 mb-4">
-                                    Upload Excel/CSV. Old dues/advances are added as opening balances.
-                                </p>
-                                <div className="flex flex-col gap-3">
-                                    <button
-                                        onClick={() => bulkFileInputRef.current?.click()}
-                                        disabled={isBulkUploading}
-                                        className="w-full bg-white text-blue-600 border border-blue-200 hover:bg-blue-50 py-3 px-4 rounded-sm font-semibold disabled:bg-gray-100 flex items-center justify-center gap-2 transition-colors"
-                                    >
-                                        {isBulkUploading ? <Spinner /> : 'Upload Excel File'}
+                <div className={`grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] ${dimClass}`}>
+                    <div className="min-w-0 space-y-4">
+                        {/* MOBILE: balance first */}
+                        <div className="rounded-sm border border-line bg-white p-4 shadow-card md:hidden">
+                            <p className="text-xs text-slate-600">{words.label}</p>
+                            <p className={`mt-1 text-3xl font-bold ${words.cls}`}>{words.value}</p>
+                            {progressBilled > 0 && (
+                                <>
+                                    <div className="mt-3 h-1.5 overflow-hidden rounded-sm bg-slate-100">
+                                        <div className="h-full rounded-sm bg-green-600" style={{ width: `${progressPct}%` }} />
+                                    </div>
+                                    <div className="mt-1.5 flex justify-between text-xs text-slate-500">
+                                        <span>Paid {inr(progressPaid)} of {inr(progressBilled)}</span>
+                                        {statement.oldestDue > 0 && <span>since {formatDayMonth(statement.oldestDue)}</span>}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                        {(showRemind || hasDue) && (
+                            <div className="grid grid-cols-2 gap-2.5 md:hidden">
+                                {showRemind ? (
+                                    <button onClick={() => sendReminderFor(party, whatsappProvider)} disabled={sendingReminderFor === party.partyNumber} className="flex items-center justify-center gap-2 rounded-sm border border-slate-300 bg-white py-3 text-sm font-semibold text-slate-700 disabled:opacity-50">
+                                        <MessageCircle size={16} className="text-green-600" /> Remind
                                     </button>
-                                    <button
-                                        type="button"
-                                        onClick={handleDownloadBulkSample}
-                                        disabled={isBulkUploading}
-                                        className="text-sm text-blue-500 hover:text-blue-700 underline text-center"
-                                    >
-                                        Download Sample Template
+                                ) : <span />}
+                                {hasDue && (
+                                    <button onClick={() => openSettleAll(party)} className="flex items-center justify-center gap-2 rounded-sm bg-blue-600 py-3 text-sm font-semibold text-white">
+                                        <Check size={16} /> Settle
+                                    </button>
+                                )}
+                            </div>
+                        )}
+
+                        {/* DESKTOP: KPIs + progress */}
+                        <div className="hidden grid-cols-4 gap-4 md:grid">
+                            {kpis.map(({ label, value, hint, icon: Icon, iconClass, valueClass }) => (
+                                <div key={label} className="min-w-0 rounded-sm border border-line bg-white p-4 shadow-card">
+                                    <div className="flex items-center gap-2">
+                                        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-sm ${iconClass}`}><Icon size={14} /></span>
+                                        <span className="truncate text-sm font-medium text-slate-700">{label}</span>
+                                    </div>
+                                    <p className={`mt-2 truncate text-2xl font-bold ${valueClass}`}>{value}</p>
+                                    <p title={hint} className="mt-0.5 truncate text-xs text-slate-500">{hint}</p>
+                                </div>
+                            ))}
+                        </div>
+                        {progressBilled > 0 && (
+                            <div className="hidden rounded-sm border border-line bg-white p-4 shadow-card md:block">
+                                <div className="flex items-center justify-between text-sm">
+                                    <span className="text-slate-600">Paid <strong className="text-slate-900">{inr(progressPaid)}</strong> of {inr(progressBilled)}</span>
+                                    {progressPaid < progressBilled && (
+                                        <span className={side === 'receive' ? 'font-semibold text-amber-700' : 'font-semibold text-slate-700'}>
+                                            {inr(progressBilled - progressPaid)} left · {Math.round(progressPct)}%
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="mt-2 h-2 overflow-hidden rounded-sm bg-slate-100">
+                                    <div className="h-full rounded-sm bg-green-600" style={{ width: `${progressPct}%` }} />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* STATEMENT */}
+                        <section className="rounded-sm border border-line bg-white shadow-card">
+                            <div className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-3">
+                                <h2 className="text-sm font-semibold text-slate-900">Statement</h2>
+                                <span className="hidden text-xs text-slate-500 md:inline">{rangeLabel} · running balance</span>
+                                <div className="ml-auto flex gap-2">
+                                    <button onClick={() => openAddOpeningBalance(party)} className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-400">
+                                        <Plus size={13} /> Opening balance
+                                    </button>
+                                    <button onClick={() => addBill(party)} className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-400">
+                                        <Plus size={13} /> Add bill
                                     </button>
                                 </div>
                             </div>
 
-                            {/* NEW: Danger zone — delete all parties (desktop sidebar) */}
-                            <div className="bg-red-50 rounded-sm p-5 border border-red-100 mt-4">
-                                <h2 className="text-sm font-bold text-red-700 mb-1">Danger Zone</h2>
-                                <p className="text-xs text-red-600 mb-3">
-                                    Permanently delete every party, invoice, and opening balance.
+                            {statement.rows.length === 0 && (
+                                <p className="px-6 py-10 text-center text-sm text-slate-500">No entries in this period. Pick a longer period from the party list, or add an opening balance.</p>
+                            )}
+
+                            {/* Desktop table */}
+                            {statement.rows.length > 0 && (
+                                <div className="hidden overflow-x-auto md:block">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-sunken text-[11px] uppercase tracking-wide text-blue-700/80">
+                                            <tr>
+                                                <th className="px-4 py-3 text-left font-semibold">Date</th>
+                                                <th className="px-4 py-3 text-left font-semibold">Entry</th>
+                                                <th className="px-4 py-3 text-left font-semibold">Mode</th>
+                                                <th className="px-4 py-3 text-right font-semibold">Billed</th>
+                                                <th className="px-4 py-3 text-right font-semibold">Paid</th>
+                                                <th className="px-4 py-3 text-right font-semibold">Balance</th>
+                                                <th className="w-24" />
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {statement.rows.map((r) => {
+                                                const t = r.txn;
+                                                const canSettle = !r.isPayment && t.dueAmount > 0 && !isAdvance(t);
+                                                return (
+                                                    <React.Fragment key={r.key}>
+                                                        <tr onClick={() => setExpandedBillId(t.id)} className={`cursor-pointer border-t border-line ${expandedBillId === t.id ? 'bg-blue-50' : 'hover:bg-sunken'}`}>
+                                                            <td className="whitespace-nowrap px-4 py-3 text-slate-600">
+                                                                {formatFullDate(r.date)}
+                                                                {r.isPayment && <span className="block text-xs text-slate-400">{new Date(r.date).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}</span>}
+                                                            </td>
+                                                            <td className="px-4 py-3">
+                                                                <span className={`font-medium ${r.isPayment ? 'text-slate-700' : 'text-slate-900'}`}>{r.title}</span>
+                                                                {t.isOpeningBalance && !r.isPayment && (
+                                                                    <span className="ml-2 rounded-sm bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-700">{isAdvance(t) ? 'Advance' : 'Opening'}</span>
+                                                                )}
+                                                                {r.sub && <span className="block text-xs text-slate-500">{r.sub}</span>}
+                                                            </td>
+                                                            <td className="px-4 py-3">
+                                                                {r.mode ? <span className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">{r.mode}</span> : <span className="text-slate-400">—</span>}
+                                                            </td>
+                                                            <td className="whitespace-nowrap px-4 py-3 text-right text-slate-700">
+                                                                {r.isPayment ? <span className="text-slate-400">—</span> : `${r.effect < 0 ? '− ' : ''}${inr(r.effect)}`}
+                                                            </td>
+                                                            <td className={`whitespace-nowrap px-4 py-3 text-right ${r.effect < 0 ? 'text-green-700' : 'text-slate-700'}`}>
+                                                                {r.isPayment ? `${r.effect < 0 ? '+ ' : '− '}${inr(r.effect)}` : <span className="text-slate-400">—</span>}
+                                                            </td>
+                                                            <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-slate-900">
+                                                                {inr(r.balance)}
+                                                                {r.balance !== 0 && <span className="block text-[11px] font-normal text-slate-500">{r.balance > 0 ? 'they owe' : 'you owe'}</span>}
+                                                            </td>
+                                                            <td className="px-3 py-3 text-right">
+                                                                {canSettle && (
+                                                                    <button onClick={(e) => { e.stopPropagation(); openSettleForTxn(party, t); }} className="rounded-sm px-2.5 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-50">
+                                                                        Settle
+                                                                    </button>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    </React.Fragment>
+                                                );
+                                            })}
+                                        </tbody>
+                                        <tfoot className="border-t border-line bg-sunken text-sm font-semibold text-slate-900">
+                                            <tr>
+                                                <td colSpan={3} className="px-4 py-3">Closing balance · {statement.closing > 0 ? 'they owe you' : statement.closing < 0 ? 'you owe' : 'settled'}</td>
+                                                <td className="px-4 py-3 text-right">{inr(statement.receivableBilled)}{statement.payableBilled > 0 && <span className="block text-xs font-normal text-slate-500">− {inr(statement.payableBilled)}</span>}</td>
+                                                <td className="px-4 py-3 text-right">{inr(statement.received)}{statement.paidOut > 0 && <span className="block text-xs font-normal text-slate-500">− {inr(statement.paidOut)}</span>}</td>
+                                                <td className={`px-4 py-3 text-right ${statement.closing > 0 ? 'text-amber-700' : statement.closing === 0 ? 'text-green-700' : ''}`}>{statement.closing === 0 ? 'Settled ✓' : inr(statement.closing)}</td>
+                                                <td />
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            )}
+
+                            {/* Mobile rows */}
+                            {statement.rows.length > 0 && (
+                                <ul className="md:hidden">
+                                    {statement.rows.map((r, idx) => {
+                                        const t = r.txn;
+                                        const canSettle = !r.isPayment && t.dueAmount > 0 && !isAdvance(t);
+                                        return (
+                                            <li key={r.key} onClick={() => setExpandedBillId(t.id)} className={`flex cursor-pointer items-center gap-3 px-4 py-3 active:bg-sunken ${idx > 0 ? 'border-t border-line' : ''}`}>
+                                                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-sm ${r.isPayment ? 'bg-green-50 text-green-600' : t.isOpeningBalance ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600'}`}>
+                                                    {r.isPayment ? <Wallet size={16} /> : <FileText size={16} />}
+                                                </span>
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="truncate text-sm font-medium text-slate-900">{r.title}</p>
+                                                    <p className="truncate text-xs text-slate-500">
+                                                        {formatDayMonth(r.date)}{r.isPayment ? ` · ${new Date(r.date).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}` : ''}{r.mode ? ` · ${r.mode}` : ''}{!r.isPayment && r.sub ? ` · ${r.sub}` : ''}
+                                                    </p>
+                                                    {canSettle && (
+                                                        <button onClick={(e) => { e.stopPropagation(); openSettleForTxn(party, t); }} className="mt-1 text-xs font-semibold text-blue-600">Settle this</button>
+                                                    )}
+                                                </div>
+                                                <div className="shrink-0 text-right">
+                                                    <p className={`text-sm font-semibold ${r.isPayment && r.effect < 0 ? 'text-green-700' : 'text-slate-900'}`}>
+                                                        {r.isPayment ? `${r.effect < 0 ? '+ ' : '− '}${inr(r.effect)}` : `${r.effect < 0 ? '− ' : ''}${inr(r.effect)}`}
+                                                    </p>
+                                                    <p className="text-[11px] text-slate-500">bal {inr(r.balance)}</p>
+                                                </div>
+                                            </li>
+                                        );
+                                    })}
+                                    <li className="flex items-center justify-between rounded-b-sm border-t border-line bg-sunken px-4 py-3 text-sm font-semibold">
+                                        <span className="text-slate-900">Closing balance</span>
+                                        <span className={statement.closing > 0 ? 'text-amber-700' : statement.closing === 0 ? 'text-green-700' : 'text-slate-900'}>
+                                            {statement.closing === 0 ? 'Settled ✓' : `${inr(statement.closing)} ${statement.closing > 0 ? 'due' : 'you owe'}`}
+                                        </span>
+                                    </li>
+                                </ul>
+                            )}
+                        </section>
+                    </div>
+
+                    {/* RIGHT: party details */}
+                    <aside className="space-y-4">
+                        <div className="rounded-sm border border-line bg-white p-4 shadow-card">
+                            <h3 className="text-sm font-semibold text-slate-900">Party details</h3>
+                            <dl className="mt-3 grid grid-cols-[6.5rem_1fr] gap-y-2 text-sm">
+                                <dt className="text-slate-500">Phone</dt>
+                                <dd className="text-slate-900">{party.partyNumber && party.partyNumber !== 'N/A' ? formatPhone(party.partyNumber) : '—'}</dd>
+                                <dt className="text-slate-500">Type</dt>
+                                <dd className="text-slate-900">{party.partyType}</dd>
+                                <dt className="text-slate-500">GSTIN</dt>
+                                <dd className="text-slate-900">
+                                    {party.gstNumber || (hasPhone(party)
+                                        ? <button onClick={() => openEditParty(party, 'gstNumber')} className="font-medium text-blue-600 hover:underline">Add</button>
+                                        : <span className="text-slate-400">Not added</span>)}
+                                </dd>
+                                <dt className="text-slate-500">Address</dt>
+                                <dd className="text-slate-900">
+                                    {party.address || (hasPhone(party)
+                                        ? <button onClick={() => openEditParty(party, 'address')} className="font-medium text-blue-600 hover:underline">Add</button>
+                                        : <span className="text-slate-400">Not added</span>)}
+                                </dd>
+                                {statement.firstEntry > 0 && (
+                                    <>
+                                        <dt className="text-slate-500">First entry</dt>
+                                        <dd className="text-slate-900">{formatFullDate(statement.firstEntry)}</dd>
+                                    </>
+                                )}
+                            </dl>
+                        </div>
+
+                        {showRemind && (
+                            <div className="hidden rounded-sm border border-line bg-white p-4 shadow-card md:block">
+                                <h3 className="text-sm font-semibold text-slate-900">Reminder</h3>
+                                <p className="mt-1 text-xs text-slate-500">The WhatsApp message lists each unpaid bill and the total.</p>
+                                <p className="mt-3 rounded-sm bg-blue-50 px-3 py-2.5 text-xs text-blue-900">
+                                    "Dear {party.partyName}, this is a gentle reminder that a total amount of {inr(statement.receivable)} is due…"
                                 </p>
-                                <button
-                                    onClick={() => setIsDeleteAllModalOpen(true)}
-                                    className="w-full bg-white text-red-600 border border-red-200 hover:bg-red-100 py-2 px-4 rounded-sm text-sm font-semibold transition-colors"
-                                >
-                                    Delete All Parties
+                            </div>
+                        )}
+
+                        {supplierOwesYou && (
+                            <div className="flex gap-2 rounded-sm border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                                <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-600" />
+                                <p>{party.partyName} is a <strong>supplier</strong> but owes you money — check the opening balance direction if this looks wrong.</p>
+                            </div>
+                        )}
+                    </aside>
+                </div>
+            </div>
+        );
+    }
+
+    /* =====================================================================
+       VIEW 1 — PARTY LIST
+       ===================================================================== */
+    const kpis = [
+        { label: 'To collect', value: inr(totals.toCollect), hint: totals.collectCount ? `${totals.collectCount} ${totals.collectCount === 1 ? 'party owes' : 'parties owe'} you` : 'nobody owes you', icon: Wallet, iconClass: 'bg-amber-50 text-amber-600', valueClass: totals.toCollect > 0 ? 'text-amber-700' : 'text-slate-900' },
+        { label: 'To pay', value: inr(totals.toPay), hint: totals.payCount ? `you owe ${totals.payCount} ${totals.payCount === 1 ? 'party' : 'parties'}` : 'you owe nobody', icon: ArrowDownToLine, iconClass: 'bg-red-50 text-red-600', valueClass: 'text-slate-900' },
+        { label: 'Parties', value: parties.length.toLocaleString('en-IN'), hint: `${totals.customers} customers · ${totals.suppliers} suppliers · ${totals.both} both`, icon: Users, iconClass: 'bg-pink-50 text-pink-600', valueClass: 'text-slate-900' },
+        { label: 'Settled', value: totals.settled.toLocaleString('en-IN'), hint: 'no balance', icon: Check, iconClass: 'bg-green-50 text-green-600', valueClass: 'text-slate-900' },
+    ];
+
+    const typeSegments: { value: typeof partyTypeFilter; label: string; count: number }[] = [
+        { value: 'all', label: 'All', count: parties.length },
+        { value: 'Customer', label: 'Customers', count: totals.customers },
+        { value: 'Supplier', label: 'Suppliers', count: totals.suppliers },
+        { value: 'Both', label: 'Both', count: totals.both },
+    ];
+    const statusSegments: { value: typeof statusFilter; label: string; count?: number }[] = [
+        { value: 'all', label: 'Any balance' },
+        { value: 'due', label: 'Due', count: totals.due },
+        { value: 'settled', label: 'Settled', count: totals.settled },
+    ];
+
+    const partyActions = (p: (typeof filteredParties)[number], compact: boolean) => {
+        const { party } = p;
+        const key = `${compact ? 'm' : 'd'}-${partyKey(party)}-${party.partyType}`;
+        const hasDue = p.receivable > 0 || p.payable > 0;
+        const showRemind = canRemind(party);
+        const btn = compact ? 'py-2 text-xs' : 'px-3 py-1.5 text-xs';
+        return (
+            <div className={compact ? 'grid grid-cols-[1fr_1fr_auto] gap-2' : 'flex items-center justify-end gap-1.5'}>
+                {showRemind ? (
+                    <button onClick={(e) => { e.stopPropagation(); sendReminderFor(party, whatsappProvider); }} disabled={sendingReminderFor === party.partyNumber} className={`inline-flex items-center justify-center gap-1.5 rounded-sm bg-blue-600 font-semibold text-white hover:bg-blue-700 disabled:opacity-50 ${btn}`}>
+                        <MessageCircle size={13} /> {sendingReminderFor === party.partyNumber ? 'Sending…' : 'Remind'}
+                    </button>
+                ) : compact && hasDue ? <span /> : null}
+                {hasDue ? (
+                    <button onClick={(e) => { e.stopPropagation(); openSettleAll(party); }} className={`rounded-sm border border-slate-300 bg-white font-medium text-slate-700 hover:border-slate-400 ${btn}`}>
+                        Settle
+                    </button>
+                ) : (
+                    <button onClick={(e) => { e.stopPropagation(); openParty(party); }} className={`rounded-sm border border-slate-300 bg-white font-medium text-slate-700 hover:border-slate-400 ${btn} ${compact ? 'col-span-2' : ''}`}>
+                        Statement
+                    </button>
+                )}
+                {rowMenu(party, key)}
+            </div>
+        );
+    };
+
+    return (
+        <div className="min-h-screen bg-canvas px-3 pb-28 pt-3 md:px-6 md:pb-8 md:pt-5">
+            {modals}
+
+            {/* HEADER */}
+            <header className="mb-4 flex items-center gap-2 md:gap-3">
+                <button onClick={() => navigate(-1)} aria-label="Back" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-slate-700 transition hover:bg-slate-200 md:border md:border-slate-300 md:bg-white">
+                    <ChevronLeft size={20} />
+                </button>
+                <div className="min-w-0 flex-1">
+                    <p className="hidden text-xs text-slate-500 md:block">Reports /</p>
+                    <div className="flex items-baseline gap-3">
+                        <h1 className="text-lg font-bold text-slate-900 md:text-xl">Party ledger</h1>
+                        <span className="hidden text-xs text-slate-500 md:inline">Every customer's and supplier's balance</span>
+                    </div>
+                    <p className="text-xs text-slate-500 md:hidden">{parties.length} {parties.length === 1 ? 'party' : 'parties'} · {rangeLabel}</p>
+                </div>
+                <button onClick={openAddParty} className="hidden shrink-0 items-center gap-1.5 rounded-sm bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 md:inline-flex">
+                    <UserPlus size={15} /> Add party
+                </button>
+
+                {/* Mobile: import + more */}
+                <button onClick={() => bulkFileInputRef.current?.click()} disabled={isBulkUploading} aria-label="Import old balances from Excel" className="rounded-sm p-2 text-slate-700 hover:bg-slate-200 md:hidden">
+                    <Upload size={20} />
+                </button>
+                <div className="relative md:hidden">
+                    <button onClick={() => setPageMenuOpen((o) => !o)} aria-label="More actions" className="rounded-sm p-2 text-slate-700 hover:bg-slate-200">
+                        <MoreHorizontal size={20} />
+                    </button>
+                    {pageMenuOpen && (
+                        <>
+                            <div className="fixed inset-0 z-20" onClick={() => setPageMenuOpen(false)} />
+                            <div className="absolute right-0 top-full z-30 mt-1 w-56 rounded-sm border border-line bg-white p-1 shadow-float">
+                                <button onClick={() => { setPageMenuOpen(false); handleDownloadBulkSample(); }} className="flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-sm text-slate-700 hover:bg-sunken">
+                                    <FileSpreadsheet size={14} /> Import template
+                                </button>
+                                {canBulkRemind && remindableParties.length > 0 && (
+                                    <button onClick={() => { setPageMenuOpen(false); remindAll(); }} className="flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-sm text-slate-700 hover:bg-sunken">
+                                        <MessageCircle size={14} /> Remind all due ({remindableParties.length})
+                                    </button>
+                                )}
+                                <button onClick={() => { setPageMenuOpen(false); setIsDeleteAllModalOpen(true); }} className="flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-sm text-red-600 hover:bg-red-50">
+                                    <Trash2 size={14} /> Delete all parties…
                                 </button>
                             </div>
+                        </>
+                    )}
+                </div>
+            </header>
+
+            <div className={`grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] ${dimClass}`}>
+                <div className="min-w-0 space-y-4">
+                    {/* KPIs */}
+                    <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4 md:gap-4">
+                        {kpis.map(({ label, value, hint, icon: Icon, iconClass, valueClass }) => (
+                            <div key={label} className="min-w-0 rounded-sm border border-line bg-white p-3 shadow-card md:p-4">
+                                <div className="flex items-center gap-2">
+                                    <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-sm md:h-7 md:w-7 ${iconClass}`}><Icon size={14} /></span>
+                                    <span className="truncate text-xs font-medium text-slate-700 md:text-sm">{label}</span>
+                                </div>
+                                <p className={`mt-2 truncate text-xl font-bold md:text-2xl ${valueClass}`}>{value}</p>
+                                <p title={hint} className="mt-0.5 truncate text-[11px] text-slate-500 md:text-xs">{hint}</p>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* FILTERS */}
+                    <div className="relative space-y-3 md:rounded-sm md:border md:border-line md:bg-white md:p-4 md:shadow-card">
+                        <div className="flex items-center gap-2">
+                            <div className="relative flex-1">
+                                <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search party by name or number" className="w-full rounded-sm border border-slate-300 bg-white py-2 pl-9 pr-8 text-sm outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                                {searchQuery && (
+                                    <button onClick={() => setSearchQuery('')} aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-0.5 text-slate-400 hover:text-slate-600"><X size={14} /></button>
+                                )}
+                            </div>
+                            <div className="relative shrink-0">
+                                <CalendarDays size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                                <select
+                                    value={datePreset}
+                                    onChange={(e) => (e.target.value === 'custom' ? setIsRangeOpen(true) : handleDatePresetChange(e.target.value))}
+                                    className="appearance-none rounded-sm border border-slate-300 bg-white py-2 pl-8 pr-8 text-sm text-slate-700 outline-none hover:border-slate-400 focus:border-blue-500"
+                                    aria-label="Period"
+                                >
+                                    {DATE_PRESETS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                                    <option value="custom">{datePreset === 'custom' ? rangeLabel : 'Custom…'}</option>
+                                </select>
+                                <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                            </div>
+                        </div>
+                        {isRangeOpen && (
+                            <div className="absolute right-0 top-14 z-30 w-full md:right-4 md:w-80">
+                                <CustomRangePanel initialStart={customStartDate} initialEnd={customEndDate} onApply={handleApplyCustomRange} onCancel={() => setIsRangeOpen(false)} />
+                            </div>
+                        )}
+                        {/* Desktop segments */}
+                        <div className="hidden flex-wrap gap-3 md:flex">
+                            <div className="flex gap-1 rounded-sm bg-sunken p-1">
+                                {typeSegments.map((s) => (
+                                    <button key={s.value} onClick={() => setPartyTypeFilter(s.value)} className={segClass(partyTypeFilter === s.value)}>{s.label} {s.count}</button>
+                                ))}
+                            </div>
+                            <div className="flex gap-1 rounded-sm bg-sunken p-1">
+                                {statusSegments.map((s) => (
+                                    <button key={s.value} onClick={() => setStatusFilter(s.value)} className={segClass(statusFilter === s.value)}>{s.label}{s.count !== undefined ? ` ${s.count}` : ''}</button>
+                                ))}
+                            </div>
+                        </div>
+                        {/* Mobile chips */}
+                        <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden">
+                            <button onClick={() => { setPartyTypeFilter('all'); setStatusFilter('all'); }} className={chipClass(partyTypeFilter === 'all' && statusFilter === 'all')}>All {parties.length}</button>
+                            <button onClick={() => setStatusFilter(statusFilter === 'due' ? 'all' : 'due')} className={chipClass(statusFilter === 'due')}>Due {totals.due}</button>
+                            <button onClick={() => setStatusFilter(statusFilter === 'settled' ? 'all' : 'settled')} className={chipClass(statusFilter === 'settled')}>Settled {totals.settled}</button>
+                            {(['Customer', 'Supplier', 'Both'] as const).map((t) => (
+                                <button key={t} onClick={() => setPartyTypeFilter(partyTypeFilter === t ? 'all' : t)} className={chipClass(partyTypeFilter === t)}>
+                                    {t === 'Both' ? 'Both' : `${t}s`}
+                                </button>
+                            ))}
                         </div>
                     </div>
-                )}
+
+                    {/* PARTY LIST */}
+                    <section className="rounded-sm border border-line bg-white shadow-card">
+                        <div className="flex items-center gap-3 border-b border-line px-4 py-3">
+                            <h2 className="text-sm font-semibold text-slate-900">Parties</h2>
+                            <span className="text-xs text-slate-500">Sorted by amount due</span>
+                            <button onClick={() => setIsListVisible((v) => !v)} className="ml-auto hidden rounded-sm px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 md:block">
+                                {isListVisible ? 'Hide list' : 'Show list'}
+                            </button>
+                        </div>
+                        {filteredParties.length === 0 && (
+                            <p className="px-6 py-10 text-center text-sm text-slate-500">
+                                {parties.length === 0 ? 'No parties in this period. Pick a longer period, add a party or import old balances.' : 'No parties match these filters.'}
+                            </p>
+                        )}
+                        {filteredParties.length > 0 && (
+                            <ul className={isListVisible ? '' : 'md:hidden'}>
+                                {filteredParties.map((p, idx) => {
+                                    const { party } = p;
+                                    const words = balanceWords(p.net);
+                                    const meta = [
+                                        party.partyNumber && party.partyNumber !== 'N/A' ? formatPhone(party.partyNumber) : '',
+                                        `${party.totalTransactions} ${party.totalTransactions === 1 ? 'bill' : 'bills'}`,
+                                        party.totalTransactions === 0 && party.transactions.some((t) => t.isOpeningBalance) ? 'opening balance' : '',
+                                        party.gstNumber ? `GSTIN ${party.gstNumber}` : '',
+                                    ].filter(Boolean).join(' · ');
+                                    return (
+                                        <li key={`${partyKey(party)}-${party.partyType}`} onClick={() => openParty(party)} className={`cursor-pointer px-4 py-3.5 transition hover:bg-sunken ${idx > 0 ? 'border-t border-line' : ''}`}>
+                                            <div className="flex items-center gap-3">
+                                                {avatar(party.partyName)}
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex min-w-0 items-center gap-2">
+                                                        <span className={`truncate text-sm font-semibold ${hasRealName(party) ? 'text-slate-900' : 'text-slate-500'}`}>
+                                                            {hasRealName(party) ? party.partyName : 'No name'}
+                                                        </span>
+                                                        {!hasRealName(party) && hasPhone(party) && (
+                                                            <button onClick={(e) => { e.stopPropagation(); openEditParty(party, 'name'); }} className="shrink-0 text-xs font-medium text-blue-600 hover:underline">
+                                                                Add name
+                                                            </button>
+                                                        )}
+                                                        {typeBadge(party.partyType)}
+                                                    </div>
+                                                    <p className="truncate text-xs text-slate-500">{meta}</p>
+                                                    <p className="hidden text-xs text-slate-500 md:block">
+                                                        Billed <strong className="font-semibold text-slate-700">{inr(party.totalBilled)}</strong>
+                                                        {p.lastEntry > 0 && <> · last entry {formatDayMonth(p.lastEntry)}</>}
+                                                    </p>
+                                                </div>
+                                                <div className="shrink-0 text-right">
+                                                    <p className="text-[11px] text-slate-500">{words.label}</p>
+                                                    <p className={`text-base font-semibold ${words.cls}`}>{words.value}</p>
+                                                </div>
+                                                <div className="hidden w-56 shrink-0 md:block">{partyActions(p, false)}</div>
+                                            </div>
+                                            {(p.receivable > 0 || p.payable > 0) && <div className="mt-3 md:hidden">{partyActions(p, true)}</div>}
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                        )}
+                    </section>
+                </div>
+
+                {/* RIGHT COLUMN (desktop) */}
+                <aside className="hidden space-y-4 lg:block">
+                    <div className="rounded-sm border border-line bg-white p-4 shadow-card">
+                        <div className="flex items-start gap-3">
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-blue-50 text-blue-600"><FileSpreadsheet size={16} /></span>
+                            <div>
+                                <h3 className="text-sm font-semibold text-slate-900">Bring in old balances</h3>
+                                <p className="mt-0.5 text-xs text-slate-500">Upload Excel — old dues and advances are added as opening balances.</p>
+                            </div>
+                        </div>
+                        <div className="mt-3 flex gap-2">
+                            <button onClick={() => bulkFileInputRef.current?.click()} disabled={isBulkUploading} className="inline-flex items-center gap-1.5 rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-400 disabled:opacity-50">
+                                {isBulkUploading ? <Spinner /> : <><Upload size={13} /> Upload Excel</>}
+                            </button>
+                            <button onClick={handleDownloadBulkSample} disabled={isBulkUploading} className="rounded-sm px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100">Template</button>
+                        </div>
+                    </div>
+
+                    <div className="rounded-sm border border-line bg-white p-4 shadow-card">
+                        <h3 className="text-sm font-semibold text-slate-900">Reminders</h3>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                            {canBulkRemind
+                                ? 'Send every party who owes you a WhatsApp message with their balance.'
+                                : 'Connect WhatsApp to remind everyone at once. Single reminders open WhatsApp with the message ready.'}
+                        </p>
+                        {canBulkRemind && (
+                            <button onClick={remindAll} disabled={remindableParties.length === 0 || isRemindingAll} className="mt-3 inline-flex items-center gap-1.5 rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-400 disabled:opacity-50">
+                                <MessageCircle size={13} className="text-green-600" /> Remind all due ({remindableParties.length})
+                            </button>
+                        )}
+                    </div>
+
+                    <div className="rounded-sm border border-red-100 bg-white p-4 shadow-card">
+                        <h3 className="text-sm font-semibold text-slate-900">Danger zone</h3>
+                        <p className="mt-0.5 text-xs text-slate-500">Permanently delete every party, invoice and opening balance. You'll be asked to type DELETE.</p>
+                        <button onClick={() => setIsDeleteAllModalOpen(true)} className="mt-3 rounded-sm px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50">Delete all parties…</button>
+                    </div>
+                </aside>
+            </div>
+
+            {/* Mobile: Add party pinned above the bottom navigation */}
+            <div className="sticky bottom-3 z-10 mt-4 md:hidden">
+                <button onClick={openAddParty} className="flex w-full items-center justify-center gap-2 rounded-sm bg-blue-600 py-3.5 text-sm font-semibold text-white shadow-float active:bg-blue-700">
+                    <UserPlus size={17} /> Add party
+                </button>
             </div>
         </div>
     );

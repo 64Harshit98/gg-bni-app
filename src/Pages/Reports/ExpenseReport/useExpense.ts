@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import {
-  collection, addDoc, deleteDoc, doc,
+  collection, addDoc, deleteDoc, doc, updateDoc,
   onSnapshot, query, orderBy, limit,
 } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
+import { clearExpenseRangeCache } from './expenseRangeCache';
 
 export interface Expense {
   id: string;
@@ -13,18 +14,49 @@ export interface Expense {
   date: number;
   createdAt: number;
   addedBy: string;
+  category?: string;
+  paidFrom?: string;
 }
 
-export function useExpenses(companyId: string | undefined, source: 'pos' | 'catalogue' = 'pos') {
+export type ExpenseSource = 'pos' | 'catalogue';
+export type ExpenseInput = Omit<Expense, 'id' | 'createdAt'>;
+
+const collectionFor = (source: ExpenseSource) =>
+  source === 'catalogue' ? 'catalogue_expenses' : 'expenses';
+
+// Writes without a listener — every write clears the report range cache.
+export const addExpenseDoc = async (companyId: string, source: ExpenseSource, data: ExpenseInput) => {
+  await addDoc(collection(db, 'companies', companyId, collectionFor(source)), {
+    ...data,
+    createdAt: Date.now(),
+  });
+  clearExpenseRangeCache(companyId, source);
+};
+
+export const updateExpenseDoc = async (
+  companyId: string,
+  source: ExpenseSource,
+  id: string,
+  data: Partial<ExpenseInput>,
+) => {
+  await updateDoc(doc(db, 'companies', companyId, collectionFor(source), id), data);
+  clearExpenseRangeCache(companyId, source);
+};
+
+export const deleteExpenseDoc = async (companyId: string, source: ExpenseSource, id: string) => {
+  await deleteDoc(doc(db, 'companies', companyId, collectionFor(source), id));
+  clearExpenseRangeCache(companyId, source);
+};
+
+export function useExpenses(companyId: string | undefined, source: ExpenseSource = 'pos') {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!companyId) return;
-    const collectionName = source === 'catalogue' ? 'catalogue_expenses' : 'expenses';
     const q = query(
-      collection(db, 'companies', companyId, collectionName),
+      collection(db, 'companies', companyId, collectionFor(source)),
       orderBy('date', 'desc'),
       limit(300),
     );
@@ -38,20 +70,11 @@ export function useExpenses(companyId: string | undefined, source: 'pos' | 'cata
     return unsub;
   }, [companyId, source]);
 
-  const addExpense = async (
-    companyId: string,
-    data: Omit<Expense, 'id' | 'createdAt'>,
-  ) => {
-    const collectionName = source === 'catalogue' ? 'catalogue_expenses' : 'expenses';
-    await addDoc(collection(db, 'companies', companyId, collectionName), {
-      ...data,
-      createdAt: Date.now(),
-    });
-  };
+  const addExpense = (companyId: string, data: ExpenseInput) =>
+    addExpenseDoc(companyId, source, data);
 
-  const deleteExpense = async (companyId: string, id: string) => {
-    const collectionName = source === 'catalogue' ? 'catalogue_expenses' : 'expenses';
-    await deleteDoc(doc(db, 'companies', companyId, collectionName, id));
-  };
+  const deleteExpense = (companyId: string, id: string) =>
+    deleteExpenseDoc(companyId, source, id);
+
   return { expenses, loading, error, addExpense, deleteExpense };
 }

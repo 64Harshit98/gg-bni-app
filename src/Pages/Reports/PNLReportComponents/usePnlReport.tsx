@@ -1,111 +1,85 @@
-import { useEffect, useState } from 'react';
-import { collection, query, onSnapshot, Timestamp } from 'firebase/firestore';
-import { db } from '../../../lib/Firebase';
-import {
-  type Transaction,
-  type TransactionDetail,
-} from './pnlReport.utils';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../../context/auth-context';
 import { formatDateForInput } from '../SalesReportComponents/salesReport.utils';
+import { loadSalesForRange } from '../SalesReportComponents/salesReportCache';
+import {
+  loadCatalogueExpensesForRange,
+  loadPosExpensesForRange,
+} from '../ExpenseReport/expenseRangeCache';
+import { useCachedRange } from '../useCachedRange';
+import type { PnlBill } from './pnlReport.utils';
 
-export const usePnlReport = (companyId: string | undefined) => {
-  const [sales, setSales] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!companyId) {
-      setLoading(false);
-      return;
-    }
-
-        const salesRef = collection(db, 'companies', companyId, 'sales');
-    const qSales = query(salesRef);
-
-    const unsubscribe = onSnapshot(qSales, (snapshot) => {
-      const processedSales: Transaction[] = snapshot.docs.map((doc) => {
-        const data = doc.data();
-
-        // Calculate directly from the bill's own item data
-        const costOfGoodsSold = (data.items || []).reduce(
-          (sum: number, billItem: any) => {
-            const unitCost = Number(billItem.purchasePrice) || 0;
-            return sum + (unitCost * (billItem.quantity || 0));
-          },
-          0
-        );
-
-        return {
-          id: doc.id,
-          totalAmount: data.totalAmount || 0,
-          createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(),
-          invoiceNumber: data.invoiceNumber || 'N/A',
-          partyName: data.partyName || 'Cash Sale',
-          costOfGoodsSold: costOfGoodsSold,
-          items: data.items || [],
-        };
-      });
-
-      setSales(processedSales);
-      setLoading(false);
-    }, (err) => {
-      console.error(err);
-      setError("Failed to load sales.");
-    });
-
-    return () => unsubscribe();
-  }, [companyId]);
-
-  return { sales, loading, error };
-};
-export function usePnlStates() {
-  const navigate = useNavigate();
+// P&L reads the same per-range sales cache as the sales report (bills carry
+// each item's purchasePrice), plus POS + catalogue expenses for the range.
+// It used to keep a live listener on the whole `sales` collection.
+export function usePnlReport() {
   const { currentUser, loading: authLoading } = useAuth();
+  const companyId = currentUser?.companyId;
+
   const [datePreset, setDatePreset] = useState<string>('last30');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
-  const [appliedFilters, setAppliedFilters] = useState({ start: '', end: '' });
-  const [isListVisible, setIsListVisible] = useState(false);
+  const [appliedFilters, setAppliedFilters] = useState<{ start: number; end: number } | null>(null);
+  const [isListVisible, setIsListVisible] = useState(true);
   const [sortConfig, setSortConfig] = useState<{
-    key: keyof TransactionDetail;
+    key: keyof PnlBill;
     direction: 'asc' | 'desc';
   }>({ key: 'createdAt', direction: 'desc' });
 
   useEffect(() => {
-    const today = new Date();
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+    const start = new Date();
+    start.setDate(start.getDate() - 29);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
 
-    const formattedStart = formatDateForInput(thirtyDaysAgo);
-    const formattedEnd = formatDateForInput(today);
-    setStartDate(formattedStart);
-    setEndDate(formattedEnd);
-    const startTimestamp = new Date(formattedStart);
-    startTimestamp.setHours(0, 0, 0, 0);
-    const endTimestamp = new Date(formattedEnd);
-    endTimestamp.setHours(23, 59, 59, 999);
-    setAppliedFilters({
-      start: startTimestamp.toISOString(),
-      end: endTimestamp.toISOString(),
-    });
+    setStartDate(formatDateForInput(start));
+    setEndDate(formatDateForInput(end));
+    setAppliedFilters({ start: start.getTime(), end: end.getTime() });
   }, []);
 
+  const salesState = useCachedRange(loadSalesForRange, companyId, appliedFilters, authLoading);
+  const posExpenses = useCachedRange(loadPosExpensesForRange, companyId, appliedFilters, authLoading);
+  const catExpenses = useCachedRange(loadCatalogueExpensesForRange, companyId, appliedFilters, authLoading);
+
+  const expenses = useMemo(
+    () => [...posExpenses.records, ...catExpenses.records],
+    [posExpenses.records, catExpenses.records],
+  );
+
+  const parts = [salesState, posExpenses, catExpenses];
+  const updatedTimes = parts.map((p) => p.lastUpdated).filter((t): t is number => t !== null);
+
+  const { refresh: refreshSales } = salesState;
+  const { refresh: refreshPos } = posExpenses;
+  const { refresh: refreshCat } = catExpenses;
+  const refresh = useCallback(() => {
+    refreshSales();
+    refreshPos();
+    refreshCat();
+  }, [refreshSales, refreshPos, refreshCat]);
+
   return {
-    navigate,
-    currentUser,
     authLoading,
     datePreset,
     setDatePreset,
     startDate,
     endDate,
+    setStartDate,
+    setEndDate,
     appliedFilters,
     setAppliedFilters,
     isListVisible,
     setIsListVisible,
     sortConfig,
     setSortConfig,
-    setStartDate,
-    setEndDate,
+    sales: salesState.records,
+    expenses,
+    isLoading: parts.some((p) => p.isLoading),
+    isFetching: parts.some((p) => p.isFetching),
+    // The oldest part decides how fresh the page is.
+    lastUpdated: updatedTimes.length ? Math.min(...updatedTimes) : null,
+    error: parts.map((p) => p.error).find(Boolean) ?? null,
+    refresh,
   };
 }

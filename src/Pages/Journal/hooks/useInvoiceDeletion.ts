@@ -7,6 +7,8 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
+import { clearSalesReportCache } from '../../Reports/SalesReportComponents/salesReportCache';
+import { clearPurchaseReportCache } from '../../Reports/PurchaseReportComponents/purchaseReportCache';
 import { State, PLANS } from '../../../enums';
 import type { Invoice } from '../journal.types';
 
@@ -106,6 +108,8 @@ export const useInvoiceDeletion = ({ currentUser, setModal }: UseInvoiceDeletion
       }
       batch.delete(invoiceDocRef);
       await batch.commit();
+      if (collectionName === 'sales') clearSalesReportCache(companyId);
+      else clearPurchaseReportCache(companyId);
 
       setModal({ message: "Invoice deleted ", type: State.SUCCESS });
     } catch (err) {

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ROUTES } from '../../../constants/routes.constants';
 import { useAuth, useDatabase } from '../../../context/auth-context';
@@ -55,6 +55,8 @@ const PurchasePage: React.FC = () => {
 
   const purchaseIdToEdit = location.state?.purchaseId as string | undefined;
   const isEditMode = !!purchaseIdToEdit;
+  // "Add bill" from the party ledger opens a new purchase with the supplier filled in.
+  const prefillParty = (location.state as { prefillParty?: { name: string; number: string } } | null)?.prefillParty;
 
   const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -139,6 +141,34 @@ const PurchasePage: React.FC = () => {
     setModal,
     companyId: currentUser?.companyId, // 👈 ADD
   });
+
+  // "Create purchase" from the Restock report: add the picked items with their
+  // order quantities once the catalogue is loaded, then drop the navigation
+  // state so a refresh doesn't add them again.
+  const restockHandled = useRef(false);
+  useEffect(() => {
+    const restockItems = (location.state as { restockItems?: { id: string; quantity: number }[] } | null)?.restockItems;
+    if (restockHandled.current || isEditMode || !restockItems?.length || availableItems.length === 0) return;
+    restockHandled.current = true;
+
+    const startedAt = Date.now();
+    const quantities = new Map(restockItems.map((r) => [r.id, Math.max(1, Math.round(r.quantity))]));
+    restockItems.forEach(({ id }) => {
+      const item = availableItems.find((a) => a.id === id);
+      if (item) addItemToCart(item);
+    });
+    // addItemToCart adds each line with quantity 1 — set the order quantity on
+    // just the lines added here (existing draft lines keep theirs).
+    setItems((prev) =>
+      prev.map((line) =>
+        line.productId && (line.addedAt ?? 0) >= startedAt && quantities.has(line.productId)
+          ? { ...line, quantity: quantities.get(line.productId)! }
+          : line,
+      ),
+    );
+    navigate(location.pathname, { replace: true, state: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableItems, isEditMode]);
 
   const {
     godowns,
@@ -983,8 +1013,8 @@ const PurchasePage: React.FC = () => {
           initialDiscount={editModeData?.manualDiscount}
           onPaymentComplete={handleSavePurchase}
           isPartyNameEditable={!editModeData}
-          initialPartyName={editModeData ? editModeData.partyName : ''}
-          initialPartyNumber={editModeData ? editModeData.partyNumber : ''}
+          initialPartyName={editModeData ? editModeData.partyName : prefillParty?.name || ''}
+          initialPartyNumber={editModeData ? editModeData.partyNumber : prefillParty?.number || ''}
           initialPaymentMethods={editModeData ? editModeData.paymentMethods : undefined}
           totalQuantity={totalQuantity}
           enableCustomerDetails={true}
@@ -1373,8 +1403,8 @@ const PurchasePage: React.FC = () => {
         initialDiscount={editModeData?.manualDiscount}
         onPaymentComplete={handleSavePurchase}
         isPartyNameEditable={!editModeData}
-        initialPartyName={editModeData ? editModeData.partyName : ''}
-        initialPartyNumber={editModeData ? editModeData.partyNumber : ''}
+        initialPartyName={editModeData ? editModeData.partyName : prefillParty?.name || ''}
+        initialPartyNumber={editModeData ? editModeData.partyNumber : prefillParty?.number || ''}
         initialPaymentMethods={editModeData ? editModeData.paymentMethods : undefined}
         totalQuantity={totalQuantity}
         enableCustomerDetails={true}

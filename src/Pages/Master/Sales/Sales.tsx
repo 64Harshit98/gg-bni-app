@@ -94,6 +94,8 @@ const Sales: React.FC = () => {
 
     const invoiceToEdit = location.state?.invoiceData;
     const isEditMode = location.state?.isEditMode === true && !!invoiceToEdit;
+    // "Add bill" from the party ledger opens a new bill with the customer filled in.
+    const prefillParty = (location.state as { prefillParty?: { name: string; number: string } } | null)?.prefillParty;
 
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
     const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
@@ -982,8 +984,8 @@ const Sales: React.FC = () => {
                     isPartyNameEditable={!isEditMode}
                     //enableCustomerDetails={salesSettings?.enableCustomerInfoToggle ?? true}
                     originalBillTotal={calculatedOriginalTotal}
-                    initialPartyName={isEditMode ? invoiceToEdit?.partyName : ''}
-                    initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : ''}
+                    initialPartyName={isEditMode ? invoiceToEdit?.partyName : prefillParty?.name || ''}
+                    initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : prefillParty?.number || ''}
                     initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined}
                     totalItemDiscount={totalDiscount} totalQuantity={totalQuantity}
                     initialDiscount={invoiceToEdit?.manualDiscount}
@@ -1200,8 +1202,8 @@ const Sales: React.FC = () => {
                     requireCustomerName={salesSettings?.requireCustomerName ?? false}
                     requireCustomerMobile={salesSettings?.requireCustomerMobile ?? false}
                     isPartyNameEditable={true}
-                    initialPartyName={''}
-                    initialPartyNumber={''}
+                    initialPartyName={prefillParty?.name || ''}
+                    initialPartyNumber={prefillParty?.number || ''}
                     totalItemDiscount={totalDiscount}
                     totalQuantity={totalQuantity}
                     maxBillDiscountValue={salesSettings?.maxBillDiscountValue}
@@ -1441,8 +1443,8 @@ const Sales: React.FC = () => {
                 allowDueBilling={salesSettings?.allowDueBilling ?? false}
                 isPartyNameEditable={!isEditMode}
                 enableCustomerDetails={true}
-                initialPartyName={isEditMode ? invoiceToEdit?.partyName : ''}
-                initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : ''}
+                initialPartyName={isEditMode ? invoiceToEdit?.partyName : prefillParty?.name || ''}
+                initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : prefillParty?.number || ''}
                 initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined}
                 totalItemDiscount={totalDiscount} totalQuantity={totalQuantity}
                 requireCustomerName={salesSettings?.requireCustomerName}

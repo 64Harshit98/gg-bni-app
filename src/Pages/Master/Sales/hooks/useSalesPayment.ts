@@ -7,6 +7,7 @@ import {
     serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../../../../lib/Firebase';
+import { clearSalesReportCache } from '../../../Reports/SalesReportComponents/salesReportCache';
 import type { Item } from '../../../../constants/models';
 import type { User } from '../../../../Role/permission';
 import { State } from '../../../../enums';
@@ -468,6 +469,7 @@ export const useSalesPayment = ({
                     if (delta === 0) return item;
                     return { ...item, stock: Math.max(0, (item.stock || 0) - delta) };
                 }));
+                clearSalesReportCache(currentUser?.companyId);
                 showSuccessModal("Invoice Updated", ROUTES.JOURNAL);
 
             } else {
@@ -524,6 +526,7 @@ export const useSalesPayment = ({
                         return { ...item, stock: Math.max(0, (item.stock || 0) - stockDelta) };
                     }));
 
+                    clearSalesReportCache(currentUser?.companyId);
                     setIsDrawerOpen(false);
                     setSavedBillData({ id: result.id, number: result.number, invoiceData: invoiceData });
                     sessionStorage.removeItem('sales_cart_draft');

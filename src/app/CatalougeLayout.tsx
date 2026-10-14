@@ -1,5 +1,5 @@
-import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react'; // <-- Add useState
-import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'; // <-- Add useLocation
+import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '../Components/ui/button';
 import { FloatingButton } from '../Components/FloatingButton';
 import { ROUTES } from '../constants/routes.constants';
@@ -27,7 +27,7 @@ import PosCataSwitcher from '../Components/PosCataSwitcher';
 import NotificationBell from '../Components/NotificationBell';
 import { Sidebar, type QuickAction } from '../Components/layout/SideBar';
 import { Header } from '../Components/layout/Header';
-import { CommandPalette, type Destination } from '../Components/layout/CommandPalette';
+import { CommandPalette, LAYOUT_ACTION_EVENT, type Destination, type LayoutAction } from '../Components/layout/CommandPalette';
 
 const CatalogueLayout = () => {
     const navigate = useNavigate();
@@ -59,6 +59,17 @@ const CatalogueLayout = () => {
     const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
     const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
     const { addExpense } = useExpenses(currentUser?.companyId, 'catalogue');
+
+    // CommandPalette ke 'Add User' / 'Add Expense' layout-level modals yahin khulte hain
+    useEffect(() => {
+        const onAction = (e: Event) => {
+            const action = (e as CustomEvent<LayoutAction>).detail;
+            if (action === 'add-user') setIsAddUserModalOpen(true);
+            if (action === 'add-expense') setIsExpenseModalOpen(true);
+        };
+        window.addEventListener(LAYOUT_ACTION_EVENT, onAction);
+        return () => window.removeEventListener(LAYOUT_ACTION_EVENT, onAction);
+    }, []);
 
     const { settings: shopSettings, isClosingSoon, shouldAutoClose, needsReset } = useShopHours(currentUser?.companyId);
     const isOwner =
@@ -182,7 +193,7 @@ const CatalogueLayout = () => {
                 end
                 className={({ isActive }) =>
                     `flex-1 flex flex-col items-center justify-center gap-1 py-1 text-sm transition-colors duration-200 min-w-0 ${isActive
-                        ? 'text-[#F97316]'
+                        ? 'text-[#c2410c]'
                         : 'text-gray-500'
                     }`
                 }
@@ -210,12 +221,6 @@ const CatalogueLayout = () => {
             </ShowWrapper>
         ) : link;
     };
-
-    // const sidebarLinkClass = (isActive: boolean) =>
-    //     `flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium transition-all ${isActive
-    //         ? 'bg-orange-50 text-[#F97316] shadow-sm border border-orange-100'
-    //         : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent'
-    //     }`;
 
     const handleShare = () => {
         window.dispatchEvent(new CustomEvent("open-catalogue-share", {
@@ -250,7 +255,7 @@ const CatalogueLayout = () => {
     ];
 
     const fabActionClass = 'w-full mb-2 rounded-sm bg-white shadow-sm';
-    const fabIconBadgeClass = 'w-10 h-10 rounded-full bg-orange-100 text-[#F97316] flex items-center justify-center';
+    const fabIconBadgeClass = 'w-10 h-10 rounded-full bg-[#ffedd5] text-[#c2410c] flex items-center justify-center';
     const fabLabelClass = 'text-[11px] font-medium text-gray-700';
 
     const MobileActions = () => (
@@ -313,7 +318,7 @@ const CatalogueLayout = () => {
     );
 
     return (
-        <div className="relative h-dvh w-screen flex flex-col md:flex-row overflow-hidden bg-gray-100 md:bg-gradient-to-br md:from-orange-50 md:via-white md:to-slate-100">
+        <div className="relative h-dvh w-screen flex flex-col md:flex-row overflow-hidden bg-gray-100 md:bg-[#fff5ec]">
             {showReminder && shopSettings && (
                 <ShopClosingReminderModal
                     closeTime={shopSettings.closeTime}
@@ -322,25 +327,34 @@ const CatalogueLayout = () => {
                 />
             )}
             {/* --- MOBILE TOP STRIP — Catalogue Home ka apna header hai, wahan hide --- */}
-            <header className="md:hidden relative flex items-center justify-between px-3 py-2 bg-white border-b border-slate-200 z-[140]">
-                <TutorialStep
-                    step={1}
-                    currentStep={isMobileView ? switcherStep : -1}
-                    text="Use this menu to switch between POS and Catalogue views."
-                    onNext={handleSwitcherNext}
-                    onSkip={handleSwitcherSkip}
-                    mobileArrowAlign="left"
-                >
-                    <div>
-                        <PosCataSwitcher current="CATALOG" />
-                    </div>
-                </TutorialStep>
-                <img
-                    src={sellarLogo}
-                    alt="Sellar Logo"
-                    className="h-6 absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-                />
-                <div className="flex items-center gap-1">
+            <header className="md:hidden flex items-center gap-2 px-3 py-2 bg-white border-b border-slate-200 z-[140]">
+                {/* Left: switcher */}
+                <div className="shrink-0">
+                    <TutorialStep
+                        step={1}
+                        currentStep={isMobileView ? switcherStep : -1}
+                        text="Use this menu to switch between POS and Catalogue views."
+                        onNext={handleSwitcherNext}
+                        onSkip={handleSwitcherSkip}
+                        mobileArrowAlign="left"
+                    >
+                        <div className="min-w-0">
+                            <PosCataSwitcher current="CATALOG" />
+                        </div>
+                    </TutorialStep>
+                </div>
+
+                {/* Middle: logo takes remaining space, can shrink, never overlaps */}
+                <div className="flex-1 min-w-0 flex justify-center">
+                    <img
+                        src={sellarLogo}
+                        alt="Sellar Logo"
+                        className="h-5 max-w-full object-contain"
+                    />
+                </div>
+
+                {/* Right: actions */}
+                <div className="flex shrink-0 items-center gap-1">
                     <button
                         type="button"
                         aria-label="Search"
@@ -371,7 +385,7 @@ const CatalogueLayout = () => {
                         onSkip={handleSwitcherSkip}
                     >
                         <div>
-                            <PosCataSwitcher current="CATALOG" />
+                            <PosCataSwitcher current="CATALOG" showCompany />
                         </div>
                     </TutorialStep>
                 }
@@ -396,7 +410,7 @@ const CatalogueLayout = () => {
                 <div className="md:hidden absolute bottom-20 right-4 z-50">
                     <button
                         onClick={handleShare}
-                        className="bg-white border border-gray-300 shadow-md rounded-sm p-3"
+                        className="bg-white border border-gray-300 shadow-md rounded-full p-3"
                     >
                         <Share2 size={20} />
                     </button>
@@ -440,6 +454,7 @@ const CatalogueLayout = () => {
             <AddUserModal
                 isOpen={isAddUserModalOpen}
                 onClose={() => setIsAddUserModalOpen(false)}
+                theme="orange"
             />
             <CommandPalette
                 open={isMobileSearchOpen}

@@ -6,7 +6,7 @@ import { CustomButton } from '../../../Components';
 import SearchableItemInput from '../../../UseComponents/SearchIteminput';
 import PaymentDrawer from '../../../Components/PaymentDrawer';
 import BarcodeScanner from '../../../UseComponents/BarcodeScanner';
-import { ReturnListItem } from '../../../Components/ReturnListItem';
+import { ReturnListItem, RETURN_ITEM_GRID } from '../../../Components/ReturnListItem';
 import { IconScanCircle } from '../../../constants/Icons';
 import { GenericCartList } from '../../../Components/CartItem';
 import { usePurchaseSettings } from '../../../context/SettingsContext';
@@ -14,6 +14,81 @@ import { ItemEditDrawer } from '../../../Components/ItemDrawer';
 import { useAuth, useDatabase } from '../../../context/auth-context';
 import type { ReturnCartItem } from './purchaseReturn.types';
 import { useNewItemsReceived, usePurchaseReturnLookup, useSavePurchaseReturn } from './hooks';
+
+/* ------------------------------------------------------------------ */
+/* SELLAR design tokens (as Tailwind classes) — UI only                */
+/* ------------------------------------------------------------------ */
+const CARD =
+  'bg-white border border-[#dfe6fb] rounded-sm shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]';
+const SEC_HEAD = 'flex flex-wrap items-center gap-2.5 px-4 py-3 border-b border-[#dfe6fb]';
+const SEC_TITLE = 'text-[15px] font-semibold text-[#0f172b]';
+const TINT = 'inline-grid h-8 w-8 flex-none place-items-center rounded-sm';
+const FIELD =
+  'flex h-10 items-center gap-2 rounded-sm border border-[#7a8aa3] bg-white px-3 text-[#5b6b86] focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-[#155dfc]';
+const FIELD_INPUT =
+  'min-w-0 flex-1 border-0 bg-transparent text-sm text-[#0f172b] outline-none placeholder:text-[#5b6b86]';
+const SCAN_BTN =
+  'inline-grid h-9 w-9 flex-none place-items-center rounded-sm border border-[#7a8aa3] bg-white text-[#0f172b] hover:bg-[#f5f7ff]';
+const OVERLINE = 'block text-[10px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]';
+const CELL_FIELD =
+  'rounded-sm border border-[#dfe6fb] bg-white px-3 py-2 focus-within:border-[#155dfc] focus-within:ring-1 focus-within:ring-[#155dfc]';
+const CELL_INPUT = 'w-full border-0 bg-transparent p-0 text-[13px] font-semibold text-[#0f172b] outline-none placeholder:font-normal placeholder:text-[#5b6b86]';
+const DROPDOWN =
+  'absolute left-0 top-full z-20 mt-1 max-h-60 w-full overflow-y-auto rounded-sm border border-[#dfe6fb] bg-white shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]';
+const DROPDOWN_ROW = 'cursor-pointer border-b border-[#dfe6fb] px-3 py-2.5 last:border-0 hover:bg-[#f5f7ff]';
+const TABLE_HEAD = `hidden xl:grid ${RETURN_ITEM_GRID} items-center gap-x-3 border-b border-[#dfe6fb] bg-[#f5f7ff] px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]`;
+const BALANCE_SELECT =
+  'h-9 cursor-pointer rounded-sm border border-[#7a8aa3] bg-white px-2 text-sm font-medium text-[#0f172b] outline-none focus:border-[#155dfc]';
+
+const Ico: React.FC<{ children: React.ReactNode; size?: number }> = ({ children, size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {children}
+  </svg>
+);
+const IcoDoc = () => (<Ico><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></Ico>);
+const IcoReturn = () => (<Ico><path d="M9 14 4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" /></Ico>);
+const IcoBox = () => (<Ico><path d="M21 8 12 3 3 8v8l9 5 9-5z" /><path d="M3 8l9 5 9-5M12 13v8" /></Ico>);
+const IcoSearch = () => (<Ico size={16}><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></Ico>);
+
+
+/** Read-only bill facts grid (SELLAR "facts"). */
+const Facts: React.FC<{ items: { label: string; value: React.ReactNode; tone?: string }[] }> = ({ items }) => (
+  <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-sm border border-[#dfe6fb] bg-[#dfe6fb] md:grid-cols-4">
+    {items.map((f) => (
+      <div key={f.label} className="min-w-0 bg-white px-3 py-2">
+        <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]">{f.label}</span>
+        <b className={`block truncate text-[13px] font-semibold tabular-nums ${f.tone || 'text-[#0f172b]'}`}>{f.value}</b>
+      </div>
+    ))}
+  </div>
+);
+
+/** Three-card transaction type picker (SELLAR "res3"). */
+const ModePicker: React.FC<{
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string; sub: string; disabled?: boolean }[];
+}> = ({ value, onChange, options }) => (
+  <div className="grid grid-cols-3 gap-2" role="group" aria-label="Transaction type">
+    {options.map((o) => {
+      const active = value === o.value;
+      return (
+        <button
+          key={o.value}
+          type="button"
+          disabled={o.disabled}
+          aria-pressed={active}
+          onClick={() => onChange(o.value)}
+          className={`grid gap-0.5 rounded-sm border px-2.5 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-45
+            ${active ? 'border-[#155dfc] bg-[#e6eeff] ring-1 ring-[#155dfc]' : 'border-[#7a8aa3] bg-white hover:bg-[#f5f7ff]'}`}
+        >
+          <b className={`text-sm font-semibold ${active ? 'text-[#155dfc]' : 'text-[#0f172b]'}`}>{o.label}</b>
+          <small className="text-[11px] leading-[15px] text-[#5b6b86]">{o.sub}</small>
+        </button>
+      );
+    })}
+  </div>
+);
 
 const PurchaseReturnPage: React.FC = () => {
   const navigate = useNavigate();
@@ -120,70 +195,141 @@ const PurchaseReturnPage: React.FC = () => {
     }
   };
 
-  if (isLoading) return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
+  if (isLoading) return <div className="flex min-h-screen items-center justify-center bg-[#eef2ff] text-[#45556c]">Loading...</div>;
+
+  const modeOptions = [
+    { value: 'Debit Note', label: 'Debit note', sub: 'Supplier owes you', disabled: isPurchaseUnpaid },
+    { value: 'Cash Refund', label: 'Refund', sub: 'Supplier pays' },
+    { value: 'Exchange', label: 'Exchange', sub: 'Replacement' },
+  ];
+
+  // selectedPurchase may not carry totalAmount (e.g. opened via route state) — fall back to the same list the dropdown uses.
+  const listedPurchase: any = selectedPurchase ? purchaseList.find((x: any) => x.id === (selectedPurchase as any).id) : undefined;
+  const billTotal = Number(
+    (selectedPurchase as any)?.totalAmount ?? listedPurchase?.totalAmount ?? (selectedPurchase as any)?.grandTotal ?? (selectedPurchase as any)?.total ?? 0
+  );
+
+  const balanceTone = finalBalance >= 0 ? 'bg-[#e9faef] text-[#008236]' : 'bg-[#fff3dd] text-[#bb4d00]';
+
+  const balanceSelect = (
+    <select
+      value={exchangeBalanceAction}
+      onChange={(e) => setExchangeBalanceAction(e.target.value as any)}
+      className={BALANCE_SELECT}
+    >
+      <option value="Debit Note">Debit Note</option>
+      <option value="Cash Refund">Cash Refund</option>
+    </select>
+  );
 
   const renderHeader = () => (
-    <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-gray-100 md:bg-white border-b border-gray-300 shadow-sm flex-shrink-0 p-2 md:px-4 md:py-3 mb-2 md:mb-0">
-      <h1 className="text-2xl font-bold text-gray-800 text-center md:text-left mb-2 md:mb-0">
-        Purchase Return
-      </h1>
+    <div className="flex flex-shrink-0 items-center gap-3 border-b border-[#dfe6fb] bg-white px-4 py-3 md:px-6 md:py-4">
+      <h1 className="text-xl font-semibold text-[#0f172b] md:text-[22px] md:leading-[30px]">Purchase return</h1>
+    </div>
+  );
+
+  const partyDropdownList = (
+    list: typeof filteredPartiesByNumber,
+  ) => (
+    <div className={`${DROPDOWN} max-h-48`}>
+      {list.map((party) => (
+        <div key={party.id} className={DROPDOWN_ROW} onClick={() => handleSelectParty(party)}>
+          <p className="text-sm font-semibold text-[#0f172b]">{party.name}</p>
+          <p className="text-xs text-[#5b6b86]">{party.number}</p>
+        </div>
+      ))}
     </div>
   );
 
   return (
-    <div className="flex flex-col h-screen w-full bg-gray-100 overflow-hidden">
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-[#eef2ff] text-[#0f172b]">
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
       <BarcodeScanner isOpen={scannerPurpose !== null} onClose={() => setScannerPurpose(null)} onScanSuccess={handleBarcodeScanned} />
 
       {/* HEADER */}
       {renderHeader()}
 
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+      <div className="relative flex flex-1 flex-col overflow-hidden xl:flex-row">
 
-        <div className="flex-1 w-full md:w-[65%] bg-gray-100 md:bg-white md:border-r border-gray-200 overflow-y-auto p-1 md:p-2 pb-24 md:pb-6 relative">
+        {/* --- LEFT PANEL --- */}
+        <div className="relative min-w-0 flex-1 overflow-y-auto bg-[#eef2ff]">
+          <div className="flex flex-col gap-3 p-3 pb-32 md:gap-3.5 md:p-5 md:pb-6">
 
-          {/* Search */}
-          <div className="bg-white p-2 rounded-sm shadow-md mb-4 border border-gray-200">
-            <div className="relative" ref={dropdownRef}>
-              <label htmlFor="search-purchase" className="block text-sm font-medium mb-1 text-gray-700">Search Original Purchase</label>
-              <div className="flex gap-2">
-                <input
-                  type="text" id="search-purchase" value={searchQuery}
-                  onChange={(e) => { setSearchQuery(e.target.value); setIsDropdownOpen(true); }}
-                  onFocus={() => setIsDropdownOpen(true)}
-                  placeholder={selectedPurchase ? `${selectedPurchase.partyName} (${selectedPurchase.invoiceNumber})` : "Supplier or Invoice..."}
-                  className="flex-grow p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" autoComplete="off" readOnly={!!selectedPurchase}
-                />
+            {/* Original purchase — search + party details */}
+            <div className={CARD}>
+              <div className={SEC_HEAD}>
+                <span className={`${TINT} bg-[#e9faef] text-[#008236]`}><IcoDoc /></span>
+                <b className={SEC_TITLE}>Original purchase</b>
                 {selectedPurchase && (
-                  <button onClick={handleClear} className="py-2 px-3 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300">
-                    Clear
-                  </button>
+                  <span className="ml-auto text-xs text-[#5b6b86]">Bill found · {selectedPurchase.invoiceNumber}</span>
                 )}
               </div>
-              {isDropdownOpen && !selectedPurchase && (
-                <div className="absolute top-full w-full z-20 mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
-                  {filteredList.map(item => (
-                    <div key={item.id} className="p-3 cursor-pointer hover:bg-gray-100 border-b border-gray-50 last:border-0" onClick={() => handleSelectPurchase(item)}>
-                      <p className="font-semibold text-sm">{item.partyName} <span className="text-gray-500 font-normal">({item.invoiceNumber})</span></p>
-                      <p className="text-xs text-gray-500">Amount: ₹{item.totalAmount.toFixed(2)}</p>
+              <div className="p-3 md:px-4">
+                <div className="relative" ref={dropdownRef}>
+                  <label htmlFor="search-purchase" className="sr-only">Search Original Purchase</label>
+                  <div className="flex gap-2">
+                    <div className={`${FIELD} flex-1`}>
+                      <IcoSearch />
+                      <input
+                        type="text"
+                        id="search-purchase"
+                        value={searchQuery}
+                        onChange={(e) => { setSearchQuery(e.target.value); setIsDropdownOpen(true); }}
+                        onFocus={() => setIsDropdownOpen(true)}
+                        placeholder={selectedPurchase ? `${selectedPurchase.partyName} (${selectedPurchase.invoiceNumber})` : 'Supplier or Invoice...'}
+                        className={FIELD_INPUT}
+                        autoComplete="off"
+                        readOnly={!!selectedPurchase}
+                      />
                     </div>
-                  ))}
+                    {selectedPurchase && (
+                      <button
+                        onClick={handleClear}
+                        className="h-10 whitespace-nowrap rounded-sm px-3 text-sm font-medium text-[#45556c] hover:bg-[#f5f7ff] hover:text-[#0f172b]"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  {isDropdownOpen && !selectedPurchase && (
+                    <div className={DROPDOWN}>
+                      {filteredList.map(item => (
+                        <div key={item.id} className={DROPDOWN_ROW} onClick={() => handleSelectPurchase(item)}>
+                          <p className="text-sm font-semibold text-[#0f172b]">
+                            {item.partyName} <span className="font-normal text-[#5b6b86]">({item.invoiceNumber})</span>
+                          </p>
+                          <p className="text-xs text-[#5b6b86]">Amount: ₹{item.totalAmount.toFixed(2)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          </div>
 
-          {selectedPurchase && (
-            <>
-              {/* Purchase Details */}
-              <div className="bg-white p-2 rounded-sm shadow-md mb-4 border border-gray-200">
-                <div className="space-y-3 mb-4">
-                  <div className='grid grid-cols-2 gap-4'>
-                    <div><label className="block text-xs font-bold text-gray-500 uppercase">Date</label><input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm" /></div>
+                {selectedPurchase && (
+                  <Facts
+                    items={[
+                      { label: 'Bill no.', value: selectedPurchase.invoiceNumber || 'N/A' },
+                      { label: 'Bill total', value: `₹${billTotal.toFixed(2)}` },
+                      {
+                        label: 'Payment',
+                        value: isPurchaseUnpaid ? 'Unpaid' : 'Paid',
+                        tone: isPurchaseUnpaid ? 'text-[#bb4d00]' : 'text-[#008236]',
+                      },
+                      { label: 'Party', value: selectedPurchase.partyName || 'Not set', tone: selectedPurchase.partyName ? undefined : 'text-[#bb4d00]' },
+                    ]}
+                  />
+                )}
 
-                    {/* --- PARTY NAME DROPDOWN (NEW) --- */}
-                    <div className="relative" ref={nameDropdownRef}>
-                      <label className="block text-xs font-bold text-gray-500 uppercase">Party Name</label>
+                {selectedPurchase && (
+                  <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3">
+                    <div className={CELL_FIELD}>
+                      <label className={OVERLINE}>Return date</label>
+                      <input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} className={CELL_INPUT} />
+                    </div>
+
+                    {/* Party name dropdown */}
+                    <div className={`relative ${CELL_FIELD}`} ref={nameDropdownRef}>
+                      <label className={OVERLINE}>Party name</label>
                       <input
                         type="text"
                         value={supplierName}
@@ -192,283 +338,271 @@ const PurchaseReturnPage: React.FC = () => {
                           setIsNameDropdownOpen(true);
                         }}
                         onFocus={() => setIsNameDropdownOpen(true)}
-                        className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm"
+                        className={CELL_INPUT}
                         autoComplete="off"
                         placeholder="Search by name..."
                       />
-                      {isNameDropdownOpen && filteredPartiesByName.length > 0 && (
-                        <div className="absolute top-full left-0 w-full z-20 mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
-                          {filteredPartiesByName.map((party) => (
-                            <div
-                              key={party.id}
-                              className="p-2 cursor-pointer hover:bg-gray-100 border-b last:border-0"
-                              onClick={() => handleSelectParty(party)}
-                            >
-                              <p className="font-semibold text-sm text-gray-800">{party.name}</p>
-                              <p className="text-xs text-gray-500">{party.number}</p>
-                            </div>
-                          ))}
+                      {isNameDropdownOpen && filteredPartiesByName.length > 0 && partyDropdownList(filteredPartiesByName)}
+                    </div>
+
+                    {/* Party number dropdown */}
+                    <div className={`relative col-span-2 md:col-span-1 ${CELL_FIELD}`} ref={partyDropdownRef}>
+                      <label className={OVERLINE}>Party number</label>
+                      <input
+                        type="text"
+                        value={supplierNumber}
+                        maxLength={10}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                          setSupplierNumber(val);
+                          setSupplierName('');
+                          setIsPartyDropdownOpen(true);
+                        }}
+                        onFocus={() => setIsPartyDropdownOpen(true)}
+                        className={CELL_INPUT}
+                        autoComplete="off"
+                        placeholder="Search party by number or name..."
+                      />
+                      {isPartyDropdownOpen && filteredPartiesByNumber.length > 0 && partyDropdownList(filteredPartiesByNumber)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {selectedPurchase && (
+              <>
+                {/* Select return items */}
+                <div className={CARD}>
+                  <div className={SEC_HEAD}>
+                    <span className={`${TINT} bg-[#e6eeff] text-[#155dfc]`}><IcoReturn /></span>
+                    <b className={SEC_TITLE}>Select return items</b>
+                    <div className="flex w-full items-center gap-2 md:ml-auto md:w-auto">
+                      <div className={`${FIELD} h-9 flex-1 md:w-60 md:flex-none`}>
+                        <IcoSearch />
+                        <input
+                          type="text"
+                          value={returnItemSearchQuery}
+                          onChange={(e) => setReturnItemSearchQuery(e.target.value)}
+                          placeholder="Search items in this bill"
+                          className={FIELD_INPUT}
+                          autoComplete="off"
+                        />
+                      </div>
+                      <button onClick={() => setScannerPurpose('item')} className={SCAN_BTN} aria-label="Scan item">
+                        <IconScanCircle width={18} height={18} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {originalPurchaseItems.length === 0 && (
+                    <p className="px-4 py-3 text-sm text-[#5b6b86]">No returnable items found for this purchase.</p>
+                  )}
+
+                  {filteredReturnItems.length > 0 && (
+                    <div className={TABLE_HEAD}>
+                      <span />
+                      <span>Item</span>
+                      <span>Return qty</span>
+                      <span className="text-right">Price</span>
+                      <span className="text-right">Subtotal</span>
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-2 p-3 xl:gap-0 xl:p-0">
+                    {filteredReturnItems.map((item) => (
+                      <ReturnListItem
+                        key={item.id}
+                        item={item}
+                        isSelected={selectedReturnIds.has(item.id)}
+                        onToggle={handleToggleReturnItem}
+                        onQuantityChange={(id, val) => handleItemChange(setOriginalPurchaseItems, id, 'quantity', val)}
+                        showMrp={false}
+                      />
+                    ))}
+                  </div>
+
+                  <div className="flex justify-end gap-6 rounded-sm border-t border-[#dfe6fb] bg-[#f5f7ff] px-4 py-2.5 text-[13px] text-[#45556c]">
+                    <span>Selected <b className="tabular-nums text-[#0f172b]">{selectedReturnIds.size} of {originalPurchaseItems.length}</b> items</span>
+                    <span>Return value <b className="tabular-nums text-[#0f172b]">₹{totalReturnValue.toFixed(2)}</b></span>
+                  </div>
+                </div>
+
+                {/* Replacement items (always on desktop, only in Exchange mode on mobile) */}
+                <div className={`${CARD} ${modeOfReturn === 'Exchange' ? '' : 'hidden xl:block'}`}>
+                  <div className={SEC_HEAD}>
+                    <span className={`${TINT} bg-[#e9faef] text-[#008236]`}><IcoBox /></span>
+                    <b className={SEC_TITLE}>Replacement items</b>
+                  </div>
+
+                  {modeOfReturn === 'Exchange' ? (
+                    <div className="p-3 md:px-4">
+                      <div className="flex items-end gap-2">
+                        <div className="min-w-0 flex-grow">
+                          <SearchableItemInput
+                            label="Add New Item Received"
+                            placeholder="Search inventory..."
+                            items={availableItems}
+                            onItemSelected={handleNewItemSelected}
+                            isLoading={isLoading}
+                            error={error}
+                            onSearchChange={setNewItemsSearchQuery}
+                          />
+                        </div>
+                        <button onClick={() => setScannerPurpose('item')} className={`${SCAN_BTN} h-10 w-10`} aria-label="Scan item">
+                          <IconScanCircle width={20} height={20} />
+                        </button>
+                      </div>
+
+                      {newItemsReceived.length > 0 && (
+                        <div className="mt-3 overflow-hidden rounded-sm border border-[#dfe6fb]">
+                          <div className="border-b border-[#dfe6fb] bg-[#f5f7ff] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]">
+                            Received items
+                          </div>
+                          <div className="max-h-60 overflow-y-auto bg-[#f5f7ff]">
+                            <GenericCartList<ReturnCartItem>
+                              items={displayedNewItemsReceived}
+                              availableItems={availableItems}
+                              basePriceKey="mrp"
+                              priceLabel="MRP"
+                              settings={{
+                                enableRounding: false,
+                                roundingInterval: 1,
+                                enableItemWiseDiscount: true, // Enable discount editing
+                                enableDiscount2: false,         // Disable Discount 2
+                                lockDiscount: false,          // Unlock Discount
+                                lockPrice: false              // Unlock Price
+                              }}
+                              applyRounding={(v) => v}
+                              State={State}
+                              setModal={setModal}
+                              onOpenEditDrawer={handleOpenEditDrawer}
+                              onDeleteItem={handleRemoveNewItem}
+                              onDiscountChange={handleNewItemDiscountChange}
+                              onDiscount2Change={() => { }}
+                              onCustomPriceChange={handleNewItemPriceChange}
+                              onCustomPriceBlur={handleNewItemPriceBlur}
+                              onQuantityChange={handleNewItemQuantity}
+                              onDiscountPressStart={() => { }}
+                              onDiscountPressEnd={() => { }}
+                              onDiscountClick={() => { }}
+                              onPricePressStart={() => { }}
+                              onPricePressEnd={() => { }}
+                              onPriceClick={() => { }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="px-4 py-4 text-center text-[13px] text-[#5b6b86]">
+                      <p className="font-semibold text-[#45556c]">No replacement items</p>
+                      <p>Choose Exchange, then search or scan the items the supplier sends back.</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Mobile summary */}
+                <div className={`xl:hidden ${CARD}`}>
+                  <div className={SEC_HEAD}>
+                    <b className={SEC_TITLE}>Return summary</b>
+                  </div>
+                  <div className="grid gap-3 p-3">
+                    <div>
+                      <span className="mb-1 block text-xs font-medium text-[#45556c]">Transaction type</span>
+                      <ModePicker value={modeOfReturn} onChange={setModeOfReturn} options={modeOptions} />
+                    </div>
+
+                    <div className="grid gap-1.5 text-sm">
+                      <div className="flex items-center justify-between text-[#45556c]">
+                        <p>Return Value</p><p className="font-semibold tabular-nums text-[#0f172b]">₹{totalReturnValue.toFixed(2)}</p>
+                      </div>
+                      {discountDeducted > 0 && (
+                        <div className="flex items-center justify-between text-xs text-[#bb4d00]">
+                          <p>Less Bill Discount</p><p className="tabular-nums">- ₹{discountDeducted.toFixed(2)}</p>
+                        </div>
+                      )}
+                      {modeOfReturn === 'Exchange' && (
+                        <div className="flex items-center justify-between text-[#45556c]">
+                          <p>New Items Value</p><p className="font-semibold tabular-nums text-[#008236]">₹{totalNewItemsValue.toFixed(2)}</p>
                         </div>
                       )}
                     </div>
 
-                  </div>
-
-                  {/* --- PARTY NUMBER DROPDOWN --- */}
-                  <div className="relative" ref={partyDropdownRef}>
-                    <label className="block text-xs font-bold text-gray-500 uppercase">Party Number</label>
-                    <input
-                      type="text"
-                      value={supplierNumber}
-                      maxLength={10}
-                      onChange={(e) => {
-                        const val = e.target.value.replace(/\D/g, '').slice(0, 10);
-                        setSupplierNumber(val);
-                        setSupplierName('');
-                        setIsPartyDropdownOpen(true);
-                      }}
-                      onFocus={() => setIsPartyDropdownOpen(true)}
-                      className="w-full p-1 border-b border-gray-300 focus:border-blue-500 outline-none text-sm"
-                      autoComplete="off"
-                      placeholder="Search party by number or name..."
-                    />
-                    {isPartyDropdownOpen && filteredPartiesByNumber.length > 0 && (
-                      <div className="absolute top-full left-0 w-full z-20 mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
-                        {filteredPartiesByNumber.map((party) => (
-                          <div
-                            key={party.id}
-                            className="p-2 cursor-pointer hover:bg-gray-100 border-b last:border-0"
-                            onClick={() => handleSelectParty(party)}
-                          >
-                            <p className="font-semibold text-sm text-gray-800">{party.name}</p>
-                            <p className="text-xs text-gray-500">{party.number}</p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                </div>
-
-                <h3 className="text-sm font-bold text-gray-700 mb-2 border-b pb-1">Select Return Items</h3>
-                <div className="flex items-end gap-1 mb-3">
-                  <div className="flex-grow">
-                    <input
-                      type="text"
-                      value={returnItemSearchQuery}
-                      onChange={(e) => setReturnItemSearchQuery(e.target.value)}
-                      placeholder="Search items in this return..."
-                      className="w-full p-2 border rounded-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                      autoComplete="off"
-                    />
-                  </div>
-                  <button onClick={() => setScannerPurpose('item')} className="p-2.5 bg-gray-800 text-white rounded-sm flex items-center justify-center">
-                        <IconScanCircle width={24} height={24} />
-                      </button>
-                </div>
-
-                {originalPurchaseItems.length === 0 && (
-                  <p className="text-sm text-gray-500 mb-2">
-                    No returnable items found for this purchase.
-                  </p>
-                )}
-
-                <div className="flex flex-col gap-2">
-                  {filteredReturnItems.map((item) => (
-                    <ReturnListItem
-                      key={item.id}
-                      item={item}
-                      isSelected={selectedReturnIds.has(item.id)}
-                      onToggle={handleToggleReturnItem}
-                      onQuantityChange={(id, val) => handleItemChange(setOriginalPurchaseItems, id, 'quantity', val)}
-                      showMrp={false}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              {/* Exchange / New Items (Input + List) */}
-              <div className="bg-white p-2 rounded-sm shadow-md mb-5 md:mb-0 border border-gray-200">
-                {/* Mobile View: Mode Select Here */}
-                <div className="md:hidden mb-2">
-                  <label className="block font-medium text-sm mb-1">Transaction Type</label>
-                  <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-2 border rounded bg-white">
-                    <option>Exchange</option>
-                    <option disabled={isPurchaseUnpaid}>Debit Note</option>
-                    <option>Cash Refund</option>
-                  </select>
-                </div>
-
-                {modeOfReturn === 'Exchange' && (
-                  <div className="mt-2">
-                    <div className="flex items-end gap-2 mb-2">
-                      <div className="flex-grow">
-                        <SearchableItemInput
-                          label="Add New Item Received"
-                          placeholder="Search inventory..."
-                          items={availableItems}
-                          onItemSelected={handleNewItemSelected}
-                          isLoading={isLoading}
-                          error={error}
-                          onSearchChange={setNewItemsSearchQuery}
-                        />
-                      </div>
-                      <button onClick={() => setScannerPurpose('item')} className="p-2.5 bg-gray-800 text-white rounded-sm flex items-center justify-center">
-                        <IconScanCircle width={24} height={24} />
-                      </button>
+                    <div className={`flex items-center justify-between gap-3 rounded-sm px-3.5 py-3 ${balanceTone}`}>
+                      {modeOfReturn === 'Exchange' && finalBalance > 0 ? balanceSelect : (
+                        <p className="text-sm font-medium">{getBalanceLabel()}</p>
+                      )}
+                      <b className="text-2xl font-semibold tabular-nums tracking-tight">₹{Math.abs(finalBalance).toFixed(2)}</b>
                     </div>
 
-                    {newItemsReceived.length > 0 && (
-                      <div className="border rounded-md overflow-hidden">
-                        <div className="bg-gray-50 px-3 py-2 border-b text-xs font-bold text-gray-500 uppercase">Received Items</div>
-                        <div className="max-h-60 overflow-y-auto bg-gray-50">
-                          <GenericCartList<ReturnCartItem>
-                            items={displayedNewItemsReceived}
-                            availableItems={availableItems}
-                            basePriceKey="mrp"
-                            priceLabel="MRP"
-                            settings={{
-                              enableRounding: false,
-                              roundingInterval: 1,
-                              enableItemWiseDiscount: true, // Enable discount editing
-                              enableDiscount2: false,         // Disable Discount 2
-                              lockDiscount: false,          // Unlock Discount
-                              lockPrice: false              // Unlock Price
-                            }}
-                            applyRounding={(v) => v}
-                            State={State}
-                            setModal={setModal}
-                            onOpenEditDrawer={handleOpenEditDrawer}
-                            onDeleteItem={handleRemoveNewItem}
-                            onDiscountChange={handleNewItemDiscountChange}
-                            onDiscount2Change={() => { }}
-                            onCustomPriceChange={handleNewItemPriceChange}
-                            onCustomPriceBlur={handleNewItemPriceBlur}
-                            onQuantityChange={handleNewItemQuantity}
-                            onDiscountPressStart={() => { }}
-                            onDiscountPressEnd={() => { }}
-                            onDiscountClick={() => { }}
-                            onPricePressStart={() => { }}
-                            onPricePressEnd={() => { }}
-                            onPriceClick={() => { }}
-                          />
-                        </div>
-                      </div>
-                    )}
+                    <div className="hidden md:block xl:hidden">
+                      <CustomButton onClick={handleProcessReturn} variant={Variant.Payment} className="w-full py-3 text-lg font-semibold shadow-md">Process Transaction</CustomButton>
+                    </div>
                   </div>
-                )}
-              </div>
-
-              {/* Mobile Only: Inline Summary */}
-              <div className="md:hidden bg-white p-2 rounded-sm shadow-md mt-2">
-                <div className="flex justify-between items-center text-sm text-red-700">
-                  <p>Return Value</p><p className="font-medium">₹{totalReturnValue.toFixed(2)}</p>
                 </div>
-                {discountDeducted > 0 && (
-                  <div className="flex justify-between items-center text-xs text-orange-600 mt-1">
-                    <p>Less Bill Discount</p><p>- ₹{discountDeducted.toFixed(2)}</p>
-                  </div>
-                )}
-                {modeOfReturn === 'Exchange' && (
-                  <div className="flex justify-between items-center text-sm text-green-700 mt-1">
-                    <p>New Items Value</p><p className="font-medium">₹{totalNewItemsValue.toFixed(2)}</p>
-                  </div>
-                )}
-                <div className="border-t border-gray-200 my-2"></div>
-                <div className={`flex justify-between items-center text-lg font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-orange-600'}`}>
-                  {modeOfReturn === 'Exchange' && finalBalance > 0 ? (
-                    <select
-                      value={exchangeBalanceAction}
-                      onChange={(e) => setExchangeBalanceAction(e.target.value as any)}
-                      className="bg-transparent border-b-2 border-gray-200 hover:border-gray-400 focus:border-blue-500 outline-none cursor-pointer py-1 pr-2 text-gray-700 transition-colors"
-                    >
-                      <option value="Debit Note">Debit Note</option>
-                      <option value="Cash Refund">Cash Refund</option>
-                    </select>
-                  ) : (
-                    <p>{getBalanceLabel()}</p>
-                  )}
-                  <p>₹{Math.abs(finalBalance).toFixed(2)}</p>
-                </div>
-              </div>
-            </>
-          )}
+              </>
+            )}
+          </div>
         </div>
 
-        {/* --- RIGHT PANEL (Desktop Only: 35%) --- */}
-        <div className="hidden md:flex w-[35%] flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10 p-6">
+        {/* --- RIGHT PANEL (Desktop only) --- */}
+        <div className="relative z-10 hidden h-full w-[380px] flex-none flex-col border-l border-[#dfe6fb] bg-white p-5 shadow-[-4px_0_15px_-3px_rgba(21,48,140,0.05)] xl:flex">
           {selectedPurchase ? (
-            <div className="flex flex-col h-full">
-              <h2 className="text-xl font-bold text-gray-800 mb-6 border-b pb-2">Return Summary</h2>
+            <div className="flex h-full flex-col gap-3.5">
+              <h2 className="text-base font-semibold text-[#0f172b]">Return summary</h2>
 
-              {/* Transaction Type */}
-              <div className="mb-6">
-                <label className="block text-sm font-semibold text-gray-600 mb-2">Transaction Type</label>
-                <select value={modeOfReturn} onChange={(e) => setModeOfReturn(e.target.value)} className="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none">
-                  <option>Exchange</option>
-                  <option disabled={isPurchaseUnpaid}>Debit Note</option>
-                  <option>Cash Refund</option>
-                </select>
+              <div>
+                <span className="mb-1 block text-xs font-medium text-[#45556c]">Transaction type</span>
+                <ModePicker value={modeOfReturn} onChange={setModeOfReturn} options={modeOptions} />
               </div>
 
-              {/* Financials */}
-              <div className="space-y-4 text-sm text-gray-700 bg-gray-50 p-2 rounded-xl border border-gray-100 flex-grow">
-                <div className="flex justify-between">
-                  <span>Gross Return Value</span>
-                  <span className="font-medium">₹{totalReturnValue.toFixed(2)}</span>
+              <div className="grid gap-2 text-sm">
+                <div className="flex justify-between text-[#45556c]">
+                  <span>Gross return value</span>
+                  <span className="tabular-nums text-[#0f172b]">₹{totalReturnValue.toFixed(2)}</span>
                 </div>
                 {discountDeducted > 0 && (
-                  <div className="flex justify-between text-orange-600">
-                    <span>Less: Proportional Discount</span>
-                    <span>- ₹{discountDeducted.toFixed(2)}</span>
+                  <div className="flex justify-between text-[#bb4d00]">
+                    <span>Less: proportional discount</span>
+                    <span className="tabular-nums">- ₹{discountDeducted.toFixed(2)}</span>
                   </div>
                 )}
-                <div className="flex justify-between font-semibold border-t border-gray-200 pt-2">
-                  <span>Net Return Value</span>
-                  <span className="text-red-600">₹{(totalReturnValue - discountDeducted).toFixed(2)}</span>
+                <div className="flex justify-between border-t border-[#dfe6fb] pt-2 text-base font-semibold text-[#0f172b]">
+                  <span>Net return value</span>
+                  <span className="tabular-nums">₹{(totalReturnValue - discountDeducted).toFixed(2)}</span>
                 </div>
-
                 {modeOfReturn === 'Exchange' && (
-                  <div className="flex justify-between text-green-600 mt-2">
-                    <span>New Items Value</span>
-                    <span>- ₹{totalNewItemsValue.toFixed(2)}</span>
+                  <div className="flex justify-between text-[#45556c]">
+                    <span>New items value</span>
+                    <span className="tabular-nums text-[#008236]">- ₹{totalNewItemsValue.toFixed(2)}</span>
                   </div>
                 )}
               </div>
 
-              {/* Final Total */}
-              <div className="mt-auto pt-4 border-t border-gray-100">
-                <div className="flex justify-between items-end mb-4">
-                  {modeOfReturn === 'Exchange' && finalBalance > 0 ? (
-                    <select
-                      value={exchangeBalanceAction}
-                      onChange={(e) => setExchangeBalanceAction(e.target.value as any)}
-                      className="text-gray-500 font-medium bg-transparent border-b-2 border-gray-200 hover:border-gray-400 focus:border-blue-500 outline-none cursor-pointer pb-1 pr-2 transition-colors"
-                    >
-                      <option value="Debit Note">Debit Note</option>
-                      <option value="Cash Refund">Cash Refund</option>
-                    </select>
-                  ) : (
-                    <span className="text-gray-500 font-medium">{getBalanceLabel()}</span>
+              <div className="mt-auto grid gap-3">
+                <div className={`flex items-center justify-between gap-3 rounded-sm px-3.5 py-3 ${balanceTone}`}>
+                  {modeOfReturn === 'Exchange' && finalBalance > 0 ? balanceSelect : (
+                    <span className="text-sm font-medium">{getBalanceLabel()}</span>
                   )}
-                  <span className={`text-3xl font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-orange-600'}`}>
-                    ₹{Math.abs(finalBalance).toFixed(2)}
-                  </span>
+                  <b className="text-[26px] font-semibold leading-8 tracking-tight tabular-nums">₹{Math.abs(finalBalance).toFixed(2)}</b>
                 </div>
-                <button onClick={handleProcessReturn} className="w-full bg-blue-600 text-white py-4 px-4 rounded-xl shadow-lg shadow-blue-200 transition-all active:scale-[0.98] text-lg font-bold hover:bg-blue-700">
+                <button
+                  onClick={handleProcessReturn}
+                  className="h-[54px] w-full rounded-sm bg-[#155dfc] text-[15px] font-medium text-white transition-colors hover:bg-[#1447e6] active:scale-[0.99]"
+                >
                   Process Transaction
                 </button>
               </div>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center h-full text-gray-400">
+            <div className="flex h-full flex-col items-center justify-center text-center text-sm text-[#5b6b86]">
               <p>Select a purchase to begin return</p>
             </div>
           )}
         </div>
 
         {/* --- MOBILE FOOTER (Sticky) --- */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 p-2 bg-transparent flex justify-center pb-18">
+        <div className="fixed bottom-0 left-0 right-0 flex justify-center bg-transparent p-2 pb-18 md:hidden">
           {selectedPurchase && (<CustomButton onClick={handleProcessReturn} variant={Variant.Payment} className="w-full py-3 text-lg font-semibold shadow-md">Process Transaction</CustomButton>)}
         </div>
 
@@ -481,7 +615,6 @@ const PurchaseReturnPage: React.FC = () => {
         subtotal={Math.abs(finalBalance)}
         billTotal={Math.abs(finalBalance)}
 
-        // 👇 ADD THESE 5 LINES:
         totalTax={totalTax}
         taxMode={activeTaxMode}
         onTaxModeChange={setActiveTaxMode}

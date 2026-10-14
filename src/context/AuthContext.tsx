@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, type ReactNode } from 'react';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../lib/Firebase';
 import { AuthContext, DatabaseContext } from './auth-context';
 import { Permissions, PLANS, ROLES } from '../enums';
@@ -333,6 +333,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           }
         };
         setDbOperations(getFirestoreOperations(companyId!));
+
+
+        try {
+          const prev = uData.lastLoginAt?.toDate ? uData.lastLoginAt.toDate() : null;
+          const stale = !prev || Date.now() - prev.getTime() > 30 * 60 * 1000;
+          if (stale) {
+            updateDoc(userDocRef, { lastLoginAt: serverTimestamp() }).catch(err =>
+              console.error('Failed to update lastLoginAt', err)
+            );
+          }
+        } catch (err) {
+          console.error('lastLoginAt check failed', err);
+        }
+
         commit({ status: 'authenticated', user: userData });
 
       } catch (error) {

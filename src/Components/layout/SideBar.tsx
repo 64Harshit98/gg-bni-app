@@ -17,6 +17,7 @@ interface NavItem {
   icon: ReactNode;
   label: string;
   badge?: number;
+  permission?: AnyPermission | null;
 }
 
 export interface QuickAction {

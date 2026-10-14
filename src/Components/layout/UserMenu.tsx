@@ -22,13 +22,13 @@ export const THEMES: Record<Theme, {
   searchHover: 'hover:border-blue-300',
 },
   orange: {
-    navActive: 'bg-orange-500 text-white shadow-md shadow-orange-500/25',
-    qaActive: 'border-orange-200 bg-orange-50 text-slate-900',
-    qaIconActive: 'bg-orange-100 text-orange-600',
-    qaIconIdle: 'bg-slate-100 text-slate-600 group-hover:bg-orange-100 group-hover:text-orange-600',
-    avatar: 'bg-orange-500 ring-orange-500/20',
-    searchHover: 'hover:border-orange-300',
-  },
+  navActive: 'bg-orange-700 text-white shadow-md shadow-orange-700/25',      // primary #c2410c
+  qaActive: 'border-orange-200 bg-orange-100 text-orange-800',               // primary-soft #ffedd5 + soft-ink #9a3412
+  qaIconActive: 'bg-orange-200 text-orange-800',
+  qaIconIdle: 'bg-slate-100 text-slate-600 group-hover:bg-orange-100 group-hover:text-orange-800',
+  avatar: 'bg-orange-700 ring-orange-700/20',
+  searchHover: 'hover:border-orange-600',                                     // focus-ring #ea580c
+},
 };
 
 export function initials(name?: string) {

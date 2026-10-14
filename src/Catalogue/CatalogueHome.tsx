@@ -3,16 +3,18 @@ import { Link } from 'react-router-dom';
 import { db } from '../lib/Firebase';
 import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
-import { FilterControls, FilterProvider, useFilter } from '../Components/Filter';
+import { DateChips, FilterProvider, useFilter } from '../Components/Filter';
 //import { Permissions } from '../enums';
 //import { SiteItems } from '../routes/SiteRoutes';
 import { OrderTimeline } from '../Components/OrderTimeline';
-import { CompletedSalesCard } from '../Components/CatalougeSales';
 // import { RestockAlertsCard } from '../Components/RestockItems';
-import { TopSoldItemsCard } from '../Components/TopFiveOrder';
-import { OrderBarChartReport } from '../Components/OrderSalesGraph';
+import { CatalogueKpiRow } from '../Components/Cataloguekpirow';
+import { CatalogueSalesByWeek } from '../Components/OrderSalesGraph';
+import { CatalogueTopItems } from '../Components/TopFiveOrder';
+import { CatalogueRestockSoon } from '../Components/RestockItems';
+import { Ico, ICONS } from '../Components/ui/Catalogueui';
 //import { IconChevronDown } from '../constants/Icons';
-import { FiRefreshCw, FiLoader } from 'react-icons/fi';
+import { FiRefreshCw, FiLoader, FiShare2 } from 'react-icons/fi';
 import { fetchDashboardData, CACHE_DURATION } from '../lib/fetchDashboardData';
 import ShinyText from '../Components/ShinyText';
 import type { WithCacheMeta } from '../lib/fetchDashboardData';
@@ -177,6 +179,8 @@ const HomePageContent: React.FC = () => {
 
     // Expiry date state and effect
     const [expiryDate, setExpiryDate] = useState<any>(null);
+    // Same link CatalogueLayout shares: custom subdomain if set, else /catalogue/:companyId
+    const [storeLink, setStoreLink] = useState(`${window.location.origin}/catalogue/${currentUser?.companyId}`);
 
     useEffect(() => {
         const fetchExpiry = async () => {
@@ -186,6 +190,9 @@ const HomePageContent: React.FC = () => {
                 const snap = await getDoc(ref);
                 if (snap.exists()) {
                     setExpiryDate(snap.data().expiryDate);
+                    if (snap.data().subdomain) {
+                        setStoreLink(`https://${snap.data().subdomain}.sellar.in`);
+                    }
                 }
             } catch (e) {
                 console.error('Error fetching expiry date:', e);
@@ -317,6 +324,11 @@ const HomePageContent: React.FC = () => {
     // Manual refresh: bypass cache and fetch latest data immediately
     const handleRefresh = () => fetchData(true);
 
+    // Share catalogue: opens the same popup as the layout's Share button
+    const handleShareCatalogue = () => {
+        window.dispatchEvent(new CustomEvent('open-catalogue-share', { detail: { link: storeLink } }));
+    };
+
     // Helper functions for expiry
     const isExpiringSoon = (expiry: any) => {
         if (!expiry) return false;
@@ -356,7 +368,7 @@ const HomePageContent: React.FC = () => {
     }, [currentUser]);
 
     return (
-        <div className="flex min-h-screen w-full flex-col bg-gray-100 mb-16">
+        <div className="flex min-h-screen w-full flex-col bg-[#fff5ec] mb-16">
 
             {soon && (
                 <div className={`w-full text-center py-2 text-sm font-bold text-white shadow-sm transition-colors duration-300 ${isUrgent ? 'bg-red-300' : 'bg-amber-200'}`}>
@@ -376,20 +388,28 @@ const HomePageContent: React.FC = () => {
                 </div>
             )}
 
-            {/* ── Header ──────────────────────────────────────────────────── */}
-            <header className="flex flex-shrink-0 items-center justify-between border-b border-slate-300 bg-gray-100 p-2">
-
-                {/* Left: spacer (POS/Catalogue switcher now lives in the layout strip) */}
-                <div className="w-28" />
-
-                {/* Center: dashboard title and business name */}
-                <div className="flex-1 text-center flex flex-col items-center justify-center">
-                    <h1 className="text-2xl font-bold text-slate-800">Dashboard</h1>
-                    <p className="text-sm text-slate-500">{isHeaderLoading ? '...' : businessName}</p>
+            {/* ── Page head: title + "Updated" line on the left, hide-figures on the right ── */}
+            <header className="flex flex-shrink-0 flex-wrap items-center gap-x-4 gap-y-3 px-4 pt-5 pb-4 md:px-6">
+                <div className="min-w-0 flex-1 md:min-w-[260px]">
+                    <h1 className="m-0 text-xl font-semibold leading-8 tracking-tight text-slate-900 sm:text-2xl">Dashboard</h1>
+                    <p className="m-0 flex flex-wrap items-center text-[13px] text-slate-600">
+                        <span>{isHeaderLoading ? '...' : businessName} · Catalogue</span>
+                        <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueFilter}>
+                            <span className="ml-1 inline-flex items-center">
+                                · Updated {formattedLastUpdated}
+                                <button
+                                    onClick={handleRefresh}
+                                    aria-label="Refresh"
+                                    className={`ml-1 inline-grid h-8 w-8 place-items-center rounded-sm text-slate-600 transition-colors hover:bg-[#fff8f2] hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-600 ${loading ? 'animate-spin' : ''}`}
+                                >
+                                    {loading ? <FiLoader size={14} /> : <FiRefreshCw size={14} />}
+                                </button>
+                            </span>
+                        </ShowWrapper>
+                    </p>
                 </div>
 
-                {/* Right: Notification bell + toggle button */}
-                <div className="w-28 flex justify-end items-center gap-2">
+                <div className="flex items-center gap-2 md:ml-auto">
                     {/* <ShowWrapper requiredPermission={Cata_Permissions.ViewNotification}>
                         <div className="hidden sm:flex border border-slate-300 rounded-sm bg-gray-100 shadow-sm">
                             <NotificationBell />
@@ -399,92 +419,83 @@ const HomePageContent: React.FC = () => {
                         <TutorialStep step={2} currentStep={tutorialStep} text="Toggle this to show or hide sensitive sales figures." onNext={() => next(3)} onSkip={skip}>
                             <button
                                 onClick={() => setIsDataVisible(!isDataVisible)}
-                                className="p-2 rounded-sm border border-slate-400 hover:bg-slate-200 transition-colors"
+                                className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-sm border border-slate-400 bg-white px-2.5 text-sm font-medium text-slate-900 transition-colors hover:bg-[#fff8f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-600 sm:px-4"
                                 title={isDataVisible ? 'Hide Data' : 'Show Data'}
+                                aria-label={isDataVisible ? 'Hide figures' : 'Show figures'}
                             >
-                                {isDataVisible ? (
-                                    // Eye open — data is currently visible
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></svg>
-                                ) : (
-                                    // Eye closed — data is currently hidden
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" /><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" /><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" /><line x1="2" x2="22" y1="2" y2="22" /></svg>
-                                )}
+                                <Ico d={isDataVisible ? ICONS.eye : ICONS.eyeOff} size={16} />
+                                <span className="hidden sm:inline">{isDataVisible ? 'Hide figures' : 'Show figures'}</span>
                             </button>
                         </TutorialStep>
                     </ShowWrapper>
+
+                    {/* Share catalogue — primary on desktop, icon-only on mobile */}
+                    <button
+                        onClick={handleShareCatalogue}
+                        aria-label="Share catalogue"
+                        className="inline-flex h-10 w-10 items-center justify-center gap-2 whitespace-nowrap rounded-sm border border-slate-400 bg-white text-sm font-medium text-slate-900 transition-colors hover:bg-[#fff8f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-600 md:w-auto md:border-transparent md:bg-orange-700 md:px-4 md:text-white md:hover:bg-orange-800"
+                    >
+                        <FiShare2 size={16} />
+                        <span className="hidden md:inline">Share catalogue</span>
+                    </button>
                 </div>
             </header>
 
             {/* ── Main Content ─────────────────────────────────────────────── */}
-            <main ref={mainRef} className="flex-grow overflow-y-auto p-2">
-
-                {/* Refresh bar: shows when data was last fetched + manual refresh button */}
-                <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueFilter}>
-                    <div className="flex justify-center gap-2 mb-2">
-                        <p className="text-sm text-slate-500 flex items-center">
-                            Last Updated: {formattedLastUpdated}
-                        </p>
-                        <button
-                            onClick={handleRefresh}
-                            className={`p-1 rounded-full hover:bg-slate-200 text-slate-600 transition-all ${loading ? 'animate-spin' : ''}`}
-                        >
-                            {loading ? <FiLoader size={14} /> : <FiRefreshCw size={14} />}
-                        </button>
-                    </div>
-                </ShowWrapper>
-
+            <main ref={mainRef} className="flex-grow overflow-y-auto px-4 md:px-6">
                 <div className="mx-auto max-w-7xl relative">
 
-                    {/* Date Filter — matches POS (mb-2 inside max-w-7xl) */}
+                    {/* Date filter chips (no Apply button) */}
                     <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueFilter}>
-
                         <TutorialStep step={3} currentStep={tutorialStep} text="Use these filters to select the date range for your dashboard data." onNext={() => next(4)} onSkip={skip}>
-                            <div ref={setTutorialRef(3)} className="mb-2">
-                                <FilterControls />
+                            <div ref={setTutorialRef(3)} className="mb-3 md:mb-5">
+                                <DateChips compare={false} />
                             </div>
                         </TutorialStep>
                     </ShowWrapper>
+
                     {/* Full-page loader shown only on the very first load */}
                     {(loading && !data && !isTutorialActive) ? (
                         <div className="flex h-64 items-center justify-center text-slate-500">
                             <FiLoader className="animate-spin mr-2" /> Loading Dashboard...
                         </div>
                     ) : (
-                        <div className="flex flex-col gap-2">
+                        <div className="flex flex-col gap-4 sm:gap-5 pb-5">
 
-                            {/* ── Row 1+2: Completed Sales + Order Journey — side by side ── */}
-                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueSalesbarchart}>
-                                    <TutorialStep step={4} currentStep={tutorialStep} text="This shows your total completed sales for the selected period." onNext={() => next(5)} onSkip={skip}>
-                                        <div ref={setTutorialRef(4)} className="h-full [&>*]:h-full">
-                                            <CompletedSalesCard
-                                                isDataVisible={effectiveDataVisible}
-                                                totalSalesAmount={displayData?.totalSalesAmount ?? 0}
-                                                totalSalesCount={displayData?.totalSalesCount ?? 0}
-                                                loading={loading}
-                                            />
-                                        </div>
-                                    </TutorialStep>
-                                </ShowWrapper>
-                                <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueOrders}>
-                                    <TutorialStep step={5} currentStep={tutorialStep} text="Track your order journey from upcoming to completed." onNext={() => next(6)} onSkip={skip}>
-                                        <div ref={setTutorialRef(5)} className="h-full [&>*]:h-full">
-                                            <OrderTimeline
-                                                isDataVisible={effectiveDataVisible}
-                                                orderCounts={displayData?.orderCounts ?? {}}
-                                                loading={loading}
-                                            />
-                                        </div>
-                                    </TutorialStep>
-                                </ShowWrapper>
-                            </div>
+                            {/* ── KPI tiles ── */}
+                            <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueSalesbarchart}>
+                                <TutorialStep step={4} currentStep={tutorialStep} text="This shows your total completed sales for the selected period." onNext={() => next(5)} onSkip={skip}>
+                                    <div ref={setTutorialRef(4)}>
+                                        <CatalogueKpiRow
+                                            isDataVisible={effectiveDataVisible}
+                                            totalSalesAmount={displayData?.totalSalesAmount ?? 0}
+                                            totalSalesCount={displayData?.totalSalesCount ?? 0}
+                                            orderCounts={displayData?.orderCounts ?? {}}
+                                            loading={loading}
+                                        />
+                                    </div>
+                                </TutorialStep>
+                            </ShowWrapper>
 
-                            {/* ── Row 3: Three equal columns ──────────────── */}
-                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                            {/* ── Order journey (full width) ── */}
+                            <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueOrders}>
+                                <TutorialStep step={5} currentStep={tutorialStep} text="Track your order journey from upcoming to completed." onNext={() => next(6)} onSkip={skip}>
+                                    <div ref={setTutorialRef(5)}>
+                                        <OrderTimeline
+                                            isDataVisible={effectiveDataVisible}
+                                            orderCounts={displayData?.orderCounts ?? {}}
+                                            loading={loading}
+                                        />
+                                    </div>
+                                </TutorialStep>
+                            </ShowWrapper>
+
+                            {/* ── Sales by week · Top items · Restock (soon) ── */}
+                            <div className="grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-[1.4fr_1fr_1fr]">
                                 <ShowWrapper requiredPermission={Cata_Permissions.ViewCatalogueSalesbarchart}>
-                                    <TutorialStep step={6} currentStep={tutorialStep} text="This bar chart shows your order sales performance over the selected date range." onNext={() => next(7)} onSkip={skip}>
-                                        <div ref={setTutorialRef(6)} className="h-full [&>*]:h-full">
-                                            <OrderBarChartReport
+                                    <TutorialStep step={6} currentStep={tutorialStep} text="This chart shows your sales performance over the selected date range." onNext={() => next(7)} onSkip={skip}>
+                                        <div ref={setTutorialRef(6)} className="h-full [&>*]:h-full md:col-span-2 xl:col-span-1">
+                                            <CatalogueSalesByWeek
                                                 isDataVisible={effectiveDataVisible}
                                                 chartData={displayData?.chartData ?? []}
                                                 totalSales={displayData?.totalSalesAmount ?? 0}
@@ -513,7 +524,7 @@ const HomePageContent: React.FC = () => {
                                 >
                                     <ShowWrapper requiredPermission={Cata_Permissions.ViewTopSoldItems}>
                                         <div ref={setTutorialRef(7)} className="h-full [&>*]:h-full">
-                                            <TopSoldItemsCard
+                                            <CatalogueTopItems
                                                 isDataVisible={effectiveDataVisible}
                                                 topByQuantity={displayData?.topByQuantity ?? []}
                                                 topByAmount={displayData?.topByAmount ?? []}
@@ -523,17 +534,7 @@ const HomePageContent: React.FC = () => {
                                     </ShowWrapper>
                                 </TutorialStep>
 
-                                {/* Coming Soon placeholder */}
-                                <div className="relative rounded-xl border border-gray-200 bg-white p-4 shadow-sm opacity-70 cursor-not-allowed flex items-center justify-center min-h-[160px]">
-                                    <span className="absolute top-2 right-2 text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full font-medium">
-                                        Coming Soon
-                                    </span>
-                                    <div className="text-center">
-                                        <h3 className="text-lg font-semibold text-gray-500">Restock Alerts</h3>
-                                        <p className="text-sm text-gray-400">Feature under development</p>
-                                    </div>
-                                </div>
-
+                                <CatalogueRestockSoon />
                             </div>
                         </div>
                     )}

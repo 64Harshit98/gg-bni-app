@@ -1,11 +1,18 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '../constants/routes.constants';
 import { useFilter } from './Filter';
 import { Spinner } from '../constants/Spinner';
 import type { OrderStatus } from '../Catalogue/Orders';
+import { CatCard, CardHead, Ico, ICONS } from '../Components/ui/Catalogueui'
 
 const orderStatuses: OrderStatus[] = ['Upcoming', 'Confirmed', 'Packed', 'Completed'];
+const stageHint: Record<string, string> = {
+    Upcoming: 'To confirm',
+    Confirmed: 'To pack',
+    Packed: 'Ready to send',
+    Completed: 'Delivered',
+};
 
 // ── Props (counts come from HomePage, no internal fetch) ─────────────────────
 interface OrderTimelineProps {
@@ -22,16 +29,6 @@ export const OrderTimeline: React.FC<OrderTimelineProps> = ({
     const { filters } = useFilter();
     const navigate = useNavigate();
 
-    const selectedPeriodText = useMemo(() => {
-        if (!filters.startDate || !filters.endDate) return '';
-        const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
-        const s = new Date(filters.startDate); s.setHours(0, 0, 0, 0);
-        const e = new Date(filters.endDate); e.setHours(23, 59, 59, 999);
-        const start = s.toLocaleDateString('en-IN', opts);
-        const end = e.toLocaleDateString('en-IN', opts);
-        return start === end ? `for ${start}` : `from ${start} to ${end}`;
-    }, [filters.startDate, filters.endDate]);
-
     const handleViewStatus = (status: OrderStatus) => {
         navigate(ROUTES.ORDERDETAILS, {
             state: {
@@ -42,66 +39,105 @@ export const OrderTimeline: React.FC<OrderTimelineProps> = ({
         });
     };
 
+    const handleViewAll = () => {
+        navigate(ROUTES.ORDERDETAILS, {
+            state: { startDate: filters.startDate, endDate: filters.endDate }
+        });
+    };
+
     if (loading) {
         return (
-            <div className="flex justify-center p-8 bg-white rounded-lg shadow-md">
+            <CatCard className="flex justify-center p-8">
                 <Spinner />
-            </div>
+            </CatCard>
         );
     }
 
-    return (
-        <div className="w-full p-4 md:p-6 bg-white rounded-sm shadow-md">
-            <div className="flex flex-col items-center mb-4">
-                <h2 className="text-xl md:text-2xl font-bold text-gray-800">Order Journey</h2>
-                <span className="bg-gray-50 text-[#F97316] text-[12px] font-bold px-2 py-0.5 rounded-full mt-1 uppercase">
-                    {selectedPeriodText}
-                </span>
-            </div>
+    const toConfirm = orderCounts.Upcoming ?? 0;
+    const toPack = orderCounts.Confirmed ?? 0;
+    const waiting = toConfirm + toPack;
+    // Packing comes first when there is something confirmed, otherwise confirm new orders
+    const nextStatus: OrderStatus = toPack > 0 ? 'Confirmed' : 'Upcoming';
 
-            <div className="flex items-start w-full px-1 md:px-4 pt-12 pb-10">
+    return (
+        <CatCard>
+            <CardHead
+                title="Order journey"
+                sub="Where your orders are right now · tap a stage to open those orders"
+                right={
+                    <button
+                        onClick={handleViewAll}
+                        className="inline-flex h-8 items-center gap-2 whitespace-nowrap rounded-sm border border-slate-400 bg-white px-3 text-[13px] font-medium text-slate-900 transition-colors hover:bg-[#fff8f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-600"
+                    >
+                        <Ico d={ICONS.orders} size={16} />
+                        All orders
+                    </button>
+                }
+            />
+
+            <div className="mt-2 grid grid-cols-4">
                 {orderStatuses.map((status, index) => {
                     const count = orderCounts[status] ?? 0;
                     const isLast = index === orderStatuses.length - 1;
-                    const labelContent = status === "Upcoming" ? "Upcoming" : status.replace(' & ', ' &\n');
-                    const isTopLabel = index % 2 === 0;
+                    // When figures are hidden, don't leak which stages are empty
+                    const isActive = isDataVisible ? count > 0 : true;
+                    const isDone = status === 'Completed';
+                    const dotClass = isDone
+                        ? 'border-transparent bg-[#e9faef] text-[#008236]'
+                        : isActive
+                            ? 'border-orange-700 bg-orange-700 text-white'
+                            : 'border-[#f6e1d0] bg-[#fff8f2] text-slate-500';
 
                     return (
-                        <React.Fragment key={status}>
-                            <div className="flex flex-col items-center flex-1 min-w-0">
-                                <button
-                                    className={`relative flex flex-col items-center w-full group`}
-                                    onClick={() => handleViewStatus(status)}
-                                >
-                                    {isTopLabel && (
-                                        <span className="absolute bottom-full mb-2 text-center text-[10px] sm:text-xs md:text-sm text-gray-600 font-bold whitespace-pre-line leading-tight w-max">
-                                            {labelContent}
-                                        </span>
-                                    )}
-                                    <div className="relative w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full bg-[#F97316] flex items-center justify-center transition-all duration-300 z-10 border-2 md:border-4 border-gray-300 shadow-sm group-hover:scale-110">
-                                        {/* {status === "Upcoming" ? (
-                                            <span className="absolute px-1 py-[2px] text-[6px] font-black uppercase rounded-full bg-orange-100 text-[#F97316] border border-orange-300 whitespace-nowrap">
-                                                Coming Soon
-                                            </span>
-                                        ) : ( */}
-                                        <span className="text-xs sm:text-sm md:text-xl font-bold text-white">
-                                            {isDataVisible ? count : '∗'}
-                                        </span>
-                                    </div>
-                                    {!isTopLabel && (
-                                        <span className="absolute top-full mt-2 text-center text-[10px] sm:text-xs md:text-sm text-gray-600 font-bold whitespace-pre-line leading-tight w-max">
-                                            {labelContent}
-                                        </span>
-                                    )}
-                                </button>
-                            </div>
-                            {!isLast && (
-                                <div className="flex-auto h-0.5 md:h-1 bg-gray-300 mt-4 sm:mt-5 md:mt-6 -mx-1" />
-                            )}
-                        </React.Fragment>
+                        <button
+                            key={status}
+                            onClick={() => handleViewStatus(status)}
+                            className={`group relative flex flex-col items-center gap-1.5 rounded-sm px-1.5 py-1 text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-600 ${
+                                !isLast
+                                    ? "after:absolute after:h-0.5 after:bg-[#f6e1d0] after:content-[''] after:top-[23px] after:left-[calc(50%+22px)] after:right-[calc(-50%+22px)] sm:after:top-[26px] sm:after:left-[calc(50%+26px)] sm:after:right-[calc(-50%+26px)]"
+                                    : ''
+                            }`}
+                        >
+                            <span className={`relative z-10 grid h-[38px] w-[38px] place-items-center rounded-full border-2 text-[15px] font-semibold transition-transform group-hover:scale-105 sm:h-11 sm:w-11 sm:text-[17px] ${dotClass}`}>
+                                {isDataVisible ? count : '∗'}
+                            </span>
+                            <b className="text-[13px] font-semibold text-slate-900">{status}</b>
+                            <small className={`hidden text-[11px] leading-[14px] sm:block ${isActive && !isDone ? 'font-medium text-orange-700' : 'text-slate-500'}`}>
+                                {stageHint[status]}
+                            </small>
+                        </button>
                     );
                 })}
             </div>
-        </div>
+
+            {/* Waiting-on-you bar */}
+            <div className="mt-3.5 flex items-center gap-3 rounded-sm bg-orange-100 px-3 py-2.5 sm:px-3.5 sm:py-3">
+                <Ico d={ICONS.clock} size={20} className="hidden text-orange-800 sm:block" />
+                <span className="flex-1 text-xs text-slate-900 sm:text-[13px]">
+                    {!isDataVisible ? (
+                        <>Show figures to see what is waiting on you.</>
+                    ) : waiting === 0 ? (
+                        <><b>All caught up.</b> Nothing is waiting on you.</>
+                    ) : (
+                        <>
+                            <b>{waiting} {waiting === 1 ? 'order is' : 'orders are'} waiting on you.</b>{' '}
+                            <span className="hidden sm:inline">
+                                Confirm {toConfirm} new {toConfirm === 1 ? 'order' : 'orders'} and pack {toPack} confirmed {toPack === 1 ? 'one' : 'ones'} so customers aren’t kept waiting.
+                            </span>
+                            <span className="sm:hidden">· {toConfirm} to confirm, {toPack} to pack</span>
+                        </>
+                    )}
+                </span>
+                {isDataVisible && waiting > 0 && (
+                    <button
+                        onClick={() => handleViewStatus(nextStatus)}
+                        className="inline-flex h-8 items-center whitespace-nowrap rounded-sm bg-orange-700 px-3 text-[13px] font-medium text-white transition-colors hover:bg-orange-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-600 focus-visible:ring-offset-2"
+                    >
+                        <span className="hidden sm:inline">{toPack > 0 ? 'Start packing' : 'Review orders'}</span>
+                        <span className="sm:hidden">Open</span>
+                    </button>
+                )}
+            </div>
+        </CatCard>
     );
 };

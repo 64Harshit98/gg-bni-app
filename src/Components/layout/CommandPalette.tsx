@@ -3,12 +3,25 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, Search } from 'lucide-react';
 
 import { ROUTES } from '../../constants/routes.constants';
+import { ROLES } from '../../enums';
+import { useAuth } from '../../context/auth-context';
+
+/**
+ * Some destinations are NOT pages — they open a modal that lives in the layout
+ * (MainLayout / CatalogueLayout). The palette can be rendered from Header or from the
+ * layout, so instead of passing callbacks we broadcast a window event and the layout listens.
+ */
+export const LAYOUT_ACTION_EVENT = 'sellar_layout_action';
+export type LayoutAction = 'add-user' | 'add-expense';
 
 export interface Destination {
   label: string;
   hint: string;
-  to: string;
+  to?: string; // page to navigate to (omit when `action` is used)
   keywords?: string; // extra search words (optional)
+  action?: LayoutAction; // opens a layout-level modal instead of navigating
+  state?: Record<string, unknown>; // router state passed on navigate (e.g. open a modal on the target page)
+  ownerOnly?: boolean; // hide for non-owner roles
 }
 
 // If TypeScript says a ROUTES key doesn't exist, just delete that line.
@@ -25,12 +38,14 @@ export const DESTINATIONS: Destination[] = [
   { label: 'Add Purchase', hint: 'Record a purchase', to: ROUTES.PURCHASE, keywords: 'buy supplier' },
   { label: 'Purchase Return', hint: 'Return items to supplier', to: ROUTES.PURCHASE_RETURN, keywords: 'return debit note' },
   { label: 'Print Barcode', hint: 'Generate item barcodes', to: ROUTES.PRINTQR, keywords: 'qr label' },
+  { label: 'Add Expense', hint: 'Record a new expense', action: 'add-expense', keywords: 'kharcha spend cost' },
 
   // --- Items & Users ---
   { label: 'Add Item', hint: 'Add a new catalogue item', to: ROUTES.ITEM_ADD, keywords: 'product' },
   { label: 'Item Group', hint: 'Manage item groups', to: ROUTES.ITEM_GROUP, keywords: 'category' },
   { label: 'Manage Items', hint: 'Edit or delete items', to: ROUTES.MANAGE_ITEMS, keywords: 'products stock' },
-  { label: 'Add User', hint: 'Invite a team member', to: ROUTES.USER_ADD, keywords: 'staff employee' },
+  // Opens the same AddUserModal as the layout's quick action (not the USER_ADD page)
+  { label: 'Add User', hint: 'Invite a team member', action: 'add-user', keywords: 'staff employee' },
 
   // --- Reports ---
   { label: 'Reports', hint: 'Sales, tax & inventory reports', to: ROUTES.REPORTS },
@@ -51,6 +66,15 @@ export const DESTINATIONS: Destination[] = [
 
   // --- Settings ---
   { label: 'Settings', hint: 'Taxes, units & preferences', to: ROUTES.MASTERS, keywords: 'masters' },
+  // Goes to Settings and opens the Shop timing modal there (Masters reads router state)
+  {
+    label: 'Shop Timing',
+    hint: 'Opening hours, weekly off, day-close time',
+    to: ROUTES.MASTERS,
+    state: { openShopTiming: true },
+    keywords: 'shop setting hours opening closing weekly off day close',
+    ownerOnly: true,
+  },
   { label: 'Permission Settings', hint: 'User roles & permissions', to: ROUTES.PERMSETTING, keywords: 'roles access' },
   { label: 'Sales Settings', hint: 'Sales preferences', to: ROUTES.SALESETTING },
   { label: 'Purchase Settings', hint: 'Purchase preferences', to: ROUTES.PURCHASESETTING },
@@ -80,6 +104,8 @@ export const CATALOGUE_DESTINATIONS: Destination[] = [
   { label: 'Add Product', hint: 'Add a new product', to: `${C}/${ROUTES.ADD_PRODUCT}`, keywords: 'item' },
   { label: 'Item Group', hint: 'Manage item groups', to: `${C}/${ROUTES.CAT_ITEM_GROUP}`, keywords: 'category' },
   { label: 'Manage Items', hint: 'Edit or delete items', to: `${C}/${ROUTES.CATALOGUE_MANAGE_ITEMS}` },
+  { label: 'Add Expense', hint: 'Record a new expense', action: 'add-expense', keywords: 'kharcha spend cost' },
+  { label: 'Add User', hint: 'Invite a team member', action: 'add-user', keywords: 'staff employee' },
 
   { label: 'Reports', hint: 'All catalogue reports', to: `${C}/${ROUTES.CATALOGUE_REPORTS}` },
   { label: 'Items', hint: 'Items & stock', to: `${C}/${ROUTES.CATALOGUE_ITEMS}`, keywords: 'stock' },
@@ -95,6 +121,14 @@ export const CATALOGUE_DESTINATIONS: Destination[] = [
   { label: 'Stock Transfer Report', hint: 'Stock transfer history', to: `${C}/${ROUTES.CATALOGUE_STOCK_TRANSFER}` },
 
   { label: 'Settings', hint: 'Catalogue masters', to: `${C}/${ROUTES.CATA_MASTERS}`, keywords: 'masters' },
+  {
+    label: 'Shop Timing',
+    hint: 'Opening hours, weekly off, day-close time',
+    to: `${C}/${ROUTES.CATA_MASTERS}`,
+    state: { openShopTiming: true },
+    keywords: 'shop setting hours opening closing weekly off day close',
+    ownerOnly: true,
+  },
   { label: 'Sales Settings', hint: 'Sales preferences', to: `${C}/${ROUTES.CATA_SALE_SETTING}` },
   { label: 'Bill Settings', hint: 'Invoice format', to: `${C}/${ROUTES.CATA_BILL_SETTING}` },
   { label: 'Item Settings', hint: 'Item preferences', to: `${C}/${ROUTES.CATA_ITEM_SETTING}` },
@@ -127,13 +161,15 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const [query, setQuery] = useState('');
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const { currentUser } = useAuth();
+  const isOwner = currentUser?.role === ROLES.OWNER;
 
   // Path decides the list: Catalogue pages -> CATALOGUE_DESTINATIONS, else POS.
   // (The old `destinations` prop passed by the Catalogue header is intentionally ignored.)
-  const activeDestinations = useMemo(
-    () => (isCataloguePath(pathname) ? CATALOGUE_DESTINATIONS : DESTINATIONS),
-    [pathname]
-  );
+  const activeDestinations = useMemo(() => {
+    const list = isCataloguePath(pathname) ? CATALOGUE_DESTINATIONS : DESTINATIONS;
+    return list.filter((d) => !d.ownerOnly || isOwner);
+  }, [pathname, isOwner]);
 
   useEffect(() => {
     if (!open) setQuery('');
@@ -154,9 +190,14 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     );
   }, [query, activeDestinations]);
 
-  const go = (to: string) => {
+  const go = (d: Destination) => {
     onOpenChange(false);
-    navigate(abs(to));
+    if (d.action) {
+      // Layout owns these modals (AddUserModal / ExpenseModal) — same ones as the quick actions
+      window.dispatchEvent(new CustomEvent<LayoutAction>(LAYOUT_ACTION_EVENT, { detail: d.action }));
+      return;
+    }
+    if (d.to) navigate(abs(d.to), d.state ? { state: d.state } : undefined);
   };
 
   if (!open) return null;
@@ -172,7 +213,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && results[0]) go(results[0].to);
+              if (e.key === 'Enter' && results[0]) go(results[0]);
             }}
             placeholder="Search pages & actions…"
             className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
@@ -185,9 +226,9 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           {results.length === 0 && <p className="px-3 py-6 text-center text-sm text-slate-500">No matches.</p>}
           {results.map((d) => (
             <button
-              key={d.to + d.label}
+              key={`${d.action ?? d.to}-${d.label}`}
               type="button"
-              onClick={() => go(d.to)}
+              onClick={() => go(d)}
               className="group flex w-full items-center justify-between rounded-sm px-3 py-2.5 text-left text-sm transition-colors hover:bg-slate-100"
             >
               <span>

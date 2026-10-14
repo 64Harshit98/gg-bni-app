@@ -5,18 +5,36 @@ import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../../context/auth-context';
-import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';
+import {
+  FiCamera, FiCheck, FiX, FiUser, FiImage, FiBriefcase, FiMapPin, FiCreditCard,
+  FiShare2, FiShoppingBag, FiLock, FiAlertTriangle, FiUpload, FiChevronDown,
+  FiInstagram, FiFacebook, FiTwitter, FiMessageCircle,
+} from 'react-icons/fi';
+import { invalidateLogoCache, logoCache } from '../../Catalogue/hooks/useCompanyLogo';
+import BackButton from '../../Components/BackButton';
 
-// Add FloatingLabelSelect import (assumed location, adjust if needed)
-import { FloatingLabelSelect } from '../../Components/FloatingLabelSelect';
-// Example options, replace with real data as needed
-const businessTypeOptions = [
-  { value: 'Retail', label: 'Retail' },
-  { value: 'Wholesale', label: 'Wholesale' },
-  { value: 'Services', label: 'Services' },
-  { value: 'Manufacturing', label: 'Manufacturing' },
-  { value: 'Other', label: 'Other' },
-];
+// ─── Theme tokens (Tailwind arbitrary properties) ─────────────────────────
+// Light + dark values live here as CSS variables; every class below reads them via var(--…).
+// Put THEME on the page wrapper AND on the dropdown portal (portals render outside the wrapper).
+const THEME = `
+  [--primary:#155dfc] [--primary-hover:#1447e6] dark:[--primary-hover:#2b6bff] [--primary-text:#155dfc]
+  dark:[--primary-text:#51a2ff] [--on-primary:#fff] [--primary-soft:#e6eeff] dark:[--primary-soft:#162456]
+  [--primary-soft-ink:#155dfc] dark:[--primary-soft-ink:#8ec5ff] [--canvas:#eef2ff] dark:[--canvas:#060b1f]
+  [--surface:#fff] dark:[--surface:#0e1530] [--surface-sunken:#f5f7ff] dark:[--surface-sunken:#172045]
+  [--ink:#0f172b] dark:[--ink:#f1f5f9] [--ink-muted:#45556c] dark:[--ink-muted:#cbd5f0]
+  [--ink-subtle:#5b6b86] dark:[--ink-subtle:#94a3c8] [--border:#dfe6fb] dark:[--border:#26315c]
+  [--border-control:#7a8aa3] dark:[--border-control:#6573a8] [--focus-ring:#155dfc] dark:[--focus-ring:#51a2ff]
+  [--success:#008236] dark:[--success:#05df72] [--success-soft:#e9faef] dark:[--success-soft:#0b3322]
+  [--danger:#d5000c] dark:[--danger:#ff6467] [--danger-soft:#ffeef0] dark:[--danger-soft:#3f0d12]
+  [--warning:#bb4d00] dark:[--warning:#ffb900] [--warning-soft:#fff3dd] dark:[--warning-soft:#3d2605]
+  [--magenta-soft:#ffe8f8] dark:[--magenta-soft:#3d0a31] [--magenta-ink:#c4009a] dark:[--magenta-ink:#ff4fd8]
+  [--shadow-card:0_1px_2px_rgba(21,48,140,.05),0_2px_6px_rgba(21,48,140,.06)] dark:[--shadow-card:none]
+`.replace(/\s+/g, ' ').trim();
+
+// ─── Options ──────────────────────────────────────────────────────────────
+const toOptions = (list: string[]) => list.map(v => ({ value: v, label: v }));
+
+const businessTypeOptions = toOptions(['Retail', 'Wholesale', 'Services', 'Manufacturing', 'Other']);
 
 const businessCategoryOptions = [
   { value: 'Electronics', label: 'Electronics' },
@@ -28,48 +46,15 @@ const businessCategoryOptions = [
   { value: 'Food & Beverage', label: 'Food & Beverage' },
   { value: 'Other', label: 'Other' },
 ];
-const stateOptions = [
-  { value: 'Andhra Pradesh', label: 'Andhra Pradesh' },
-  { value: 'Arunachal Pradesh', label: 'Arunachal Pradesh' },
-  { value: 'Assam', label: 'Assam' },
-  { value: 'Bihar', label: 'Bihar' },
-  { value: 'Chhattisgarh', label: 'Chhattisgarh' },
-  { value: 'Goa', label: 'Goa' },
-  { value: 'Gujarat', label: 'Gujarat' },
-  { value: 'Haryana', label: 'Haryana' },
-  { value: 'Himachal Pradesh', label: 'Himachal Pradesh' },
-  { value: 'Jharkhand', label: 'Jharkhand' },
-  { value: 'Karnataka', label: 'Karnataka' },
-  { value: 'Kerala', label: 'Kerala' },
-  { value: 'Madhya Pradesh', label: 'Madhya Pradesh' },
-  { value: 'Maharashtra', label: 'Maharashtra' },
-  { value: 'Manipur', label: 'Manipur' },
-  { value: 'Meghalaya', label: 'Meghalaya' },
-  { value: 'Mizoram', label: 'Mizoram' },
-  { value: 'Nagaland', label: 'Nagaland' },
-  { value: 'Odisha', label: 'Odisha' },
-  { value: 'Punjab', label: 'Punjab' },
-  { value: 'Rajasthan', label: 'Rajasthan' },
-  { value: 'Sikkim', label: 'Sikkim' },
-  { value: 'Tamil Nadu', label: 'Tamil Nadu' },
-  { value: 'Telangana', label: 'Telangana' },
-  { value: 'Tripura', label: 'Tripura' },
-  { value: 'Uttar Pradesh', label: 'Uttar Pradesh' },
-  { value: 'Uttarakhand', label: 'Uttarakhand' },
-  { value: 'West Bengal', label: 'West Bengal' },
-  { value: 'Andaman and Nicobar Islands', label: 'Andaman and Nicobar Islands' },
-  { value: 'Chandigarh', label: 'Chandigarh' },
-  { value: 'Dadra and Nagar Haveli and Daman and Diu', label: 'Dadra and Nagar Haveli and Daman and Diu' },
-  { value: 'Delhi', label: 'Delhi' },
-  { value: 'Jammu and Kashmir', label: 'Jammu and Kashmir' },
-  { value: 'Ladakh', label: 'Ladakh' },
-  { value: 'Lakshadweep', label: 'Lakshadweep' },
-  { value: 'Puducherry', label: 'Puducherry' },
-];
-import { FiCamera, FiCheck, FiX } from 'react-icons/fi';
-import { invalidateLogoCache } from '../../Catalogue/hooks/useCompanyLogo';
-import { logoCache } from '../../Catalogue/hooks/useCompanyLogo';
-import BackButton from '../../Components/BackButton';
+
+const stateOptions = toOptions([
+  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
+  'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh',
+  'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab', 'Rajasthan',
+  'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
+  'Andaman and Nicobar Islands', 'Chandigarh', 'Dadra and Nagar Haveli and Daman and Diu',
+  'Delhi', 'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry',
+]);
 
 // --- Data Types ---
 interface ProfileData {
@@ -97,10 +82,11 @@ interface ProfileData {
   instagram?: string;
   facebook?: string;
   twitter?: string;
+  gmail?: string;
   whatsappNumber?: string;
 }
 
-// --- UTILITY: Logo Compression (preserves transparency) ---
+// --- UTILITY: Logo Compression (PNG keeps transparency) ---
 const compressLogo = (file: File): Promise<Blob> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -122,21 +108,20 @@ const compressLogo = (file: File): Promise<Blob> => {
       canvas.height = height;
 
       const ctx = canvas.getContext('2d');
-      if (!ctx) { reject(new Error("Canvas context failed")); return; }
+      if (!ctx) { reject(new Error('Canvas context failed')); return; }
 
-      // ✅ Fill white background BEFORE drawing (fixes black bg on JPEG)
-      // OR use PNG to preserve transparency
+      // White fill first so transparent areas never turn black
       ctx.fillStyle = '#FFFFFF';
       ctx.fillRect(0, 0, width, height);
       ctx.drawImage(img, 0, 0, width, height);
 
       canvas.toBlob(
         (blob) => {
-          if (blob) { resolve(blob); }
-          else { reject(new Error('Logo compression failed')); }
+          if (blob) resolve(blob);
+          else reject(new Error('Logo compression failed'));
           URL.revokeObjectURL(img.src);
         },
-        'image/png',  // ✅ PNG keeps transparency (no black bg)
+        'image/png',
         0.9
       );
     };
@@ -144,32 +129,24 @@ const compressLogo = (file: File): Promise<Blob> => {
     img.onerror = (error) => { URL.revokeObjectURL(img.src); reject(error); };
   });
 };
-// --- UTILITY: Aggressive Image Compression ---
+
+// --- UTILITY: Aggressive Image Compression (profile photo) ---
 const compressImage = (file: File): Promise<Blob> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.src = URL.createObjectURL(file);
 
     img.onload = () => {
-      // 1. Aggressive Resizing: Profile pics don't need to be huge.
-      // 500px is sufficient for almost all avatar use cases.
       const MAX_WIDTH = 500;
       const MAX_HEIGHT = 500;
 
       let width = img.width;
       let height = img.height;
 
-      // Calculate new dimensions maintaining aspect ratio
       if (width > height) {
-        if (width > MAX_WIDTH) {
-          height *= MAX_WIDTH / width;
-          width = MAX_WIDTH;
-        }
+        if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
       } else {
-        if (height > MAX_HEIGHT) {
-          width *= MAX_HEIGHT / height;
-          height = MAX_HEIGHT;
-        }
+        if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
       }
 
       const canvas = document.createElement('canvas');
@@ -177,34 +154,22 @@ const compressImage = (file: File): Promise<Blob> => {
       canvas.height = height;
 
       const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        reject(new Error("Canvas context failed"));
-        return;
-      }
+      if (!ctx) { reject(new Error('Canvas context failed')); return; }
 
-      // Draw image
       ctx.drawImage(img, 0, 0, width, height);
 
-      // 2. Aggressive Compression
-      // 'image/jpeg' with 0.5 (50%) quality usually yields files < 50KB
       canvas.toBlob(
         (blob) => {
-          if (blob) {
-            resolve(blob);
-          } else {
-            reject(new Error('Image compression failed'));
-          }
-          URL.revokeObjectURL(img.src); // Cleanup
+          if (blob) resolve(blob);
+          else reject(new Error('Image compression failed'));
+          URL.revokeObjectURL(img.src);
         },
         'image/jpeg',
-        0.5 // <--- Aggressive quality setting (0.1 to 1.0)
+        0.5
       );
     };
 
-    img.onerror = (error) => {
-      URL.revokeObjectURL(img.src);
-      reject(error);
-    };
+    img.onerror = (error) => { URL.revokeObjectURL(img.src); reject(error); };
   });
 };
 
@@ -227,25 +192,22 @@ const useProfileData = (userId?: string, companyId?: string) => {
       const userData = userDocSnap.exists() ? userDocSnap.data() : {};
       const businessData = businessDocSnap.exists() ? businessDocSnap.data() : {};
 
-      console.log('businessData:', businessData);
-      +   console.log('businessType from Firestore:', businessData.businessType);
       setProfile({
-        ...businessData,  // Business data first
-        name: userData.name || "",
-        email: userData.email || "",
-        phone: userData.phoneNumber || userData.phone || "",
-        profilePicture: userData.profilePicture || businessData.profilePicture || "",
-        panNumber: userData.panNumber || "",
-        accountType: userData.accountType || "",
-        msmeUdyamNumber: userData.msmeUdyamNumber || businessData.msmeUdyamNumber || "",
-        // Ensure these business fields are explicitly preserved
-        businessType: businessData.businessType || "",
-        businessCategory: businessData.businessCategory || "",
-        companyLogo: businessData.companyLogo || "",
+        ...businessData, // business data first
+        name: userData.name || '',
+        email: userData.email || '',
+        phone: userData.phoneNumber || userData.phone || '',
+        profilePicture: userData.profilePicture || businessData.profilePicture || '',
+        panNumber: userData.panNumber || '',
+        accountType: userData.accountType || '',
+        msmeUdyamNumber: userData.msmeUdyamNumber || businessData.msmeUdyamNumber || '',
+        businessType: businessData.businessType || '',
+        businessCategory: businessData.businessCategory || '',
+        companyLogo: businessData.companyLogo || '',
       });
     } catch (err) {
-      console.error("Error fetching profile data:", err);
-      setError("Failed to load profile information.");
+      console.error('Error fetching profile data:', err);
+      setError('Failed to load profile information.');
     } finally {
       setLoading(false);
     }
@@ -259,13 +221,11 @@ const useProfileData = (userId?: string, companyId?: string) => {
     fetchProfileData();
   }, [userId, companyId]);
 
-  const refetch = () => {
-    fetchProfileData(); // ✅ Now accessible
-  };
+  const refetch = () => { fetchProfileData(); };
 
   const saveData = async (data: Partial<ProfileData>) => {
     if (!userId || !companyId || !auth.currentUser) {
-      throw new Error("User or company is not authenticated.");
+      throw new Error('User or company is not authenticated.');
     }
 
     const { name, email, phone, profilePicture, accountType, ...businessData } = data;
@@ -273,17 +233,16 @@ const useProfileData = (userId?: string, companyId?: string) => {
     const userDocRef = doc(db, 'companies', companyId, 'users', userId);
     const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
 
-    const promises = [];
+    const promises: Promise<unknown>[] = [];
 
     const authUpdates: { displayName?: string; photoURL?: string } = {};
     if (name && auth.currentUser.displayName !== name) authUpdates.displayName = name;
     if (profilePicture && auth.currentUser.photoURL !== profilePicture) authUpdates.photoURL = profilePicture;
-
     if (Object.keys(authUpdates).length > 0) {
       promises.push(updateProfile(auth.currentUser, authUpdates));
     }
 
-    // 2. User Doc Update (Sanitize data to ensure no undefined values)
+    // User doc (never send undefined to Firestore)
     const userUpdateData: Record<string, any> = {};
     if (name) userUpdateData.name = name;
     if (phone !== undefined) userUpdateData.phoneNumber = phone;
@@ -291,25 +250,21 @@ const useProfileData = (userId?: string, companyId?: string) => {
     if (data.panNumber !== undefined) userUpdateData.panNumber = data.panNumber;
     if (accountType !== undefined) userUpdateData.accountType = accountType;
     if (data.msmeUdyamNumber !== undefined) userUpdateData.msmeUdyamNumber = data.msmeUdyamNumber;
-    // Only include profilePicture if it is defined (avoid Firestore crash)
     if (profilePicture !== undefined) userUpdateData.profilePicture = profilePicture;
-
     if (Object.keys(userUpdateData).length > 0) {
       promises.push(setDoc(userDocRef, userUpdateData, { merge: true }));
     }
 
-    // 3. Business Info Update (Filter out undefined)
+    // Business info doc
     const cleanBusinessData = Object.fromEntries(
       Object.entries(businessData).filter(([_, v]) => v !== undefined)
     );
-
     promises.push(setDoc(businessDocRef, {
       ...cleanBusinessData,
-      ownerName: name,
-      email: email,
-      phoneNumber: phone,
-      ...(data.whatsappNumber !== undefined && { whatsappNumber: data.whatsappNumber }),
-      updatedAt: serverTimestamp()
+      ...(name !== undefined && { ownerName: name }),
+      ...(email !== undefined && { email }),
+      ...(phone !== undefined && { phoneNumber: phone }),
+      updatedAt: serverTimestamp(),
     }, { merge: true }));
 
     await Promise.all(promises);
@@ -318,86 +273,281 @@ const useProfileData = (userId?: string, companyId?: string) => {
   return { profile, loading, error, saveData, refetch };
 };
 
-// ─── SectionCard ───────────────────────────────────────────────────────────
-const SectionCard: React.FC<{ title: string; icon: string; children: React.ReactNode }> = ({
-  title,
-  icon,
-  children,
-}) => (
-  <div className="bg-white rounded-sm border border-slate-100 shadow-sm overflow-hidden flex flex-col h-full">
-    <div className="px-3 py-2 border-b border-slate-100 flex items-center gap-2">
-      <span className="text-xs">{icon}</span>
-      <span className="text-[9px] font-bold tracking-widest uppercase text-slate-500">{title}</span>
-    </div>
-    <div className="p-4 flex-1">{children}</div>
-  </div>
-);
-// ─── Shared input style (no coloured label highlight) ─────────────────────
-const inputClass =
-  'w-full border border-slate-200 rounded-sm text-sm bg-slate-50 outline-none ' +
-  'transition-all px-[12px] py-[8px] text-slate-800 ' +
-  'focus:border-slate-400 focus:bg-white';
+// ─── Validation hints (display-only: they never block saving) ─────────────
+const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/i;
+const GSTIN_RE = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/i;
+const IFSC_RE = /^[A-Z]{4}0[A-Z0-9]{6}$/i;
+const looksLikeWebsite = (v: string) => /^(https?:\/\/|www\.)/i.test(v) || /\.(com|in|co|net|org|io)(\/|$)/i.test(v);
 
-// Simple labelled field wrapper (no floating-label colour highlight)
-const LabeledField: React.FC<{
+const SECTIONS = [
+  { id: 'ep-logo', label: 'Photo & logo', Icon: FiImage },
+  { id: 'ep-personal', label: 'Personal', Icon: FiUser },
+  { id: 'ep-business', label: 'Business', Icon: FiBriefcase },
+  { id: 'ep-address', label: 'Address', Icon: FiMapPin },
+  { id: 'ep-bank', label: 'Bank details', Icon: FiCreditCard },
+  { id: 'ep-social', label: 'Social media', Icon: FiShare2 },
+];
+
+const scrollToSection = (id: string) =>
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+// ─── Shared class strings ─────────────────────────────────────────────────
+const FOCUS_RING = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--focus-ring)]';
+
+const BTN = `inline-flex items-center justify-center gap-2 h-10 px-4 rounded-sm border border-transparent bg-transparent text-sm font-medium leading-5 whitespace-nowrap cursor-pointer transition-colors [&_svg]:w-4 [&_svg]:h-4 [&_svg]:shrink-0 disabled:opacity-45 disabled:cursor-not-allowed ${FOCUS_RING}`;
+const BTN_PRIMARY = `${BTN} bg-[color:var(--primary)] text-[color:var(--on-primary)] hover:bg-[color:var(--primary-hover)]`;
+const BTN_SECONDARY = `${BTN} bg-[color:var(--surface)] text-[color:var(--ink)] border-[color:var(--border-control)] hover:bg-[color:var(--surface-sunken)]`;
+const BTN_GHOST = `${BTN} text-[color:var(--ink-muted)] hover:bg-[color:var(--surface-sunken)] hover:text-[color:var(--ink)]`;
+const BTN_SM = 'h-8 px-3 text-[13px]';
+
+const TINTS = {
+  '': 'bg-[color:var(--primary-soft)] text-[color:var(--primary-soft-ink)]',
+  green: 'bg-[color:var(--success-soft)] text-[color:var(--success)]',
+  amber: 'bg-[color:var(--warning-soft)] text-[color:var(--warning)]',
+  magenta: 'bg-[color:var(--magenta-soft)] text-[color:var(--magenta-ink)]',
+};
+
+const SPIN = 'inline-block w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin';
+
+// ─── Field: label above the box, optional icon / +91 prefix / hint / flag ──
+interface FieldProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label: string;
-  children: React.ReactNode;
-}> = ({ label, children }) => (
-  <div className="flex flex-col gap-0.5">
-    <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-      {label}
+  icon?: React.ReactNode;
+  leading?: string;
+  hint?: string;
+  warn?: string | null;
+  error?: string | null;
+  locked?: boolean;
+  wrapClass?: string;
+}
+
+const Field: React.FC<FieldProps> = ({ label, icon, leading, hint, warn, error, locked, wrapClass = '', ...inputProps }) => {
+  const borderCls = error
+    ? 'border-[color:var(--danger)]'
+    : warn
+      ? 'border-[color:var(--warning)]'
+      : 'border-[color:var(--border-control)]';
+  return (
+    <label className={`grid grid-cols-[minmax(0,1fr)] gap-1 min-w-0 content-start ${wrapClass}`}>
+      <span className="text-xs leading-[18px] font-medium text-[color:var(--ink-muted)]">{label}</span>
+      <div
+        className={`relative min-w-0 w-full flex items-center gap-2 h-11 px-3 border rounded-sm focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-[color:var(--focus-ring)] max-sm:group-[.two]:px-2.5 ${borderCls} ${locked
+          ? 'bg-[color:var(--surface-sunken)] text-[color:var(--ink-muted)]'
+          : 'bg-[color:var(--surface)] text-[color:var(--ink-subtle)]'
+          }`}
+      >
+        {icon && <span data-ico className="inline-flex [&_svg]:w-4 [&_svg]:h-4 [&_svg]:shrink-0">{icon}</span>}
+        {leading && (
+          <span className="text-[13px] text-[color:var(--ink-subtle)] pr-2 border-r border-[color:var(--border)]">{leading}</span>
+        )}
+        <input
+          {...inputProps}
+          readOnly={locked || inputProps.readOnly}
+          className={`flex-1 basis-0 w-0 min-w-0 h-full border-0 outline-none bg-transparent text-sm font-[inherit] placeholder:text-[color:var(--ink-subtle)] ${locked ? 'text-[color:var(--ink-muted)] cursor-not-allowed' : 'text-[color:var(--ink)]'}`}
+        />
+      </div>
+      {error ? (
+        <span className="flex gap-1 items-start text-xs leading-4 font-medium text-[color:var(--danger)]">
+          <FiAlertTriangle className="w-[13px] h-[13px] mt-px shrink-0" />{error}
+        </span>
+      ) : warn ? (
+        <span className="flex gap-1 items-start text-xs leading-4 font-medium text-[color:var(--warning)]">
+          <FiAlertTriangle className="w-[13px] h-[13px] mt-px shrink-0" />{warn}
+        </span>
+      ) : hint ? (
+        <small className="text-[11px] leading-[15px] text-[color:var(--ink-subtle)]">{hint}</small>
+      ) : null}
     </label>
+  );
+};
+
+interface SelectFieldProps {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  options: { value: string; label: string }[];
+  wrapClass?: string;
+}
+
+// Custom dropdown: opens right under the field, same width, styled with the design tokens.
+// Keeps the same onChange(e.target.value) contract as a native <select>.
+const SelectField: React.FC<SelectFieldProps> = ({ id, label, value, onChange, options, wrapClass = '' }) => {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ left: number; width: number; top?: number; bottom?: number; maxH: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLUListElement>(null);
+  const selectedRef = useRef<HTMLButtonElement>(null);
+  const selected = options.find(o => o.value === value);
+  const shown = selected ? selected.label : value; // legacy values not in the list still show
+
+  const place = () => {
+    const el = triggerRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const below = window.innerHeight - r.bottom - 12;
+    const above = r.top - 12;
+    const openUp = below < 200 && above > below;
+    const maxH = Math.max(120, Math.min(280, openUp ? above : below));
+    setPos(openUp
+      ? { left: r.left, width: r.width, bottom: window.innerHeight - r.top + 4, maxH }
+      : { left: r.left, width: r.width, top: r.bottom + 4, maxH });
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    place();
+    selectedRef.current?.scrollIntoView({ block: 'center' });
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    const onScroll = (e: Event) => {
+      if (menuRef.current && e.target instanceof Node && menuRef.current.contains(e.target)) return;
+      setOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', place);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', place);
+    };
+  }, [open]);
+
+  const pick = (v: string) => {
+    onChange({ target: { value: v } } as React.ChangeEvent<HTMLSelectElement>);
+    setOpen(false);
+  };
+
+  return (
+    <div className={`grid grid-cols-[minmax(0,1fr)] gap-1 min-w-0 content-start ${wrapClass}`}>
+      <span className="text-xs leading-[18px] font-medium text-[color:var(--ink-muted)]" id={`${id}-label`}>{label}</span>
+      <button
+        type="button" id={id} ref={triggerRef}
+        aria-haspopup="listbox" aria-expanded={open} aria-labelledby={`${id}-label ${id}`}
+        onClick={() => setOpen(o => !o)}
+        className={`w-full min-w-0 h-11 px-3 flex items-center justify-between gap-2 text-left cursor-pointer border border-[color:var(--border-control)] rounded-sm bg-[color:var(--surface)] text-[color:var(--ink-subtle)] font-[inherit] ${open ? 'outline outline-2 outline-offset-1 outline-[color:var(--focus-ring)]' : ''} ${FOCUS_RING}`}
+      >
+        <span className={`flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm max-sm:text-[13px] ${shown ? 'text-[color:var(--ink)]' : 'text-[color:var(--ink-subtle)]'}`}>
+          {shown || 'Select'}
+        </span>
+        <FiChevronDown className={`w-4 h-4 shrink-0 transition-transform duration-100 ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && pos && createPortal(
+        <div className={`${THEME} fixed inset-0 z-[9999] font-[Poppins,system-ui,sans-serif] text-sm`} onClick={() => setOpen(false)} role="presentation">
+          <ul
+            ref={menuRef} role="listbox" aria-label={label}
+            onClick={e => e.stopPropagation()}
+            style={{ left: pos.left, width: pos.width, top: pos.top, bottom: pos.bottom, maxHeight: pos.maxH }}
+            className="fixed list-none m-0 p-1.5 overflow-y-auto grid gap-0.5 content-start bg-[color:var(--surface)] border border-[color:var(--border)] rounded-sm shadow-[0_10px_28px_rgba(21,48,140,.14),0_2px_6px_rgba(21,48,140,.08)]"
+          >
+            {options.map(o => {
+              const on = o.value === value;
+              return (
+                <li key={o.value} role="option" aria-selected={on}>
+                  <button
+                    type="button" ref={on ? selectedRef : undefined} onClick={() => pick(o.value)}
+                    className={`flex items-center justify-between gap-2 w-full min-h-10 px-2.5 border-0 rounded-sm text-sm text-left cursor-pointer ${on
+                      ? 'bg-[color:var(--primary-soft)] text-[color:var(--primary-soft-ink)] font-medium'
+                      : 'bg-transparent text-[color:var(--ink)] hover:bg-[color:var(--surface-sunken)]'}`}
+                  >
+                    <span>{o.label}</span>{on && <FiCheck size={16} />}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+};
+
+// ─── Section card ─────────────────────────────────────────────────────────
+const Section: React.FC<{
+  id: string; title: string; sub: string; icon: React.ReactNode;
+  tone?: '' | 'green' | 'amber' | 'magenta'; count?: number; children: React.ReactNode;
+}> = ({ id, title, sub, icon, tone = '', count = 0, children }) => (
+  <section
+    id={id}
+    className="min-w-0 scroll-mt-[120px] overflow-hidden bg-[color:var(--surface)] border border-[color:var(--border)] rounded-sm [box-shadow:var(--shadow-card)]"
+  >
+    <div className="flex items-center gap-3 px-3.5 py-3 sm:px-[18px] sm:py-3.5 border-b border-[color:var(--border)]">
+      <span className={`w-8 h-8 shrink-0 inline-grid place-items-center rounded-sm [&_svg]:w-[18px] [&_svg]:h-[18px] ${TINTS[tone]}`}>{icon}</span>
+      <div>
+        <b className="block text-[15px] sm:text-base leading-[22px] font-semibold">{title}</b>
+        <small className="block text-xs leading-4 text-[color:var(--ink-subtle)]">{sub}</small>
+      </div>
+      {count > 0 && (
+        <span className="ml-auto text-[11px] font-semibold whitespace-nowrap rounded-full px-2.5 py-0.5 text-[color:var(--warning)] bg-[color:var(--warning-soft)]">
+          {count} to fix
+        </span>
+      )}
+    </div>
+    {children}
+  </section>
+);
+
+// ─── Photo / logo upload row ──────────────────────────────────────────────
+const UploadRow: React.FC<{
+  shape: 'round' | 'sq';
+  title: string;
+  desc: string;
+  url: string | null;
+  emptyIcon: React.ReactNode;
+  onPick: () => void;
+  onRemove: () => void;
+  children?: React.ReactNode;
+}> = ({ shape, title, desc, url, emptyIcon, onPick, onRemove, children }) => (
+  <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3.5 items-center p-3 sm:p-3.5 border border-[color:var(--border)] rounded-sm bg-[color:var(--surface-sunken)]">
+    <div className="relative w-16 h-16 sm:w-[76px] sm:h-[76px]">
+      {url ? (
+        <img
+          src={url} alt={title}
+          className={`w-full h-full block ${shape === 'round'
+            ? 'object-cover rounded-full'
+            : 'object-contain p-1.5 rounded-sm border border-[color:var(--border)] bg-white'}`}
+        />
+      ) : (
+        <div
+          className={`w-full h-full grid place-items-center bg-[color:var(--surface)] text-[color:var(--ink-subtle)] border-[color:var(--border-control)] [&_svg]:w-6 [&_svg]:h-6 ${shape === 'round'
+            ? 'rounded-full border'
+            : 'rounded-[14px] border-2 border-dashed'}`}
+        >
+          {emptyIcon}
+        </div>
+      )}
+      <button
+        type="button" onClick={onPick}
+        aria-label={url ? `Change ${title.toLowerCase()}` : `Add ${title.toLowerCase()}`}
+        className="absolute -right-1 -bottom-1 w-7 h-7 p-0 rounded-full grid place-items-center cursor-pointer bg-[color:var(--primary)] text-white border-2 border-[color:var(--surface)] [&_svg]:w-3.5 [&_svg]:h-3.5"
+      >
+        <FiCamera />
+      </button>
+    </div>
+    <div>
+      <b className="text-sm">{title}</b>
+      <p className="mt-0.5 mb-2 text-xs leading-[17px] text-[color:var(--ink-subtle)]">{desc}</p>
+      <div className="flex gap-1.5 flex-wrap">
+        <button type="button" className={`${BTN_SECONDARY} ${BTN_SM}`} onClick={onPick}>
+          <FiUpload />{url ? 'Change' : 'Add photo'}
+        </button>
+        {url && (
+          <button type="button" className={`${BTN_GHOST} ${BTN_SM}`} onClick={onRemove}>Remove</button>
+        )}
+      </div>
+    </div>
     {children}
   </div>
 );
-const ImageOptionsModal: React.FC<{
-  title: string;
-  hasImage: boolean;
-  onUpload: () => void;
-  onRemove: () => void;
-  onClose: () => void;
-}> = ({ title, hasImage, onUpload, onRemove, onClose }) => {
-  const modal = (
-    <div
-      className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center bg-black/40"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white w-[calc(100%-2rem)] max-w-sm sm:w-80 mx-4 sm:mx-0 mb-4 sm:mb-0 rounded-2xl sm:rounded-sm overflow-hidden shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="px-4 py-3 border-b border-slate-100 text-center">
-          <p className="text-sm font-semibold text-slate-700 m-0">{title}</p>
-        </div>
-        <button
-          type="button"
-          onClick={onUpload}
-          className="w-full text-center py-3 text-sm font-medium text-sky-600 border-b border-slate-100 cursor-pointer bg-white"
-        >
-          {hasImage ? 'Change Photo' : 'Add Photo'}
-        </button>
-        {hasImage && (
-          <button
-            type="button"
-            onClick={onRemove}
-            className="w-full text-center py-3 text-sm font-medium text-red-500 border-b border-slate-100 cursor-pointer bg-white"
-          >
-            Remove Current Photo
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={onClose}
-          className="w-full text-center py-3 text-sm font-semibold text-slate-500 cursor-pointer bg-white"
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
 
-  return createPortal(modal, document.body);
-};
+// Shared grid classes
+const GRID_1 = 'grid grid-cols-[minmax(0,1fr)] gap-x-4 gap-y-3 p-3.5 sm:grid-cols-2 sm:px-[18px] sm:py-4';
+// 2-up on every screen; tighter on phones. `group two` lets Field shrink its padding there.
+const GRID_2 = 'group two grid grid-cols-2 gap-x-2.5 gap-y-3 px-3 py-3.5 sm:gap-x-4 sm:px-[18px] sm:py-4 max-sm:[&_[data-ico]]:hidden';
+const GRID_3 = `${GRID_2} lg:grid-cols-3`;
+
 // --- Main Edit Profile Page Component ---
 const EditProfilePage: React.FC = () => {
   const { currentUser, loading: authLoading } = useAuth();
@@ -421,7 +571,9 @@ const EditProfilePage: React.FC = () => {
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [removeProfilePicture, setRemoveProfilePicture] = useState(false);
   const [removeCompanyLogo, setRemoveCompanyLogo] = useState(false);
-  const [activeImageMenu, setActiveImageMenu] = useState<null | 'profile' | 'logo'>(null);
+
+  // UI-only: which section is in view (section nav highlight)
+  const [activeSection, setActiveSection] = useState(SECTIONS[0].id);
 
   const freshUploadRef = useRef<{ profilePicture?: string; companyLogo?: string }>({});
 
@@ -451,6 +603,23 @@ const EditProfilePage: React.FC = () => {
     }
   }, [profile]);
 
+  // UI-only: highlight the section nav item for whatever card is on screen
+  useEffect(() => {
+    if (authLoading || dataLoading || typeof IntersectionObserver === 'undefined') return;
+    const els = SECTIONS.map(s => document.getElementById(s.id)).filter(Boolean) as HTMLElement[];
+    if (!els.length) return;
+    const obs = new IntersectionObserver(
+      entries => {
+        const visible = entries
+          .filter(e => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible[0]) setActiveSection(visible[0].target.id);
+      },
+      { rootMargin: '-80px 0px -60% 0px' }
+    );
+    els.forEach(el => obs.observe(el));
+    return () => obs.disconnect();
+  }, [authLoading, dataLoading]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -480,13 +649,26 @@ const EditProfilePage: React.FC = () => {
       }
     }
   };
+
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setLogoFile(file);
       setLogoPreviewUrl(URL.createObjectURL(file));
+      setRemoveCompanyLogo(false);
     }
   };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setImageFile(file);
+      // Show the raw file in preview instantly for better UX
+      setPreviewUrl(URL.createObjectURL(file));
+      setRemoveProfilePicture(false);
+    }
+  };
+
   const handleRemoveProfilePicture = () => {
     setPreviewUrl(null);
     setImageFile(null);
@@ -502,29 +684,6 @@ const EditProfilePage: React.FC = () => {
     freshUploadRef.current.companyLogo = undefined;
     if (logoInputRef.current) logoInputRef.current.value = '';
   };
-  const openImageMenu = (type: 'profile' | 'logo') => setActiveImageMenu(type);
-  const closeImageMenu = () => setActiveImageMenu(null);
-
-  const handleMenuUpload = () => {
-    if (activeImageMenu === 'profile') fileInputRef.current?.click();
-    if (activeImageMenu === 'logo') logoInputRef.current?.click();
-    closeImageMenu();
-  };
-
-  const handleMenuRemove = () => {
-    if (activeImageMenu === 'profile') handleRemoveProfilePicture();
-    if (activeImageMenu === 'logo') handleRemoveCompanyLogo();
-    closeImageMenu();
-  };
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setImageFile(file);
-      // We show the raw file in preview instantly for better UX
-      setPreviewUrl(URL.createObjectURL(file));
-      setRemoveProfilePicture(false);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -536,12 +695,10 @@ const EditProfilePage: React.FC = () => {
       setSubmitError('GSTIN cannot be removed once added. You can only edit/update it.');
       return;
     }
-
     if (formData.postalCode && formData.postalCode.length !== 6) {
       setSubmitError('Postal code must be exactly 6 digits.');
       return;
     }
-
     if (formData.phone && formData.phone.length !== 10) {
       setSubmitError('Phone number must be exactly 10 digits.');
       return;
@@ -565,20 +722,14 @@ const EditProfilePage: React.FC = () => {
       let finalPhotoUrl = removeProfilePicture ? '' : formData.profilePicture;
 
       if (imageFile && currentUser?.companyId && currentUser?.uid) {
-        // Change extension to .jpg since we force JPEG compression
+        // .jpg because compressImage always outputs JPEG
         const storagePath = `companies/${currentUser.companyId}/users/${currentUser.uid}/profile_pic.jpg`;
         const storageRef = ref(storage, storagePath);
-
-        // --- COMPRESSION STEP ---
         const compressedBlob = await compressImage(imageFile);
-
-        // Debugging logs to see savings
-        console.log(`Original: ${(imageFile.size / 1024).toFixed(2)} KB`);
-        console.log(`Compressed: ${(compressedBlob.size / 1024).toFixed(2)} KB`);
-
         await uploadBytes(storageRef, compressedBlob);
         finalPhotoUrl = await getDownloadURL(storageRef);
       }
+
       let finalLogoUrl = removeCompanyLogo ? '' : formData.companyLogo;
       if (logoFile && currentUser?.companyId) {
         invalidateLogoCache(currentUser.companyId);
@@ -589,14 +740,12 @@ const EditProfilePage: React.FC = () => {
         finalLogoUrl = await getDownloadURL(logoRef);
         logoCache[currentUser.companyId] = finalLogoUrl;
       }
+
       const finalBusinessType = formData.businessType === 'Other' ? customBusinessType : formData.businessType;
       const finalBusinessCategory = formData.businessCategory === 'Other' ? customBusinessCategory : formData.businessCategory;
       await saveData({ ...formData, profilePicture: finalPhotoUrl, companyLogo: finalLogoUrl, businessType: finalBusinessType, businessCategory: finalBusinessCategory });
-      console.log('✅ Saved to Firestore successfully', {
-        businessType: finalBusinessType,
-        businessCategory: finalBusinessCategory
-      });
-      refetch(); // Refresh data after save to ensure we have the latest from Firestore
+
+      refetch(); // pull the latest from Firestore after save
       setFormData(prev => ({ ...prev, profilePicture: finalPhotoUrl, companyLogo: finalLogoUrl }));
       if (finalPhotoUrl) freshUploadRef.current.profilePicture = finalPhotoUrl;
       if (finalLogoUrl) freshUploadRef.current.companyLogo = finalLogoUrl;
@@ -607,23 +756,53 @@ const EditProfilePage: React.FC = () => {
       if (finalLogoUrl) setLogoPreviewUrl(finalLogoUrl);
       if (finalPhotoUrl) setPreviewUrl(finalPhotoUrl);
 
-      setSubmitSuccess("Profile updated successfully!");
+      setSubmitSuccess('Profile updated successfully!');
       setTimeout(() => setSubmitSuccess(null), 3000);
     } catch (err) {
-      console.error("Failed to save profile:", err);
-      setSubmitError("Failed to save profile. Please try again.");
+      console.error('Failed to save profile:', err);
+      setSubmitError('Failed to save profile. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // Discard: put every field, preview and pending upload back to the last saved profile
+  const handleDiscard = () => {
+    const isCustomType = !!profile.businessType &&
+      !businessTypeOptions.some(o => o.value === profile.businessType);
+    const isCustomCategory = !!profile.businessCategory &&
+      !businessCategoryOptions.some(o => o.value === profile.businessCategory);
+    setFormData({
+      ...profile,
+      businessType: isCustomType ? 'Other' : (profile.businessType || ''),
+      businessCategory: isCustomCategory ? 'Other' : (profile.businessCategory || ''),
+    });
+    setCustomBusinessType(isCustomType ? profile.businessType! : '');
+    setCustomBusinessCategory(isCustomCategory ? profile.businessCategory! : '');
+    setImageFile(null);
+    setLogoFile(null);
+    setRemoveProfilePicture(false);
+    setRemoveCompanyLogo(false);
+    setPreviewUrl(freshUploadRef.current.profilePicture || profile.profilePicture || null);
+    setLogoPreviewUrl(freshUploadRef.current.companyLogo || profile.companyLogo || null);
+    setPostalError(null);
+    setPhoneError(null);
+    setSubmitError(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (logoInputRef.current) logoInputRef.current.value = '';
+  };
+
+  const PAGE = `${THEME} min-h-screen flex flex-col bg-[color:var(--canvas)] text-[color:var(--ink)] font-[Poppins,system-ui,-apple-system,'Segoe_UI',sans-serif] text-sm leading-[22px] [&_*]:box-border`;
+
   // ── Loading state ──
   if (authLoading || dataLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <div className="text-center">
-          <div className="w-10 h-10 rounded-full border-[3px] border-slate-200 border-t-sky-500 animate-spin mx-auto mb-3" />
-          <p className="text-slate-500 text-sm">Loading profile…</p>
+      <div className={PAGE}>
+        <div className="flex-1 grid place-items-center text-center text-[color:var(--ink-muted)] p-6">
+          <div>
+            <div className="w-10 h-10 mx-auto mb-3 rounded-full border-[3px] border-[color:var(--border)] border-t-[color:var(--primary)] animate-spin" />
+            <p className="m-0">Loading profile…</p>
+          </div>
         </div>
       </div>
     );
@@ -631,367 +810,353 @@ const EditProfilePage: React.FC = () => {
 
   if (dataError) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-red-500">
-        {dataError}
+      <div className={PAGE}>
+        <div className="flex-1 grid place-items-center text-center p-6 text-[color:var(--danger)]">{dataError}</div>
       </div>
     );
   }
 
-  // Derived submit button colour class (kept out of JSX to avoid long ternary chains)
-  const submitBtnClass = submitSuccess
-    ? 'bg-gradient-to-br from-green-400 to-green-600 shadow-green-200/60'
-    : isSubmitting
-      ? 'bg-sky-200'
-      : 'bg-gradient-to-br from-sky-400 to-sky-600 shadow-sky-200/60';
+  // ── Display-only profile check (never blocks saving) ──
+  const pan = (formData.panNumber || '').trim();
+  const gstin = (formData.gstin || '').trim();
+  const ifsc = (formData.ifscCode || '').trim();
+  const insta = (formData.instagram || '').trim();
+  const specType = formData.businessType === 'Other' ? customBusinessType.trim() : '';
+  const specCat = formData.businessCategory === 'Other' ? customBusinessCategory.trim() : '';
 
-  console.log('businessType value:', formData.businessType);
-  console.log('is known option:', businessTypeOptions.some(o => o.value === formData.businessType))
+  const panWarn = pan && !PAN_RE.test(pan) ? 'Not a valid PAN — it looks like ABCDE1234F' : null;
+  const gstinWarn = gstin && !GSTIN_RE.test(gstin) ? 'Doesn’t look like a valid GSTIN — e.g. 09ABCDE1234F1Z5' : null;
+  const ifscWarn = ifsc && !IFSC_RE.test(ifsc) ? 'IFSC has 11 characters, like SBIN0001234' : null;
+  const instaWarn = insta && looksLikeWebsite(insta) ? 'This is a website — use your handle, e.g. @superstore' : null;
+  const typeWarn = specType && specType.length < 3 ? `Shows as “${specType}” — e.g. Supermarket` : null;
+  const catWarn = specCat && specCat.length < 3 ? `Shows as “${specCat}” — e.g. Grocery` : null;
+
+  const issues = [
+    panWarn && { section: 'ep-personal', label: 'PAN No.', note: `“${pan}” isn’t a valid PAN` },
+    typeWarn && { section: 'ep-business', label: 'Specify type', note: `Shows as “${specType}”` },
+    catWarn && { section: 'ep-business', label: 'Specify category', note: `Shows as “${specCat}”` },
+    gstinWarn && { section: 'ep-business', label: 'GSTIN', note: 'Doesn’t match the GSTIN format' },
+    ifscWarn && { section: 'ep-bank', label: 'IFSC code', note: 'Should be 11 characters, like SBIN0001234' },
+    instaWarn && { section: 'ep-social', label: 'Instagram', note: 'Is a website, not an Instagram handle' },
+  ].filter(Boolean) as { section: string; label: string; note: string }[];
+
+  const TOTAL_CHECKS = 6;
+  const countFor = (id: string) => issues.filter(i => i.section === id).length;
+  const passPct = Math.round(((TOTAL_CHECKS - issues.length) / TOTAL_CHECKS) * 100);
+
+  const billAddress = [formData.streetAddress, formData.city, formData.state].filter(Boolean).join(', ')
+    + (formData.postalCode ? ` – ${formData.postalCode}` : '');
+  const billContact = [formData.phone, formData.email].filter(Boolean).join(' · ');
+
+  const PANEL = 'grid gap-2.5 p-3.5 bg-[color:var(--surface)] border border-[color:var(--border)] rounded-sm [box-shadow:var(--shadow-card)]';
+
   return (
-    <div className="min-h-screen bg-slate-100">
-      <div className="max-w-7xl mx-auto px-4 py-3 pb-24">
-
-        {/* ── Page Header ── */}
-        <div className="relative flex items-center justify-center mb-1">
-          <div className="absolute left-0">
-            <BackButton />
+    <div className={PAGE}>
+      {/* ── Page header + mobile chips (pinned on scroll) ── */}
+      <div className="sticky top-0 z-[25]">
+        <header className="flex items-center gap-3 px-4 py-3 sm:px-6 sm:py-3.5 bg-[color:var(--surface)] border-b border-[color:var(--border)]">
+          <BackButton />
+          <div>
+            <small className="block text-xs leading-4 text-[color:var(--ink-subtle)]">Account</small>
+            <h1 className="m-0 text-lg leading-[26px] sm:text-[22px] sm:leading-[30px] font-semibold">Edit profile</h1>
           </div>
-          <h1 className="text-xl font-bold text-slate-900 m-0">Edit Profile</h1>
-        </div>
+          <span className="hidden lg:block ml-auto text-xs text-[color:var(--ink-subtle)]">Your details, and how your shop appears on invoices, reports &amp; PDFs</span>
+        </header>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-1">
+        {/* Mobile / tablet section chips */}
+        <nav
+          aria-label="Profile sections"
+          className="flex lg:hidden gap-1.5 overflow-x-auto px-4 py-2.5 bg-[color:var(--surface)] border-b border-[color:var(--border)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {SECTIONS.map(s => (
+            <button
+              key={s.id} type="button" aria-pressed={activeSection === s.id}
+              onClick={() => { setActiveSection(s.id); scrollToSection(s.id); }}
+              className={`shrink-0 inline-flex items-center h-[30px] px-3 rounded-full border text-xs font-medium whitespace-nowrap cursor-pointer ${activeSection === s.id
+                ? 'bg-[color:var(--ink)] border-[color:var(--ink)] text-[color:var(--surface)]'
+                : 'bg-[color:var(--surface)] border-[color:var(--border-control)] text-[color:var(--ink-muted)]'} ${FOCUS_RING}`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </nav>
+      </div>
 
-          {/* ── IDENTITY BANNER: Avatar + Company Logo side by side ── */}
-          <div className="bg-white rounded-sm border border-slate-100 shadow-sm px-5 py-2 flex items-center gap-6">
+      <form onSubmit={handleSubmit} className="flex-1 flex flex-col">
+        <div className="flex-1 grid grid-cols-[minmax(0,1fr)] content-start gap-4 p-4 w-full max-w-[1320px] mx-auto lg:grid-cols-[168px_minmax(0,1fr)] lg:gap-5 lg:px-6 lg:py-5 xl:grid-cols-[168px_minmax(0,1fr)_300px]">
 
-            {/* Profile Avatar */}
-            <div className="flex flex-col items-center gap-1.5 shrink-0">
-              <div className="relative">
-                <div
-                  onClick={() => openImageMenu('profile')}
-                  className="relative cursor-pointer"
+          {/* ── Desktop section nav ── */}
+          <nav aria-label="Profile sections" className="hidden lg:grid sticky top-[84px] self-start gap-0.5">
+            {SECTIONS.map(({ id, label, Icon }) => (
+              <button
+                key={id} type="button" aria-current={activeSection === id}
+                onClick={() => { setActiveSection(id); scrollToSection(id); }}
+                className={`flex items-center gap-2.5 w-full px-3 py-2 border-0 rounded-sm text-[13px] font-medium text-left cursor-pointer ${activeSection === id
+                  ? 'bg-[color:var(--primary-soft)] text-[color:var(--primary-soft-ink)]'
+                  : 'bg-transparent text-[color:var(--ink-muted)] hover:bg-[color:var(--surface-sunken)]'} ${FOCUS_RING}`}
+              >
+                <Icon size={16} />{label}
+                {countFor(id) > 0 && <small className="ml-auto text-[11px] font-semibold text-[color:var(--warning)]">{countFor(id)}</small>}
+              </button>
+            ))}
+          </nav>
+
+          {/* ── Cards ── */}
+          <div className="grid gap-3 lg:gap-4 min-w-0 content-start">
+            {issues.length > 0 && (
+              <div className="xl:hidden flex gap-2 items-start px-3 py-2.5 rounded-sm text-xs leading-[19px] bg-[color:var(--warning-soft)] text-[color:var(--warning)]">
+                <FiAlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                <span><b>{issues.length} {issues.length === 1 ? 'detail needs' : 'details need'} fixing</b> before {issues.length === 1 ? 'it prints' : 'they print'} correctly on bills.</span>
+              </div>
+            )}
+
+            {/* Photo & logo */}
+            <Section id="ep-logo" title="Photo & logo" sub="How you and your shop look in SELLAR" tone="magenta" icon={<FiImage />}>
+              <div className="grid gap-3 p-3.5 sm:gap-4 sm:px-[18px] sm:py-4">
+                <UploadRow
+                  shape="round" title="Profile photo"
+                  desc="Shown to your team next to your name."
+                  url={previewUrl} emptyIcon={<FiUser />}
+                  onPick={() => fileInputRef.current?.click()}
+                  onRemove={handleRemoveProfilePicture}
                 >
-                  {previewUrl ? (
-                    <img
-                      src={previewUrl}
-                      alt="Profile"
-                      className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-md shadow-sky-200 block"
-                    />
-                  ) : (
-                    <div className="w-16 h-16 rounded-full border-2 border-white shadow-md shadow-sky-200 bg-gray-200 flex items-center justify-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-9 h-9 text-gray-400">
-                        <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clipRule="evenodd" />
-                      </svg>
-                    </div>
-                  )}
-                  <div className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-sky-500 border-2 border-white flex items-center justify-center text-white">
-                    <FiCamera size={8} />
-                  </div>
                   <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/png, image/jpeg, image/jpg"
-                    className="hidden"
-                    aria-label="Upload profile photo"
-                    onChange={handleImageChange}
+                    ref={fileInputRef} type="file" accept="image/png, image/jpeg, image/jpg"
+                    className="hidden" aria-label="Upload profile photo" onChange={handleImageChange}
                   />
-                </div>
-              </div>
-              <span className="text-[10px] text-slate-400 font-medium">Profile Photo</span>
-            </div>
-
-            {/* Divider */}
-            <div className="w-px self-stretch bg-slate-100" />
-
-            {/* Company Logo */}
-            <div className="flex items-center gap-4 flex-1">
-              <div className="relative shrink-0">
-                <div
-                  onClick={() => openImageMenu('logo')}
-                  className="relative cursor-pointer"
+                </UploadRow>
+                <UploadRow
+                  shape="sq" title="Company logo"
+                  desc="Appears on invoices, reports & PDFs. PNG or JPG recommended."
+                  url={logoPreviewUrl} emptyIcon={<FiCamera />}
+                  onPick={() => logoInputRef.current?.click()}
+                  onRemove={handleRemoveCompanyLogo}
                 >
-                  {logoPreviewUrl ? (
-                    <img
-                      src={logoPreviewUrl}
-                      alt="Company Logo"
-                      className="w-14 h-14 rounded-sm object-contain border border-slate-200 bg-slate-50 p-1.5 shadow-sm"
-                    />
-                  ) : (
-                    <div className="w-14 h-14 rounded-sm border-2 border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center text-slate-300 gap-0.5">
-                      <FiCamera size={14} />
-                      <span className="text-[8px] font-bold tracking-wider">LOGO</span>
-                    </div>
-                  )}
-                  <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-sky-500 border-[1.5px] border-white flex items-center justify-center text-white">
-                    <FiCamera size={7} />
-                  </div>
                   <input
-                    ref={logoInputRef}
-                    type="file"
-                    accept="image/png, image/jpeg, image/jpg, image/svg+xml"
-                    className="hidden"
-                    aria-label="Upload company logo"
-                    onChange={handleLogoChange}
+                    ref={logoInputRef} type="file" accept="image/png, image/jpeg, image/jpg, image/svg+xml"
+                    className="hidden" aria-label="Upload company logo" onChange={handleLogoChange}
                   />
-                </div>
+                </UploadRow>
               </div>
-              <div>
-                <p className="text-[12px] font-semibold text-slate-700 m-0">Company Logo</p>
-                <p className="text-[11px] text-slate-400 m-0 mt-0.5 leading-relaxed">
-                  Appears on invoices, reports & PDFs.<br />
-                  PNG or JPG recommended.
-                </p>
-              </div>
-            </div>
+            </Section>
 
-          </div>
-
-          {/* ── Row 1: Personal | Business | Address (desktop 3-col) ── */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-[1fr_1.4fr_1fr] gap-1 items-stretch">
-
-            {/* Card 1 — Personal Information */}
-            <SectionCard title="Personal Information" icon="">
-              <div className="flex flex-col gap-4">
-                <FloatingLabelInput
-                  type="text" name="name" value={formData.name || ''}
-                  onChange={handleInputChange} label="Full Name"
+            {/* Personal */}
+            <Section id="ep-personal" title="Personal information" sub="The owner of this account" icon={<FiUser />} count={countFor('ep-personal')}>
+              <div className={GRID_1}>
+                <Field
+                  type="text" name="name" value={formData.name || ''} onChange={handleInputChange}
+                  label="Full name" icon={<FiUser />}
                 />
-                <div>
-                  <FloatingLabelInput
-                    type="text" name="phone" value={formData.phone || ''}
-                    onChange={handlePhoneChange} label="Phone Number"
-                    maxLength={10} inputMode="numeric"
-                  />
-                  {phoneError && (
-                    <p className="text-red-500 text-[11px] mt-1 mb-0">{phoneError}</p>
-                  )}
-                </div>
-                <LabeledField label="Email Address">
-                  <input
-                    type="email" name="email" value={formData.email || ''} readOnly
-                    className={`${inputClass} bg-slate-100 text-slate-400 cursor-not-allowed`}
-                    placeholder="Email Address"
-                  />
-                </LabeledField>
-                <FloatingLabelInput type="text" name="panNumber" maxLength={10} value={formData.panNumber || ''} onChange={handleInputChange} label="PAN No." />
+                <Field
+                  type="text" name="phone" value={formData.phone || ''} onChange={handlePhoneChange}
+                  label="Phone number" maxLength={10} inputMode="numeric" leading="+91"
+                  error={phoneError}
+                />
+                <Field
+                  type="email" name="email" value={formData.email || ''} locked
+                  label="Email address" icon={<FiLock />}
+                  hint="Your login email — can’t be changed here"
+                />
+                <Field
+                  type="text" name="panNumber" maxLength={10} value={formData.panNumber || ''}
+                  onChange={handleInputChange} label="PAN No." warn={panWarn}
+                />
               </div>
-            </SectionCard>
+            </Section>
 
-            {/* Card 2 — Business Information */}
-            <SectionCard title="Business Information" icon="">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <FloatingLabelInput type="text" name="businessName" value={formData.businessName || ''} onChange={handleInputChange} label="Business Name" />
-                </div>
-                {/* Business Type */}
-                <div className={formData.businessType === 'Other' ? 'col-span-2 sm:col-span-1' : 'col-span-2 sm:col-span-1'}>
-                  <FloatingLabelSelect
-                    id="businessType"
-                    label="Business Type"
+            {/* Business */}
+            <Section id="ep-business" title="Business information" sub="Printed on your bills and GST returns" tone="green" icon={<FiBriefcase />} count={countFor('ep-business')}>
+              <div className={GRID_1}>
+                <Field
+                  wrapClass="col-span-full" type="text" name="businessName" value={formData.businessName || ''}
+                  onChange={handleInputChange} label="Business name" icon={<FiShoppingBag />}
+                  hint="The name customers see at the top of every bill"
+                />
+                <div className={`col-span-full grid gap-x-2.5 gap-y-3 min-w-0 lg:gap-x-4 ${formData.businessType === 'Other' ? 'grid-cols-2' : 'grid-cols-1 lg:grid-cols-2'}`}>
+                  <SelectField
+                    id="businessType" label="Business type"
                     value={formData.businessType || ''}
                     onChange={(e) => setFormData(prev => ({ ...prev, businessType: e.target.value }))}
                     options={businessTypeOptions}
                   />
-                </div>
-                {formData.businessType === 'Other' && (
-                  <div className="col-span-2 sm:col-span-1">
-                    <FloatingLabelInput
-                      label="Specify Type"
-                      name="customBusinessType"
-                      value={customBusinessType}
-                      onChange={(e) => setCustomBusinessType(e.target.value)}
+                  {formData.businessType === 'Other' && (
+                    <Field
+                      label="Specify type" name="customBusinessType" value={customBusinessType}
+                      onChange={(e) => setCustomBusinessType(e.target.value)} warn={typeWarn}
                     />
-                  </div>
-                )}
-
-                <div className={formData.businessCategory === 'Other' ? 'col-span-2 sm:col-span-1' : 'col-span-2 sm:col-span-1'}>
-                  <FloatingLabelSelect
-                    id="businessCategory"
-                    label="Category"
+                  )}
+                </div>
+                <div className={`col-span-full grid gap-x-2.5 gap-y-3 min-w-0 lg:gap-x-4 ${formData.businessCategory === 'Other' ? 'grid-cols-2' : 'grid-cols-1 lg:grid-cols-2'}`}>
+                  <SelectField
+                    id="businessCategory" label="Category"
                     value={formData.businessCategory || ''}
                     onChange={(e) => setFormData(prev => ({ ...prev, businessCategory: e.target.value }))}
                     options={businessCategoryOptions}
                   />
-                </div>
-                {formData.businessCategory === 'Other' && (
-                  <div className="col-span-2 sm:col-span-1">
-                    <FloatingLabelInput
-                      label="Specify Category"
-                      name="customBusinessCategory"
-                      value={customBusinessCategory}
-                      onChange={(e) => setCustomBusinessCategory(e.target.value)}
+                  {formData.businessCategory === 'Other' && (
+                    <Field
+                      label="Specify category" name="customBusinessCategory" value={customBusinessCategory}
+                      onChange={(e) => setCustomBusinessCategory(e.target.value)} warn={catWarn}
                     />
-                  </div>
-                )}
-                <FloatingLabelInput
-                  type="text" name="gstin" value={formData.gstin || ''}
-                  maxLength={15}
+                  )}
+                </div>
+                <Field
+                  type="text" name="gstin" value={formData.gstin || ''} maxLength={15}
                   onChange={(e) => {
                     const val = e.target.value.toUpperCase();
                     if (val.length <= 15) setFormData(prev => ({ ...prev, gstin: val }));
                   }}
-                  label="GSTIN"
+                  label="GSTIN" warn={gstinWarn}
                 />
-
-                <FloatingLabelInput type="text" name="msmeUdyamNumber" value={formData.msmeUdyamNumber || ''} maxLength={19} onChange={handleInputChange} label="MSME No." />
+                <Field
+                  type="text" name="msmeUdyamNumber" value={formData.msmeUdyamNumber || ''} maxLength={19}
+                  onChange={handleInputChange} label="MSME No." placeholder="UDYAM-UP-00-0000000"
+                  hint="Optional"
+                />
               </div>
-            </SectionCard>
+            </Section>
 
-            {/* Card 3 — Business Address (desktop xl only) */}
-            <div className="hidden xl:block h-full">
-              <SectionCard title="Business Address" icon="">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <FloatingLabelInput name="streetAddress" value={formData.streetAddress || ''} onChange={handleInputChange} label="Street Address" />
-                  </div>
-                  <FloatingLabelInput type="text" name="city" value={formData.city || ''} onChange={handleInputChange} label="City" />
-                  <FloatingLabelSelect
-                    id="state"
-                    label="State"
-                    value={formData.state || ''}
-                    onChange={(e) => setFormData(prev => ({ ...prev, state: e.target.value }))}
-                    options={stateOptions}
+            {/* Address */}
+            <Section id="ep-address" title="Business address" sub="Your bill address and GST place of supply" tone="amber" icon={<FiMapPin />}>
+              <div className={GRID_3}>
+                <label className="col-span-full grid grid-cols-[minmax(0,1fr)] gap-1 min-w-0 content-start">
+                  <span className="text-xs leading-[18px] font-medium text-[color:var(--ink-muted)]">Street address</span>
+                  <textarea
+                    rows={2} name="streetAddress"
+                    value={formData.streetAddress || ''} onChange={handleInputChange}
+                    className="w-full resize-none px-3 py-2.5 text-sm leading-[21px] font-[inherit] rounded-sm border border-[color:var(--border-control)] bg-[color:var(--surface)] text-[color:var(--ink)] focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-[color:var(--focus-ring)]"
                   />
-                  <div>
-                    <FloatingLabelInput type="text" name="postalCode" value={formData.postalCode || ''} onChange={handlePostalCodeChange} label="Postal Code" maxLength={6} inputMode="numeric" />
-                    {postalError && <p className="text-red-500 text-[11px] mt-1 mb-0">{postalError}</p>}
-                  </div>
-                </div>
-              </SectionCard>
-            </div>
-          </div>
-
-          {/* ── Row 2 (tablet/mobile): Address | Bank ── */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:hidden gap-1">
-
-            {/* Card 3 — Business Address (tablet & mobile only) */}
-            <SectionCard title="Business Address" icon="">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <FloatingLabelInput name="streetAddress" value={formData.streetAddress || ''} onChange={handleInputChange} label="Street Address" />
-                </div>
-                <FloatingLabelInput type="text" name="city" value={formData.city || ''} onChange={handleInputChange} label="City" />
-                <FloatingLabelSelect
-                  id="state"
-                  label="State"
-                  value={formData.state || ''}
+                </label>
+                <Field type="text" name="city" value={formData.city || ''} onChange={handleInputChange} label="City" />
+                <Field
+                  type="text" name="postalCode" value={formData.postalCode || ''} onChange={handlePostalCodeChange}
+                  label="Postal code" maxLength={6} inputMode="numeric" error={postalError}
+                />
+                <SelectField
+                  wrapClass="col-span-full lg:col-auto" id="state" label="State" value={formData.state || ''}
                   onChange={(e) => setFormData(prev => ({ ...prev, state: e.target.value }))}
                   options={stateOptions}
                 />
-                <div className='col-span-2'>
-                  <FloatingLabelInput type="text" name="postalCode" value={formData.postalCode || ''} onChange={handlePostalCodeChange} label="Postal Code" maxLength={6} inputMode="numeric" />
-                  {postalError && <p className="text-red-500 text-[11px] mt-1 mb-0">{postalError}</p>}
-                </div>
               </div>
-            </SectionCard>
+            </Section>
 
-            {/* Card 4 — Bank Details */}
-            <SectionCard title="Bank Details" icon="">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <FloatingLabelInput type="text" name="accountHolderName" value={formData.accountHolderName || ''} onChange={handleInputChange} label="Acc Holder Name" />
-                </div>
-                <FloatingLabelInput type="text" name="bankName" value={formData.bankName || ''} onChange={handleInputChange} label="Bank" />
-                <FloatingLabelInput type="text" name="ifscCode" value={formData.ifscCode || ''} onChange={handleInputChange} label="IFSC Code" />
-                <div className="col-span-2">
-                  <FloatingLabelInput type="text" name="accountNumber" value={formData.accountNumber || ''} onChange={handleInputChange} label="Account No." />
-                </div>
+            {/* Bank */}
+            <Section id="ep-bank" title="Bank details" sub="Printed on bills so customers can pay by bank transfer" icon={<FiCreditCard />} count={countFor('ep-bank')}>
+              <div className={GRID_2}>
+                <Field type="text" name="accountHolderName" value={formData.accountHolderName || ''} onChange={handleInputChange} label="Account holder name" />
+                <Field type="text" name="bankName" value={formData.bankName || ''} onChange={handleInputChange} label="Bank name" />
+                <Field type="text" name="ifscCode" value={formData.ifscCode || ''} onChange={handleInputChange} label="IFSC code" warn={ifscWarn} />
+                <Field type="text" name="accountNumber" value={formData.accountNumber || ''} onChange={handleInputChange} label="Account no." />
               </div>
-            </SectionCard>
+            </Section>
+
+            {/* Social */}
+            <Section id="ep-social" title="Social media" sub="Links on your catalogue and shared bills" tone="magenta" icon={<FiShare2 />} count={countFor('ep-social')}>
+              <div className={GRID_2}>
+                <Field type="text" name="instagram" value={formData.instagram || ''} onChange={handleInputChange} label="Instagram" icon={<FiInstagram />} warn={instaWarn} />
+                <Field type="text" name="facebook" value={formData.facebook || ''} onChange={handleInputChange} label="Facebook" icon={<FiFacebook />} />
+                <Field type="text" name="twitter" value={formData.twitter || ''} onChange={handleInputChange} label="Twitter / X" icon={<FiTwitter />} />
+                <Field
+                  type="text" name="whatsappNumber" value={formData.whatsappNumber || ''} onChange={handleInputChange}
+                  label="WhatsApp No." maxLength={10} inputMode="numeric" leading="+91" icon={<FiMessageCircle />}
+                />
+              </div>
+            </Section>
+
+            {/* ── Error banner ── */}
+            {submitError && (
+              <div role="alert" className="flex gap-2 items-center px-3 py-2.5 rounded-sm text-[13px] leading-[19px] bg-[color:var(--danger-soft)] text-[color:var(--danger)]">
+                <p className="m-0 flex-1">{submitError}</p>
+                <button type="button" onClick={() => setSubmitError(null)} aria-label="Dismiss error" className="grid p-0.5 border-0 bg-transparent text-inherit cursor-pointer">
+                  <FiX size={16} />
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* ── Row 3 (tablet/mobile): Social Media ── */}
-          <div className="grid grid-cols-1 xl:hidden gap-1">
-            <SectionCard title="Social Media" icon="">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <FloatingLabelInput type="text" name="instagram" value={formData.instagram || ''} onChange={handleInputChange} label="Instagram" />
-                <FloatingLabelInput type="text" name="facebook" value={formData.facebook || ''} onChange={handleInputChange} label="Facebook" />
-                <FloatingLabelInput type="text" name="twitter" value={formData.twitter || ''} onChange={handleInputChange} label="Twitter / X" />
-                <FloatingLabelInput type="text" name="whatsappNumber" value={formData.whatsappNumber || ''} onChange={handleInputChange} label="WhatsApp No." maxLength={10} inputMode="numeric" />
+          {/* ── Right panel (wide desktop): profile check + bill preview ── */}
+          <aside aria-label="Profile check" className="hidden xl:grid sticky top-[84px] self-start gap-3.5">
+            <div className={PANEL}>
+              <div className="flex items-center gap-2">
+                <b className="flex-1 text-sm">Profile check</b>
+                {issues.length > 0
+                  ? <span className="inline-flex items-center h-[22px] px-2 rounded-full text-[11px] font-semibold whitespace-nowrap bg-[color:var(--warning-soft)] text-[color:var(--warning)]">{issues.length} to fix</span>
+                  : <span className="inline-flex items-center h-[22px] px-2 rounded-full text-[11px] font-semibold whitespace-nowrap bg-[color:var(--success-soft)] text-[color:var(--success)]">All good</span>}
               </div>
-            </SectionCard>
-          </div>
-
-          {/* ── Desktop xl: Bank + Social side by side ── */}
-          <div className="hidden xl:grid xl:grid-cols-2 gap-1">
-            <SectionCard title="Bank Details" icon="">
-              <div className="grid grid-cols-2 gap-4">
-                <FloatingLabelInput type="text" name="accountHolderName" value={formData.accountHolderName || ''} onChange={handleInputChange} label="Acc Holder Name" />
-                <FloatingLabelInput type="text" name="bankName" value={formData.bankName || ''} onChange={handleInputChange} label="Bank Name" />
-                <FloatingLabelInput type="text" name="ifscCode" value={formData.ifscCode || ''} onChange={handleInputChange} label="IFSC Code" />
-                <FloatingLabelInput type="text" name="accountNumber" value={formData.accountNumber || ''} onChange={handleInputChange} label="Account No." />
+              <div className="h-2 rounded bg-[color:var(--surface-sunken)] overflow-hidden">
+                <i
+                  className={`block h-full rounded ${issues.length === 0 ? 'bg-[color:var(--success)]' : 'bg-[color:var(--warning)]'}`}
+                  style={{ width: `${passPct}%` }}
+                />
               </div>
-            </SectionCard>
-            <SectionCard title="Social Media" icon="">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FloatingLabelInput type="text" name="instagram" value={formData.instagram || ''} onChange={handleInputChange} label="Instagram" />
-                <FloatingLabelInput type="text" name="facebook" value={formData.facebook || ''} onChange={handleInputChange} label="Facebook" />
-                <FloatingLabelInput type="text" name="twitter" value={formData.twitter || ''} onChange={handleInputChange} label="Twitter / X" />
-                <FloatingLabelInput type="text" name="whatsappNumber" value={formData.whatsappNumber || ''} onChange={handleInputChange} label="WhatsApp No." maxLength={10} inputMode="numeric" />
-              </div>
-            </SectionCard>
-          </div>
-
-          {/* ── Error banner ── */}
-          {submitError && (
-            <div className="bg-red-50 border border-red-200 rounded-sm px-4 py-2.5 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setSubmitError(null)}
-                className="text-red-500 shrink-0 cursor-pointer"
-              >
-                <FiX size={14} />
-              </button>
-              <p className="text-red-500 text-sm m-0">{submitError}</p>
-            </div>
-          )}
-
-          {/* ── Submit button ── */}
-          <div className="sticky bottom-0 left-0 right-0 sm:static bg-slate-100 sm:bg-transparent pt-2 sm:pt-0 -mx-4 sm:mx-0 px-4 sm:px-0 pb-2 sm:pb-0 z-10">
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className={[
-                'w-full py-4 rounded-sm text-white text-[15px] font-semibold border-0',
-                'flex items-center justify-center gap-2 shadow-lg transition-all duration-300',
-                isSubmitting ? 'cursor-not-allowed' : 'cursor-pointer',
-                submitBtnClass,
-              ].join(' ')}
-            >
-              {isSubmitting ? (
-                <>
-                  <div className="w-4 h-4 rounded-sm border-2 border-white/40 border-t-white animate-spin" />
-                  Saving…
-                </>
-              ) : submitSuccess ? (
-                <>
-                  <FiCheck size={18} />
-                  {submitSuccess}
-                </>
-              ) : (
-                'Save All Changes'
+              <div className="text-xs leading-[18px] text-[color:var(--ink-subtle)]">These print on bills, so customers and GST officers see them.</div>
+              {issues.length > 0 && (
+                <div className="grid">
+                  {issues.map(i => (
+                    <button
+                      key={i.label} type="button" onClick={() => scrollToSection(i.section)}
+                      className="grid grid-cols-[18px_1fr_auto] gap-2 items-start py-[9px] border-0 border-b last:border-b-0 border-[color:var(--border)] bg-transparent text-left text-[13px] leading-[18px] text-[color:var(--ink)] cursor-pointer"
+                    >
+                      <FiAlertTriangle className="w-[15px] h-[15px] mt-px text-[color:var(--warning)]" />
+                      <span>{i.label}<small className="block text-[11px] leading-[15px] text-[color:var(--ink-subtle)]">{i.note}</small></span>
+                      <em className="not-italic text-[11px] font-medium text-[color:var(--primary-text)]">Fix</em>
+                    </button>
+                  ))}
+                </div>
               )}
-            </button>
-          </div>
-        </form>
-        {activeImageMenu === 'profile' && (
-          <ImageOptionsModal
-            title="Profile Photo"
-            hasImage={!!previewUrl}
-            onUpload={handleMenuUpload}
-            onRemove={handleMenuRemove}
-            onClose={closeImageMenu}
-          />
-        )}
-        {activeImageMenu === 'logo' && (
-          <ImageOptionsModal
-            title="Company Logo"
-            hasImage={!!logoPreviewUrl}
-            onUpload={handleMenuUpload}
-            onRemove={handleMenuRemove}
-            onClose={closeImageMenu}
-          />
-        )}
-      </div>
+            </div>
+
+            <div className={`${PANEL} !bg-[color:var(--surface-sunken)]`}>
+              <b className="text-sm">Top of your bill</b>
+              <div className="grid grid-cols-[40px_1fr] gap-2.5 p-3.5 rounded-sm bg-white text-gray-800 text-[10px] leading-[14px] shadow-[0_8px_24px_rgba(21,48,140,.14)]">
+                {logoPreviewUrl
+                  ? <img className="w-10 h-10 rounded-sm object-contain bg-gray-100" src={logoPreviewUrl} alt="" />
+                  : <div className="w-10 h-10 rounded-sm bg-gray-100" />}
+                <div>
+                  <h4 className="m-0 text-[13px] leading-[17px] [overflow-wrap:anywhere]">{formData.businessName || 'Your business name'}</h4>
+                  {billAddress && <div className="text-gray-500 [overflow-wrap:anywhere]">{billAddress}</div>}
+                  {billContact && <div className="text-gray-500 [overflow-wrap:anywhere]">{billContact}</div>}
+                  {gstin && (
+                    <div className="text-gray-500">
+                      <span className={gstinWarn ? 'bg-amber-100 text-amber-800 rounded-[3px] px-[3px]' : ''}>GSTIN {gstin}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="text-xs leading-[18px] text-[color:var(--ink-subtle)]">Updates as you type. Highlighted: details that need fixing.</div>
+            </div>
+          </aside>
+        </div>
+
+        {/* ── Save bar ── */}
+        <div className="sticky bottom-0 z-20 flex items-center gap-3 px-4 pt-2.5 pb-[calc(12px+env(safe-area-inset-bottom,0px))] sm:px-6 bg-[color:var(--surface)] border-t border-[color:var(--border)] shadow-[0_-6px_16px_rgba(21,48,140,.06)]">
+          <span className={`flex-1 min-w-0 flex items-center gap-1.5 text-xs sm:text-[13px] leading-[18px] overflow-hidden text-ellipsis ${submitSuccess
+            ? 'text-[color:var(--success)] font-medium'
+            : issues.length
+              ? 'text-[color:var(--warning)] font-semibold'
+              : 'text-[color:var(--ink-subtle)]'}`}>
+            {submitSuccess ? (
+              <><FiCheck className="w-3.5 h-3.5 shrink-0" />{submitSuccess}</>
+            ) : issues.length ? (
+              `${issues.length} to fix`
+            ) : (
+              'Changes save only when you press Save.'
+            )}
+          </span>
+          <button type="button" className={`${BTN_GHOST} ${BTN_SM}`} onClick={handleDiscard} disabled={isSubmitting}>
+            Discard
+          </button>
+          <button type="submit" disabled={isSubmitting} className={`${BTN_PRIMARY} sm:min-w-[156px]`}>
+            {isSubmitting ? (
+              <><span className={SPIN} />Saving…</>
+            ) : submitSuccess ? (
+              <><FiCheck />Saved</>
+            ) : (
+              <><FiCheck /><span className="hidden sm:inline">Save all changes</span><span className="sm:hidden">Save all</span></>
+            )}
+          </button>
+        </div>
+      </form>
     </div>
   );
 };

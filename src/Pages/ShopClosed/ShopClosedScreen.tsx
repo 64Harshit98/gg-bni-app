@@ -5,15 +5,11 @@ interface ShopClosedScreenProps {
   closeTime: string;
 }
 
-// "14:00" -> "2:00 PM" for friendlier display
+// "14:00" -> "2:00 pm" for friendlier display
 const formatTime = (time: string): string => {
-  const [hStr, mStr] = time.split(':');
-  let h = Number(hStr);
-  const m = mStr.padStart(2, '0');
-  const suffix = h >= 12 ? 'PM' : 'AM';
-  h = h % 12;
-  if (h === 0) h = 12;
-  return `${h}:${m} ${suffix}`;
+  const [hStr, mStr = '00'] = time.split(':');
+  const h = Number(hStr);
+  return `${h % 12 || 12}:${mStr.padStart(2, '0')} ${h >= 12 ? 'pm' : 'am'}`;
 };
 
 const ShopClosedScreen: React.FC<ShopClosedScreenProps> = ({ openTime, closeTime }) => {
@@ -25,21 +21,49 @@ const ShopClosedScreen: React.FC<ShopClosedScreenProps> = ({ openTime, closeTime
   };
 
   return (
-    <div className="flex h-screen w-screen flex-col items-center justify-center bg-white px-6 text-center">
-      <div className="text-5xl mb-4">🔒</div>
-      <h1 className="text-2xl font-bold text-gray-800 mb-2">Store Is Currently Closed</h1>
-      <p className="text-gray-600 max-w-sm mb-1">
-        This account can only log in during the store's working hours.
-      </p>
-      <p className="text-gray-800 font-medium mb-6">
-        Open: {formatTime(openTime)} &nbsp;–&nbsp; Close: {formatTime(closeTime)}
-      </p>
-      <button
-        onClick={handleBackToLogin}
-        className="px-6 py-3 rounded-sm bg-black text-white font-semibold"
-      >
-        Back to Login
-      </button>
+    <div className="flex min-h-screen w-screen flex-col items-center justify-center bg-[#eef2ff] px-6 text-center">
+      <div className="w-full max-w-sm bg-white border border-[#dfe6fb] rounded-sm shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] p-6 grid gap-4">
+        <span className="justify-self-center w-14 h-14 rounded-sm bg-amber-50 text-amber-700 grid place-items-center">
+          <svg
+            className="w-7 h-7"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <rect x="5" y="11" width="14" height="10" rx="2" />
+            <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+          </svg>
+        </span>
+
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">Store is currently closed</h1>
+          <p className="text-sm text-gray-600 mt-1 leading-relaxed">
+            This account can only log in during the store's working hours.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 text-left">
+          <div className="rounded-sm bg-[#f5f7ff] border border-[#dfe6fb] px-3.5 py-2.5">
+            <span className="block text-xs font-medium text-gray-500">Opens at</span>
+            <b className="block text-sm font-semibold tabular-nums text-gray-900">{formatTime(openTime)}</b>
+          </div>
+          <div className="rounded-sm bg-[#f5f7ff] border border-[#dfe6fb] px-3.5 py-2.5">
+            <span className="block text-xs font-medium text-gray-500">Closes at</span>
+            <b className="block text-sm font-semibold tabular-nums text-gray-900">{formatTime(closeTime)}</b>
+          </div>
+        </div>
+
+        <button
+          onClick={handleBackToLogin}
+          className="w-full h-11 rounded-sm bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white text-sm font-medium transition"
+        >
+          Back to login
+        </button>
+      </div>
     </div>
   );
 };

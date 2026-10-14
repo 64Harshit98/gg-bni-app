@@ -23,12 +23,22 @@ import type { Purchase, PurchaseDocumentData, PurchaseItem, TaxOption } from '..
 // Moved verbatim from Purchase.tsx (was a module-level helper above the
 // component, L34-38). Removes all undefined values from an object before
 // sending to Firestore.
-const sanitizeForFirestore = <T extends Record<string, any>>(obj: T): T => {
-    return Object.fromEntries(
-        Object.entries(obj).filter(([_, v]) => v !== undefined)
-    ) as T;
-};
+const isPlainObject = (v: unknown): v is Record<string, any> =>
+    v !== null && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype;
 
+const sanitizeForFirestore = <T>(value: T): T => {
+    if (Array.isArray(value)) {
+        return value.filter(v => v !== undefined).map(v => sanitizeForFirestore(v)) as unknown as T;
+    }
+    if (isPlainObject(value)) {
+        return Object.fromEntries(
+            Object.entries(value)
+                .filter(([, v]) => v !== undefined)
+                .map(([k, v]) => [k, sanitizeForFirestore(v)])
+        ) as T;
+    }
+    return value;
+};
 // Firestore document IDs can't contain '/' (and a few other characters are
 // unsafe) — an invoice number like "PUR/2024/001" would otherwise throw when
 // used directly as a doc ID for the uniqueness-registry check below.

@@ -1,103 +1,79 @@
 import React, { useState } from 'react';
 import { Spinner } from '../constants/Spinner';
-import {
-    Card,
-    CardContent,
-    CardHeader,
-    CardTitle,
-} from './ui/card';
+import { CatCard, CardHead, Seg, HiddenState, Ico, ICONS } from '../Components/ui/Catalogueui';
+
 interface TopItem {
     id: string;
     name: string;
     totalQuantity: number;
     totalAmount: number;
 }
- 
-// ── Props (data comes from HomePage, no internal fetch) ──────────────────────
-interface TopSoldItemsCardProps {
+
+// Same props as the old TopSoldItemsCard; data comes from HomePage.
+interface CatalogueTopItemsProps {
     isDataVisible: boolean;
     topByQuantity: TopItem[];
     topByAmount: TopItem[];
     loading: boolean;
 }
- 
-export const TopSoldItemsCard: React.FC<TopSoldItemsCardProps> = ({
+
+export const CatalogueTopItems: React.FC<CatalogueTopItemsProps> = ({
     isDataVisible,
     topByQuantity,
     topByAmount,
     loading,
 }) => {
     const [viewMode, setViewMode] = useState<'amount' | 'quantity'>('amount');
- 
-    const renderContent = () => {
-        if (loading) {
-            return <div className="flex h-40 items-center justify-center"><Spinner /></div>;
-        }
-        if (!isDataVisible) {
-            return (
-                <div className="flex flex-col items-center justify-center text-center text-gray-500 py-8 h-40">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mb-1"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" /><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" /><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" /><line x1="2" x2="22" y1="2" y2="22" /></svg>
-                    Data is hidden
-                </div>
-            );
-        }
+    const [showAll, setShowAll] = useState(false);
 
-        const itemsToDisplay = viewMode === 'quantity' ? topByQuantity : topByAmount;
+    const items = viewMode === 'quantity' ? topByQuantity : topByAmount;
+    const visible = showAll ? items : items.slice(0, 3);
 
-        if (itemsToDisplay.length === 0) {
-            return <p className="text-center text-gray-500 py-8 h-40">No items sold in this period.</p>;
-        }
+    const renderBody = () => {
+        if (loading) return <div className="flex h-40 items-center justify-center"><Spinner /></div>;
+        if (!isDataVisible) return <HiddenState height={160} />;
+        if (items.length === 0) return <p className="flex h-40 items-center justify-center text-center text-sm text-slate-500">No items sold in this period.</p>;
 
         return (
-            <ul className="space-y-4">
-                {itemsToDisplay.map((item, index) => (
-                    <li key={item.id} className="flex items-center">
-                        <div className="flex items-center w-4/5">
-                            <span className={`text-sm font-bold rounded-full h-6 w-6 flex items-center justify-center mr-3 flex-shrink-0 text-[#F97316] bg-orange-100`}>
+            <>
+                <ol className="m-0 list-none p-0">
+                    {visible.map((item, index) => (
+                        <li key={item.id} className="flex items-center gap-3 border-b border-[#f6e1d0] py-2.5 last:border-b-0">
+                            <span className="h-6 w-6 flex-none rounded-sm bg-orange-100 text-center text-xs font-semibold leading-6 text-orange-800">
                                 {index + 1}
                             </span>
-                            <span className="font-medium text-gray-700" title={item.name}>
-                                {item.name.slice(0, 30)}
+                            <span className="min-w-0 flex-1 truncate text-sm text-slate-900" title={item.name}>
+                                {item.name}
                             </span>
-                        </div>
-                        <div className="w-1/5 text-right">
-                            {viewMode === 'quantity' ? (
-                                <>
-                                    <span className="font-semibold text-gray-800">{item.totalQuantity}</span>
-                                    <span className="text-xs text-gray-500 ml-1">sold</span>
-                                </>
-                            ) : (
-                                <span className="font-semibold text-gray-800">
-                                    {item.totalAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}
-                                </span>
-                            )}
-                        </div>
-                    </li>
-                ))}
-            </ul>
+                            <span className="text-sm font-medium tabular-nums text-slate-900">
+                                {viewMode === 'quantity'
+                                    ? <>{item.totalQuantity}<span className="ml-1 text-xs font-normal text-slate-500">sold</span></>
+                                    : item.totalAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}
+                            </span>
+                        </li>
+                    ))}
+                </ol>
+                {items.length > 3 && (
+                    <button
+                        onClick={() => setShowAll(v => !v)}
+                        className="mt-2 inline-flex h-8 items-center gap-1 rounded-sm text-[13px] font-medium text-orange-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-600"
+                    >
+                        {showAll ? 'Show top 3' : `See all top ${items.length}`}
+                        <Ico d={ICONS.chevronRight} size={16} className={showAll ? 'rotate-90' : ''} />
+                    </button>
+                )}
+            </>
         );
     };
 
     return (
-        <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Top 5 Items Sold</CardTitle>
-                <div className="flex items-center p-1 bg-gray-100 rounded-lg">
-                    <button
-                        onClick={() => setViewMode('amount')}
-                        className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${viewMode === 'amount' ? 'bg-white text-[#F97316] shadow-sm' : 'text-gray-500'}`}
-                    >
-                        Amt
-                    </button>
-                    <button
-                        onClick={() => setViewMode('quantity')}
-                        className={`px-3 py-1 text-sm font-semibold rounded-md transition-colors ${viewMode === 'quantity' ? 'bg-white text-[#F97316] shadow-sm' : 'text-gray-500'}`}
-                    >
-                        Qty
-                    </button>
-                </div>
-            </CardHeader>
-            <CardContent>{renderContent()}</CardContent>
-        </Card>
+        <CatCard>
+            <CardHead
+                title="Top items"
+                sub={viewMode === 'amount' ? 'By sales amount' : 'By quantity sold'}
+                right={<Seg value={viewMode} onChange={setViewMode} />}
+            />
+            {renderBody()}
+        </CatCard>
     );
 };

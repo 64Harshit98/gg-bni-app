@@ -1,14 +1,17 @@
-import React from 'react';
-import { CustomToggle, CustomToggleItem } from '../../../Components/CustomToggle';
-import { CustomButton } from '../../../Components/CustomButton';
-import { Variant } from '../../../enums';
-import { IconChevronDown, IconClose, IconFilter, IconSearch } from '../../../constants/Icons';
+import React, { useState, useEffect, useRef } from 'react';
 import { TutorialStep } from '../../../Components/TutorialStep';
 import { Permissions } from '../../../enums/permissions.enum';
 import ShowWrapper from '../../../context/ShowWrapper';
-//import NotificationBell from '../../../Components/NotificationBell';
 import { ROUTES } from '../../../constants/routes.constants';
 import { useNavigate } from 'react-router-dom';
+
+export interface JournalSummary {
+  total: number;
+  received: number;
+  unpaid: number;
+  count: number;
+  unpaidCount: number;
+}
 
 interface JournalListFiltersProps {
   // tutorial
@@ -46,13 +49,52 @@ interface JournalListFiltersProps {
   setActiveType: (v: 'Debit' | 'Credit') => void;
   hasPermission: (perm: Permissions) => boolean;
 
-  // Paid/Unpaid toggle
-  activeTab: 'Paid' | 'Unpaid';
-  setActiveTab: (v: 'Paid' | 'Unpaid') => void;
-
-  // Total receivables/payables banner
-  totalUnpaidAmount: number;
+  // Summary strip (derived from the filtered list)
+  summary: JournalSummary;
 }
+
+const iconProps = {
+  className: 'w-4 h-4 shrink-0',
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.75,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+  'aria-hidden': true,
+};
+
+const SearchGlyph = ({ big }: { big?: boolean }) => (
+  <svg {...iconProps} className={big ? 'w-5 h-5 shrink-0' : 'w-4 h-4 shrink-0'}><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+);
+const CloseGlyph = () => (
+  <svg {...iconProps} className="w-5 h-5 shrink-0"><path d="M18 6 6 18M6 6l12 12" /></svg>
+);
+const CalendarGlyph = () => (
+  <svg {...iconProps}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /></svg>
+);
+const ChevronGlyph = ({ open }: { open?: boolean }) => (
+  <svg {...iconProps} className={`w-4 h-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}><path d="m6 9 6 6 6-6" /></svg>
+);
+const FilterGlyph = ({ big }: { big?: boolean }) => (
+  <svg {...iconProps} className={big ? 'w-5 h-5 shrink-0 lg:w-4 lg:h-4' : 'w-4 h-4 shrink-0'}><path d="M3 5h18l-7 8v6l-4 2v-8z" /></svg>
+);
+const UsersGlyph = () => (
+  <svg {...iconProps}><circle cx="9" cy="8" r="4" /><path d="M2 21a7 7 0 0 1 14 0M16 3.5a4 4 0 0 1 0 8M22 21a7 7 0 0 0-4-6.3" /></svg>
+);
+const PlusGlyph = () => (
+  <svg {...iconProps}><path d="M12 5v14M5 12h14" /></svg>
+);
+
+const inr0 = (n: number) =>
+  n.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
+
+const FOCUS = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#155dfc]';
+// Phone: pill chip · Desktop: 40px outlined button
+const CHIP =
+  `inline-flex items-center gap-2 whitespace-nowrap border font-medium transition-colors h-[34px] px-3.5 text-[13px] rounded-full lg:h-10 lg:px-3 lg:text-sm lg:rounded-lg ${FOCUS}`;
+const CHIP_LIGHT = `${CHIP} border-[#7a8aa3] bg-white text-[#45556c] lg:text-[#0f172b] hover:bg-[#f5f7ff]`;
+const CHIP_DARK_ON_PHONE = `${CHIP} border-[#0f172b] bg-[#0f172b] text-white lg:border-[#7a8aa3] lg:bg-white lg:text-[#0f172b] lg:hover:bg-[#f5f7ff]`;
 
 export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
   tutorialStep,
@@ -80,35 +122,102 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
   activeType,
   setActiveType,
   hasPermission,
-  activeTab,
-  setActiveTab,
-  totalUnpaidAmount,
+  summary,
 }) => {
-  const navigate = useNavigate();
+    const navigate = useNavigate();
+  const isSales = activeType === 'Credit';
+
+  // Custom range: edit as a draft, commit only on Apply
+  const [draft, setDraft] = useState({ start: '', end: '' });
+  const dateWrapRef = useRef<HTMLDivElement | null>(null);
+  const canApply = !!draft.start && !!draft.end;
+
+  const openCustom = () => {
+    setDraft({ start: customStartDate, end: customEndDate });
+    setShowCustomPicker(true);
+  };
+
+  const applyCustom = () => {
+    if (!canApply) return;
+    const [s, e] = draft.start <= draft.end ? [draft.start, draft.end] : [draft.end, draft.start];
+    setCustomStartDate(s);
+    setCustomEndDate(e);
+    setActiveDateFilter('custom');
+    setShowCustomPicker(false);
+  };
+
+  useEffect(() => {
+    if (!showCustomPicker) return;
+    const onDown = (e: MouseEvent | TouchEvent) => {
+      if (dateWrapRef.current && !dateWrapRef.current.contains(e.target as Node)) setShowCustomPicker(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowCustomPicker(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('touchstart', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('touchstart', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [showCustomPicker]);
+
+  const searchInput = (autoFocus?: boolean) => (
+    <label className="flex items-center gap-2 h-10 px-3 w-full lg:w-[380px] border border-[#7a8aa3] rounded-sm bg-white text-[#5b6b86] focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-[#155dfc]">
+      <SearchGlyph />
+      <input
+        type="text"
+        placeholder="Search bill no., customer or phone"
+        className="flex-1 min-w-0 bg-transparent outline-none text-sm text-[#0f172b] placeholder:text-[#5b6b86]"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        autoFocus={autoFocus}
+      />
+    </label>
+  );
+
   return (
     <>
-      {/* Row 1: Title + Filter icon */}
-      <div className="flex items-center justify-between px-4 pt-2 relative">
-        {/* Filter + notification block moved OUTSIDE the flex-1 container, at the true top-right of header */}
-        <div
-          ref={filterRef}
-          className="absolute top-4 right-4 flex items-center gap-2 z-30"
-        >
-          <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+      {/*
+        One flex-wrap container; `order-*` rearranges it per breakpoint.
+
+        Phone  : [Title ........ 🔍 ⛉]
+                 [search field (when open)]
+                 [Sales | Purchase]
+                 [date chip] [Party ledger chip]
+        Desktop: [Title ............ Party ledger | New sale]
+                 [Sales | Purchase] [search] [date] [Filters]
+      */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-3 lg:gap-y-0 px-4 lg:px-6 pt-4 lg:pt-6">
+        {/* Title */}
+        <div className="order-1 flex-1 min-w-0">
+          <h1 className="text-xl lg:text-2xl leading-8 font-semibold text-[#0f172b]">Transactions</h1>
+          <p className="text-xs leading-[18px] text-[#45556c]">Every sale and purchase bill</p>
+        </div>
+
+        {/* Phone only: search icon (Step 1) */}
+        <div className="order-2 lg:hidden -mr-2">
+          <TutorialStep
+            step={1}
+            currentStep={tutorialStep}
+            text="Tap the search icon to find invoices by name, number, or phone."
+            onNext={() => next(2)}
+            onSkip={skip}
+            mobileArrowAlign="left"
+          >
             <button
-              onClick={() => navigate(ROUTES.PARTY_LEDGER)}
-              className="hidden sm:inline-block text-xs font-bold text-black bg-white border border-gray-300 rounded-sm px-2 py-2.5 hover:bg-blue-100 transition-colors whitespace-nowrap"
+              type="button"
+              onClick={() => setShowSearch(!showSearch)}
+              aria-label={showSearch ? 'Close search' : 'Search'}
+              className={`w-10 h-10 inline-flex items-center justify-center rounded-sm text-[#45556c] hover:bg-[#f5f7ff] hover:text-[#0f172b] transition-colors ${FOCUS}`}
             >
-              Party Ledger
+              {showSearch ? <CloseGlyph /> : <SearchGlyph big />}
             </button>
-          </ShowWrapper>
+          </TutorialStep>
+        </div>
 
-          {/* <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-            <div className="hidden sm:flex items-center justify-center border border-slate-300 rounded-sm bg-gray-100 shadow-sm">
-              <NotificationBell />
-            </div>
-          </ShowWrapper> */}
-
+        {/* Filters (Step 3): icon on phone, outlined button with label on desktop */}
+        <div ref={filterRef} className="order-3 lg:order-8 relative -mr-2 lg:mr-0">
           <TutorialStep
             step={3}
             currentStep={tutorialStep}
@@ -117,22 +226,26 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
             onSkip={skip}
           >
             <button
+              type="button"
               onClick={() => setIsFilterOpen(!isFilterOpen)}
-              className="text-slate-500 hover:text-slate-800 transition-colors"
+              aria-label="Filters"
+              className={`inline-flex items-center justify-center gap-2 h-10 w-10 rounded-sm text-[#45556c] hover:bg-[#f5f7ff] hover:text-[#0f172b] transition-colors lg:w-auto lg:px-3 lg:border lg:border-[#7a8aa3] lg:bg-white lg:text-sm lg:font-medium lg:text-[#0f172b] ${FOCUS}`}
             >
-              <IconFilter />
+              <FilterGlyph big />
+              <span className="hidden lg:inline">Filters</span>
             </button>
           </TutorialStep>
 
           {isFilterOpen && (
-            <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-sm shadow-lg z-50 border overflow-hidden">
-              <ul className="py-1">
+            <div className="absolute top-full right-0 mt-2 z-50 w-64 bg-white border border-[#dfe6fb] rounded-sm shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)] overflow-hidden">
+              <ul className="p-1">
                 {dateFilters.map((filter) => (
                   filter.value !== 'custom' && (
                     <li key={filter.value}>
                       <button
+                        type="button"
                         onClick={() => { handleDateFilterSelect(filter.value); setIsFilterOpen(false); }}
-                        className={`w-full text-left px-4 py-2 text-sm ${activeDateFilter === filter.value ? 'bg-slate-100 text-slate-900' : 'text-slate-700'} hover:bg-slate-50`}
+                        className={`w-full text-left px-3 h-10 rounded-sm text-sm ${activeDateFilter === filter.value ? 'bg-[#e6eeff] text-[#155dfc] font-medium' : 'text-[#0f172b] hover:bg-[#f5f7ff]'}`}
                       >
                         {filter.label}
                       </button>
@@ -141,10 +254,11 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
                 ))}
                 <li>
                   <button
-                    onClick={() => { setActiveDateFilter('custom'); setIsFilterOpen(false); setShowCustomPicker(true); }}
-                    className={`w-full text-left px-4 py-2 text-sm ${activeDateFilter === 'custom' ? 'bg-slate-100 text-slate-900' : 'text-slate-700'} hover:bg-slate-50`}
+                    type="button"
+                    onClick={() => { setIsFilterOpen(false); openCustom(); }}
+                    className={`w-full text-left px-3 h-10 rounded-sm text-sm ${activeDateFilter === 'custom' ? 'bg-[#e6eeff] text-[#155dfc] font-medium' : 'text-[#0f172b] hover:bg-[#f5f7ff]'}`}
                   >
-                    Custom Range
+                    Custom range
                   </button>
                 </li>
               </ul>
@@ -152,10 +266,66 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
           )}
         </div>
 
-        <div className="flex-1 flex flex-col items-center relative">
-          <h1 className="text-2xl font-bold text-slate-800">Transactions</h1>
+        {/* Phone only: search field, shown when the icon is tapped */}
+        {showSearch && (
+          <div className="order-4 basis-full lg:hidden">
+            {searchInput(true)}
+          </div>
+        )}
 
-          {/* Step 2 — date label */}
+        {/* Desktop only: spacer that starts the second row */}
+        <div className="hidden lg:block lg:order-4 basis-full h-4" aria-hidden="true" />
+
+        {/* Sales / Purchase (Step 4) */}
+        <div className="order-5 basis-full lg:basis-auto">
+          <TutorialStep
+            step={4}
+            currentStep={tutorialStep}
+            text="Switch between Sales (money received) and Purchase (money spent) transactions here."
+            onNext={() => next(5)}
+            onSkip={skip}
+          >
+            <div role="group" className="flex gap-0.5 p-[3px] bg-[#f5f7ff] border border-[#dfe6fb] rounded-[11px] w-full lg:w-[240px]">
+              <button
+                type="button"
+                aria-pressed={activeType === 'Credit'}
+                onClick={() => setActiveType('Credit')}
+                className={`flex-1 h-9 rounded-sm text-sm font-medium transition-colors ${
+                  activeType === 'Credit' ? 'bg-[#0f172b] text-white' : 'text-[#45556c] hover:bg-white'
+                }`}
+              >
+                Sales
+              </button>
+              <button
+                type="button"
+                aria-pressed={activeType === 'Debit'}
+                onClick={() => setActiveType('Debit')}
+                disabled={!hasPermission(Permissions.HiddenProFeatures)}
+                className={`flex-1 h-9 rounded-sm text-sm font-medium transition-colors disabled:opacity-45 disabled:cursor-not-allowed ${
+                  activeType === 'Debit' ? 'bg-[#0f172b] text-white' : 'text-[#45556c] hover:bg-white'
+                }`}
+              >
+                {hasPermission(Permissions.HiddenProFeatures) ? 'Purchase' : '🔒 Purchase'}
+              </button>
+            </div>
+          </TutorialStep>
+        </div>
+
+        {/* Desktop only: always-visible search field (Step 1) */}
+        <div className="hidden lg:block lg:order-6">
+          <TutorialStep
+            step={1}
+            currentStep={tutorialStep}
+            text="Tap the search icon to find invoices by name, number, or phone."
+            onNext={() => next(2)}
+            onSkip={skip}
+          >
+            {searchInput()}
+          </TutorialStep>
+        </div>
+
+        {/* Date range (Step 2): dark chip on phone, outlined button on desktop */}
+        <div className="order-6 lg:order-7">
           <TutorialStep
             step={2}
             currentStep={tutorialStep}
@@ -163,149 +333,108 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
             onNext={() => next(3)}
             onSkip={skip}
           >
-            <div
-              ref={setTutorialRef(2) as any}
-              className="flex items-center w-full relative"
+                        <div
+              ref={(el) => { dateWrapRef.current = el; setTutorialRef(2)(el); }}
+              className="relative"
             >
-              <TutorialStep
-                step={1}
-                currentStep={tutorialStep}
-                text="Tap the search icon to find invoices by name, number, or phone."
-                onNext={() => next(2)}
-                onSkip={skip}
-                mobileArrowAlign="left"
+              <button
+                type="button"
+                aria-pressed={showCustomPicker}
+                aria-expanded={showCustomPicker}
+                onClick={() => (showCustomPicker ? setShowCustomPicker(false) : openCustom())}
+                className={CHIP_DARK_ON_PHONE}
               >
-                <button
-                  onClick={() => setShowSearch(!showSearch)}
-                  className="text-slate-500 hover:text-slate-800 transition-colors ml-0 -mt-1"
-                >
-                  <span className="relative -top-1">
-                    {showSearch ? <IconClose /> : <IconSearch />}
-                  </span>
-                </button>
-              </TutorialStep>
+                <CalendarGlyph />
+                {selectedPeriodText}
+                <ChevronGlyph open={showCustomPicker} />
+              </button>
 
-              <div
-                onClick={() => {
-                  if (showCustomPicker) {
-                    setShowCustomPicker(false);
-                  } else {
-                    setShowCustomPicker(true);
-                    setActiveDateFilter('custom');
-                  }
-                }}
-                className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 cursor-pointer hover:bg-gray-200 px-3 py-1 rounded-sm transition-colors select-none"
-              >
-                <p className='text-center text-sm font-light text-slate-600'>{selectedPeriodText}</p>
-                <IconChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${showCustomPicker ? 'rotate-180' : ''}`} />
-              </div>
-
+                            {showCustomPicker && (
+                <div className="absolute top-full left-0 z-50 mt-1.5 w-[328px] max-w-[calc(100vw-2rem)] rounded-sm border border-[#dfe6fb] bg-white p-4 shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)] cursor-default">
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="grid gap-1.5 text-[13px] font-medium text-[#45556c]">
+                      From
+                      <input
+                        type="date"
+                        value={draft.start}
+                        onChange={(e) => setDraft((d) => ({ ...d, start: e.target.value }))}
+                        className="h-10 w-full min-w-0 rounded-sm border border-[#7a8aa3] bg-white px-3 text-sm text-[#0f172b] outline-none focus-visible:ring-2 focus-visible:ring-[#155dfc]"
+                      />
+                    </label>
+                    <label className="grid gap-1.5 text-[13px] font-medium text-[#45556c]">
+                      To
+                      <input
+                        type="date"
+                        value={draft.end}
+                        onChange={(e) => setDraft((d) => ({ ...d, end: e.target.value }))}
+                        className="h-10 w-full min-w-0 rounded-sm border border-[#7a8aa3] bg-white px-3 text-sm text-[#0f172b] outline-none focus-visible:ring-2 focus-visible:ring-[#155dfc]"
+                      />
+                    </label>
+                  </div>
+                  <div className="mt-4 flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomPicker(false)}
+                      className="h-10 rounded-sm border border-[#dfe6fb] bg-white px-4 text-sm font-medium text-[#45556c] transition-colors hover:bg-[#f5f7ff] hover:text-[#0f172b]"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={applyCustom}
+                      disabled={!canApply}
+                      className="h-10 rounded-sm bg-[#0f172b] px-4 text-sm font-medium text-white transition-colors hover:bg-[#1d2a44] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </TutorialStep>
+        </div>
 
-          {showCustomPicker && (
-            <div className="absolute top-full bg-white shadow-xl border border-gray-200 rounded-sm p-4 z-50 min-w-[300px] flex flex-col gap-4 animate-in fade-in zoom-in duration-200 cursor-default">
-              <div className="grid grid-cols-2 gap-2">
-                <div className="flex flex-col">
-                  <label className="text-center text-xs font-semibold text-gray-500 mb-1">From</label>
-                  <input
-                    type="date"
-                    value={customStartDate}
-                    onChange={(e) => { setCustomStartDate(e.target.value); setActiveDateFilter('custom'); }}
-                    className="border border-gray-300 rounded-sm px-2 py-1.5 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-                <div className="flex flex-col">
-                  <label className="text-center text-xs font-semibold text-gray-500 mb-1">To</label>
-                  <input
-                    type="date"
-                    value={customEndDate}
-                    onChange={(e) => { setCustomEndDate(e.target.value); setActiveDateFilter('custom'); }}
-                    className="border border-gray-300 rounded-sm px-2 py-1.5 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-              <div className="flex justify-center text-center border-t border-gray-100 -mt-2 -mb-2">
-                <button
-                  onClick={() => setShowCustomPicker(false)}
-                  className="flex-grow bg-black text-white text-sm px-4 py-2 rounded-sm hover:bg-gray-800 transition-colors"
-                >
-                  Apply
-                </button>
-              </div>
-            </div>
-          )}
-          {/* Inserted search input below the date line */}
-          {showSearch && (
-            <div className="mt-1 w-full max-w-md px-4">
-              <input
-                type="text"
-                placeholder="Search by Invoice, Name, or Phone..."
-                className="w-full text-base font-light p-1 border-b-2 border-slate-300 focus:border-slate-800 outline-none transition-colors bg-transparent"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                autoFocus
-              />
-            </div>
-          )}
+        {/* Party ledger: chip under the toggle on phone, header button on desktop */}
+        <div className="order-7 lg:order-2 empty:hidden ">
+          <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+            <button type="button" onClick={() => navigate(ROUTES.PARTY_LEDGER)} className={CHIP_LIGHT}>
+              <UsersGlyph />
+              Party ledger
+            </button>
+          </ShowWrapper>
+        </div>
+
+        {/* Desktop only: New sale (primary) */}
+        <div className="hidden lg:block lg:order-3">
+          <button
+            type="button"
+            onClick={() => navigate(ROUTES.SALES)}
+            className={`inline-flex items-center gap-2 h-10 px-4 rounded-sm bg-[#155dfc] hover:bg-[#1447e6] text-white text-sm font-medium whitespace-nowrap transition-colors ${FOCUS}`}
+          >
+            <PlusGlyph />
+            New sale
+          </button>
         </div>
       </div>
 
-      {/* Party Ledger strip - mobile only, reduced width */}
-      <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-        <div
-          onClick={() => navigate(ROUTES.PARTY_LEDGER)}
-          className="sm:hidden mx-8 mt-1 mb-1 py-2 text-center text-sm font-bold text-black bg-white border border-gray-300 rounded-sm cursor-pointer hover:bg-blue-100 transition-colors"
-        >
-          Party Ledger
+      {/* ── Summary strip: total · received · unpaid ── */}
+      <div className="mx-4 lg:mx-6 mt-4 grid grid-cols-3 bg-white border border-[#dfe6fb] rounded-sm shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] overflow-hidden">
+        <div className="flex flex-col gap-0.5 px-3 py-2.5 lg:px-5 lg:py-3.5 border-r border-[#dfe6fb] min-w-0">
+          <span className="text-xs text-[#45556c]">{isSales ? 'Total sales' : 'Total purchases'}</span>
+          <b className="text-[15px] lg:text-xl leading-[22px] lg:leading-7 font-semibold text-[#0f172b] tabular-nums truncate">{inr0(summary.total)}</b>
+          <span className="text-xs text-[#5b6b86]">{summary.count} {summary.count === 1 ? 'bill' : 'bills'}</span>
         </div>
-      </ShowWrapper>
-
-      {/* Step 4 — Sales / Purchase toggle */}
-      <TutorialStep
-        step={4}
-        currentStep={tutorialStep}
-        text="Switch between Sales (money received) and Purchase (money spent) transactions here."
-        onNext={() => next(5)}
-        onSkip={skip}
-      >
-        <div className="flex justify-center border-b border-gray-500 p-2 mb-2">
-          <CustomButton variant={Variant.Transparent} active={activeType === 'Credit'} onClick={() => setActiveType('Credit')}>Sales</CustomButton>
-          <CustomButton
-            variant={Variant.Transparent}
-            active={activeType === 'Debit'} onClick={() => setActiveType('Debit')}
-            disabled={!hasPermission(Permissions.HiddenProFeatures)}  // Optional: style it differently if locked
-            className={!hasPermission(Permissions.HiddenProFeatures) ? 'opacity-50 cursor-not-allowed' : ''}
-          >
-            {hasPermission(Permissions.HiddenProFeatures) ? 'Purchase' : '🔒 Purchase'}
-          </CustomButton>
+        <div className="flex flex-col gap-0.5 px-3 py-2.5 lg:px-5 lg:py-3.5 border-r border-[#dfe6fb] min-w-0">
+          <span className="text-xs text-[#45556c]">{isSales ? 'Received' : 'Paid'}</span>
+          <b className="text-[15px] lg:text-xl leading-[22px] lg:leading-7 font-semibold text-[#008236] tabular-nums truncate">{inr0(summary.received)}</b>
+          <span className="text-xs text-[#5b6b86]">{summary.count - summary.unpaidCount} {summary.count - summary.unpaidCount === 1 ? 'bill' : 'bills'}</span>
         </div>
-      </TutorialStep>
-
-      {/* Step 5 — Paid / Unpaid toggle */}
-      <TutorialStep
-        step={5}
-        currentStep={tutorialStep}
-        text="Toggle between Paid and Unpaid invoices. Unpaid shows your outstanding dues."
-        onNext={() => next(6)}
-        onSkip={skip}
-      >
-        <CustomToggle>
-          <CustomToggleItem className="mr-2" onClick={() => setActiveTab('Paid')} data-state={activeTab === 'Paid' ? 'on' : 'off'}>Paid</CustomToggleItem>
-          <CustomToggleItem onClick={() => setActiveTab('Unpaid')} data-state={activeTab === 'Unpaid' ? 'on' : 'off'}>Unpaid</CustomToggleItem>
-        </CustomToggle>
-      </TutorialStep>
-
-      {activeTab === 'Unpaid' && (
-        <div className="mx-2 mt-2 p-2 bg-red-50 border border-red-200 rounded-sm flex justify-between items-center shadow-sm animate-in fade-in slide-in-from-top-2">
-          <div>
-            <p className="text-sm text-red-600 font-bold tracking-wider">
-              {activeType === 'Credit' ? 'Total Receivables : ' : 'Total Payables : '}
-              {totalUnpaidAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
-            </p>
-          </div>
+        <div className="flex flex-col gap-0.5 px-3 py-2.5 lg:px-5 lg:py-3.5 min-w-0">
+          <span className="text-xs text-[#45556c]">Unpaid</span>
+          <b className="text-[15px] lg:text-xl leading-[22px] lg:leading-7 font-semibold text-[#bb4d00] tabular-nums truncate">{inr0(summary.unpaid)}</b>
+          <span className="text-xs text-[#5b6b86]">{summary.unpaidCount} {summary.unpaidCount === 1 ? 'bill' : 'bills'}</span>
         </div>
-      )}
+      </div>
     </>
   );
 };

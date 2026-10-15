@@ -44,19 +44,19 @@ export type { PurchaseItem, PurchaseDocumentData, Purchase };
 const SHADOW_CARD = '[box-shadow:0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]';
 const SHADOW_FLOAT = '[box-shadow:0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]';
 
-const CARD = `bg-[#ffffff] border border-[#dfe6fb] rounded-xl ${SHADOW_CARD}`;
+const CARD = `bg-[#ffffff] border border-[#dfe6fb] rounded-sm ${SHADOW_CARD}`;
 
 const BTN_BASE =
-  'inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg border border-transparent text-sm font-medium whitespace-nowrap transition-colors cursor-pointer disabled:opacity-[.45] disabled:cursor-not-allowed';
+  'inline-flex items-center justify-center gap-2 h-10 px-4 rounded-sm border border-transparent text-sm font-medium whitespace-nowrap transition-colors cursor-pointer disabled:opacity-[.45] disabled:cursor-not-allowed';
 const BTN_PRIMARY = `${BTN_BASE} bg-[#155dfc] text-white hover:bg-[#1447e6]`;
 const BTN_SECONDARY = `${BTN_BASE} bg-[#ffffff] text-[#0f172b] border-[#7a8aa3] hover:bg-[#f5f7ff]`;
 const BTN_DANGER_SOLID = `${BTN_BASE} bg-[#d5000c] text-white hover:opacity-90`;
 const BTN_GHOST = `${BTN_BASE} text-[#45556c] hover:bg-[#f5f7ff] hover:text-[#0f172b]`;
 const BTN_CLEAR =
-  'inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[13px] font-medium text-[#d5000c] hover:bg-[#ffeef0] transition-colors cursor-pointer';
+  'inline-flex items-center gap-1.5 h-8 px-3 rounded-sm text-[13px] font-medium text-[#d5000c] hover:bg-[#ffeef0] transition-colors cursor-pointer';
 
 const INPUT =
-  'w-full h-10 px-3 text-sm rounded-lg border border-[#7a8aa3] bg-[#ffffff] text-[#0f172b] placeholder:text-[#5b6b86] focus:outline-none focus:ring-2 focus:ring-[#155dfc] focus:border-transparent';
+  'w-full h-10 px-3 text-sm rounded-sm border border-[#7a8aa3] bg-[#ffffff] text-[#0f172b] placeholder:text-[#5b6b86] focus:outline-none focus:ring-2 focus:ring-[#155dfc] focus:border-transparent';
 
 const BADGE =
   'inline-flex items-center h-[22px] px-2 rounded-full text-[11px] font-semibold tracking-wide whitespace-nowrap bg-[#e6eeff] text-[#155dfc]';
@@ -65,21 +65,21 @@ const OVERLINE = 'text-[11px] font-semibold uppercase tracking-[.08em] text-[#5b
 
 // header "meta" chips (invoice no / date)
 const META_CHIP =
-  'inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-[#7a8aa3] bg-[#ffffff] text-[13px] text-[#0f172b] focus-within:ring-2 focus-within:ring-[#155dfc]';
+  'inline-flex items-center gap-2 h-9 px-3 rounded-sm border border-[#7a8aa3] bg-[#ffffff] text-[13px] text-[#0f172b] focus-within:ring-2 focus-within:ring-[#155dfc]';
 const META_LABEL = 'text-[11px] font-semibold uppercase tracking-[.06em] text-[#5b6b86] whitespace-nowrap';
 const META_INPUT = 'min-w-0 bg-transparent border-0 outline-none p-0 font-semibold text-[#0f172b] tabular-nums';
 
 // dialogs: centred card on desktop, bottom sheet on mobile
 const OVERLAY = 'fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-[rgba(2,6,24,0.45)] sm:p-4';
-const DIALOG = `w-full sm:max-w-sm bg-[#ffffff] text-[#0f172b] rounded-t-[20px] sm:rounded-xl border border-[#dfe6fb] ${SHADOW_FLOAT} p-5`;
+const DIALOG = `w-full sm:max-w-sm bg-[#ffffff] text-[#0f172b] rounded-t-[20px] sm:rounded-sm border border-[#dfe6fb] ${SHADOW_FLOAT} p-5`;
 
 // ── Card-view toolbar tokens (same as Sales card view) ──
 const FIELD_CLS =
-  'w-full h-12 md:h-[52px] pl-11 pr-10 bg-white border border-[#7a8aa3] rounded-lg text-[15px] font-medium text-[#0f172b] placeholder:text-[#5b6b86] outline-none transition-all focus:border-[#155dfc] focus:ring-4 focus:ring-[#e6eeff]';
+  'w-full h-12 md:h-[52px] pl-11 pr-10 bg-white border border-[#7a8aa3] rounded-sm text-[15px] font-medium text-[#0f172b] placeholder:text-[#5b6b86] outline-none transition-all focus:border-[#155dfc] focus:ring-4 focus:ring-[#e6eeff]';
 const SCAN_BTN_CLS =
-  'inline-flex items-center justify-center gap-2 h-12 md:h-[52px] w-12 md:w-auto md:px-4 flex-shrink-0 rounded-lg text-sm font-medium transition-colors bg-[#155dfc] text-white hover:bg-[#1447e6] md:bg-white md:text-[#0f172b] md:border md:border-[#7a8aa3] md:hover:bg-[#f5f7ff]';
+  'inline-flex items-center justify-center gap-2 h-12 md:h-[52px] w-12 md:w-auto md:px-4 flex-shrink-0 rounded-sm text-sm font-medium transition-colors bg-[#155dfc] text-white hover:bg-[#1447e6] md:bg-white md:text-[#0f172b] md:border md:border-[#7a8aa3] md:hover:bg-[#f5f7ff]';
 const ICON_BTN_CLS =
-  'inline-flex items-center justify-center w-10 h-10 rounded-lg text-[#45556c] hover:bg-[#f5f7ff] transition-colors flex-shrink-0';
+  'inline-flex items-center justify-center w-10 h-10 rounded-sm text-[#45556c] hover:bg-[#f5f7ff] transition-colors flex-shrink-0';
 const SORT_OPTIONS = [
   { value: 'az', label: 'A → Z' },
   { value: 'za', label: 'Z → A' },
@@ -90,9 +90,9 @@ const chipCls = (active: boolean) =>
   `inline-flex items-center h-[34px] px-3.5 rounded-full border text-[13px] font-medium whitespace-nowrap flex-shrink-0 cursor-pointer transition-colors ${active
     ? 'bg-[#0f172b] border-[#0f172b] text-white'
     : 'bg-white border-[#7a8aa3] text-[#45556c] hover:bg-[#f5f7ff]'}`;
-const SEG_WRAP = 'inline-flex p-[3px] gap-0.5 bg-[#f5f7ff] border border-[#dfe6fb] rounded-[11px]';
+const SEG_WRAP = 'inline-flex p-[3px] gap-0.5 bg-[#f5f7ff] border border-[#dfe6fb] rounded-sm';
 const segBtnCls = (active: boolean) =>
-  `inline-flex items-center gap-1.5 h-7 px-3 rounded-lg text-xs font-medium transition-colors ${active
+  `inline-flex items-center gap-1.5 h-7 px-3 rounded-sm text-xs font-medium transition-colors ${active
     ? 'bg-white text-[#155dfc] shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]'
     : 'text-[#45556c] hover:text-[#0f172b]'}`;
 
@@ -411,7 +411,7 @@ const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
   if (error) return (
     <div className="flex flex-col items-center justify-center h-screen bg-[#eef2ff] px-4">
       <div className={`${CARD} p-6 max-w-sm w-full text-center`}>
-        <div className="mx-auto mb-3 w-10 h-10 rounded-[10px] flex items-center justify-center bg-[#ffeef0] text-[#d5000c]">
+        <div className="mx-auto mb-3 w-10 h-10 rounded-sm flex items-center justify-center bg-[#ffeef0] text-[#d5000c]">
           <FiAlertTriangle size={20} />
         </div>
         <p className="m-0 text-sm text-[#d5000c]">{error}</p>
@@ -517,7 +517,7 @@ const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
         Supplier{purchaseSettings?.requireSupplierName && <span className="text-[#d5000c]"> *</span>}
       </span>
       <div className={`${CARD} flex items-center gap-2.5 p-2.5`}>
-        <span className="inline-grid place-items-center w-8 h-8 flex-none rounded-lg bg-[#e9faef] text-[#008236]">
+        <span className="inline-grid place-items-center w-8 h-8 flex-none rounded-sm bg-[#e9faef] text-[#008236]">
           <FiPackage size={18} />
         </span>
         <div className="flex-1 min-w-0">
@@ -651,7 +651,7 @@ const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
               <div className="mt-2 grid grid-cols-4 gap-1.5">
                 {SORT_OPTIONS.map(opt => (
                   <button key={opt.value} type="button" onClick={() => setSortOrder(opt.value)}
-                    className={`h-9 rounded-lg text-[13px] font-medium border transition-colors ${sortOrder === opt.value ? 'bg-[#e6eeff] border-[#155dfc] text-[#155dfc]' : 'bg-white border-[#7a8aa3] text-[#45556c]'}`}>
+                    className={`h-9 rounded-sm text-[13px] font-medium border transition-colors ${sortOrder === opt.value ? 'bg-[#e6eeff] border-[#155dfc] text-[#155dfc]' : 'bg-white border-[#7a8aa3] text-[#45556c]'}`}>
                     {opt.label}
                   </button>
                 ))}
@@ -661,7 +661,7 @@ const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
 
           {items.length > 0 && (
             <button type="button" onClick={() => { setIsMoreOpen(false); handleClearCart(); }}
-              className="inline-flex items-center justify-center gap-2 h-11 rounded-lg text-sm font-medium text-[#d5000c] bg-[#ffeef0]">
+              className="inline-flex items-center justify-center gap-2 h-11 rounded-sm text-sm font-medium text-[#d5000c] bg-[#ffeef0]">
               <FiTrash2 size={16} /> Clear cart
             </button>
           )}
@@ -818,7 +818,7 @@ const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
       )}
       {showAddItemModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(2,6,24,0.45)] px-4">
-          <div className={`bg-[#ffffff] rounded-xl ${SHADOW_FLOAT} w-full max-w-2xl h-[90vh] max-h-[90vh] flex flex-col overflow-hidden`}>
+          <div className={`bg-[#ffffff] rounded-sm ${SHADOW_FLOAT} w-full max-w-2xl h-[90vh] max-h-[90vh] flex flex-col overflow-hidden`}>
             <ItemAdd
               isModal
               prefillData={unlinkedPrefill || undefined}
@@ -872,7 +872,7 @@ const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
                   value={sortOrder}
                   onChange={(e) => setSortOrder(e.target.value as typeof sortOrder)}
                   aria-label="Sort"
-                  className="hidden md:block h-8 px-2 bg-white border border-[#7a8aa3] rounded-lg text-xs font-medium text-[#0f172b] outline-none focus:border-[#155dfc] focus:ring-4 focus:ring-[#e6eeff]"
+                  className="hidden md:block h-8 px-2 bg-white border border-[#7a8aa3] rounded-sm text-xs font-medium text-[#0f172b] outline-none focus:border-[#155dfc] focus:ring-4 focus:ring-[#e6eeff]"
                 >
                   {SORT_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                 </select>
@@ -1023,7 +1023,7 @@ const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
                           {/* ── Discount badge – Blinkit style, top-left ── */}
                           {discPct > 0 && (
                             <div
-                              className="absolute top-1.5 left-1.5 z-10 bg-blue-600 text-white font-bold text-[9px] leading-tight px-1.5 py-[3px] rounded-md shadow-sm"
+                              className="absolute top-1.5 left-1.5 z-10 bg-blue-600 text-white font-bold text-[9px] leading-tight px-1.5 py-[3px] rounded-sm shadow-sm"
                             >
                               {discPct}% OFF
                             </div>
@@ -1094,14 +1094,14 @@ const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
                                     e.stopPropagation();
                                     handleAddOrPickTier(item);   // 👈 CHANGED
                                   }}
-                                  className="w-full h-[26px] rounded-md text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 transition-colors"
+                                  className="w-full h-[26px] rounded-sm text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 transition-colors"
                                 >
                                   + Add
                                 </button>
                               </>
                             ) : (
                               <div
-                                className="flex items-center border border-gray-200 rounded-md overflow-hidden bg-white w-full"
+                                className="flex items-center border border-gray-200 rounded-sm overflow-hidden bg-white w-full"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <button
@@ -1212,7 +1212,7 @@ const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
                           {!isSelected ? (
                             <button
                               onClick={(e) => { e.stopPropagation(); handleAddOrPickTier(item); }}
-                              className="w-full py-1.5 rounded-md text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 transition-colors"
+                              className="w-full py-1.5 rounded-sm text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 transition-colors"
                             >
                               + Add
                             </button>
@@ -1227,7 +1227,7 @@ const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
                               </div>
 
                               {/* Quantity RIGHT */}
-                              <div className="flex items-center border border-gray-200 rounded-md overflow-hidden bg-white flex-shrink-0">
+                              <div className="flex items-center border border-gray-200 rounded-sm overflow-hidden bg-white flex-shrink-0">
                                 <button
                                   onClick={(e) => { e.stopPropagation(); if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1); else handleDeleteItem(lastAddedCartItem.id); }}
                                   className="w-6 h-7 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
@@ -1273,7 +1273,7 @@ const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
         <div className={OVERLAY}>
           <div className={`${DIALOG} sm:!max-w-md`}>
             <h3 className="m-0 mb-4 flex items-center gap-3 text-lg font-semibold">
-              <span className="inline-grid place-items-center w-8 h-8 rounded-lg bg-[#e6eeff] text-[#155dfc]">
+              <span className="inline-grid place-items-center w-8 h-8 rounded-sm bg-[#e6eeff] text-[#155dfc]">
                 <FiFileText size={18} />
               </span>
               Verify extracted items
@@ -1296,7 +1296,7 @@ const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
                   <label className={`block mb-2 ${OVERLINE}`}>
                     Items found ({scannedData.items.length})
                   </label>
-                  <div className="max-h-48 overflow-y-auto border border-[#dfe6fb] rounded-lg divide-y divide-[#dfe6fb]">
+                  <div className="max-h-48 overflow-y-auto border border-[#dfe6fb] rounded-sm divide-y divide-[#dfe6fb]">
                     {scannedData.items.map((item, idx) => (
                       <div key={idx} className="px-3 py-2 text-xs flex justify-between items-center bg-[#f5f7ff]">
                         <span className="font-medium text-[#0f172b] truncate pr-2 w-3/5" title={item.name}>
@@ -1316,7 +1316,7 @@ const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
                   </p>
                 </div>
               ) : (
-                <div className="flex items-start gap-2 p-2.5 rounded-lg text-[13px] leading-[19px] bg-[#fff3dd] text-[#bb4d00]">
+                <div className="flex items-start gap-2 p-2.5 rounded-sm text-[13px] leading-[19px] bg-[#fff3dd] text-[#bb4d00]">
                   <FiAlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
                   <span>No items could be automatically extracted from this format.</span>
                 </div>
@@ -1336,7 +1336,7 @@ const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
       {duplicateItemPrompt && (
         <div className="fixed inset-0 z-[2000] flex items-end sm:items-center justify-center bg-[rgba(2,6,24,0.45)] sm:p-4">
           <div className={`${DIALOG} text-center`}>
-            <div className="mx-auto mb-4 w-12 h-12 rounded-xl flex items-center justify-center bg-[#e6eeff] text-[#155dfc]">
+            <div className="mx-auto mb-4 w-12 h-12 rounded-sm flex items-center justify-center bg-[#e6eeff] text-[#155dfc]">
               <FiInfo size={24} />
             </div>
             <h3 className="m-0 mb-1 text-lg font-semibold">Item already in cart</h3>
@@ -1402,9 +1402,9 @@ const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
                   setShowScannerModal(false);
                   setIsScannerOpen(true); // <-- Add this line to trigger the scanner
                 }}
-                className="flex flex-col items-center justify-center gap-3 p-5 rounded-xl border border-[#dfe6fb] bg-[#ffffff] hover:border-[#155dfc] hover:bg-[#e6eeff] transition-colors"
+                className="flex flex-col items-center justify-center gap-3 p-5 rounded-sm border border-[#dfe6fb] bg-[#ffffff] hover:border-[#155dfc] hover:bg-[#e6eeff] transition-colors"
               >
-                <span className="inline-grid place-items-center w-10 h-10 rounded-[10px] bg-[#e6eeff] text-[#155dfc]">
+                <span className="inline-grid place-items-center w-10 h-10 rounded-sm bg-[#e6eeff] text-[#155dfc]">
                   <FiMaximize size={20} />
                 </span>
                 <span className="text-sm font-medium text-[#0f172b]">
@@ -1419,9 +1419,9 @@ const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
                   // This triggers your existing Smart Scanner flow!
                   fileInputRef.current?.click();
                 }}
-                className="flex flex-col items-center justify-center gap-3 p-5 rounded-xl border border-[#dfe6fb] bg-[#ffffff] hover:border-[#155dfc] hover:bg-[#e6eeff] transition-colors"
+                className="flex flex-col items-center justify-center gap-3 p-5 rounded-sm border border-[#dfe6fb] bg-[#ffffff] hover:border-[#155dfc] hover:bg-[#e6eeff] transition-colors"
               >
-                <span className="inline-grid place-items-center w-10 h-10 rounded-[10px] bg-[#e9faef] text-[#008236]">
+                <span className="inline-grid place-items-center w-10 h-10 rounded-sm bg-[#e9faef] text-[#008236]">
                   <FiFileText size={20} />
                 </span>
                 <span className="text-sm font-medium text-[#0f172b]">
@@ -1496,7 +1496,7 @@ const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
 
           <div ref={cartListRef} className='flex-grow overflow-y-auto px-3 md:px-5 py-3 bg-[#eef2ff]'>
             {hasUnlinkedItems && (
-              <div className="mb-3 flex items-start gap-2 p-2.5 rounded-lg text-[13px] leading-[19px] bg-[#fff3dd] text-[#bb4d00]">
+              <div className="mb-3 flex items-start gap-2 p-2.5 rounded-sm text-[13px] leading-[19px] bg-[#fff3dd] text-[#bb4d00]">
                 <FiAlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
                 <span>
                   <b className="font-semibold">Some scanned items aren't in your inventory yet.</b>{' '}
@@ -1548,7 +1548,7 @@ const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
             </div>
 
             {missingMrpItems.length > 0 && (
-              <div className="mt-3 flex flex-wrap items-start gap-2 p-2.5 rounded-lg text-[13px] leading-[19px] bg-[#fff3dd] text-[#bb4d00]">
+              <div className="mt-3 flex flex-wrap items-start gap-2 p-2.5 rounded-sm text-[13px] leading-[19px] bg-[#fff3dd] text-[#bb4d00]">
                 <FiAlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
                 <span className="flex-1">
                   <b className="font-semibold">
@@ -1588,7 +1588,7 @@ const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
       {showPrintQrModal && (
         <div className={OVERLAY}>
           <div className={DIALOG}>
-            <div className="mb-3 w-10 h-10 rounded-[10px] flex items-center justify-center bg-[#e9faef] text-[#008236]">
+            <div className="mb-3 w-10 h-10 rounded-sm flex items-center justify-center bg-[#e9faef] text-[#008236]">
               <FiCheckCircle size={20} />
             </div>
             <h3 className="m-0 text-lg font-semibold">Purchase saved</h3>

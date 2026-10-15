@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FiX } from 'react-icons/fi';
+import { FiX, FiFileText, FiPlus, FiTag, FiTruck, FiCheck, FiMapPin, FiEdit2, FiAlertTriangle, FiTrash2, FiCreditCard } from 'react-icons/fi';
 import SearchableItemInput from '../../../UseComponents/SearchIteminput';
 import { GenericCartList } from '../../../Components/CartItem';
 import { ItemEditDrawer } from '../../../Components/ItemDrawer';
@@ -57,11 +57,64 @@ interface OrderEditModalProps {
     handleSaveChanges: () => void;
 }
 
+// ─── UI-only helpers (SELLAR "Catalogue orange" — PageCatEditOrderDesktop / Mobile) ───
+const FIELD =
+    'h-10 w-full px-3 border border-slate-300 rounded-sm text-[13px] text-slate-900 bg-white outline-none placeholder:text-slate-400 focus:border-[#ea580c] focus:ring-2 focus:ring-[#ea580c]/20';
+const OVERLINE = 'text-[11px] leading-4 font-semibold uppercase tracking-[0.08em] text-slate-500';
+const CHIP =
+    'inline-flex items-center gap-1.5 h-[34px] px-3 rounded-full text-[13px] font-medium transition-colors border-[1.5px]';
+const CHIP_IDLE = 'border-dashed border-slate-300 bg-white text-slate-600 hover:bg-[#fff8f2]';
+const CHIP_SET = 'border-solid border-[#c2410c] bg-[#ffedd5] text-[#9a3412]';
+
+const formatPhone = (p?: string) => (p ? p.replace(/^(\d{5})(\d{1,5})$/, '$1 $2') : '');
+
+// Module-level on purpose: defining this inside the component would remount inputs (focus loss) on every keystroke.
+const PopupShell: React.FC<{
+    title: string;
+    subtitle: string;
+    tone: 'green' | 'magenta';
+    icon: React.ReactNode;
+    onClose: () => void;
+    footer: React.ReactNode;
+    children: React.ReactNode;
+}> = ({ title, subtitle, tone, icon, onClose, footer, children }) => (
+    <div
+        className="fixed inset-0 z-[2100] flex items-start md:items-center justify-center bg-[#020618]/50 p-3 pt-[18vh] md:pt-3"
+        onClick={onClose}
+    >
+        <div
+            role="dialog"
+            aria-label={title}
+            className="w-full max-w-md bg-white rounded-sm shadow-2xl overflow-hidden flex flex-col text-left"
+            onClick={(e) => e.stopPropagation()}
+        >
+            <div className="flex items-center gap-3 px-4 py-3.5 border-b border-[#f6e1d0]">
+                <span
+                    className={`w-8 h-8 shrink-0 grid place-items-center rounded-sm ${tone === 'green' ? 'bg-emerald-50 text-emerald-700' : 'bg-[#ffe8f8] text-[#c4009a]'}`}
+                >
+                    {icon}
+                </span>
+                <div className="flex-1 min-w-0">
+                    <b className="block text-[17px] font-semibold text-slate-900 leading-6">{title}</b>
+                    <small className="block text-xs text-slate-500">{subtitle}</small>
+                </div>
+                <button
+                    onClick={onClose}
+                    aria-label="Close"
+                    className="w-10 h-10 grid place-items-center rounded-sm text-slate-500 hover:bg-[#fff8f2]"
+                >
+                    <FiX size={20} />
+                </button>
+            </div>
+            <div className="p-4 grid gap-3">{children}</div>
+            <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-[#f6e1d0] bg-[#fff8f2]">{footer}</div>
+        </div>
+    </div>
+);
+
 export const OrderEditModal: React.FC<OrderEditModalProps> = ({
     editingOrder,
     setEditingOrder,
-    activeTab,
-    setActiveTab,
     calculatedEditTotal,
     availableItems,
     handleAddItem,
@@ -91,7 +144,6 @@ export const OrderEditModal: React.FC<OrderEditModalProps> = ({
     handleExpenseNameChange,
     handleExpenseAmountChange,
     handleRemoveExpense,
-    showBillDiscountFields,
     setShowBillDiscountFields,
     enableTransportDetails,
     setShowTransportModal,
@@ -104,6 +156,21 @@ export const OrderEditModal: React.FC<OrderEditModalProps> = ({
 }) => {
     const [tierPickerItem, setTierPickerItem] = useState<Item | null>(null);
 
+    // ── UI-only state ──
+    const [isEditingAddress, setIsEditingAddress] = useState(false);
+    const [showDiscountPopup, setShowDiscountPopup] = useState(false);
+    const [showExpensePopup, setShowExpensePopup] = useState(false);
+    // Replaces the old document.getElementById('sameAsBilling').checked lookup (same rule, now a state).
+    const [sameAddress, setSameAddress] = useState<boolean>(() => {
+        const b = editingOrder.billingDetails;
+        const s = editingOrder.shippingDetails;
+        return (
+            (b?.name || '') === (s?.name || '') &&
+            (b?.phone || '') === (s?.phone || '') &&
+            (b?.address || '') === (s?.address || '')
+        );
+    });
+
     const handleItemSelectedWrapper = (item: Item | null) => {
         if (!item) return;
         if (hasMultiplePricing(item)) {
@@ -112,361 +179,531 @@ export const OrderEditModal: React.FC<OrderEditModalProps> = ({
         }
         handleAddItem(item);
     };
+
+    const toggleSameAddress = () => {
+        const next = !sameAddress;
+        setSameAddress(next);
+        if (next) {
+            setEditingOrder({
+                ...editingOrder,
+                shippingDetails: { ...editingOrder.billingDetails }
+            });
+        } else {
+            setIsEditingAddress(true);
+        }
+    };
+
+    const openExpensePopup = () => {
+        if (editExpenses.length === 0) handleAddExpense();
+        setShowExpensePopup(true);
+    };
+    const openDiscountPopup = () => {
+        setShowBillDiscountFields(true);
+        setShowDiscountPopup(true);
+    };
+
+    // Display-only values
+    const headerName = editingOrder.userName || editingOrder.billingDetails?.name;
+    const customerName = editingOrder.billingDetails?.name || headerName || 'Customer';
+    const billingAddress = editingOrder.billingDetails?.address?.trim() || '';
+    const addressIncomplete = !/\b\d{6}\b/.test(billingAddress);
+    const itemCount = editingOrder.items?.length ?? 0;
+    const filledExpenses = editExpenses.filter((e) => e.name || e.amount !== '');
+    const totalLabel = `₹${formatAmount(calculatedEditTotal)}`;
+
+    const extraChips = (
+        <>
+            <button onClick={openExpensePopup} aria-haspopup="dialog" className={`${CHIP} ${filledExpenses.length ? CHIP_SET : CHIP_IDLE}`}>
+                <FiPlus size={14} className={filledExpenses.length ? '' : 'text-[#c2410c]'} />
+                Shop expense{filledExpenses.length ? ` · ${filledExpenses.length}` : ''}
+            </button>
+            <button onClick={openDiscountPopup} aria-haspopup="dialog" className={`${CHIP} ${editDiscount > 0 ? CHIP_SET : CHIP_IDLE}`}>
+                <FiTag size={14} className={editDiscount > 0 ? '' : 'text-[#c2410c]'} />
+                Bill discount{editDiscount > 0 ? ` · ₹${formatAmount(editDiscount)}` : ''}
+            </button>
+            {enableTransportDetails && (
+                <button onClick={() => setShowTransportModal(true)} aria-haspopup="dialog" className={`${CHIP} ${hasTransportDetails ? CHIP_SET : CHIP_IDLE}`}>
+                    {hasTransportDetails ? <FiCheck size={14} /> : <FiTruck size={14} className="text-[#c2410c]" />}
+                    Transport
+                </button>
+            )}
+        </>
+    );
+
     return (
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-1 md:p-3">
-            <div className="bg-white rounded-sm w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
-                {/* Header */}
-                <div className="px-5 py-3 border-b flex justify-between items-center bg-slate-50">
-                    <div className="flex items-center gap-4">
-                        <div>
-                            <h3 className="text-sm font-bold text-slate-800 leading-tight">Edit Order</h3>
-                            <p className="text-[10px] text-orange-600 font-bold uppercase tracking-tighter">{editingOrder.orderId}</p>
-                        </div>
+        <div className="fixed inset-0 z-[2000] flex md:items-center md:justify-center md:bg-black/60 md:backdrop-blur-sm md:p-6">
+            <div className="bg-white w-full h-full md:h-auto md:max-h-[90vh] md:min-h-[560px] md:max-w-6xl md:rounded-sm flex flex-col md:shadow-2xl overflow-hidden">
 
-                        {/* Divider aur Total Amount */}
-                        <div className="h-8 w-[1px] bg-gray-500 mx-2"></div>
-                        <div className="flex flex-col gap-1">
-                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest leading-none">Total Amount</span>
-                            <span className="text-md font-black text-slate-900 leading-none">₹{formatAmount(calculatedEditTotal)}  </span>
-                        </div>
-                    </div>
-
-                    {/* Close Button */}
+                {/* ───────── HEADER — mobile ───────── */}
+                <div className="md:hidden flex items-center gap-2.5 px-3.5 py-3 bg-white border-b border-[#f6e1d0]">
                     <button
                         onClick={() => setEditingOrder(null)}
-                        className="p-1.5 hover:bg-gray-200 rounded-sm transition-colors"
+                        aria-label="Close"
+                        className="w-10 h-10 grid place-items-center rounded-sm text-slate-600 hover:bg-[#fff8f2]"
+                    >
+                        <FiX size={20} />
+                    </button>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-xs text-slate-500 leading-4 truncate">Edit order · {editingOrder.orderId}</p>
+                        <b className="block text-[17px] font-semibold text-slate-900 leading-6 truncate">{headerName || customerName}</b>
+                    </div>
+                    <div className="text-right shrink-0">
+                        <p className="text-xs text-slate-500 leading-4">Total</p>
+                        <b className="block text-[17px] font-semibold text-slate-900 tabular-nums leading-6">{totalLabel}</b>
+                    </div>
+                </div>
+
+                {/* ───────── HEADER — desktop ───────── */}
+                <div className="hidden md:flex items-center gap-3.5 px-[22px] py-4 border-b border-[#f6e1d0] bg-white">
+                    <span className="w-10 h-10 shrink-0 grid place-items-center rounded-sm bg-[#ffedd5] text-[#9a3412]">
+                        <FiFileText size={20} />
+                    </span>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-xs text-slate-500 leading-4">Edit order · Catalogue</p>
+                        <h3 className="text-[19px] font-semibold text-slate-900 leading-tight truncate">
+                            {editingOrder.orderId}
+                            {headerName ? ` · ${headerName}` : ''}
+                        </h3>
+                    </div>
+                    <div className="text-right shrink-0">
+                        <p className="text-xs text-slate-500 leading-4">Total</p>
+                        <b className="block text-xl font-semibold text-slate-900 tabular-nums leading-tight">{totalLabel}</b>
+                    </div>
+                    <button
+                        onClick={() => setEditingOrder(null)}
+                        aria-label="Close"
+                        className="w-10 h-10 grid place-items-center rounded-sm text-slate-500 hover:bg-[#fff8f2] hover:text-slate-900"
                     >
                         <FiX size={20} />
                     </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar">
-                    <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
-                        {/* LEFT SIDE: ADDRESSES */}
-                        <div className="space-y-4">
-                            <div className="flex justify-between items-center">
-                                <div className="flex sm:hidden p-1 bg-slate-100 rounded-sm mb-2 flex-1">
-                                    <button
-                                        onClick={() => setActiveTab('billing')}
-                                        className={`flex-1 py-2 text-xs font-bold rounded-sm transition-all ${activeTab === 'billing' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500'}`}
-                                    >
-                                        Billing
-                                    </button>
-                                    <button
-                                        onClick={() => setActiveTab('shipping')}
-                                        className={`flex-1 py-2 text-xs font-bold rounded-sm transition-all ${activeTab === 'shipping' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
-                                    >
-                                        Shipping
-                                    </button>
-                                </div>
+                {/* ───────── BODY ─────────
+                    mobile : one column  → customer card, search, items
+                    desktop: two columns → items | customer, extras, totals                         */}
+                <div className="flex-1 min-h-0 overflow-y-auto md:overflow-hidden custom-scrollbar bg-[#fff5ec] md:bg-white flex flex-col gap-2.5 px-4 py-3 md:p-0 md:gap-0 md:grid md:grid-cols-[minmax(0,1fr)_340px]">
+
+                    {/* LEFT COLUMN (items) */}
+                    <div className="contents md:block md:min-w-0 md:overflow-y-auto md:px-[22px] md:py-[18px] custom-scrollbar">
+                        <div className="order-2 flex flex-col gap-2.5 md:gap-3 min-w-0">
+                            {/* desktop: title row */}
+                            <div className="hidden md:flex items-center gap-2.5 order-1">
+                                <h4 className="flex-1 text-[15px] font-semibold text-slate-900">Items · {itemCount}</h4>
+                                <span className="text-xs text-slate-500">Prices and quantities can be changed</span>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {/* Billing Address Section */}
-                                <div className={`p-4 rounded-sm border border-slate-200 bg-orange-50/30 space-y-3 ${activeTab === 'billing' ? 'block' : 'hidden sm:block'}`}>
-                                    <div className="flex justify-between items-center">
-                                        <h4 className="text-[11px] font-black text-orange-600 uppercase tracking-widest flex items-center gap-2">
-                                            <span className="w-1.5 h-1.5 bg-orange-600 rounded-sm"></span> Billing Address
-                                        </h4>
-
-                                        <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                                            <input
-                                                type="checkbox"
-                                                id="sameAsBilling"
-                                                className="w-3.5 h-3.5 accent-orange-600 rounded-sm cursor-pointer"
-                                                onChange={(e) => {
-                                                    if (e.target.checked) {
-                                                        setEditingOrder({
-                                                            ...editingOrder,
-                                                            shippingDetails: { ...editingOrder.billingDetails }
-                                                        });
-                                                    }
-                                                }}
-                                            />
-                                            <span className="text-[9px] font-bold text-slate-500 uppercase">Same for Shipping</span>
-                                        </label>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {/* NAME FIELD */}
-                                        <input
-                                            type="text"
-                                            placeholder="Name"
-                                            className="p-2 border border-slate-300 rounded-sm text-xs outline-none focus:border-orange-400"
-                                            value={editingOrder.billingDetails?.name || ''}
-                                            onChange={(e) => {
-                                                const val = e.target.value;
-                                                const isSame = (document.getElementById('sameAsBilling') as HTMLInputElement)?.checked;
-                                                setEditingOrder({
-                                                    ...editingOrder,
-                                                    billingDetails: { ...editingOrder.billingDetails!, name: val },
-                                                    ...(isSame && { shippingDetails: { ...editingOrder.shippingDetails!, name: val } })
-                                                });
-                                            }}
-                                        />
-
-                                        {/* PHONE FIELD (Billing) - Security Check Added */}
-                                        <input
-                                            type="text"
-                                            placeholder="Phone"
-                                            className="p-2 border border-slate-300 rounded-sm text-xs outline-none focus:border-orange-400"
-                                            value={editingOrder.billingDetails?.phone || ''}
-                                            onChange={(e) => {
-                                                const val = e.target.value.replace(/\D/g, '').slice(0, 10);
-                                                const isSame = (document.getElementById('sameAsBilling') as HTMLInputElement)?.checked;
-
-                                                setEditingOrder({
-                                                    ...editingOrder,
-                                                    billingDetails: { ...editingOrder.billingDetails!, phone: val },
-                                                    ...(isSame && { shippingDetails: { ...editingOrder.shippingDetails!, phone: val } })
-                                                });
-                                            }}
-                                        />
-
-                                        {/* ADDRESS FIELD */}
-                                        <textarea
-                                            placeholder="Address"
-                                            className="col-span-2 p-2 border border-slate-300 rounded-sm text-xs h-16 resize-none outline-none focus:border-orange-400"
-                                            value={editingOrder.billingDetails?.address || ''}
-                                            onChange={(e) => {
-                                                const val = e.target.value;
-                                                const isSame = (document.getElementById('sameAsBilling') as HTMLInputElement)?.checked;
-                                                setEditingOrder({
-                                                    ...editingOrder,
-                                                    billingDetails: { ...editingOrder.billingDetails!, address: val },
-                                                    ...(isSame && { shippingDetails: { ...editingOrder.shippingDetails!, address: val } })
-                                                });
-                                            }}
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Shipping Address Section */}
-                                <div className={`p-4 rounded-sm border border-slate-200 bg-blue-50/30 space-y-3 ${activeTab === 'shipping' ? 'block' : 'hidden sm:block'}`}>
-                                    <h4 className="text-[11px] font-black text-blue-600 uppercase tracking-widest flex items-center gap-2">
-                                        <span className="w-1.5 h-1.5 bg-blue-600 rounded-sm"></span> Shipping Address
-                                    </h4>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <input
-                                            type="text"
-                                            placeholder="Name"
-                                            className="p-2 border border-slate-300 rounded-sm text-xs outline-none focus:border-blue-400"
-                                            value={editingOrder.shippingDetails?.name || ''}
-                                            onChange={(e) => setEditingOrder({
-                                                ...editingOrder,
-                                                shippingDetails: { ...editingOrder.shippingDetails!, name: e.target.value }
-                                            })}
-                                        />
-
-                                        <input
-                                            type="text"
-                                            placeholder="Phone"
-                                            className="p-2 border border-slate-300 rounded-sm text-xs outline-none focus:border-blue-400"
-                                            value={editingOrder.shippingDetails?.phone || ''}
-                                            onChange={(e) => {
-                                                const val = e.target.value.replace(/\D/g, '').slice(0, 10);
-                                                setEditingOrder({
-                                                    ...editingOrder,
-                                                    shippingDetails: { ...editingOrder.shippingDetails!, phone: val }
-                                                });
-                                            }}
-                                        />
-
-                                        <textarea
-                                            placeholder="Address"
-                                            className="col-span-2 p-2 border border-slate-300 rounded-sm text-xs h-16 resize-none outline-none focus:border-blue-400"
-                                            value={editingOrder.shippingDetails?.address || ''}
-                                            onChange={(e) => setEditingOrder({
-                                                ...editingOrder,
-                                                shippingDetails: { ...editingOrder.shippingDetails!, address: e.target.value }
-                                            })}
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* RIGHT SIDE: ITEMS & TOTAL */}
-                        <div className="flex flex-col w-full space-y-2">
-                            {/* ADD NEW ITEM SEARCH BOX */}
-                            <div className="p-2 border-t border-slate-200">
-                                <p className="text-[9px] font-black text-[#F97316] uppercase tracking-widest mb-2">Add New Item</p>
+                            {/* Add item search */}
+                            <div className="order-2">
                                 <SearchableItemInput
                                     items={availableItems}
-                                    onItemSelected={handleItemSelectedWrapper}   // 👈 CHANGED
+                                    onItemSelected={handleItemSelectedWrapper}
                                     onSearchChange={setCartSearchQuery}
                                     placeholder="Search item to add..."
                                 />
                             </div>
 
-                            <div className="h-fit self-start w-full flex flex-col">
-                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 mt-2">
-                                    Items ({editingOrder.items?.length})
-                                </h4>
+                            {/* mobile: overline */}
+                            <p className={`${OVERLINE} md:hidden order-3`}>Items · {itemCount}</p>
 
-                                {/* Items List Container */}
-                                <div className="h-auto">
-                                    <GenericCartList
-                                        items={displayedOrderItems}
-                                        availableItems={availableItems}
-                                        basePriceKey="mrp"
-                                        priceLabel="MRP"
-                                        settings={{
-                                            enableRounding: false,
-                                            roundingInterval: 1,
-                                            enableItemWiseDiscount: enableItemWiseDiscount,
-                                            enableDiscount2: enableDiscount2,
-                                            lockDiscount: false,
-                                            lockPrice: false,
-                                            hideMrp: false,
-                                        }}
-                                        applyRounding={(amount) => amount}
-                                        State={State}
-                                        setModal={setModal}
-                                        onOpenEditDrawer={(item) => {
-                                            setSelectedItemForEdit(item);
-                                            setIsEditDrawerOpen(true);
-                                        }}
-                                        onDeleteItem={handleDeleteItem}
-                                        onDiscountChange={handleDiscountChange}
-                                        onDiscount2Change={handleDiscount2Change}
-                                        onCustomPriceChange={handleNetPriceChange}
-                                        onCustomPriceBlur={() => { }}
-                                        onQuantityChange={handleQuantityChange}
-                                    />
-                                </div>
-                                <TierPickerModal
-                                    item={tierPickerItem}
-                                    isOpen={!!tierPickerItem}
-                                    onClose={() => setTierPickerItem(null)}
-                                    onSelect={(item, tier) => {
-                                        handleAddItem(item, tier.id === '__base__' ? undefined : tier);
+                            {/* Items list */}
+                            <div className="order-4 h-auto md:rounded-sm md:border md:border-[#f6e1d0] md:bg-white">
+                                <GenericCartList
+                                    items={displayedOrderItems}
+                                    availableItems={availableItems}
+                                    basePriceKey="mrp"
+                                    priceLabel="MRP"
+                                    settings={{
+                                        enableRounding: false,
+                                        roundingInterval: 1,
+                                        enableItemWiseDiscount: enableItemWiseDiscount,
+                                        enableDiscount2: enableDiscount2,
+                                        lockDiscount: false,
+                                        lockPrice: false,
+                                        hideMrp: false,
                                     }}
+                                    applyRounding={(amount) => amount}
+                                    State={State}
+                                    setModal={setModal}
+                                    onOpenEditDrawer={(item) => {
+                                        setSelectedItemForEdit(item);
+                                        setIsEditDrawerOpen(true);
+                                    }}
+                                    onDeleteItem={handleDeleteItem}
+                                    onDiscountChange={handleDiscountChange}
+                                    onDiscount2Change={handleDiscount2Change}
+                                    onCustomPriceChange={handleNetPriceChange}
+                                    onCustomPriceBlur={() => { }}
+                                    onQuantityChange={handleQuantityChange}
                                 />
-                                {/* --- ITEM EDIT DRAWER COMPONENT --- */}
-                                {isEditDrawerOpen && selectedItemForEdit && (
-                                    <ItemEditDrawer
-                                        item={selectedItemForEdit}
-                                        isOpen={isEditDrawerOpen}
-                                        onClose={() => setIsEditDrawerOpen(false)}
-                                        onSaveSuccess={handleSaveSuccess}
-                                        itemGroupRoute={`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`}
-                                    />
-                                )}
+                            </div>
+
+                            <TierPickerModal
+                                item={tierPickerItem}
+                                isOpen={!!tierPickerItem}
+                                onClose={() => setTierPickerItem(null)}
+                                onSelect={(item, tier) => {
+                                    handleAddItem(item, tier.id === '__base__' ? undefined : tier);
+                                }}
+                            />
+                            {/* --- ITEM EDIT DRAWER COMPONENT --- */}
+                            {isEditDrawerOpen && selectedItemForEdit && (
+                                <ItemEditDrawer
+                                    item={selectedItemForEdit}
+                                    isOpen={isEditDrawerOpen}
+                                    onClose={() => setIsEditDrawerOpen(false)}
+                                    onSaveSuccess={handleSaveSuccess}
+                                    itemGroupRoute={`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`}
+                                />
+                            )}
+                        </div>
+                    </div>
+
+                    {/* RIGHT COLUMN (customer & delivery, extras, totals) */}
+                    <div className="contents md:block md:min-w-0 md:overflow-y-auto md:px-5 md:py-[18px] md:bg-[#fff8f2] md:border-l md:border-[#f6e1d0] custom-scrollbar">
+
+                        {/* Customer & delivery */}
+                        <div className="order-1 min-w-0">
+                            <p className={`${OVERLINE} hidden md:block mb-2`}>Customer &amp; delivery</p>
+                            <div className="rounded-sm border border-[#f6e1d0] bg-white overflow-hidden">
+                                <div className="p-3.5 grid gap-2">
+                                    {/* name / phone / Edit */}
+                                    <div className="flex items-center gap-2.5">
+                                        <span className="w-9 h-9 shrink-0 grid place-items-center rounded-full bg-[#ffedd5] text-[#9a3412] text-sm font-semibold">
+                                            {customerName.trim().charAt(0).toUpperCase() || '?'}
+                                        </span>
+                                        <div className="flex-1 min-w-0">
+                                            <b className="block text-[15px] font-semibold text-slate-900 truncate">{customerName}</b>
+                                            <span className="block text-xs text-slate-500">{formatPhone(editingOrder.billingDetails?.phone) || 'No phone'}</span>
+                                        </div>
+                                        <button
+                                            onClick={() => setIsEditingAddress((v) => !v)}
+                                            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-sm text-[13px] font-medium text-[#c2410c] hover:bg-[#fff8f2]"
+                                        >
+                                            {isEditingAddress ? <FiCheck size={14} /> : <FiEdit2 size={14} />}
+                                            {isEditingAddress ? 'Done' : 'Edit'}
+                                        </button>
+                                    </div>
+
+                                    {!isEditingAddress ? (
+                                        <>
+                                            <div className="flex items-center gap-2 text-[13px] text-slate-600">
+                                                <FiMapPin size={15} className="shrink-0 text-slate-400" />
+                                                <span className="min-w-0 truncate">Billing: {billingAddress || 'Not added'}</span>
+                                            </div>
+                                            {addressIncomplete && (
+                                                <div className="flex items-start gap-1.5 text-xs font-medium text-[#a16207]">
+                                                    <FiAlertTriangle size={13} className="shrink-0 mt-px" />
+                                                    <span>
+                                                        {billingAddress
+                                                            ? 'Address has no city or PIN — add them for delivery.'
+                                                            : 'No address yet — add it for delivery.'}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <div className="grid gap-2 pt-1">
+                                            <p className={OVERLINE}>Billing address</p>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {/* NAME FIELD */}
+                                                <input
+                                                    type="text"
+                                                    placeholder="Name"
+                                                    className={FIELD}
+                                                    value={editingOrder.billingDetails?.name || ''}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        setEditingOrder({
+                                                            ...editingOrder,
+                                                            billingDetails: { ...editingOrder.billingDetails!, name: val },
+                                                            ...(sameAddress && { shippingDetails: { ...editingOrder.shippingDetails!, name: val } })
+                                                        });
+                                                    }}
+                                                />
+                                                {/* PHONE FIELD (Billing) - Security Check Added */}
+                                                <input
+                                                    type="text"
+                                                    placeholder="Phone"
+                                                    className={FIELD}
+                                                    value={editingOrder.billingDetails?.phone || ''}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                                                        setEditingOrder({
+                                                            ...editingOrder,
+                                                            billingDetails: { ...editingOrder.billingDetails!, phone: val },
+                                                            ...(sameAddress && { shippingDetails: { ...editingOrder.shippingDetails!, phone: val } })
+                                                        });
+                                                    }}
+                                                />
+                                                {/* ADDRESS FIELD */}
+                                                <textarea
+                                                    placeholder="Address"
+                                                    className={`${FIELD} col-span-2 h-16 py-2 resize-none`}
+                                                    value={editingOrder.billingDetails?.address || ''}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        setEditingOrder({
+                                                            ...editingOrder,
+                                                            billingDetails: { ...editingOrder.billingDetails!, address: val },
+                                                            ...(sameAddress && { shippingDetails: { ...editingOrder.shippingDetails!, address: val } })
+                                                        });
+                                                    }}
+                                                />
+                                            </div>
+
+                                            {!sameAddress && (
+                                                <>
+                                                    <p className={`${OVERLINE} pt-1`}>Shipping address</p>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Name"
+                                                            className={FIELD}
+                                                            value={editingOrder.shippingDetails?.name || ''}
+                                                            onChange={(e) => setEditingOrder({
+                                                                ...editingOrder,
+                                                                shippingDetails: { ...editingOrder.shippingDetails!, name: e.target.value }
+                                                            })}
+                                                        />
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Phone"
+                                                            className={FIELD}
+                                                            value={editingOrder.shippingDetails?.phone || ''}
+                                                            onChange={(e) => {
+                                                                const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                                                                setEditingOrder({
+                                                                    ...editingOrder,
+                                                                    shippingDetails: { ...editingOrder.shippingDetails!, phone: val }
+                                                                });
+                                                            }}
+                                                        />
+                                                        <textarea
+                                                            placeholder="Address"
+                                                            className={`${FIELD} col-span-2 h-16 py-2 resize-none`}
+                                                            value={editingOrder.shippingDetails?.address || ''}
+                                                            onChange={(e) => setEditingOrder({
+                                                                ...editingOrder,
+                                                                shippingDetails: { ...editingOrder.shippingDetails!, address: e.target.value }
+                                                            })}
+                                                        />
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Ship to same address */}
+                                <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={sameAddress}
+                                    onClick={toggleSameAddress}
+                                    className="w-full flex items-center gap-2.5 px-3 py-2.5 border-t border-[#f6e1d0] text-left text-[13px]"
+                                >
+                                    <FiTruck size={16} className="shrink-0 text-slate-400" />
+                                    <span className="flex-1 min-w-0">
+                                        <b className="block font-semibold text-slate-900">Ship to same address</b>
+                                        <span className="block text-xs text-slate-500 truncate">
+                                            Shipping: {editingOrder.shippingDetails?.name || '—'}
+                                            {editingOrder.shippingDetails?.phone ? ` · ${formatPhone(editingOrder.shippingDetails.phone)}` : ''}
+                                        </span>
+                                    </span>
+                                    <span className={`relative shrink-0 w-9 h-5 rounded-full transition-colors ${sameAddress ? 'bg-[#c2410c]' : 'bg-slate-300'}`}>
+                                        <span className={`absolute top-[3px] left-[3px] w-3.5 h-3.5 rounded-full bg-white transition-transform ${sameAddress ? 'translate-x-4' : ''}`} />
+                                    </span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Extras + totals — desktop only (mobile has the bottom bar) */}
+                        <div className="hidden md:block order-3 mt-3.5 space-y-3.5">
+                            <p className={OVERLINE}>
+                                Extras <span className="normal-case tracking-normal font-normal">· each opens a pop-up</span>
+                            </p>
+                            <div className="flex flex-wrap gap-2">{extraChips}</div>
+
+                            {filledExpenses.length > 0 && (
+                                <div className="grid gap-2">
+                                    {filledExpenses.map((expense) => (
+                                        <button
+                                            key={expense.id}
+                                            onClick={() => setShowExpensePopup(true)}
+                                            className="w-full grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-2 rounded-xl border border-[#f6e1d0] bg-white text-left"
+                                        >
+                                            <span className="w-7 h-7 grid place-items-center rounded-sm bg-[#ffe8f8] text-[#c4009a]"><FiCreditCard size={14} /></span>
+                                            <span className="min-w-0">
+                                                <b className="block text-sm font-semibold text-slate-900 truncate">{expense.name || 'Expense'}</b>
+                                                <small className="block text-xs text-slate-500">Shop expense</small>
+                                            </span>
+                                            <span className="flex items-center gap-1.5 text-xs font-medium text-[#c2410c]">
+                                                {expense.amount !== '' && <b className="text-sm text-slate-900 tabular-nums">₹{formatAmount(Number(expense.amount))}</b>}
+                                                <FiEdit2 size={12} />
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            <div className="rounded-sm border border-[#f6e1d0] bg-white p-3.5">
+                                <dl className="m-0 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1.5 text-[13px] text-slate-600">
+                                    <dt>Bill discount</dt>
+                                    <dd className="m-0 text-right text-slate-900 tabular-nums">₹{formatAmount(editDiscount || 0)}</dd>
+                                    <dt className="pt-2 mt-1 border-t border-[#f6e1d0] text-[15px] font-semibold text-slate-900 self-end">Final total</dt>
+                                    <dd className="m-0 pt-2 mt-1 border-t border-[#f6e1d0] text-right text-[22px] leading-7 font-semibold text-slate-900 tabular-nums">{totalLabel}</dd>
+                                </dl>
                             </div>
                         </div>
                     </div>
                 </div>
-                {/* Expenses & Discount Section */}
-                <div className="px-4 py-2 bg-white border-t space-y-3">
-                    {/* Combined action row */}
-                    <div className="flex items-center gap-2 flex-wrap">
+
+                {/* ───────── FOOTER ───────── */}
+                <div className="bg-white border-t border-[#f6e1d0] px-3.5 pt-2.5 pb-[max(16px,env(safe-area-inset-bottom))] md:px-[22px] md:py-3.5 grid gap-2.5 md:flex md:items-center md:justify-end md:gap-2.5">
+                    {/* mobile: extras chips */}
+                    <div className="md:hidden flex flex-wrap gap-2">{extraChips}</div>
+
+                    <div className="grid grid-cols-[auto_1fr] gap-2 md:flex md:gap-2.5">
                         <button
-                            onClick={handleAddExpense}
-                            className="flex-1 text-[10px] font-bold text-orange-500 border border-orange-300 px-2 py-1.5 rounded-sm hover:bg-orange-50"
+                            onClick={() => {
+                                setEditingOrder(null);
+                                setCartSearchQuery('');
+                                setTransportName(''); setGrRrNo(''); setGrRrDate(''); setVehicleNo(''); setStationFrom(''); setPinCode('');
+                            }}
+                            className="h-12 px-5 rounded-lg text-[15px] font-medium text-slate-600 hover:bg-[#fff8f2] hover:text-slate-900 transition-colors"
                         >
-                            + Add Expense
+                            Discard
                         </button>
                         <button
-                            onClick={() => setShowBillDiscountFields(prev => !prev)}
-                            className="flex-1 text-[10px] font-bold text-red-500 border border-red-300 px-2 py-1.5 rounded-sm hover:bg-red-50"
+                            onClick={handleSaveChanges}
+                            className="h-12 px-6 inline-flex items-center justify-center gap-2 rounded-sm bg-[#c2410c] text-white text-[15px] font-medium hover:bg-[#9a3412] transition-colors"
                         >
-                            + Bill Discount
+                            <FiCheck size={16} />
+                            <span>
+                                Save changes<span className="md:hidden"> · {totalLabel}</span>
+                            </span>
                         </button>
-                        {enableTransportDetails && (
-                            <button
-                                onClick={() => setShowTransportModal(true)}
-                                className={`flex-1 text-[10px] font-bold border px-2 py-1.5 rounded-sm transition-colors ${hasTransportDetails ? 'text-teal-700 border-teal-400 bg-teal-50' : 'text-teal-600 border-teal-300 hover:bg-teal-50'}`}
-                            >
-                                {hasTransportDetails ? '✓ Transport' : '+ Transport'}
-                            </button>
-                        )}
                     </div>
-
-                    {editExpenses.length > 0 && (
-                        <div className="flex flex-col gap-2">
-                            {editExpenses.map((expense) => (
-                                <div key={expense.id} className="flex items-center gap-2 p-2 bg-orange-50 rounded-sm border border-orange-100">
-                                    <input
-                                        type="text"
-                                        placeholder="Expense name (e.g. Freight)"
-                                        value={expense.name}
-                                        onChange={(e) => handleExpenseNameChange(expense.id, e.target.value)}
-                                        className="flex-1 p-2 text-xs rounded-sm border border-orange-200 bg-white outline-none focus:border-orange-400"
-                                    />
-                                    <input
-                                        type="number"
-                                        placeholder="Amount (₹)"
-                                        value={expense.amount}
-                                        onChange={(e) => handleExpenseAmountChange(expense.id, e.target.value)}
-                                        className="w-24 p-2 text-xs rounded-sm border border-orange-200 bg-white outline-none focus:border-orange-400"
-                                    />
-                                    <button
-                                        onClick={() => handleRemoveExpense(expense.id)}
-                                        className="p-1 rounded-full bg-orange-100 hover:bg-red-100 text-orange-400 hover:text-red-500"
-                                    >
-                                        <FiX size={12} />
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-
-                    {showBillDiscountFields && (
-                        <div className="flex items-center justify-between gap-3 p-2 bg-red-50 rounded-sm border border-red-100">
-                            <p className="text-[10px] font-black text-red-500 uppercase tracking-widest whitespace-nowrap">Bill Discount</p>
-                            <div className="flex items-center gap-1">
-                                <div className="relative flex items-center">
-                                    <input
-                                        type="number"
-                                        placeholder="0"
-                                        value={editDiscountPercent || ''}
-                                        onChange={(e) => handleDiscountPercentInputChange(e.target.value)}
-                                        className="w-16 text-center bg-white border border-red-200 rounded-sm text-red-700 text-xs p-1.5 outline-none focus:border-red-400 pr-4"
-                                    />
-                                    <span className="absolute right-1 text-[10px] text-red-400 font-bold pointer-events-none">%</span>
-                                </div>
-                                <span className="text-gray-300 text-xs">|</span>
-                                <div className="relative flex items-center">
-                                    <span className="absolute left-1 text-[10px] text-red-400 font-bold pointer-events-none">₹</span>
-                                    <input
-                                        type="number"
-                                        placeholder="0"
-                                        value={editDiscount || ''}
-                                        onChange={(e) => handleDiscountAmountInputChange(e.target.value)}
-                                        className="w-20 text-center bg-white border border-red-200 rounded-sm text-red-700 text-xs p-1.5 outline-none focus:border-red-400 pl-4"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Live total preview */}
-                    <div className="flex justify-between items-center pt-1 border-t border-slate-100">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Final Total</span>
-                        <span className="text-base font-black text-slate-800">₹{formatAmount(calculatedEditTotal)}</span>
-                    </div>
-                </div>
-                {/* Footer Buttons */}
-                <div className="px-6 py-4 bg-slate-50 border-t flex gap-3">
-                    <button
-                        onClick={() => {
-                            setEditingOrder(null);
-                            setCartSearchQuery('');
-                            setTransportName(''); setGrRrNo(''); setGrRrDate(''); setVehicleNo(''); setStationFrom(''); setPinCode('');
-                        }}
-                        className="flex-1 py-2.5 bg-gray-400 text-black text-sm font-bold hover:bg-slate-300 rounded-sm transition-colors"
-                    >
-                        Discard
-                    </button>
-                    <button
-                        onClick={handleSaveChanges}
-                        className="flex-[2] bg-orange-600 text-white py-2.5 rounded-sm text-sm font-black shadow-sm hover:bg-orange-700 transition-colors uppercase"
-                    >
-                        SAVE CHANGES
-                    </button>
                 </div>
             </div>
+
+            {/* ───────── POP-UP: Bill discount ───────── */}
+            {showDiscountPopup && (
+                <PopupShell
+                    title="Bill discount"
+                    subtitle="On the whole order"
+                    tone="green"
+                    icon={<FiTag size={18} />}
+                    onClose={() => setShowDiscountPopup(false)}
+                    footer={
+                        <button
+                            onClick={() => setShowDiscountPopup(false)}
+                            className="h-10 px-4 inline-flex items-center gap-2 rounded-sm bg-[#c2410c] text-white text-sm font-medium hover:bg-[#9a3412]"
+                        >
+                            <FiCheck size={14} /> Apply
+                        </button>
+                    }
+                >
+                    <div>
+                        <span className="block text-xs font-medium text-slate-600 mb-1">Bill discount</span>
+                        <div className="grid grid-cols-2 gap-2">
+                            <div className="relative">
+                                <input
+                                    type="number"
+                                    placeholder="0"
+                                    value={editDiscountPercent || ''}
+                                    onChange={(e) => handleDiscountPercentInputChange(e.target.value)}
+                                    className={`${FIELD} h-11 text-right pr-8 text-sm`}
+                                />
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none">%</span>
+                            </div>
+                            <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none">₹</span>
+                                <input
+                                    type="number"
+                                    placeholder="0"
+                                    value={editDiscount || ''}
+                                    onChange={(e) => handleDiscountAmountInputChange(e.target.value)}
+                                    className={`${FIELD} h-11 text-right pl-8 text-sm`}
+                                />
+                            </div>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1">Type either — the other fills in.</p>
+                    </div>
+                    <div className="flex items-baseline justify-between px-3 py-2.5 rounded-sm bg-[#fff8f2] text-[13px] text-slate-600">
+                        <span>New final total</span>
+                        <b className="text-lg text-slate-900 tabular-nums">{totalLabel}</b>
+                    </div>
+                </PopupShell>
+            )}
+
+            {/* ───────── POP-UP: Shop expense ───────── */}
+            {showExpensePopup && (
+                <PopupShell
+                    title="Shop expense"
+                    subtitle="Not added to the order total"
+                    tone="magenta"
+                    icon={<FiCreditCard size={18} />}
+                    onClose={() => setShowExpensePopup(false)}
+                    footer={
+                        <button
+                            onClick={() => setShowExpensePopup(false)}
+                            className="h-10 px-4 inline-flex items-center gap-2 rounded-sm bg-[#c2410c] text-white text-sm font-medium hover:bg-[#9a3412]"
+                        >
+                            <FiCheck size={14} /> Done
+                        </button>
+                    }
+                >
+                    <div className="flex items-start gap-2 px-3 py-2.5 rounded-sm bg-[#ffedd5] text-[#9a3412] text-xs leading-[18px]">
+                        <FiCreditCard size={14} className="shrink-0 mt-0.5" />
+                        <span>
+                            Shop’s own spending for this order, like freight — saved to <b>Expenses</b>. It doesn’t change what {headerName || 'the customer'} pays.
+                        </span>
+                    </div>
+
+                    {editExpenses.map((expense) => (
+                        <div key={expense.id} className="grid grid-cols-[minmax(0,1fr)_110px_auto] items-end gap-2">
+                            <div>
+                                <span className="block text-xs font-medium text-slate-600 mb-1">Expense name</span>
+                                <input
+                                    type="text"
+                                    placeholder="e.g. Freight"
+                                    value={expense.name}
+                                    onChange={(e) => handleExpenseNameChange(expense.id, e.target.value)}
+                                    className={`${FIELD} h-11 text-sm`}
+                                />
+                            </div>
+                            <div>
+                                <span className="block text-xs font-medium text-slate-600 mb-1">Amount</span>
+                                <div className="relative">
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none">₹</span>
+                                    <input
+                                        type="number"
+                                        placeholder="0"
+                                        value={expense.amount}
+                                        onChange={(e) => handleExpenseAmountChange(expense.id, e.target.value)}
+                                        className={`${FIELD} h-11 text-right pl-7 text-sm`}
+                                    />
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => handleRemoveExpense(expense.id)}
+                                aria-label="Remove expense"
+                                className="w-11 h-11 grid place-items-center rounded-sm text-slate-400 hover:bg-red-50 hover:text-red-600"
+                            >
+                                <FiTrash2 size={16} />
+                            </button>
+                        </div>
+                    ))}
+
+                    <div>
+                        <button onClick={handleAddExpense} className={`${CHIP} ${CHIP_IDLE}`}>
+                            <FiPlus size={14} className="text-[#c2410c]" />
+                            {editExpenses.length === 0 ? 'Add expense' : 'Add another'}
+                        </button>
+                    </div>
+                </PopupShell>
+            )}
         </div>
     );
 };

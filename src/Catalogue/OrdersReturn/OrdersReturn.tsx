@@ -5,8 +5,7 @@ import { useAuth } from '../../context/auth-context';
 
 import { ROUTES } from '../../constants/routes.constants';
 import { Modal } from '../../constants/Modal';
-import { State, Variant } from '../../enums';
-import { CustomButton } from '../../Components';
+import { State } from '../../enums';
 import PaymentDrawer from '../../Components/PaymentDrawer';
 import { ReturnListItem, RETURN_ITEM_GRID_BOUGHT } from '../../Components/ReturnListItem';
 import type { Order, OrderItem } from '../Orders';
@@ -34,6 +33,13 @@ import {
 /* UI-only helpers (catreturn design: Catalogue orange tokens)         */
 /*   primary #c2410c · hover #9a3412 · soft #ffedd5 · canvas #fff5ec   */
 /*   border #f6e1d0 · control border #7a8aa3 · ink #0f172b             */
+/*                                                                    */
+/* RESPONSIVE NOTE                                                    */
+/*   The app shell has a ~230px sidebar, so Tailwind's viewport        */
+/*   breakpoints overstate the room available to this page.            */
+/*   - xl (1280px+) : two columns + 380px summary panel                */
+/*   - below xl     : single column, inline summary, sticky action bar */
+/*   - sm / lg      : used for card-level tweaks (search width, facts) */
 /* ------------------------------------------------------------------ */
 
 const Ico: React.FC<{ d: string | string[]; size?: number; className?: string }> = ({ d, size = 18, className = '' }) => (
@@ -67,7 +73,7 @@ const ICON = {
 /** Round tinted icon chip used in card headers */
 const Tint: React.FC<{ tone?: 'orange' | 'green'; children: React.ReactNode }> = ({ tone = 'orange', children }) => (
   <span
-    className={`inline-grid h-8 w-8 flex-none place-items-center rounded-lg ${
+    className={`inline-grid h-8 w-8 flex-none place-items-center rounded-sm ${
       tone === 'green' ? 'bg-[#e9faef] text-[#008236]' : 'bg-[#ffedd5] text-[#9a3412]'
     }`}
   >
@@ -85,12 +91,12 @@ const Section: React.FC<{
   className?: string;
   flush?: boolean; // body without padding (list / table sections)
 }> = ({ icon, title, caption, right, children, className = '', flush = false }) => (
-  <section className={`overflow-visible rounded-xl border border-[#f6e1d0] bg-white shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] ${className}`}>
+  <section className={`overflow-visible rounded-sm border border-[#f6e1d0] bg-white shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] ${className}`}>
     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 border-b border-[#f6e1d0] px-4 py-3">
       {icon}
       <h2 className="text-[15px] font-semibold text-[#0f172b]">{title}</h2>
       {caption && <span className="ml-auto text-xs text-[#5b6b86]">{caption}</span>}
-      {right && <div className={`w-full md:w-auto ${caption ? '' : 'md:ml-auto'}`}>{right}</div>}
+      {right && <div className={`w-full sm:w-auto ${caption ? '' : 'sm:ml-auto'}`}>{right}</div>}
     </div>
     <div className={flush ? '' : 'grid gap-3 p-4'}>{children}</div>
   </section>
@@ -107,15 +113,15 @@ const factInput =
   'w-full bg-transparent text-[13px] font-semibold text-[#0f172b] outline-none truncate tabular-nums focus:text-[#c2410c]';
 
 const fieldBase =
-  'flex h-10 items-center gap-2 rounded-lg border border-[#7a8aa3] bg-white px-3 text-[#5b6b86] focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-[#ea580c]';
+  'flex h-10 items-center gap-2 rounded-sm border border-[#7a8aa3] bg-white px-3 text-[#5b6b86] focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-[#ea580c]';
 
 // const scanBtn =
-//   'grid h-10 w-10 flex-none place-items-center rounded-lg border border-[#7a8aa3] bg-white text-[#0f172b] transition-colors hover:bg-[#fff8f2]';
+//   'grid h-10 w-10 flex-none place-items-center rounded-sm border border-[#7a8aa3] bg-white text-[#0f172b] transition-colors hover:bg-[#fff8f2]';
 
 /** Compact variants used in card headers (search + scan next to the title) */
 const fieldSm = fieldBase.replace('h-10', 'h-[34px]');
 const scanSm =
-  'grid h-[34px] w-[34px] flex-none place-items-center rounded-lg border border-[#7a8aa3] bg-white text-[#0f172b] transition-colors hover:bg-[#fff8f2]';
+  'grid h-[34px] w-[34px] flex-none place-items-center rounded-sm border border-[#7a8aa3] bg-white text-[#0f172b] transition-colors hover:bg-[#fff8f2]';
 
 /** Return type as selectable cards (replaces <select>) */
 const TypeCards: React.FC<{
@@ -140,14 +146,14 @@ const TypeCards: React.FC<{
             disabled={o.disabled}
             aria-pressed={on}
             onClick={() => onChange(o.v)}
-            className={`grid gap-0.5 rounded-lg border text-left transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+            className={`grid min-w-0 gap-0.5 rounded-sm border text-left transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
               on
                 ? 'border-2 border-[#c2410c] bg-[#ffedd5] px-[9px] py-[7px]'
                 : 'border-[#7a8aa3] bg-white px-2.5 py-2 hover:bg-[#fff8f2]'
             }`}
           >
-            <b className={`text-sm font-semibold ${on ? 'text-[#9a3412]' : 'text-[#0f172b]'}`}>{o.t}</b>
-            <small className="text-[11px] leading-[15px] text-[#5b6b86]">{o.s}</small>
+            <b className={`truncate text-sm font-semibold ${on ? 'text-[#9a3412]' : 'text-[#0f172b]'}`}>{o.t}</b>
+            <small className="truncate text-[11px] leading-[15px] text-[#5b6b86]">{o.s}</small>
           </button>
         );
       })}
@@ -330,12 +336,12 @@ const OrdersReturnPage: React.FC = () => {
 
   /** Balance row: "Credit due ₹x" with the existing action <select> when exchange leaves a positive balance */
   const renderBalance = (big?: boolean) => (
-    <div className={`flex items-center justify-between gap-3 rounded-xl px-3.5 py-3 ${balancePanel}`}>
+    <div className={`flex items-center justify-between gap-3 rounded-sm px-3.5 py-3 ${balancePanel}`}>
       {isExchange && finalBalance > 0 ? (
         <select
           value={exchangeBalanceAction}
           onChange={(e) => setExchangeBalanceAction(e.target.value as any)}
-          className="h-[34px] cursor-pointer rounded-lg border border-[#7a8aa3] bg-white px-2 text-[13px] font-medium text-[#0f172b] outline-none focus:border-[#ea580c]"
+          className="h-[34px] cursor-pointer rounded-sm border border-[#7a8aa3] bg-white px-2 text-[13px] font-medium text-[#0f172b] outline-none focus:border-[#ea580c]"
         >
           <option value="Credit Note">Credit Due</option>
           <option value="Cash Refund">Cash Refund</option>
@@ -350,7 +356,7 @@ const OrdersReturnPage: React.FC = () => {
   );
 
   return (
-    <div className="flex h-screen w-full flex-col overflow-hidden bg-[#fff5ec] text-[#0f172b]">
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-[#fff5ec] text-[#0f172b]">
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
       <BarcodeScanner isOpen={scannerPurpose !== null} onClose={() => setScannerPurpose(null)} onScanSuccess={handleBarcodeScanned} />
 
@@ -371,10 +377,11 @@ const OrdersReturnPage: React.FC = () => {
       </header>
 
       {/* MAIN CONTENT WRAPPER */}
-      <div className="relative flex flex-1 flex-col overflow-hidden md:flex-row">
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden xl:flex-row">
 
         {/* --- LEFT PANEL --- */}
-        <div className="relative w-full flex-1 space-y-3.5 overflow-y-auto bg-[#fff5ec] p-3 pb-24 md:w-[65%] md:p-5 md:pb-5">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="relative min-h-0 w-full flex-1 space-y-3.5 overflow-y-auto bg-[#fff5ec] p-3 sm:p-4 xl:p-5">
 
           {/* Original order */}
           <Section
@@ -416,7 +423,7 @@ const OrdersReturnPage: React.FC = () => {
                 {selectedSale && (
                   <button
                     onClick={handleClear}
-                    className="h-10 whitespace-nowrap rounded-lg px-3 text-sm font-medium text-[#45556c] transition-colors hover:bg-[#fff8f2] hover:text-[#0f172b]"
+                    className="h-10 whitespace-nowrap rounded-sm px-3 text-sm font-medium text-[#45556c] transition-colors hover:bg-[#fff8f2] hover:text-[#0f172b]"
                   >
                     Clear
                   </button>
@@ -424,7 +431,7 @@ const OrdersReturnPage: React.FC = () => {
               </div>
 
               {isSalesDropdownOpen && !selectedSale && (
-                <div className="absolute top-full z-20 mt-1.5 max-h-60 w-full overflow-y-auto rounded-xl border border-[#f6e1d0] bg-white shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]">
+                <div className="absolute top-full z-20 mt-1.5 max-h-60 w-full overflow-y-auto rounded-sm border border-[#f6e1d0] bg-white shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]">
                   {filteredSales.map((sale) => {
                     // Calculate total from items instead of using static totalAmount
                     const calculatedAmount = (sale.items || []).reduce(
@@ -459,7 +466,7 @@ const OrdersReturnPage: React.FC = () => {
             </div>
 
             {selectedSale && (
-              <div className="grid grid-cols-2 gap-px rounded-lg border border-[#f6e1d0] bg-[#f6e1d0] md:grid-cols-4">
+              <div className="grid grid-cols-2 gap-px rounded-sm border border-[#f6e1d0] bg-[#f6e1d0] lg:grid-cols-4">
                 <Fact label="Order">
                   <b className="block truncate text-[13px] font-semibold tabular-nums">{selectedSale.orderId}</b>
                 </Fact>
@@ -480,7 +487,7 @@ const OrdersReturnPage: React.FC = () => {
                     maxLength={10}
                   />
                   {isCustomerDropdownOpen && filteredCustomers.length > 0 && (
-                    <div className="absolute left-0 top-full z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-xl border border-[#f6e1d0] bg-white shadow-[0_10px_28px_rgba(21,48,140,0.14)]">
+                    <div className="absolute left-0 top-full z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-sm border border-[#f6e1d0] bg-white shadow-[0_10px_28px_rgba(21,48,140,0.14)]">
                       {filteredCustomers.map((customer) => (
                         <div
                           key={customer.id}
@@ -530,7 +537,7 @@ const OrdersReturnPage: React.FC = () => {
                 title="Select return items"
                 right={
                   <div className="flex items-center gap-2">
-                    <div className={`${fieldSm} flex-1 md:w-60 md:flex-none`}>
+                    <div className={`${fieldSm} flex-1 sm:w-60 sm:flex-none`}>
                       <Ico d={ICON.search} size={16} />
                       <input
                         type="text"
@@ -548,13 +555,13 @@ const OrdersReturnPage: React.FC = () => {
                 }
               >
                 {originalSaleItems.length === 0 ? (
-                  <p className="m-3 rounded-lg bg-[#fff8f2] px-3 py-4 text-center text-sm text-[#5b6b86]">
+                  <p className="m-3 rounded-sm bg-[#fff8f2] px-3 py-4 text-center text-sm text-[#5b6b86]">
                     No returnable items found for this order.
                   </p>
                 ) : (
                   <>
                     {/* Desktop table header (matches ReturnListItem grid) */}
-                    <div className={`hidden xl:grid ${RETURN_ITEM_GRID_BOUGHT} gap-x-3 border-b border-[#f6e1d0] bg-[#fff8f2] px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]`}>
+                    <div className={`hidden 2xl:grid ${RETURN_ITEM_GRID_BOUGHT} gap-x-3 border-b border-[#f6e1d0] bg-[#fff8f2] px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]`}>
                       <span />
                       <span>Item</span>
                       <span className="text-right">Bought</span>
@@ -563,7 +570,7 @@ const OrdersReturnPage: React.FC = () => {
                       <span className="text-right">Subtotal</span>
                     </div>
 
-                    <div className="flex flex-col gap-2 p-3 xl:gap-0 xl:p-0">
+                    <div className="flex flex-col gap-2 p-3 2xl:gap-0 2xl:p-0">
                       {filteredReturnItems.map((item) => (
                         <ReturnListItem
                           key={item.id}
@@ -583,7 +590,7 @@ const OrdersReturnPage: React.FC = () => {
                       ))}
                     </div>
 
-                    <div className="flex flex-wrap justify-end gap-x-6 gap-y-1 rounded-b-xl border-t border-[#f6e1d0] bg-[#fff8f2] px-4 py-2.5 text-[13px] text-[#45556c]">
+                    <div className="flex flex-wrap justify-end gap-x-6 gap-y-1 rounded-sm border-t border-[#f6e1d0] bg-[#fff8f2] px-4 py-2.5 text-[13px] text-[#45556c]">
                       <span>Selected <b className="tabular-nums text-[#0f172b]">{selectedReturnIds.size} of {originalSaleItems.length}</b> items</span>
                       <span>Return qty <b className="tabular-nums text-[#0f172b]">{returnQty}</b></span>
                       <span>Return value <b className="tabular-nums text-[#0f172b]">₹{totalReturnGross.toFixed(2)}</b></span>
@@ -592,9 +599,9 @@ const OrdersReturnPage: React.FC = () => {
                 )}
               </Section>
 
-              {/* Transaction type (mobile only; desktop has it in the summary panel) */}
+              {/* Transaction type (below xl only; wide screens have it in the summary panel) */}
               <Section
-                className="md:hidden"
+                className="xl:hidden"
                 icon={<Tint><Ico d={ICON.swap} /></Tint>}
                 title="Transaction type"
               >
@@ -613,7 +620,7 @@ const OrdersReturnPage: React.FC = () => {
                   title="Exchange items"
                   right={
                     <div className="flex items-center gap-2">
-                      <div className="min-w-0 flex-1 md:w-72 md:flex-none">
+                      <div className="min-w-0 flex-1 sm:w-72 sm:flex-none">
                         <SearchableItemInput
                           label=""
                           placeholder="Search inventory..."
@@ -635,7 +642,7 @@ const OrdersReturnPage: React.FC = () => {
                   }
                 >
                   {exchangeItems.length > 0 && (
-                    <div className="overflow-hidden rounded-lg border border-[#f6e1d0]">
+                    <div className="overflow-hidden rounded-sm border border-[#f6e1d0]">
                       <div className="border-b border-[#f6e1d0] bg-[#fff8f2] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]">
                         Exchange cart · {exchangeItems.length} {exchangeItems.length === 1 ? 'item' : 'items'}
                       </div>
@@ -693,8 +700,8 @@ const OrdersReturnPage: React.FC = () => {
                 </Section>
               )}
 
-              {/* Mobile only: inline summary (above footer) */}
-              <Section className="md:hidden" title="Return summary">
+              {/* Below xl: inline summary (above the sticky action bar) */}
+              <Section className="xl:hidden" title="Return summary">
                 <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 text-sm">
                   <dt className="text-[#45556c]">Return value</dt>
                   <dd className="text-right tabular-nums">₹{totalReturnGross.toFixed(2)}</dd>
@@ -715,10 +722,30 @@ const OrdersReturnPage: React.FC = () => {
               </Section>
             </>
           )}
+
         </div>
 
-        {/* --- RIGHT PANEL (Desktop only) --- */}
-        <aside className="relative z-10 hidden h-full w-[35%] max-w-[380px] flex-col border-l border-[#f6e1d0] bg-white p-5 md:flex">
+        {/* --- PINNED ACTION BAR (below xl) --- same as the artifact's mobile "checkout" bar:
+            a flex sibling under the scroll area, so it always sits at the bottom of the page. */}
+        {selectedSale && (
+          <div className="flex flex-none items-center gap-3 border-t border-[#f6e1d0] bg-white px-4 py-3 xl:hidden">
+            <div className="min-w-0">
+              <span className={`block text-xs ${balanceTone}`}>{getBalanceLabel()}</span>
+              <b className={`block text-xl leading-[26px] tabular-nums ${balanceTone}`}>₹{Math.abs(finalBalance).toFixed(2)}</b>
+            </div>
+            <button
+              onClick={handleProcessReturn}
+              disabled={exchangeBlocked || (isExchange && itemsToReturn.length === 0)}
+              className="ml-auto h-[52px] min-w-0 flex-1 rounded-sm bg-[#c2410c] px-4 text-[15px] font-semibold text-white transition-colors hover:bg-[#9a3412] disabled:cursor-not-allowed disabled:bg-[#c2410c]/45 sm:max-w-sm"
+            >
+              <span className="block truncate">{actionLabel}</span>
+            </button>
+          </div>
+        )}
+        </div>
+
+        {/* --- RIGHT PANEL (wide screens only, xl+) --- */}
+        <aside className="relative z-10 hidden h-full w-[380px] flex-none flex-col border-l border-[#f6e1d0] bg-white p-5 xl:flex">
           {selectedSale ? (
             <div className="flex h-full flex-col gap-3.5 overflow-y-auto">
               <h2 className="text-base font-semibold">Return summary</h2>
@@ -764,7 +791,7 @@ const OrdersReturnPage: React.FC = () => {
               {/* What this return changes */}
               <div>
                 <span className="mb-1 block text-xs font-medium text-[#45556c]">What this return changes</span>
-                <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 rounded-lg bg-[#fff8f2] p-3 text-[13px]">
+                <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 rounded-sm bg-[#fff8f2] p-3 text-[13px]">
                   <dt className="flex items-center gap-1.5 text-[#45556c]"><Ico d={ICON.order} size={16} />Stock in</dt>
                   <dd className="break-words text-right font-semibold">{stockLine(itemsToReturn as any[], '+')}</dd>
                   {isExchange && (
@@ -778,7 +805,7 @@ const OrdersReturnPage: React.FC = () => {
 
               <button
                 onClick={handleProcessReturn}
-                className={`mt-auto h-[54px] w-full rounded-lg px-4 text-[15px] font-semibold transition-colors ${
+                className={`mt-auto h-[54px] w-full rounded-sm px-4 text-[15px] font-semibold transition-colors ${
                   exchangeBlocked
                     ? 'cursor-not-allowed bg-[#c2410c]/45 text-white'
                     : 'bg-[#c2410c] text-white hover:bg-[#9a3412]'
@@ -789,37 +816,13 @@ const OrdersReturnPage: React.FC = () => {
             </div>
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-              <span className="grid h-12 w-12 place-items-center rounded-xl bg-[#ffedd5] text-[#9a3412]">
+              <span className="grid h-12 w-12 place-items-center rounded-sm bg-[#ffedd5] text-[#9a3412]">
                 <Ico d={ICON.search} size={24} />
               </span>
               <p className="text-sm text-[#5b6b86]">Search an order to start a return</p>
             </div>
           )}
         </aside>
-
-        {/* --- MOBILE FOOTER (sticky) --- */}
-        <div className="pointer-events-none fixed bottom-0 left-0 right-0 flex justify-center bg-transparent p-4 pb-18 md:hidden">
-          {selectedSale && (
-            <div className="pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-xl border border-[#f6e1d0] bg-white p-2.5 shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]">
-              <div className="min-w-0 pl-1">
-                <span className={`block text-xs ${balanceTone}`}>{getBalanceLabel()}</span>
-                <b className={`block text-lg leading-6 tabular-nums ${balanceTone}`}>₹{Math.abs(finalBalance).toFixed(2)}</b>
-              </div>
-              <div className="min-w-0 flex-1">
-                <CustomButton
-                  onClick={handleProcessReturn}
-                  disabled={
-                    modeOfReturn === 'Exchange' &&
-                    (exchangeItems.length === 0 || itemsToReturn.length === 0)
-                  }
-                  variant={Variant.Payment}
-                >
-                  Process Transaction
-                </CustomButton>
-              </div>
-            </div>
-          )}
-        </div>
       </div>
 
       <PaymentDrawer

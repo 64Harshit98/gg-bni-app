@@ -43,11 +43,11 @@ interface CalcKey {
     value: string;
     type: 'number' | 'operator' | 'function';
     icon?: React.ElementType;
-    colClass?: string; // <--- Changed from colspan to colClass
+    colClass?: string;
 }
 
 const calcKeys: CalcKey[][] = [
-    // Row 1: %, -, delete 
+    // Row 1: %, -, delete
     [
         { label: '%', value: '%', type: 'operator', colClass: 'col-span-2' },
         { label: '-', value: '-', type: 'operator', colClass: 'col-span-2' },
@@ -96,10 +96,13 @@ const chipCls = (active: boolean) =>
     }`;
 
 const FIELD_CLS =
-    'w-full h-12 md:h-[52px] pl-11 pr-10 bg-white border border-[#7a8aa3] rounded-lg text-[15px] font-medium text-[#0f172b] placeholder:text-[#5b6b86] outline-none transition-all focus:border-[#155dfc] focus:ring-4 focus:ring-[#e6eeff]';
+    'w-full h-12 md:h-[52px] pl-11 pr-10 bg-white border border-[#7a8aa3] rounded-sm text-[15px] font-medium text-[#0f172b] placeholder:text-[#5b6b86] outline-none transition-all focus:border-[#155dfc] focus:ring-4 focus:ring-[#e6eeff]';
 
 const SCAN_BTN_CLS =
-    'inline-flex items-center justify-center gap-2 h-12 md:h-[52px] w-12 md:w-auto md:px-4 flex-shrink-0 rounded-lg text-sm font-medium transition-colors bg-[#155dfc] text-white hover:bg-[#1447e6] md:bg-white md:text-[#0f172b] md:border md:border-[#7a8aa3] md:hover:bg-[#f5f7ff]';
+    'inline-flex items-center justify-center gap-2 h-12 md:h-[52px] w-12 md:w-auto md:px-4 flex-shrink-0 rounded-sm text-sm font-medium transition-colors bg-[#155dfc] text-white hover:bg-[#1447e6] md:bg-white md:text-[#0f172b] md:border md:border-[#7a8aa3] md:hover:bg-[#f5f7ff]';
+
+const POPUP_INPUT_CLS =
+    'w-full h-10 px-3 text-sm rounded-sm border border-[#7a8aa3] bg-white text-[#0f172b] placeholder:text-[#5b6b86] outline-none focus:border-[#155dfc] focus:ring-4 focus:ring-[#e6eeff]';
 
 const SORT_OPTIONS = [
     { value: 'az', label: 'A → Z' },
@@ -124,6 +127,37 @@ const Sales: React.FC = () => {
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
     const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
     const [tierPickerItem, setTierPickerItem] = useState<Item | null>(null);
+
+    // Customer — popup se fill hota hai, payment drawer ko starting details milti hain
+    const [customerName, setCustomerName] = useState(prefillParty?.name ?? '');
+    const [customerPhone, setCustomerPhone] = useState(prefillParty?.number ?? '');
+    const [showCustomerModal, setShowCustomerModal] = useState(false);
+    const [customerDraft, setCustomerDraft] = useState({ name: '', phone: '' });
+
+    const openCustomerModal = () => {
+        setCustomerDraft({ name: customerName, phone: customerPhone });
+        setShowCustomerModal(true);
+    };
+    const saveCustomer = () => {
+        const phone = customerDraft.phone.replace(/\D/g, '');
+        if (phone && phone.length !== 10) {
+            setModal({ message: 'Customer phone number must be exactly 10 digits.', type: State.ERROR });
+            return;
+        }
+        setCustomerName(customerDraft.name.trim());
+        setCustomerPhone(phone);
+        setShowCustomerModal(false);
+    };
+    // Payment drawer me jo bhi fill ho, drawer band hone par yahan wapas dikhe
+    const handleDrawerPartyChange = (name: string, number: string) => {
+        setCustomerName(name);
+        setCustomerPhone(number);
+    };
+
+    // Edit mode me invoice ki party dikhani hai
+    const customerDisplayName = isEditMode ? (invoiceToEdit?.partyName || '') : customerName;
+    const customerDisplayPhone = isEditMode ? (invoiceToEdit?.partyNumber || '') : customerPhone;
+
     const {
         salesSettings,
         activeTaxMode, setActiveTaxMode,
@@ -319,7 +353,7 @@ const Sales: React.FC = () => {
         setCalcInput,
         isDrawerOpen,
         setIsDrawerOpen,
-                setSavedBillData,
+        setSavedBillData,
         showSuccessModal,
     });
 
@@ -349,10 +383,18 @@ const Sales: React.FC = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [savedBillData]);
 
+    // Bill save hone ke baad customer reset — naya bill fresh shuru ho
+    useEffect(() => {
+        if (savedBillData && !isEditMode) {
+            setCustomerName('');
+            setCustomerPhone('');
+        }
+    }, [savedBillData, isEditMode]);
+
     if (pageIsLoading) return <div className="flex items-center justify-center h-screen"><Spinner /> <p className="ml-2">Loading...</p></div>;
-    if (error) return <div className="flex flex-col items-center justify-center h-screen text-red-600"><p>{error}</p><button onClick={() => navigate(-1)} className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Go Back</button></div>;
+    if (error) return <div className="flex flex-col items-center justify-center h-screen text-red-600"><p>{error}</p><button onClick={() => navigate(-1)} className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-sm hover:bg-blue-600">Go Back</button></div>;
     const fmtINR = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const ICON_BTN_CLS = 'inline-flex items-center justify-center w-10 h-10 rounded-lg text-[#45556c] hover:bg-[#f5f7ff] transition-colors flex-shrink-0';
+    const ICON_BTN_CLS = 'inline-flex items-center justify-center w-10 h-10 rounded-sm text-[#45556c] hover:bg-[#f5f7ff] transition-colors flex-shrink-0';
 
     const renderMobileHeader = () => (
         <header className="md:hidden flex-shrink-0 flex items-center gap-2 h-14 px-2 bg-white border-b border-[#dfe6fb]">
@@ -386,7 +428,7 @@ const Sales: React.FC = () => {
                     {isEditMode ? 'Edit sale' : 'New sale'}
                 </h1>
 
-                <label className="inline-flex items-center gap-2 h-9 px-3 bg-white border border-[#7a8aa3] rounded-lg text-[13px] transition-all focus-within:border-[#155dfc] focus-within:ring-4 focus-within:ring-[#e6eeff]">
+                <label className="inline-flex items-center gap-2 h-9 px-3 bg-white border border-[#7a8aa3] rounded-sm text-[13px] transition-all focus-within:border-[#155dfc] focus-within:ring-4 focus-within:ring-[#e6eeff]">
                     <span className="text-[11px] font-semibold tracking-[.06em] uppercase text-[#5b6b86]">Bill</span>
                     <input
                         type="text"
@@ -400,7 +442,7 @@ const Sales: React.FC = () => {
                     />
                 </label>
 
-                <label className="inline-flex items-center gap-2 h-9 px-3 bg-white border border-[#7a8aa3] rounded-lg text-[13px] cursor-pointer transition-all focus-within:border-[#155dfc] focus-within:ring-4 focus-within:ring-[#e6eeff]">
+                <label className="inline-flex items-center gap-2 h-9 px-3 bg-white border border-[#7a8aa3] rounded-sm text-[13px] cursor-pointer transition-all focus-within:border-[#155dfc] focus-within:ring-4 focus-within:ring-[#e6eeff]">
                     <FiCalendar size={14} className="text-[#5b6b86] flex-shrink-0" />
                     <input
                         type="date"
@@ -411,7 +453,7 @@ const Sales: React.FC = () => {
                     />
                 </label>
                 {!isCalculatorView && (
-                    <div role="group" aria-label="View" className="ml-auto inline-flex p-[3px] gap-0.5 bg-[#f5f7ff] border border-[#dfe6fb] rounded-[11px]">
+                    <div role="group" aria-label="View" className="ml-auto inline-flex p-[3px] gap-0.5 bg-[#f5f7ff] border border-[#dfe6fb] rounded-sm">
                         {([['list', 'List', FiList], ['card', 'Cards', FiGrid]] as const).map(([v, label, Icon]) => {
                             const active = (isCardView ? 'card' : 'list') === v;
                             return (
@@ -420,7 +462,7 @@ const Sales: React.FC = () => {
                                     type="button"
                                     aria-pressed={active}
                                     onClick={() => setViewOverride(v)}
-                                    className={`inline-flex items-center gap-1.5 h-7 px-3 rounded-lg text-xs font-medium transition-colors ${active ? 'bg-white text-[#155dfc] shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]' : 'text-[#45556c] hover:text-[#0f172b]'}`}
+                                    className={`inline-flex items-center gap-1.5 h-7 px-3 rounded-sm text-xs font-medium transition-colors ${active ? 'bg-white text-[#155dfc] shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]' : 'text-[#45556c] hover:text-[#0f172b]'}`}
                                 >
                                     <Icon size={14} /> {label}
                                 </button>
@@ -472,7 +514,7 @@ const Sales: React.FC = () => {
                     else setSelectedWorker(workers.find(w => w.uid === e.target.value) || null);
                 }}
                 aria-label="Salesman"
-                className={`h-10 px-2 bg-white border border-[#7a8aa3] rounded-lg text-sm font-medium text-[#0f172b] outline-none focus:border-[#155dfc] focus:ring-4 focus:ring-[#e6eeff] disabled:opacity-[.45] ${extraCls}`}
+                className={`h-10 px-2 bg-white border border-[#7a8aa3] rounded-sm text-sm font-medium text-[#0f172b] outline-none focus:border-[#155dfc] focus:ring-4 focus:ring-[#e6eeff] disabled:opacity-[.45] ${extraCls}`}
                 disabled={!hasPermission(Permissions.ViewTransactions) || (isEditMode && !isManager)}
             >
                 <option value="">Salesman</option>
@@ -480,31 +522,87 @@ const Sales: React.FC = () => {
                 <option value="ADD_NEW_SALESMAN">+ Add New Salesman</option>
             </select>
         ) : null;
+
+    // Walk-in customer / filled customer card — "Add" ab popup kholta hai
     const renderCustomerBlock = (showSalesman = true) => (
         <>
             <div className="flex items-center gap-2.5">
-                <span className="w-9 h-9 rounded-full bg-[#e6eeff] text-[#155dfc] flex items-center justify-center flex-shrink-0"><FiUser size={16} /></span>
+                <span className="w-9 h-9 rounded-sm bg-[#e6eeff] text-[#155dfc] flex items-center justify-center flex-shrink-0"><FiUser size={16} /></span>
                 <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-[#0f172b]">Walk-in customer</div>
-                    <div className="text-xs text-[#5b6b86]">Add phone to send bill on WhatsApp</div>
+                    {customerDisplayName || customerDisplayPhone ? (
+                        <>
+                            <div className="text-sm font-medium text-[#0f172b] truncate">{customerDisplayName || 'Customer'}</div>
+                            {customerDisplayPhone && <div className="text-xs text-[#5b6b86] truncate">{customerDisplayPhone}</div>}
+                        </>
+                    ) : (
+                        <>
+                            <div className="text-sm font-medium text-[#0f172b]">Walk-in customer</div>
+                            <div className="text-xs text-[#5b6b86]">Add phone to send bill on WhatsApp</div>
+                        </>
+                    )}
                 </div>
-                <button type="button" onClick={handleProceedToPayment} disabled={items.length === 0}
-                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-[#7a8aa3] bg-white text-[13px] font-medium text-[#0f172b] hover:bg-[#f5f7ff] disabled:opacity-[.45]">
-                    <FiUserPlus size={14} /> Add
-                </button>
+                {!isEditMode && (
+                    <button type="button" onClick={openCustomerModal}
+                        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-sm border border-[#7a8aa3] bg-white text-[13px] font-medium text-[#0f172b] hover:bg-[#f5f7ff] flex-shrink-0">
+                        <FiUserPlus size={14} /> {customerName || customerPhone ? 'Change' : 'Add'}
+                    </button>
+                )}
             </div>
             {showSalesman && renderSalesmanSelect('w-full')}
         </>
     );
 
+    // Customer popup (Name + Mobile)
+    const renderCustomerModal = () =>
+        !showCustomerModal ? null : (
+            <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-[#020618]/45 sm:p-4" onClick={() => setShowCustomerModal(false)}>
+                <div
+                    className={`w-full sm:max-w-sm bg-white text-[#0f172b] rounded-sm border border-[#dfe6fb] ${SHADOW_FLOAT} p-5`}
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <h3 className="m-0 text-lg font-semibold">Customer</h3>
+                    <p className="mt-1 mb-4 text-sm text-[#45556c]">These details are filled in at payment.</p>
+                    <div className="space-y-4">
+                        <div>
+                            <label className={`block mb-1.5 ${LABEL_CLS}`}>Name</label>
+                            <input
+                                type="text"
+                                value={customerDraft.name}
+                                onChange={(e) => setCustomerDraft({ ...customerDraft, name: e.target.value })}
+                                placeholder="Customer name"
+                                className={POPUP_INPUT_CLS}
+                                autoFocus
+                            />
+                        </div>
+                        <div>
+                            <label className={`block mb-1.5 ${LABEL_CLS}`}>Mobile</label>
+                            <input
+                                type="tel"
+                                inputMode="tel"
+                                maxLength={10}
+                                value={customerDraft.phone}
+                                onChange={(e) => setCustomerDraft({ ...customerDraft, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                                placeholder="98188 37719"
+                                className={POPUP_INPUT_CLS}
+                            />
+                        </div>
+                    </div>
+                    <div className="flex justify-end gap-2 mt-6">
+                        <CustomButton variant={Variant.Outline} onClick={() => setShowCustomerModal(false)}>Cancel</CustomButton>
+                        <CustomButton variant={Variant.Filled} onClick={saveCustomer}>Save</CustomButton>
+                    </div>
+                </div>
+            </div>
+        );
+
     const renderSaveBox = (suffix = '') =>
         totalDiscount > 0 ? (
-            <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-[#e9faef] text-[#008236] text-[13px] font-medium">
+            <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-sm bg-[#e9faef] text-[#008236] text-[13px] font-medium">
                 Customer saves ₹{fmtINR(totalDiscount)}{suffix}
             </div>
         ) : null;
     // Tablet (768–1279): same bottom checkout bar as the mobile footer
- const renderTabletCheckoutBar = (actionLabel: string) => (
+    const renderTabletCheckoutBar = (actionLabel: string) => (
         <div className="hidden md:block xl:hidden flex-shrink-0 z-20 bg-white border-t border-[#dfe6fb]">
             {isTabletBreakdownOpen && (
                 <div className="px-4 pt-3 space-y-1.5 text-sm">
@@ -531,7 +629,7 @@ const Sales: React.FC = () => {
                     <b className="block text-xl leading-[26px] font-semibold tabular-nums text-[#0f172b] truncate">₹{fmtINR(finalAmount)}</b>
                 </button>
                 <button type="button" onClick={handleProceedToPayment} disabled={items.length === 0}
-                    className="inline-flex items-center justify-center gap-2 h-12 px-4 rounded-lg border border-transparent text-[15px] font-medium whitespace-nowrap bg-[#155dfc] text-white hover:bg-[#1447e6] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed">
+                    className="inline-flex items-center justify-center gap-2 h-12 px-4 rounded-sm border border-transparent text-[15px] font-medium whitespace-nowrap bg-[#155dfc] text-white hover:bg-[#1447e6] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed">
                     {actionLabel}
                     <FiChevronRight size={16} />
                 </button>
@@ -541,14 +639,14 @@ const Sales: React.FC = () => {
     const renderMoreSheet = () =>
         !isMoreOpen ? null : (
             <div className="md:hidden fixed inset-0 z-[60] flex items-end bg-[#020618]/45" onClick={() => setIsMoreOpen(false)}>
-                <div className={`w-full bg-white rounded-t-2xl p-4 pb-6 flex flex-col gap-4 ${SHADOW_FLOAT}`} onClick={(e) => e.stopPropagation()}>
+                <div className={`w-full bg-white rounded-t-sm p-4 pb-6 flex flex-col gap-4 ${SHADOW_FLOAT}`} onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-between">
                         <h3 className="m-0 text-base font-semibold text-[#0f172b]">More</h3>
                         <button type="button" onClick={() => setIsMoreOpen(false)} aria-label="Close" className={ICON_BTN_CLS}><FiX size={18} /></button>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
-                        <label className="inline-flex items-center gap-2 h-10 px-3 bg-white border border-[#7a8aa3] rounded-lg text-[13px]">
+                        <label className="inline-flex items-center gap-2 h-10 px-3 bg-white border border-[#7a8aa3] rounded-sm text-[13px]">
                             <span className="text-[11px] font-semibold tracking-[.06em] uppercase text-[#5b6b86]">Bill</span>
                             <input
                                 type="text"
@@ -558,7 +656,7 @@ const Sales: React.FC = () => {
                                 className="w-full min-w-0 bg-transparent border-0 outline-none font-semibold text-[#0f172b]"
                             />
                         </label>
-                        <label className="inline-flex items-center gap-2 h-10 px-3 bg-white border border-[#7a8aa3] rounded-lg text-[13px]">
+                        <label className="inline-flex items-center gap-2 h-10 px-3 bg-white border border-[#7a8aa3] rounded-sm text-[13px]">
                             <FiCalendar size={14} className="text-[#5b6b86] flex-shrink-0" />
                             <input type="date" value={invoiceDate} aria-label="Invoice date" onChange={(e) => setInvoiceDate(e.target.value)} className="w-full min-w-0 bg-transparent border-0 outline-none font-semibold text-[#0f172b]" />
                         </label>
@@ -574,7 +672,7 @@ const Sales: React.FC = () => {
                                         key={opt.value}
                                         type="button"
                                         onClick={() => setSortOrder(opt.value)}
-                                        className={`h-9 rounded-lg text-[13px] font-medium border transition-colors ${sortOrder === opt.value ? 'bg-[#e6eeff] border-[#155dfc] text-[#155dfc]' : 'bg-white border-[#7a8aa3] text-[#45556c]'}`}
+                                        className={`h-9 rounded-sm text-[13px] font-medium border transition-colors ${sortOrder === opt.value ? 'bg-[#e6eeff] border-[#155dfc] text-[#155dfc]' : 'bg-white border-[#7a8aa3] text-[#45556c]'}`}
                                     >
                                         {opt.label}
                                     </button>
@@ -587,7 +685,7 @@ const Sales: React.FC = () => {
                         <button
                             type="button"
                             onClick={() => { setIsMoreOpen(false); handleClearCart(); }}
-                            className="inline-flex items-center justify-center gap-2 h-11 rounded-lg text-sm font-medium text-[#d5000c] bg-[#ffeef0]"
+                            className="inline-flex items-center justify-center gap-2 h-11 rounded-sm text-sm font-medium text-[#d5000c] bg-[#ffeef0]"
                         >
                             <FiTrash2 size={16} /> Clear cart
                         </button>
@@ -622,7 +720,7 @@ const Sales: React.FC = () => {
                     <button
                         type="button"
                         onClick={handleClearCart}
-                        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[13px] font-medium text-[#d5000c] bg-[#ffeef0] hover:bg-[#ffdde1] transition-colors"
+                        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-sm text-[13px] font-medium text-[#d5000c] bg-[#ffeef0] hover:bg-[#ffdde1] transition-colors"
                     >
                         <FiTrash2 size={14} />
                         <span className="hidden md:inline">Clear cart</span>
@@ -637,7 +735,7 @@ const Sales: React.FC = () => {
     const renderClearCartConfirm = () =>
         showClearCartConfirm ? (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#020618]/45 p-4">
-                <div className={`bg-white border border-[#dfe6fb] rounded-xl p-5 w-full max-w-sm ${SHADOW_FLOAT}`}>
+                <div className={`bg-white border border-[#dfe6fb] rounded-sm p-5 w-full max-w-sm ${SHADOW_FLOAT}`}>
                     <h3 className="m-0 text-lg font-semibold text-[#0f172b]">Clear cart</h3>
                     <p className="mt-2 mb-5 text-sm text-[#45556c]">Are you sure you want to remove all items?</p>
                     <div className="flex justify-end gap-2">
@@ -651,9 +749,9 @@ const Sales: React.FC = () => {
     const renderDuplicateItemPrompt = () =>
         duplicateItemPrompt ? (
             <div className="fixed inset-0 bg-[#020618]/45 flex items-center justify-center z-[2000] p-4">
-                <div className={`bg-white border border-[#dfe6fb] rounded-xl p-6 w-full max-w-sm text-center ${SHADOW_FLOAT}`}>
+                <div className={`bg-white border border-[#dfe6fb] rounded-sm p-6 w-full max-w-sm text-center ${SHADOW_FLOAT}`}>
                     {/* Icon */}
-                    <div className="mx-auto mb-4 w-12 h-12 rounded-xl flex items-center justify-center bg-[#e6eeff]">
+                    <div className="mx-auto mb-4 w-12 h-12 rounded-sm flex items-center justify-center bg-[#e6eeff]">
                         <svg className="w-6 h-6 text-[#155dfc]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                         </svg>
@@ -669,13 +767,13 @@ const Sales: React.FC = () => {
                     <div className="flex flex-col gap-2">
                         <button
                             onClick={handleIncreaseExistingQuantity}
-                            className="w-full h-11 rounded-lg bg-[#155dfc] text-white font-medium hover:bg-[#1447e6] transition-colors"
+                            className="w-full h-11 rounded-sm bg-[#155dfc] text-white font-medium hover:bg-[#1447e6] transition-colors"
                         >
                             Increase Quantity
                         </button>
                         <button
                             onClick={handleAddAsNewLine}
-                            className="w-full h-11 rounded-lg bg-white border border-[#7a8aa3] text-[#0f172b] font-medium hover:bg-[#f5f7ff] transition-colors"
+                            className="w-full h-11 rounded-sm bg-white border border-[#7a8aa3] text-[#0f172b] font-medium hover:bg-[#f5f7ff] transition-colors"
                         >
                             Add as New Item
                         </button>
@@ -694,7 +792,7 @@ const Sales: React.FC = () => {
         <>
             {savedBillData && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#020618]/60 backdrop-blur-sm p-4">
-                    <div className={`bg-white border border-[#dfe6fb] rounded-xl ${SHADOW_FLOAT} p-6 w-full max-w-sm flex flex-col items-center animate-in fade-in zoom-in duration-300`}>
+                    <div className={`bg-white border border-[#dfe6fb] rounded-sm ${SHADOW_FLOAT} p-6 w-full max-w-sm flex flex-col items-center animate-in fade-in zoom-in duration-300`}>
                         <button onClick={handleCloseQrModal} aria-label="Close" className="self-end p-1 rounded-full text-[#5b6b86] hover:text-[#0f172b] hover:bg-[#f5f7ff] transition-colors">
                             <FiX size={20} />
                         </button>
@@ -704,7 +802,7 @@ const Sales: React.FC = () => {
                         <h3 className="m-0 text-xl font-semibold text-[#0f172b] mb-1">Bill saved</h3>
                         <p className="text-sm text-[#5b6b86] mb-4">Invoice #{savedBillData.number}</p>
 
-                        <div className="bg-white p-3 border border-[#dfe6fb] rounded-xl mb-4">
+                        <div className="bg-white p-3 border border-[#dfe6fb] rounded-sm mb-4">
                             <QRCode
                                 value={`${window.location.origin}/download-bill/${currentUser?.companyId}/${savedBillData?.id}`}
                                 size={200}
@@ -722,7 +820,7 @@ const Sales: React.FC = () => {
                                     <button
                                         onClick={() => handleSendWhatsapp(savedBillData.invoiceData)}
                                         disabled={sendingPdf}
-                                        className="w-full h-12 rounded-lg bg-[#008236] text-white font-medium hover:bg-[#006b2c] transition-colors flex items-center justify-center gap-2 mb-3 disabled:opacity-[.45]"
+                                        className="w-full h-12 rounded-sm bg-[#008236] text-white font-medium hover:bg-[#006b2c] transition-colors flex items-center justify-center gap-2 mb-3 disabled:opacity-[.45]"
                                     >
                                         {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
                                     </button>
@@ -731,14 +829,14 @@ const Sales: React.FC = () => {
                                     <button
                                         onClick={() => handleSendWhatsappSnapto(savedBillData.invoiceData)}
                                         disabled={sendingPdf}
-                                        className="w-full h-12 rounded-lg bg-[#008236] text-white font-medium hover:bg-[#006b2c] transition-colors flex items-center justify-center gap-2 mb-3 disabled:opacity-[.45]"
+                                        className="w-full h-12 rounded-sm bg-[#008236] text-white font-medium hover:bg-[#006b2c] transition-colors flex items-center justify-center gap-2 mb-3 disabled:opacity-[.45]"
                                     >
                                         {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
                                     </button>
                                 )}
                             </>
                         ) : (
-                            <p className="text-xs text-[#bb4d00] mb-3 text-center bg-[#fff3dd] p-2 rounded-lg w-full">
+                            <p className="text-xs text-[#bb4d00] mb-3 text-center bg-[#fff3dd] p-2 rounded-sm w-full">
                                 No phone number provided for WhatsApp.
                             </p>
                         )}
@@ -746,14 +844,14 @@ const Sales: React.FC = () => {
                         <button
                             onClick={() => setShowPrintSubMenu(true)}
                             disabled={printingPdf}
-                            className="w-full h-12 rounded-lg bg-white border border-[#7a8aa3] text-[#0f172b] font-medium hover:bg-[#f5f7ff] transition-colors flex items-center justify-center gap-2 mb-3 disabled:opacity-[.45]"
+                            className="w-full h-12 rounded-sm bg-white border border-[#7a8aa3] text-[#0f172b] font-medium hover:bg-[#f5f7ff] transition-colors flex items-center justify-center gap-2 mb-3 disabled:opacity-[.45]"
                         >
                             {printingPdf ? <Spinner /> : <><IconPrint /> Print</>}
                         </button>
 
                         <button
                             onClick={handleCloseQrModal}
-                            className="w-full h-12 rounded-lg bg-[#155dfc] text-white font-medium hover:bg-[#1447e6] transition-colors"
+                            className="w-full h-12 rounded-sm bg-[#155dfc] text-white font-medium hover:bg-[#1447e6] transition-colors"
                         >
                             Done
                         </button>
@@ -763,13 +861,13 @@ const Sales: React.FC = () => {
 
             {showPrintSubMenu && savedBillData && (
                 <div className="fixed inset-0 z-[110] flex items-center justify-center bg-[#020618]/45" onClick={() => setShowPrintSubMenu(false)}>
-                    <div className={`bg-white border border-[#dfe6fb] rounded-xl p-6 w-full max-w-xs mx-4 ${SHADOW_FLOAT}`} onClick={e => e.stopPropagation()}>
+                    <div className={`bg-white border border-[#dfe6fb] rounded-sm p-6 w-full max-w-xs mx-4 ${SHADOW_FLOAT}`} onClick={e => e.stopPropagation()}>
                         <h3 className={`${LABEL_CLS} mb-4 text-center`}>Print options</h3>
                         <div className="flex flex-col gap-3">
-                            <button onClick={() => handlePrintAction(savedBillData.invoiceData, false)} className="w-full h-11 rounded-lg bg-white border border-[#7a8aa3] text-[#0f172b] text-sm font-medium hover:bg-[#f5f7ff] transition-colors">
+                            <button onClick={() => handlePrintAction(savedBillData.invoiceData, false)} className="w-full h-11 rounded-sm bg-white border border-[#7a8aa3] text-[#0f172b] text-sm font-medium hover:bg-[#f5f7ff] transition-colors">
                                 Print (Bill Only)
                             </button>
-                            <button onClick={() => handlePrintAction(savedBillData.invoiceData, true)} className="w-full h-11 rounded-lg bg-[#e6eeff] border border-[#155dfc] text-[#155dfc] text-sm font-medium hover:bg-[#dbe6ff] transition-colors">
+                            <button onClick={() => handlePrintAction(savedBillData.invoiceData, true)} className="w-full h-11 rounded-sm bg-[#e6eeff] border border-[#155dfc] text-[#155dfc] text-sm font-medium hover:bg-[#dbe6ff] transition-colors">
                                 {enableTriplicate ? 'Print (Bill + 2 Duplicates)' : 'Print (Bill + Duplicate)'}
                             </button>
                             <button onClick={() => setShowPrintSubMenu(false)} className="w-full h-9 text-xs font-medium text-[#5b6b86] hover:text-[#0f172b] mt-1">
@@ -831,6 +929,9 @@ const Sales: React.FC = () => {
                     <div className="flex flex-col w-full xl:flex-1 h-full relative min-w-0 overflow-hidden">
 
                         <div className="flex-shrink-0 bg-white border-b border-[#dfe6fb]">
+                            {/* Customer (below xl — on desktop it lives in the right panel) */}
+                            <div className="xl:hidden px-4 md:px-5 pt-3">{renderCustomerBlock(false)}</div>
+
                             <div className="hidden md:block px-5 pt-4">{renderGridSearch()}</div>
                             <div className="md:hidden px-4 pt-3">{renderGridSearch()}</div>
 
@@ -852,7 +953,7 @@ const Sales: React.FC = () => {
                                         <button
                                             type="button"
                                             onClick={handleClearCart}
-                                            className="hidden md:inline-flex xl:hidden items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium text-[#d5000c] bg-[#ffeef0] hover:bg-[#ffdde1] transition-colors flex-shrink-0 whitespace-nowrap"
+                                            className="hidden md:inline-flex xl:hidden items-center gap-1.5 h-8 px-3 rounded-sm text-xs font-medium text-[#d5000c] bg-[#ffeef0] hover:bg-[#ffdde1] transition-colors flex-shrink-0 whitespace-nowrap"
                                         >
                                             <FiTrash2 size={14} /> Clear cart
                                         </button>
@@ -870,18 +971,18 @@ const Sales: React.FC = () => {
                                         value={sortOrder}
                                         onChange={(e) => setSortOrder(e.target.value as typeof sortOrder)}
                                         aria-label="Sort"
-                                        className="hidden md:block h-8 px-2 bg-white border border-[#7a8aa3] rounded-lg text-xs font-medium text-[#0f172b] outline-none focus:border-[#155dfc] focus:ring-4 focus:ring-[#e6eeff]"
+                                        className="hidden md:block h-8 px-2 bg-white border border-[#7a8aa3] rounded-sm text-xs font-medium text-[#0f172b] outline-none focus:border-[#155dfc] focus:ring-4 focus:ring-[#e6eeff]"
                                     >
                                         {SORT_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                                     </select>
-                                    <div role="group" aria-label="Photos" className="inline-flex p-[3px] gap-0.5 bg-[#f5f7ff] border border-[#dfe6fb] rounded-[11px]">
+                                    <div role="group" aria-label="Photos" className="inline-flex p-[3px] gap-0.5 bg-[#f5f7ff] border border-[#dfe6fb] rounded-sm">
                                         {([[true, 'Photos'], [false, 'Compact']] as const).map(([val, label]) => (
                                             <button
                                                 key={label}
                                                 type="button"
                                                 aria-pressed={isCardImageView === val}
                                                 onClick={() => setShowPhotos(val)}
-                                                className={`h-7 px-3 rounded-lg text-xs font-medium transition-colors ${isCardImageView === val ? 'bg-white text-[#155dfc] shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]' : 'text-[#45556c] hover:text-[#0f172b]'}`}
+                                                className={`h-7 px-3 rounded-sm text-xs font-medium transition-colors ${isCardImageView === val ? 'bg-white text-[#155dfc] shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]' : 'text-[#45556c] hover:text-[#0f172b]'}`}
                                             >
                                                 {label}
                                             </button>
@@ -938,7 +1039,7 @@ const Sales: React.FC = () => {
                                             key={item.id}
                                             onClick={() => {
                                                 if (isSelected) handleQuantityChange(lastAddedCartItem.id, quantity + 1);
-                                                else handleAddOrPickTier(item);   // 👈 CHANGED
+                                                else handleAddOrPickTier(item);
                                             }}
                                             className={`bg-white rounded-sm flex flex-col w-full overflow-visible transition-all duration-200 relative group cursor-pointer
                                                 ${isSelected
@@ -978,10 +1079,10 @@ const Sales: React.FC = () => {
                                                     </div>
                                                 </div>
 
-                                                {/* ── Discount badge – Blinkit style, top-left ── */}
+                                                {/* ── Discount badge – top-left ── */}
                                                 {discPct > 0 && (
                                                     <div
-                                                        className="absolute top-1.5 left-1.5 z-10 bg-blue-600 text-white font-bold text-[9px] leading-tight px-1.5 py-[3px] rounded-md shadow-sm"
+                                                        className="absolute top-1.5 left-1.5 z-10 bg-blue-600 text-white font-bold text-[9px] leading-tight px-1.5 py-[3px] rounded-sm shadow-sm"
                                                     >
                                                         {discPct}% OFF
                                                     </div>
@@ -991,7 +1092,7 @@ const Sales: React.FC = () => {
                                                 {isSelected && (
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); handleDeleteItem(lastAddedCartItem.id); }}
-                                                        className="absolute top-1 right-1.5 z-20 w-5 h-5 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors text-[10px] font-bold shadow-sm border border-gray-100"
+                                                        className="absolute top-1 right-1.5 z-20 w-5 h-5 flex items-center justify-center rounded-sm bg-white/80 backdrop-blur-sm text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors text-[10px] font-bold shadow-sm border border-gray-100"
                                                     >
                                                         ✕
                                                     </button>
@@ -1095,7 +1196,7 @@ const Sales: React.FC = () => {
                                         key={item.id}
                                         onClick={() => {
                                             if (isSelected) handleQuantityChange(lastAddedCartItem.id, quantity + 1);
-                                            else handleAddOrPickTier(item);   // 👈 CHANGED
+                                            else handleAddOrPickTier(item);
                                         }}
                                         className={`bg-white rounded-sm border flex flex-col overflow-visible transition-all relative
                                       ${isSelected ? 'border-blue-400 ring-1 ring-blue-100' : 'border-gray-100 hover:shadow-sm'}`}
@@ -1105,7 +1206,7 @@ const Sales: React.FC = () => {
                                         {discPct > 0 && (
                                             <div
                                                 className="absolute -top-px -left-px bg-blue-600 text-white text-[8px] font-medium leading-tight text-center z-10"
-                                                style={{ borderRadius: '10px 0 8px 0', padding: '3px 6px', minWidth: 28 }}
+                                                style={{ borderRadius: '2px 0 2px 0', padding: '3px 6px', minWidth: 28 }}
                                             >
                                                 {discPct}% OFF
                                             </div>
@@ -1242,7 +1343,7 @@ const Sales: React.FC = () => {
                             <div className="flex items-center justify-between">
                                 <h2 className="m-0 text-base font-semibold text-[#0f172b]">Bill · {totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}</h2>
                                 {items.length > 0 && (
-                                    <button onClick={handleClearCart} className="inline-flex items-center h-8 px-3 rounded-lg text-[13px] font-medium text-[#d5000c] hover:bg-[#ffeef0] transition-colors">Clear</button>
+                                    <button onClick={handleClearCart} className="inline-flex items-center h-8 px-3 rounded-sm text-[13px] font-medium text-[#d5000c] hover:bg-[#ffeef0] transition-colors">Clear</button>
                                 )}
                             </div>
 
@@ -1255,7 +1356,7 @@ const Sales: React.FC = () => {
                                             <b className="text-[13px] font-medium text-[#0f172b] truncate">{i.name}</b>
                                             <b className="text-[13px] font-medium text-[#0f172b] tabular-nums">₹{(unit * i.quantity).toLocaleString('en-IN')}</b>
                                             <span className="text-xs text-[#5b6b86]">{i.quantity} × ₹{unit.toLocaleString('en-IN')}</span>
-                                            <div className="inline-flex items-center border border-[#7a8aa3] rounded-lg bg-white h-7 justify-self-end">
+                                            <div className="inline-flex items-center border border-[#7a8aa3] rounded-sm bg-white h-7 justify-self-end">
                                                 <button onClick={() => i.quantity > 1 ? handleQuantityChange(i.id, i.quantity - 1) : handleDeleteItem(i.id)} aria-label="Less" className="w-6 h-[26px] text-[#45556c]">−</button>
                                                 <span className="min-w-[20px] text-center text-xs font-semibold tabular-nums">{i.quantity}</span>
                                                 <button onClick={() => handleQuantityChange(i.id, i.quantity + 1)} aria-label="More" className="w-6 h-[26px] text-[#45556c]">+</button>
@@ -1272,7 +1373,7 @@ const Sales: React.FC = () => {
                                 {showTaxRow && <div className="flex justify-between"><span className="text-[#45556c]">Tax ({activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})</span><span className="tabular-nums">₹{fmtINR(taxAmount)}</span></div>}
                             </div>
                             {totalDiscount > 0 && (
-                                <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-[#e9faef] text-[#008236] text-[13px] font-medium">Customer saves ₹{fmtINR(totalDiscount)}</div>
+                                <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-sm bg-[#e9faef] text-[#008236] text-[13px] font-medium">Customer saves ₹{fmtINR(totalDiscount)}</div>
                             )}
                             <div className="flex justify-between items-baseline">
                                 <span className="text-sm text-[#45556c]">Grand total</span>
@@ -1280,7 +1381,7 @@ const Sales: React.FC = () => {
                             </div>
 
                             <button type="button" onClick={handleProceedToPayment} disabled={items.length === 0}
-                                className="mt-auto w-full h-14 rounded-lg bg-[#155dfc] text-white text-base font-medium hover:bg-[#1447e6] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed">
+                                className="mt-auto w-full h-14 rounded-sm bg-[#155dfc] text-white text-base font-medium hover:bg-[#1447e6] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed">
                                 {isEditMode ? 'Update invoice' : 'Collect payment'} · ₹{fmtINR(finalAmount)}
                             </button>
                         </div>
@@ -1293,13 +1394,13 @@ const Sales: React.FC = () => {
                     enableCustomerDetails={true}
                     subtotal={subtotal} billTotal={amountToPayNow}
                     totalTax={taxAmount}
-                                        onPaymentComplete={handleSavePaymentWithOptions}
+                    onPaymentComplete={handleSavePaymentWithOptions}
                     showBillOptions={!isEditMode}
                     isPartyNameEditable={!isEditMode}
-                    //enableCustomerDetails={salesSettings?.enableCustomerInfoToggle ?? true}
                     originalBillTotal={calculatedOriginalTotal}
-                    initialPartyName={isEditMode ? invoiceToEdit?.partyName : prefillParty?.name || ''}
-                    initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : prefillParty?.number || ''}
+                    initialPartyName={isEditMode ? invoiceToEdit?.partyName : customerName}
+                    initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : customerPhone}
+                    onPartyChange={isEditMode ? undefined : handleDrawerPartyChange}
                     initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined}
                     totalItemDiscount={totalDiscount} totalQuantity={totalQuantity}
                     initialDiscount={invoiceToEdit?.manualDiscount}
@@ -1312,7 +1413,7 @@ const Sales: React.FC = () => {
                     initialShippingNumber={isEditMode ? invoiceToEdit?.shippingNumber : ''}
                     initialShippingAddress={isEditMode ? invoiceToEdit?.shippingAddress : ''}
                     initialShippingGST={isEditMode ? invoiceToEdit?.shippingGST : ''}
-                    initialPlaceOfSupply={isEditMode ? invoiceToEdit?.placeOfSupply : ''}      // <-- ADD THIS
+                    initialPlaceOfSupply={isEditMode ? invoiceToEdit?.placeOfSupply : ''}
                     initialShippingState={isEditMode ? invoiceToEdit?.shippingState : ''}
                     initialExpenses={isEditMode ? (invoiceToEdit?.expenses || (invoiceToEdit?.extraExpenseName ? [{ name: invoiceToEdit.extraExpenseName, amount: invoiceToEdit.extraExpenseAmount }] : [])) : []}
                     initialNarration={isEditMode ? invoiceToEdit?.narration : ''}
@@ -1330,9 +1431,10 @@ const Sales: React.FC = () => {
                     isOpen={!!tierPickerItem}
                     onClose={() => setTierPickerItem(null)}
                     onSelect={(item, tier) => {
-                        handleItemSelected(item, tier.id === '__base__' ? undefined : tier);   // 👈 CHANGED — ab duplicate-check ke through add hoga
+                        handleItemSelected(item, tier.id === '__base__' ? undefined : tier);
                     }}
                 />
+                {renderCustomerModal()}
                 {renderSavedBillModals()}
             </div>
         );
@@ -1366,7 +1468,7 @@ const Sales: React.FC = () => {
                         </div>
                         {/* Enlarged Display Screen */}
                         <div
-                            className="bg-white border border-[#dfe6fb] rounded-xl shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] px-4 pt-3 pb-2 flex flex-col items-end justify-end min-h-[8rem] sm:min-h-[10rem] max-h-[12rem] sm:max-h-[14rem] shrink-0 w-full cursor-text overflow-hidden relative"
+                            className="bg-white border border-[#dfe6fb] rounded-sm shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] px-4 pt-3 pb-2 flex flex-col items-end justify-end min-h-[8rem] sm:min-h-[10rem] max-h-[12rem] sm:max-h-[14rem] shrink-0 w-full cursor-text overflow-hidden relative"
                             onClick={() => displayRef.current?.focus()}
                         >
                             {/* Hidden textarea — drives all input logic unchanged */}
@@ -1410,7 +1512,7 @@ const Sales: React.FC = () => {
                                         }}
                                         onPointerUp={isBackspace ? () => handlePointerUp(key) : undefined}
                                         onPointerLeave={isBackspace ? () => handlePointerLeave(key) : undefined}
-                                        className={`h-full w-full flex items-center justify-center rounded-lg text-2xl sm:text-3xl font-medium transition-all active:scale-95 border select-none
+                                        className={`h-full w-full flex items-center justify-center rounded-sm text-2xl sm:text-3xl font-medium transition-all active:scale-95 border select-none
         ${isFunction ? 'bg-[#ffeef0] border-[#d5000c]/30 text-[#d5000c] hover:bg-[#ffdde1]' :
                                                 isOperator ? 'bg-[#e6eeff] border-[#155dfc]/30 text-[#155dfc] hover:bg-[#dbe6ff]' :
                                                     'bg-white border-[#dfe6fb] text-[#0f172b] hover:bg-[#f5f7ff]'}
@@ -1430,7 +1532,7 @@ const Sales: React.FC = () => {
                         <button
                             onClick={handleCheckoutClick}
                             disabled={liveItemCount === 0}
-                            className="w-full h-14 rounded-lg bg-[#155dfc] hover:bg-[#1447e6] text-white font-medium text-base transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed active:scale-[0.98]"
+                            className="w-full h-14 rounded-sm bg-[#155dfc] hover:bg-[#1447e6] text-white font-medium text-base transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed active:scale-[0.98]"
                         >
                             Collect payment · ₹{liveTotal.toFixed(2)}
                         </button>
@@ -1461,8 +1563,9 @@ const Sales: React.FC = () => {
                     requireCustomerName={salesSettings?.requireCustomerName ?? false}
                     requireCustomerMobile={salesSettings?.requireCustomerMobile ?? false}
                     isPartyNameEditable={true}
-                    initialPartyName={prefillParty?.name || ''}
-                    initialPartyNumber={prefillParty?.number || ''}
+                    initialPartyName={customerName}
+                    initialPartyNumber={customerPhone}
+                    onPartyChange={handleDrawerPartyChange}
                     totalItemDiscount={totalDiscount}
                     totalQuantity={totalQuantity}
                     maxBillDiscountValue={salesSettings?.maxBillDiscountValue}
@@ -1492,7 +1595,7 @@ const Sales: React.FC = () => {
                 />
             )}
             {renderClearCartConfirm()}
-            {/* 👇 NEW: Duplicate item popup */}
+            {/* Duplicate item popup */}
             {renderDuplicateItemPrompt()}
             <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
             <BarcodeLinkModal
@@ -1513,6 +1616,8 @@ const Sales: React.FC = () => {
                 <div className="flex flex-col w-full xl:flex-1 min-w-0 h-full relative">
 
                     <div className="flex-shrink-0 px-4 md:px-5 py-3 bg-white border-b border-[#dfe6fb]">
+                        {/* Customer (below xl — on desktop it lives in the right panel) */}
+                        <div className="xl:hidden mb-3">{renderCustomerBlock(false)}</div>
                         <div className="flex gap-2 items-center w-full">
                             <div className="flex-grow">
                                 <SearchableItemInput
@@ -1632,7 +1737,7 @@ const Sales: React.FC = () => {
                         <div className="mt-auto grid gap-3">
                             <p className="m-0 text-center text-xs text-[#5b6b86]">Cash, UPI, card, udhaar or a split — chosen in the payment drawer</p>
                             <button type="button" onClick={handleProceedToPayment} disabled={items.length === 0}
-                                className="w-full h-14 rounded-lg bg-[#155dfc] text-white text-base font-medium hover:bg-[#1447e6] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed">
+                                className="w-full h-14 rounded-sm bg-[#155dfc] text-white text-base font-medium hover:bg-[#1447e6] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed">
                                 {isEditMode ? 'Update invoice' : 'Collect payment'} · ₹{fmtINR(finalAmount)}
                             </button>
                         </div>
@@ -1646,14 +1751,15 @@ const Sales: React.FC = () => {
                 subtotal={subtotal} billTotal={amountToPayNow}
                 totalTax={taxAmount}
                 originalBillTotal={calculatedOriginalTotal}
-                                onPaymentComplete={handleSavePaymentWithOptions}
+                onPaymentComplete={handleSavePaymentWithOptions}
                 showBillOptions={!isEditMode}
                 initialDiscount={invoiceToEdit?.manualDiscount}
                 allowDueBilling={salesSettings?.allowDueBilling ?? false}
                 isPartyNameEditable={!isEditMode}
                 enableCustomerDetails={true}
-                initialPartyName={isEditMode ? invoiceToEdit?.partyName : prefillParty?.name || ''}
-                initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : prefillParty?.number || ''}
+                initialPartyName={isEditMode ? invoiceToEdit?.partyName : customerName}
+                initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : customerPhone}
+                onPartyChange={isEditMode ? undefined : handleDrawerPartyChange}
                 initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined}
                 totalItemDiscount={totalDiscount} totalQuantity={totalQuantity}
                 requireCustomerName={salesSettings?.requireCustomerName}
@@ -1685,9 +1791,10 @@ const Sales: React.FC = () => {
                 isOpen={!!tierPickerItem}
                 onClose={() => setTierPickerItem(null)}
                 onSelect={(item, tier) => {
-                    handleItemSelected(item, tier.id === '__base__' ? undefined : tier);   // 👈 CHANGED — ab duplicate-check ke through add hoga
+                    handleItemSelected(item, tier.id === '__base__' ? undefined : tier);
                 }}
             />
+            {renderCustomerModal()}
             {renderSavedBillModals()}
         </div>
     );

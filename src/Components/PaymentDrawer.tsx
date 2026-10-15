@@ -113,6 +113,7 @@ interface PaymentDrawerProps {
     // Sales Setting cap on the Bill Discount field below — 0/undefined means no cap.
     maxBillDiscountValue?: number;
     maxBillDiscountType?: 'percent' | 'amount';
+     onPartyChange?: (name: string, number: string) => void;
 }
 
 // --- SESSION STORAGE KEYS ---
@@ -375,6 +376,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     showBillOptions = true,
     maxBillDiscountValue = 0,
     maxBillDiscountType = 'percent',
+    onPartyChange,
 }) => {
     const { currentUser } = useAuth();
 
@@ -1054,9 +1056,20 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         setShowDiscountTaxModal(false);
     };
 
-    // Make sure no pop-up stays "open" while the drawer is closed
+        // Make sure no pop-up stays "open" while the drawer is closed
     useEffect(() => {
         if (!isOpen) closePopups();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen]);
+
+    // Drawer open -> close hone par hi party details parent ko do.
+    // (typing ke dauran sync nahi hota, warna init effect discount/payments reset kar deta)
+    const wasOpenRef = useRef(false);
+    useEffect(() => {
+        if (wasOpenRef.current && !isOpen && onPartyChange) {
+            onPartyChange(partyName, partyNumber);
+        }
+        wasOpenRef.current = isOpen;
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen]);
 

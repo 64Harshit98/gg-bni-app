@@ -295,11 +295,22 @@ const SubscriptionPage: React.FC = () => {
     const navigate = useNavigate();
 
     const handleLogout = async () => {
-        try { await logoutUser(); navigate(ROUTES.LANDING); }
-        catch (err) { console.error('Logout failed:', err); }
-    };
+    try { await logoutUser(); navigate(ROUTES.LANDING); }
+    catch (err) { console.error('Logout failed:', err); }
+};
 
-    const [activeTab, setActiveTab] = useState<'pos' | 'catalogue' | 'both'>('pos');
+// Go back exactly one page in history (minus 1).
+// If there is no previous page (e.g. page opened directly / refreshed in a new tab),
+// fall back to the plan's dashboard so the user is never stuck.
+const handleBack = () => {
+    if (window.history.state && window.history.state.idx > 0) {
+        navigate(-1);
+    } else {
+        navigate(dashboardRoute, { replace: true });
+    }
+};
+
+const [activeTab, setActiveTab] = useState<'pos' | 'catalogue' | 'both'>('pos');
     const [showAllFeatures, setShowAllFeatures] = useState(false);
 
     // Catalogue tab → orange theme, everything else → blue theme
@@ -475,7 +486,7 @@ const SubscriptionPage: React.FC = () => {
             {/* Top bar */}
             <div className={`sticky top-0 z-20 bg-white border-b ${T.borderB}`}>
                 <div className="flex items-center gap-2 h-14 px-2 max-w-[1000px] mx-auto md:h-16 md:pl-4 md:pr-6 md:gap-3">
-                    <BackButton to={dashboardRoute} />
+                    <BackButton onClick={handleBack} />
                     <div className="flex-1 min-w-0">
                         <div className="hidden md:block text-xs leading-4 text-[#5b6b86]">Account /</div>
                         <h1 className="m-0 text-lg leading-[26px] font-semibold truncate md:text-[22px] md:leading-[30px]">Plan &amp; subscription</h1>

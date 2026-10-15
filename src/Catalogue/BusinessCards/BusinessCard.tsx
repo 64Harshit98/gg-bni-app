@@ -120,7 +120,7 @@ const DownloadShare = ({
     t: ThemeTokens;
     children?: React.ReactNode;
 }) => (
-    <div className="flex gap-1.5">
+    <div className="flex flex-wrap gap-1.5">
         <button onClick={onDownload} className={`${BTN} ${t.btnSecondary}`}>
             <Ico>
                 <path d="M12 3v12M7 10l5 5 5-5M4 21h16" />
@@ -363,7 +363,7 @@ function BusinessCard({ theme = 'pos' }: { theme?: BusinessCardTheme }) {
             <div
                 ref={scrollRef}
                 onScroll={handleScroll}
-                className="-mx-4 flex flex-nowrap gap-3 overflow-x-auto px-4 pb-2 snap-x snap-mandatory scrollbar-hide md:-mx-5 md:px-5 xl:mx-0 xl:flex-wrap xl:gap-4 xl:overflow-visible xl:px-0 xl:pb-0 xl:snap-none"
+                className="-mx-4 flex flex-nowrap gap-3 overflow-x-auto px-4 pb-2 snap-x snap-mandatory scrollbar-hide md:-mx-5 md:px-5 min-[1700px]:mx-0 min-[1700px]:flex-wrap min-[1700px]:gap-4 min-[1700px]:overflow-visible min-[1700px]:px-0 min-[1700px]:pb-0 min-[1700px]:snap-none"
             >
                 {/* ================= DESIGN 1 — dark ================= */}
                 <div className="grid w-[260px] min-w-0 shrink-0 snap-center gap-2">
@@ -459,7 +459,7 @@ function BusinessCard({ theme = 'pos' }: { theme?: BusinessCardTheme }) {
                 {!uploadedCard ? (
                     <div
                         ref={uploadedCardRef}
-                        className="flex aspect-[1.75] w-[260px] min-w-0 shrink-0 snap-center flex-col items-center justify-center gap-1.5 rounded-sm border-[1.5px] border-dashed border-[#7a8aa3] p-2 text-center text-xs leading-[18px] text-[#45556c] xl:aspect-auto xl:gap-2 xl:p-3"
+                        className="flex aspect-[1.75] w-[260px] min-w-0 shrink-0 snap-center flex-col items-center justify-center gap-1.5 rounded-sm border-[1.5px] border-dashed border-[#7a8aa3] p-2 text-center text-xs leading-[18px] text-[#45556c]"
                     >
                         <Ico className="h-5 w-5">
                             <path d="M12 21V9M7 14l5-5 5 5M4 3h16" />
@@ -486,12 +486,16 @@ function BusinessCard({ theme = 'pos' }: { theme?: BusinessCardTheme }) {
                             />
                         </div>
                         <DownloadShare t={t} onDownload={downloadUploadedCard} onShare={handleShareUploadedCard}>
-                            {/* Remove / Replace */}
-                            <button onClick={removeUploadedCard} className={`${BTN} ${t.btnDanger}`}>
+                            {/* Remove (icon-only so all 3 buttons fit in 260px) */}
+                            <button
+                                onClick={removeUploadedCard}
+                                aria-label="Remove uploaded card"
+                                title="Remove"
+                                className={`${BTN} ${t.btnDanger} px-2`}
+                            >
                                 <Ico>
                                     <path d="M18 6L6 18M6 6l12 12" />
                                 </Ico>
-                                Remove
                             </button>
                         </DownloadShare>
                     </div>
@@ -499,7 +503,7 @@ function BusinessCard({ theme = 'pos' }: { theme?: BusinessCardTheme }) {
             </div>
 
             {/* Dots */}
-            <div className="flex justify-center gap-1 pb-3 pt-1 pointer-events-none xl:hidden">
+            <div className="flex justify-center gap-1 pb-3 pt-1 pointer-events-none min-[1700px]:hidden">
                 {cards.map((_, i) => (
                     <div
                         key={i}

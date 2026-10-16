@@ -205,7 +205,7 @@ function RequestPage() {
     const [activeDateFilter, setActiveDateFilter] = useState<string>(location.state?.activeDateFilter || 'today')
     const [customStartDate, setCustomStartDate] = useState<string>(location.state?.customDateRange?.start || '')
     const [customEndDate, setCustomEndDate] = useState<string>(location.state?.customDateRange?.end || '')
-        const [showCustomInputs, setShowCustomInputs] = useState<boolean>(location.state?.activeDateFilter === 'custom')
+    const [showCustomInputs, setShowCustomInputs] = useState<boolean>(location.state?.activeDateFilter === 'custom')
     const [customDraft, setCustomDraft] = useState({ start: customStartDate, end: customEndDate })
 
     const dateFilterRef = useRef<HTMLDivElement>(null)
@@ -248,7 +248,7 @@ function RequestPage() {
     }, [companyId]);
 
     // ───────────── date filter ─────────────
-        const handleDateFilterSelect = (value: string) => {
+    const handleDateFilterSelect = (value: string) => {
         if (value === 'custom') {
             // do NOT change the active filter yet — edit a draft, apply on "Apply"
             setCustomDraft({ start: customStartDate, end: customEndDate });
@@ -719,7 +719,7 @@ function RequestPage() {
     const renderReplyDialog = (key: string, customerNumber: string | undefined, afterSend?: () => Promise<void>) => {
         if (!replyOpen[key]) return null;
         const close = () => setReplyOpen(prev => ({ ...prev, [key]: false }));
-        return (
+        return createPortal(
             <div
                 className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center sm:p-4 bg-slate-950/45"
                 onClick={close}
@@ -762,7 +762,8 @@ function RequestPage() {
                         </button>
                     </div>
                 </div>
-            </div>
+            </div>,
+            document.body
         );
     };
 
@@ -1126,7 +1127,7 @@ function RequestPage() {
                             </span>
                         </button>
 
-                                                {isDateFilterOpen && (
+                        {isDateFilterOpen && (
                             <div className={cx(
                                 'absolute right-0 top-[calc(100%+8px)] z-[120] max-w-[calc(100vw-2rem)] bg-white border border-[#f6e1d0] rounded-sm shadow-xl',
                                 showCustomInputs ? 'w-[328px] p-4' : 'w-60 p-2'

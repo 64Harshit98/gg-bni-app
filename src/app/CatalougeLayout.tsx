@@ -28,12 +28,32 @@ import NotificationBell from '../Components/NotificationBell';
 import { Sidebar, type QuickAction } from '../Components/layout/SideBar';
 import { Header } from '../Components/layout/Header';
 import { CommandPalette, LAYOUT_ACTION_EVENT, type Destination, type LayoutAction } from '../Components/layout/CommandPalette';
+import { SubscriptionBanner, useSubscriptionBanner } from '../Components/layout/SubscriptionBanner';
 
 const CatalogueLayout = () => {
     const navigate = useNavigate();
     const location = useLocation();
     //const isCatalogueHomePage = location.pathname === ROUTES.CHOME;
     const { currentUser } = useAuth();
+    const banner = useSubscriptionBanner();
+
+    const normPath = (p: string) => {
+        const abs = p.startsWith('/') ? p : `${ROUTES.CHOME}/${p}`; // relative `to` ko absolute banao
+        return abs.replace(/\/+$/, '') || '/';
+    };
+    const BANNER_LABEL = /^(home|dashboard|orders?|accounts?)$/i;
+    const BANNER_PATHS = [
+        ...CatItems
+            .filter((i) => BANNER_LABEL.test(i.label))
+            .map((i) => normPath(i.to)),
+        '/accounts',        // Catalogue Account page, root level pe hai (catalogue-home ke andar nahi)
+        ROUTES.ORDERDETAILS, // '/order-details', Orders page
+        ROUTES.CHOME,        // Catalogue Home
+    ];
+
+    const currentPath = normPath(location.pathname);
+    const showBanner =
+        banner.visible && !!banner.tier && banner.days !== null && BANNER_PATHS.includes(currentPath);
     const scrollRef = useRef<HTMLDivElement>(null);
     const [tutorialStep, setTutorialStep] = useState(-1);
 
@@ -368,6 +388,12 @@ const CatalogueLayout = () => {
                     </ShowWrapper>
                 </div>
             </header>
+            {showBanner && (
+                <SubscriptionBanner
+                    variant="mobile" theme="cat"
+                    days={banner.days!} endDate={banner.endDate} tier={banner.tier!} onClose={banner.dismiss}
+                />
+            )}
 
             {/* --- DESKTOP SIDEBAR --- */}
             <Sidebar
@@ -400,6 +426,12 @@ const CatalogueLayout = () => {
                     destinations={searchDestinations}
                     notificationPermission={Cata_Permissions.ViewNotification}
                 />
+                {showBanner && (
+                    <SubscriptionBanner
+                        variant="desktop" theme="cat"
+                        days={banner.days!} endDate={banner.endDate} tier={banner.tier!} onClose={banner.dismiss}
+                    />
+                )}
                 <div ref={scrollRef} className="flex-1 overflow-y-auto pb-20 md:pb-4 scroll-smooth">
                     <Suspense fallback={<div>Loading...</div>}>
                         <Outlet />

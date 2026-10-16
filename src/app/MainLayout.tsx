@@ -58,7 +58,10 @@ const MainLayout = () => {
   }, []);
   const { currentUser, hasPermission } = useAuth();
   const banner = useSubscriptionBanner();
-  const showBanner = banner.visible && location.pathname === ROUTES.HOME;
+  // POS pages that show the renewal banner: Home · Accounts · Journal
+  const BANNER_PATHS: string[] = [ROUTES.HOME, ROUTES.ACCOUNT, ROUTES.JOURNAL]; // ← swap in your real route constants
+  const showBanner =
+    banner.visible && !!banner.tier && banner.days !== null && BANNER_PATHS.includes(location.pathname);
   const { addExpense } = useExpenses(currentUser?.companyId, 'pos');
 
   const { settings: shopSettings, isClosingSoon, shouldAutoClose, needsReset } = useShopHours(currentUser?.companyId);
@@ -292,7 +295,12 @@ const MainLayout = () => {
           </ShowWrapper>
         </div>
       </header>
-      {showBanner && <SubscriptionBanner variant="mobile" days={banner.days!} urgent={banner.urgent} />}
+      {showBanner && (
+        <SubscriptionBanner
+          variant="mobile" theme="pos"
+          days={banner.days!} endDate={banner.endDate} tier={banner.tier!} onClose={banner.dismiss}
+        />
+      )}
 
       {/* DESKTOP SIDEBAR (new) */}
       <Sidebar
@@ -318,8 +326,13 @@ const MainLayout = () => {
       {/* MAIN CONTENT */}
       <main className="flex-1 relative flex flex-col min-w-0 overflow-hidden">
         {/* DESKTOP TOP BAR + SEARCH (new) — renders on every page */}
-        <Header navItems={navItems} userName={currentUser?.name} joinedBelow={showBanner} />
-        {showBanner && <SubscriptionBanner variant="desktop" days={banner.days!} urgent={banner.urgent} />}
+        <Header navItems={navItems} userName={currentUser?.name} />
+        {showBanner && (
+          <SubscriptionBanner
+            variant="desktop" theme="pos"
+            days={banner.days!} endDate={banner.endDate} tier={banner.tier!} onClose={banner.dismiss}
+          />
+        )}
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto pb-16 md:pb-4 scroll-smooth">
           <Suspense fallback={<div>Loading...</div>}>

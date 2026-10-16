@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
 import {
   doc,
@@ -14,7 +14,7 @@ import { normalizePlan } from '../../context/Plan';
 import { Spinner } from '../../constants/Spinner';
 import { ROUTES } from '../../constants/routes.constants';
 import { Modal, PaymentModal } from '../../constants/Modal';
-import ShinyText from '../../Components/ShinyText';
+//import ShinyText from '../../Components/ShinyText';
 import { useSalesSettings } from '../../context/SettingsContext';
 import { TutorialStep } from '../../Components/TutorialStep'; // ← same import as Home.tsx
 import { Permissions } from '../../enums/permissions.enum';
@@ -283,30 +283,18 @@ const Journal: React.FC = () => {
   }, [invoices]);
   const navigate = useNavigate();
 
-  const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
   const [isPosBasicPlan, setIsPosBasicPlan] = useState(false);
   useEffect(() => {
-    const fetchExpiry = async () => {
+    const fetchPlan = async () => {
       if (!currentUser?.companyId) return;
-      const companyRef = doc(db, 'companies', currentUser.companyId);
-      const snap = await getDoc(companyRef);
+      const snap = await getDoc(doc(db, 'companies', currentUser.companyId));
       if (snap.exists()) {
-        const data = snap.data();
-        const expiry = data.expiryDate;
-        if (expiry) {
-          const d = expiry.toDate ? expiry.toDate() : new Date(expiry);
-          setDaysRemaining(Math.ceil((d.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)));
-        }
-        const normalizedPlan = normalizePlan(data.pack);
+        const normalizedPlan = normalizePlan(snap.data().pack);
         setIsPosBasicPlan(normalizedPlan === PLANS.POS_BASIC || normalizedPlan === PLANS.CALC_CATALOG);
       }
     };
-    fetchExpiry();
+    fetchPlan();
   }, [currentUser?.companyId]);
-
-  const showBadge = daysRemaining !== null && daysRemaining <= 7 && daysRemaining >= 0;
-  const isUrgent = daysRemaining !== null && daysRemaining <= 2;
-  const isLastDay = daysRemaining !== null && daysRemaining <= 1;
 
   const {
     pdfGenerating,
@@ -892,31 +880,6 @@ const Journal: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Subscription expiry banner */}
-      {showBadge && (
-        <div
-          className={`w-full flex flex-wrap items-center justify-center gap-3 px-4 py-2.5 text-sm font-medium text-[#0f172b] border-b ${
-            isLastDay
-              ? 'bg-[#ffeef0] border-[#d5000c]'
-              : isUrgent
-                ? 'bg-[#fff3dd] border-[#dfe6fb]'
-                : 'bg-[#e6eeff] border-[#dfe6fb]'
-          }`}
-        >
-          <ShinyText
-            text={`Subscription expires in ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}.`}
-            speed={4} delay={0} color="#0f172b" shineColor="#faf5f5" spread={100}
-            direction="left" yoyo={false} pauseOnHover={false} disabled={false}
-          />
-          <Link
-            to="/subscription"
-            className="inline-flex items-center h-8 px-3 rounded-sm bg-[#155dfc] hover:bg-[#1447e6] text-white text-[13px] font-medium transition-colors"
-          >
-            Renew plan
-          </Link>
         </div>
       )}
 

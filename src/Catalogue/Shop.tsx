@@ -605,7 +605,7 @@ const OrderingPage: React.FC = () => {
                 />
             )}
 
-            <header className="sticky top-0 z-[100] bg-white border-b border-gray-100 shadow-sm w-full">
+            <header className="sticky top-0 z-20 bg-white border-b border-gray-100 shadow-sm w-full">
                 <div className="max-w-7xl mx-auto px-4 py-4 relative flex items-center justify-between h-16">
 
                     {/* Left Spacer (matches width of right button to help balance if you ever switch from absolute positioning) */}

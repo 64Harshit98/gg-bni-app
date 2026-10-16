@@ -8,7 +8,7 @@ import { db } from '../lib/Firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { ROUTES } from '../constants/routes.constants';
 import BusinessCard from './BusinessCards/BusinessCard';
-import ShinyText from '../Components/ShinyText';
+//import ShinyText from '../Components/ShinyText';
 //import NotificationBell from '../Components/NotificationBell';
 import { TutorialStep } from '../Components/TutorialStep';
 import { FiCopy, FiCheck } from 'react-icons/fi';
@@ -149,27 +149,6 @@ const Account: React.FC = () => {
             });
         }, 80);
     }, [tutorialStep]);
-
-    const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
-
-    useEffect(() => {
-        const fetchExpiry = async () => {
-            if (!currentUser?.companyId) return;
-            const ref = doc(db, 'companies', currentUser.companyId);
-            const snap = await getDoc(ref);
-            if (snap.exists()) {
-                const expiry = snap.data().expiryDate;
-                if (!expiry) return;
-                const d = expiry.toDate ? expiry.toDate() : new Date(expiry);
-                const diff = d.getTime() - new Date().getTime();
-                setDaysRemaining(Math.ceil(diff / (1000 * 60 * 60 * 24)));
-            }
-        };
-        fetchExpiry();
-    }, [currentUser?.companyId]);
-
-    const showBadge = daysRemaining !== null && daysRemaining <= 7 && daysRemaining >= 0;
-    const isUrgent = daysRemaining !== null && daysRemaining <= 2;
 
     useEffect(() => {
         const fetchUserProfile = async () => {
@@ -314,20 +293,6 @@ const Account: React.FC = () => {
 
     return (
         <div className="flex min-h-screen w-full max-w-full flex-col overflow-x-clip bg-[#fff5ec] text-sm text-[#0f172b]">
-            {showBadge && (
-                <div
-                    className={`w-full border-b border-[#f6e1d0] py-2 text-center text-sm font-semibold transition-colors duration-300 ${
-                        isUrgent ? 'bg-[#ffeef0]' : 'bg-[#fef6d7]'
-                    }`}
-                >
-                    <ShinyText
-                        text={`Subscription expires in ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}.`}
-                        speed={4} delay={0} color="#030303" shineColor="#faf5f5" spread={100} direction="left" yoyo={false} pauseOnHover={false} disabled={false}
-                    />
-                    <Link to="/subscription" className="ml-2 font-semibold text-[#c2410c] underline hover:text-[#9a3412]">Renew Now</Link>
-                </div>
-            )}
-
             {/* Page head */}
             <header className="hidden items-center gap-4 px-4 pb-4 pt-4 md:flex md:px-6 md:pt-5">
                 <div className="hidden min-w-0 md:block">

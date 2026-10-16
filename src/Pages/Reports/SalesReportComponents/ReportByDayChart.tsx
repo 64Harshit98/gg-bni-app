@@ -10,6 +10,8 @@ interface ReportByDayChartProps {
   noun?: string;
   /** Subtitle prefix for the top bucket, e.g. "Best" → "Best day 26 Sep · ₹1,800". */
   bestPrefix?: string;
+  /** Tailwind classes for a non-empty bar. Defaults to the POS blue. */
+  barClass?: string;
 }
 
 interface Bucket {
@@ -37,6 +39,7 @@ export default function ReportByDayChart({
   end,
   noun = 'Sales',
   bestPrefix = 'Best',
+  barClass = 'bg-blue-600 group-hover:bg-blue-700',
 }: ReportByDayChartProps) {
   const { buckets, isMonthly, best, max } = useMemo(() => {
     // An open-ended range (e.g. custom with no start) is clamped to the first record.
@@ -118,7 +121,7 @@ export default function ReportByDayChart({
             >
               <div
                 className={`w-full max-w-[18px] rounded-t-[2px] ${
-                  b.total > 0 ? 'bg-blue-600 group-hover:bg-blue-700' : 'bg-slate-200'
+                  b.total > 0 ? barClass : 'bg-slate-200'
                 }`}
                 style={{ height: b.total > 0 ? `max(${pct}%, 3px)` : '2px' }}
               />

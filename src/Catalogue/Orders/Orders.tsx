@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AnimatePresence } from "framer-motion";
-import { Link } from 'react-router-dom';
+//import { Link } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
 import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '../../../src/constants/routes.constants';
 import { useCatalogueData } from '../../context/CatalogueDataContext';
-import ShinyText from '../../Components/ShinyText';
+//import ShinyText from '../../Components/ShinyText';
 import {
     doc,
     getDoc,
@@ -160,27 +160,6 @@ const OrdersPage: React.FC = () => {
             el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
     }, [tutorialStep]);
-
-    // ── Subscription badge ────────────────────────────────────────────────────
-    const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
-
-    useEffect(() => {
-        const fetchExpiry = async () => {
-            if (!currentUser?.companyId) return;
-            const ref = doc(db, 'companies', currentUser.companyId);
-            const snap = await getDoc(ref);
-            if (snap.exists()) {
-                const expiry = snap.data().expiryDate;
-                if (!expiry) return;
-                const d = expiry.toDate ? expiry.toDate() : new Date(expiry);
-                setDaysRemaining(Math.ceil((d.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)));
-            }
-        };
-        fetchExpiry();
-    }, [currentUser?.companyId]);
-
-    const showBadge = daysRemaining !== null && daysRemaining <= 7 && daysRemaining >= 0;
-    const isUrgent = daysRemaining !== null && daysRemaining <= 2;
 
     const {
         activeTab, setActiveTab,
@@ -489,13 +468,6 @@ const OrdersPage: React.FC = () => {
 
             {/* List stays mounted (filters/search state safe), just hidden while an order is open on mobile */}
             <div className="contents">
-                {showBadge && (
-                    <div className={`w-full text-center py-2 text-sm font-semibold border-b ${isUrgent ? 'bg-red-100 border-red-200' : 'bg-[#ffedd5] border-[#f6e1d0]'}`}>
-                        <ShinyText text={`Subscription expires in ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}.`} speed={4} delay={0} color="#030303" shineColor="#faf5f5" spread={100} direction="left" yoyo={false} pauseOnHover={false} disabled={false} />
-                        <Link to="/subscription" className="text-[#9a3412] ml-2 underline font-semibold hover:text-[#c2410c]">Renew now</Link>
-                    </div>
-                )}
-
                 <OrderListFilters
                     tutorialStep={tutorialStep}
                     next={next}

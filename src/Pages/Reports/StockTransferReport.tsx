@@ -93,9 +93,56 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
     fetchCompanyName();
   }, [currentUser?.companyId]);
 
-  // Catalogue reuses this page in orange.
-  const accentBtn = theme === 'orange' ? 'bg-[#F97316] hover:bg-orange-600' : 'bg-blue-600 hover:bg-blue-700';
-  const accentTab = theme === 'orange' ? 'border-orange-500 text-orange-600' : 'border-blue-600 text-blue-700';
+  // Catalogue reuses this page in orange (SELLAR Catalogue theme). Every class is a
+  // full literal so Tailwind can see it. 'blue' = POS, unchanged.
+  const cat = theme === 'orange';
+  const T = cat
+    ? {
+        canvas: 'bg-[#fff5ec]',
+        line: 'border-[#f6e1d0]',
+        sunken: 'bg-[#fff8f2]',
+        sunkenHover: 'hover:bg-[#fff8f2]',
+        sunkenActive: 'active:bg-[#fff8f2]',
+        btn: 'bg-orange-700 hover:bg-orange-800',
+        tab: 'border-orange-700 text-orange-800',
+        text: 'text-orange-700',
+        ink: 'text-orange-800',
+        head: 'text-orange-800/80',
+        headHover: 'hover:text-orange-800',
+        soft: 'bg-orange-100',
+        softPill: 'bg-orange-100 text-orange-800',
+        softHover: 'hover:bg-orange-100',
+        bar: 'bg-orange-500',
+        focusBorder: 'focus:border-orange-600',
+        focusRing: 'focus:ring-orange-100',
+        selected: 'border-orange-700 ring-2 ring-orange-100',
+        note: 'bg-orange-100 text-orange-900',
+        noteBtn: 'border-orange-200 hover:border-orange-300',
+      }
+    : {
+        canvas: 'bg-canvas',
+        line: 'border-line',
+        sunken: 'bg-sunken',
+        sunkenHover: 'hover:bg-sunken',
+        sunkenActive: 'active:bg-sunken',
+        btn: 'bg-blue-600 hover:bg-blue-700',
+        tab: 'border-blue-600 text-blue-700',
+        text: 'text-blue-600',
+        ink: 'text-blue-700',
+        head: 'text-blue-700/80',
+        headHover: 'hover:text-blue-800',
+        soft: 'bg-blue-50',
+        softPill: 'bg-blue-50 text-blue-700',
+        softHover: 'hover:bg-blue-50',
+        bar: 'bg-blue-600',
+        focusBorder: 'focus:border-blue-500',
+        focusRing: 'focus:ring-blue-100',
+        selected: 'border-blue-600 ring-2 ring-blue-100',
+        note: 'bg-blue-50 text-blue-900',
+        noteBtn: 'border-blue-200 hover:border-blue-300',
+      };
+  const accentBtn = T.btn;
+  const accentTab = T.tab;
 
   /* ---------- DATE RANGE (history) ---------- */
   const [datePreset, setDatePreset] = useState('last30');
@@ -511,7 +558,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
       <th className={`px-4 py-3 font-semibold ${align === 'right' ? 'text-right' : 'text-left'}`}>
         <button
           onClick={() => onSort(key)}
-          className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-blue-800 ${align === 'right' ? 'flex-row-reverse' : ''} ${isActive ? 'text-blue-700' : ''}`}
+          className={`inline-flex items-center gap-1 uppercase tracking-wide ${T.headHover} ${align === 'right' ? 'flex-row-reverse' : ''} ${isActive ? T.ink : ''}`}
         >
           {label}
           <Icon size={11} className={isActive ? 'opacity-100' : 'opacity-40'} />
@@ -530,11 +577,11 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
   const LocIcon = ({ id, size = 14 }: { id: string; size?: number }) => {
     const kind = locations.find((l) => l.id === id)?.kind;
     const Icon = kind === 'shop' || kind === 'branch' ? Store : Warehouse;
-    return <Icon size={size} className="shrink-0 text-blue-600" />;
+    return <Icon size={size} className={`shrink-0 ${T.text}`} />;
   };
 
   const typeBadge = (t: StockTransfer) => {
-    const cls = t.type === 'purchase-in' ? 'bg-green-50 text-green-700' : t.type === 'transfer' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600';
+    const cls = t.type === 'purchase-in' ? 'bg-green-50 text-green-700' : t.type === 'transfer' ? T.softPill : 'bg-slate-100 text-slate-600';
     return <span className={`inline-block rounded-sm px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${cls}`}>{TYPE_LABEL[t.type]}</span>;
   };
 
@@ -550,13 +597,13 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
     `whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition ${active ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-white'}`;
 
   const stockCards = [
-    { label: 'Total stock', value: `${qty(stockSummary.totalQty)} pcs`, hint: 'across all locations', icon: Boxes, iconClass: 'bg-green-50 text-green-600', valueClass: 'text-blue-600' },
+    { label: 'Total stock', value: `${qty(stockSummary.totalQty)} pcs`, hint: 'across all locations', icon: Boxes, iconClass: 'bg-green-50 text-green-600', valueClass: T.text },
     { label: 'Locations', value: qty(locations.length), hint: locations.map((l) => l.name).join(', '), icon: MapPin, iconClass: 'bg-blue-50 text-blue-600', valueClass: 'text-slate-900' },
     { label: 'Items in stock', value: qty(stockSummary.itemsInStock), hint: stockSummary.top ? `top: ${stockSummary.top.name} · ${qty(stockSummary.top.qty)}` : 'nothing in stock', icon: Tag, iconClass: 'bg-amber-50 text-amber-600', valueClass: 'text-slate-900' },
     { label: 'Unit not set', value: qty(stockSummary.unitNotSet), hint: stockSummary.unitNotSet ? 'items show "—" as unit' : 'every item has a unit', icon: Ruler, iconClass: 'bg-amber-50 text-amber-600', valueClass: stockSummary.unitNotSet ? 'text-amber-700' : 'text-slate-900' },
   ];
   const historyCards = [
-    { label: 'Quantity moved', value: `${qty(historySummary.totalQty)} pcs`, hint: `in ${plural(historySummary.count, 'entry', 'entries')}`, icon: Package, iconClass: 'bg-blue-50 text-blue-600', valueClass: 'text-blue-600' },
+    { label: 'Quantity moved', value: `${qty(historySummary.totalQty)} pcs`, hint: `in ${plural(historySummary.count, 'entry', 'entries')}`, icon: Package, iconClass: 'bg-blue-50 text-blue-600', valueClass: T.text },
     { label: 'Stock in from purchases', shortLabel: 'From purchases', value: qty(historySummary.purchaseQty), hint: historySummary.purchaseBills ? plural(historySummary.purchaseBills, 'purchase bill') : 'no purchases', icon: FileText, iconClass: 'bg-green-50 text-green-600', valueClass: 'text-slate-900' },
     { label: 'Between godowns', value: qty(historySummary.transferQty), hint: historySummary.transferCount ? plural(historySummary.transferCount, 'transfer') : 'no transfers yet', icon: ArrowLeftRight, iconClass: 'bg-blue-50 text-blue-600', valueClass: 'text-slate-900' },
     { label: 'Adjustments', value: qty(historySummary.adjustmentQty), hint: historySummary.adjustmentCount ? plural(historySummary.adjustmentCount, 'entry', 'entries') : 'none', icon: SlidersHorizontal, iconClass: 'bg-slate-100 text-slate-600', valueClass: 'text-slate-900' },
@@ -576,7 +623,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
   const historyBusy = !isStock && historyFetching;
 
   return (
-    <div className="min-h-screen bg-canvas px-3 pb-28 pt-3 md:px-6 md:pb-8 md:pt-5">
+    <div className={`${cat ? 'min-h-full' : 'min-h-screen'} ${T.canvas} px-3 pb-28 pt-3 md:px-6 md:pb-8 md:pt-5`}>
       {feedbackModal.isOpen && (
         <Modal type={feedbackModal.type} message={feedbackModal.message}
           onClose={() => setFeedbackModal((p) => ({ ...p, isOpen: false }))} showConfirmButton={false} />
@@ -639,7 +686,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search item"
-              className="w-full rounded-sm border border-slate-300 bg-white py-2 pl-9 pr-8 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              className={`w-full rounded-sm border border-slate-300 bg-white py-2 pl-9 pr-8 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:ring-2 ${T.focusBorder} ${T.focusRing}`}
             />
             {searchQuery && (
               <button onClick={() => setSearchQuery('')} aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-0.5 text-slate-400 hover:text-slate-600">
@@ -674,7 +721,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
         </div>
 
         {/* Desktop tabs */}
-        <div className="mt-3 hidden items-center gap-6 border-b border-line md:flex" role="tablist">
+        <div className={`mt-3 hidden items-center gap-6 border-b ${T.line} md:flex`} role="tablist">
           {([
             { value: 'stock' as const, label: 'Current stock', count: `${qty(stockSummary.totalQty)} pcs` },
             { value: 'history' as const, label: 'Transfer history', count: historyLoading ? '…' : qty(historySummary.count) },
@@ -687,7 +734,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
               className={`-mb-px inline-flex items-center gap-2 border-b-2 px-1 pb-2.5 text-sm font-medium transition ${activeTab === t.value ? accentTab : 'border-transparent text-slate-600 hover:text-slate-900'}`}
             >
               {t.label}
-              <span className="rounded-sm bg-sunken px-1.5 py-0.5 text-[11px] font-semibold text-slate-600">{t.count}</span>
+              <span className={`rounded-sm ${T.sunken} px-1.5 py-0.5 text-[11px] font-semibold text-slate-600`}>{t.count}</span>
             </button>
           ))}
           {!isStock && (
@@ -712,7 +759,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search item"
             autoFocus
-            className="w-full rounded-sm border border-slate-300 bg-white py-2 pl-9 pr-9 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            className={`w-full rounded-sm border border-slate-300 bg-white py-2 pl-9 pr-9 text-sm outline-none focus:ring-2 ${T.focusBorder} ${T.focusRing}`}
           />
           <button onClick={() => { setSearchQuery(''); setShowSearch(false); }} aria-label="Close search" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-1 text-slate-400 hover:text-slate-600">
             <X size={15} />
@@ -721,7 +768,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
       )}
 
       {/* MOBILE: Current / History switch */}
-      <div className="mb-3 grid grid-cols-2 gap-1 rounded-sm bg-sunken p-1 md:hidden">
+      <div className={`mb-3 grid grid-cols-2 gap-1 rounded-sm ${T.sunken} p-1 md:hidden`}>
         <button onClick={() => setActiveTab('stock')} className={segClass(isStock)}>Current stock</button>
         <button onClick={() => setActiveTab('history')} className={segClass(!isStock)}>History</button>
       </div>
@@ -737,7 +784,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
                 <button
                   key={l.id}
                   onClick={() => setLocationFilter(selected ? '' : l.id)}
-                  className={`flex items-center gap-3 rounded-sm border bg-white p-4 text-left shadow-card transition ${selected ? 'border-blue-600 ring-2 ring-blue-100' : 'border-line hover:border-slate-300'}`}
+                  className={`flex items-center gap-3 rounded-sm border bg-white p-4 text-left shadow-card transition ${selected ? T.selected : `${T.line} hover:border-slate-300`}`}
                 >
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm bg-blue-50">
                     <LocIcon id={l.id} size={18} />
@@ -780,15 +827,15 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
 
           {/* ONE LOCATION NOTE */}
           {!hasSecondLocation && (
-            <div className="mb-4 flex items-center gap-3 rounded-sm bg-blue-50 px-3 py-2.5 text-sm text-blue-900">
-              <Info size={16} className="shrink-0 text-blue-600" />
+            <div className={`mb-4 flex items-center gap-3 rounded-sm ${T.note} px-3 py-2.5 text-sm`}>
+              <Info size={16} className={`shrink-0 ${T.text}`} />
               <p className="flex-1">
                 <span className="hidden md:inline">You have <strong>one location</strong>. Add a godown to move stock between places — until then Transfer and Move stay disabled.</span>
                 <span className="md:hidden">Add a second location to start moving stock.</span>
               </p>
               <button
                 onClick={() => setIsGodownModalOpen(true)}
-                className="hidden shrink-0 rounded-sm border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:border-blue-300 md:block"
+                className={`hidden shrink-0 rounded-sm border bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 md:block ${T.noteBtn}`}
               >
                 Add godown
               </button>
@@ -829,7 +876,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
           {statCards.map(({ label, value, hint, icon: Icon, iconClass, valueClass, ...rest }) => {
             const shortLabel = (rest as { shortLabel?: string }).shortLabel;
             return (
-              <div key={label} className="min-w-0 rounded-sm border border-line bg-white p-3 shadow-card md:p-4">
+              <div key={label} className={`min-w-0 rounded-sm border ${T.line} bg-white p-3 shadow-card md:p-4`}>
                 <div className="flex items-center gap-2">
                   <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-sm md:h-7 md:w-7 ${iconClass}`}>
                     <Icon size={14} />
@@ -862,8 +909,8 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
         )}
 
         {/* LIST CARD */}
-        <section className="rounded-sm border border-line bg-white shadow-card">
-          <div className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-3">
+        <section className={`rounded-sm border ${T.line} bg-white shadow-card`}>
+          <div className={`flex flex-wrap items-center gap-3 border-b ${T.line} px-4 py-3`}>
             <h2 className="text-sm font-semibold text-slate-900">
               {isStock ? (
                 <>
@@ -878,13 +925,13 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
               )}
             </h2>
             {!isStock && (
-              <span className="hidden rounded-sm bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 md:inline">
+              <span className={`hidden rounded-sm px-2 py-0.5 text-xs font-medium md:inline ${T.softPill}`}>
                 {plural(filteredHistory.length, 'entry', 'entries')}
               </span>
             )}
 
             {/* Desktop filter segments */}
-            <div className="hidden gap-1 overflow-x-auto rounded-sm bg-sunken p-1 md:flex">
+            <div className={`hidden gap-1 overflow-x-auto rounded-sm ${T.sunken} p-1 md:flex`}>
               {isStock ? (
                 <>
                   <button onClick={() => setLocationFilter('')} className={segClass(!locationFilter)}>All locations</button>
@@ -921,7 +968,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
                     const [key, direction] = e.target.value.split(':') as [StockSortKey, 'asc' | 'desc'];
                     setStockSort({ key, direction });
                   }}
-                  className="appearance-none rounded-sm border border-slate-300 bg-white py-1.5 pl-3 pr-8 text-xs text-slate-700 outline-none focus:border-blue-500"
+                  className={`appearance-none rounded-sm border border-slate-300 bg-white py-1.5 pl-3 pr-8 text-xs text-slate-700 outline-none ${T.focusBorder}`}
                 >
                   <option value="quantity:desc">Most qty</option>
                   <option value="quantity:asc">Least qty</option>
@@ -951,7 +998,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
           {isStock && isListVisible && filteredStock.length > 0 && (
             <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-sm">
-                <thead className="bg-sunken text-[11px] text-blue-700/80">
+                <thead className={`${T.sunken} text-[11px] ${T.head}`}>
                   <tr>
                     {sortHeader('Item', 'itemName', stockSort, onStockSort)}
                     {sortHeader('Godown', 'godownName', stockSort, onStockSort)}
@@ -962,7 +1009,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
                 </thead>
                 <tbody>
                   {visibleStock.map((r: GodownStockRow) => (
-                    <tr key={`${r.godownId}-${r.itemId}`} className="border-t border-line transition hover:bg-sunken">
+                    <tr key={`${r.godownId}-${r.itemId}`} className={`border-t ${T.line} transition ${T.sunkenHover}`}>
                       <td className="px-4 py-3 font-semibold text-slate-900">{r.itemName}</td>
                       <td className="px-4 py-3">
                         <span className="inline-flex items-center gap-1.5 font-medium text-slate-700">
@@ -974,7 +1021,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
                         <div className="flex items-center gap-2">
                           <span className="w-10 font-semibold text-slate-900">{qty(r.quantity)}</span>
                           <div className="h-1.5 w-24 overflow-hidden rounded-sm bg-slate-100">
-                            <div className="h-full rounded-sm bg-blue-600" style={{ width: `${(r.quantity / filteredStockTotals.max) * 100}%` }} />
+                            <div className={`h-full rounded-sm ${T.bar}`} style={{ width: `${(r.quantity / filteredStockTotals.max) * 100}%` }} />
                           </div>
                         </div>
                       </td>
@@ -986,7 +1033,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
                           onClick={() => openTransfer({ fromId: r.godownId, itemId: r.itemId })}
                           disabled={!hasSecondLocation}
                           title={hasSecondLocation ? `Move ${r.itemName}` : 'Add a godown first'}
-                          className="rounded-sm px-2.5 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:bg-transparent"
+                          className={`rounded-sm px-2.5 py-1 text-xs font-semibold ${T.text} ${T.softHover} disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:bg-transparent`}
                         >
                           Move
                         </button>
@@ -1024,7 +1071,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
                 </thead>
                 <tbody>
                   {visibleHistory.map((t) => (
-                    <tr key={t.id} className="border-t border-line transition hover:bg-sunken">
+                    <tr key={t.id} className={`border-t ${T.line} transition ${T.sunkenHover}`}>
                       <td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatFullDate(t.date)}</td>
                       <td className="px-4 py-3">
                         <p className="font-semibold text-slate-900">{t.itemName}</p>
@@ -1032,7 +1079,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
                       </td>
                       <td className="px-4 py-3 text-slate-700">
                         {t.type === 'purchase-in' ? (
-                          <span>Purchase {t.refInvoice && <span className="font-semibold text-blue-600">{t.refInvoice}</span>}</span>
+                          <span>Purchase {t.refInvoice && <span className={`font-semibold ${T.text}`}>{t.refInvoice}</span>}</span>
                         ) : t.fromGodownName ? (
                           <span className="inline-flex items-center gap-1.5"><LocIcon id={t.fromGodownId || ''} />{t.fromGodownName}</span>
                         ) : '—'}
@@ -1054,7 +1101,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
                     </tr>
                   ))}
                 </tbody>
-                <tfoot className="border-t border-line bg-sunken text-sm font-semibold text-slate-900">
+                <tfoot className={`border-t ${T.line} ${T.sunken} text-sm font-semibold text-slate-900`}>
                   <tr>
                     <td colSpan={4} className="px-4 py-3">Total · {plural(filteredHistory.length, 'entry', 'entries')}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-right">{qty(filteredHistoryQty)}</td>
@@ -1072,7 +1119,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
                 <li
                   key={`${r.godownId}-${r.itemId}`}
                   onClick={() => openTransfer({ fromId: r.godownId, itemId: r.itemId })}
-                  className={`flex items-center gap-3 px-4 py-3 ${idx > 0 ? 'border-t border-line' : ''} ${hasSecondLocation ? 'cursor-pointer active:bg-sunken' : ''}`}
+                  className={`flex items-center gap-3 px-4 py-3 ${idx > 0 ? `border-t ${T.line}` : ''} ${hasSecondLocation ? `cursor-pointer ${T.sunkenActive}` : ''}`}
                 >
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-slate-900">{r.itemName}</p>
@@ -1094,8 +1141,8 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
               {visibleHistory.map((t, idx) => {
                 const isPurchase = t.type === 'purchase-in';
                 return (
-                  <li key={t.id} className={`flex items-center gap-3 px-4 py-3 ${idx > 0 ? 'border-t border-line' : ''}`}>
-                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-sm ${isPurchase ? 'bg-green-50 text-green-600' : 'bg-blue-50 text-blue-600'}`}>
+                  <li key={t.id} className={`flex items-center gap-3 px-4 py-3 ${idx > 0 ? `border-t ${T.line}` : ''}`}>
+                   <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-sm ${isPurchase ? 'bg-green-50 text-green-600' : `${T.soft} ${T.text}`}`}>
                       {isPurchase ? <FileText size={16} /> : <ArrowLeftRight size={16} />}
                     </span>
                     <div className="min-w-0 flex-1">
@@ -1120,7 +1167,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
 
           {/* MOBILE totals */}
           {(isStock ? filteredStock.length : filteredHistory.length) > 0 && (
-            <div className="flex items-center justify-between rounded-b-sm border-t border-line bg-sunken px-4 py-3 text-sm font-semibold text-slate-900 md:hidden">
+            <div className={`flex items-center justify-between rounded-b-sm border-t ${T.line} ${T.sunken} px-4 py-3 text-sm font-semibold text-slate-900 md:hidden`}>
               <span>Total · {isStock ? plural(filteredStockTotals.items, 'item') : plural(filteredHistory.length, 'entry', 'entries')}</span>
               <span className={!isStock ? 'text-green-700' : ''}>{isStock ? `${qty(filteredStockTotals.qty)} pcs` : `+${qty(filteredHistoryQty)} pcs`}</span>
             </div>
@@ -1129,7 +1176,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
           {/* Paging */}
           {hiddenCount > 0 && (
             // The mobile list is always shown; the desktop table can be hidden.
-            <div className={`border-t border-line px-4 py-2.5 text-center ${isListVisible ? '' : 'md:hidden'}`}>
+            <div className={`border-t ${T.line} px-4 py-2.5 text-center ${isListVisible ? '' : 'md:hidden'}`}>
               <button
                 onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}
                 className="rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-slate-400"
@@ -1151,7 +1198,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
       <div className="sticky bottom-3 z-10 mt-4 grid grid-cols-[1fr_1.4fr] gap-2.5 md:hidden">
         <button
           onClick={() => setIsGodownModalOpen(true)}
-          className="flex items-center justify-center gap-2 rounded-sm border border-slate-300 bg-white py-3.5 text-sm font-semibold text-slate-700 shadow-float active:bg-sunken"
+          className={`flex items-center justify-center gap-2 rounded-sm border border-slate-300 bg-white py-3.5 text-sm font-semibold text-slate-700 shadow-float ${T.sunkenActive}`}
         >
           <Warehouse size={16} />
           Godown

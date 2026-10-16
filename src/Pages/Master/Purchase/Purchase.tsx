@@ -11,7 +11,7 @@ import { Spinner } from '../../../constants/Spinner';
 import {
   FiTrash2, FiEdit, FiCamera, FiX, FiSearch, FiChevronLeft, FiMoreHorizontal, FiList, FiGrid,
   FiFileText, FiMaximize, FiAlertTriangle, FiCheckCircle, FiInfo, FiPackage, FiPlus,
-  FiChevronUp, FiChevronRight,
+  FiChevronUp, FiChevronRight, FiMinus,
 } from 'react-icons/fi';
 import { ItemEditDrawer } from '../../../Components/ItemDrawer';
 import ItemAdd from '../ItemAdd';
@@ -210,6 +210,10 @@ const PurchasePage: React.FC = () => {
   // "Create purchase" from the Restock report: add the picked items with their
   // order quantities once the catalogue is loaded, then drop the navigation
   // state so a refresh doesn't add them again.
+  // Item tile long-press (touch) → opens edit drawer
+  const tileHoldTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const tileHoldFired = useRef(false);
+
   const restockHandled = useRef(false);
   useEffect(() => {
     const restockItems = (location.state as { restockItems?: { id: string; quantity: number }[] } | null)?.restockItems;
@@ -269,7 +273,7 @@ const PurchasePage: React.FC = () => {
 
   // Supplier — captured here, passed to the payment drawer as its starting party details
   const [supplierName, setSupplierName] = useState(prefillParty?.name ?? '');
-const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
+  const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const [supplierDraft, setSupplierDraft] = useState({ name: '', phone: '' });
   const openSupplierModal = () => {
@@ -804,7 +808,7 @@ const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
                   inputMode="tel"
                   value={supplierDraft.phone}
                   onChange={(e) => setSupplierDraft({ ...supplierDraft, phone: e.target.value })}
-                  placeholder="98188 37719"
+                  placeholder="9000000000"
                   className={INPUT}
                 />
               </div>
@@ -891,7 +895,7 @@ const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
                 </div>
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 bg-[#eef2ff] pb-6" style={{ gridAutoRows: 'auto', alignContent: 'start', gap: '14px', padding: '8px 14px' }}>
+            <div className="flex-1 overflow-y-auto grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] md:grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] auto-rows-max content-start gap-2 bg-[#eef2ff] px-2 pt-2.5 pb-6 md:px-3">
               {sortedGridItems.length === 0 ? (
                 <div className="col-span-full text-center text-gray-500 mt-10 py-10 bg-white rounded-sm">
                   {gridSearchQuery ? (
@@ -968,280 +972,126 @@ const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
                   const lineSubtotal = Math.round((Number(cp) * quantity) * 100) / 100;
 
                   // ── CARD WITH IMAGE ────────────────────────────────────────────────────
-                  if (isCardImageView) {
-                    const imageUrl: string | undefined =
-                      (item as any).image ||
-                      (item as any).imageUrl ||
-                      (item as any).thumbnail ||
-                      (item as any).imageURL;
+                  const photoUrl: string | undefined = isCardImageView
+                    ? ((item as any).image || (item as any).imageUrl || (item as any).thumbnail || (item as any).imageURL)
+                    : undefined;
+                  const atMin = isSelected && quantity <= 1;
 
-                    return (
-                      <div
-                        key={item.id}
-                        onClick={() => {
-                          if (isSelected) handleQuantityChange(lastAddedCartItem.id, quantity + 1);
-                          else handleAddOrPickTier(item);   // 👈 CHANGED
+                  const openEdit = () => {
+                    const orig = availableItems.find(a => a.id === item.id);
+                    if (orig) handleOpenEditDrawer(orig);
+                  };
+                  const handleTileTap = () => {
+                    if (tileHoldFired.current) { tileHoldFired.current = false; return; }
+                    if (isSelected) handleQuantityChange(lastAddedCartItem.id, quantity + 1);
+                    else handleAddOrPickTier(item);
+                  };
+
+                  return (
+                    <div key={item.id} className="relative min-w-0">
+                      <button
+                        type="button"
+                        aria-label={`Add one ${item.name}${isSelected ? `, ${quantity} in bill` : ''}`}
+                        onClick={handleTileTap}
+                        onPointerDown={(e) => {
+                          if (e.pointerType !== 'touch') return;
+                          tileHoldFired.current = false;
+                          clearTimeout(tileHoldTimer.current);
+                          tileHoldTimer.current = setTimeout(() => { tileHoldFired.current = true; openEdit(); }, 450);
                         }}
-                        className={`bg-white rounded-sm flex flex-col w-full overflow-visible transition-all duration-200 relative group
-        ${isSelected
-                            ? 'border-2 border-blue-400 shadow-md ring-1 ring-blue-100'
-                            : 'border border-gray-100 hover:shadow-md hover:border-gray-200'}`}
-                        style={{ margin: '0 2px' }}
+                        onPointerUp={() => clearTimeout(tileHoldTimer.current)}
+                        onPointerLeave={() => clearTimeout(tileHoldTimer.current)}
+                        onPointerCancel={() => clearTimeout(tileHoldTimer.current)}
+                        onContextMenu={(e) => e.preventDefault()}
+                        className={`relative flex flex-col w-full overflow-hidden p-0 text-left rounded-sm border-2 select-none cursor-pointer transition active:scale-[0.97] [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent]
+        ${isCardImageView ? 'h-[136px] md:h-[164px]' : 'h-[100px]'}
+        ${isSelected ? 'bg-blue-50 border-blue-600' : 'bg-white border-transparent ring-1 ring-gray-200 hover:ring-gray-300'}`}
                       >
-                        {/* ── Image Block ── */}
-                        <div className="relative w-full bg-gray-100 rounded-t-sm overflow-hidden" style={{ height: '140px' }}>
-
-                          {/* Centered image container */}
-                          <div className="w-full h-full flex items-center justify-center p-1.5">
-                            {imageUrl ? (
+                        {/* Photo strip (photo mode only) */}
+                        {isCardImageView && (
+                          <span className={`relative flex items-center justify-center w-full h-[60px] md:h-[88px] p-1 shrink-0 overflow-hidden ${isSelected ? 'bg-white' : 'bg-gray-50'}`}>
+                            {photoUrl && (
                               <img
-                                src={imageUrl}
-                                alt={item.name}
-                                className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105"
+                                src={photoUrl}
+                                alt=""
                                 loading="lazy"
+                                className="max-w-full max-h-full object-contain block"
                                 onError={(e) => {
                                   (e.currentTarget as HTMLImageElement).style.display = 'none';
-                                  const placeholder = (e.currentTarget as HTMLImageElement)
-                                    .parentElement
-                                    ?.querySelector<HTMLElement>('[data-no-image]');
-                                  if (placeholder) placeholder.style.display = 'flex';
+                                  const ph = (e.currentTarget as HTMLImageElement).parentElement?.querySelector<HTMLElement>('[data-no-image]');
+                                  if (ph) ph.style.display = 'flex';
                                 }}
                               />
-                            ) : null}
-
-                            {/* Camera placeholder – shown when no image */}
-                            <div
-                              data-no-image
-                              className="absolute inset-0 flex flex-col items-center justify-center bg-gray-50"
-                              style={{ display: imageUrl ? 'none' : 'flex' }}
-                            >
-                              <FiCamera className="text-gray-300" size={22} strokeWidth={1.4} />
-                              <span className="text-[9px] text-gray-300 mt-1 uppercase tracking-wide font-medium">No Image</span>
-                            </div>
-                          </div>
-
-                          {/* ── Discount badge – Blinkit style, top-left ── */}
-                          {discPct > 0 && (
-                            <div
-                              className="absolute top-1.5 left-1.5 z-10 bg-blue-600 text-white font-bold text-[9px] leading-tight px-1.5 py-[3px] rounded-sm shadow-sm"
-                            >
-                              {discPct}% OFF
-                            </div>
-                          )}
-
-                          {/* ✕ remove – shown only when in cart */}
-                          {isSelected && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleDeleteItem(lastAddedCartItem.id); }}
-                              className="absolute top-1 right-1.5 z-20 w-5 h-5 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors text-[10px] font-bold shadow-sm border border-gray-100"
-                            >
-                              ✕
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Content block */}
-                        <div className="p-1.5 sm:p-2 flex flex-col flex-1 gap-0.5">
-                          {/* Item name — always 2 lines, fixed height */}
-                          <div className="flex items-start justify-between gap-1" style={{ minHeight: '28px' }}>
-                            <p
-                              className="text-[11px]  font-bold text-gray-900 leading-snug flex-1 overflow-hidden"
-                              style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}
-                              title={item.name}
-                            >
-                              {item.name.length > 45 ? item.name.slice(0, 45) : item.name}
-                            </p>
-                            <button onClick={(e) => { e.stopPropagation(); const orig = availableItems.find(a => a.id === item.id); if (orig) handleOpenEditDrawer(orig); }}
-                              className="text-gray-400 hover:text-blue-600 flex-shrink-0 mt-0.5">
-                              <FiEdit size={11} />
-                            </button>
-                          </div>
-
-                          {/* Fixed bottom section — always same height regardless of name */}
-                          <div className="mt-auto flex flex-col gap-1 pt-1 border-t border-gray-50" onClick={(e) => e.stopPropagation()}>
-
-                            {/* Row 1: Price + MRP */}
-                            <div className="flex items-baseline gap-1">
-                              <span className="text-xs font-semibold text-gray-900">
-                                ₹{Number(cp).toLocaleString('en-IN')}
+                            )}
+                            <span data-no-image className="absolute inset-0 items-center justify-center" style={{ display: photoUrl ? 'none' : 'flex' }}>
+                              <FiCamera size={20} strokeWidth={1.5} className="text-gray-300" />
+                            </span>
+                            {discPct > 0 && (
+                              <span className="absolute top-1 left-1 inline-flex items-center h-4 px-1 rounded-sm bg-blue-600 text-white text-[10px] leading-[14px] font-bold whitespace-nowrap">
+                                {discPct}% OFF
                               </span>
-                              {discPct > 0 && mrp > 0 && Number(cp) < mrp && (
-                                <span className="text-[10px] text-gray-400 line-through">
-                                  ₹{mrp.toLocaleString('en-IN')}
-                                </span>
-                              )}
-                              {item.unit && (
-                                <span className="text-[9px] text-gray-400 font-medium ml-0.5">
-                                  ({item.unit})
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Subtotal row — only when selected */}
-                            {isSelected && (
-                              <div className="flex items-center gap-1 border-t border-gray-50 pt-1 min-w-0">
-                                <span className="text-[9px] uppercase text-gray-400 tracking-wide flex-shrink-0">Subtotal</span>
-                                <span className="text-[10px] font-semibold text-blue-600 truncate">₹{lineSubtotal.toLocaleString('en-IN')}</span>
-                              </div>
                             )}
+                          </span>
+                        )}
 
-                            {/* Row 3: Add button OR Quantity selector — always pinned last */}
-                            {!isSelected ? (
-                              <>
-                                <div className="h-[18px] border-t border-gray-50" />
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleAddOrPickTier(item);   // 👈 CHANGED
-                                  }}
-                                  className="w-full h-[26px] rounded-sm text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 transition-colors"
-                                >
-                                  + Add
-                                </button>
-                              </>
+                        {/* Name + price row */}
+                        <span className={`flex flex-col flex-1 min-w-0 gap-1 ${isCardImageView ? 'px-1.5 py-1' : 'p-1.5'}`}>
+                          <span
+                            className={`block overflow-hidden pr-2 text-[12px] leading-4 font-semibold text-gray-900 break-words [display:-webkit-box] [-webkit-box-orient:vertical] ${isCardImageView ? '[-webkit-line-clamp:2] h-8' : '[-webkit-line-clamp:3] h-12'}`}
+                            title={item.name}
+                          >
+                            {item.name}
+                          </span>
+                          <span className={`flex items-center gap-1 mt-auto min-w-0 tabular-nums ${isCardImageView ? 'h-7' : 'h-8'}`}>
+                            {isSelected ? (
+                              <span className="ml-auto text-xs leading-4 font-bold text-blue-600 whitespace-nowrap md:mr-[34px]">
+                                ₹{lineSubtotal.toLocaleString('en-IN')}
+                              </span>
                             ) : (
-                              <div
-                                className="flex items-center border border-gray-200 rounded-sm overflow-hidden bg-white w-full"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1);
-                                    else handleDeleteItem(lastAddedCartItem.id);
-                                  }}
-                                  className="h-7 flex-1 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
-                                >−</button>
-                                <span className="w-8 text-center text-[11px] font-semibold text-gray-800">{quantity}</span>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleQuantityChange(lastAddedCartItem.id, quantity + 1);
-                                  }}
-                                  className="h-7 flex-1 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
-                                >+</button>
-                              </div>
+                              <>
+                                <span className="text-[13px] leading-4 font-bold text-gray-900 whitespace-nowrap">₹{Number(cp).toLocaleString('en-IN')}</span>
+                                {discPct > 0 && mrp > 0 && Number(cp) < mrp && (
+                                  <span className="min-w-0 truncate text-[11px] leading-[14px] text-gray-500 line-through whitespace-nowrap">₹{mrp.toLocaleString('en-IN')}</span>
+                                )}
+                              </>
                             )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  }
-                  // ── CARD WITHOUT IMAGE (existing card — unchanged below) ───────────────
-                  return (
-                    <div
-                      key={item.id}
-                      onClick={() => {
-                        if (isSelected) handleQuantityChange(lastAddedCartItem.id, quantity + 1);
-                        else handleAddOrPickTier(item);
-                      }}
-                      className={`bg-white rounded-sm border flex flex-col overflow-visible transition-all relative
-      ${isSelected ? 'border-blue-400 ring-1 ring-blue-100' : 'border-gray-100 hover:shadow-sm'}`}
-                      style={{ minHeight: 130 }}
-                    >
-                      {/* Discount badge - corner stamp */}
-                      {discPct > 0 && (
-                        <div
-                          className="absolute -top-px -left-px bg-blue-600 text-white text-[8px] font-medium leading-tight text-center z-10"
-                          style={{ borderRadius: '10px 0 8px 0', padding: '3px 6px', minWidth: 28 }}
-                        >
-                          {discPct}% OFF
-                        </div>
+                          </span>
+                        </span>
+                      </button>
+
+                      {/* Qty badge */}
+                      {isSelected && (
+                        <span aria-hidden="true" className="absolute -top-[7px] -right-[7px] z-[2] min-w-[22px] h-[22px] px-1.5 grid place-items-center rounded-full bg-blue-600 text-white text-[11px] leading-[14px] font-bold tabular-nums ring-2 ring-[#eef2ff] pointer-events-none">
+                          {quantity}
+                        </span>
                       )}
 
-                      {/* X button - only when selected */}
+                      {/* Minus (trash at qty 1) */}
                       {isSelected && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); handleDeleteItem(lastAddedCartItem.id); }}
-                          className="absolute top-1 right-2 text-gray-400 hover:text-red-500 transition-colors z-10 bg-transparent border-none cursor-pointer text-xs leading-none"
+                          type="button"
+                          aria-label={`${atMin ? 'Remove' : 'One less'} ${item.name}`}
+                          onClick={() => {
+                            if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1);
+                            else handleDeleteItem(lastAddedCartItem.id);
+                          }}
+                          className={`absolute z-[1] grid place-items-center rounded-sm bg-white text-blue-600 border-[1.5px] border-blue-600 hover:bg-blue-600 hover:text-white transition-colors
+          ${isCardImageView ? 'bottom-1.5 left-1.5 w-7 h-7' : 'bottom-2 left-2 w-8 h-8'}`}
                         >
-                          ✕
+                          {atMin ? <FiTrash2 size={16} /> : <FiMinus size={16} />}
                         </button>
                       )}
 
-                      <div className="p-2.5 flex flex-col gap-1.5 flex-1">
-
-                        {/* Item name - 2 line clamp then ellipsis */}
-                        <p
-                          className="text-[12px] font-medium text-gray-900 leading-snug pr-4 min-h-[32px] flex items-start"
-                          style={{
-                            marginTop: discPct > 0 ? 14 : 2,
-                            display: '-webkit-box',
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: 'vertical' as any,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                          }}
-                          title={item.name}
-                        >
-                          {item.name}
-                        </p>
-
-                        {/* Price + edit icon in same row */}
-                        <div className="flex items-center justify-between gap-1">
-                          <div className="flex items-baseline gap-1.5">
-                            <span className="text-xs font-semibold text-gray-900">
-                              ₹{Number(cp).toLocaleString('en-IN')}
-                            </span>
-                            {discPct > 0 && mrp > 0 && Number(cp) < mrp && (
-                              <span className="text-[10px] text-gray-400 line-through">
-                                ₹{mrp.toLocaleString('en-IN')}
-                              </span>
-                            )}
-                            {item.unit && (
-                              <span className="text-[9px] text-gray-400 font-medium ml-0.5">
-                                ({item.unit})
-                              </span>
-                            )}
-                          </div>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const orig = availableItems.find(a => a.id === item.id);
-                              if (orig) handleOpenEditDrawer(orig);
-                            }}
-                            className="text-gray-400 hover:text-blue-600 transition-colors flex-shrink-0"
-                          >
-                            <FiEdit size={10} />
-                          </button>
-                        </div>
-
-                        {/* Bottom - pinned, same height for all cards */}
-                        <div className="mt-auto pt-2 flex items-center justify-between gap-2 min-w-0 overflow-hidden" onClick={(e) => e.stopPropagation()}>
-
-                          {!isSelected ? (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleAddOrPickTier(item); }}
-                              className="w-full py-1.5 rounded-sm text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 transition-colors"
-                            >
-                              + Add
-                            </button>
-                          ) : (
-                            <div className="flex items-center justify-between gap-1 w-full min-w-0 overflow-hidden">
-                              {/* Subtotal LEFT */}
-                              <div className="text-left min-w-0 flex-shrink overflow-hidden">
-                                <p className="text-[9px] uppercase text-gray-400 tracking-wide leading-none">Subtotal</p>
-                                <p className="text-[11px] font-semibold text-blue-600 truncate">
-                                  ₹{lineSubtotal.toLocaleString('en-IN')}
-                                </p>
-                              </div>
-
-                              {/* Quantity RIGHT */}
-                              <div className="flex items-center border border-gray-200 rounded-sm overflow-hidden bg-white flex-shrink-0">
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1); else handleDeleteItem(lastAddedCartItem.id); }}
-                                  className="w-6 h-7 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
-                                >−</button>
-                                <span className="w-5 text-center text-xs font-semibold text-gray-800">{quantity}</span>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleQuantityChange(lastAddedCartItem.id, quantity + 1); }}
-                                  className="w-6 h-7 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
-                                >+</button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                      {/* Edit (md and up; touch uses long-press) */}
+                      <button
+                        type="button"
+                        aria-label={`Edit ${item.name}`}
+                        onClick={openEdit}
+                        className={`hidden md:grid absolute z-[1] place-items-center rounded-sm bg-transparent text-gray-500 border border-transparent hover:text-blue-600 hover:border-gray-200 hover:bg-white transition-colors
+        ${isCardImageView ? 'bottom-1.5 right-1.5 w-7 h-7' : 'bottom-2 right-2 w-8 h-8'}`}
+                      >
+                        <FiEdit size={15} />
+                      </button>
                     </div>
                   );
                 })

@@ -9,7 +9,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { ROUTES } from '../constants/routes.constants';
 import { Permissions } from '../enums';
 import ShowWrapper from '../context/ShowWrapper';
-import ShinyText from '../Components/ShinyText';
+//import ShinyText from '../Components/ShinyText';
 //import NotificationBell from '../Components/NotificationBell';
 //import { useMemo } from 'react';
 import BusinessCard from '../Catalogue/BusinessCards/BusinessCard';
@@ -152,27 +152,6 @@ const Account: React.FC = () => {
     }, 80);
   }, [tutorialStep]);
 
-  const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
-
-  useEffect(() => {
-    const fetchExpiry = async () => {
-      if (!currentUser?.companyId) return;
-      const ref = doc(db, 'companies', currentUser.companyId);
-      const snap = await getDoc(ref);
-      if (snap.exists()) {
-        const expiry = snap.data().expiryDate;
-        if (!expiry) return;
-        const d = expiry.toDate ? expiry.toDate() : new Date(expiry);
-        const diff = d.getTime() - new Date().getTime();
-        setDaysRemaining(Math.ceil(diff / (1000 * 60 * 60 * 24)));
-      }
-    };
-    fetchExpiry();
-  }, [currentUser?.companyId]);
-
-  const showBadge = daysRemaining !== null && daysRemaining <= 7 && daysRemaining >= 0;
-  const isUrgent = daysRemaining !== null && daysRemaining <= 2;
-
   useEffect(() => {
     const fetchUserProfile = async () => {
       if (loadingAuth) return;
@@ -310,20 +289,6 @@ const Account: React.FC = () => {
 
   return (
     <div className="flex min-h-screen w-full max-w-full flex-col overflow-x-clip bg-[#eef2ff] text-sm text-[#0f172b]">
-      {showBadge && (
-        <div
-          className={`w-full border-b border-[#dfe6fb] py-2 text-center text-sm font-semibold transition-colors duration-300 ${
-            isUrgent ? 'bg-[#ffeef0]' : 'bg-[#fff3dd]'
-          }`}
-        >
-          <ShinyText
-            text={`Subscription expires in ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}.`}
-            speed={4} delay={0} color="#030303" shineColor="#faf5f5" spread={100} direction="left" yoyo={false} pauseOnHover={false} disabled={false}
-          />
-          <Link to="/subscription" className="ml-2 font-semibold text-[#155dfc] underline hover:text-[#1447e6]">Renew Now</Link>
-        </div>
-      )}
-
       {/* Page head */}
       <header className="hidden items-center gap-4 px-4 pb-4 pt-4 md:flex md:px-6 md:pt-5">
         <div className="hidden min-w-0 md:block">
@@ -439,35 +404,35 @@ const Account: React.FC = () => {
 
               {/* Actions: referral + edit */}
               <div className="md:col-span-2 md:flex md:items-center md:gap-3 md:border-t md:border-[#dfe6fb] md:pt-4 xl:block xl:border-t-0 xl:pt-0">
-              {/* Referral code */}
-              <div className="mt-4 flex min-h-10 items-center md:mt-0 md:flex-1 xl:flex-none xl:justify-center">
-                {companyReferralCode ? (
-                  <div className="inline-flex h-10 w-full items-center justify-between gap-2.5 rounded-sm border border-dashed border-[#7a8aa3] pl-3.5 pr-1.5 text-[13px] text-[#45556c] md:w-auto md:justify-start">
-                    Referral code
-                    <span className="font-mono text-sm font-semibold leading-none tracking-[0.06em] text-[#0f172b]">{companyReferralCode}</span>
-                    {copyButton}
-                  </div>
-                ) : (
-                  <button
-                    onClick={handleGenerateCode}
-                    disabled={isGenerating}
-                    className="inline-flex h-10 w-full items-center justify-center rounded-sm border border-dashed border-[#7a8aa3] px-4 text-[13px] font-medium text-[#155dfc] transition-colors hover:bg-[#f5f7ff] disabled:cursor-not-allowed disabled:opacity-45 md:w-auto"
-                  >
-                    {isGenerating ? 'Generating...' : 'Generate Referral Code'}
-                  </button>
-                )}
-              </div>
+                {/* Referral code */}
+                <div className="mt-4 flex min-h-10 items-center md:mt-0 md:flex-1 xl:flex-none xl:justify-center">
+                  {companyReferralCode ? (
+                    <div className="inline-flex h-10 w-full items-center justify-between gap-2.5 rounded-sm border border-dashed border-[#7a8aa3] pl-3.5 pr-1.5 text-[13px] text-[#45556c] md:w-auto md:justify-start">
+                      Referral code
+                      <span className="font-mono text-sm font-semibold leading-none tracking-[0.06em] text-[#0f172b]">{companyReferralCode}</span>
+                      {copyButton}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleGenerateCode}
+                      disabled={isGenerating}
+                      className="inline-flex h-10 w-full items-center justify-center rounded-sm border border-dashed border-[#7a8aa3] px-4 text-[13px] font-medium text-[#155dfc] transition-colors hover:bg-[#f5f7ff] disabled:cursor-not-allowed disabled:opacity-45 md:w-auto"
+                    >
+                      {isGenerating ? 'Generating...' : 'Generate Referral Code'}
+                    </button>
+                  )}
+                </div>
 
-              {/* Desktop: Edit profile (secondary, block) */}
-              <button
-                onClick={handleEditProfile}
-                className="mt-4 hidden h-10 w-full items-center justify-center gap-2 rounded-sm border border-[#7a8aa3] bg-white text-sm font-medium text-[#0f172b] transition-colors hover:bg-[#f5f7ff] md:mt-0 md:inline-flex md:w-auto md:px-5 xl:mt-4 xl:w-full xl:px-0"
-              >
-                <Ico className="h-4 w-4">
-                  <path d="M17 3l4 4L8 20H4v-4z" />
-                </Ico>
-                Edit profile
-              </button>
+                {/* Desktop: Edit profile (secondary, block) */}
+                <button
+                  onClick={handleEditProfile}
+                  className="mt-4 hidden h-10 w-full items-center justify-center gap-2 rounded-sm border border-[#7a8aa3] bg-white text-sm font-medium text-[#0f172b] transition-colors hover:bg-[#f5f7ff] md:mt-0 md:inline-flex md:w-auto md:px-5 xl:mt-4 xl:w-full xl:px-0"
+                >
+                  <Ico className="h-4 w-4">
+                    <path d="M17 3l4 4L8 20H4v-4z" />
+                  </Ico>
+                  Edit profile
+                </button>
               </div>
             </div>
           </TutorialStep>

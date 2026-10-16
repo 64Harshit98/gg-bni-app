@@ -594,12 +594,16 @@ const ManagePermissionsPage: React.FC = () => {
                             finalPermissions = getSafePermissionsToSave(role, Object.values(Permissions), currentPlan);
                             shouldUpdateDB = true;
                         } else {
-                            // Auto-merge in any default permission for this role that
-                            // isn't saved yet, so rollouts of new default capabilities
-                            // reach existing companies without a manual Reset + Save.
+                            // Sirf nayi defaults merge hongi (jo syncedDefaults me nahi hain),
+                            // taaki user ki disable ki hui permission wapas na aaye.
                             const defaults = getDefaultPermissions(role);
-                            const merged = Array.from(new Set([...storedData, ...defaults]));
-                            if (merged.length !== storedData.length) shouldUpdateDB = true;
+                            const stamp = docSnap.data().syncedDefaults;
+                            const hasStamp = Array.isArray(stamp);
+                            // Purane docs (stamp nahi) ke liye current defaults ko already-synced maano
+                            const alreadySynced: string[] = hasStamp ? stamp : defaults;
+                            const newDefaults = defaults.filter(p => !alreadySynced.includes(p));
+                            const merged = Array.from(new Set([...storedData, ...newDefaults]));
+                            if (newDefaults.length > 0 || !hasStamp) shouldUpdateDB = true;
                             finalPermissions = getSafePermissionsToSave(role, merged, currentPlan);
                         }
                     } else {
@@ -612,6 +616,7 @@ const ManagePermissionsPage: React.FC = () => {
                     if (shouldUpdateDB) {
                         await setDoc(docRef, {
                             allowedPermissions: finalPermissions,
+                            syncedDefaults: getDefaultPermissions(role),
                             companyId: companyId,
                             role: role
                         }, { merge: true });

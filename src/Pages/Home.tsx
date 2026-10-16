@@ -266,7 +266,11 @@ const DashboardContent = () => {
           currentOrderCount++;
 
           // Udhaar — sale docs carry `dueAmount`
-          const due = parseNum(d.dueAmount);
+          const dueFromMethods = (d.paymentMethods && typeof d.paymentMethods === 'object')
+            ? Object.entries(d.paymentMethods).reduce(
+              (s, [k, v]) => String(k).trim().toLowerCase() === 'due' ? s + parseNum(v) : s, 0)
+            : 0;
+          const due = parseNum(d.dueAmount) || dueFromMethods;
           if (due > 0) { unpaidAmount += due; unpaidBills++; }
 
           if (d.paymentMethods && typeof d.paymentMethods === 'object') {

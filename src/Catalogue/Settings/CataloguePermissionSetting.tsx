@@ -446,17 +446,20 @@ const CataloguePermissionSetting: React.FC = () => {
                 const snap = await getDoc(docRef);
 
                 if (snap.exists()) {
-                    const { permissions: migrated, changed: renamed } = migrateCataPermissions(snap.data().allowedPermissions);
-                    // Auto-merge in any default permission for this role that
-                    // isn't saved yet, so new default capabilities reach
-                    // existing companies without a manual Reset click.
+                    const data = snap.data();
+                    const { permissions: migrated, changed: renamed } = migrateCataPermissions(data.allowedPermissions);
                     const roleDefaults = getDefaultCataPermissions(role);
-                    const merged = Array.from(new Set([...migrated, ...roleDefaults]));
-                    const changed = renamed || merged.length !== migrated.length;
+                    // Purane docs (jisme syncedDefaults nahi hai) ke liye current defaults ko already-synced maano,
+                    // taaki unki disable ki hui permissions wapas on na ho
+                    const hasStamp = Array.isArray(data.syncedDefaults);
+                    const alreadySynced: string[] = hasStamp ? data.syncedDefaults : roleDefaults;
+                    const newDefaults = roleDefaults.filter(p => !alreadySynced.includes(p));
+                    const merged = Array.from(new Set([...migrated, ...newDefaults]));
+                    const changed = renamed || newDefaults.length > 0 || !hasStamp;
                     newMap[role] = merged;
                     if (changed) {
                         try {
-                            await setDoc(docRef, { allowedPermissions: merged }, { merge: true });
+                            await setDoc(docRef, { allowedPermissions: merged, syncedDefaults: roleDefaults }, { merge: true });
                         } catch (err) {
                             console.error(`Failed to persist synced catalogue permissions for ${role}`, err);
                         }

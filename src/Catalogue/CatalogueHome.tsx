@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Link } from 'react-router-dom';
+//import { Link } from 'react-router-dom';
 import { db } from '../lib/Firebase';
 import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
@@ -16,7 +16,7 @@ import { Ico, ICONS } from '../Components/ui/Catalogueui';
 //import { IconChevronDown } from '../constants/Icons';
 import { FiRefreshCw, FiLoader, FiShare2 } from 'react-icons/fi';
 import { fetchDashboardData, CACHE_DURATION } from '../lib/fetchDashboardData';
-import ShinyText from '../Components/ShinyText';
+//import ShinyText from '../Components/ShinyText';
 import type { WithCacheMeta } from '../lib/fetchDashboardData';
 //import NotificationBell from '../Components/NotificationBell';
 import { TutorialStep } from '../Components/TutorialStep';
@@ -177,28 +177,21 @@ const HomePageContent: React.FC = () => {
         };
     }, [currentUser]);
 
-    // Expiry date state and effect
-    const [expiryDate, setExpiryDate] = useState<any>(null);
     // Same link CatalogueLayout shares: custom subdomain if set, else /catalogue/:companyId
     const [storeLink, setStoreLink] = useState(`${window.location.origin}/catalogue/${currentUser?.companyId}`);
 
     useEffect(() => {
-        const fetchExpiry = async () => {
+        const fetchStoreLink = async () => {
             if (!currentUser?.companyId) return;
             try {
-                const ref = doc(db, 'companies', currentUser.companyId);
-                const snap = await getDoc(ref);
-                if (snap.exists()) {
-                    setExpiryDate(snap.data().expiryDate);
-                    if (snap.data().subdomain) {
-                        setStoreLink(`https://${snap.data().subdomain}.sellar.in`);
-                    }
-                }
+                const snap = await getDoc(doc(db, 'companies', currentUser.companyId));
+                const subdomain = snap.exists() ? snap.data().subdomain : null;
+                if (subdomain) setStoreLink(`https://${subdomain}.sellar.in`);
             } catch (e) {
-                console.error('Error fetching expiry date:', e);
+                console.error('Error fetching store link:', e);
             }
         };
-        fetchExpiry();
+        fetchStoreLink();
     }, [currentUser?.companyId]);
 
     const [isDataVisible, setIsDataVisible] = useState<boolean>(false);
@@ -329,26 +322,6 @@ const HomePageContent: React.FC = () => {
         window.dispatchEvent(new CustomEvent('open-catalogue-share', { detail: { link: storeLink } }));
     };
 
-    // Helper functions for expiry
-    const isExpiringSoon = (expiry: any) => {
-        if (!expiry) return false;
-        const d = expiry.toDate ? expiry.toDate() : new Date(expiry);
-        const diff = d.getTime() - new Date().getTime();
-        return diff > 0 && diff <= 7 * 24 * 60 * 60 * 1000;
-    };
-
-    const getDaysLeft = (expiry: any) => {
-        if (!expiry) return null;
-        const d = expiry.toDate ? expiry.toDate() : new Date(expiry);
-        const diff = d.getTime() - new Date().getTime();
-        if (diff <= 0) return 0;
-        return Math.ceil(diff / (1000 * 60 * 60 * 24));
-    };
-
-    const daysLeft = (getDaysLeft(expiryDate) ?? 0);
-    const soon = isExpiringSoon(expiryDate);
-    const isUrgent = daysLeft <= 2;
-
     // Format the last-updated timestamp for display in the header
     const formattedLastUpdated = useMemo(() => {
         if (!data?.lastUpdated) return 'Never';
@@ -369,24 +342,6 @@ const HomePageContent: React.FC = () => {
 
     return (
         <div className="flex min-h-screen w-full flex-col bg-[#fff5ec] mb-16">
-
-            {soon && (
-                <div className={`w-full text-center py-2 text-sm font-bold text-white shadow-sm transition-colors duration-300 ${isUrgent ? 'bg-red-300' : 'bg-amber-200'}`}>
-                    <ShinyText
-                        text={` Subscription expires ${daysLeft} day${daysLeft === 1 ? '' : 's'}.`}
-                        speed={4}
-                        delay={0}
-                        color="#030303"
-                        shineColor="#faf5f5"
-                        spread={100}
-                        direction="left"
-                        yoyo={false}
-                        pauseOnHover={false}
-                        disabled={false}
-                    />
-                    <Link to="/subscription" className="text-black ml-2 underline hover:text-gray-100">Renew Now</Link>
-                </div>
-            )}
 
             {/* ── Page head: title + "Updated" line on the left, hide-figures on the right ── */}
             <header className="flex flex-shrink-0 flex-wrap items-center gap-x-4 gap-y-3 px-4 pt-5 pb-4 md:px-6">

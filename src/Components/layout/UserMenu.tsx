@@ -14,21 +14,21 @@ export const THEMES: Record<Theme, {
   avatar: string; searchHover: string;
 }> = {
   sky: {
-  navActive: 'bg-blue-600 text-white shadow-md shadow-blue-600/25',
-  qaActive: 'border-blue-200 bg-blue-50 text-slate-900',
-  qaIconActive: 'bg-blue-100 text-blue-600',
-  qaIconIdle: 'bg-slate-100 text-slate-600 group-hover:bg-blue-100 group-hover:text-blue-600',
-  avatar: 'bg-blue-600 ring-blue-600/20',
-  searchHover: 'hover:border-blue-300',
-},
+    navActive: 'bg-blue-600 text-white shadow-md shadow-blue-600/25',
+    qaActive: 'border-blue-200 bg-blue-50 text-slate-900',
+    qaIconActive: 'bg-blue-100 text-blue-600',
+    qaIconIdle: 'bg-slate-100 text-slate-600 group-hover:bg-blue-100 group-hover:text-blue-600',
+    avatar: 'bg-blue-600 ring-blue-600/20',
+    searchHover: 'hover:border-blue-300',
+  },
   orange: {
-  navActive: 'bg-orange-700 text-white shadow-md shadow-orange-700/25',      // primary #c2410c
-  qaActive: 'border-orange-200 bg-orange-100 text-orange-800',               // primary-soft #ffedd5 + soft-ink #9a3412
-  qaIconActive: 'bg-orange-200 text-orange-800',
-  qaIconIdle: 'bg-slate-100 text-slate-600 group-hover:bg-orange-100 group-hover:text-orange-800',
-  avatar: 'bg-orange-700 ring-orange-700/20',
-  searchHover: 'hover:border-orange-600',                                     // focus-ring #ea580c
-},
+    navActive: 'bg-orange-700 text-white shadow-md shadow-orange-700/25',      // primary #c2410c
+    qaActive: 'border-orange-200 bg-orange-100 text-orange-800',               // primary-soft #ffedd5 + soft-ink #9a3412
+    qaIconActive: 'bg-orange-200 text-orange-800',
+    qaIconIdle: 'bg-slate-100 text-slate-600 group-hover:bg-orange-100 group-hover:text-orange-800',
+    avatar: 'bg-orange-700 ring-orange-700/20',
+    searchHover: 'hover:border-orange-600',                                     // focus-ring #ea580c
+  },
 };
 
 export function initials(name?: string) {
@@ -52,10 +52,23 @@ interface UserMenuProps {
   buttonClassName?: string;
   /** Where the menu opens relative to the button */
   placement?: 'top-left' | 'bottom-right';
+  /** 'sky' = POS, 'orange' = Catalogue */
+  theme?: Theme;
+  /** Optional overrides for the menu links */
+  accountTo?: string;
+  addonsTo?: string;
 }
 
 /** Small dependency-free dropdown (no shadcn dropdown-menu needed). */
-export function UserMenu({ userName, children, buttonClassName = '', placement = 'bottom-right' }: UserMenuProps) {
+export function UserMenu({
+  userName,
+  children,
+  buttonClassName = '',
+  placement = 'bottom-right',
+  theme = 'sky',
+  accountTo,
+  addonsTo,
+}: UserMenuProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -77,6 +90,15 @@ export function UserMenu({ userName, children, buttonClassName = '', placement =
   const item =
     'flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100';
 
+  const isCatalogue = theme === 'orange';
+  const accountPath =
+    accountTo ?? (isCatalogue ? ROUTES.CATALOGUE_ACCOUNTS : ROUTES.ACCOUNT);
+  const addonsPath =
+    addonsTo ??
+    (isCatalogue
+      ? `${ROUTES.CHOME}/${ROUTES.CATA_ADDITIONAL_SERVICES}`
+      : ROUTES.ADDITIONAL_FEATURES);
+
   return (
     <div ref={ref} className="relative">
       <button type="button" onClick={() => setOpen((o) => !o)} className={buttonClassName}>
@@ -89,11 +111,11 @@ export function UserMenu({ userName, children, buttonClassName = '', placement =
             Signed in as {userName || 'Account'}
           </p>
           <div className="my-1 border-t border-slate-100" />
-          <Link to={ROUTES.ACCOUNT} onClick={() => setOpen(false)} className={item}>
+          <Link to={accountPath} onClick={() => setOpen(false)} className={item}>
             <UserCog className="size-4" /> Account
           </Link>
           <ShowWrapper requiredPermission={Permissions.ViewAddons}>
-            <Link to={ROUTES.ADDITIONAL_FEATURES} onClick={() => setOpen(false)} className={item}>
+            <Link to={addonsPath} onClick={() => setOpen(false)} className={item}>
               <Sparkles className="size-4" /> Add-ons
             </Link>
           </ShowWrapper>

@@ -42,20 +42,20 @@ export const ensureCataPermissionsExist = async (companyId: string, role: string
   const cataDocRef = doc(db, 'companies', companyId, 'cata_permissions', role);
   const cataSnap = await getDoc(cataDocRef);
 
-  // 1. If it exists, self-heal it: rewrite any renamed permission strings
-  // (see migrateCataPermissions) AND auto-merge in any default catalogue
-  // permission for this role that isn't saved yet (e.g. a new capability
-  // added to the role's defaults after this doc was first created), instead
-  // of requiring a manual Reset + Save on the Permission Setting page.
   if (cataSnap.exists()) {
-    const { permissions: migrated, changed: renamed } = migrateCataPermissions(cataSnap.data().allowedPermissions);
+    const data = cataSnap.data();
+    const { permissions: migrated, changed: renamed } = migrateCataPermissions(data.allowedPermissions);
     const defaults = getDefaultCataPermissions(role);
-    const merged = Array.from(new Set([...migrated, ...defaults]));
-    const changed = renamed || merged.length !== migrated.length;
+    // Purane docs (stamp nahi) ke liye current defaults ko already-synced maano
+    const hasStamp = Array.isArray(data.syncedDefaults);
+    const alreadySynced: string[] = hasStamp ? data.syncedDefaults : defaults;
+    const newDefaults = defaults.filter(p => !alreadySynced.includes(p));
+    const merged = Array.from(new Set([...migrated, ...newDefaults]));
+    const changed = renamed || newDefaults.length > 0 || !hasStamp;
 
     if (changed) {
       try {
-        await setDoc(cataDocRef, { allowedPermissions: merged }, { merge: true });
+        await setDoc(cataDocRef, { allowedPermissions: merged, syncedDefaults: defaults }, { merge: true });
       } catch (err) {
         console.error(`Failed to persist synced catalogue permissions for ${role}`, err);
       }
@@ -71,6 +71,7 @@ export const ensureCataPermissionsExist = async (companyId: string, role: string
   try {
     await setDoc(cataDocRef, {
       allowedPermissions: defaultPerms,
+      syncedDefaults: defaultPerms,
       role: role,
       companyId: companyId
     }, { merge: true });
@@ -293,7 +294,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             }
           }
 
-          rolePermissions = await syncCompanyPermissions(companyId!, uData.role, dbPerms, permSnap.exists());
+          rolePermissions = await syncCompanyPermissions(
+            companyId!,
+            uData.role,
+            dbPerms,
+            permSnap.exists(),
+            permSnap.exists() ? permSnap.data().syncedDefaults : undefined
+          );
           cataloguePermissions = cataPerms;
         }
 

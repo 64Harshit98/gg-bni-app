@@ -75,7 +75,7 @@ export const DESTINATIONS: Destination[] = [
     keywords: 'shop setting hours opening closing weekly off day close',
     ownerOnly: true,
   },
-  { label: 'Permission Settings', hint: 'User roles & permissions', to: ROUTES.PERMSETTING, keywords: 'roles access' },
+  { label: 'Permission Settings', hint: 'User roles & permissions', to: ROUTES.PERMSETTING, keywords: 'roles access', ownerOnly: true },
   { label: 'Sales Settings', hint: 'Sales preferences', to: ROUTES.SALESETTING },
   { label: 'Purchase Settings', hint: 'Purchase preferences', to: ROUTES.PURCHASESETTING },
   { label: 'User Settings', hint: 'Manage users', to: ROUTES.USERSETTING },
@@ -133,7 +133,7 @@ export const CATALOGUE_DESTINATIONS: Destination[] = [
   { label: 'Bill Settings', hint: 'Invoice format', to: `${C}/${ROUTES.CATA_BILL_SETTING}` },
   { label: 'Item Settings', hint: 'Item preferences', to: `${C}/${ROUTES.CATA_ITEM_SETTING}` },
   { label: 'User Settings', hint: 'Manage users', to: `${C}/${ROUTES.CATA_USER_SETTING}` },
-  { label: 'Permission Settings', hint: 'Roles & permissions', to: `${C}/${ROUTES.CATA_PERMISSION_SETTING}` },
+  { label: 'Permission Settings', hint: 'Roles & permissions', to: `${C}/${ROUTES.CATA_PERMISSION_SETTING}`, ownerOnly: true },
 
   { label: 'Support', hint: 'Get help from our team', to: `${C}/${ROUTES.CATA_SUPPORT}`, keywords: 'help' },
   { label: 'Add-ons', hint: 'Additional services', to: `${C}/${ROUTES.CATA_ADDITIONAL_SERVICES}` },

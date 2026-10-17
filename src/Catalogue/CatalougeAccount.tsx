@@ -14,6 +14,7 @@ import { TutorialStep } from '../Components/TutorialStep';
 import { FiCopy, FiCheck } from 'react-icons/fi';
 import ShowWrapper from '../context/ShowWrapper';
 import { Cata_Permissions } from './enum/cata_permissions.enum';
+import { ROLES } from '../enums';
 
 interface UserProfile {
     name: string;
@@ -24,7 +25,7 @@ interface UserProfile {
     phoneNumber?: string;
     address?: string;
 }
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 8;
 
 /* ---------- UI-only helpers (no logic) — Catalogue = orange theme ---------- */
 
@@ -95,6 +96,7 @@ const Account: React.FC = () => {
     const navigate = useNavigate();
 
     const { currentUser, loading: loadingAuth } = useAuth();
+    const isOwner = currentUser?.role === ROLES.OWNER;
     const [profileData, setProfileData] = useState<UserProfile | null>(null);
     const [loadingProfile, setLoadingProfile] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -113,6 +115,7 @@ const Account: React.FC = () => {
     const settingRef = useRef<HTMLDivElement | null>(null);
     const plansRef = useRef<HTMLDivElement | null>(null);
     const supportRef = useRef<HTMLDivElement | null>(null);
+    const usersRef = useRef<HTMLDivElement | null>(null);
     const addOnsRef = useRef<HTMLDivElement | null>(null);
     const logoutRef = useRef<HTMLDivElement | null>(null);
 
@@ -123,8 +126,9 @@ const Account: React.FC = () => {
         4: settingRef,
         5: plansRef,
         6: supportRef,
-        7: addOnsRef,
-        8: logoutRef,
+        7: usersRef,
+        8: addOnsRef,
+        9: logoutRef,
     };
 
     const next = useCallback((n: number) => {
@@ -544,7 +548,7 @@ const Account: React.FC = () => {
                                         step={6}
                                         currentStep={tutorialStep}
                                         text="Need help? Reach out to our support team from here."
-                                        onNext={() => next(7)}
+                                        onNext={() => next(isOwner ? 7 : 8)}
                                         onSkip={skip}
                                     >
                                         <RowLink
@@ -559,10 +563,34 @@ const Account: React.FC = () => {
                                     </TutorialStep>
                                 </div>
 
-                                {/* Step 7 — Add Ons */}
+                                {/* Step 7 — Users & staff (owner only, same as Settings page) */}
+                                <div ref={usersRef} className={CELL}>
+                                    {isOwner && (
+                                        <TutorialStep
+                                            step={7}
+                                            currentStep={tutorialStep}
+                                            text="Add your staff and salespeople, and set their access here."
+                                            onNext={() => next(8)}
+                                            onSkip={skip}
+                                            mobileArrowAlign="left"
+                                        >
+                                            <RowLink
+                                                to={`${ROUTES.CHOME}/${ROUTES.CATA_USER_SETTING}`}
+                                                tint="magenta"
+                                                title="Users & staff"
+                                                desc="Add salespeople and set access"
+                                            >
+                                                <circle cx="9" cy="8" r="4" />
+                                                <path d="M2 21a7 7 0 0 1 14 0M16 3.5a4 4 0 0 1 0 8M22 21a7 7 0 0 0-4-6.3" />
+                                            </RowLink>
+                                        </TutorialStep>
+                                    )}
+                                </div>
+
+                                {/* Step 8 — Add Ons */}
                                 <div ref={addOnsRef} className={CELL}>
                                     <TutorialStep
-                                        step={7}
+                                        step={8}
                                         currentStep={tutorialStep}
                                         text="Unlock extra features for your business with Add Ons."
                                         onNext={() => completeTutorial(currentUser, 'catalogueAccountTutorialDone', setTutorialStep)}

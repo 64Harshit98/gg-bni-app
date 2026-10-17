@@ -17,6 +17,7 @@ interface NavItem {
   icon: ReactNode;
   label: string;
   badge?: number;
+  permission?: AnyPermission | null;
 }
 
 export interface QuickAction {
@@ -201,6 +202,7 @@ export function Sidebar({ navItems, quickActions, userName, userRole, switcher, 
         <div className="border-t border-slate-200/70 p-3">
           <UserMenu
             userName={userName}
+            theme={theme}
             placement="top-left"
             buttonClassName={cx(
               'flex w-full items-center rounded-sm p-2 text-left transition-colors hover:bg-slate-100',

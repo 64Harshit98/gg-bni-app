@@ -22,8 +22,8 @@ import PosCataSwitcher from '../Components/PosCataSwitcher';
 import NotificationBell from '../Components/NotificationBell';
 import { Sidebar, type QuickAction } from '../Components/layout/SideBar';
 import { Header } from '../Components/layout/Header';
-import { CommandPalette } from '../Components/layout/CommandPalette';
-
+import { CommandPalette, LAYOUT_ACTION_EVENT, type LayoutAction } from '../Components/layout/CommandPalette';
+import { SubscriptionBanner, useSubscriptionBanner } from '../Components/layout/SubscriptionBanner';
 
 const MainLayout = () => {
   const location = useLocation();
@@ -47,7 +47,21 @@ const MainLayout = () => {
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+  useEffect(() => {
+    const onAction = (e: Event) => {
+      const action = (e as CustomEvent<LayoutAction>).detail;
+      if (action === 'add-user') setIsAddUserModalOpen(true);
+      if (action === 'add-expense') setIsExpenseModalOpen(true);
+    };
+    window.addEventListener(LAYOUT_ACTION_EVENT, onAction);
+    return () => window.removeEventListener(LAYOUT_ACTION_EVENT, onAction);
+  }, []);
   const { currentUser, hasPermission } = useAuth();
+  const banner = useSubscriptionBanner();
+  // POS pages that show the renewal banner: Home · Accounts · Journal
+  const BANNER_PATHS: string[] = [ROUTES.HOME, ROUTES.ACCOUNT, ROUTES.JOURNAL]; // ← swap in your real route constants
+  const showBanner =
+    banner.visible && !!banner.tier && banner.days !== null && BANNER_PATHS.includes(location.pathname);
   const { addExpense } = useExpenses(currentUser?.companyId, 'pos');
 
   const { settings: shopSettings, isClosingSoon, shouldAutoClose, needsReset } = useShopHours(currentUser?.companyId);
@@ -155,7 +169,7 @@ const MainLayout = () => {
   const isActive = (path: string) => location.pathname === path;
 
   const fabActionClass = 'w-full mb-2 rounded-sm bg-white shadow-sm';
-  const fabIconBadgeClass = 'w-10 h-10 rounded-sm bg-sky-100 text-sky-600 flex items-center justify-center';
+  const fabIconBadgeClass = 'w-10 h-10 rounded-sm bg-[#e6eeff] text-[#155dfc] flex items-center justify-center';
   const fabLabelClass = 'text-[11px] font-medium text-gray-700';
 
   const MobileActionButtons = () => (
@@ -238,7 +252,7 @@ const MainLayout = () => {
   ];
 
   return (
-    <div className="relative h-dvh w-screen flex flex-col md:flex-row overflow-hidden bg-gray-100 md:bg-gradient-to-br md:from-sky-50 md:via-white md:to-slate-100">
+    <div className="relative h-dvh w-screen flex flex-col md:flex-row overflow-hidden bg-white">
       {/* Closing Reminder Modal */}
       {showReminder && shopSettings && (
         <ShopClosingReminderModal
@@ -281,6 +295,12 @@ const MainLayout = () => {
           </ShowWrapper>
         </div>
       </header>
+      {showBanner && (
+        <SubscriptionBanner
+          variant="mobile" theme="pos"
+          days={banner.days!} endDate={banner.endDate} tier={banner.tier!} onClose={banner.dismiss}
+        />
+      )}
 
       {/* DESKTOP SIDEBAR (new) */}
       <Sidebar
@@ -297,7 +317,7 @@ const MainLayout = () => {
             onSkip={handleSwitcherSkip}
           >
             <div>
-              <PosCataSwitcher current="POS" />
+              <PosCataSwitcher current="POS" showCompany />
             </div>
           </TutorialStep>
         }
@@ -307,6 +327,12 @@ const MainLayout = () => {
       <main className="flex-1 relative flex flex-col min-w-0 overflow-hidden">
         {/* DESKTOP TOP BAR + SEARCH (new) — renders on every page */}
         <Header navItems={navItems} userName={currentUser?.name} />
+        {showBanner && (
+          <SubscriptionBanner
+            variant="desktop" theme="pos"
+            days={banner.days!} endDate={banner.endDate} tier={banner.tier!} onClose={banner.dismiss}
+          />
+        )}
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto pb-16 md:pb-4 scroll-smooth">
           <Suspense fallback={<div>Loading...</div>}>
@@ -331,7 +357,7 @@ const MainLayout = () => {
                 isLast={true}
                 position="top"
               >
-                <FloatingButton className="static shadow-lg">
+                <FloatingButton className="static">
                   <MobileActionButtons />
                 </FloatingButton>
               </TutorialStep>

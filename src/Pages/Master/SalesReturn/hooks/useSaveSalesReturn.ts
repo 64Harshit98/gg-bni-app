@@ -7,6 +7,7 @@ import {
     serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../../../../lib/Firebase';
+import { clearSalesReportCache } from '../../../Reports/SalesReportComponents/salesReportCache';
 import { ROUTES } from '../../../../constants/routes.constants';
 import { State } from '../../../../enums';
 import type { PaymentCompletionData } from '../../../../Components/PaymentDrawer';
@@ -300,6 +301,7 @@ export const useSaveSalesReturn = ({
             }
 
             await batch.commit();
+            clearSalesReportCache(companyId);
             setModal({ type: State.SUCCESS, message: 'Return processed successfully!' });
             setTimeout(() => navigate(ROUTES.JOURNAL), 1500);
         } catch (err: any) {

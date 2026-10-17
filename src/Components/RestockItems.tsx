@@ -1,32 +1,22 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
-import { FiArrowRight } from 'react-icons/fi'; // Added Alert icon for visual context
-import { ROUTES } from '../constants/routes.constants';
+import { CatCard, CardHead, Ico, ICONS } from '../Components/ui/Catalogueui';
 
-export const RestockAlertsCard: React.FC = () => {
-    const navigate = useNavigate();
-
-    return (
-        <Card className="h-full">
-            <CardHeader className="-mb-6">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                    Restock Alerts
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                <p className="text-sm text-gray-500 mb-4">
-                    Check which items are below their minimum quantity threshold and need reordering.
-                </p>
-
-                <button
-                    onClick={() => navigate(ROUTES.RESTOCK_REPORT)}
-                    className="w-full flex justify-center items-center gap-2 bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 font-semibold py-2 px-4 rounded-lg transition-colors border border-blue-200"
-                >
-                    View Restock Report
-                    <FiArrowRight />
-                </button>
-            </CardContent>
-        </Card>
-    );
-};
+// Placeholder only: Restock alerts feature is still under development.
+export const CatalogueRestockSoon: React.FC = () => (
+    <CatCard>
+        <CardHead
+            title="Restock alerts"
+            sub="Catalogue items running low"
+            right={
+                <span className="inline-flex h-[22px] items-center rounded-sm bg-[#fef6d7] px-2 text-[11px] font-semibold leading-[22px] tracking-[0.03em] text-[#a16207]">
+                    SOON
+                </span>
+            }
+        />
+        <div className="grid place-items-center gap-2 rounded-sm border-[1.5px] border-dashed border-[#f6e1d0] px-3 py-6 text-center text-slate-500">
+            <Ico d={ICONS.box} size={28} className="text-orange-500" />
+            <b className="text-sm font-semibold text-slate-900">Coming soon</b>
+            <span className="text-xs leading-[18px]">You’ll see items that are about to sell out, so you can hide or restock them.</span>
+        </div>
+    </CatCard>
+);

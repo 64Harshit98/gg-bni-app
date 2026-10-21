@@ -827,6 +827,7 @@ const OrdersReturnPage: React.FC = () => {
 
       <PaymentDrawer
         mode='sale'
+        customerSource='catalogue'
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
         subtotal={Math.abs(finalBalance)}

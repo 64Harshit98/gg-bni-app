@@ -61,6 +61,8 @@ export const TransferStockModal = ({
   const [fromId, setFromId] = useState('');
   const [toId, setToId] = useState('');
   const [lines, setLines] = useState<Line[]>([]);
+  // What the user is typing in a qty box; committed (and clamped) on blur / Enter
+  const [qtyDrafts, setQtyDrafts] = useState<Record<string, string>>({});
   const [search, setSearch] = useState('');
   const [date, setDate] = useState(toInputDate(new Date()));
   const [remarks, setRemarks] = useState('');
@@ -103,6 +105,7 @@ export const TransferStockModal = ({
     setFromId(from);
     setToId(to);
     setLines(initialItemId && qtyAt(from, initialItemId) > 0 ? [{ itemId: initialItemId, quantity: 1 }] : []);
+    setQtyDrafts({});
     setSearch('');
     setDate(toInputDate(new Date()));
     setRemarks('');
@@ -136,6 +139,18 @@ export const TransferStockModal = ({
   const setQty = (itemId: string, value: number) => {
     const max = qtyAt(fromId, itemId);
     setLines((prev) => prev.map((l) => (l.itemId === itemId ? { ...l, quantity: Math.max(1, Math.min(max, Math.round(value) || 1)) } : l)));
+    setQtyDrafts((d) => {
+      const next = { ...d };
+      delete next[itemId];
+      return next;
+    });
+  };
+
+  const commitQtyDraft = (itemId: string) => {
+    const draft = qtyDrafts[itemId];
+    if (draft === undefined) return;
+    const current = lines.find((l) => l.itemId === itemId)?.quantity ?? 1;
+    setQty(itemId, draft === '' ? current : Number(draft));
   };
 
   const changeFrom = (id: string) => {
@@ -319,12 +334,23 @@ export const TransferStockModal = ({
                           <Minus size={13} />
                         </button>
                         <input
-                          type="number"
-                          value={l.quantity}
-                          min={1}
-                          max={available}
-                          onChange={(e) => setQty(l.itemId, Number(e.target.value))}
-                          className="h-full w-12 border-x border-slate-300 text-center text-sm font-semibold text-slate-900 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+                          type="text"
+                          inputMode="numeric"
+                          aria-label="Quantity"
+                          value={qtyDrafts[l.itemId] ?? String(l.quantity)}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            if (/^\d*$/.test(v)) setQtyDrafts((d) => ({ ...d, [l.itemId]: v }));
+                          }}
+                          onBlur={() => commitQtyDraft(l.itemId)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              e.currentTarget.blur();
+                            }
+                          }}
+                          className="h-full w-14 border-x border-slate-300 text-center text-sm font-semibold text-slate-900 outline-none"
                         />
                         <button type="button" onClick={() => setQty(l.itemId, l.quantity + 1)} disabled={l.quantity >= available} aria-label="More" className="flex h-full w-8 items-center justify-center text-slate-600 disabled:opacity-30">
                           <Plus size={13} />

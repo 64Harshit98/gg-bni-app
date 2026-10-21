@@ -263,25 +263,30 @@ const MainLayout = () => {
       )}
 
       {/* MOBILE HEADER (unchanged) */}
-      <header className="md:hidden relative flex items-center justify-between px-3 py-2 bg-white border-b border-slate-200 z-[150]">
-        <TutorialStep
-          step={1}
-          currentStep={isMobileView ? switcherStep : -1}
-          text="Use this menu to switch between POS and Catalogue views."
-          onNext={handleSwitcherNext}
-          onSkip={handleSwitcherSkip}
-          mobileArrowAlign="left"
-        >
-          <div>
-            <PosCataSwitcher current="POS" />
-          </div>
-        </TutorialStep>
-        <img
-          src={sellarLogo}
-          alt="Sellar Logo"
-          className="h-6 absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-        />
-        <div className="flex items-center gap-1">
+      {/* Same structure as the Catalogue mobile header so the logo never shifts when switching */}
+      <header className="md:hidden flex items-center gap-2 px-3 py-2 bg-white border-b border-slate-200 z-[150]">
+        <div className="shrink-0">
+          <TutorialStep
+            step={1}
+            currentStep={isMobileView ? switcherStep : -1}
+            text="Use this menu to switch between POS and Catalogue views."
+            onNext={handleSwitcherNext}
+            onSkip={handleSwitcherSkip}
+            mobileArrowAlign="left"
+          >
+            <div className="min-w-0">
+              <PosCataSwitcher current="POS" />
+            </div>
+          </TutorialStep>
+        </div>
+        <div className="flex-1 min-w-0 flex justify-center">
+          <img
+            src={sellarLogo}
+            alt="Sellar Logo"
+            className="h-5 max-w-full object-contain"
+          />
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
             aria-label="Search"

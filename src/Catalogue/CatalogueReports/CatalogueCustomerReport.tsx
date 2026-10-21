@@ -24,6 +24,7 @@ import {
 import { collection, onSnapshot, query, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 import { Modal } from '../../constants/Modal';
+import { customerBelongsTo, customerSourceFields, type CustomerSourceFields } from '../../constants/customerSource';
 import { State } from '../../enums';
 import { ROUTES } from '../../constants/routes.constants';
 import useCustomerReport from '../hooks/useCustomerReport';
@@ -111,7 +112,7 @@ const CatalogueCustomerReport: React.FC = () => {
   // Customers master list: a customer whose only order was deleted still shows up
   // if their customer record was created inside the applied date range.
   const [customersMasterList, setCustomersMasterList] = useState<
-    { name: string; number: string; createdAt?: number }[]
+    ({ name: string; number: string; createdAt?: number } & CustomerSourceFields)[]
   >([]);
   const [companyName, setCompanyName] = useState<string>('');
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({
@@ -143,7 +144,7 @@ const CatalogueCustomerReport: React.FC = () => {
       query(customersRef),
       (snapshot) => {
         const nextMap: Record<string, number> = {};
-        const nextMasterList: { name: string; number: string; createdAt?: number }[] = [];
+        const nextMasterList: ({ name: string; number: string; createdAt?: number } & CustomerSourceFields)[] = [];
         snapshot.forEach((docSnap) => {
           const data = docSnap.data() as Record<string, unknown>;
           const credit = Number(data.creditBalance || 0);
@@ -158,6 +159,7 @@ const CatalogueCustomerReport: React.FC = () => {
             name: String(data.name || 'Unknown'),
             number: numberKey || docSnap.id,
             createdAt: typeof createdAtValue?.toMillis === 'function' ? createdAtValue.toMillis() : undefined,
+            ...customerSourceFields(data),
           });
         });
         setCustomerCreditMap(nextMap);
@@ -234,8 +236,9 @@ const CatalogueCustomerReport: React.FC = () => {
       recentBills: [],
     });
 
+    // POS customers share the customers collection; only catalogue customers are listed here
     customersMasterList
-      .filter((c) => c.createdAt !== undefined && c.createdAt >= rangeStartMs && c.createdAt <= rangeEndMs)
+      .filter((c) => c.createdAt !== undefined && c.createdAt >= rangeStartMs && c.createdAt <= rangeEndMs && customerBelongsTo('catalogue', c))
       .forEach((c) => {
         const key = `${c.name}-${c.number}`;
         map.set(key, blank(key, c.name, c.number || ''));

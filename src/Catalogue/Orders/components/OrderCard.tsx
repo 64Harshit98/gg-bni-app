@@ -764,7 +764,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
 
     // ─────────────────────────────────────────────────────────────────────────
     // MOBILE FULL-SCREEN ORDER VIEW
-    // Back header → [timeline + payment] → [items] → [addresses] → pinned actions
+    // Back header → [customer / addresses] → [timeline + payment] → [items] → pinned actions
     // Must be rendered as a direct child of the page's flex-col root.
     // ─────────────────────────────────────────────────────────────────────────
     if (variant === 'screen') {
@@ -799,7 +799,14 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                     )}
                 </header>
 
-                <div className="flex-1 px-4 pt-3 pb-4 space-y-3 bg-[#fff5ec]">
+                <div className="grow shrink-0 px-4 pt-3 pb-4 space-y-3 bg-[#fff5ec]">
+                    {/* Customer: billing & shipping */}
+                    {!isUpcomingStatus && (
+                        <div className={SCREEN_CARD}>
+                            {addressesEl}
+                        </div>
+                    )}
+
                     {/* Timeline + payment summary */}
                     {!isUpcomingStatus && (
                         <div className={`${SCREEN_CARD} space-y-4`}>
@@ -812,13 +819,6 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                     <div className={SCREEN_CARD}>
                         {itemsEl}
                     </div>
-
-                    {/* Billing & shipping */}
-                    {!isUpcomingStatus && (
-                        <div className={SCREEN_CARD}>
-                            {addressesEl}
-                        </div>
-                    )}
                 </div>
 
                 {/* Pinned actions */}

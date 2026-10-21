@@ -12,6 +12,8 @@ interface SearchableItemInputProps {
   error?: string | null;
   hideUncategorized?: boolean;
   hideOutOfStock?: boolean;
+  /** Storefront: shops that hide prices (or need approval) must not leak them here. */
+  hidePrice?: boolean;
 }
 
 const THROTTLE_DELAY = 500;
@@ -24,6 +26,7 @@ const SearchBar: React.FC<SearchableItemInputProps> = ({
   isLoading = false,
   hideUncategorized = false,
   hideOutOfStock = false,
+  hidePrice = false,
   error = null
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -174,8 +177,8 @@ const SearchBar: React.FC<SearchableItemInputProps> = ({
 
       {/* INPUT CONTAINER */}
       <div className="relative flex items-center">
-        <div className="absolute left-3 text-gray-400 pointer-events-none">
-          <FiSearch size={18} />
+        <div className="absolute left-3 text-slate-500 pointer-events-none">
+          <FiSearch size={16} />
         </div>
 
         <input
@@ -190,7 +193,8 @@ const SearchBar: React.FC<SearchableItemInputProps> = ({
           onFocus={() => setIsDropdownOpen(true)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
-          className={`w-full pl-10 pr-10 py-3 bg-white border border-gray-300 rounded-sm shadow-sm focus:border-[#F97316] focus:ring-2 focus:ring-[#F97316]/20 outline-none transition-all text-gray-800 placeholder-gray-400 font-medium ${error ? 'border-red-500 focus:border-red-500 focus:ring-red-100' : ''}`} autoComplete="off" />
+          aria-label="Search products"
+          className={`h-10 w-full rounded-sm border border-sf-line bg-sf-sunken pl-10 pr-10 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-500 focus:border-sf-primary focus:bg-white focus:ring-2 focus:ring-sf-primary/20 ${error ? 'border-red-500 focus:border-red-500 focus:ring-red-100' : ''}`} autoComplete="off" />
 
         {searchQuery && (
           <button
@@ -206,7 +210,7 @@ const SearchBar: React.FC<SearchableItemInputProps> = ({
       {isDropdownOpen && searchQuery && (
         <div
           ref={listRef} // Attached Ref here for scrolling
-          className="absolute top-full left-0 right-0 z-50 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl max-h-72 overflow-y-auto overflow-x-hidden scroll-smooth"
+          className="absolute top-full left-0 right-0 z-50 mt-2 bg-white border border-sf-line rounded-sm shadow-sf-float max-h-80 overflow-y-auto overflow-x-hidden scroll-smooth"
         >
 
           {isLoading ? (
@@ -221,7 +225,7 @@ const SearchBar: React.FC<SearchableItemInputProps> = ({
               {filteredItems.length === 0 ? (
                 <div className="p-6 text-center text-gray-500 flex flex-col items-center">
                   <FiBox size={24} className="mb-2 text-gray-300" />
-                  <span>No items found for "{searchQuery}"</span>
+                  <span>No products match "{searchQuery}". Try a shorter word.</span>
                 </div>
               ) : (
                 filteredItems.map((item, index) => {
@@ -234,16 +238,15 @@ const SearchBar: React.FC<SearchableItemInputProps> = ({
                       key={item.id}
                       onMouseEnter={() => setActiveIndex(index)}
                       onClick={() => handleSelect(item)}
-                      className={`px-4 py-3 cursor-pointer border-b border-gray-50 last:border-0 transition-colors duration-150 flex justify-between items-center ${isSelected ? '' : 'hover:bg-gray-50'}`}
-                      style={isSelected ? { backgroundColor: '#E0F2FE', color: '#0369A1' } : {}}
+                      className={`px-4 py-2.5 cursor-pointer border-b border-sf-line last:border-0 transition-colors duration-150 flex justify-between items-center gap-3 ${isSelected ? 'bg-sf-soft' : 'hover:bg-sf-sunken'}`}
                     >
                       {/* Left: Name & Barcode */}
                       <div className="flex flex-col min-w-0 pr-4">
-                        <span className="text-sm font-medium text-gray-800 truncate">
+                        <span className="text-sm font-medium text-slate-900 truncate">
                           {item.name}
                         </span>
 
-                        <span className="text-xs text-gray-400 font-mono mt-0.5">
+                        <span className="text-xs text-slate-500 mt-0.5">
                           {categoryName}
                         </span>
 
@@ -251,9 +254,11 @@ const SearchBar: React.FC<SearchableItemInputProps> = ({
 
                       {/* Right: Price & Stock Badge */}
                       <div className="flex flex-col items-end flex-shrink-0 gap-1">
-                        <span className="text-sm font-bold text-gray-900">
-                          ₹{item.salesPrice || item.mrp}
-                        </span>
+                        {!hidePrice && (
+                          <span className="text-sm font-semibold tabular-nums text-slate-900">
+                            ₹{Number(item.salesPrice || item.mrp || 0).toLocaleString('en-IN')}
+                          </span>
+                        )}
                         {/* <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${stockColor}`}>
                           {stock} in stock
                         </span> */}

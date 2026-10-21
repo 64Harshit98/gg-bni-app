@@ -114,6 +114,7 @@ export const usePlaceOrder = ({
                     if (!customerSnap.exists() || !customerSnap.data()?.createdAt) {
                         customerData.createdAt = serverTimestamp();
                     }
+                    if (!customerSnap.exists()) customerData.source = 'catalogue';
                     Object.keys(customerData).forEach(key => {
                         if (customerData[key] === undefined) delete customerData[key];
                     });

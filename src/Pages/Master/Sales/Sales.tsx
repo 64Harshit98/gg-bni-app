@@ -795,8 +795,8 @@ const Sales: React.FC = () => {
     const renderSavedBillModals = () => (
         <>
             {savedBillData && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#020618]/60 backdrop-blur-sm p-4">
-                    <div className={`bg-white border border-[#dfe6fb] rounded-sm ${SHADOW_FLOAT} p-6 w-full max-w-sm flex flex-col items-center animate-in fade-in zoom-in duration-300`}>
+                <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#020618]/60 backdrop-blur-sm p-4">
+                    <div className={`bg-white border border-[#dfe6fb] rounded-sm ${SHADOW_FLOAT} p-6 w-full max-w-sm max-h-[90dvh] overflow-y-auto flex flex-col items-center animate-in fade-in zoom-in duration-300`}>
                         <button onClick={handleCloseQrModal} aria-label="Close" className="self-end p-1 rounded-full text-[#5b6b86] hover:text-[#0f172b] hover:bg-[#f5f7ff] transition-colors">
                             <FiX size={20} />
                         </button>
@@ -864,7 +864,7 @@ const Sales: React.FC = () => {
             )}
 
             {showPrintSubMenu && savedBillData && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-[#020618]/45" onClick={() => setShowPrintSubMenu(false)}>
+                <div className="fixed inset-0 z-[2010] flex items-center justify-center bg-[#020618]/45" onClick={() => setShowPrintSubMenu(false)}>
                     <div className={`bg-white border border-[#dfe6fb] rounded-sm p-6 w-full max-w-xs mx-4 ${SHADOW_FLOAT}`} onClick={e => e.stopPropagation()}>
                         <h3 className={`${LABEL_CLS} mb-4 text-center`}>Print options</h3>
                         <div className="flex flex-col gap-3">

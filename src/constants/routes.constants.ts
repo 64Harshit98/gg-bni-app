@@ -75,6 +75,7 @@ export const ROUTES = {
   CATA_USER_SETTING: 'cata-user-setting',
   CATA_PERMISSION_SETTING: 'cata-permission-setting',
   CATA_EDIT: 'cata-edit-profile',
+  CATA_STORE_PAGE: 'store-page',
   CATA_REQUEST: 'requests',
   PARTY_LEDGER: '/party-ledger',
   GALLA_HISAAB_TOOL: '/galla-hisaab-tool',

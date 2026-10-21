@@ -59,6 +59,29 @@
   --shadow-float: 0 10px 28px rgba(21, 48, 140, 0.14), 0 2px 6px rgba(21, 48, 140, 0.08);
 }
 
+/* SELLAR Storefront (the customer-facing shared catalogue, orange):
+   bg-sf-canvas, border-sf-line, bg-sf-sunken, bg-sf-primary, text-sf-primary,
+   bg-sf-soft + text-sf-soft-ink, bg-sf-accent (marks only, never under text),
+   bg-sf-photo-1…4 (empty image wells), text-sf-whatsapp, shadow-sf-card, shadow-sf-float. */
+@theme {
+  --color-sf-canvas: #fff5ec;
+  --color-sf-line: #f6e1d0;
+  --color-sf-sunken: #fff8f2;
+  --color-sf-control: #8a7a6e;
+  --color-sf-primary: #c2410c;
+  --color-sf-primary-hover: #9a3412;
+  --color-sf-soft: #ffedd5;
+  --color-sf-soft-ink: #9a3412;
+  --color-sf-accent: #f97316;
+  --color-sf-photo-1: #fde8d4;
+  --color-sf-photo-2: #e8efe4;
+  --color-sf-photo-3: #e6ebf5;
+  --color-sf-photo-4: #f3e6ee;
+  --color-sf-whatsapp: #1f7a4a;
+  --shadow-sf-card: 0 1px 2px rgba(124, 45, 18, 0.05), 0 2px 6px rgba(124, 45, 18, 0.06);
+  --shadow-sf-float: 0 10px 28px rgba(124, 45, 18, 0.14), 0 2px 6px rgba(124, 45, 18, 0.08);
+}
+
 :root {
   --font-sans: 'Poppins', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --radius: 0.625rem;

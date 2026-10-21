@@ -294,10 +294,10 @@ const scrollToSection = (id: string) =>
 // ─── Shared class strings ─────────────────────────────────────────────────
 const FOCUS_RING = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--focus-ring)]';
 
-const BTN = `inline-flex items-center justify-center gap-2 h-10 px-4 rounded-sm border border-transparent bg-transparent text-sm font-medium leading-5 whitespace-nowrap cursor-pointer transition-colors [&_svg]:w-4 [&_svg]:h-4 [&_svg]:shrink-0 disabled:opacity-45 disabled:cursor-not-allowed ${FOCUS_RING}`;
-const BTN_PRIMARY = `${BTN} bg-[color:var(--primary)] text-[color:var(--on-primary)] hover:bg-[color:var(--primary-hover)]`;
+const BTN = `inline-flex items-center justify-center gap-2 h-10 px-4 rounded-sm border text-sm font-medium leading-5 whitespace-nowrap cursor-pointer transition-colors [&_svg]:w-4 [&_svg]:h-4 [&_svg]:shrink-0 disabled:opacity-45 disabled:cursor-not-allowed ${FOCUS_RING}`;
+const BTN_PRIMARY = `${BTN} border-transparent bg-[color:var(--primary)] text-[color:var(--on-primary)] hover:bg-[color:var(--primary-hover)]`;
 const BTN_SECONDARY = `${BTN} bg-[color:var(--surface)] text-[color:var(--ink)] border-[color:var(--border-control)] hover:bg-[color:var(--surface-sunken)]`;
-const BTN_GHOST = `${BTN} text-[color:var(--ink-muted)] hover:bg-[color:var(--surface-sunken)] hover:text-[color:var(--ink)]`;
+const BTN_GHOST = `${BTN} border-transparent bg-transparent text-[color:var(--ink-muted)] hover:bg-[color:var(--surface-sunken)] hover:text-[color:var(--ink)]`;
 const BTN_SM = 'h-8 px-3 text-[13px]';
 
 const TINTS = {

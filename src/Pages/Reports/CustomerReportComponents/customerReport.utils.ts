@@ -1,5 +1,6 @@
 import { isWalkIn, type SaleRecord } from '../SalesReportComponents/salesReport.utils';
 import type { NewCustomerRecord, OpeningBalanceRecord } from './customerReportCache';
+import { customerBelongsTo } from '../../../constants/customerSource';
 
 export interface Sale {
   id: string;
@@ -120,9 +121,11 @@ export const buildCustomerRows = ({
     return row;
   };
 
-  // Customers added in the range stay listed even with no bills.
+  // Customers added in the range stay listed even with no bills — POS customers only
+  // (catalogue customers live in the same collection).
   newCustomers.forEach((c) => {
     if (!c.name && !phoneDigits(c.number)) return;
+    if (!customerBelongsTo('pos', c)) return;
     const row = rowFor(c.name, c.number);
     row.lastVisit = Math.max(row.lastVisit, c.createdAt);
   });
@@ -147,7 +150,7 @@ export const buildCustomerRows = ({
   });
 
   openingBalances
-    .filter((ob) => ob.balanceType === 'due' && ob.dueAmount > 0)
+    .filter((ob) => ob.balanceType === 'due' && ob.dueAmount > 0 && ob.source !== 'catalogue' && ob.partyType !== 'Supplier')
     .forEach((ob) => {
       const row = rowFor(ob.partyName, ob.partyNumber);
       row.due += ob.dueAmount;

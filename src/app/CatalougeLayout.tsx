@@ -6,7 +6,7 @@ import { ROUTES } from '../constants/routes.constants';
 import { CatItems, CatMobileNavItems } from '../routes/CatalougeRoutes';
 import { useAuth } from '../context/auth-context';
 import sellarLogo from '../assets/sellar-logo-heading.png';
-import { Share2, Store, Package, RotateCcw, Inbox, Wallet, UserPlus, Search, PackagePlus } from "lucide-react";
+import { Share2, Store, Package, RotateCcw, Inbox, Wallet, UserPlus, Search, PackagePlus, LayoutTemplate } from "lucide-react";
 import { useOrderSound } from '../Catalogue/hooks/useOrderSound';
 import { useConfirmedOrdersCount } from '../Catalogue/hooks/useConfirmedOrdersCount';
 import GlobalCatalogueModal from '../Components/CatalogueShareCard';
@@ -257,6 +257,7 @@ const CatalogueLayout = () => {
     // Sidebar quick actions
     const quickActions: QuickAction[] = [
         { key: 'catalog', to: `${ROUTES.CHOME}/${ROUTES.ORDER}`, icon: <Store className="size-4" />, label: 'Edit Catalog', permission: Cata_Permissions.ViewShop },
+        { key: 'storepage', to: `${ROUTES.CHOME}/${ROUTES.CATA_STORE_PAGE}`, icon: <LayoutTemplate className="size-4" />, label: 'Store page', permission: Cata_Permissions.ManageEditProfile },
         { key: 'item', to: `${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`, icon: <PackagePlus className="size-4" />, label: 'Add Item', permission: Cata_Permissions.ManageItems },
         { key: 'requests', to: `${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`, icon: <Inbox className="size-4" />, label: 'Requests', permission: Cata_Permissions.ViewCatalogueRequests },
         { key: 'returns', to: `${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`, icon: <RotateCcw className="size-4" />, label: 'Orders Return', permission: Cata_Permissions.ViewOrdersReturn },
@@ -269,6 +270,7 @@ const CatalogueLayout = () => {
     const searchDestinations: Destination[] = [
         ...CatItems.map(({ to, label }) => ({ label, hint: 'Go to page', to })),
         { label: 'Edit Catalog', hint: 'Manage your catalogue', to: `${ROUTES.CHOME}/${ROUTES.ORDER}` },
+        { label: 'Store page', hint: 'Edit what customers see first', to: `${ROUTES.CHOME}/${ROUTES.CATA_STORE_PAGE}` },
         { label: 'Add Item', hint: 'Add a new product', to: `${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}` },
         { label: 'Requests', hint: 'Catalogue requests', to: `${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}` },
         { label: 'Orders Return', hint: 'Returned orders', to: `${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}` },
@@ -288,6 +290,16 @@ const CatalogueLayout = () => {
                 >
                     <span className={fabIconBadgeClass}><Store size={18} /></span>
                     <span className={fabLabelClass}>Catalog</span>
+                </Button>
+            </ShowWrapper>
+            <ShowWrapper requiredPermission={Cata_Permissions.ManageEditProfile}>
+                <Button
+                    variant="outline"
+                    className={fabActionClass}
+                    onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CATA_STORE_PAGE}`)}
+                >
+                    <span className={fabIconBadgeClass}><LayoutTemplate size={18} /></span>
+                    <span className={fabLabelClass}>Store page</span>
                 </Button>
             </ShowWrapper>
             <ShowWrapper requiredPermission={Cata_Permissions.ManageItems}>

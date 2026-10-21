@@ -66,7 +66,7 @@ export function Sidebar({ navItems, quickActions, userName, userRole, switcher, 
       )}
     >
       {/* NOTE: no overflow-hidden here, so the tutorial tooltip is never clipped */}
-      <div className="relative m-3 flex h-[calc(100%-1.5rem)] flex-col rounded-sm border border-slate-200/80 bg-white/80 shadow-xl shadow-black/5 backdrop-blur-md">
+      <div className="relative flex h-full flex-col border-r border-slate-200/80 bg-white/80 backdrop-blur-md">
         {/* Brand */}
         <div
           className={cx(

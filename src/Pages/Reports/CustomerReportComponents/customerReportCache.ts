@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
 import { createRangeCache } from '../reportRangeCache';
+import { customerSourceFields, type CustomerSourceFields } from '../../../constants/customerSource';
 
 // Data the Customer report needs besides sales (which come from the shared
 // sales cache). Opening balances and newly added customers are cached per date
@@ -28,6 +29,8 @@ export interface OpeningBalanceRecord {
   dueAmount: number;
   balanceType: 'due' | 'advance';
   createdAt: number;
+  source?: string; // 'catalogue' for catalogue ledger entries
+  partyType?: string;
 }
 
 const mapOpeningBalance = (snap: QueryDocumentSnapshot): OpeningBalanceRecord => {
@@ -40,11 +43,13 @@ const mapOpeningBalance = (snap: QueryDocumentSnapshot): OpeningBalanceRecord =>
     dueAmount: Number(data.dueAmount ?? data.amount ?? 0) || 0,
     balanceType: data.balanceType === 'advance' ? 'advance' : 'due',
     createdAt: toMillis(data.createdAt),
+    source: data.source || undefined,
+    partyType: data.partyType || undefined,
   };
 };
 
 const openingBalanceCache = createRangeCache<OpeningBalanceRecord>({
-  name: 'openingBalanceRangeCache',
+  name: 'openingBalanceRangeCacheV2', // V2: records carry source + partyType
   collectionName: 'openingBalances',
   mapDoc: mapOpeningBalance,
 });
@@ -56,7 +61,7 @@ export const clearOpeningBalanceCache = openingBalanceCache.clear;
 
 // Customers whose master record was created in the range are listed even with
 // no bills (e.g. all their bills were deleted).
-export interface NewCustomerRecord {
+export interface NewCustomerRecord extends CustomerSourceFields {
   id: string;
   name: string;
   number: string;
@@ -64,7 +69,7 @@ export interface NewCustomerRecord {
 }
 
 const customersCreatedCache = createRangeCache<NewCustomerRecord>({
-  name: 'customersCreatedRangeCache',
+  name: 'customersCreatedRangeCacheV2', // V2: records carry source fields
   collectionName: 'customers',
   mapDoc: (snap) => {
     const data = snap.data();
@@ -73,6 +78,7 @@ const customersCreatedCache = createRangeCache<NewCustomerRecord>({
       name: String(data.name || '').trim(),
       number: String(data.number || '').trim(),
       createdAt: toMillis(data.createdAt),
+      ...customerSourceFields(data),
     };
   },
 });

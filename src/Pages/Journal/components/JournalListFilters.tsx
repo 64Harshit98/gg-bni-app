@@ -4,6 +4,8 @@ import { Permissions } from '../../../enums/permissions.enum';
 import ShowWrapper from '../../../context/ShowWrapper';
 import { ROUTES } from '../../../constants/routes.constants';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../../context/auth-context';
+import { ROLES } from '../../../enums';
 
 export interface JournalSummary {
   total: number;
@@ -125,6 +127,8 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
   summary,
 }) => {
     const navigate = useNavigate();
+    const { currentUser } = useAuth();
+    const isOwner = currentUser?.role === ROLES.OWNER;
   const isSales = activeType === 'Credit';
 
   // Custom range: edit as a draft, commit only on Apply
@@ -417,7 +421,8 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
         </div>
       </div>
 
-      {/* ── Summary strip: total · received · unpaid ── */}
+      {/* ── Summary strip: total · received · unpaid (owner only) ── */}
+      {isOwner && (
       <div className="mx-4 lg:mx-6 mt-4 grid grid-cols-3 bg-white border border-[#dfe6fb] rounded-sm shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] overflow-hidden">
         <div className="flex flex-col gap-0.5 px-3 py-2.5 lg:px-5 lg:py-3.5 border-r border-[#dfe6fb] min-w-0">
           <span className="text-xs text-[#45556c]">{isSales ? 'Total sales' : 'Total purchases'}</span>
@@ -435,6 +440,7 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
           <span className="text-xs text-[#5b6b86]">{summary.unpaidCount} {summary.unpaidCount === 1 ? 'bill' : 'bills'}</span>
         </div>
       </div>
+      )}
     </>
   );
 };

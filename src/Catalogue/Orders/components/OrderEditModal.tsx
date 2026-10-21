@@ -206,7 +206,10 @@ export const OrderEditModal: React.FC<OrderEditModalProps> = ({
     const headerName = editingOrder.userName || editingOrder.billingDetails?.name;
     const customerName = editingOrder.billingDetails?.name || headerName || 'Customer';
     const billingAddress = editingOrder.billingDetails?.address?.trim() || '';
-    const addressIncomplete = !/\b\d{6}\b/.test(billingAddress);
+    const billingCity = editingOrder.billingDetails?.city?.trim() || '';
+    const billingLine = [billingAddress, billingCity, editingOrder.billingDetails?.state?.trim()].filter(Boolean).join(', ');
+    // Checkout saves city in its own field; older orders may have it typed into the address (with a PIN)
+    const addressIncomplete = !billingAddress || !(billingCity || /\b\d{6}\b/.test(billingAddress));
     const itemCount = editingOrder.items?.length ?? 0;
     const filledExpenses = editExpenses.filter((e) => e.name || e.amount !== '');
     const totalLabel = `₹${formatAmount(calculatedEditTotal)}`;
@@ -386,16 +389,16 @@ export const OrderEditModal: React.FC<OrderEditModalProps> = ({
 
                                     {!isEditingAddress ? (
                                         <>
-                                            <div className="flex items-center gap-2 text-[13px] text-slate-600">
-                                                <FiMapPin size={15} className="shrink-0 text-slate-400" />
-                                                <span className="min-w-0 truncate">Billing: {billingAddress || 'Not added'}</span>
+                                            <div className="flex items-start gap-2 text-[13px] text-slate-600">
+                                                <FiMapPin size={15} className="shrink-0 mt-0.5 text-slate-400" />
+                                                <span className="min-w-0 line-clamp-2 break-words">Billing: {billingLine || 'Not added'}</span>
                                             </div>
                                             {addressIncomplete && (
                                                 <div className="flex items-start gap-1.5 text-xs font-medium text-[#a16207]">
                                                     <FiAlertTriangle size={13} className="shrink-0 mt-px" />
                                                     <span>
                                                         {billingAddress
-                                                            ? 'Address has no city or PIN — add them for delivery.'
+                                                            ? 'Address has no city — add it for delivery.'
                                                             : 'No address yet — add it for delivery.'}
                                                     </span>
                                                 </div>
@@ -446,6 +449,21 @@ export const OrderEditModal: React.FC<OrderEditModalProps> = ({
                                                             ...editingOrder,
                                                             billingDetails: { ...editingOrder.billingDetails!, address: val },
                                                             ...(sameAddress && { shippingDetails: { ...editingOrder.shippingDetails!, address: val } })
+                                                        });
+                                                    }}
+                                                />
+                                                {/* CITY FIELD */}
+                                                <input
+                                                    type="text"
+                                                    placeholder="City"
+                                                    className={`${FIELD} col-span-2`}
+                                                    value={editingOrder.billingDetails?.city || ''}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        setEditingOrder({
+                                                            ...editingOrder,
+                                                            billingDetails: { ...editingOrder.billingDetails!, city: val },
+                                                            ...(sameAddress && { shippingDetails: { ...editingOrder.shippingDetails!, city: val } })
                                                         });
                                                     }}
                                                 />

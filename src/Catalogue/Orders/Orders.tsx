@@ -767,14 +767,14 @@ const OrdersPage: React.FC = () => {
                     handleAddOrderItemAsNew={handleAddOrderItemAsNew}
                 />
             )}
-            {/* Mobile order sheet: covers the bottom nav, same as Transactions page */}
+            {/* Mobile order sheet: covers the header and bottom nav (z-140 / z-50); stays below the order pop-ups (z-2000+) it opens */}
             {mobileOpenOrder && (
-                <div className="lg:hidden fixed inset-0 z-[9000]">
+                <div className="lg:hidden fixed inset-0 z-[1500]">
                     <div
                         className="absolute inset-0 bg-[#020618]/45"
                         onClick={() => handleOrderClick(mobileOpenOrder.id)}
                     />
-                    <div className="absolute inset-x-0 bottom-0 mx-auto flex w-full max-w-xl max-h-[92vh] flex-col overflow-hidden rounded-sm bg-[#fff5ec] shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]">
+                    <div className="absolute inset-x-0 bottom-0 mx-auto flex w-full max-w-xl max-h-[92dvh] flex-col overflow-hidden rounded-sm bg-[#fff5ec] shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]">
                         <div className="shrink-0 bg-white pt-2 pb-1" aria-hidden="true">
                             <div className="mx-auto h-1 w-10 rounded-full bg-[#f6e1d0]" />
                         </div>

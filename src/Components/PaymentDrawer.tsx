@@ -72,6 +72,8 @@ interface PaymentDrawerProps {
     isOpen: boolean;
     onClose: () => void;
     mode?: 'sale' | 'purchase' | 'calculator';
+    /** Which side a newly created customer belongs to (POS and catalogue share the customers collection) */
+    customerSource?: 'pos' | 'catalogue';
     subtotal: number;
     totalTax?: number;
     billTotal: number;
@@ -338,6 +340,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     isOpen,
     onClose,
     mode = 'sale',
+    customerSource = 'pos',
     billTotal,
     originalBillTotal,
     totalQuantity = 0,
@@ -987,6 +990,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 if (needsCreatedAt) {
                     partyData.createdAt = serverTimestamp();
                 }
+                if (isSale && !existingPartySnap.exists()) partyData.source = customerSource;
                 Object.keys(partyData).forEach(key => {
                     if (partyData[key] === undefined) delete partyData[key];
                 });

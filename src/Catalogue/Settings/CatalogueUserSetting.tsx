@@ -179,7 +179,8 @@ const CatalogueUserSetting: React.FC = () => {
     const canManageUsers = hasPermission(Permissions.ManageUsers);
 
     // Convert ROLES enum object into an array for mapping in the dropdown
-    const availableRoles = useMemo(() => Object.values(ROLES).filter(r => r !== ROLES.OWNER), []);
+    // Agent / agency are platform roles, not shop staff — only Manager and Salesman can be assigned here
+    const availableRoles = useMemo(() => [ROLES.MANAGER, ROLES.SALESMAN], []);
 
     useEffect(() => {
         if (authLoading) {

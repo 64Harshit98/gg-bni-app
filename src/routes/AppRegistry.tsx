@@ -55,6 +55,7 @@ const CatalogueCustomerReport = lazy(() => import('../Catalogue/CatalogueReports
 const CatalogueUserReport = lazy(() => import('../Catalogue/CatalogueReports/CatalogueUserReport'));
 const CatalogueTaxReport = lazy(() => import('../Catalogue/CatalogueReports/CatalogueTaxReport'));
 const CatalogueEditProfile = lazy(() => import('../Catalogue/CatalogueEditProfile'));
+const StoreBuilder = lazy(() => import('../Catalogue/Settings/StoreBuilder'));
 const CatalogueMasters = lazy(() => import('../Catalogue/Settings/CatalogueMasters'));
 const CatalogueSalesSettings = lazy(() => import('../Catalogue/Settings/CatalogueSalesSetting'));
 const CatalogueBillSetting = lazy(() => import('../Catalogue/Settings/CatalogueBillSetting'));
@@ -228,6 +229,7 @@ export const AppRegistry: AppModule[] = [
             { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_USER_REPORT}`, component: CatalogueUserReport, permission: Cata_Permissions.ViewUserReport },
             { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_TAX_REPORT}`, component: CatalogueTaxReport, permission: Cata_Permissions.ViewTaxReport },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_EDIT}`, component: CatalogueEditProfile, permission: Cata_Permissions.ManageEditProfile },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATA_STORE_PAGE}`, component: StoreBuilder, permission: Cata_Permissions.ManageEditProfile },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_MASTERS}`, component: CatalogueMasters, permission: Cata_Permissions.ManageMasters },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_SALE_SETTING}`, component: CatalogueSalesSettings, permission: Cata_Permissions.ManageSalesSettings },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_BILL_SETTING}`, component: CatalogueBillSetting, permission: Cata_Permissions.ManageBillSettings },

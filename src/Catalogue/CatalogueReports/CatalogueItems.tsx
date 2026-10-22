@@ -1,54 +1,210 @@
-import { Link } from 'react-router-dom';
+import { useMemo } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import {
+  AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
+  Pencil,
+  ShoppingCart,
+  Tag,
+  type LucideIcon,
+} from 'lucide-react';
 import { ROUTES } from '../../constants/routes.constants';
-import ShowWrapper from '../../context/ShowWrapper';
+import { useAuth } from '../../context/auth-context';
+import { useCatalogueData } from '../../context/CatalogueDataContext';
 import { Permissions } from '../../enums';
-import BackButton from '../../Components/BackButton';
+import {
+  ITEM_ISSUES,
+  averageMarginPercent,
+  hasItemIssue,
+  totalStock,
+} from '../../Pages/Reports/ItemReportComponents/itemIssues';
 
-const Reports = () => {
+interface HubCard {
+  title: string;
+  description: string;
+  mobileDescription?: string;
+  stat?: string;
+  icon: LucideIcon;
+  iconClass: string;
+  to: string;
+  /** Shortcut to a non-report page — tinted, and grouped apart on mobile. */
+  isShortcut?: boolean;
+}
 
+const CatalogueItemReportsHub = () => {
+  const navigate = useNavigate();
+  const { hasPermission } = useAuth();
+  // Items are already kept loaded app-wide, so these numbers cost no reads.
+  const { items, itemsLoading } = useCatalogueData();
+
+  const canViewReports = hasPermission(Permissions.ViewItemReport);
+  const canManage = hasPermission(Permissions.ManageItems);
+
+  const itemReportPath = `${ROUTES.CHOME}/${ROUTES.CATALOGUE_ITEM_REPORT}`;
+
+  const { avgMargin, issueCounts } = useMemo(
+    () => ({
+      avgMargin: averageMarginPercent(items),
+      issueCounts: Object.fromEntries(
+        ITEM_ISSUES.map(({ value }) => [
+          value,
+          items.filter((item) => hasItemIssue(item, value, totalStock(item))).length,
+        ]),
+      ) as Record<(typeof ITEM_ISSUES)[number]['value'], number>,
+    }),
+    [items],
+  );
+
+  const reportCards: HubCard[] = canViewReports
+    ? [
+        {
+          title: 'Item report',
+          description: 'Stock, MRP, cost and margin for every item',
+          stat: itemsLoading
+            ? '…'
+            : `${items.length.toLocaleString('en-IN')} ${items.length === 1 ? 'item' : 'items'} · ${Math.round(avgMargin)}% avg margin`,
+          icon: Tag,
+          iconClass: 'bg-blue-50 text-blue-600',
+          to: itemReportPath,
+        },
+        {
+          title: 'Item sold report',
+          description: 'What sold, how many and for how much',
+          stat: 'By period, best sellers first',
+          icon: ShoppingCart,
+          iconClass: 'bg-green-50 text-green-600',
+          to: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_SOLD_REPORT}`,
+        },
+      ]
+    : [];
+
+  const manageCard: HubCard | null = canManage
+    ? {
+        title: 'Manage items',
+        description: 'Add, edit or delete items · not a report',
+        mobileDescription: 'Add, edit or delete items',
+        stat: 'Opens your item list',
+        icon: Pencil,
+        iconClass: 'bg-orange-50 text-orange-600',
+        to: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_MANAGE_ITEMS}`,
+        isShortcut: true,
+      }
+    : null;
+
+  const renderCard = (card: HubCard, className = '') => {
+    const Icon = card.icon;
     return (
-        <div className="flex flex-col w-full bg-gray-100 overflow-hidden font-poppins">
-            <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
-                <BackButton/>
-                <h1 className="text-2xl font-bold text-gray-800 m-0 flex-grow text-center">
-                    Item Reports
-                </h1>
-            </div>
-
-            <div className="grid grid-cols-2 p-4 gap-2 bg-gray-100 box-border">
-
-                <>
-                    <ShowWrapper requiredPermission={Permissions.ViewItemReport}>
-                        <Link
-                            to={`${ROUTES.CHOME}/${ROUTES.CATALOGUE_ITEM_REPORT}`}
-                            className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
-                        >
-                            <span className="text-lg font-medium">Item Report</span>
-                            <span className="text-xl text-gray-500">→</span>
-                        </Link>
-                    </ShowWrapper>
-                    <ShowWrapper requiredPermission={Permissions.ManageItems}>
-                        <Link
-                            to={`${ROUTES.CHOME}/${ROUTES.CATALOGUE_MANAGE_ITEMS}`}
-                            className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
-                        >
-                            <span className="text-lg font-medium">Manage Items</span>
-                            <span className="text-xl text-gray-500">→</span>
-                        </Link>
-                    </ShowWrapper>
-                    <ShowWrapper requiredPermission={Permissions.ViewItemReport}>
-                        <Link
-                            to={`${ROUTES.CHOME}/${ROUTES.CATALOGUE_SOLD_REPORT}`}
-                            className="flex justify-between items-center bg-white p-4 rounded-sm shadow-sm mb-2 border border-gray-200 text-gray-800 transition-all duration-200 ease-in-out hover:transform hover:-translate-y-0.5 hover:shadow-lg no-underline"
-                        >
-                            <span className="text-lg font-medium">Item Sold Report</span>
-                            <span className="text-xl text-gray-500">→</span>
-                        </Link>
-                    </ShowWrapper>
-                </>
-            </div>
-        </div>
+      <Link
+        key={card.title}
+        to={card.to}
+        className={`group flex items-center gap-3 rounded-sm border border-[#f6e1d0] p-4 no-underline transition hover:border-slate-300 ${
+          card.isShortcut ? 'bg-[#fff8f2]' : 'bg-white shadow-card'
+        } ${className}`}
+      >
+        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-sm ${card.iconClass}`}>
+          <Icon size={18} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-slate-900">{card.title}</span>
+          <span className="block text-xs text-slate-500">
+            {card.mobileDescription ? (
+              <>
+                <span className="md:hidden">{card.mobileDescription}</span>
+                <span className="hidden md:inline">{card.description}</span>
+              </>
+            ) : (
+              card.description
+            )}
+          </span>
+          {card.stat && (
+            <span className={`mt-1 text-xs font-semibold text-orange-700 ${card.isShortcut ? 'hidden md:block' : 'block'}`}>
+              {card.stat}
+            </span>
+          )}
+        </span>
+        <ChevronRight size={18} className="shrink-0 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-slate-600" />
+      </Link>
     );
+  };
+
+  const issuesWithItems = ITEM_ISSUES.filter(({ value }) => issueCounts[value] > 0);
+
+  return (
+    <div className="min-h-full bg-[#fff5ec] px-3 pb-20 pt-3 font-poppins md:px-6 md:pb-8 md:pt-5">
+      {/* HEADER */}
+      <header className="mb-4 flex items-center gap-2 md:gap-3">
+        <button
+          onClick={() => navigate(-1)}
+          aria-label="Back"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-slate-700 transition hover:bg-orange-100 md:border md:border-slate-300 md:bg-white"
+        >
+          <ChevronLeft size={20} />
+        </button>
+        <div className="min-w-0 flex-1">
+          <p className="hidden text-xs text-slate-500 md:block">Reports /</p>
+          <div className="flex items-baseline gap-3">
+            <h1 className="text-lg font-bold text-slate-900 md:text-xl">Item reports</h1>
+            <span className="hidden text-xs text-slate-500 md:inline">Reports about your products</span>
+          </div>
+          <p className="text-xs text-slate-500 md:hidden">Reports</p>
+        </div>
+      </header>
+
+      {/* CARDS — desktop: one row; mobile: reports, then the shortcut on its own */}
+      <div className="grid grid-cols-1 gap-2.5 md:grid-cols-3 md:gap-4">
+        {reportCards.map((card) => renderCard(card))}
+        {manageCard && renderCard(manageCard, 'hidden md:flex')}
+      </div>
+
+      {manageCard && (
+        <section className="mt-5 md:hidden">
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Shortcut</h2>
+          {renderCard(manageCard)}
+        </section>
+      )}
+
+      {/* ITEMS THAT NEED A LOOK */}
+      {canViewReports && !itemsLoading && (
+        <div className="mt-4 hidden items-center gap-3 rounded-sm border border-[#f6e1d0] bg-white px-4 py-3 shadow-card md:flex">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-orange-50 text-orange-600">
+            <AlertTriangle size={16} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-slate-900">Items that need a look</p>
+            <p className="text-xs text-slate-500">
+              {issuesWithItems.length > 0
+                ? 'Negative stock, missing MRP or missing cost price make reports wrong'
+                : 'All good — no items with negative stock, missing MRP or missing cost price'}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap justify-end gap-2">
+            {ITEM_ISSUES.map(({ value, label }) => {
+              const count = issueCounts[value];
+              return (
+                <button
+                  key={value}
+                  onClick={() => navigate(itemReportPath, { state: { issue: value } })}
+                  disabled={count === 0}
+                  title={count === 0 ? `No items with ${label.toLowerCase()}` : `Show the ${count} items in the Item report`}
+                  className={`inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-medium transition ${
+                    count > 0
+                      ? 'border-amber-300 bg-amber-50 text-amber-800 hover:border-amber-400'
+                      : 'cursor-default border-[#f6e1d0] bg-white text-slate-400'
+                  }`}
+                >
+                  {label}
+                  <span className={`rounded-sm px-1 text-[11px] font-semibold ${count > 0 ? 'bg-white text-amber-800' : 'text-slate-400'}`}>
+                    {count.toLocaleString('en-IN')}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
-export default Reports;
+export default CatalogueItemReportsHub;

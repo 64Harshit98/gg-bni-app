@@ -317,8 +317,8 @@ export const getItemsByCompany = async (companyId: string): Promise<Item[]> => {
 };
 
 // CDN-cached equivalent of getItemGroupsByCompany() + getItemsByCompany()
-// combined, for the PUBLIC storefront pages only (SharedCatalouge.tsx,
-// SharedProduct.tsx). Goes through the getPublicCatalogueItems Cloud
+// combined, for the PUBLIC storefront pages only (Catalogue/storefront/,
+// not wired up yet). Goes through the getPublicCatalogueItems Cloud
 // Function (Cache-Control: public, s-maxage=300) instead of the Firestore
 // client SDK directly, so concurrent anonymous visitors within the cache
 // window share one Firestore read instead of one each. Internal/authenticated

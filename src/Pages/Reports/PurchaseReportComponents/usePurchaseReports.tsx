@@ -4,20 +4,12 @@ import {
   type PurchaseRecord,
 } from './purchaseReports.utils';
 import { useAuth } from '../../../context/auth-context';
-import { db } from '../../../lib/Firebase';
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  Timestamp,
-} from 'firebase/firestore';
+import { loadPurchasesForRange } from './purchaseReportCache';
+import { useCachedRange } from '../useCachedRange';
 
 export default function usePurchaseReports() {
   const { currentUser, loading: authLoading } = useAuth();
-  const [purchases, setPurchases] = useState<PurchaseRecord[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+
   const [datePreset, setDatePreset] = useState<string>('last30');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
@@ -25,82 +17,32 @@ export default function usePurchaseReports() {
     start: number;
     end: number;
   } | null>(null);
-  const [isListVisible, setIsListVisible] = useState(false);
+  const [isListVisible, setIsListVisible] = useState(true);
   const [sortConfig, setSortConfig] = useState<{
     key: keyof PurchaseRecord;
     direction: 'asc' | 'desc';
   }>({ key: 'createdAt', direction: 'desc' });
 
   useEffect(() => {
-    const today = new Date();
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
-
-    const startDateStr = formatDateForInput(thirtyDaysAgo);
-    const endDateStr = formatDateForInput(today);
-    setCustomStartDate(startDateStr);
-    setCustomEndDate(endDateStr);
-
-    const start = new Date(startDateStr);
+    const start = new Date();
+    start.setDate(start.getDate() - 29);
     start.setHours(0, 0, 0, 0);
-    const end = new Date(endDateStr);
+    const end = new Date();
     end.setHours(23, 59, 59, 999);
+
+    setCustomStartDate(formatDateForInput(start));
+    setCustomEndDate(formatDateForInput(end));
     setAppliedFilters({ start: start.getTime(), end: end.getTime() });
   }, []);
 
-  useEffect(() => {
-    if (authLoading) return;
-    if (!currentUser?.companyId) {
-      setIsLoading(false);
-      setError('Company information not found. Please log in again.');
-      return;
-    }
-    if (!appliedFilters) {
-      setIsLoading(false);
-      setPurchases([]);
-      return;
-    }
-
-    const companyId = currentUser.companyId;
-    const start = new Date(appliedFilters.start);
-    const end = new Date(appliedFilters.end);
-
-    const fetchPurchases = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const q = query(
-          collection(db, 'companies', companyId, 'purchases'),
-          where('createdAt', '>=', Timestamp.fromDate(start)),
-          where('createdAt', '<=', Timestamp.fromDate(end)),
-        );
-        const querySnapshot = await getDocs(q);
-        const fetchedPurchases: PurchaseRecord[] = querySnapshot.docs.map(
-          (doc) => {
-            const data = doc.data();
-            return {
-              id: doc.id,
-              partyName: data.partyName || 'N/A',
-              totalAmount: data.totalAmount || 0,
-              paymentMethods: data.paymentMethods || {},
-              createdAt:
-                data.createdAt instanceof Timestamp
-                  ? data.createdAt.toMillis()
-                  : Date.now(),
-              items: data.items || [],
-            };
-          },
-        );
-        setPurchases(fetchedPurchases);
-      } catch (err) {
-        console.error('Error fetching purchases:', err);
-        setError('Failed to load purchase report.');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchPurchases();
-  }, [currentUser, authLoading, appliedFilters]);
+  const {
+    records: purchases,
+    isLoading,
+    isFetching,
+    lastUpdated,
+    error,
+    refresh,
+  } = useCachedRange(loadPurchasesForRange, currentUser?.companyId, appliedFilters, authLoading);
 
   return {
     isListVisible,
@@ -115,6 +57,9 @@ export default function usePurchaseReports() {
     appliedFilters,
     purchases,
     isLoading,
+    isFetching,
+    lastUpdated,
+    refresh,
     authLoading,
     error,
     datePreset,

@@ -1,4 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { db } from '../../../lib/Firebase';
+import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import type { PaymentCompletionData } from '../../../Components/PaymentDrawer';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth, useDatabase } from '../../../context/auth-context';
@@ -15,7 +18,7 @@ import { ItemEditDrawer } from '../../../Components/ItemDrawer';
 import { GenericCartList } from '../../../Components/CartItem';
 import BarcodeLinkModal from '../../../Components/BarcodeLinkModal';
 import { AddUserModal } from '../../../Components/AddUserModal';
-import { FiTrash2, FiX, FiEdit, FiCamera, FiDelete, FiSearch, FiChevronLeft, FiMoreHorizontal, FiCalendar, FiCheck, FiList, FiGrid, FiUser, FiUserPlus, FiChevronUp, FiChevronRight, FiMinus } from 'react-icons/fi';
+import { FiTrash2, FiX, FiEdit, FiCamera, FiDelete, FiSearch, FiChevronLeft, FiMoreVertical, FiCalendar, FiCheck, FiUser, FiUserPlus, FiChevronUp, FiChevronRight, FiMinus, FiSliders } from 'react-icons/fi';
 import { GenericBillFooter } from '../../../Components/Footer';
 import { IconScanCircle, IconPrint } from '../../../constants/Icons';
 import QRCode from 'react-qr-code';
@@ -110,7 +113,11 @@ const SORT_OPTIONS = [
     { value: 'price_asc', label: 'Price ↑' },
     { value: 'price_desc', label: 'Price ↓' },
 ] as const;
-
+interface CustomerSuggestion {
+    name: string;
+    number: string;
+    creditBalance?: number;
+}
 const Sales: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
@@ -133,11 +140,27 @@ const Sales: React.FC = () => {
     const [customerPhone, setCustomerPhone] = useState(prefillParty?.number ?? '');
     const [showCustomerModal, setShowCustomerModal] = useState(false);
     const [customerDraft, setCustomerDraft] = useState({ name: '', phone: '' });
+    // Customer popup suggestions (same behaviour as PaymentDrawer)
+    const [customerSuggestions, setCustomerSuggestions] = useState<CustomerSuggestion[]>([]);
+    const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
+    const [activeSuggestField, setActiveSuggestField] = useState<'name' | 'number'>('number');
+    const customerSearchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const customerPhoneWrapRef = useRef<HTMLDivElement>(null);
+    const customerNameWrapRef = useRef<HTMLDivElement>(null);
+    const customerSuggestionsRef = useRef<HTMLDivElement>(null);
+    const closeCustomerModal = () => {
+        setShowCustomerModal(false);
+        setShowCustomerSuggestions(false);
+        setCustomerSuggestions([]);
+    };
 
     const openCustomerModal = () => {
         setCustomerDraft({ name: customerName, phone: customerPhone });
+        setCustomerSuggestions([]);
+        setShowCustomerSuggestions(false);
         setShowCustomerModal(true);
     };
+
     const saveCustomer = () => {
         const phone = customerDraft.phone.replace(/\D/g, '');
         if (phone && phone.length !== 10) {
@@ -146,14 +169,80 @@ const Sales: React.FC = () => {
         }
         setCustomerName(customerDraft.name.trim());
         setCustomerPhone(phone);
-        setShowCustomerModal(false);
+        closeCustomerModal();
+    };
+
+    const searchCustomer = async (term: string, field: 'name' | 'number') => {
+        if (!term || term.length < 2 || !currentUser?.companyId) {
+            setCustomerSuggestions([]);
+            setShowCustomerSuggestions(false);
+            return;
+        }
+        const partyRef = collection(db, 'companies', currentUser.companyId, 'customers');
+        const termLower = term.toLowerCase();
+        const termCap = termLower.charAt(0).toUpperCase() + termLower.slice(1);
+
+        try {
+            const queries = [
+                getDocs(query(partyRef, where(field, '>=', termLower), where(field, '<=', termLower + '\uf8ff'), limit(5))),
+            ];
+            if (field === 'name' && termCap !== termLower) {
+                queries.push(
+                    getDocs(query(partyRef, where(field, '>=', termCap), where(field, '<=', termCap + '\uf8ff'), limit(5)))
+                );
+            }
+            const snapshots = await Promise.all(queries);
+            const map = new Map<string, CustomerSuggestion>();
+            snapshots.forEach(snap => snap.forEach(d => {
+                if (!map.has(d.id)) {
+                    const data = d.data();
+                    map.set(d.id, {
+                        name: data.name || '',
+                        number: data.number || d.id,
+                        creditBalance: data.creditBalance,
+                    });
+                }
+            }));
+            const results = Array.from(map.values());
+            setCustomerSuggestions(results);
+            setShowCustomerSuggestions(results.length > 0);
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    const handleCustomerDraftChange = (value: string, field: 'name' | 'number') => {
+        setActiveSuggestField(field);
+        if (field === 'name') setCustomerDraft(d => ({ ...d, name: value }));
+        else setCustomerDraft(d => ({ ...d, phone: value }));
+
+        if (customerSearchTimeout.current) clearTimeout(customerSearchTimeout.current);
+        customerSearchTimeout.current = setTimeout(() => searchCustomer(value, field), 400);
+    };
+
+    const selectCustomerSuggestion = (c: CustomerSuggestion) => {
+        setCustomerDraft({ name: c.name, phone: (c.number || '').replace(/\D/g, '').slice(0, 10) });
+        setShowCustomerSuggestions(false);
     };
     // Payment drawer me jo bhi fill ho, drawer band hone par yahan wapas dikhe
     const handleDrawerPartyChange = (name: string, number: string) => {
         setCustomerName(name);
         setCustomerPhone(number);
     };
-
+    useEffect(() => {
+        if (!showCustomerSuggestions) return;
+        const onDown = (e: MouseEvent) => {
+            const t = e.target as Node;
+            if (
+                customerSuggestionsRef.current?.contains(t) ||
+                customerPhoneWrapRef.current?.contains(t) ||
+                customerNameWrapRef.current?.contains(t)
+            ) return;
+            setShowCustomerSuggestions(false);
+        };
+        document.addEventListener('mousedown', onDown);
+        return () => document.removeEventListener('mousedown', onDown);
+    }, [showCustomerSuggestions]);
     // Edit mode me invoice ki party dikhani hai
     const customerDisplayName = isEditMode ? (invoiceToEdit?.partyName || '') : customerName;
     const customerDisplayPhone = isEditMode ? (invoiceToEdit?.partyNumber || '') : customerPhone;
@@ -258,14 +347,18 @@ const Sales: React.FC = () => {
     const isManager = userRole === ROLES.MANAGER || userRole === ROLES.OWNER;
     const hideMrp = (salesSettings as any)?.hideMrp ?? false;
 
-    const [viewOverride, setViewOverride] = useState<'list' | 'card' | null>(null);
     const [showPhotos, setShowPhotos] = useState<boolean | null>(null);
-    const isCardView = (viewOverride ?? salesSettings?.salesViewType) === 'card';
+    const isCardView = salesSettings?.salesViewType === 'card';
     const isCardImageView = isCardView && (showPhotos ?? (salesSettings?.cardViewWithPhoto !== false));
     const isCalculatorView = salesSettings?.salesViewType === 'calculator';
+    // Filter button par blue dot: Photos/Compact ya sort default se alag ho
+    const hasViewChanges =
+        isCardImageView !== (salesSettings?.cardViewWithPhoto !== false) ||
+        sortOrder !== SORT_OPTIONS[0].value;
     const showTaxRow = (activeTaxMode !== 'exempt');
 
     const [isMoreOpen, setIsMoreOpen] = useState(false);
+    const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [isFooterExpanded, setIsFooterExpanded] = useState(false);
     const [isTabletBreakdownOpen, setIsTabletBreakdownOpen] = useState(false);
 
@@ -401,27 +494,64 @@ const Sales: React.FC = () => {
     const ICON_BTN_CLS = 'inline-flex items-center justify-center w-10 h-10 rounded-sm text-[#45556c] hover:bg-[#f5f7ff] transition-colors flex-shrink-0';
 
     const renderMobileHeader = () => (
-        <header className="md:hidden flex-shrink-0 flex items-center gap-2 h-14 px-2 bg-white border-b border-[#dfe6fb]">
-            <button type="button" onClick={() => navigate(-1)} aria-label="Back" className={ICON_BTN_CLS}>
-                <FiChevronLeft size={20} />
-            </button>
-            <h1 className="m-0 flex-1 min-w-0 text-lg font-semibold leading-tight text-[#0f172b]">
-                {isEditMode ? 'Edit sale' : 'New sale'}
-                <span className="block text-xs font-normal text-[#5b6b86] truncate">
-                    {invoiceNumber}{invoiceDate ? ` · ${new Date(`${invoiceDate}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
-                </span>
-            </h1>
-            <button
-                type="button"
-                onClick={() => setViewOverride(isCardView ? 'list' : 'card')}
-                aria-label={isCardView ? 'List view' : 'Card view'}
-                className={ICON_BTN_CLS}
-            >
-                {isCardView ? <FiList size={20} /> : <FiGrid size={20} />}
-            </button>
-            <button type="button" onClick={() => setIsMoreOpen(true)} aria-label="More" className={ICON_BTN_CLS}>
-                <FiMoreHorizontal size={20} />
-            </button>
+        <header className="md:hidden flex-shrink-0 bg-white border-b border-[#dfe6fb]">
+            {/* Row 1: back + centered title */}
+            <div className="flex items-center gap-1 h-14 px-2">
+                <button type="button" onClick={() => navigate(-1)} aria-label="Back" className={ICON_BTN_CLS}>
+                    <FiChevronLeft size={20} />
+                </button>
+                <div className="flex-1 min-w-0 flex items-baseline gap-2">
+                    <h1 className="m-0 text-lg font-semibold leading-tight text-[#0f172b] whitespace-nowrap">
+                        {isEditMode ? 'Edit sale' : 'New sale'}
+                    </h1>
+                    <span className="text-xs font-normal text-[#5b6b86] truncate">
+                        {invoiceNumber}{invoiceDate ? ` · ${new Date(`${invoiceDate}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}
+                    </span>
+                </div>
+                {/* List view has no second row, so the three dots stay here */}
+                {!isCardView && (
+                    <button type="button" onClick={() => setIsMoreOpen(true)} aria-label="More" className={`${ICON_BTN_CLS} ml-auto`}>
+                        <FiMoreVertical size={20} />
+                    </button>
+                )}
+            </div>
+
+            {/* Row 2 (card view): sort/filter | search + camera | three dots */}
+            {isCardView && (
+                <div className="flex items-center gap-2 px-2 pb-3">
+                    <button type="button" aria-label="View options" onClick={() => setIsFilterOpen(true)}
+                        className="relative inline-flex items-center justify-center w-10 h-10 flex-shrink-0 rounded-sm border border-[#7a8aa3] bg-white text-[#0f172b]">
+                        <FiSliders size={18} />
+                        {hasViewChanges && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#155dfc] ring-2 ring-white" />}
+                    </button>
+
+                    <div className="flex flex-1 min-w-0 items-center h-10 rounded-sm border border-[#7a8aa3] bg-white overflow-hidden transition-all focus-within:border-[#155dfc] focus-within:ring-4 focus-within:ring-[#e6eeff]">
+                        <FiSearch size={18} className="ml-3 text-[#5b6b86] flex-shrink-0" />
+                        <input
+                            type="text"
+                            value={gridSearchQuery}
+                            onChange={(e) => setGridSearchQuery(e.target.value)}
+                            placeholder="Search item or barcode"
+                            className="flex-1 min-w-0 h-full px-2.5 bg-transparent border-0 outline-none text-[14px] font-medium text-[#0f172b] placeholder:text-[#5b6b86]"
+                            autoComplete="off"
+                        />
+                        {gridSearchQuery && (
+                            <button type="button" onClick={() => setGridSearchQuery('')} aria-label="Clear search"
+                                className="p-1 mr-1 rounded-full text-[#5b6b86] hover:text-[#0f172b] hover:bg-[#f5f7ff] flex-shrink-0">
+                                <FiX size={16} />
+                            </button>
+                        )}
+                        <button type="button" aria-label="Scan barcode" onClick={() => setIsScannerOpen(true)}
+                            className="h-full w-11 flex-shrink-0 inline-flex items-center justify-center bg-[#155dfc] text-white hover:bg-[#1447e6] transition-colors">
+                            <IconScanCircle width={20} height={20} />
+                        </button>
+                    </div>
+
+                    <button type="button" onClick={() => setIsMoreOpen(true)} aria-label="More" className={ICON_BTN_CLS}>
+                        <FiMoreVertical size={20} />
+                    </button>
+                </div>
+            )}
         </header>
     );
     // ───────────────────────── Header ─────────────────────────
@@ -456,22 +586,19 @@ const Sales: React.FC = () => {
                         className="bg-transparent border-0 outline-none font-semibold text-[#0f172b] cursor-pointer"
                     />
                 </label>
-                {!isCalculatorView && (
-                    <div role="group" aria-label="View" className="ml-auto inline-flex p-[3px] gap-0.5 bg-[#f5f7ff] border border-[#dfe6fb] rounded-sm">
-                        {([['list', 'List', FiList], ['card', 'Cards', FiGrid]] as const).map(([v, label, Icon]) => {
-                            const active = (isCardView ? 'card' : 'list') === v;
-                            return (
-                                <button
-                                    key={v}
-                                    type="button"
-                                    aria-pressed={active}
-                                    onClick={() => setViewOverride(v)}
-                                    className={`inline-flex items-center gap-1.5 h-7 px-3 rounded-sm text-xs font-medium transition-colors ${active ? 'bg-white text-[#155dfc] shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]' : 'text-[#45556c] hover:text-[#0f172b]'}`}
-                                >
-                                    <Icon size={14} /> {label}
-                                </button>
-                            );
-                        })}
+                {isCardView && (
+                    <div role="group" aria-label="Photos" className="ml-auto inline-flex p-[3px] gap-0.5 bg-[#f5f7ff] border border-[#dfe6fb] rounded-sm">
+                        {([[true, 'Photos'], [false, 'Compact']] as const).map(([val, label]) => (
+                            <button
+                                key={label}
+                                type="button"
+                                aria-pressed={isCardImageView === val}
+                                onClick={() => setShowPhotos(val)}
+                                className={`h-7 px-3 rounded-sm text-xs font-medium transition-colors ${isCardImageView === val ? 'bg-white text-[#155dfc] shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]' : 'text-[#45556c] hover:text-[#0f172b]'}`}
+                            >
+                                {label}
+                            </button>
+                        ))}
                     </div>
                 )}
             </div>
@@ -508,6 +635,35 @@ const Sales: React.FC = () => {
                 <span className="hidden md:inline">Scan</span>
             </button>
         </div>
+    );
+
+    // Phone only: Blinkit-style vertical category rail
+    const renderCategoryRail = () => (
+        <nav
+            aria-label="Categories"
+            className="md:hidden w-[88px] flex-shrink-0 overflow-y-auto bg-white border-r border-[#dfe6fb] scrollbar-hide"
+        >
+            {categories.map(cat => {
+                const label = cat === 'All' ? 'All' : (itemGroupMap[cat] || cat);
+                const active = selectedCategory === cat;
+                return (
+                    <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setSelectedCategory(cat)}
+                        className={`relative w-full flex flex-col items-center gap-1 px-1 py-3 text-center border-0 cursor-pointer transition-colors ${active ? 'bg-[#e6eeff]' : 'bg-white hover:bg-[#f5f7ff]'}`}
+                    >
+                        {active && <span className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-[#155dfc]" />}
+                        <span className={`w-11 h-11 rounded-sm flex items-center justify-center text-base font-semibold ${active ? 'bg-white text-[#155dfc]' : 'bg-[#f5f7ff] text-[#45556c]'}`}>
+                            {label.charAt(0).toUpperCase()}
+                        </span>
+                        <span className={`text-[11px] leading-[14px] [overflow-wrap:anywhere] line-clamp-2 ${active ? 'font-semibold text-[#155dfc]' : 'font-medium text-[#45556c]'}`}>
+                            {label}
+                        </span>
+                    </button>
+                );
+            })}
+        </nav>
     );
     const renderSalesmanSelect = (extraCls = '') =>
         salesSettings?.enableSalesmanSelection ? (
@@ -555,11 +711,43 @@ const Sales: React.FC = () => {
             {showSalesman && renderSalesmanSelect('w-full')}
         </>
     );
+    const renderCustomerSuggestions = () => {
+        if (!showCustomerSuggestions || customerSuggestions.length === 0) return null;
+        const ref = activeSuggestField === 'name' ? customerNameWrapRef.current : customerPhoneWrapRef.current;
+        const rect = ref?.getBoundingClientRect();
+        if (!rect) return null;
 
-    // Customer popup (Name + Mobile)
+        return createPortal(
+            <div
+                ref={customerSuggestionsRef}
+                style={{ position: 'fixed', top: rect.bottom + 4, left: rect.left, width: rect.width, zIndex: 99999 }}
+                className="bg-white border border-[#dfe6fb] shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)] rounded-sm p-1.5 max-h-48 overflow-y-auto"
+                onClick={(e) => e.stopPropagation()}
+            >
+                {customerSuggestions.map((c, idx) => (
+                    <div
+                        key={idx}
+                        className="px-2.5 py-2 hover:bg-[#e6eeff] rounded-sm cursor-pointer flex justify-between items-center gap-2"
+                        onClick={() => selectCustomerSuggestion(c)}
+                    >
+                        <div className="min-w-0">
+                            <div className="font-semibold text-xs text-[#0f172b] truncate">{c.name}</div>
+                            <div className="text-[10px] text-[#5b6b86]">{c.number}</div>
+                        </div>
+                        {(c.creditBalance ?? 0) > 0 && (
+                            <span className="text-[11px] font-medium text-[#008236] bg-[#e9faef] px-2 py-0.5 rounded-full whitespace-nowrap">
+                                Credit: ₹{c.creditBalance}
+                            </span>
+                        )}
+                    </div>
+                ))}
+            </div>,
+            document.body
+        );
+    };
     const renderCustomerModal = () =>
         !showCustomerModal ? null : (
-            <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-[#020618]/45 sm:p-4" onClick={() => setShowCustomerModal(false)}>
+            <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-[#020618]/45 sm:p-4" onClick={closeCustomerModal}>
                 <div
                     className={`w-full sm:max-w-sm bg-white text-[#0f172b] rounded-sm border border-[#dfe6fb] ${SHADOW_FLOAT} p-5`}
                     onClick={(e) => e.stopPropagation()}
@@ -567,35 +755,47 @@ const Sales: React.FC = () => {
                     <h3 className="m-0 text-lg font-semibold">Customer</h3>
                     <p className="mt-1 mb-4 text-sm text-[#45556c]">These details are filled in at payment.</p>
                     <div className="space-y-4">
-                        <div>
-                            <label className={`block mb-1.5 ${LABEL_CLS}`}>Name</label>
-                            <input
-                                type="text"
-                                value={customerDraft.name}
-                                onChange={(e) => setCustomerDraft({ ...customerDraft, name: e.target.value })}
-                                placeholder="Customer name"
-                                className={POPUP_INPUT_CLS}
-                                autoFocus
-                            />
-                        </div>
-                        <div>
+                        {/* Mobile pehle (PaymentDrawer jaisa) */}
+                        <div ref={customerPhoneWrapRef} className="relative">
                             <label className={`block mb-1.5 ${LABEL_CLS}`}>Mobile</label>
                             <input
                                 type="tel"
                                 inputMode="tel"
                                 maxLength={10}
                                 value={customerDraft.phone}
-                                onChange={(e) => setCustomerDraft({ ...customerDraft, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                                onChange={(e) => handleCustomerDraftChange(e.target.value.replace(/\D/g, '').slice(0, 10), 'number')}
+                                onFocus={() => {
+                                    setActiveSuggestField('number');
+                                    if (customerDraft.phone.length >= 3) searchCustomer(customerDraft.phone, 'number');
+                                }}
                                 placeholder="9000000000"
                                 className={POPUP_INPUT_CLS}
+                                autoComplete="off"
+                                autoFocus
+                            />
+                        </div>
+                        <div ref={customerNameWrapRef} className="relative">
+                            <label className={`block mb-1.5 ${LABEL_CLS}`}>Name</label>
+                            <input
+                                type="text"
+                                value={customerDraft.name}
+                                onChange={(e) => handleCustomerDraftChange(e.target.value, 'name')}
+                                onFocus={() => {
+                                    setActiveSuggestField('name');
+                                    if (customerDraft.name.length >= 3) searchCustomer(customerDraft.name, 'name');
+                                }}
+                                placeholder="Customer name"
+                                className={POPUP_INPUT_CLS}
+                                autoComplete="off"
                             />
                         </div>
                     </div>
                     <div className="flex justify-end gap-2 mt-6">
-                        <CustomButton variant={Variant.Outline} onClick={() => setShowCustomerModal(false)}>Cancel</CustomButton>
+                        <CustomButton variant={Variant.Outline} onClick={closeCustomerModal}>Cancel</CustomButton>
                         <CustomButton variant={Variant.Filled} onClick={saveCustomer}>Save</CustomButton>
                     </div>
                 </div>
+                {renderCustomerSuggestions()}
             </div>
         );
 
@@ -649,39 +849,35 @@ const Sales: React.FC = () => {
                         <button type="button" onClick={() => setIsMoreOpen(false)} aria-label="Close" className={ICON_BTN_CLS}><FiX size={18} /></button>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
-                        <label className="inline-flex items-center gap-2 h-10 px-3 bg-white border border-[#7a8aa3] rounded-sm text-[13px]">
-                            <span className="text-[11px] font-semibold tracking-[.06em] uppercase text-[#5b6b86]">Bill</span>
+                    {/* Invoice number + Date — 2 columns */}
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="min-w-0">
+                            <span className={LABEL_CLS}>Invoice no.</span>
                             <input
                                 type="text"
                                 value={invoiceNumber}
                                 aria-label="Invoice number"
                                 onChange={(e) => { isInvoiceNumberManuallyEdited.current = true; setInvoiceNumber(e.target.value); }}
-                                className="w-full min-w-0 bg-transparent border-0 outline-none font-semibold text-[#0f172b]"
+                                className={`mt-2 ${POPUP_INPUT_CLS} font-semibold`}
                             />
-                        </label>
-                        <label className="inline-flex items-center gap-2 h-10 px-3 bg-white border border-[#7a8aa3] rounded-sm text-[13px]">
-                            <FiCalendar size={14} className="text-[#5b6b86] flex-shrink-0" />
-                            <input type="date" value={invoiceDate} aria-label="Invoice date" onChange={(e) => setInvoiceDate(e.target.value)} className="w-full min-w-0 bg-transparent border-0 outline-none font-semibold text-[#0f172b]" />
-                        </label>
+                        </div>
+                        <div className="min-w-0">
+                            <span className={LABEL_CLS}>Date</span>
+                            <input
+                                type="date"
+                                value={invoiceDate}
+                                aria-label="Invoice date"
+                                onChange={(e) => setInvoiceDate(e.target.value)}
+                                className={`mt-2 ${POPUP_INPUT_CLS} font-semibold`}
+                            />
+                        </div>
                     </div>
 
-                    {renderSalesmanSelect('w-full')}
-                    {isCardView && (
+                    {/* Salesman */}
+                    {salesSettings?.enableSalesmanSelection && (
                         <div>
-                            <span className={LABEL_CLS}>Sort</span>
-                            <div className="mt-2 grid grid-cols-4 gap-1.5">
-                                {SORT_OPTIONS.map(opt => (
-                                    <button
-                                        key={opt.value}
-                                        type="button"
-                                        onClick={() => setSortOrder(opt.value)}
-                                        className={`h-9 rounded-sm text-[13px] font-medium border transition-colors ${sortOrder === opt.value ? 'bg-[#e6eeff] border-[#155dfc] text-[#155dfc]' : 'bg-white border-[#7a8aa3] text-[#45556c]'}`}
-                                    >
-                                        {opt.label}
-                                    </button>
-                                ))}
-                            </div>
+                            <span className={LABEL_CLS}>Salesman</span>
+                            <div className="mt-2">{renderSalesmanSelect('w-full')}</div>
                         </div>
                     )}
 
@@ -697,6 +893,51 @@ const Sales: React.FC = () => {
                 </div>
             </div>
         );
+    // Phone: filter button sheet — only Photos/Compact + Sort
+    const renderFilterSheet = () =>
+        !isFilterOpen ? null : (
+            <div className="md:hidden fixed inset-0 z-[60] flex items-end bg-[#020618]/45" onClick={() => setIsFilterOpen(false)}>
+                <div className={`w-full bg-white rounded-t-sm p-4 pb-6 flex flex-col gap-4 ${SHADOW_FLOAT}`} onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-between">
+                        <h3 className="m-0 text-base font-semibold text-[#0f172b]">View options</h3>
+                        <button type="button" onClick={() => setIsFilterOpen(false)} aria-label="Close" className={ICON_BTN_CLS}><FiX size={18} /></button>
+                    </div>
+
+                    <div>
+                        <span className={LABEL_CLS}>Cards</span>
+                        <div className="mt-2 grid grid-cols-2 gap-2">
+                            {([[true, 'Photos'], [false, 'Compact']] as const).map(([val, label]) => (
+                                <button
+                                    key={label}
+                                    type="button"
+                                    onClick={() => setShowPhotos(val)}
+                                    className={`h-10 rounded-sm text-[13px] font-medium border transition-colors ${isCardImageView === val ? 'bg-[#e6eeff] border-[#155dfc] text-[#155dfc]' : 'bg-white border-[#7a8aa3] text-[#45556c]'}`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div>
+                        <span className={LABEL_CLS}>Sort</span>
+                        <div className="mt-2 grid grid-cols-4 gap-1.5">
+                            {SORT_OPTIONS.map(opt => (
+                                <button
+                                    key={opt.value}
+                                    type="button"
+                                    onClick={() => setSortOrder(opt.value)}
+                                    className={`h-9 rounded-sm text-[13px] font-medium border transition-colors ${sortOrder === opt.value ? 'bg-[#e6eeff] border-[#155dfc] text-[#155dfc]' : 'bg-white border-[#7a8aa3] text-[#45556c]'}`}
+                                >
+                                    {opt.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+
     // Cart title row: label + salesman select + clear (used by both views)
     const renderCartBar = () => (
         <div className="flex-shrink-0 flex flex-wrap items-center gap-x-2 gap-y-2 px-4 md:px-5 py-2.5 bg-white border-b border-[#dfe6fb]">
@@ -927,19 +1168,17 @@ const Sales: React.FC = () => {
                 <div className="hidden md:block">{renderHeader()}</div>
                 {renderMobileHeader()}
                 {renderMoreSheet()}
+                {renderFilterSheet()}
                 <div className="flex-1 flex flex-col xl:flex-row overflow-hidden">
 
                     {/* LEFT PANEL */}
                     <div className="flex flex-col w-full xl:flex-1 h-full relative min-w-0 overflow-hidden">
 
                         <div className="flex-shrink-0 bg-white border-b border-[#dfe6fb]">
-                            {/* Customer (below xl — on desktop it lives in the right panel) */}
-                            <div className="xl:hidden px-4 md:px-5 pt-3">{renderCustomerBlock(false)}</div>
+                            <div className="hidden md:block xl:hidden px-5 pt-3">{renderCustomerBlock(false)}</div>
 
                             <div className="hidden md:block px-5 pt-4">{renderGridSearch()}</div>
-                            <div className="md:hidden px-4 pt-3">{renderGridSearch()}</div>
-
-                            <div className="flex items-center gap-2 px-4 md:px-5 py-3">
+                            <div className="hidden md:flex items-center gap-2 px-5 py-3">
                                 <div className="flex gap-1.5 overflow-x-auto flex-1 scrollbar-hide">
                                     {categories.map(cat => (
                                         <button key={cat} type="button" onClick={() => setSelectedCategory(cat)} className={chipCls(selectedCategory === cat)}>
@@ -949,7 +1188,7 @@ const Sales: React.FC = () => {
                                 </div>
                             </div>
 
-                            <div className="flex flex-wrap items-center gap-x-2 gap-y-2 px-4 md:px-5 pb-3">
+                            <div className="hidden md:flex flex-wrap items-center gap-x-2 gap-y-2 px-5 pb-3">
                                 {/* Left */}
                                 <div className="flex-1 min-w-fit flex items-center gap-2">
                                     <span className={LABEL_CLS}>Items · {sortedGridItems.length}</span>
@@ -975,185 +1214,176 @@ const Sales: React.FC = () => {
                                         value={sortOrder}
                                         onChange={(e) => setSortOrder(e.target.value as typeof sortOrder)}
                                         aria-label="Sort"
-                                        className="hidden md:block h-8 px-2 bg-white border border-[#7a8aa3] rounded-sm text-xs font-medium text-[#0f172b] outline-none focus:border-[#155dfc] focus:ring-4 focus:ring-[#e6eeff]"
+                                        className="h-8 px-2 bg-white border border-[#7a8aa3] rounded-sm text-xs font-medium text-[#0f172b] outline-none focus:border-[#155dfc] focus:ring-4 focus:ring-[#e6eeff]"
                                     >
                                         {SORT_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                                     </select>
-                                    <div role="group" aria-label="Photos" className="inline-flex p-[3px] gap-0.5 bg-[#f5f7ff] border border-[#dfe6fb] rounded-sm">
-                                        {([[true, 'Photos'], [false, 'Compact']] as const).map(([val, label]) => (
-                                            <button
-                                                key={label}
-                                                type="button"
-                                                aria-pressed={isCardImageView === val}
-                                                onClick={() => setShowPhotos(val)}
-                                                className={`h-7 px-3 rounded-sm text-xs font-medium transition-colors ${isCardImageView === val ? 'bg-white text-[#155dfc] shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]' : 'text-[#45556c] hover:text-[#0f172b]'}`}
-                                            >
-                                                {label}
-                                            </button>
-                                        ))}
-                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Card grid — fills remaining height, scrollable */}
-                        <div className="flex-1 overflow-y-auto grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] md:grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] auto-rows-max content-start gap-2 bg-[#eef2ff] px-2 pt-2.5 pb-20 md:px-3">
-                            {sortedGridItems.map(item => {
-                                const matchingCartItems = items.filter(i => i.productId === item.id);
-                                const lastAddedCartItem = matchingCartItems[matchingCartItems.length - 1];
-                                const isSelected = matchingCartItems.length > 0;
-                                const quantity = matchingCartItems.reduce((sum, i) => sum + i.quantity, 0);
-                                const isRoundingEnabled = salesSettings?.enableRounding ?? true;
-                                const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
-                                const allowItemDiscount = salesSettings?.enableItemWiseDiscount ?? true;
-                                const mrp = Number(item.mrp || 0);
-                                const itemSalesPrice = Number(item.salesPrice || 0);
-                                const presetDiscount = Number(item.discount || 0);
-                                let baseDisplayPrice = 0;
+                        {/* Rail (left, phone) + card grid (right) */}
+                        <div className="flex-1 flex min-h-0 overflow-hidden">
+                            {renderCategoryRail()}
 
-                                // --- NEW 3-TIER LOGIC FOR GRID CARDS ---
-                                if (mrp > 0 && itemSalesPrice > 0) {
-                                    baseDisplayPrice = itemSalesPrice; // Case 1
-                                } else if (itemSalesPrice > 0) {
-                                    baseDisplayPrice = allowItemDiscount ? itemSalesPrice * (1 - presetDiscount / 100) : itemSalesPrice; // Case 2
-                                } else if (mrp > 0) {
-                                    baseDisplayPrice = allowItemDiscount ? mrp * (1 - presetDiscount / 100) : mrp; // Case 3
-                                }
+                            <div className="flex-1 min-w-0 overflow-y-auto grid grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] auto-rows-max content-start gap-2 bg-[#eef2ff] px-2 pt-2.5 pb-20 md:px-3">
+                                {sortedGridItems.map(item => {
+                                    const matchingCartItems = items.filter(i => i.productId === item.id);
+                                    const lastAddedCartItem = matchingCartItems[matchingCartItems.length - 1];
+                                    const isSelected = matchingCartItems.length > 0;
+                                    const quantity = matchingCartItems.reduce((sum, i) => sum + i.quantity, 0);
+                                    const isRoundingEnabled = salesSettings?.enableRounding ?? true;
+                                    const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
+                                    const allowItemDiscount = salesSettings?.enableItemWiseDiscount ?? true;
+                                    const mrp = Number(item.mrp || 0);
+                                    const itemSalesPrice = Number(item.salesPrice || 0);
+                                    const presetDiscount = Number(item.discount || 0);
+                                    let baseDisplayPrice = 0;
 
-                                baseDisplayPrice = applyRounding(baseDisplayPrice, isRoundingEnabled, roundingInterval);
+                                    // --- NEW 3-TIER LOGIC FOR GRID CARDS ---
+                                    if (mrp > 0 && itemSalesPrice > 0) {
+                                        baseDisplayPrice = itemSalesPrice; // Case 1
+                                    } else if (itemSalesPrice > 0) {
+                                        baseDisplayPrice = allowItemDiscount ? itemSalesPrice * (1 - presetDiscount / 100) : itemSalesPrice; // Case 2
+                                    } else if (mrp > 0) {
+                                        baseDisplayPrice = allowItemDiscount ? mrp * (1 - presetDiscount / 100) : mrp; // Case 3
+                                    }
 
-                                const effectiveSp = (lastAddedCartItem?.customPrice !== undefined && lastAddedCartItem?.customPrice !== null && lastAddedCartItem?.customPrice !== '')
-                                    ? Number(lastAddedCartItem.customPrice)
-                                    : baseDisplayPrice;
-                                const sp = effectiveSp;
-                                const lineSubtotal = Math.round((Number(sp) * quantity) * 100) / 100;
-                                const discPct = (!hideMrp && allowItemDiscount && mrp > 0 && Number(sp) < mrp && Number(sp) > 0)
-                                    ? Math.round(((mrp - Number(sp)) / mrp) * 100)
-                                    : 0;
-                                const photoUrl: string | undefined = isCardImageView
-                                    ? ((item as any).image || (item as any).imageUrl || (item as any).thumbnail || (item as any).imageURL)
-                                    : undefined;
-                                const moq = Number((item as any).moq) || 1;
-                                const atMin = isSelected && quantity <= moq;
+                                    baseDisplayPrice = applyRounding(baseDisplayPrice, isRoundingEnabled, roundingInterval);
 
-                                const openEdit = () => {
-                                    const orig = availableItems.find(a => a.id === item.id);
-                                    if (orig) handleOpenEditDrawer(orig);
-                                };
-                                const handleTileTap = () => {
-                                    if (tileHoldFired.current) { tileHoldFired.current = false; return; }
-                                    if (isSelected) handleQuantityChange(lastAddedCartItem.id, quantity + 1);
-                                    else handleAddOrPickTier(item);
-                                };
+                                    const effectiveSp = (lastAddedCartItem?.customPrice !== undefined && lastAddedCartItem?.customPrice !== null && lastAddedCartItem?.customPrice !== '')
+                                        ? Number(lastAddedCartItem.customPrice)
+                                        : baseDisplayPrice;
+                                    const sp = effectiveSp;
+                                    const lineSubtotal = Math.round((Number(sp) * quantity) * 100) / 100;
+                                    const discPct = (!hideMrp && allowItemDiscount && mrp > 0 && Number(sp) < mrp && Number(sp) > 0)
+                                        ? Math.round(((mrp - Number(sp)) / mrp) * 100)
+                                        : 0;
+                                    const photoUrl: string | undefined = isCardImageView
+                                        ? ((item as any).image || (item as any).imageUrl || (item as any).thumbnail || (item as any).imageURL)
+                                        : undefined;
+                                    const moq = Number((item as any).moq) || 1;
+                                    const atMin = isSelected && quantity <= moq;
 
-                                return (
-                                    <div key={item.id} className="relative min-w-0">
-                                        <button
-                                            type="button"
-                                            aria-label={`Add one ${item.name}${isSelected ? `, ${quantity} in bill` : ''}`}
-                                            onClick={handleTileTap}
-                                            onPointerDown={(e) => {
-                                                if (e.pointerType !== 'touch') return;
-                                                tileHoldFired.current = false;
-                                                clearTimeout(tileHoldTimer.current);
-                                                tileHoldTimer.current = setTimeout(() => { tileHoldFired.current = true; openEdit(); }, 450);
-                                            }}
-                                            onPointerUp={() => clearTimeout(tileHoldTimer.current)}
-                                            onPointerLeave={() => clearTimeout(tileHoldTimer.current)}
-                                            onPointerCancel={() => clearTimeout(tileHoldTimer.current)}
-                                            onContextMenu={(e) => e.preventDefault()}
-                                            className={`relative flex flex-col w-full overflow-hidden p-0 text-left rounded-sm border-2 select-none cursor-pointer transition active:scale-[0.97] [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent]
-                ${isCardImageView ? 'h-[136px] md:h-[164px]' : 'h-[100px]'}
+                                    const openEdit = () => {
+                                        const orig = availableItems.find(a => a.id === item.id);
+                                        if (orig) handleOpenEditDrawer(orig);
+                                    };
+                                    const handleTileTap = () => {
+                                        if (tileHoldFired.current) { tileHoldFired.current = false; return; }
+                                        if (isSelected) handleQuantityChange(lastAddedCartItem.id, quantity + 1);
+                                        else handleAddOrPickTier(item);
+                                    };
+
+                                    return (
+                                        <div key={item.id} className="relative min-w-0">
+                                            <button
+                                                type="button"
+                                                aria-label={`Add one ${item.name}${isSelected ? `, ${quantity} in bill` : ''}`}
+                                                onClick={handleTileTap}
+                                                onPointerDown={(e) => {
+                                                    if (e.pointerType !== 'touch') return;
+                                                    tileHoldFired.current = false;
+                                                    clearTimeout(tileHoldTimer.current);
+                                                    tileHoldTimer.current = setTimeout(() => { tileHoldFired.current = true; openEdit(); }, 450);
+                                                }}
+                                                onPointerUp={() => clearTimeout(tileHoldTimer.current)}
+                                                onPointerLeave={() => clearTimeout(tileHoldTimer.current)}
+                                                onPointerCancel={() => clearTimeout(tileHoldTimer.current)}
+                                                onContextMenu={(e) => e.preventDefault()}
+                                                className={`relative flex flex-col w-full overflow-hidden p-0 text-left rounded-sm border-2 select-none cursor-pointer transition active:scale-[0.97] [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent]
+                ${isCardImageView ? 'h-[176px] md:h-[164px]' : 'h-[100px]'}
                 ${isSelected ? 'bg-blue-50 border-blue-600' : 'bg-white border-transparent ring-1 ring-gray-200 hover:ring-gray-300'}`}
-                                        >
-                                            {/* Photo strip (photo mode only) */}
-                                            {isCardImageView && (
-                                                <span className={`relative flex items-center justify-center w-full h-[60px] md:h-[88px] p-1 shrink-0 overflow-hidden ${isSelected ? 'bg-white' : 'bg-gray-50'}`}>
-                                                    {photoUrl && (
-                                                        <img
-                                                            src={photoUrl}
-                                                            alt=""
-                                                            loading="lazy"
-                                                            className="max-w-full max-h-full object-contain block"
-                                                            onError={(e) => {
-                                                                (e.currentTarget as HTMLImageElement).style.display = 'none';
-                                                                const ph = (e.currentTarget as HTMLImageElement).parentElement?.querySelector<HTMLElement>('[data-no-image]');
-                                                                if (ph) ph.style.display = 'flex';
-                                                            }}
-                                                        />
-                                                    )}
-                                                    <span data-no-image className="absolute inset-0 items-center justify-center" style={{ display: photoUrl ? 'none' : 'flex' }}>
-                                                        <FiCamera size={20} strokeWidth={1.5} className="text-gray-300" />
-                                                    </span>
-                                                    {discPct > 0 && (
-                                                        <span className="absolute top-1 left-1 inline-flex items-center h-4 px-1 rounded-sm bg-blue-600 text-white text-[10px] leading-[14px] font-bold whitespace-nowrap">
-                                                            {discPct}% OFF
+                                            >
+                                                {/* Photo strip (photo mode only) */}
+                                                {isCardImageView && (
+                                                    <span className={`relative flex items-center justify-center w-full h-[96px] md:h-[88px] p-1 shrink-0 overflow-hidden ${isSelected ? 'bg-white' : 'bg-gray-50'}`}>
+                                                        {photoUrl && (
+                                                            <img
+                                                                src={photoUrl}
+                                                                alt=""
+                                                                loading="lazy"
+                                                                className="max-w-full max-h-full object-contain block"
+                                                                onError={(e) => {
+                                                                    (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                                                    const ph = (e.currentTarget as HTMLImageElement).parentElement?.querySelector<HTMLElement>('[data-no-image]');
+                                                                    if (ph) ph.style.display = 'flex';
+                                                                }}
+                                                            />
+                                                        )}
+                                                        <span data-no-image className="absolute inset-0 items-center justify-center" style={{ display: photoUrl ? 'none' : 'flex' }}>
+                                                            <FiCamera size={20} strokeWidth={1.5} className="text-gray-300" />
                                                         </span>
-                                                    )}
+                                                        {discPct > 0 && (
+                                                            <span className="absolute top-1 left-1 inline-flex items-center h-4 px-1 rounded-sm bg-blue-600 text-white text-[10px] leading-[14px] font-bold whitespace-nowrap">
+                                                                {discPct}% OFF
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                )}
+
+                                                {/* Name + price row */}
+                                                <span className={`flex flex-col flex-1 min-w-0 gap-1 ${isCardImageView ? 'px-1.5 py-1' : 'p-1.5'}`}>
+                                                    <span
+                                                        className={`block overflow-hidden pr-2 text-[12px] leading-4 font-semibold text-gray-900 break-words [display:-webkit-box] [-webkit-box-orient:vertical] ${isCardImageView ? '[-webkit-line-clamp:2] h-8' : '[-webkit-line-clamp:3] h-12'}`}
+                                                        title={item.name}
+                                                    >
+                                                        {item.name}
+                                                    </span>
+                                                    <span className={`flex items-center gap-1 mt-auto min-w-0 tabular-nums ${isCardImageView ? 'h-7' : 'h-8'}`}>
+                                                        {isSelected ? (
+                                                            <span className="ml-auto text-xs leading-4 font-bold text-blue-600 whitespace-nowrap md:mr-[34px]">
+                                                                ₹{lineSubtotal.toLocaleString('en-IN')}
+                                                            </span>
+                                                        ) : (
+                                                            <>
+                                                                <span className="text-[13px] leading-4 font-bold text-gray-900 whitespace-nowrap">₹{Number(sp).toLocaleString('en-IN')}</span>
+                                                                {discPct > 0 && mrp > 0 && Number(sp) < mrp && (
+                                                                    <span className="min-w-0 truncate text-[11px] leading-[14px] text-gray-500 line-through whitespace-nowrap">₹{mrp.toLocaleString('en-IN')}</span>
+                                                                )}
+                                                            </>
+                                                        )}
+                                                    </span>
+                                                </span>
+                                            </button>
+
+                                            {/* Qty badge */}
+                                            {isSelected && (
+                                                <span aria-hidden="true" className="absolute -top-[7px] -right-[7px] z-[2] min-w-[22px] h-[22px] px-1.5 grid place-items-center rounded-full bg-blue-600 text-white text-[11px] leading-[14px] font-bold tabular-nums ring-2 ring-[#eef2ff] pointer-events-none">
+                                                    {quantity}
                                                 </span>
                                             )}
 
-                                            {/* Name + price row */}
-                                            <span className={`flex flex-col flex-1 min-w-0 gap-1 ${isCardImageView ? 'px-1.5 py-1' : 'p-1.5'}`}>
-                                                <span
-                                                    className={`block overflow-hidden pr-2 text-[12px] leading-4 font-semibold text-gray-900 break-words [display:-webkit-box] [-webkit-box-orient:vertical] ${isCardImageView ? '[-webkit-line-clamp:2] h-8' : '[-webkit-line-clamp:3] h-12'}`}
-                                                    title={item.name}
+                                            {/* Minus (trash at MOQ) */}
+                                            {isSelected && (
+                                                <button
+                                                    type="button"
+                                                    aria-label={`${atMin ? 'Remove' : 'One less'} ${item.name}`}
+                                                    onClick={() => {
+                                                        if (quantity > moq) handleQuantityChange(lastAddedCartItem.id, quantity - 1);
+                                                        else handleDeleteItem(lastAddedCartItem.id);
+                                                    }}
+                                                    className={`absolute z-[1] grid place-items-center rounded-sm bg-white text-blue-600 border-[1.5px] border-blue-600 hover:bg-blue-600 hover:text-white transition-colors
+                    ${isCardImageView ? 'bottom-1.5 left-1.5 w-7 h-7' : 'bottom-2 left-2 w-8 h-8'}`}
                                                 >
-                                                    {item.name}
-                                                </span>
-                                                <span className={`flex items-center gap-1 mt-auto min-w-0 tabular-nums ${isCardImageView ? 'h-7' : 'h-8'}`}>
-                                                    {isSelected ? (
-                                                        <span className="ml-auto text-xs leading-4 font-bold text-blue-600 whitespace-nowrap md:mr-[34px]">
-                                                            ₹{lineSubtotal.toLocaleString('en-IN')}
-                                                        </span>
-                                                    ) : (
-                                                        <>
-                                                            <span className="text-[13px] leading-4 font-bold text-gray-900 whitespace-nowrap">₹{Number(sp).toLocaleString('en-IN')}</span>
-                                                            {discPct > 0 && mrp > 0 && Number(sp) < mrp && (
-                                                                <span className="min-w-0 truncate text-[11px] leading-[14px] text-gray-500 line-through whitespace-nowrap">₹{mrp.toLocaleString('en-IN')}</span>
-                                                            )}
-                                                        </>
-                                                    )}
-                                                </span>
-                                            </span>
-                                        </button>
+                                                    {atMin ? <FiTrash2 size={16} /> : <FiMinus size={16} />}
+                                                </button>
+                                            )}
 
-                                        {/* Qty badge */}
-                                        {isSelected && (
-                                            <span aria-hidden="true" className="absolute -top-[7px] -right-[7px] z-[2] min-w-[22px] h-[22px] px-1.5 grid place-items-center rounded-full bg-blue-600 text-white text-[11px] leading-[14px] font-bold tabular-nums ring-2 ring-[#eef2ff] pointer-events-none">
-                                                {quantity}
-                                            </span>
-                                        )}
-
-                                        {/* Minus (trash at MOQ) */}
-                                        {isSelected && (
+                                            {/* Edit (mouse / trackpad only) */}
                                             <button
                                                 type="button"
-                                                aria-label={`${atMin ? 'Remove' : 'One less'} ${item.name}`}
-                                                onClick={() => {
-                                                    if (quantity > moq) handleQuantityChange(lastAddedCartItem.id, quantity - 1);
-                                                    else handleDeleteItem(lastAddedCartItem.id);
-                                                }}
-                                                className={`absolute z-[1] grid place-items-center rounded-sm bg-white text-blue-600 border-[1.5px] border-blue-600 hover:bg-blue-600 hover:text-white transition-colors
-                    ${isCardImageView ? 'bottom-1.5 left-1.5 w-7 h-7' : 'bottom-2 left-2 w-8 h-8'}`}
-                                            >
-                                                {atMin ? <FiTrash2 size={16} /> : <FiMinus size={16} />}
-                                            </button>
-                                        )}
-
-                                        {/* Edit (mouse / trackpad only) */}
-                                        <button
-                                            type="button"
-                                            aria-label={`Edit ${item.name}`}
-                                            onClick={openEdit}
-                                            className={`hidden md:grid absolute z-[1] place-items-center rounded-sm bg-transparent text-gray-500 border border-transparent hover:text-blue-600 hover:border-gray-200 hover:bg-white transition-colors
+                                                aria-label={`Edit ${item.name}`}
+                                                onClick={openEdit}
+                                                className={`hidden md:grid absolute z-[1] place-items-center rounded-sm bg-transparent text-gray-500 border border-transparent hover:text-blue-600 hover:border-gray-200 hover:bg-white transition-colors
     ${isCardImageView ? 'bottom-1.5 right-1.5 w-7 h-7' : 'bottom-2 right-2 w-8 h-8'}`}
-                                        >
-                                            <FiEdit size={15} />
-                                        </button>
-                                    </div>
-                                );
-                            })}
+                                            >
+                                                <FiEdit size={15} />
+                                            </button>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
 
                         {/* Mobile footer — ONCE only */}
@@ -1454,8 +1684,7 @@ const Sales: React.FC = () => {
                 <div className="flex flex-col w-full xl:flex-1 min-w-0 h-full relative">
 
                     <div className="flex-shrink-0 px-4 md:px-5 py-3 bg-white border-b border-[#dfe6fb]">
-                        {/* Customer (below xl — on desktop it lives in the right panel) */}
-                        <div className="xl:hidden mb-3">{renderCustomerBlock(false)}</div>
+                        <div className="hidden md:block xl:hidden mb-3">{renderCustomerBlock(false)}</div>
                         <div className="flex gap-2 items-center w-full">
                             <div className="flex-grow">
                                 <SearchableItemInput

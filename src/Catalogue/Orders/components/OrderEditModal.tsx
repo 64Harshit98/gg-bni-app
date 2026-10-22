@@ -10,6 +10,7 @@ import { TierPickerModal } from '../../../Components/TierPickerModal';
 import { hasMultiplePricing } from '../../../Pages/utils/pricingUtils';
 import type { Order } from '../orders.types';
 import { formatAmount } from '../../../lib/format';
+import { indianStates } from '../../../Components/IndianStates';
 
 interface OrderEditModalProps {
     editingOrder: Order;
@@ -208,6 +209,7 @@ export const OrderEditModal: React.FC<OrderEditModalProps> = ({
     const billingAddress = editingOrder.billingDetails?.address?.trim() || '';
     const billingCity = editingOrder.billingDetails?.city?.trim() || '';
     const billingLine = [billingAddress, billingCity, editingOrder.billingDetails?.state?.trim()].filter(Boolean).join(', ');
+    const billingGstin = editingOrder.billingDetails?.gstin?.trim() || '';
     // Checkout saves city in its own field; older orders may have it typed into the address (with a PIN)
     const addressIncomplete = !billingAddress || !(billingCity || /\b\d{6}\b/.test(billingAddress));
     const itemCount = editingOrder.items?.length ?? 0;
@@ -393,6 +395,12 @@ export const OrderEditModal: React.FC<OrderEditModalProps> = ({
                                                 <FiMapPin size={15} className="shrink-0 mt-0.5 text-slate-400" />
                                                 <span className="min-w-0 line-clamp-2 break-words">Billing: {billingLine || 'Not added'}</span>
                                             </div>
+                                            {billingGstin && (
+                                                <div className="flex items-start gap-2 text-[13px] text-slate-600">
+                                                    <FiFileText size={15} className="shrink-0 mt-0.5 text-slate-400" />
+                                                    <span className="min-w-0 break-all">GSTIN: <b className="font-semibold text-slate-900 tabular-nums">{billingGstin}</b></span>
+                                                </div>
+                                            )}
                                             {addressIncomplete && (
                                                 <div className="flex items-start gap-1.5 text-xs font-medium text-[#a16207]">
                                                     <FiAlertTriangle size={13} className="shrink-0 mt-px" />
@@ -456,7 +464,7 @@ export const OrderEditModal: React.FC<OrderEditModalProps> = ({
                                                 <input
                                                     type="text"
                                                     placeholder="City"
-                                                    className={`${FIELD} col-span-2`}
+                                                    className={FIELD}
                                                     value={editingOrder.billingDetails?.city || ''}
                                                     onChange={(e) => {
                                                         const val = e.target.value;
@@ -464,6 +472,38 @@ export const OrderEditModal: React.FC<OrderEditModalProps> = ({
                                                             ...editingOrder,
                                                             billingDetails: { ...editingOrder.billingDetails!, city: val },
                                                             ...(sameAddress && { shippingDetails: { ...editingOrder.shippingDetails!, city: val } })
+                                                        });
+                                                    }}
+                                                />
+                                                {/* STATE FIELD */}
+                                                <select
+                                                    aria-label="State"
+                                                    className={FIELD}
+                                                    value={editingOrder.billingDetails?.state || ''}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        setEditingOrder({
+                                                            ...editingOrder,
+                                                            billingDetails: { ...editingOrder.billingDetails!, state: val },
+                                                            ...(sameAddress && { shippingDetails: { ...editingOrder.shippingDetails!, state: val } })
+                                                        });
+                                                    }}
+                                                >
+                                                    <option value="">Select state</option>
+                                                    {indianStates.map((s) => <option key={s} value={s}>{s}</option>)}
+                                                </select>
+                                                {/* GSTIN FIELD */}
+                                                <input
+                                                    type="text"
+                                                    placeholder="GSTIN (optional)"
+                                                    className={`${FIELD} col-span-2 uppercase`}
+                                                    value={editingOrder.billingDetails?.gstin || ''}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value.toUpperCase();
+                                                        if (val.length > 15) return;
+                                                        setEditingOrder({
+                                                            ...editingOrder,
+                                                            billingDetails: { ...editingOrder.billingDetails!, gstin: val },
                                                         });
                                                     }}
                                                 />

@@ -235,7 +235,24 @@ const THEME_CAT = {
     chipBg: 'bg-[#fef3c7]',
     chipText: 'text-[#a16207]',
 };
-
+// SELLAR "Both" theme: violet
+const THEME_BOTH = {
+    canvas: 'bg-[#f5f0ff]',
+    border: 'border-[#e5dbfa]',
+    borderB: 'border-b-[#e5dbfa]',
+    sunken: 'bg-[#faf7ff]',
+    sunkenHover: 'hover:bg-[#faf7ff]',
+    soft: 'bg-[#ede5ff]',
+    softHover: 'hover:bg-[#ede5ff]',
+    primaryText: 'text-[#7c3aed]',
+    primaryBg: 'bg-[#7c3aed]',
+    primaryHover: 'hover:bg-[#6d28d9]',
+    primaryBorder: 'border-[#7c3aed]',
+    outline: 'focus-visible:outline-[#7c3aed]',
+    accent: 'accent-[#7c3aed]',
+    chipBg: 'bg-[#f3e8ff]',
+    chipText: 'text-[#7e22ce]',
+};
 const COLLAPSED_FEATURE_COUNT = 6;
 
 type Tier = {
@@ -295,26 +312,26 @@ const SubscriptionPage: React.FC = () => {
     const navigate = useNavigate();
 
     const handleLogout = async () => {
-    try { await logoutUser(); navigate(ROUTES.LANDING); }
-    catch (err) { console.error('Logout failed:', err); }
-};
+        try { await logoutUser(); navigate(ROUTES.LANDING); }
+        catch (err) { console.error('Logout failed:', err); }
+    };
 
-// Go back exactly one page in history (minus 1).
-// If there is no previous page (e.g. page opened directly / refreshed in a new tab),
-// fall back to the plan's dashboard so the user is never stuck.
-const handleBack = () => {
-    if (window.history.state && window.history.state.idx > 0) {
-        navigate(-1);
-    } else {
-        navigate(dashboardRoute, { replace: true });
-    }
-};
+    // Go back exactly one page in history (minus 1).
+    // If there is no previous page (e.g. page opened directly / refreshed in a new tab),
+    // fall back to the plan's dashboard so the user is never stuck.
+    const handleBack = () => {
+        if (window.history.state && window.history.state.idx > 0) {
+            navigate(-1);
+        } else {
+            navigate(dashboardRoute, { replace: true });
+        }
+    };
 
-const [activeTab, setActiveTab] = useState<'pos' | 'catalogue' | 'both'>('pos');
+    const [activeTab, setActiveTab] = useState<'pos' | 'catalogue' | 'both'>('pos');
     const [showAllFeatures, setShowAllFeatures] = useState(false);
 
-    // Catalogue tab → orange theme, everything else → blue theme
-    const T = activeTab === 'catalogue' ? THEME_CAT : THEME_POS;
+    // POS → blue, Catalogue → orange, Both → violet
+    const T = activeTab === 'catalogue' ? THEME_CAT : activeTab === 'both' ? THEME_BOTH : THEME_POS;
 
     const subData = (currentUser as any)?.subscription || (currentUser as any)?.Subscription;
     const currentPack = subData?.pack || PLANS.POS_BASIC;
@@ -455,7 +472,13 @@ const [activeTab, setActiveTab] = useState<'pos' | 'catalogue' | 'both'>('pos');
         return 'Choose plan';
     };
     const badgeText = (isCurrentTier: boolean) =>
-        isCurrentTier ? 'Current plan' : activeTab === 'catalogue' ? 'Best seller' : 'Recommended';
+        isCurrentTier
+            ? 'Current plan'
+            : activeTab === 'catalogue'
+                ? 'Best seller'
+                : activeTab === 'both'
+                    ? 'Best value'
+                    : 'Recommended';
 
     const currentSplit = splitPlanName(String(currentPlanName));
     const expiryText = expiryDate

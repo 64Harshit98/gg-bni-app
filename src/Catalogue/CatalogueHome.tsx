@@ -375,7 +375,7 @@ const HomePageContent: React.FC = () => {
                             <button
                                 onClick={() => setIsDataVisible(!isDataVisible)}
                                 className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-sm border border-slate-400 bg-white px-2.5 text-sm font-medium text-slate-900 transition-colors hover:bg-[#fff8f2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-600 sm:px-4"
-                                title={isDataVisible ? 'Hide Data' : 'Show Data'}
+                                title={isDataVisible ? 'Hide figures' : 'Show figures'}
                                 aria-label={isDataVisible ? 'Hide figures' : 'Show figures'}
                             >
                                 <Ico d={isDataVisible ? ICONS.eye : ICONS.eyeOff} size={16} />

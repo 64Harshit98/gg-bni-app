@@ -115,7 +115,7 @@ interface PaymentDrawerProps {
     // Sales Setting cap on the Bill Discount field below — 0/undefined means no cap.
     maxBillDiscountValue?: number;
     maxBillDiscountType?: 'percent' | 'amount';
-     onPartyChange?: (name: string, number: string) => void;
+    onPartyChange?: (name: string, number: string) => void;
 }
 
 // --- SESSION STORAGE KEYS ---
@@ -448,8 +448,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const [vehicleNo, setVehicleNo] = useState('');
     const [stationFrom, setStationFrom] = useState('');
     const [pinCode, setPinCode] = useState('');
-    const [printBill, setPrintBill] = useState(true);
-    const [sendWhatsApp, setSendWhatsApp] = useState(true);
+    const [printBill, setPrintBill] = useState(false);
+    const [sendWhatsApp, setSendWhatsApp] = useState(false);
 
     const hasTransportDetails = !!(transportName.trim() || grRrNo.trim() || grRrDate.trim() || vehicleNo.trim() || stationFrom.trim() || pinCode.trim());
     // --- CALCULATIONS ---
@@ -1060,7 +1060,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         setShowDiscountTaxModal(false);
     };
 
-        // Make sure no pop-up stays "open" while the drawer is closed
+    // Make sure no pop-up stays "open" while the drawer is closed
     useEffect(() => {
         if (!isOpen) closePopups();
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1263,10 +1263,12 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     );
     const confirmBtnCls = 'w-full text-white rounded-sm font-semibold text-sm bg-[#155dfc] hover:bg-[#1447e6] active:scale-[0.98] transition-all disabled:opacity-45 disabled:cursor-not-allowed disabled:active:scale-100 flex items-center justify-center gap-2';
 
-    const confirmContentMobile = isSubmitting ? confirmContent : (
+    const confirmContentMobile = isSubmitting ? (
+        <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Confirming...</>
+    ) : (
         <>
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.5l4.5 4.5L19 7" /></svg>
-            Confirm payment · ₹{fmt(netPayable)}
+            Confirm payment
         </>
     );
 
@@ -1563,7 +1565,136 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             )}
         </>
     );
+    // --- CUSTOMER BLOCK (top of drawer) ---
+    const customerBlock = enableCustomerDetails ? (
+        <>
+            {!isCalculator && (
+                <div className="flex justify-between items-center gap-2">
+                    <div className={OVERLINE_CLS}>{partyLabel}{dueEntered > 0 && <span className="normal-case tracking-normal font-normal text-[#bb4d00]"> · required for due</span>}</div>
+                    {isSale && enableShippingDetails && (
+                        <div className={SEG_WRAP} role="group">
+                            <button onClick={() => setAddressType('billing')} aria-pressed={addressType === 'billing'} className={`h-7 px-3 rounded-sm text-xs font-medium transition-all ${addressType === 'billing' ? SEG_ON : SEG_OFF}`}>Billing</button>
+                            <button onClick={() => setAddressType('shipping')} aria-pressed={addressType === 'shipping'} className={`h-7 px-3 rounded-sm text-xs font-medium transition-all ${addressType === 'shipping' ? SEG_ON : SEG_OFF}`}>Shipping</button>
+                        </div>
+                    )}
+                </div>
+            )}
 
+            {!isCalculator && isSale && enableShippingDetails && addressType === 'shipping' && (
+                <div className="flex items-center justify-end animate-in fade-in slide-in-from-top-1">
+                    <label className="flex items-center gap-2 cursor-pointer bg-[#e6eeff] px-3 py-1.5 rounded-sm">
+                        <input type="checkbox" checked={isSameAsBilling} onChange={(e) => { const isChecked = e.target.checked; setIsSameAsBilling(isChecked); if (!isChecked) { setShippingName(''); setShippingNumber(''); setShippingAddress(''); setShippingGST(''); setShippingPinCode(''); } }} className="w-4 h-4 accent-[#155dfc] rounded cursor-pointer" />
+                        <span className="text-xs font-medium text-[#155dfc]">Same as billing details</span>
+                    </label>
+                </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-2 md:gap-3 relative animate-in fade-in slide-in-from-top-2">
+                <div ref={numberInputRef} className={`relative ${mode === 'purchase' ? 'order-2' : 'order-1'}`}>
+                    <label className={`flex items-center gap-2 h-10 px-3 rounded-sm border bg-white text-[#5b6b86] focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-[#155dfc] ${requireCustomerMobile && !partyNumber && addressType === 'billing' ? 'border-[#d5000c]' : 'border-[#7a8aa3]'}`}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-none"><path d="M5 3h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 12l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 5a2 2 0 0 1 2-2" /></svg>
+                        <input
+                            type="tel"
+                            maxLength={mode === 'purchase' ? undefined : 10}
+                            placeholder={requireCustomerMobile ? "Phone number *" : "Phone number"}
+                            value={addressType === 'billing' ? partyNumber : shippingNumber}
+                            onChange={(e) => {
+                                const val = e.target.value.replace(/\D/g, '');
+                                const finalVal = mode === 'purchase' ? val : val.slice(0, 10);
+
+                                if (addressType === 'billing') { handleInputChange(finalVal, 'number'); }
+                                else { setShippingNumber(finalVal); setIsSameAsBilling(false); }
+                            }}
+                            onFocus={() => {
+                                setActiveSearchField('number');
+                                if (isSale && addressType === 'billing' && partyNumber.length >= 3) searchParty(partyNumber, 'number');
+                            }}
+                            className="flex-1 min-w-0 border-0 outline-none bg-transparent text-sm text-[#0f172b] placeholder:text-[#5b6b86]"
+                            autoComplete="off"
+                        />
+                    </label>
+                </div>
+
+                <div ref={nameInputRef} className={`relative ${mode === 'purchase' ? 'order-1' : 'order-2'}`}>
+                    <label className="flex items-center gap-2 h-10 px-3 rounded-sm border border-[#7a8aa3] bg-white text-[#5b6b86] focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-[#155dfc]">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-none"><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></svg>
+                        <input
+                            type="text"
+                            placeholder={requireCustomerName ? `${partyLabel} name *` : `${partyLabel} name`}
+                            value={addressType === 'billing' ? partyName : shippingName}
+                            onChange={(e) => {
+                                if (addressType === 'billing') { handleInputChange(e.target.value, 'name'); }
+                                else { setShippingName(e.target.value); setIsSameAsBilling(false); }
+                            }}
+                            onFocus={() => {
+                                setActiveSearchField('name');
+                                if (addressType === 'billing' && partyName.length >= 3) searchParty(partyName, 'name');
+                            }}
+                            className="flex-1 min-w-0 border-0 outline-none bg-transparent text-sm text-[#0f172b] placeholder:text-[#5b6b86]"
+                            autoComplete="off"
+                        />
+                    </label>
+                </div>
+                {addressType === 'billing' && renderSuggestions()}
+            </div>
+        </>
+    ) : null;
+
+    // --- DUE NOTICES (shown below the payment cards) ---
+    const dueNotices = enableCustomerDetails ? (
+        <>
+            {dueEntered > 0 && !dueNeedsParty && (
+                <div className="flex items-start gap-2 p-2.5 rounded-sm bg-[#e6eeff] text-[#155dfc] text-xs font-medium">
+                    <SvgIcon size={16}><circle cx="12" cy="12" r="9" /><path d="M12 8h.01M11 12h1v5h1" /></SvgIcon>
+                    <span>₹{fmt(dueEntered)} will be added to {partyName.trim() || (partyNumber.trim() ? `${partyLabel.toLowerCase()} ${partyNumber.trim()}` : `this ${partyLabel.toLowerCase()}`)}&apos;s due.</span>
+                </div>
+            )}
+
+            {dueNeedsParty && (
+                <div className="flex items-start gap-2 p-2.5 rounded-sm bg-[#fff3dd] text-[#bb4d00] text-xs font-medium">
+                    <SvgIcon size={16}><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" /></SvgIcon>
+                    <span>{dueRequirementText}</span>
+                </div>
+            )}
+        </>
+    ) : null;
+
+    // --- AVAILABLE BALANCES ---
+    const balancesBlock = enableCustomerDetails && (partyCredit > 0 || partyDebit > 0) ? (
+        <div className="grid gap-2">
+            <div className={OVERLINE_CLS}>Available balances</div>
+            {partyCredit > 0 && (
+                <label className="flex items-center gap-3 p-2.5 bg-white border border-[#dfe6fb] rounded-sm cursor-pointer">
+                    <span className="w-8 h-8 grid place-items-center rounded-sm bg-[#e9faef] text-[#008236] flex-none">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></svg>
+                    </span>
+                    <span className="flex-1 min-w-0 text-sm font-medium text-[#0f172b]">
+                        Credit note
+                        <small className="block text-[11px] leading-[15px] font-normal text-[#5b6b86]">Available ₹{partyCredit.toFixed(2)}</small>
+                    </span>
+                    <span className="flex items-center gap-2">
+                        <input type="checkbox" checked={useCredit} onChange={(e) => setUseCredit(e.target.checked)} className="w-4 h-4 accent-[#155dfc] rounded cursor-pointer" />
+                        <span className="text-sm font-medium text-[#45556c]">Apply</span>
+                    </span>
+                </label>
+            )}
+            {partyDebit > 0 && (
+                <label className="flex items-center gap-3 p-2.5 bg-white border border-[#dfe6fb] rounded-sm cursor-pointer">
+                    <span className="w-8 h-8 grid place-items-center rounded-sm bg-[#ffeef0] text-[#d5000c] flex-none">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></svg>
+                    </span>
+                    <span className="flex-1 min-w-0 text-sm font-medium text-[#0f172b]">
+                        Debit balance
+                        <small className="block text-[11px] leading-[15px] font-normal text-[#5b6b86]">Available ₹{partyDebit.toFixed(2)}</small>
+                    </span>
+                    <span className="flex items-center gap-2">
+                        <input type="checkbox" checked={useDebit} onChange={(e) => setUseDebit(e.target.checked)} className="w-4 h-4 accent-[#d5000c] rounded cursor-pointer" />
+                        <span className="text-sm font-medium text-[#45556c]">Apply</span>
+                    </span>
+                </label>
+            )}
+        </div>
+    ) : null;
     return createPortal(
         <div
             className="fixed inset-0 z-[99] flex items-end justify-center md:items-stretch md:justify-end overscroll-none"
@@ -1609,11 +1740,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     {/* LEFT COLUMN: Allocation, Payment methods, Customer */}
                     <div className="shrink-0 md:shrink md:flex-1 md:min-w-0 md:overflow-y-auto px-4 py-4 md:px-6 md:py-5 grid grid-cols-1 auto-rows-max gap-3.5 content-start">
 
-                        {/* To collect (mobile only — desktop shows it in the right column) */}
-                        <div className="md:hidden flex justify-between items-baseline">
-                            <span className="text-sm text-[#45556c]">To collect</span>
-                            <b className="text-[28px] leading-9 font-semibold tracking-tight text-[#0f172b] tabular-nums">₹{fmt(netPayable)}</b>
-                        </div>
+                        {customerBlock}
 
                         {/* Allocation bar */}
                         <div className="grid gap-1.5">
@@ -1637,8 +1764,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                             </div>
                         </div>
 
-                        {/* Payment method rows */}
-                        <div className="grid gap-2">
+                        {/* Payment method cards (2 columns) */}
+                        <div className="grid grid-cols-2 gap-2">
                             {transactiontypes.map((tx) => {
                                 const isDueField = tx.id.toLowerCase().includes('due') || tx.name.toLowerCase().includes('due');
                                 const isDisabled = isPurchaseReturnMode ? false : (isSale && isDueField && !allowDueBilling);
@@ -1649,40 +1776,40 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                 return (
                                     <div
                                         key={tx.id}
-                                        className={`grid grid-cols-[auto_minmax(0,1fr)_108px_64px] md:grid-cols-[auto_minmax(0,1fr)_132px_84px] items-center gap-2 md:gap-2.5 px-2.5 py-2 rounded-sm border border-[#dfe6fb] transition-shadow ${isDisabled
+                                        title={isDisabled ? 'Not available' : undefined}
+                                        className={`flex flex-col gap-2 p-2.5 rounded-sm border border-[#dfe6fb] transition-shadow ${isDisabled
                                             ? 'bg-[#f5f7ff] opacity-60'
                                             : 'bg-white focus-within:border-[#155dfc] focus-within:shadow-[0_0_0_3px_#e6eeff]'}`}
                                     >
-                                        <span className={`w-8 h-8 grid place-items-center rounded-sm ${ui.tint}`}>
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{ui.icon}</svg>
-                                        </span>
-                                        <label htmlFor={tx.id} className="min-w-0 font-medium text-sm text-[#0f172b] cursor-pointer">
-                                            <span className="block truncate">{tx.name}</span>
-                                            <small className="block truncate text-[11px] leading-[15px] font-normal text-[#5b6b86]">
-                                                {isDisabled ? 'Not available' : tx.description}
-                                            </small>
+                                        <label htmlFor={tx.id} className="flex items-center gap-2 min-w-0 cursor-pointer">
+                                            <span className={`w-8 h-8 grid place-items-center rounded-sm flex-none ${ui.tint}`}>
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{ui.icon}</svg>
+                                            </span>
+                                            <span className="truncate font-medium text-sm text-[#0f172b]">{tx.name}</span>
                                         </label>
-                                        <div className="flex items-center gap-1 h-10 px-2.5 rounded-sm border border-[#7a8aa3] bg-white">
-                                            <i className="not-italic text-[#5b6b86] text-sm">₹</i>
-                                            <input
-                                                id={tx.id}
-                                                type="number"
-                                                inputMode="decimal"
-                                                step="any"
-                                                placeholder="0"
-                                                disabled={isDisabled}
-                                                value={selectedPayments[tx.id]?.toString() || ''}
-                                                onChange={(e) => { if (!isDisabled) handleAmountChange(tx.id, e.target.value); }}
-                                                className="w-full min-w-0 text-right text-sm font-semibold text-[#0f172b] bg-transparent outline-none tabular-nums placeholder:font-normal placeholder:text-[#5b6b86] disabled:cursor-not-allowed [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                                            />
-                                        </div>
-                                        <div className="flex justify-end">
+
+                                        <div className="flex items-center gap-1.5">
+                                            <div className="flex flex-1 min-w-0 items-center gap-1 h-10 px-2.5 rounded-sm border border-[#7a8aa3] bg-white">
+                                                <i className="not-italic text-[#5b6b86] text-sm">₹</i>
+                                                <input
+                                                    id={tx.id}
+                                                    type="number"
+                                                    inputMode="decimal"
+                                                    step="any"
+                                                    placeholder="0"
+                                                    disabled={isDisabled}
+                                                    value={selectedPayments[tx.id]?.toString() || ''}
+                                                    onChange={(e) => { if (!isDisabled) handleAmountChange(tx.id, e.target.value); }}
+                                                    className="w-full min-w-0 text-right text-sm font-semibold text-[#0f172b] bg-transparent outline-none tabular-nums placeholder:font-normal placeholder:text-[#5b6b86] disabled:cursor-not-allowed [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                                />
+                                            </div>
+
                                             {amount > 0 && !isDisabled ? (
                                                 <button
                                                     type="button"
                                                     onClick={() => handleAmountChange(tx.id, '0')}
                                                     aria-label={`Clear ${tx.name}`}
-                                                    className="w-8 h-8 grid place-items-center rounded-sm text-[#45556c] hover:bg-[#f5f7ff] hover:text-[#0f172b] transition-colors"
+                                                    className="w-10 h-10 flex-none grid place-items-center rounded-sm border border-[#7a8aa3] bg-white text-[#45556c] hover:bg-[#f5f7ff] hover:text-[#0f172b] transition-colors"
                                                 >
                                                     <CloseIcon size={16} />
                                                 </button>
@@ -1690,9 +1817,9 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                                 <button
                                                     type="button"
                                                     onClick={() => handleFillRemaining(tx.id)}
-                                                    className="w-full h-8 px-2 rounded-sm border border-[#7a8aa3] bg-white hover:bg-[#f5f7ff] text-[13px] font-medium text-[#0f172b] whitespace-nowrap overflow-hidden text-ellipsis transition-colors"
+                                                    className="h-10 px-2.5 flex-none rounded-sm border border-[#7a8aa3] bg-white hover:bg-[#f5f7ff] text-[13px] font-medium text-[#0f172b] whitespace-nowrap transition-colors"
                                                 >
-                                                    Fill<span className="hidden md:inline"> ₹{fmtShort(pendingAmount)}</span>
+                                                    Fill
                                                 </button>
                                             ) : null}
                                         </div>
@@ -1701,136 +1828,9 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                             })}
                         </div>
 
-                        {/* Customer info */}
-                        {enableCustomerDetails && (
-                            <>
-                                {!isCalculator && (
-                                    <div className="flex justify-between items-center gap-2 pt-1">
-                                        <div className={OVERLINE_CLS}>{partyLabel}{dueEntered > 0 && <span className="normal-case tracking-normal font-normal text-[#bb4d00]"> · required for due</span>}</div>
-                                        {isSale && enableShippingDetails && (
-                                            <div className={SEG_WRAP} role="group">
-                                                <button onClick={() => setAddressType('billing')} aria-pressed={addressType === 'billing'} className={`h-7 px-3 rounded-sm text-xs font-medium transition-all ${addressType === 'billing' ? SEG_ON : SEG_OFF}`}>Billing</button>
-                                                <button onClick={() => setAddressType('shipping')} aria-pressed={addressType === 'shipping'} className={`h-7 px-3 rounded-sm text-xs font-medium transition-all ${addressType === 'shipping' ? SEG_ON : SEG_OFF}`}>Shipping</button>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-
-                                {!isCalculator && isSale && enableShippingDetails && addressType === 'shipping' && (
-                                    <div className="flex items-center justify-end animate-in fade-in slide-in-from-top-1">
-                                        <label className="flex items-center gap-2 cursor-pointer bg-[#e6eeff] px-3 py-1.5 rounded-sm">
-                                            <input type="checkbox" checked={isSameAsBilling} onChange={(e) => { const isChecked = e.target.checked; setIsSameAsBilling(isChecked); if (!isChecked) { setShippingName(''); setShippingNumber(''); setShippingAddress(''); setShippingGST(''); setShippingPinCode(''); } }} className="w-4 h-4 accent-[#155dfc] rounded cursor-pointer" />
-                                            <span className="text-xs font-medium text-[#155dfc]">Same as billing details</span>
-                                        </label>
-                                    </div>
-                                )}
-
-                                <div className="grid grid-cols-2 gap-2 md:gap-3 relative animate-in fade-in slide-in-from-top-2">
-                                    <div ref={numberInputRef} className={`relative ${mode === 'purchase' ? 'order-2' : 'order-1'}`}>
-                                        <label className={`flex items-center gap-2 h-10 px-3 rounded-sm border bg-white text-[#5b6b86] focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-[#155dfc] ${requireCustomerMobile && !partyNumber && addressType === 'billing' ? 'border-[#d5000c]' : 'border-[#7a8aa3]'}`}>
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-none"><path d="M5 3h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 12l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 5a2 2 0 0 1 2-2" /></svg>
-                                            <input
-                                                type="tel"
-                                                maxLength={mode === 'purchase' ? undefined : 10}
-                                                placeholder={requireCustomerMobile ? "Phone number *" : "Phone number"}
-                                                value={addressType === 'billing' ? partyNumber : shippingNumber}
-                                                onChange={(e) => {
-                                                    const val = e.target.value.replace(/\D/g, '');
-                                                    const finalVal = mode === 'purchase' ? val : val.slice(0, 10);
-
-                                                    if (addressType === 'billing') { handleInputChange(finalVal, 'number'); }
-                                                    else { setShippingNumber(finalVal); setIsSameAsBilling(false); }
-                                                }}
-                                                onFocus={() => {
-                                                    setActiveSearchField('number');
-                                                    if (isSale && addressType === 'billing' && partyNumber.length >= 3) searchParty(partyNumber, 'number');
-                                                }}
-                                                className="flex-1 min-w-0 border-0 outline-none bg-transparent text-sm text-[#0f172b] placeholder:text-[#5b6b86]"
-                                                autoComplete="off"
-                                            />
-                                        </label>
-                                    </div>
-
-                                    <div ref={nameInputRef} className={`relative ${mode === 'purchase' ? 'order-1' : 'order-2'}`}>
-                                        <label className="flex items-center gap-2 h-10 px-3 rounded-sm border border-[#7a8aa3] bg-white text-[#5b6b86] focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-[#155dfc]">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-none"><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></svg>
-                                            <input
-                                                type="text"
-                                                placeholder={requireCustomerName ? `${partyLabel} name *` : `${partyLabel} name`}
-                                                value={addressType === 'billing' ? partyName : shippingName}
-                                                onChange={(e) => {
-                                                    if (addressType === 'billing') { handleInputChange(e.target.value, 'name'); }
-                                                    else { setShippingName(e.target.value); setIsSameAsBilling(false); }
-                                                }}
-                                                onFocus={() => {
-                                                    setActiveSearchField('name');
-                                                    if (addressType === 'billing' && partyName.length >= 3) searchParty(partyName, 'name');
-                                                }}
-                                                className="flex-1 min-w-0 border-0 outline-none bg-transparent text-sm text-[#0f172b] placeholder:text-[#5b6b86]"
-                                                autoComplete="off"
-                                            />
-                                        </label>
-                                    </div>
-                                    {addressType === 'billing' && renderSuggestions()}
-                                </div>
-
-                                {dueEntered > 0 && !dueNeedsParty && (
-                                    <div className="flex items-start gap-2 p-2.5 rounded-sm bg-[#e6eeff] text-[#155dfc] text-xs font-medium">
-                                        <SvgIcon size={16}><circle cx="12" cy="12" r="9" /><path d="M12 8h.01M11 12h1v5h1" /></SvgIcon>
-                                        <span>₹{fmt(dueEntered)} will be added to {partyName.trim() || (partyNumber.trim() ? `${partyLabel.toLowerCase()} ${partyNumber.trim()}` : `this ${partyLabel.toLowerCase()}`)}&apos;s due.</span>
-                                    </div>
-                                )}
-
-                                {dueNeedsParty && (
-                                    <div className="flex items-start gap-2 p-2.5 rounded-sm bg-[#fff3dd] text-[#bb4d00] text-xs font-medium">
-                                        <SvgIcon size={16}><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" /></SvgIcon>
-                                        <span>{dueRequirementText}</span>
-                                    </div>
-                                )}
-
-                                {extrasBlock}
-
-                                {/* Available Balances */}
-                                {(partyCredit > 0 || partyDebit > 0) && (
-                                    <div className="grid gap-2">
-                                        <div className={OVERLINE_CLS}>Available balances</div>
-                                        {partyCredit > 0 && (
-                                            <label className="flex items-center gap-3 p-2.5 bg-white border border-[#dfe6fb] rounded-sm cursor-pointer">
-                                                <span className="w-8 h-8 grid place-items-center rounded-sm bg-[#e9faef] text-[#008236] flex-none">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></svg>
-                                                </span>
-                                                <span className="flex-1 min-w-0 text-sm font-medium text-[#0f172b]">
-                                                    Credit note
-                                                    <small className="block text-[11px] leading-[15px] font-normal text-[#5b6b86]">Available ₹{partyCredit.toFixed(2)}</small>
-                                                </span>
-                                                <span className="flex items-center gap-2">
-                                                    <input type="checkbox" checked={useCredit} onChange={(e) => setUseCredit(e.target.checked)} className="w-4 h-4 accent-[#155dfc] rounded cursor-pointer" />
-                                                    <span className="text-sm font-medium text-[#45556c]">Apply</span>
-                                                </span>
-                                            </label>
-                                        )}
-                                        {partyDebit > 0 && (
-                                            <label className="flex items-center gap-3 p-2.5 bg-white border border-[#dfe6fb] rounded-sm cursor-pointer">
-                                                <span className="w-8 h-8 grid place-items-center rounded-sm bg-[#ffeef0] text-[#d5000c] flex-none">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></svg>
-                                                </span>
-                                                <span className="flex-1 min-w-0 text-sm font-medium text-[#0f172b]">
-                                                    Debit balance
-                                                    <small className="block text-[11px] leading-[15px] font-normal text-[#5b6b86]">Available ₹{partyDebit.toFixed(2)}</small>
-                                                </span>
-                                                <span className="flex items-center gap-2">
-                                                    <input type="checkbox" checked={useDebit} onChange={(e) => setUseDebit(e.target.checked)} className="w-4 h-4 accent-[#d5000c] rounded cursor-pointer" />
-                                                    <span className="text-sm font-medium text-[#45556c]">Apply</span>
-                                                </span>
-                                            </label>
-                                        )}
-                                    </div>
-                                )}
-                            </>
-                        )}
-
-                        {/* Extras fallback when customer details are disabled (keeps Bill discount & tax reachable) */}
-                        {!enableCustomerDetails && extrasBlock}
+                        {dueNotices}
+                        {balancesBlock}
+                        {extrasBlock}
                     </div>
 
                     {/* RIGHT COLUMN (desktop): To collect, summary, discount & tax, confirm */}
@@ -1856,13 +1856,13 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     </aside>
                 </div>
 
-                {/* MOBILE FOOTER: hint + confirm */}
-                <div className="md:hidden px-4 pt-3 pb-4 bg-white border-t border-[#dfe6fb] shadow-[0_-4px_15px_rgba(21,48,140,0.06)] z-20 grid gap-2">
-                    {billOptions}
-                    {(pendingAmount > 0.01 || changeToReturn > 0.01) && (
-                        <div className={`text-center text-xs font-medium ${statusColor}`}>{statusText}</div>
-                    )}
-                    <button onClick={handleConfirm} disabled={isSubmitting || pendingAmount > 0.01} className={`${confirmBtnCls} h-[52px]`}>
+                {/* MOBILE FOOTER: total + confirm (single row) */}
+                <div className="md:hidden flex items-center gap-3 px-4 py-2.5 bg-white border-t border-[#dfe6fb] shadow-[0_-4px_15px_rgba(21,48,140,0.06)] z-20">
+                    <div className="flex flex-col flex-none min-w-0">
+                        <span className="text-[10px] leading-3 font-semibold text-[#5b6b86] uppercase tracking-wide">Total</span>
+                        <b className="text-lg leading-6 font-semibold tracking-tight text-[#0f172b] tabular-nums truncate">₹{fmt(netPayable)}</b>
+                    </div>
+                    <button onClick={handleConfirm} disabled={isSubmitting || pendingAmount > 0.01} className={`${confirmBtnCls} flex-1 min-w-0 h-11`}>
                         {confirmContentMobile}
                     </button>
                 </div>

@@ -303,7 +303,7 @@ const MainLayout = () => {
       {showBanner && (
         <SubscriptionBanner
           variant="mobile" theme="pos"
-          days={banner.days!} endDate={banner.endDate} tier={banner.tier!} onClose={banner.dismiss}
+          days={banner.days!} endDate={banner.endDate} isTrial={banner.isTrial} tier={banner.tier!} onClose={banner.dismiss}
         />
       )}
 
@@ -335,7 +335,7 @@ const MainLayout = () => {
         {showBanner && (
           <SubscriptionBanner
             variant="desktop" theme="pos"
-            days={banner.days!} endDate={banner.endDate} tier={banner.tier!} onClose={banner.dismiss}
+            days={banner.days!} endDate={banner.endDate} isTrial={banner.isTrial} tier={banner.tier!} onClose={banner.dismiss}
           />
         )}
 

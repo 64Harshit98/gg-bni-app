@@ -14,6 +14,7 @@ export function useSubscriptionBanner() {
   const companyId = currentUser?.companyId;
   const [days, setDays] = useState<number | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
+  const [isTrial, setIsTrial] = useState(false);
   const dismissKey = `sub_banner_closed_${companyId}`;
   const [closedToday, setClosedToday] = useState(false);
 
@@ -23,8 +24,10 @@ export function useSubscriptionBanner() {
     (async () => {
       try {
         const snap = await getDoc(doc(db, 'companies', companyId));
-        const expiry = snap.exists() ? snap.data().expiryDate : null;
+        const data = snap.exists() ? snap.data() : null;
+        const expiry = data?.expiryDate ?? null;
         if (!expiry) return;
+        setIsTrial(data?.isTrial === true);
         const d: Date = expiry.toDate ? expiry.toDate() : new Date(expiry);
         setEndDate(d);
         setDays(Math.ceil((d.getTime() - Date.now()) / 86400000));
@@ -46,6 +49,7 @@ export function useSubscriptionBanner() {
   return {
     days,
     endDate,
+    isTrial,
     tier,
     urgent: tier === 'urgent',
     // the last-day banner can't be closed, so it ignores the dismissal
@@ -79,6 +83,7 @@ const THEMES = {
 interface Props {
   days: number;
   endDate: Date | null;
+  isTrial?: boolean;
   tier: 'info' | 'warn' | 'urgent';
   /** desktop = joined under the floating top bar · mobile = compact, under the mobile header */
   variant: 'desktop' | 'mobile';
@@ -87,15 +92,19 @@ interface Props {
   onClose?: () => void;
 }
 
-export function SubscriptionBanner({ days, endDate, tier, variant, theme = 'pos', onClose }: Props) {
+export function SubscriptionBanner({ days, endDate, isTrial = false, tier, variant, theme = 'pos', onClose }: Props) {
   const t = THEMES[theme];
   const urgent = tier === 'urgent';
   const dateTxt = endDate ? fmtDate(endDate) : '';
+  const noun = isTrial ? 'trial plan' : 'plan';
 
   const when =
     days <= 0 ? 'ends today' : days === 1 ? `ends tomorrow, ${dateTxt}` : `ends in ${days} days, on ${dateTxt}`;
-  const sub =
-    urgent ? 'Renew today to keep using SELLAR without a break.'
+  const sub = isTrial
+    ? urgent ? 'Choose a plan today to keep using SELLAR without a break.'
+      : tier === 'warn' ? 'Choose a plan now so billing doesn’t stop at the counter.'
+        : `Choose a plan any time — it starts right after your trial plan ends on ${dateTxt}.`
+    : urgent ? 'Renew today to keep using SELLAR without a break.'
       : tier === 'warn' ? 'Renew now so billing doesn’t stop at the counter.'
         : `Renew any time — your new term starts after ${dateTxt}.`;
 
@@ -123,21 +132,21 @@ export function SubscriptionBanner({ days, endDate, tier, variant, theme = 'pos'
       {variant === 'desktop' ? (
         <>
           <div className="min-w-0 flex-1 leading-[18px]">
-            <b className={`font-semibold ${titleCls}`}>Your plan {when}.</b>{' '}
+            <b className={`font-semibold ${titleCls}`}>Your {noun} {when}.</b>{' '}
             <span className="text-[#45556c]">{sub}</span>
           </div>
           <Link to="/subscription" className={`${btn} text-[#45556c] hover:bg-[#f5f7ff] ${t.ring}`}>See plans</Link>
-          <Link to="/subscription" className={`${btn} ${t.primaryBtn} ${t.ring}`}>Renew plan</Link>
+          <Link to="/subscription" className={`${btn} ${t.primaryBtn} ${t.ring}`}>{isTrial ? 'Choose a plan' : 'Renew plan'}</Link>
         </>
       ) : (
         <>
           {/* compact: tapping the text opens Plan & subscription */}
           <Link to="/subscription" className="min-w-0 flex-1">
             <b className={`block truncate font-semibold ${titleCls}`}>
-              Plan {days <= 0 ? 'ends today' : days === 1 ? 'ends tomorrow' : `ends in ${days} days`}
+              {isTrial ? 'Trial plan' : 'Plan'} {days <= 0 ? 'ends today' : days === 1 ? 'ends tomorrow' : `ends in ${days} days`}
             </b>
           </Link>
-          <Link to="/subscription" className={`${btn} ${t.primaryBtn} ${t.ring}`}>Renew</Link>
+          <Link to="/subscription" className={`${btn} ${t.primaryBtn} ${t.ring}`}>{isTrial ? 'Choose plan' : 'Renew'}</Link>
         </>
       )}
 

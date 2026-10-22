@@ -787,14 +787,17 @@ const OrderingPage: React.FC = () => {
                                         <div className="flex items-start gap-1.5">
                                             <h3 className={cx('line-clamp-2 min-w-0 flex-1 text-[15px] font-semibold leading-[21px]', isVirtual && 'italic text-slate-500')}>{group.name}</h3>
                                             {!isVirtual && (
-                                                <span className="-mr-1 -mt-1 flex shrink-0" onClick={(e) => e.stopPropagation()}>
+                                                <span className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
                                                     <button type="button" onClick={(e) => handleTogglePin(e, group.id!)} aria-label={pinned ? `Unpin ${group.name}` : `Pin ${group.name} to the top`}
                                                         title={pinned ? 'Unpin' : 'Pin to top'}
-                                                        className={cx('grid size-8 place-items-center rounded-sm', pinned ? 'text-sf-primary hover:bg-sf-soft' : 'text-slate-500 hover:bg-sf-sunken hover:text-slate-900')}>
+                                                        className={cx('grid size-8 place-items-center rounded-sm transition-colors',
+                                                            pinned
+                                                                ? 'bg-sf-soft text-sf-primary hover:brightness-95'
+                                                                : 'bg-sf-sunken text-slate-600 hover:bg-sf-line hover:text-slate-900')}>
                                                         <Pin className={cx('size-4', pinned && 'fill-current')} />
                                                     </button>
                                                     <button type="button" onClick={() => handleShareCategory(group)} aria-label={`Share ${group.name}`} title="Share category"
-                                                        className="grid size-8 place-items-center rounded-sm text-slate-500 hover:bg-sf-sunken hover:text-slate-900">
+                                                        className="grid size-8 place-items-center rounded-sm bg-sf-sunken text-slate-600 transition-colors hover:bg-sf-line hover:text-slate-900">
                                                         <Send className="size-4" />
                                                     </button>
                                                 </span>

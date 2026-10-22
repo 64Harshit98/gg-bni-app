@@ -403,7 +403,7 @@ const CatalogueLayout = () => {
             {showBanner && (
                 <SubscriptionBanner
                     variant="mobile" theme="cat"
-                    days={banner.days!} endDate={banner.endDate} tier={banner.tier!} onClose={banner.dismiss}
+                    days={banner.days!} endDate={banner.endDate} isTrial={banner.isTrial} tier={banner.tier!} onClose={banner.dismiss}
                 />
             )}
 
@@ -441,7 +441,7 @@ const CatalogueLayout = () => {
                 {showBanner && (
                     <SubscriptionBanner
                         variant="desktop" theme="cat"
-                        days={banner.days!} endDate={banner.endDate} tier={banner.tier!} onClose={banner.dismiss}
+                        days={banner.days!} endDate={banner.endDate} isTrial={banner.isTrial} tier={banner.tier!} onClose={banner.dismiss}
                     />
                 )}
                 <div ref={scrollRef} className="flex-1 overflow-y-auto pb-20 md:pb-4 scroll-smooth">

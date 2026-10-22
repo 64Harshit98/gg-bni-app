@@ -403,7 +403,7 @@ const DashboardContent = () => {
               <button
                 onClick={handleRefresh}
                 aria-label="Refresh"
-                className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#45556c] transition-colors hover:bg-[#f5f7ff] hover:text-[#0f172b] ${loading ? 'animate-spin' : ''}`}
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-sm text-[#45556c] transition-colors hover:bg-[#f5f7ff] hover:text-[#0f172b] ${loading ? 'animate-spin' : ''}`}
               >
                 {loading ? <FiLoader size={16} /> : <FiRefreshCw size={16} />}
               </button>
@@ -419,10 +419,9 @@ const DashboardContent = () => {
                 ref={setTutorialRef(2)}
                 onClick={() => setIsDataVisible(!isDataVisible)}
                 aria-label={isDataVisible ? 'Hide figures' : 'Show figures'}
-                aria-pressed={!isDataVisible}
-                className="inline-flex h-10 w-10 items-center justify-center gap-2 rounded-lg border border-[#7a8aa3] bg-white text-sm font-medium text-[#0f172b] transition-colors hover:bg-[#f5f7ff] md:w-auto md:px-4"
+                className="inline-flex h-10 w-10 items-center justify-center gap-2 rounded-sm border border-[#7a8aa3] bg-white text-sm font-medium text-[#0f172b] transition-colors hover:bg-[#f5f7ff] md:w-auto md:px-4"
               >
-                {isDataVisible ? <FiEyeOff size={18} /> : <FiEye size={18} />}
+                {isDataVisible ? <FiEye size={18} /> : <FiEyeOff size={18} />}
                 <span className="hidden md:inline">{isDataVisible ? 'Hide figures' : 'Show figures'}</span>
               </button>
             </TutorialStep>
@@ -431,7 +430,7 @@ const DashboardContent = () => {
           <ShowWrapper requiredPermission={Permissions.CreateSales}>
             <Link
               to={NEW_SALE_ROUTE}
-              className="hidden h-10 items-center gap-2 rounded-lg bg-[#155dfc] px-4 text-sm font-medium text-white transition-colors hover:bg-[#1447e6] md:inline-flex"
+              className="hidden h-10 items-center gap-2 rounded-sm bg-[#155dfc] px-4 text-sm font-medium text-white transition-colors hover:bg-[#1447e6] md:inline-flex"
             >
               <FiPlus size={16} /> New sale
             </Link>

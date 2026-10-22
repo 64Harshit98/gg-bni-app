@@ -1,4 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { db } from '../../../lib/Firebase';
+import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ROUTES } from '../../../constants/routes.constants';
 import { useAuth, useDatabase } from '../../../context/auth-context';
@@ -9,9 +12,9 @@ import { State } from '../../../enums';
 import SearchableItemInput from '../../../UseComponents/SearchIteminput';
 import { Spinner } from '../../../constants/Spinner';
 import {
-  FiTrash2, FiEdit, FiCamera, FiX, FiSearch, FiChevronLeft, FiMoreHorizontal, FiList, FiGrid,
+  FiTrash2, FiEdit, FiCamera, FiX, FiSearch, FiChevronLeft, FiMoreHorizontal,
   FiFileText, FiMaximize, FiAlertTriangle, FiCheckCircle, FiInfo, FiPackage, FiPlus,
-  FiChevronUp, FiChevronRight, FiMinus,
+  FiChevronUp, FiChevronRight, FiMinus, FiSliders,
 } from 'react-icons/fi';
 import { ItemEditDrawer } from '../../../Components/ItemDrawer';
 import ItemAdd from '../ItemAdd';
@@ -108,7 +111,11 @@ const normalizeUnit = (rawUnit: string | undefined | null): string => {
   if (['pkt', 'packet', 'packets', 'pack', 'pk'].includes(u)) return 'pkt';
   return 'pcs'; // safe fallback — always a valid dropdown option
 };
-
+interface SupplierSuggestion {
+  name: string;
+  number: string;
+  debitBalance?: number;
+}
 const PurchasePage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -126,17 +133,9 @@ const PurchasePage: React.FC = () => {
   const [isFooterExpanded, setIsFooterExpanded] = useState(false);
   const [isTabletBreakdownOpen, setIsTabletBreakdownOpen] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
-  const [viewOverride, setViewOverride] = useState<'list' | 'card' | null>(null);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [showPhotos, setShowPhotos] = useState<boolean | null>(null);
-
-  // `items`/`setItems` is declared here at the component level, rather than
-  // owned by usePurchaseCart, because of a genuine circular dependency
-  // between usePurchaseCatalogueAndSettings (needs setItems to hydrate the
-  // cart when loading an existing purchase for editing) and usePurchaseCart
-  // (needs availableItems/setAvailableItems FROM the catalogue hook for its
-  // grid memos). See the long note in usePurchaseCart.ts for the full
-  // reasoning. Behavior is unchanged from the original single-component
-  // version — only which file declares this particular useState call.
   const [items, setItems] = useState<PurchaseItem[]>(() => {
     if (isEditMode || !currentUser?.companyId) return [];
     try {
@@ -276,15 +275,97 @@ const PurchasePage: React.FC = () => {
   const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const [supplierDraft, setSupplierDraft] = useState({ name: '', phone: '' });
+
+  // Supplier popup suggestions (same behaviour as PaymentDrawer, name search only)
+  const [supplierSuggestions, setSupplierSuggestions] = useState<SupplierSuggestion[]>([]);
+  const [showSupplierSuggestions, setShowSupplierSuggestions] = useState(false);
+  const supplierSearchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const supplierNameWrapRef = useRef<HTMLDivElement>(null);
+  const supplierSuggestionsRef = useRef<HTMLDivElement>(null);
+
+  const closeSupplierModal = () => {
+    setShowSupplierModal(false);
+    setShowSupplierSuggestions(false);
+    setSupplierSuggestions([]);
+  };
+
   const openSupplierModal = () => {
     setSupplierDraft({ name: supplierName, phone: supplierPhone });
+    setSupplierSuggestions([]);
+    setShowSupplierSuggestions(false);
     setShowSupplierModal(true);
   };
+
   const saveSupplier = () => {
     setSupplierName(supplierDraft.name.trim());
     setSupplierPhone(supplierDraft.phone.trim());
-    setShowSupplierModal(false);
+    closeSupplierModal();
   };
+
+  const searchSupplier = async (term: string) => {
+    if (!term || term.length < 2 || !currentUser?.companyId) {
+      setSupplierSuggestions([]);
+      setShowSupplierSuggestions(false);
+      return;
+    }
+    const partyRef = collection(db, 'companies', currentUser.companyId, 'suppliers');
+    const termLower = term.toLowerCase();
+    const termCap = termLower.charAt(0).toUpperCase() + termLower.slice(1);
+
+    try {
+      const queries = [
+        getDocs(query(partyRef, where('name', '>=', termLower), where('name', '<=', termLower + '\uf8ff'), limit(5))),
+      ];
+      if (termCap !== termLower) {
+        queries.push(
+          getDocs(query(partyRef, where('name', '>=', termCap), where('name', '<=', termCap + '\uf8ff'), limit(5)))
+        );
+      }
+      const snapshots = await Promise.all(queries);
+      const map = new Map<string, SupplierSuggestion>();
+      snapshots.forEach(snap => snap.forEach(d => {
+        if (!map.has(d.id)) {
+          const data = d.data();
+          map.set(d.id, {
+            name: data.name || '',
+            number: data.number || d.id,
+            debitBalance: data.debitBalance,
+          });
+        }
+      }));
+      const results = Array.from(map.values());
+      setSupplierSuggestions(results);
+      setShowSupplierSuggestions(results.length > 0);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSupplierNameChange = (value: string) => {
+    setSupplierDraft(d => ({ ...d, name: value }));
+    if (supplierSearchTimeout.current) clearTimeout(supplierSearchTimeout.current);
+    supplierSearchTimeout.current = setTimeout(() => searchSupplier(value), 400);
+  };
+
+  const selectSupplierSuggestion = (s: SupplierSuggestion) => {
+    setSupplierDraft({ name: s.name, phone: s.number || '' });
+    setShowSupplierSuggestions(false);
+  };
+
+  // Outside click pe dropdown band
+  useEffect(() => {
+    if (!showSupplierSuggestions) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (
+        supplierSuggestionsRef.current?.contains(t) ||
+        supplierNameWrapRef.current?.contains(t)
+      ) return;
+      setShowSupplierSuggestions(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [showSupplierSuggestions]);
 
   // "+ New item" — create a product without leaving the purchase
   const handleOpenNewItem = () => {
@@ -426,8 +507,12 @@ const PurchasePage: React.FC = () => {
 
   const showTaxToggle = true; // Always show the manual tax toggle on the UI
   const displayTaxTotal = showTaxToggle && billTaxType !== 'exempt';
-  const isCardView = (viewOverride ?? purchaseSettings?.purchaseViewType) === 'card';
+  const isCardView = purchaseSettings?.purchaseViewType === 'card';
   const isCardImageView = isCardView && (showPhotos ?? (purchaseSettings?.cardViewWithPhoto !== false));
+  // Filter button par blue dot: Photos/Compact ya sort default se alag ho
+  const hasViewChanges =
+    isCardImageView !== (purchaseSettings?.cardViewWithPhoto !== false) ||
+    sortOrder !== SORT_OPTIONS[0].value;
   // Checks if any item in the current cart has the unlinked warning flag
   const hasUnlinkedItems = items.some(item => item.name.includes('(Not in DB)'));
 
@@ -517,9 +602,9 @@ const PurchasePage: React.FC = () => {
 
   const renderSupplierCard = () => (
     <div>
-      <span className={`block mb-1.5 ${OVERLINE}`}>
+      {/* <span className={`block mb-1.5 ${OVERLINE}`}>
         Supplier{purchaseSettings?.requireSupplierName && <span className="text-[#d5000c]"> *</span>}
-      </span>
+      </span> */}
       <div className={`${CARD} flex items-center gap-2.5 p-2.5`}>
         <span className="inline-grid place-items-center w-8 h-8 flex-none rounded-sm bg-[#e9faef] text-[#008236]">
           <FiPackage size={18} />
@@ -567,18 +652,16 @@ const PurchasePage: React.FC = () => {
   );
 
   // ── Header: title + invoice no / date chips + view toggle ─────────────────
-  const renderViewToggle = () => (
-    <div role="group" aria-label="View" className={`ml-auto ${SEG_WRAP}`}>
-      {([['list', 'List', FiList], ['card', 'Cards', FiGrid]] as const).map(([v, label, Icon]) => {
-        const active = (isCardView ? 'card' : 'list') === v;
-        return (
-          <button key={v} type="button" aria-pressed={active} onClick={() => setViewOverride(v)} className={segBtnCls(active)}>
-            <Icon size={14} /> {label}
+  const renderPhotosToggle = () =>
+    isCardView ? (
+      <div role="group" aria-label="Photos" className={`ml-auto ${SEG_WRAP}`}>
+        {([[true, 'Photos'], [false, 'Compact']] as const).map(([val, label]) => (
+          <button key={label} type="button" aria-pressed={isCardImageView === val} onClick={() => setShowPhotos(val)} className={segBtnCls(isCardImageView === val)}>
+            {label}
           </button>
-        );
-      })}
-    </div>
-  );
+        ))}
+      </div>
+    ) : null;
 
   const renderHeader = () => (
     <header className="flex-shrink-0 bg-[#ffffff] border-b border-[#dfe6fb]">
@@ -590,12 +673,26 @@ const PurchasePage: React.FC = () => {
         <h1 className="m-0 flex-1 min-w-0 text-lg font-semibold leading-tight text-[#0f172b]">
           <span className="block truncate">{pageTitle}</span>
           <span className="block text-xs font-normal text-[#5b6b86] truncate">
-            {invoiceNumber}{invoiceDate ? ` · ${new Date(`${invoiceDate}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+            {invoiceNumber}{invoiceDate ? ` · ${new Date(`${invoiceDate}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}
           </span>
         </h1>
-        <button type="button" onClick={() => setViewOverride(isCardView ? 'list' : 'card')}
-          aria-label={isCardView ? 'List view' : 'Card view'} className={ICON_BTN_CLS}>
-          {isCardView ? <FiList size={20} /> : <FiGrid size={20} />}
+        {/* Supplier pill — tap = supplier popup */}
+        <button
+          type="button"
+          onClick={openSupplierModal}
+          disabled={!!editModeData}
+          aria-label="Supplier"
+          className="inline-flex items-center gap-1.5 h-9 max-w-[130px] pl-1.5 pr-3 rounded-full bg-[#e9faef] text-[#008236] text-[13px] font-semibold flex-shrink-0"
+        >
+          <span className="relative w-6 h-6 rounded-full bg-white flex items-center justify-center flex-shrink-0">
+            <FiPackage size={14} />
+            {!(supplierDisplayName || supplierDisplayPhone) && (
+              <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-[#008236] text-white flex items-center justify-center">
+                <FiPlus size={9} />
+              </span>
+            )}
+          </span>
+          <span className="truncate">{supplierDisplayName || supplierDisplayPhone || 'Supplier'}</span>
         </button>
         <button type="button" onClick={() => setIsMoreOpen(true)} aria-label="More" className={ICON_BTN_CLS}>
           <FiMoreHorizontal size={20} />
@@ -623,7 +720,7 @@ const PurchasePage: React.FC = () => {
             className={`${META_INPUT} w-[7.25rem] cursor-pointer`}
           />
         </label>
-        {renderViewToggle()}
+        {renderPhotosToggle()}
       </div>
     </header>
   );
@@ -649,26 +746,57 @@ const PurchasePage: React.FC = () => {
             </label>
           </div>
 
-          {isCardView && (
-            <div>
-              <span className={OVERLINE}>Sort</span>
-              <div className="mt-2 grid grid-cols-4 gap-1.5">
-                {SORT_OPTIONS.map(opt => (
-                  <button key={opt.value} type="button" onClick={() => setSortOrder(opt.value)}
-                    className={`h-9 rounded-sm text-[13px] font-medium border transition-colors ${sortOrder === opt.value ? 'bg-[#e6eeff] border-[#155dfc] text-[#155dfc]' : 'bg-white border-[#7a8aa3] text-[#45556c]'}`}>
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
           {items.length > 0 && (
             <button type="button" onClick={() => { setIsMoreOpen(false); handleClearCart(); }}
               className="inline-flex items-center justify-center gap-2 h-11 rounded-sm text-sm font-medium text-[#d5000c] bg-[#ffeef0]">
               <FiTrash2 size={16} /> Clear cart
             </button>
           )}
+        </div>
+      </div>
+    );
+
+  // Phone: filter button sheet — only Photos/Compact + Sort
+  const renderFilterSheet = () =>
+    !isFilterOpen ? null : (
+      <div className="md:hidden fixed inset-0 z-[60] flex items-end bg-[rgba(2,6,24,0.45)]" onClick={() => setIsFilterOpen(false)}>
+        <div className={`w-full bg-[#ffffff] rounded-t-2xl p-4 pb-6 flex flex-col gap-4 ${SHADOW_FLOAT}`} onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center justify-between">
+            <h3 className="m-0 text-base font-semibold text-[#0f172b]">View options</h3>
+            <button type="button" onClick={() => setIsFilterOpen(false)} aria-label="Close" className={ICON_BTN_CLS}><FiX size={18} /></button>
+          </div>
+
+          <div>
+            <span className={OVERLINE}>Cards</span>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              {([[true, 'Photos'], [false, 'Compact']] as const).map(([val, label]) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => setShowPhotos(val)}
+                  className={`h-10 rounded-sm text-[13px] font-medium border transition-colors ${isCardImageView === val ? 'bg-[#e6eeff] border-[#155dfc] text-[#155dfc]' : 'bg-white border-[#7a8aa3] text-[#45556c]'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <span className={OVERLINE}>Sort</span>
+            <div className="mt-2 grid grid-cols-4 gap-1.5">
+              {SORT_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setSortOrder(opt.value)}
+                  className={`h-9 rounded-sm text-[13px] font-medium border transition-colors ${sortOrder === opt.value ? 'bg-[#e6eeff] border-[#155dfc] text-[#155dfc]' : 'bg-white border-[#7a8aa3] text-[#45556c]'}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -703,6 +831,64 @@ const PurchasePage: React.FC = () => {
     </div>
   );
 
+  // Phone only: [search icon] [category scroll] [camera]  →  tap icon = full search bar
+  const renderMobileToolbar = () =>
+    isMobileSearchOpen ? (
+      <div className="flex gap-2 items-center">
+        {/* Search bar: icon + input + clear + blue scan segment */}
+        <div className="flex flex-1 min-w-0 items-center h-12 rounded-full border border-[#7a8aa3] bg-white overflow-hidden transition-all focus-within:border-[#155dfc] focus-within:ring-4 focus-within:ring-[#e6eeff]">
+          <FiSearch size={18} className="ml-3.5 text-[#5b6b86] flex-shrink-0" />
+          <input
+            type="text"
+            value={gridSearchQuery}
+            onChange={(e) => setGridSearchQuery(e.target.value)}
+            placeholder="Search item or barcode"
+            className="flex-1 min-w-0 h-full px-2.5 bg-transparent border-0 outline-none text-[15px] font-medium text-[#0f172b] placeholder:text-[#5b6b86]"
+            autoComplete="off"
+            autoFocus
+          />
+          {gridSearchQuery && (
+            <button type="button" onClick={() => setGridSearchQuery('')} aria-label="Clear search"
+              className="p-1 mr-1 rounded-full text-[#5b6b86] hover:text-[#0f172b] hover:bg-[#f5f7ff] transition-colors flex-shrink-0">
+              <FiX size={16} />
+            </button>
+          )}
+          <button type="button" aria-label="Scan barcode" onClick={() => setIsScannerOpen(true)}
+            className="h-full w-12 flex-shrink-0 inline-flex items-center justify-center bg-[#155dfc] text-white hover:bg-[#1447e6] transition-colors">
+            <IconScanCircle width={20} height={20} />
+          </button>
+        </div>
+        <button type="button" aria-label="Close search"
+          onClick={() => { setIsMobileSearchOpen(false); setGridSearchQuery(''); }}
+          className="inline-flex items-center justify-center w-10 h-10 flex-shrink-0 rounded-sm border border-[#7a8aa3] bg-white text-[#45556c]">
+          <FiX size={18} />
+        </button>
+      </div>
+    ) : (
+      <div className="flex items-center gap-2">
+        {/* Left-most: search icon */}
+        <button type="button" aria-label="Search" onClick={() => setIsMobileSearchOpen(true)}
+          className="inline-flex items-center justify-center w-10 h-10 flex-shrink-0 rounded-sm border border-[#7a8aa3] bg-white text-[#0f172b]">
+          <FiSearch size={18} />
+        </button>
+        <div className="flex gap-1.5 overflow-x-auto flex-1 min-w-0 scrollbar-hide">
+          {categories.map((cat) => (
+            <button key={cat} type="button" onClick={() => setSelectedCategory(cat)} className={chipCls(selectedCategory === cat)}>
+              {cat === 'All' ? (
+                <>All <span className="ml-1.5 text-xs opacity-60">{availableItems.length}</span></>
+              ) : (itemGroupMap[cat] || 'uncategorized')}
+            </button>
+          ))}
+        </div>
+        {/* Filter / View options */}
+        <button type="button" aria-label="View options" onClick={() => setIsFilterOpen(true)}
+          className="relative inline-flex items-center justify-center w-10 h-10 flex-shrink-0 rounded-sm border border-[#7a8aa3] bg-white text-[#0f172b]">
+          <FiSliders size={18} />
+          {hasViewChanges && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#155dfc] ring-2 ring-white" />}
+        </button>
+      </div>
+    );
+
   // ── Shared dialogs ────────────────────────────────────────────────────────
   const renderModal = () =>
     modal && (
@@ -734,7 +920,39 @@ const PurchasePage: React.FC = () => {
         </div>
       </div>
     );
+  const renderSupplierSuggestions = () => {
+    if (!showSupplierSuggestions || supplierSuggestions.length === 0) return null;
+    const rect = supplierNameWrapRef.current?.getBoundingClientRect();
+    if (!rect) return null;
 
+    return createPortal(
+      <div
+        ref={supplierSuggestionsRef}
+        style={{ position: 'fixed', top: rect.bottom + 4, left: rect.left, width: rect.width, zIndex: 99999 }}
+        className="bg-white border border-[#dfe6fb] shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)] rounded-sm p-1.5 max-h-48 overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {supplierSuggestions.map((s, idx) => (
+          <div
+            key={idx}
+            className="px-2.5 py-2 hover:bg-[#e6eeff] rounded-sm cursor-pointer flex justify-between items-center gap-2"
+            onClick={() => selectSupplierSuggestion(s)}
+          >
+            <div className="min-w-0">
+              <div className="font-semibold text-xs text-[#0f172b] truncate">{s.name}</div>
+              <div className="text-[10px] text-[#5b6b86]">{s.number}</div>
+            </div>
+            {(s.debitBalance ?? 0) > 0 && (
+              <span className="text-[11px] font-medium text-[#d5000c] bg-[#ffeef0] px-2 py-0.5 rounded-full whitespace-nowrap">
+                Debit: ₹{s.debitBalance}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>,
+      document.body
+    );
+  };
   // Drawers / pickers / add-item popup — identical in both views
   const renderCommonOverlays = () => (
     <>
@@ -785,19 +1003,23 @@ const PurchasePage: React.FC = () => {
         }}
       />
       {showSupplierModal && (
-        <div className={OVERLAY}>
-          <div className={DIALOG}>
+        <div className={OVERLAY} onClick={closeSupplierModal}>
+          <div className={DIALOG} onClick={(e) => e.stopPropagation()}>
             <h3 className="m-0 text-lg font-semibold">Supplier</h3>
             <p className="mt-1 mb-4 text-sm text-[#45556c]">These details are filled in at payment.</p>
             <div className="space-y-4">
-              <div>
+              <div ref={supplierNameWrapRef} className="relative">
                 <label className={`block mb-1.5 ${OVERLINE}`}>Name</label>
                 <input
                   type="text"
                   value={supplierDraft.name}
-                  onChange={(e) => setSupplierDraft({ ...supplierDraft, name: e.target.value })}
+                  onChange={(e) => handleSupplierNameChange(e.target.value)}
+                  onFocus={() => {
+                    if (supplierDraft.name.length >= 3) searchSupplier(supplierDraft.name);
+                  }}
                   placeholder="Supplier name"
                   className={INPUT}
+                  autoComplete="off"
                   autoFocus
                 />
               </div>
@@ -807,17 +1029,19 @@ const PurchasePage: React.FC = () => {
                   type="tel"
                   inputMode="tel"
                   value={supplierDraft.phone}
-                  onChange={(e) => setSupplierDraft({ ...supplierDraft, phone: e.target.value })}
+                  onChange={(e) => setSupplierDraft({ ...supplierDraft, phone: e.target.value.replace(/\D/g, '') })}
                   placeholder="9000000000"
                   className={INPUT}
+                  autoComplete="off"
                 />
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-6">
-              <button onClick={() => setShowSupplierModal(false)} className={BTN_SECONDARY}>Cancel</button>
+              <button onClick={closeSupplierModal} className={BTN_SECONDARY}>Cancel</button>
               <button onClick={saveSupplier} className={BTN_PRIMARY}>Save</button>
             </div>
           </div>
+          {renderSupplierSuggestions()}
         </div>
       )}
       {showAddItemModal && (
@@ -845,20 +1069,18 @@ const PurchasePage: React.FC = () => {
         <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
         {renderHeader()}
         {renderMoreSheet()}
+        {renderFilterSheet()}
 
         <div className="flex-1 flex flex-col xl:flex-row overflow-hidden">
           <div className="flex flex-col w-full xl:flex-1 h-full relative min-w-0 overflow-hidden">
             <div className="flex-shrink-0 bg-[#ffffff] border-b border-[#dfe6fb]">
 
-              {/* Supplier (below xl — on desktop it lives in the summary panel) */}
-              <div className="xl:hidden px-3 pt-3 pb-1 md:px-5 md:pt-4">{renderSupplierCard()}</div>
+              {/* Supplier — phone par header pill mein hai; tablet (md–xl) par yahan, desktop par summary panel mein */}
+              <div className="hidden md:block xl:hidden px-5 pt-4">{renderSupplierCard()}</div>
 
-              {/* Search + scan */}
+              {/* Desktop / tablet: pehle jaisa */}
               <div className="hidden md:block px-5 pt-4">{renderGridSearch()}</div>
-              <div className="md:hidden px-4 pt-3">{renderGridSearch()}</div>
-
-              {/* Category chips */}
-              <div className="flex items-center gap-2 px-4 md:px-5 py-3">
+              <div className="hidden md:flex items-center gap-2 px-5 py-3">
                 <div className="flex gap-1.5 overflow-x-auto flex-1 scrollbar-hide">
                   {categories.map((cat) => (
                     <button key={cat} type="button" onClick={() => setSelectedCategory(cat)} className={chipCls(selectedCategory === cat)}>
@@ -868,31 +1090,27 @@ const PurchasePage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Items count + sort (desktop) + Photos / Compact */}
-              <div className="flex items-center gap-2 px-4 md:px-5 pb-3">
+              {/* Phone: ek compact row */}
+              <div className="md:hidden px-4 py-3">{renderMobileToolbar()}</div>
+
+              {/* Items count + sort + Clear — tablet/desktop only (phone par sab filter sheet mein hai) */}
+              <div className="hidden md:flex items-center gap-2 px-5 pb-3">
                 <span className={OVERLINE}>Items · {sortedGridItems.length}</span>
                 <span className="flex-1" />
                 <select
                   value={sortOrder}
                   onChange={(e) => setSortOrder(e.target.value as typeof sortOrder)}
                   aria-label="Sort"
-                  className="hidden md:block h-8 px-2 bg-white border border-[#7a8aa3] rounded-sm text-xs font-medium text-[#0f172b] outline-none focus:border-[#155dfc] focus:ring-4 focus:ring-[#e6eeff]"
+                  className="h-8 px-2 bg-white border border-[#7a8aa3] rounded-sm text-xs font-medium text-[#0f172b] outline-none focus:border-[#155dfc] focus:ring-4 focus:ring-[#e6eeff]"
                 >
                   {SORT_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                 </select>
                 {/* Tablet only — no summary panel here, so Clear lives in the toolbar */}
                 {items.length > 0 && (
-                  <button type="button" onClick={handleClearCart} className={`${BTN_CLEAR} hidden md:inline-flex xl:hidden`}>
+                  <button type="button" onClick={handleClearCart} className={`${BTN_CLEAR} xl:hidden`}>
                     <FiTrash2 size={14} /> Clear
                   </button>
                 )}
-                <div role="group" aria-label="Photos" className={SEG_WRAP}>
-                  {([[true, 'Photos'], [false, 'Compact']] as const).map(([val, label]) => (
-                    <button key={label} type="button" aria-pressed={isCardImageView === val} onClick={() => setShowPhotos(val)} className={segBtnCls(isCardImageView === val)}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
               </div>
             </div>
             <div className="flex-1 overflow-y-auto grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] md:grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] auto-rows-max content-start gap-2 bg-[#eef2ff] px-2 pt-2.5 pb-6 md:px-3">
@@ -1300,8 +1518,8 @@ const PurchasePage: React.FC = () => {
 
         <div className="flex flex-col w-full xl:flex-1 h-full relative min-w-0">
 
-          {/* Supplier (below xl — on desktop it lives in the summary panel) */}
-          <div className="xl:hidden flex-shrink-0 px-3 pt-3 md:px-5 md:pt-4">{renderSupplierCard()}</div>
+          {/* Supplier — phone par header pill mein hai; tablet (md–xl) par yahan, desktop par summary panel mein */}
+          <div className="hidden md:block xl:hidden flex-shrink-0 px-5 pt-4">{renderSupplierCard()}</div>
 
           {/* Search row: search field · Scan · New item */}
           <div className="flex-shrink-0 px-3 pt-3 md:px-5 md:pt-5">

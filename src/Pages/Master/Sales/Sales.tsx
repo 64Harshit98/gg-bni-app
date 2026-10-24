@@ -29,7 +29,7 @@ import type { SalesItem } from './sales.types';
 import { TierPickerModal } from '../../../Components/TierPickerModal';
 import { hasMultiplePricing } from '../../utils/pricingUtils';
 import type { Item, AddOnGroup } from '../../../constants/models';
-import { resolveAddOnGroups } from '../../../constants/models';
+import { resolveAddOnGroups, addOnStockOf } from '../../../constants/models';
 import { useAddOnTemplates } from '../../../lib/addOnTemplates';
 import { applyRounding, calculateSaleTotals } from './sales.calculations';
 import {
@@ -128,6 +128,7 @@ const Sales: React.FC = () => {
     // Add-ons popup: item being customised + chosen option ids per group
     const [addOnItem, setAddOnItem] = useState<Item | null>(null);
     const [addOnSelection, setAddOnSelection] = useState<Record<string, string[]>>({});
+    const [editingLineId, setEditingLineId] = useState<string | null>(null); // cart line whose add-ons are being edited
 
     // Customer — popup se fill hota hai, payment drawer ko starting details milti hain
     const [customerName, setCustomerName] = useState(prefillParty?.name ?? '');
@@ -370,13 +371,52 @@ const Sales: React.FC = () => {
     const closeAddOnPopup = () => {
         setAddOnItem(null);
         setAddOnSelection({});
+        setEditingLineId(null);
     };
 
-    // withAddOns=false → "No add-ons": plain line (same plain line gets quantity +1)
+    // List view: click on a line's name reopens the popup with that line's add-ons already ticked
+    const openAddOnEdit = (line: any): boolean => {
+        const base = availableItems.find(a => a.id === (line.productId || line.id));
+        if (!base || !itemHasAddOns(base)) return false;
+        const chosen = new Set((line.addOns ?? []).map((o: { id: string }) => o.id));
+        const sel: Record<string, string[]> = {};
+        groupsOf(base).forEach((g: AddOnGroup) => {
+            const ids = g.options.filter(o => chosen.has(o.id)).map(o => o.id);
+            if (ids.length) sel[g.id] = ids;
+        });
+        setAddOnSelection(sel);
+        setAddOnItem(base);
+        setEditingLineId(line.id);
+        return true;
+    };
+
+    // Same cart line, new add-ons: price moves by the difference, quantity and discounts stay
+    const applyAddOnEdit = (lineId: string, picked: any[]) => {
+        const sum = (list: any[]) => list.reduce((s, o) => s + (Number(o.price) || 0), 0);
+        setItems((prev: any[]) => prev.map(l => {
+            if (l.id !== lineId) return l;
+            const hasCustom = l.customPrice !== undefined && l.customPrice !== null && l.customPrice !== '';
+            const base = hasCustom ? Number(l.customPrice) - sum(l.addOns ?? []) : Number(l.salesPrice || l.mrp || 0);
+            const stock = addOnStockOf({ addOns: picked });
+            return {
+                ...l,
+                addOns: picked,
+                addOnKey: picked.map(o => o.id).sort().join('|'), // use the same separator as useSalesCart
+                addOnStock: stock.length > 0 ? stock : undefined,
+                customPrice: Math.round((base + sum(picked)) * 100) / 100,
+            };
+        }));
+    };
+
     const confirmAddOns = (withAddOns: boolean) => {
         const item = addOnItem;
         if (!item) return;
         const picked = withAddOns ? getPickedAddOns(item) : [];
+        if (editingLineId) {
+            applyAddOnEdit(editingLineId, picked);
+            closeAddOnPopup();
+            return;
+        }
         closeAddOnPopup();
         addItemWithAddOns(item, picked, !isCardView);
     };
@@ -423,6 +463,8 @@ const Sales: React.FC = () => {
     const [isMoreOpen, setIsMoreOpen] = useState(false);
     const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [isFooterExpanded, setIsFooterExpanded] = useState(false);
+    const [isBillOpen, setIsBillOpen] = useState(false); // phone/tablet bill sheet (card view)
+    useEffect(() => { if (items.length === 0) setIsBillOpen(false); }, [items.length]);
     const [isTabletBreakdownOpen, setIsTabletBreakdownOpen] = useState(false);
 
     const gstSchemeDisplay = salesSettings?.gstScheme;
@@ -872,7 +914,7 @@ const Sales: React.FC = () => {
             </div>
         ) : null;
     // Tablet (768–1279): same bottom checkout bar as the mobile footer
-    const renderTabletCheckoutBar = (actionLabel: string) => (
+    const renderTabletCheckoutBar = (actionLabel: string, onAction: () => void = handleProceedToPayment) => (
         <div className="hidden md:block xl:hidden flex-shrink-0 z-20 bg-white border-t border-[#dfe6fb]">
             {isTabletBreakdownOpen && (
                 <div className="px-4 pt-3 space-y-1.5 text-sm">
@@ -898,7 +940,7 @@ const Sales: React.FC = () => {
                     </span>
                     <b className="block text-xl leading-[26px] font-semibold tabular-nums text-[#0f172b] truncate">₹{fmtINR(finalAmount)}</b>
                 </button>
-                <button type="button" onClick={handleProceedToPayment} disabled={items.length === 0}
+                <button type="button" onClick={onAction} disabled={items.length === 0}
                     className="inline-flex items-center justify-center gap-2 h-12 px-4 rounded-sm border border-transparent text-[15px] font-medium whitespace-nowrap bg-[#155dfc] text-white hover:bg-[#1447e6] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed">
                     {actionLabel}
                     <FiChevronRight size={16} />
@@ -1113,14 +1155,14 @@ const Sales: React.FC = () => {
                             disabled={picked.length === 0}
                             className="w-full h-12 rounded-sm bg-[#155dfc] text-white font-medium hover:bg-[#1447e6] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed"
                         >
-                            Add to bill with add-ons
+                            {editingLineId ? 'Update add-ons' : 'Add to bill with add-ons'}
                         </button>
                         <button
                             type="button"
                             onClick={() => confirmAddOns(false)}
                             className="w-full h-12 rounded-sm bg-white border border-[#7a8aa3] text-[#0f172b] font-medium hover:bg-[#f5f7ff] transition-colors"
                         >
-                            No add-ons
+                            {editingLineId ? 'Remove all add-ons' : 'No add-ons'}
                         </button>
                     </div>
                 </div>
@@ -1286,6 +1328,80 @@ const Sales: React.FC = () => {
             Number(invoiceToEdit.manualDiscount || 0) -
             oldTotalExpense)
         : undefined;
+
+    // Bill panel: desktop right column and phone/tablet bill sheet share this
+    const renderBillPanel = (onCollect: () => void) => (
+        <div className="flex-1 min-h-0 flex flex-col">
+            <div className="flex-1 min-h-0 p-5 flex flex-col gap-4 overflow-y-auto">
+                <div className="flex items-center justify-between">
+                    <h2 className="m-0 text-base font-semibold text-[#0f172b]">Bill · {totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}</h2>
+                    {items.length > 0 && (
+                        <button onClick={handleClearCart} className="inline-flex items-center h-8 px-3 rounded-sm text-[13px] font-medium text-[#d5000c] hover:bg-[#ffeef0] transition-colors">Clear</button>
+                    )}
+                </div>
+
+                <div>
+                    {items.map((i: any) => {
+                        const unit = Number(i.customPrice ?? i.salesPrice ?? i.mrp ?? 0);
+                        return (
+                            <div key={i.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 gap-y-0.5 py-2.5 border-b border-[#dfe6fb] items-center">
+                                <b className="text-[13px] font-medium text-[#0f172b] truncate">{i.name}</b>
+                                <b className="text-[13px] font-medium text-[#0f172b] tabular-nums">₹{(unit * i.quantity).toLocaleString('en-IN')}</b>
+                                <div className="min-w-0">
+                                    <span className="text-xs text-[#5b6b86]">{i.quantity} × ₹{unit.toLocaleString('en-IN')}</span>
+                                    {(i.addOns?.length ?? 0) > 0 && (
+                                        <p className="m-0 mt-0.5 text-xs text-[#155dfc] [overflow-wrap:anywhere]">
+                                            + {i.addOns.map((a: { name: string }) => a.name).join(', ')}
+                                        </p>
+                                    )}
+                                </div>
+                                <div className="inline-flex items-center border border-[#7a8aa3] rounded-sm bg-white h-7 justify-self-end">
+                                    <button onClick={() => i.quantity > 1 ? handleQuantityChange(i.id, i.quantity - 1) : handleDeleteItem(i.id)} aria-label="Less" className="w-6 h-[26px] text-[#45556c]">−</button>
+                                    <span className="min-w-[20px] text-center text-xs font-semibold tabular-nums">{i.quantity}</span>
+                                    <button onClick={() => handleQuantityChange(i.id, i.quantity + 1)} aria-label="More" className="w-6 h-[26px] text-[#45556c]">+</button>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+
+                <div className="space-y-1.5 text-sm">
+                    <div className="flex justify-between"><span className="text-[#45556c]">MRP total</span><span className="tabular-nums">₹{fmtINR(subtotal)}</span></div>
+                    {totalDiscount > 0 && <div className="flex justify-between text-[#008236]"><span>Discount</span><span className="tabular-nums">− ₹{fmtINR(totalDiscount)}</span></div>}
+                    {showTaxRow && <div className="flex justify-between"><span className="text-[#45556c]">Tax ({activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})</span><span className="tabular-nums">₹{fmtINR(taxAmount)}</span></div>}
+                </div>
+                {totalDiscount > 0 && (
+                    <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-sm bg-[#e9faef] text-[#008236] text-[13px] font-medium">Customer saves ₹{fmtINR(totalDiscount)}</div>
+                )}
+            </div>
+
+            {/* Pinned footer: grand total + pay button on one row */}
+            <div className="flex-shrink-0 flex items-center gap-3 px-5 py-3 bg-white border-t border-[#dfe6fb]">
+                <div className="min-w-0">
+                    <span className="block text-xs text-[#45556c]">Grand total</span>
+                    <b className="block text-[24px] leading-[30px] font-semibold tracking-tight tabular-nums text-[#0f172b] truncate">₹{fmtINR(finalAmount)}</b>
+                </div>
+                <button type="button" onClick={onCollect} disabled={items.length === 0}
+                    className="ml-auto h-12 min-w-0 flex-1 max-w-[220px] px-3 rounded-sm bg-[#155dfc] text-white text-[15px] font-medium whitespace-nowrap hover:bg-[#1447e6] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed">
+                    {isEditMode ? 'Update invoice' : 'Collect payment'}
+                </button>
+            </div>
+        </div>
+    );
+
+    // Phone/tablet bill sheet: shared by card view and list view
+    const renderBillSheet = () =>
+        isBillOpen && items.length > 0 ? (
+            <div className="xl:hidden fixed inset-0 z-[60] flex items-end justify-center bg-[#020618]/45" onClick={() => setIsBillOpen(false)}>
+                <div className={`w-full md:max-w-lg h-[88dvh] flex flex-col bg-white rounded-t-sm ${SHADOW_FLOAT}`} onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-between px-4 pt-3 pb-1 flex-shrink-0">
+                        <span className={LABEL_CLS}>Review bill</span>
+                        <button type="button" onClick={() => setIsBillOpen(false)} aria-label="Close" className={ICON_BTN_CLS}><FiX size={18} /></button>
+                    </div>
+                    {renderBillPanel(() => { setIsBillOpen(false); handleProceedToPayment(); })}
+                </div>
+            </div>
+        ) : null;
 
     // ═════════════════════════ CARD VIEW ═════════════════════════
     if (isCardView) {
@@ -1549,71 +1665,21 @@ const Sales: React.FC = () => {
                                 finalAmount={finalAmount} showTaxRow={showTaxRow}
                                 taxLabel={`Tax (${activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})`}
                                 actionLabel={isEditMode ? 'Update invoice' : 'View bill'}
-                                onActionClick={handleProceedToPayment}
+                                onActionClick={() => setIsBillOpen(true)}
                                 disableAction={items.length === 0}>
                             </GenericBillFooter>
                         </div>
-                        {renderTabletCheckoutBar(isEditMode ? 'Update invoice' : 'View bill')}
+                        {renderTabletCheckoutBar(isEditMode ? 'Update invoice' : 'View bill', () => setIsBillOpen(true))}
                     </div>
 
                     {/* RIGHT PANEL — desktop only */}
                     <div className="hidden xl:flex w-[360px] flex-shrink-0 flex-col bg-white h-full relative border-l border-[#dfe6fb] z-10">
-                        <div className="flex-1 min-h-0 p-5 flex flex-col gap-4 overflow-y-auto">
-                            {/* Bill header + Clear */}
-                            <div className="flex items-center justify-between">
-                                <h2 className="m-0 text-base font-semibold text-[#0f172b]">Bill · {totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}</h2>
-                                {items.length > 0 && (
-                                    <button onClick={handleClearCart} className="inline-flex items-center h-8 px-3 rounded-sm text-[13px] font-medium text-[#d5000c] hover:bg-[#ffeef0] transition-colors">Clear</button>
-                                )}
-                            </div>
-
-                            {/* Cart lines */}
-                            <div>
-                                {items.map((i: any) => {
-                                    const unit = Number(i.customPrice ?? i.salesPrice ?? i.mrp ?? 0);
-                                    return (
-                                        <div key={i.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 gap-y-0.5 py-2.5 border-b border-[#dfe6fb] items-center">
-                                            <b className="text-[13px] font-medium text-[#0f172b] truncate">{i.name}</b>
-                                            <b className="text-[13px] font-medium text-[#0f172b] tabular-nums">₹{(unit * i.quantity).toLocaleString('en-IN')}</b>
-                                            <div className="min-w-0">
-                                                <span className="text-xs text-[#5b6b86]">{i.quantity} × ₹{unit.toLocaleString('en-IN')}</span>
-                                                {(i.addOns?.length ?? 0) > 0 && (
-                                                    <p className="m-0 mt-0.5 text-xs text-[#155dfc] [overflow-wrap:anywhere]">
-                                                        + {i.addOns.map((a: { name: string }) => a.name).join(', ')}
-                                                    </p>
-                                                )}
-                                            </div>
-                                            <div className="inline-flex items-center border border-[#7a8aa3] rounded-sm bg-white h-7 justify-self-end">
-                                                <button onClick={() => i.quantity > 1 ? handleQuantityChange(i.id, i.quantity - 1) : handleDeleteItem(i.id)} aria-label="Less" className="w-6 h-[26px] text-[#45556c]">−</button>
-                                                <span className="min-w-[20px] text-center text-xs font-semibold tabular-nums">{i.quantity}</span>
-                                                <button onClick={() => handleQuantityChange(i.id, i.quantity + 1)} aria-label="More" className="w-6 h-[26px] text-[#45556c]">+</button>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-
-                            {/* Summary */}
-                            <div className="space-y-1.5 text-sm">
-                                <div className="flex justify-between"><span className="text-[#45556c]">MRP total</span><span className="tabular-nums">₹{fmtINR(subtotal)}</span></div>
-                                {totalDiscount > 0 && <div className="flex justify-between text-[#008236]"><span>Discount</span><span className="tabular-nums">− ₹{fmtINR(totalDiscount)}</span></div>}
-                                {showTaxRow && <div className="flex justify-between"><span className="text-[#45556c]">Tax ({activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})</span><span className="tabular-nums">₹{fmtINR(taxAmount)}</span></div>}
-                            </div>
-                            {totalDiscount > 0 && (
-                                <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-sm bg-[#e9faef] text-[#008236] text-[13px] font-medium">Customer saves ₹{fmtINR(totalDiscount)}</div>
-                            )}
-                            <div className="flex justify-between items-baseline">
-                                <span className="text-sm text-[#45556c]">Grand total</span>
-                                <b className="text-[30px] leading-[38px] font-semibold tracking-tight tabular-nums text-[#0f172b]">₹{fmtINR(finalAmount)}</b>
-                            </div>
-
-                            <button type="button" onClick={handleProceedToPayment} disabled={items.length === 0}
-                                className="mt-auto w-full h-14 rounded-sm bg-[#155dfc] text-white text-base font-medium hover:bg-[#1447e6] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed">
-                                {isEditMode ? 'Update invoice' : 'Collect payment'} · ₹{fmtINR(finalAmount)}
-                            </button>
-                        </div>
+                        {renderBillPanel(handleProceedToPayment)}
                     </div>
                 </div>
+
+                {/* Phone/tablet: bill sheet first, payment drawer after "Collect payment" */}
+                {renderBillSheet()}
 
                 {/* Drawers & modals — rendered ONCE */}
                 <PaymentDrawer
@@ -1916,6 +1982,7 @@ ${colClass || ''}`}
                             State={State}
                             setModal={setModal}
                             onOpenEditDrawer={handleOpenEditDrawer}
+                            onNameClick={(line: any) => openAddOnEdit(line)}
                             onDeleteItem={handleDeleteItem}
                             onDiscountChange={handleDiscountChange}
                             onDiscount2Change={handleDiscount2Change}
@@ -1943,13 +2010,13 @@ ${colClass || ''}`}
                                 finalAmount={finalAmount}
                                 showTaxRow={showTaxRow}
                                 taxLabel={`Tax (${activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})`}
-                                actionLabel={isEditMode ? 'Update invoice' : 'Charge'}
-                                onActionClick={handleProceedToPayment}
+                                actionLabel={isEditMode ? 'Update invoice' : 'View bill'}
+                                onActionClick={() => setIsBillOpen(true)}
                                 disableAction={items.length === 0}
                             >
                             </GenericBillFooter>
                         </div>
-                        {renderTabletCheckoutBar(isEditMode ? 'Update invoice' : 'Charge')}
+                        {renderTabletCheckoutBar(isEditMode ? 'Update invoice' : 'View bill', () => setIsBillOpen(true))}
                     </div>
                 </div>
 
@@ -1992,6 +2059,9 @@ ${colClass || ''}`}
                     </div>
                 </div>
             </div>
+
+            {/* Phone/tablet: bill sheet first, payment drawer after "Collect payment" */}
+            {renderBillSheet()}
 
             <PaymentDrawer isOpen={isDrawerOpen}
                 mode='sale'

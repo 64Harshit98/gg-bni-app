@@ -190,7 +190,7 @@ export const ProductCard: React.FC<ProductCardProps> = (p) => {
         action = (
             <button type="button" disabled={p.outOfStock} onClick={(e) => { e.stopPropagation(); p.onAdd(e); }} className={btnClass('outline', small ? 'sm' : 'md', !p.rail)}>
                 {!p.rail && !p.hasOptions && <Plus className="size-4" />}
-                {p.outOfStock ? 'Out of stock' : p.hasOptions ? (p.rail ? 'Options' : 'Choose pack') : 'Add'}
+                                {p.outOfStock ? 'Out of stock' : p.hasOptions ? (p.rail ? 'Options' : 'Choose options') : 'Add'}
             </button>
         );
     }

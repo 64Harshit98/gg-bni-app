@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Bell, Check, ChevronRight, FileText, MessageCircle, Share2, ShieldCheck, ShoppingCart } from 'lucide-react';
-import type { Item, ItemGroup, PriceTier } from '../../constants/models';
+import { Bell, Check, ChevronRight, FileText, MessageCircle, Share2, ShieldCheck, ShoppingCart, X } from 'lucide-react';
+import type { Item, ItemGroup, PriceTier, AddOnGroup, AddOnOption } from '../../constants/models';
 import { getSlabForQty } from '../../constants/models';
 import type { CatalogueSalesSettings } from '../Settings/CatalogueSalesSetting';
 import { getAllTiers, getEffectivePriceInfo } from '../../Pages/utils/pricingUtils';
@@ -27,7 +27,9 @@ interface Props {
     notified: boolean;
     whatsappHref: string | null;
     related: React.ReactNode;
-    onAdd: (item: Item, quantity: number, tier?: PriceTier) => void;
+    onAdd: (item: Item, quantity: number, tier?: PriceTier, addOns?: AddOnOption[]) => void;
+    /** Item settings "Enable add-ons". Defaults to true */
+    addOnsEnabled?: boolean;
     /** Change the quantity already in the cart (single-piece line) */
     onInc: () => void;
     onDec: () => void;
@@ -52,12 +54,16 @@ export const ProductView: React.FC<Props> = (p) => {
     const [tierId, setTierId] = useState<string>('__base__');
     const minQty = Math.max(1, Number(item.moq) || 1);
     const [qty, setQty] = useState(minQty);
+    // Add-ons: chosen option ids per group
+    const [addOnSel, setAddOnSel] = useState<Record<string, string[]>>({});
+    const hasAddOns = (p.addOnsEnabled ?? true) && (item.addOnGroups?.length ?? 0) > 0;
+    const [addOnOpen, setAddOnOpen] = useState(false); // add-ons popup (opens on "Add to cart")
 
-    useEffect(() => { setPhoto(0); setTierId('__base__'); setQty(minQty); }, [item.id, minQty]);
+    useEffect(() => { setPhoto(0); setTierId('__base__'); setQty(minQty); setAddOnSel({}); setAddOnOpen(false); }, [item.id, minQty]);
 
     const s = productState(item, settings, 0);
     // Once a single-piece product is in the cart, the stepper edits the cart itself (packs keep the picker)
-    const editsCart = tiers.length === 0 && p.inCart > 0;
+    const editsCart = tiers.length === 0 && !hasAddOns && p.inCart > 0;
     const stockCap = settings?.allowNegativeInventory || tierId !== '__base__' ? Infinity : Number(item.stock || 0);
     const atCap = editsCart ? p.inCart >= stockCap : qty + p.inCart >= stockCap;
     const tier = tiers.find((t) => t.id === tierId);
@@ -68,6 +74,23 @@ export const ProductView: React.FC<Props> = (p) => {
     const unitPrice = slab && slab.salesPrice < basePrice ? slab.salesPrice : basePrice;
     const saving = baseMrp > unitPrice ? baseMrp - unitPrice : 0;
 
+    const pickedAddOns: AddOnOption[] = hasAddOns
+        ? (item.addOnGroups ?? []).flatMap((g: AddOnGroup) => g.options.filter((o) => (addOnSel[g.id] ?? []).includes(o.id)))
+        : [];
+    const addOnExtra = pickedAddOns.reduce((sum, o) => sum + (Number(o.price) || 0), 0);
+    const addOnLimit = (g: AddOnGroup) => (g.multiple ? Number(g.maxSelect) || 0 : 0);
+    const atAddOnLimit = (g: AddOnGroup) => addOnLimit(g) > 0 && (addOnSel[g.id] ?? []).length >= addOnLimit(g);
+    const toggleAddOn = (g: AddOnGroup, optionId: string) => {
+        setAddOnSel((prev) => {
+            const cur = prev[g.id] ?? [];
+            const has = cur.includes(optionId);
+            if (!has && addOnLimit(g) > 0 && cur.length >= addOnLimit(g)) return prev; // "Choose up to N"
+            if (!has && g.options.find((o) => o.id === optionId)?.soldOut) return prev;
+            const next = g.multiple ? (has ? cur.filter((id) => id !== optionId) : [...cur, optionId]) : (has ? [] : [optionId]);
+            return { ...prev, [g.id]: next };
+        });
+    };
+
     const share = async () => {
         const url = p.shareUrl ?? window.location.href;
         try {
@@ -76,10 +99,16 @@ export const ProductView: React.FC<Props> = (p) => {
         } catch { /* cancelled */ }
     };
 
-    const add = () => {
-        p.onAdd(item, Math.min(qty, Math.max(0, stockCap - p.inCart)), tier && tier.id !== '__base__' ? tier : undefined);
+    // withAddOns=false: "Skip add-ons" adds the plain item
+    const add = (withAddOns = true) => {
+        p.onAdd(item, Math.min(qty, Math.max(0, stockCap - p.inCart)), tier && tier.id !== '__base__' ? tier : undefined, withAddOns ? pickedAddOns : []);
         setQty(minQty);
+        setAddOnSel({});
+        setAddOnOpen(false);
     };
+    const closeAddOns = () => { setAddOnOpen(false); setAddOnSel({}); };
+    // Items with add-ons: the button opens the popup first
+    const onBuyClick = () => (hasAddOns ? setAddOnOpen(true) : add());
 
     const buyButton = s.outOfStock
         ? (s.canNotify
@@ -89,8 +118,8 @@ export const ProductView: React.FC<Props> = (p) => {
             ? <button type="button" onClick={p.onViewCart} className={btnClass('primary', 'lg', true)}>
                 <ShoppingCart className="size-4" />View cart
             </button>
-            : <button type="button" onClick={add} disabled={p.inCart >= stockCap} className={cx(btnClass('primary', 'lg', true), 'min-w-0')}>
-                <ShoppingCart className="size-4 shrink-0" /><span className="min-w-0 truncate">Add to cart{pricesVisible ? ` · ${formatINR(unitPrice * qty)}` : ''}</span>
+            : <button type="button" onClick={onBuyClick} disabled={p.inCart >= stockCap} className={cx(btnClass('primary', 'lg', true), 'min-w-0')}>
+                <ShoppingCart className="size-4 shrink-0" /><span className="min-w-0 truncate">Add to cart{pricesVisible ? ` · ${formatINR((unitPrice + addOnExtra) * qty)}` : ''}</span>
             </button>;
 
     // Breadcrumb / category links: plain text in the builder's preview
@@ -273,6 +302,87 @@ export const ProductView: React.FC<Props> = (p) => {
                     </div>
                 </section>
             )}
+
+            {/* Add-ons popup: bottom sheet on phones, centred card on desktop */}
+            {addOnOpen && hasAddOns && (
+                <div className="fixed inset-0 z-[90] flex items-end justify-center bg-slate-900/45 md:items-center md:p-4" onClick={closeAddOns}>
+                    <div
+                        role="dialog"
+                        aria-label={`Add-ons for ${item.name}`}
+                        className="flex max-h-[85dvh] w-full flex-col overflow-hidden rounded-t-sm bg-white shadow-sf-float md:max-w-md md:rounded-sm"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex items-start justify-between gap-3 border-b border-sf-line px-4 pb-3 pt-4">
+                            <div className="min-w-0">
+                                <h2 className="line-clamp-1 text-base font-semibold text-slate-900">{item.name}</h2>
+                                <p className="mt-0.5 text-[13px] text-slate-500">Choose add-ons (optional)</p>
+                            </div>
+                            <button type="button" onClick={closeAddOns} aria-label="Close"
+                                className="grid size-9 shrink-0 place-items-center rounded-sm text-slate-500 hover:bg-sf-sunken hover:text-slate-900">
+                                <X className="size-5" />
+                            </button>
+                        </div>
+
+                        <div className="grid flex-1 gap-5 overflow-y-auto px-4 py-4">
+                            {(item.addOnGroups ?? []).map((g: AddOnGroup) => (
+                                <div key={g.id}>
+                                    <div className="mb-2 flex items-center justify-between">
+                                        <p className="text-[13px] font-medium text-slate-900">{g.name}</p>
+                                        <small className="text-xs text-slate-500">
+                                            {g.multiple ? (addOnLimit(g) > 0 ? `Choose up to ${addOnLimit(g)}` : 'Choose any') : 'Choose one'}
+                                        </small>
+                                    </div>
+                                    <div className="grid gap-2">
+                                        {/* plain options first, linked inventory items after, under "Items" */}
+                                        {[...g.options].sort((a, b) => Number(!!a.itemId) - Number(!!b.itemId)).map((o, idx, arr) => {
+                                            const on = (addOnSel[g.id] ?? []).includes(o.id);
+                                            const price = Number(o.price) || 0;
+                                            const off = !on && (atAddOnLimit(g) || !!o.soldOut);
+                                            const firstLinked = !!o.itemId && (idx === 0 || !arr[idx - 1].itemId);
+                                            return (
+                                                <React.Fragment key={o.id}>
+                                                    {firstLinked && <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-slate-500">Items</p>}
+                                                    <button type="button" aria-pressed={on} onClick={() => toggleAddOn(g, o.id)} disabled={off}
+                                                        className={cx('flex min-h-12 items-center justify-between gap-3 rounded-sm px-3 py-2 text-left disabled:cursor-not-allowed disabled:opacity-45',
+                                                            on ? 'border-2 border-sf-primary bg-sf-soft' : 'border border-sf-control bg-white hover:bg-sf-sunken')}>
+                                                        <span className="flex min-w-0 items-center gap-2.5">
+                                                            <span className={cx('grid size-5 shrink-0 place-items-center border',
+                                                                g.multiple ? 'rounded-sm' : 'rounded-full',
+                                                                on ? 'border-sf-primary bg-sf-primary text-white' : 'border-sf-control bg-white')}>
+                                                                {on && <Check className="size-3.5" strokeWidth={3} />}
+                                                            </span>
+                                                            <b className={cx('truncate text-[13px] font-medium', on ? 'text-sf-soft-ink' : 'text-slate-900')}>{o.name}</b>
+                                                        </span>
+                                                        {(pricesVisible || o.soldOut) && (
+                                                            <small className={cx('shrink-0 text-xs tabular-nums', on ? 'text-sf-soft-ink' : 'text-slate-500')}>
+                                                                {o.soldOut ? 'Out of stock' : price > 0 ? `+ ${formatINR(price)}` : 'Free'}
+                                                            </small>
+                                                        )}
+                                                    </button>
+                                                </React.Fragment>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="grid gap-2 border-t border-sf-line px-4 pb-5 pt-3">
+                            {pricesVisible && (
+                                <p className="flex justify-between text-[13px] text-slate-600">
+                                    <span>{pickedAddOns.length} add-on{pickedAddOns.length === 1 ? '' : 's'}{addOnExtra > 0 ? ` · + ${formatINR(addOnExtra)}` : ''}</span>
+                                    <span>Qty {qty}</span>
+                                </p>
+                            )}
+                            <button type="button" onClick={() => add(true)} className={btnClass('primary', 'lg', true)}>
+                                <ShoppingCart className="size-4" />Add to cart{pricesVisible ? ` · ${formatINR((unitPrice + addOnExtra) * qty)}` : ''}
+                            </button>
+                            <button type="button" onClick={() => add(false)} className={btnClass('secondary', 'lg', true)}>Skip add-ons</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {p.related}
         </>
     );

@@ -12,13 +12,13 @@ import PaymentDrawer from '../../../Components/PaymentDrawer';
 import { Modal } from '../../../constants/Modal';
 import { Permissions, ROLES, State, Variant } from '../../../enums';
 import { CustomButton } from '../../../Components';
-import { useSalesSettings } from '../../../context/SettingsContext';
+import { useSalesSettings, useItemSettings } from '../../../context/SettingsContext';
 import { Spinner } from '../../../constants/Spinner';
 import { ItemEditDrawer } from '../../../Components/ItemDrawer';
 import { GenericCartList } from '../../../Components/CartItem';
 import BarcodeLinkModal from '../../../Components/BarcodeLinkModal';
 import { AddUserModal } from '../../../Components/AddUserModal';
-import { FiTrash2, FiX, FiEdit, FiCamera, FiDelete, FiSearch, FiChevronLeft, FiMoreVertical, FiCalendar, FiCheck, FiUser, FiUserPlus, FiChevronUp, FiChevronRight, FiMinus, FiSliders } from 'react-icons/fi';
+import { FiTrash2, FiX, FiEdit, FiCamera, FiDelete, FiSearch, FiChevronLeft, FiMoreVertical, FiCalendar, FiCheck, FiChevronUp, FiChevronRight, FiMinus, FiSliders } from 'react-icons/fi';
 import { GenericBillFooter } from '../../../Components/Footer';
 import { CartLinesCompact } from '../../../Components/CartLinesCompact';
 import { IconScanCircle, IconPrint } from '../../../constants/Icons';
@@ -29,7 +29,9 @@ import { useWhatsappProvider } from '../../Additional/Whatsapp/useWhatsappProvid
 import type { SalesItem } from './sales.types';
 import { TierPickerModal } from '../../../Components/TierPickerModal';
 import { hasMultiplePricing } from '../../utils/pricingUtils';
-import type { Item } from '../../../constants/models';
+import type { Item, AddOnGroup } from '../../../constants/models';
+import { resolveAddOnGroups } from '../../../constants/models';
+import { useAddOnTemplates } from '../../../lib/addOnTemplates';
 import { applyRounding, calculateSaleTotals } from './sales.calculations';
 import {
     useSalesCalculator,
@@ -50,43 +52,29 @@ interface CalcKey {
     colClass?: string;
 }
 
-const calcKeys: CalcKey[][] = [
-    // Row 1: %, -, delete
-    [
-        { label: '%', value: '%', type: 'operator', colClass: 'col-span-2' },
-        { label: '-', value: '-', type: 'operator', colClass: 'col-span-2' },
-        { label: '', value: 'Backspace', type: 'function', icon: FiDelete, colClass: 'col-span-4' }
-    ],
+// Dialer-style: operators on top, 7-8-9 / 4-5-6 / 1-2-3 / 00-0-. , tall "+" (Add line) on the right
+const calcKeys: CalcKey[] = [
+    { label: '%', value: '%', type: 'operator' },
+    { label: '×', value: '*', type: 'operator' },
+    { label: '−', value: '-', type: 'operator' },
+    { label: '', value: 'Backspace', type: 'function', icon: FiDelete },
 
-    // Row 2: 1,2,3,*
-    [
-        { label: '1', value: '1', type: 'number', colClass: 'col-span-2' },
-        { label: '2', value: '2', type: 'number', colClass: 'col-span-2' },
-        { label: '3', value: '3', type: 'number', colClass: 'col-span-2' },
-        { label: '×', value: '*', type: 'operator', colClass: 'col-span-2' }
-    ],
+    { label: '7', value: '7', type: 'number' },
+    { label: '8', value: '8', type: 'number' },
+    { label: '9', value: '9', type: 'number' },
+    { label: '+', value: '+', type: 'operator', colClass: 'row-span-4' }, // Add line
 
-    // Row 3: 4,5,6,+
-    [
-        { label: '4', value: '4', type: 'number', colClass: 'col-span-2' },
-        { label: '5', value: '5', type: 'number', colClass: 'col-span-2' },
-        { label: '6', value: '6', type: 'number', colClass: 'col-span-2' },
-        { label: '+', value: '+', type: 'operator', colClass: 'col-span-2' }
-    ],
+    { label: '4', value: '4', type: 'number' },
+    { label: '5', value: '5', type: 'number' },
+    { label: '6', value: '6', type: 'number' },
 
-    // Row 4: 7,8,9,.
-    [
-        { label: '7', value: '7', type: 'number', colClass: 'col-span-2' },
-        { label: '8', value: '8', type: 'number', colClass: 'col-span-2' },
-        { label: '9', value: '9', type: 'number', colClass: 'col-span-2' },
-        { label: '.', value: '.', type: 'number', colClass: 'col-span-2' }
-    ],
+    { label: '1', value: '1', type: 'number' },
+    { label: '2', value: '2', type: 'number' },
+    { label: '3', value: '3', type: 'number' },
 
-    // Row 5: 0,00
-    [
-        { label: '0', value: '0', type: 'number', colClass: 'col-span-4' },
-        { label: '00', value: '00', type: 'number', colClass: 'col-span-4' }
-    ]
+    { label: '00', value: '00', type: 'number' },
+    { label: '0', value: '0', type: 'number' },
+    { label: '.', value: '.', type: 'number' },
 ];
 
 // ── SELLAR design tokens (Tailwind arbitrary values) ──
@@ -126,6 +114,9 @@ const Sales: React.FC = () => {
     const { provider: whatsappProvider } = useWhatsappProvider(currentUser?.companyId);
     const dbOperations = useDatabase();
     const { salesSettings: rawSettings, loadingSettings } = useSalesSettings();
+    const { itemSettings } = useItemSettings();
+    const addOnsEnabled = !!(itemSettings as any)?.enableAddOns;
+    const { templates: addOnLibrary } = useAddOnTemplates(addOnsEnabled ? currentUser?.companyId : undefined);
 
     const invoiceToEdit = location.state?.invoiceData;
     const isEditMode = location.state?.isEditMode === true && !!invoiceToEdit;
@@ -135,6 +126,9 @@ const Sales: React.FC = () => {
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
     const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
     const [tierPickerItem, setTierPickerItem] = useState<Item | null>(null);
+    // Add-ons popup: item being customised + chosen option ids per group
+    const [addOnItem, setAddOnItem] = useState<Item | null>(null);
+    const [addOnSelection, setAddOnSelection] = useState<Record<string, string[]>>({});
 
     // Customer — popup se fill hota hai, payment drawer ko starting details milti hain
     const [customerName, setCustomerName] = useState(prefillParty?.name ?? '');
@@ -155,12 +149,12 @@ const Sales: React.FC = () => {
         setCustomerSuggestions([]);
     };
 
-    const openCustomerModal = () => {
-        setCustomerDraft({ name: customerName, phone: customerPhone });
-        setCustomerSuggestions([]);
-        setShowCustomerSuggestions(false);
-        setShowCustomerModal(true);
-    };
+    // const openCustomerModal = () => {
+    //     setCustomerDraft({ name: customerName, phone: customerPhone });
+    //     setCustomerSuggestions([]);
+    //     setShowCustomerSuggestions(false);
+    //     setShowCustomerModal(true);
+    // };
 
     const saveCustomer = () => {
         const phone = customerDraft.phone.replace(/\D/g, '');
@@ -244,9 +238,9 @@ const Sales: React.FC = () => {
         document.addEventListener('mousedown', onDown);
         return () => document.removeEventListener('mousedown', onDown);
     }, [showCustomerSuggestions]);
-    // Edit mode me invoice ki party dikhani hai
-    const customerDisplayName = isEditMode ? (invoiceToEdit?.partyName || '') : customerName;
-    const customerDisplayPhone = isEditMode ? (invoiceToEdit?.partyNumber || '') : customerPhone;
+    // // Edit mode me invoice ki party dikhani hai
+    // const customerDisplayName = isEditMode ? (invoiceToEdit?.partyName || '') : customerName;
+    // const customerDisplayPhone = isEditMode ? (invoiceToEdit?.partyNumber || '') : customerPhone;
 
     const {
         salesSettings,
@@ -270,6 +264,22 @@ const Sales: React.FC = () => {
         isEditMode,
         invoiceToEdit,
     });
+
+    // Category images for the phone category rail (group id → compressed data URL)
+    const [groupImageMap, setGroupImageMap] = useState<Record<string, string>>({});
+    useEffect(() => {
+        if (!dbOperations) return;
+        let cancelled = false;
+        dbOperations.getItemGroups()
+            .then((groups) => {
+                if (cancelled) return;
+                const map: Record<string, string> = {};
+                groups.forEach((g) => { if (g.id && g.imageUrl) map[g.id] = g.imageUrl; });
+                setGroupImageMap(map);
+            })
+            .catch((err) => console.error('Failed to load category images:', err));
+        return () => { cancelled = true; };
+    }, [dbOperations]);
 
     const {
         items, setItems,
@@ -295,6 +305,7 @@ const Sales: React.FC = () => {
         sortedGridItems,
         displayItems,
         addItemToCart,
+        addItemWithAddOns,
         handleClearCart,
         handleConfirmClearCart,
         handleItemSelected,
@@ -330,7 +341,53 @@ const Sales: React.FC = () => {
         setModal,
         companyId: currentUser?.companyId,
     });
+    // allowNegative: yahan apni sales setting ka asli naam lagao jo negative stock allow karti hai
+    const groupsOf = (item: Item) => resolveAddOnGroups(item, addOnLibrary, {
+        items: availableItems,
+        allowNegative: !!(salesSettings as any)?.allowNegativeStock,
+    });
+    const itemHasAddOns = (item: Item) => addOnsEnabled && groupsOf(item).length > 0;
+
+    const getPickedAddOns = (item: Item) =>
+        groupsOf(item).flatMap((g: AddOnGroup) =>
+            g.options.filter(o => (addOnSelection[g.id] ?? []).includes(o.id))
+        );
+
+    const toggleAddOn = (group: AddOnGroup, optionId: string) => {
+        setAddOnSelection(prev => {
+            const cur = prev[group.id] ?? [];
+            const has = cur.includes(optionId);
+            // "Choose up to N": ignore taps beyond the limit
+            const limit = group.multiple ? Number(group.maxSelect) || 0 : 0;
+            if (!has && limit > 0 && cur.length >= limit) return prev;
+            if (!has && group.options.find(o => o.id === optionId)?.soldOut) return prev;
+            const next = group.multiple
+                ? (has ? cur.filter(id => id !== optionId) : [...cur, optionId])
+                : (has ? [] : [optionId]);
+            return { ...prev, [group.id]: next };
+        });
+    };
+
+    const closeAddOnPopup = () => {
+        setAddOnItem(null);
+        setAddOnSelection({});
+    };
+
+    // withAddOns=false → "No add-ons": plain line (same plain line gets quantity +1)
+    const confirmAddOns = (withAddOns: boolean) => {
+        const item = addOnItem;
+        if (!item) return;
+        const picked = withAddOns ? getPickedAddOns(item) : [];
+        closeAddOnPopup();
+        addItemWithAddOns(item, picked, !isCardView);
+    };
+
     const handleAddOrPickTier = (item: Item) => {
+        if (itemHasAddOns(item)) {
+            setAddOnSelection({});
+            setAddOnItem(item);
+            return;
+        }
         if (hasMultiplePricing(item)) {
             setTierPickerItem(item);
         } else {
@@ -338,6 +395,12 @@ const Sales: React.FC = () => {
         }
     };
     const handleItemSelectedWrapper = (item: Item | null) => {
+        // Add-on items always open the popup (same as card view)
+        if (item && itemHasAddOns(item)) {
+            setAddOnSelection({});
+            setAddOnItem(item);
+            return;
+        }
         if (item && hasMultiplePricing(item)) {
             setTierPickerItem(item);
             return;
@@ -646,6 +709,7 @@ const Sales: React.FC = () => {
         >
             {categories.map(cat => {
                 const label = cat === 'All' ? 'All' : (itemGroupMap[cat] || cat);
+                const imageUrl = cat === 'All' ? undefined : groupImageMap[cat];
                 const active = selectedCategory === cat;
                 return (
                     <button
@@ -655,8 +719,10 @@ const Sales: React.FC = () => {
                         className={`relative w-full flex flex-col items-center gap-1 px-1 py-3 text-center border-0 cursor-pointer transition-colors ${active ? 'bg-[#e6eeff]' : 'bg-white hover:bg-[#f5f7ff]'}`}
                     >
                         {active && <span className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-[#155dfc]" />}
-                        <span className={`w-11 h-11 rounded-sm flex items-center justify-center text-base font-semibold ${active ? 'bg-white text-[#155dfc]' : 'bg-[#f5f7ff] text-[#45556c]'}`}>
-                            {label.charAt(0).toUpperCase()}
+                        <span className={`w-11 h-11 rounded-sm overflow-hidden flex items-center justify-center text-base font-semibold ${active ? 'bg-white text-[#155dfc]' : 'bg-[#f5f7ff] text-[#45556c]'}`}>
+                            {imageUrl
+                                ? <img src={imageUrl} alt="" loading="lazy" className="w-full h-full object-cover" />
+                                : label.charAt(0).toUpperCase()}
                         </span>
                         <span className={`text-[11px] leading-[14px] [overflow-wrap:anywhere] line-clamp-2 ${active ? 'font-semibold text-[#155dfc]' : 'font-medium text-[#45556c]'}`}>
                             {label}
@@ -684,34 +750,34 @@ const Sales: React.FC = () => {
             </select>
         ) : null;
 
-    // Walk-in customer / filled customer card — "Add" ab popup kholta hai
-    const renderCustomerBlock = (showSalesman = true) => (
-        <>
-            <div className="flex items-center gap-2.5">
-                <span className="w-9 h-9 rounded-sm bg-[#e6eeff] text-[#155dfc] flex items-center justify-center flex-shrink-0"><FiUser size={16} /></span>
-                <div className="flex-1 min-w-0">
-                    {customerDisplayName || customerDisplayPhone ? (
-                        <>
-                            <div className="text-sm font-medium text-[#0f172b] truncate">{customerDisplayName || 'Customer'}</div>
-                            {customerDisplayPhone && <div className="text-xs text-[#5b6b86] truncate">{customerDisplayPhone}</div>}
-                        </>
-                    ) : (
-                        <>
-                            <div className="text-sm font-medium text-[#0f172b]">Walk-in customer</div>
-                            <div className="text-xs text-[#5b6b86]">Add phone to send bill on WhatsApp</div>
-                        </>
-                    )}
-                </div>
-                {!isEditMode && (
-                    <button type="button" onClick={openCustomerModal}
-                        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-sm border border-[#7a8aa3] bg-white text-[13px] font-medium text-[#0f172b] hover:bg-[#f5f7ff] flex-shrink-0">
-                        <FiUserPlus size={14} /> {customerName || customerPhone ? 'Change' : 'Add'}
-                    </button>
-                )}
-            </div>
-            {showSalesman && renderSalesmanSelect('w-full')}
-        </>
-    );
+    // // Walk-in customer / filled customer card — "Add" ab popup kholta hai
+    // const renderCustomerBlock = (showSalesman = true) => (
+    //     <>
+    //         <div className="flex items-center gap-2.5">
+    //             <span className="w-9 h-9 rounded-sm bg-[#e6eeff] text-[#155dfc] flex items-center justify-center flex-shrink-0"><FiUser size={16} /></span>
+    //             <div className="flex-1 min-w-0">
+    //                 {customerDisplayName || customerDisplayPhone ? (
+    //                     <>
+    //                         <div className="text-sm font-medium text-[#0f172b] truncate">{customerDisplayName || 'Customer'}</div>
+    //                         {customerDisplayPhone && <div className="text-xs text-[#5b6b86] truncate">{customerDisplayPhone}</div>}
+    //                     </>
+    //                 ) : (
+    //                     <>
+    //                         <div className="text-sm font-medium text-[#0f172b]">Walk-in customer</div>
+    //                         <div className="text-xs text-[#5b6b86]">Add phone to send bill on WhatsApp</div>
+    //                     </>
+    //                 )}
+    //             </div>
+    //             {!isEditMode && (
+    //                 <button type="button" onClick={openCustomerModal}
+    //                     className="inline-flex items-center gap-1.5 h-8 px-3 rounded-sm border border-[#7a8aa3] bg-white text-[13px] font-medium text-[#0f172b] hover:bg-[#f5f7ff] flex-shrink-0">
+    //                     <FiUserPlus size={14} /> {customerName || customerPhone ? 'Change' : 'Add'}
+    //                 </button>
+    //             )}
+    //         </div>
+    //         {showSalesman && renderSalesmanSelect('w-full')}
+    //     </>
+    // );
     const renderCustomerSuggestions = () => {
         if (!showCustomerSuggestions || customerSuggestions.length === 0) return null;
         const ref = activeSuggestField === 'name' ? customerNameWrapRef.current : customerPhoneWrapRef.current;
@@ -976,6 +1042,92 @@ const Sales: React.FC = () => {
         </div>
     );
 
+    // ───────────────────────── Add-ons popup ─────────────────────────
+    const renderAddOnPopup = () => {
+        if (!addOnItem) return null;
+        const picked = getPickedAddOns(addOnItem);
+        const extra = picked.reduce((sum, o) => sum + (Number(o.price) || 0), 0);
+        const basePrice = Number(addOnItem.salesPrice || 0) || Number(addOnItem.mrp || 0);
+        return (
+            <div className="fixed inset-0 z-[2000] flex items-end sm:items-center justify-center bg-[#020618]/45 sm:p-4" onClick={closeAddOnPopup}>
+                <div
+                    className={`w-full sm:max-w-md max-h-[85dvh] flex flex-col bg-white border border-[#dfe6fb] rounded-sm ${SHADOW_FLOAT}`}
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <div className="flex items-start justify-between gap-3 px-5 pt-5 pb-3 border-b border-[#dfe6fb]">
+                        <div className="min-w-0">
+                            <h3 className="m-0 text-lg font-semibold text-[#0f172b] truncate">{addOnItem.name}</h3>
+                            <p className="m-0 mt-0.5 text-sm text-[#5b6b86]">Choose add-ons for this order</p>
+                        </div>
+                        <button type="button" onClick={closeAddOnPopup} aria-label="Close" className={ICON_BTN_CLS}><FiX size={18} /></button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+                        {groupsOf(addOnItem).map((group: AddOnGroup) => (
+                            <div key={group.id}>
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className={LABEL_CLS}>{group.name}</span>
+                                    <span className="text-[11px] text-[#5b6b86]">{group.multiple ? (Number(group.maxSelect) > 0 ? `Choose up to ${group.maxSelect}` : 'Choose any') : 'Choose one'}</span>
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                    {/* plain options first, linked inventory items after, under their own heading */}
+                                    {[...group.options].sort((a, b) => Number(!!a.itemId) - Number(!!b.itemId)).map((opt, idx, arr) => {
+                                        const on = (addOnSelection[group.id] ?? []).includes(opt.id);
+                                        const firstLinked = !!opt.itemId && (idx === 0 || !arr[idx - 1].itemId);
+                                        return (
+                                            <React.Fragment key={opt.id}>
+                                                {firstLinked && <span className={`mt-1 ${LABEL_CLS}`}>Items</span>}
+                                                <button
+                                                    type="button"
+                                                    aria-pressed={on}
+                                                    onClick={() => toggleAddOn(group, opt.id)}
+                                                    disabled={!on && (!!opt.soldOut || (group.multiple && Number(group.maxSelect) > 0 && (addOnSelection[group.id] ?? []).length >= Number(group.maxSelect)))}
+                                                    className={`flex items-center justify-between gap-3 h-11 px-3 rounded-sm border text-sm font-medium transition-colors disabled:opacity-45 disabled:cursor-not-allowed ${on ? 'bg-[#e6eeff] border-[#155dfc] text-[#155dfc]' : 'bg-white border-[#7a8aa3] text-[#0f172b] hover:bg-[#f5f7ff]'}`}
+                                                >
+                                                    <span className="inline-flex items-center gap-2 min-w-0">
+                                                        <span className={`w-5 h-5 flex-shrink-0 grid place-items-center border ${group.multiple ? 'rounded-sm' : 'rounded-full'} ${on ? 'bg-[#155dfc] border-[#155dfc] text-white' : 'bg-white border-[#7a8aa3]'}`}>
+                                                            {on && <FiCheck size={12} strokeWidth={3} />}
+                                                        </span>
+                                                        <span className="truncate">{opt.name}</span>
+                                                    </span>
+                                                    <span className="tabular-nums flex-shrink-0">{opt.soldOut ? 'Out of stock' : Number(opt.price) > 0 ? `+ ₹${fmtINR(Number(opt.price))}` : 'Free'}</span>
+                                                </button>
+                                            </React.Fragment>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="px-5 pt-3 pb-5 border-t border-[#dfe6fb] flex flex-col gap-2">
+                        {basePrice > 0 && (
+                            <div className="flex justify-between text-sm">
+                                <span className="text-[#45556c]">{picked.length} add-on{picked.length === 1 ? '' : 's'} · + ₹{fmtINR(extra)}</span>
+                                <b className="tabular-nums text-[#0f172b]">₹{fmtINR(basePrice + extra)}</b>
+                            </div>
+                        )}
+                        <button
+                            type="button"
+                            onClick={() => confirmAddOns(true)}
+                            disabled={picked.length === 0}
+                            className="w-full h-12 rounded-sm bg-[#155dfc] text-white font-medium hover:bg-[#1447e6] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed"
+                        >
+                            Add to bill with add-ons
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => confirmAddOns(false)}
+                            className="w-full h-12 rounded-sm bg-white border border-[#7a8aa3] text-[#0f172b] font-medium hover:bg-[#f5f7ff] transition-colors"
+                        >
+                            No add-ons
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     // ───────────────────────── Shared popups (card + list views) ─────────────────────────
     const renderClearCartConfirm = () =>
         showClearCartConfirm ? (
@@ -1004,7 +1156,7 @@ const Sales: React.FC = () => {
 
                     <h3 className="m-0 mb-1 text-lg font-semibold text-[#0f172b]">Item already in cart</h3>
                     <p className="text-sm text-[#45556c] mb-6">
-                        "<span className="font-medium">{duplicateItemPrompt.item.name}</span>" is already in your cart
+                        "<span className="font-medium">{duplicateItemPrompt.item.name}{duplicateItemPrompt.addOns?.length ? ` + ${duplicateItemPrompt.addOns.map(a => a.name).join(', ')}` : ''}</span>" is already in your cart
                         {duplicateItemPrompt.existingCount > 1 ? ` (${duplicateItemPrompt.existingCount} times)` : ''}.
                         What would you like to do?
                     </p>
@@ -1175,8 +1327,6 @@ const Sales: React.FC = () => {
                     <div className="flex flex-col w-full xl:flex-1 h-full relative min-w-0 overflow-hidden">
 
                         <div className="flex-shrink-0 bg-white border-b border-[#dfe6fb]">
-                            <div className="hidden md:block xl:hidden px-5 pt-3">{renderCustomerBlock(false)}</div>
-
                             <div className="hidden md:block px-5 pt-4">{renderGridSearch()}</div>
                             <div className="hidden md:flex items-center gap-2 px-5 py-3">
                                 <div className="flex gap-1.5 overflow-x-auto flex-1 scrollbar-hide">
@@ -1255,7 +1405,9 @@ const Sales: React.FC = () => {
                                         ? Number(lastAddedCartItem.customPrice)
                                         : baseDisplayPrice;
                                     const sp = effectiveSp;
-                                    const lineSubtotal = Math.round((Number(sp) * quantity) * 100) / 100;
+                                    const lineSubtotal = itemHasAddOns(item)
+                                        ? Math.round(matchingCartItems.reduce((s, i) => s + Number(i.customPrice ?? 0) * (i.quantity || 0), 0) * 100) / 100
+                                        : Math.round((Number(sp) * quantity) * 100) / 100;
                                     const discPct = (!hideMrp && allowItemDiscount && mrp > 0 && Number(sp) < mrp && Number(sp) > 0)
                                         ? Math.round(((mrp - Number(sp)) / mrp) * 100)
                                         : 0;
@@ -1271,7 +1423,8 @@ const Sales: React.FC = () => {
                                     };
                                     const handleTileTap = () => {
                                         if (tileHoldFired.current) { tileHoldFired.current = false; return; }
-                                        if (isSelected) handleQuantityChange(lastAddedCartItem.id, quantity + 1);
+                                        // Add-on items always open the popup: each tap can be a different customisation
+                                        if (isSelected && !itemHasAddOns(item)) handleQuantityChange(lastAddedCartItem.id, quantity + 1);
                                         else handleAddOrPickTier(item);
                                     };
 
@@ -1406,7 +1559,6 @@ const Sales: React.FC = () => {
                     {/* RIGHT PANEL — desktop only */}
                     <div className="hidden xl:flex w-[360px] flex-shrink-0 flex-col bg-white h-full relative border-l border-[#dfe6fb] z-10">
                         <div className="flex-1 min-h-0 p-5 flex flex-col gap-4 overflow-y-auto">
-                            {renderCustomerBlock(false)}
                             {/* Bill header + Clear */}
                             <div className="flex items-center justify-between">
                                 <h2 className="m-0 text-base font-semibold text-[#0f172b]">Bill · {totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}</h2>
@@ -1491,108 +1643,130 @@ const Sales: React.FC = () => {
                         handleItemSelected(item, tier.id === '__base__' ? undefined : tier);
                     }}
                 />
+                {renderAddOnPopup()}
                 {renderCustomerModal()}
                 {renderSavedBillModals()}
-            </div>
+            </div >
         );
     }
 
     // ═════════════════════════ CALCULATOR VIEW ═════════════════════════
     if (isCalculatorView) {
         return (
-            // fixed inset-0 completely disables page scrolling
-            <div className="fixed inset-0 flex flex-col bg-[#eef2ff] w-full overflow-hidden">
+            <div className="flex flex-col h-full w-full bg-[#eef2ff] overflow-hidden">
                 {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
-                {/* Top Navigation */}
-                <div className="shrink-0 bg-white border-b border-[#dfe6fb] px-4 py-3 md:px-6 md:py-4">
-                    <h1 className="m-0 text-lg md:text-[22px] md:leading-[30px] font-semibold text-[#0f172b]">New sale</h1>
+                {/* Header */}
+                <div className="shrink-0 bg-white border-b border-[#dfe6fb] flex items-center gap-1 h-14 px-2 md:px-6 md:h-auto md:py-4">
+                    <button type="button" onClick={() => navigate(-1)} aria-label="Back" className={`${ICON_BTN_CLS} md:hidden`}>
+                        <FiChevronLeft size={20} />
+                    </button>
+                    <h1 className="m-0 text-lg md:text-[22px] md:leading-[30px] font-semibold text-[#0f172b] flex items-baseline gap-2">
+                        New sale
+                        <span className="text-xs font-normal text-[#5b6b86]">
+                            Calculator billing{invoiceNumber ? ` · ${invoiceNumber}` : ''}
+                        </span>
+                    </h1>
                 </div>
 
-                {/* Main Calculator Area */}
-                <div className="flex-1 flex flex-col items-center p-1 sm:p-4 min-h-0 w-full">
-                    <div className="w-full max-w-sm mx-auto flex flex-col h-full">
+                {/* Calculator card (full-bleed on phone, centred card on desktop) */}
+                <div className="flex-1 min-h-0 flex justify-center md:p-5">
+                    <div className="w-full md:max-w-[520px] md:max-h-[640px] flex flex-col min-h-0 bg-[#f5f7ff] md:rounded-sm md:border md:border-[#dfe6fb] md:overflow-hidden md:shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]">
 
-                        {/* Live Summary Totals (Moved Above Calculator) */}
-                        <div className="flex justify-between items-end px-2 py-1 shrink-0">
-                            <div className="flex flex-col gap-1">
-                                <span className="text-[#45556c] font-medium text-sm">Grand total</span>
-                                <span className="inline-flex items-center h-[22px] px-2 rounded-full bg-[#e6eeff] text-[#155dfc] text-[11px] font-semibold w-fit">
-                                    {liveItemCount} {liveItemCount === 1 ? 'item' : 'items'}
-                                </span>
+                        {/* Grand total strip */}
+                        <div className="shrink-0 flex items-center gap-2.5 px-4 py-3 bg-white border-b border-[#dfe6fb]">
+                            <div>
+                                <div className="text-xs leading-4 text-[#45556c]">Grand total</div>
+                                <div className="text-xs leading-4 text-[#5b6b86]">{liveItemCount} {liveItemCount === 1 ? 'item' : 'items'}</div>
                             </div>
-                            <span className="text-4xl font-semibold text-[#0f172b] tracking-tight tabular-nums">₹{liveTotal.toFixed(2)}</span>
-                        </div>
-                        {/* Enlarged Display Screen */}
-                        <div
-                            className="bg-white border border-[#dfe6fb] rounded-sm shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] px-4 pt-3 pb-2 flex flex-col items-end justify-end min-h-[8rem] sm:min-h-[10rem] max-h-[12rem] sm:max-h-[14rem] shrink-0 w-full cursor-text overflow-hidden relative"
-                            onClick={() => displayRef.current?.focus()}
-                        >
-                            {/* Hidden textarea — drives all input logic unchanged */}
-                            <textarea
-                                ref={displayRef}
-                                inputMode="none"
-                                value={calcInput}
-                                placeholder=""
-                                onChange={(e) => {
-                                    const val = e.target.value.replace(/[^0-9*.\-+%]/g, '');
-                                    setCalcInput(val);
-                                }}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') e.preventDefault();
-                                }}
-                                className="absolute opacity-0 pointer-events-none w-0 h-0"
-                                rows={1}
-                            />
-
-                            {/* Visual display — wraps into lines, last line is large */}
-                            <CalcDisplay value={calcInput} />
+                            <b className="ml-auto text-[22px] font-semibold tabular-nums text-[#0f172b]">₹{liveTotal.toFixed(2)}</b>
                         </div>
 
-                        <div className="grid grid-cols-8 gap-1.5 sm:gap-2 flex-1 min-h-0 w-full mt-2">
-                            {calcKeys.flat().map((key) => {
-                                const { label, icon: Icon, colClass, type, value } = key;
-                                const isFunction = type === 'function';
-                                const isOperator = type === 'operator';
-                                const isBackspace = value === 'Backspace';
+                        <div className="flex-1 min-h-0 flex flex-col gap-2 px-3 pt-2 pb-3">
 
-                                return (
-                                    <button
-                                        key={key.label}
-                                        onPointerDown={(e) => {
-                                            e.preventDefault();
-                                            if (isBackspace) {
-                                                handlePointerDown(key);
-                                            } else {
-                                                handleKeypadPress(key);
-                                            }
-                                        }}
-                                        onPointerUp={isBackspace ? () => handlePointerUp(key) : undefined}
-                                        onPointerLeave={isBackspace ? () => handlePointerLeave(key) : undefined}
-                                        className={`h-full w-full flex items-center justify-center rounded-sm text-2xl sm:text-3xl font-medium transition-all active:scale-95 border select-none
-        ${isFunction ? 'bg-[#ffeef0] border-[#d5000c]/30 text-[#d5000c] hover:bg-[#ffdde1]' :
-                                                isOperator ? 'bg-[#e6eeff] border-[#155dfc]/30 text-[#155dfc] hover:bg-[#dbe6ff]' :
-                                                    'bg-white border-[#dfe6fb] text-[#0f172b] hover:bg-[#f5f7ff]'}
-        ${colClass || 'col-span-2'}`}
-                                    >
-                                        {Icon ? <Icon size={28} /> : label}
-                                    </button>
-                                );
-                            })}
+                            {/* Empty-state hint */}
+                            {liveItemCount === 0 && !calcInput && (
+                                <p className="shrink-0 m-0 pt-1 text-center text-[13px] text-[#5b6b86]">
+                                    Type an amount and press <b className="text-[#0f172b]">+ Add line</b>.<br />
+                                    Use × for quantity, % for a discount on that line.
+                                </p>
+                            )}
+
+                            {/* Display */}
+                            <div className="shrink-0 relative text-right px-1 pt-1 cursor-text overflow-hidden" onClick={() => displayRef.current?.focus()}>
+                                {/* Hidden textarea — drives all input logic unchanged */}
+                                <textarea
+                                    ref={displayRef}
+                                    inputMode="none"
+                                    value={calcInput}
+                                    placeholder=""
+                                    onChange={(e) => {
+                                        const val = e.target.value.replace(/[^0-9*.\-+%]/g, '');
+                                        setCalcInput(val);
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') e.preventDefault();
+                                    }}
+                                    className="absolute opacity-0 pointer-events-none w-0 h-0"
+                                    rows={1}
+                                />
+                                <CalcDisplay value={calcInput} />
+                            </div>
+
+                            {/* Keypad */}
+                            <div className="grid grid-cols-4 auto-rows-fr gap-2 flex-1 min-h-0">
+                                {calcKeys.map((key) => {
+                                    const { label, icon: Icon, colClass, type, value } = key;
+                                    const isFunction = type === 'function';
+                                    const isAddLine = value === '+';
+                                    const isOperator = type === 'operator' && !isAddLine;
+                                    const isBackspace = value === 'Backspace';
+
+                                    return (
+                                        <button
+                                            key={value}
+                                            type="button"
+                                            aria-label={isAddLine ? 'Add line' : isBackspace ? 'Backspace' : undefined}
+                                            onPointerDown={(e) => {
+                                                e.preventDefault();
+                                                if (isBackspace) {
+                                                    handlePointerDown(key);
+                                                } else {
+                                                    handleKeypadPress(key);
+                                                }
+                                            }}
+                                            onPointerUp={isBackspace ? () => handlePointerUp(key) : undefined}
+                                            onPointerLeave={isBackspace ? () => handlePointerLeave(key) : undefined}
+                                            className={`h-full w-full flex items-center justify-center rounded-sm text-[22px] font-medium tabular-nums transition-all active:scale-95 select-none shadow-[0_1px_0_#dfe6fb,0_1px_2px_rgba(21,48,140,0.06)]
+${isFunction ? 'bg-[#ffeef0] text-[#d5000c] hover:bg-[#ffdde1]' :
+                                                    isAddLine ? 'bg-[#155dfc] text-white hover:bg-[#1447e6] text-[28px]' :
+                                                        isOperator ? 'bg-[#e6eeff] text-[#155dfc] hover:bg-[#dbe6ff] text-2xl' :
+                                                            'bg-white text-[#0f172b] hover:bg-[#f5f7ff]'}
+${colClass || ''}`}
+                                        >
+                                            {Icon ? <Icon size={26} /> : isAddLine ? (
+                                                <span className="flex flex-col items-center leading-none">
+                                                    +<small className="mt-1 text-[11px] font-medium opacity-85">Add line</small>
+                                                </span>
+                                            ) : label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Pay */}
+                            <div className="shrink-0 flex gap-2">
+                                <button
+                                    type="button"
+                                    onClick={handleCheckoutClick}
+                                    disabled={liveItemCount === 0}
+                                    className="flex-1 h-[54px] inline-flex items-center justify-center gap-2 rounded-sm bg-[#155dfc] hover:bg-[#1447e6] text-white font-medium text-base transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed active:scale-[0.98]"
+                                >
+                                    Proceed to pay
+                                    <FiChevronRight size={16} />
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                </div>
-
-                {/* Bottom Action Bar (Now only holds the button) */}
-                <div className="shrink-0 bg-white border-t border-[#dfe6fb] px-4 pt-3 pb-3 mb-16">
-                    <div className="w-full max-w-sm mx-auto flex flex-col">
-                        <button
-                            onClick={handleCheckoutClick}
-                            disabled={liveItemCount === 0}
-                            className="w-full h-14 rounded-sm bg-[#155dfc] hover:bg-[#1447e6] text-white font-medium text-base transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed active:scale-[0.98]"
-                        >
-                            Pay · ₹{liveTotal.toFixed(2)}
-                        </button>
                     </div>
                 </div>
 
@@ -1628,7 +1802,6 @@ const Sales: React.FC = () => {
                     maxBillDiscountValue={salesSettings?.maxBillDiscountValue}
                     maxBillDiscountType={salesSettings?.maxBillDiscountType}
                 />
-
             </div>
         );
     }
@@ -1673,7 +1846,6 @@ const Sales: React.FC = () => {
                 <div className="flex flex-col w-full xl:flex-1 min-w-0 h-full relative">
 
                     <div className="flex-shrink-0 px-4 md:px-5 py-3 bg-white border-b border-[#dfe6fb]">
-                        <div className="hidden md:block xl:hidden mb-3">{renderCustomerBlock(false)}</div>
                         <div className="flex gap-2 items-center w-full">
                             <div className="flex-grow">
                                 <SearchableItemInput
@@ -1704,7 +1876,11 @@ const Sales: React.FC = () => {
                             {priceInfo && <div className="text-xs text-red-600">{priceInfo}</div>}
                         </div>
                         <GenericCartList
-                            items={displayItems}
+                            items={displayItems.map(i =>
+                                (i.addOns?.length ?? 0) > 0
+                                    ? { ...i, name: `${i.name} + ${i.addOns!.map(a => a.name).join(', ')}` }
+                                    : i
+                            )}
                             availableItems={availableItems}
                             scrollRef={cartListRef}
                             basePriceKey="mrp"
@@ -1762,8 +1938,6 @@ const Sales: React.FC = () => {
                 {/* RIGHT PANEL — desktop only */}
                 <div className="hidden xl:flex w-[360px] flex-shrink-0 flex-col bg-white h-full relative border-l border-[#dfe6fb] z-10">
                     <div className="flex-1 min-h-0 p-5 flex flex-col gap-4 overflow-y-auto">
-                        {renderCustomerBlock(false)}
-                        <div className="border-t border-[#dfe6fb]" />
                         <h2 className="m-0 text-base font-semibold text-[#0f172b]">Bill summary</h2>
 
                         <div className="space-y-1.5 text-sm">
@@ -1850,6 +2024,7 @@ const Sales: React.FC = () => {
                     handleItemSelected(item, tier.id === '__base__' ? undefined : tier);
                 }}
             />
+            {renderAddOnPopup()}
             {renderCustomerModal()}
             {renderSavedBillModals()}
         </div>

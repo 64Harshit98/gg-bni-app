@@ -8,6 +8,7 @@ import {
     deriveTaxContext,
     computeCartTotals,
     isMinimumOrderValueMet,
+    lineKeyOf,
 } from './checkOut.calculations';
 import {
     useBusinessInfo,
@@ -200,22 +201,23 @@ const CartPage: React.FC = () => {
                                             </div>
                                             {cartItems.map((item) => {
                                                 const struck = item.quantitySlabs?.length && item.baseSalesPrice !== undefined && item.salesPrice < item.baseSalesPrice;
+                                                const lk = lineKeyOf(item);
                                                 return (
-                                                    <div key={item.id} className="grid grid-cols-[64px_minmax(0,1fr)_auto] gap-3 border-b border-sf-line py-4 last:border-0 md:grid-cols-[72px_minmax(0,1fr)_auto] md:gap-4">
+                                                    <div key={lk} className="grid grid-cols-[64px_minmax(0,1fr)_auto] gap-3 border-b border-sf-line py-4 last:border-0 md:grid-cols-[72px_minmax(0,1fr)_auto] md:gap-4">
                                                         <Photo src={item.imageUrl} alt={item.name} fit="contain" className="aspect-square border border-sf-line" />
                                                         <div className="min-w-0">
-                                                            <h3 className="text-sm font-medium leading-5">{item.name}{(item as { tierLabel?: string }).tierLabel ? <span className="font-normal text-slate-500"> · {(item as { tierLabel?: string }).tierLabel}</span> : null}</h3>
+                                                            <h3 className="text-sm font-medium leading-5">{item.name}{(item as { tierLabel?: string }).tierLabel ? <span className="font-normal text-slate-500"> · {(item as { tierLabel?: string }).tierLabel}</span> : null}{(item as { addOns?: { name: string }[] }).addOns?.length ? <span className="block text-xs font-normal leading-[18px] text-sf-primary">+ {(item as { addOns?: { name: string }[] }).addOns!.map((a) => a.name).join(', ')}</span> : null}</h3>
                                                             <p className="text-xs leading-[18px] text-slate-500">
                                                                 {item.unitMultiplier && item.unitMultiplier > 1 ? `${item.unitMultiplier} pcs` : '1 pc'}
                                                                 {shouldShowPrice && <> · {formatINR(item.salesPrice)} each {struck ? <s className="ml-0.5">{formatINR(item.baseSalesPrice!)}</s> : null}</>}
                                                             </p>
                                                             <div className="mt-2.5 flex flex-wrap items-center gap-3">
                                                                 <QtyStepper value={item.quantity} size="sm" outline trash={item.quantity <= Number(item.moq || 1)} className="w-[120px]"
-                                                                    onDec={() => (item.quantity <= Number(item.moq || 1) ? removeFromCart(item.id) : updateQuantity(item.id, -1))}
-                                                                    onInc={() => updateQuantity(item.id, 1)} />
-                                                                <button type="button" onClick={() => removeFromCart(item.id)} className="text-[13px] text-red-700 hover:underline">Remove</button>
+                                                                    onDec={() => (item.quantity <= Number(item.moq || 1) ? removeFromCart(lk) : updateQuantity(lk, -1))}
+                                                                    onInc={() => updateQuantity(lk, 1)} />
+                                                                <button type="button" onClick={() => removeFromCart(lk)} className="text-[13px] text-red-700 hover:underline">Remove</button>
                                                             </div>
-                                                            <input aria-label={`Note for ${item.name}`} value={item.note} onChange={(e) => updateItemNote(item.id, e.target.value)}
+                                                            <input aria-label={`Note for ${item.name}`} value={item.note} onChange={(e) => updateItemNote(lk, e.target.value)}
                                                                 placeholder="Add a note for this item (optional)" className="mt-2.5 h-8 w-full rounded-sm border border-sf-line bg-sf-sunken px-2.5 text-[13px] placeholder:text-slate-500 focus:bg-white focus:outline-2 focus:outline-sf-primary" />
                                                         </div>
                                                         <b className="text-[15px] font-semibold tabular-nums">{shouldShowPrice ? formatINR(item.salesPrice * item.quantity) : ''}</b>

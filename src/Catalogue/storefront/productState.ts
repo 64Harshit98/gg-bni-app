@@ -39,7 +39,7 @@ export const productState = (item: Item, settings: CatalogueSalesSettings | null
         activeSlab,
         bulkFrom: bulkFrom !== null && bulkFrom < salePrice ? bulkFrom : null,
         lowStock: !settings?.allowNegativeInventory && stock > 0 && stock <= LOW_STOCK ? stock : undefined,
-        hasOptions: hasMultiplePricing(item),
+        hasOptions: hasMultiplePricing(item) || (item.addOnGroups?.length ?? 0) > 0,
         unit: unitLabel(item),
     };
 };

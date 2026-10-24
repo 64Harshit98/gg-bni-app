@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { collection, doc, getDoc, getDocs, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 import { getItemGroupsByCompany, getItemsByCompany } from '../../lib/ItemsFirebase';
-import type { Item, ItemGroup } from '../../constants/models';
+import type { Item, ItemGroup, AddOnGroup } from '../../constants/models';
+import { resolveAddOnGroups } from '../../constants/models';
+import { fromTemplateDoc } from '../../lib/addOnTemplates';
 import type { CatalogueSalesSettings } from '../Settings/CatalogueSalesSetting';
 import type { StorePageDoc } from './storePage.types';
 import { getLeadData } from './storefront.utils';
@@ -109,8 +111,23 @@ const loadStorefront = (companyId: string): Promise<StorefrontData> => {
         settingsDoc('pinned_items'),
         settingsDoc('pinned_categories'),
         settingsDoc('store_page'),
-    ]).then(([items, groups, settings, business, pinnedItems, pinnedCats, storePage]) => ({
-        items,
+        // Optional for the storefront: if this read is not allowed, add-ons simply stay off
+        settingsDoc('item-settings').catch(() => null),
+        // The shared add-on library (public read, see firestore.rules)
+        getDocs(collection(db, 'companies', companyId, 'addOnTemplates'))
+            .then((snap) => snap.docs.map((d) => fromTemplateDoc(d.id, d.data())))
+            .catch(() => [] as AddOnGroup[]),
+    ]).then(([items, groups, settings, business, pinnedItems, pinnedCats, storePage, itemSettings, addOnLibrary]) => ({
+        // Add-ons show only when "Enable add-ons" is ON; each item's groups come from the library
+        items: items.map((i) => ({
+            ...i,
+            addOnGroups: itemSettings?.exists() && itemSettings.data()?.enableAddOns === true
+                ? resolveAddOnGroups(i, addOnLibrary, {
+                    items,
+                    allowNegative: settings.exists() && (settings.data() as any)?.allowNegativeInventory === true,
+                })
+                : undefined,
+        })),
         groups,
         settings: settings.exists() ? (settings.data() as CatalogueSalesSettings) : null,
         business: business.exists() ? (business.data() as BusinessInfo) : {},

@@ -1,10 +1,13 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import type { Item, PriceTier } from '../../../../constants/models';
+import type { Item, PriceTier, AddOnOption } from '../../../../constants/models';
 import { getSlabForQty } from '../../../../constants/models';
 import { State } from '../../../../enums';
 import { findTierByBarcode, hasQuantitySlabs } from '../../../utils/pricingUtils';
 import { applyRounding } from '../sales.calculations';
 import type { SalesItem } from '../sales.types';
+
+// Same item + same add-on combo = same cart line (order of selection doesn't matter)
+const addOnKeyOf = (addOns: AddOnOption[]) => addOns.map(a => a.id).sort().join('|');
 
 interface UseSalesCartParams {
     salesSettings: any;
@@ -63,7 +66,7 @@ export const useSalesCart = ({
     const [isPriceLocked, setIsPriceLocked] = useState(true);
     const [priceInfo, setPriceInfo] = useState<string | null>(null);
 
-    const [duplicateItemPrompt, setDuplicateItemPrompt] = useState<{ item: Item; existingCount: number; tier?: PriceTier } | null>(null);
+        const [duplicateItemPrompt, setDuplicateItemPrompt] = useState<{ item: Item; existingCount: number; tier?: PriceTier; addOns?: AddOnOption[] } | null>(null);
     const [isScannerOpen, setIsScannerOpen] = useState(false);
 
     const [barcodeToLink, setBarcodeToLink] = useState<string | null>(null);
@@ -204,7 +207,7 @@ export const useSalesCart = ({
         return updated;
     };
 
-    const addItemToCart = (itemToAdd: Item, tier?: PriceTier) => {
+    const addItemToCart = (itemToAdd: Item, tier?: PriceTier, addOns: AddOnOption[] = []) => {
         if (!itemToAdd || !itemToAdd.id) {
             setModal({ message: "Cannot add invalid item.", type: State.ERROR });
             return;
@@ -216,8 +219,9 @@ export const useSalesCart = ({
 
         const itemTaxExtracted = Number(itemToAdd.tax ?? (itemToAdd as any).taxRate ?? salesSettings?.defaultTaxRate ?? 0);
 
-        const mrp = Number(priceSource.mrp || 0);
-        const salesPrice = Number(priceSource.salesPrice || 0);
+        const addOnExtra = addOns.reduce((sum, a) => sum + (Number(a.price) || 0), 0);
+        const mrp = Number(priceSource.mrp || 0) > 0 ? Number(priceSource.mrp) + addOnExtra : 0;
+        const salesPrice = Number(priceSource.salesPrice || 0) > 0 ? Number(priceSource.salesPrice) + addOnExtra : 0;
         const presetDiscount = Number(priceSource.discount || 0);
         const initialMoq = Number((itemToAdd as any).moq || 1);
 
@@ -264,10 +268,12 @@ export const useSalesCart = ({
             tierId: tier?.id,                              // 👈 NEW
             tierLabel: tier?.label,                         // 👈 NEW
             tierQuantity: tier?.quantity || itemToAdd.unitMultiplier || 1,  // 👈 NEW — base tier ka fallback
+            addOns: addOns.length > 0 ? addOns : undefined,
+            addOnKey: addOns.length > 0 ? addOnKeyOf(addOns) : undefined,
         };
 
         // Quantity slabs: initial qty (MOQ) might already fall in a slab
-        if (!tier && hasQuantitySlabs(itemToAdd)) {
+        if (!tier && addOns.length === 0 && hasQuantitySlabs(itemToAdd)) {
             const p = getSlabPricing(newSalesItem, newSalesItem.quantity, presetDiscount);
             newSalesItem.customPrice = p.customPrice;
             newSalesItem.discount = p.discount;
@@ -292,6 +298,30 @@ export const useSalesCart = ({
         });
     };
 
+        const addItemWithAddOns = (item: Item, addOns: AddOnOption[], askIfDuplicate = false) => {
+        const key = addOnKeyOf(addOns);
+        const matches = items.filter(i => i.productId === item.id && !i.tierId && (i.addOnKey || '') === key);
+
+        // List view: same item with the same add-ons asks "increase quantity or add as new line"
+        if (matches.length > 0 && askIfDuplicate) {
+            setDuplicateItemPrompt({ item, existingCount: matches.length, addOns });
+            setGridSearchQuery('');
+            return;
+        }
+
+        if (matches.length > 0) {
+            const lastAdded = matches.reduce((latest, current) =>
+                (current.addedAt || 0) > (latest.addedAt || 0) ? current : latest
+            );
+            setItems(prev => prev.map(i =>
+                i.id === lastAdded.id ? applyQuantity(i, (i.quantity || 1) + 1) : i
+            ));
+        } else {
+            addItemToCart(item, undefined, addOns);
+        }
+        setGridSearchQuery('');
+    };
+
     const handleClearCart = () => {
         if (items.length > 0) {
             setModal({
@@ -312,7 +342,7 @@ export const useSalesCart = ({
         // Tier-aware match: same item ka SAME tier pehle se cart mein hai kya?
         // Alag tier waali same item ki lines alag maani jayengi (duplicate nahi).
         const tierId = tier?.id;
-        const existingMatches = items.filter(i => i.productId === selectedItem.id && (i.tierId || undefined) === tierId);
+        const existingMatches = items.filter(i => i.productId === selectedItem.id && (i.tierId || undefined) === tierId && !i.addOnKey);
 
         if (existingMatches.length > 0) {
             setDuplicateItemPrompt({ item: selectedItem, existingCount: existingMatches.length, tier });
@@ -327,10 +357,11 @@ export const useSalesCart = ({
     const handleIncreaseExistingQuantity = () => {
         if (!duplicateItemPrompt) return;
         const targetProductId = duplicateItemPrompt.item.id;
-        const targetTierId = duplicateItemPrompt.tier?.id;   // 👈 NEW
+                const targetTierId = duplicateItemPrompt.tier?.id;   // 👈 NEW
+        const targetAddOnKey = addOnKeyOf(duplicateItemPrompt.addOns ?? []);
 
         setItems(prev => {
-            const matches = prev.filter(i => i.productId === targetProductId && (i.tierId || undefined) === targetTierId);   // 👈 CHANGED
+                        const matches = prev.filter(i => i.productId === targetProductId && (i.tierId || undefined) === targetTierId && (i.addOnKey || '') === targetAddOnKey);
             if (matches.length === 0) return prev;
 
             const lastAdded = matches.reduce((latest, current) =>
@@ -348,7 +379,7 @@ export const useSalesCart = ({
     // User ne "Naya Item Add Karo" choose kiya
     const handleAddAsNewLine = () => {
         if (!duplicateItemPrompt) return;
-        addItemToCart(duplicateItemPrompt.item, duplicateItemPrompt.tier);   // 👈 CHANGED — tier carry karo
+                addItemToCart(duplicateItemPrompt.item, duplicateItemPrompt.tier, duplicateItemPrompt.addOns);
         setDuplicateItemPrompt(null);
     };
     const closeBarcodeLinkModal = () => {
@@ -513,8 +544,9 @@ export const useSalesCart = ({
             if (cartItem.productId === selectedItemForEdit?.id || cartItem.id === selectedItemForEdit?.id) {
                 const mergedItem = { ...cartItem, ...updateForCart } as SalesItem;
 
-                const mrp = Number(mergedItem.mrp || 0);
-                const salesPrice = Number(mergedItem.salesPrice || 0);
+                const addOnExtra = (cartItem.addOns ?? []).reduce((sum, a) => sum + (Number(a.price) || 0), 0);
+                const mrp = Number(mergedItem.mrp || 0) > 0 ? Number(mergedItem.mrp) + addOnExtra : 0;
+                const salesPrice = Number(mergedItem.salesPrice || 0) > 0 ? Number(mergedItem.salesPrice) + addOnExtra : 0;
                 const presetDiscount = Number(mergedItem.discount || 0);
                 const existingDiscount2 = Number(mergedItem.discount2 || 0);
 
@@ -539,6 +571,10 @@ export const useSalesCart = ({
                 finalNetPrice = applyRounding(finalNetPrice, isRoundingEnabled, roundingInterval);
 
                 mergedItem.customPrice = finalNetPrice;
+                if (addOnExtra > 0) {
+                    mergedItem.mrp = mrp;
+                    mergedItem.salesPrice = salesPrice;
+                }
                 mergedItem.discount = parseFloat(calculatedDiscount.toFixed(2)); // Make sure discount updates!
                 mergedItem.discount2 = existingDiscount2;
                 return mergedItem;
@@ -589,6 +625,7 @@ export const useSalesCart = ({
         sortedGridItems,
         displayItems,
         addItemToCart,
+        addItemWithAddOns,
         handleClearCart,
         handleConfirmClearCart,
         handleItemSelected,

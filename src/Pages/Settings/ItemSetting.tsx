@@ -32,6 +32,7 @@ export interface ItemSettings {
     autoGenerateBarcode: boolean;
     enablePriceTiers: boolean;
     enableQuantitySlabs: boolean;
+    enableAddOns: boolean;
 }
 
 export const getDefaultItemSettings = (companyId: string): ItemSettings => ({
@@ -53,6 +54,7 @@ export const getDefaultItemSettings = (companyId: string): ItemSettings => ({
     autoGenerateBarcode: true,
     enablePriceTiers: false,
     enableQuantitySlabs: false,
+    enableAddOns: false,
 });
 
 // --- UI only: theme classes (full strings so Tailwind can detect them) ---
@@ -104,6 +106,7 @@ const ICONS = {
     bars: (<><path d="M3 3v18h18" /><path d="M8 16v-4M13 16V8M18 16v-6" /></>),
     check: (<path d="M5 12.5l4.5 4.5L19 7" />),
     search: (<><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></>),
+    plus: (<path d="M12 5v14M5 12h14" />),
 };
 type IconName = keyof typeof ICONS;
 
@@ -175,6 +178,7 @@ const CHANGE_LABELS: { key: keyof ItemSettings; label: string }[] = [
     { key: 'requireBarcode', label: 'Manual barcode input' },
     { key: 'enablePriceTiers', label: 'Multiple pricing options' },
     { key: 'enableQuantitySlabs', label: 'Quantity pricing' },
+    { key: 'enableAddOns', label: 'Item add-ons' },
 ];
 
 // --- UI only: search (filters which rows are shown on screen) ---
@@ -694,6 +698,15 @@ const SharedItemSettings: React.FC<SharedItemSettingsProps> = ({ theme = 'blue' 
                                 description="Show the Quantity Pricing section (e.g. 1-10 @ ₹100, 11-20 @ ₹95) when adding or editing an item."
                                 checked={settings.enableQuantitySlabs}
                                 onChange={(checked: boolean) => handleCheckboxChange('enableQuantitySlabs', checked)}
+                            />
+                            <ToggleRow
+                                t={t}
+                                id="enable-add-ons"
+                                icon="plus"
+                                label="Enable add-ons"
+                                description="Show an Add-ons button in Item groups, where add-on groups are created. Add item and Edit item then pick them from a dropdown. In Sales, a popup asks for add-ons when the item is tapped."
+                                checked={settings.enableAddOns}
+                                onChange={(checked: boolean) => handleCheckboxChange('enableAddOns', checked)}
                             />
                         </Section>
                     </form>

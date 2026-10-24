@@ -1,27 +1,85 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import type { TableColumn } from '../../Components/CustomTable';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import XLSX from 'xlsx-js-style';
-import { CustomCard } from '../../Components/CustomCard';
-import { CustomTable } from '../../Components/CustomTable';
-import { CardVariant } from '../../enums';
-import { IconClose, IconSearch } from '../../constants/Icons';
-import { Modal } from '../../constants/Modal';
-import { State } from '../../enums';
-import { handleDatePresetChange } from '../../Pages/Reports/PNLReportComponents/pnlReport.utils';
-import ReportDateFilter from '../../Components/ReportDateFilter';
-import DownloadChoiceModal from '../../Pages/Reports/ItemReportComponents/DownloadChoiceModal';
-import { type CustomerRow } from '../../Pages/Reports/CustomerReportComponents/customerReport.utils';
-type CustomerRowWithCredit = CustomerRow & { creditNote: number };
-import useCustomerReport from '../hooks/useCustomerReport';
-//import CataShowWrapper from '../../context/CataShowWrapper';
-//import { Cata_Permissions } from '../enum/cata_permissions.enum';
-import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  CalendarDays,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  EyeOff,
+  FileText,
+  Filter,
+  IndianRupee,
+  Scale,
+  Search,
+  TrendingUp,
+  Users,
+  X,
+} from 'lucide-react';
 import { collection, onSnapshot, query, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
-import BackButton from '../../Components/BackButton';
+import { Modal } from '../../constants/Modal';
+import { customerBelongsTo, customerSourceFields, type CustomerSourceFields } from '../../constants/customerSource';
+import { State } from '../../enums';
+import { ROUTES } from '../../constants/routes.constants';
+import useCustomerReport from '../hooks/useCustomerReport';
+import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import {
+  DATE_PRESETS,
+  formatCurrency,
+  formatDateForInput,
+  formatDayMonth,
+  formatPhone,
+  formatRangeLabel,
+  getPresetRange,
+  parseInputDate,
+} from '../../Pages/Reports/SalesReportComponents/salesReport.utils';
+import DownloadMenu from '../../Pages/Reports/SalesReportComponents/DownloadMenu';
+import CustomRangePanel from '../../Pages/Reports/SalesReportComponents/CustomRangePanel';
+import DetailPanel, {
+  DetailRows,
+  DetailSection,
+} from '../../Pages/Reports/SalesReportComponents/DetailPanel';
 
+type RowFilter = 'all' | 'dues' | 'noname';
+type SortKey = 'name' | 'bills' | 'sales' | 'lastVisit' | 'due' | 'creditNote';
+
+interface BillLine {
+  id: string;
+  invoiceNumber: string;
+  date: number;
+  amount: number;
+  due: number;
+}
+
+interface DueEntry {
+  date: number;
+  amount: number;
+  isOpeningBalance: boolean;
+}
+
+interface CustomerRow {
+  key: string;
+  name: string;
+  phone: string;
+  bills: number;
+  sales: number;
+  due: number;
+  creditNote: number;
+  lastVisit: number;
+  dueEntries: DueEntry[];
+  recentBills: BillLine[];
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const displayName = (r: { name: string; phone: string }) =>
+  r.name || (r.phone ? `No name (${formatPhone(r.phone)})` : 'Walk-in');
 
 const CatalogueCustomerReport: React.FC = () => {
   const {
@@ -38,8 +96,6 @@ const CatalogueCustomerReport: React.FC = () => {
     setAppliedFilters,
     isListVisible,
     setIsListVisible,
-    isDownloadModalOpen,
-    setIsDownloadModalOpen,
     feedbackModal,
     setFeedbackModal,
     currentUser,
@@ -47,74 +103,48 @@ const CatalogueCustomerReport: React.FC = () => {
     setEndDate,
   } = useCustomerReport();
 
-  const filteredSales = useMemo(() => {
-    const start = appliedFilters.start
-      ? new Date(appliedFilters.start).getTime()
-      : 0;
-    const end = appliedFilters.end
-      ? new Date(appliedFilters.end).getTime()
-      : Infinity;
-
-    return sales.filter(
-      (s) => (s.createdAt.getTime() >= start && s.createdAt.getTime() <= end),
-    );
-  }, [sales, appliedFilters]);
-
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
+  const [isRangeOpen, setIsRangeOpen] = useState(false);
+  const [rowFilter, setRowFilter] = useState<RowFilter>('all');
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [customerCreditMap, setCustomerCreditMap] = useState<Record<string, number>>({});
-  // NEW: full customers master list (name/number/createdAt) — lets a customer
-  // whose only order was deleted still show up in the report, as long as
-  // their customers-collection record was created inside the applied date
-  // range. Mirrors the same fix already applied to the Catalogue Party
-  // Ledger (CataloguePartyLedger.tsx), which had the identical gap: rows
-  // were built purely from live Orders, so zero remaining orders meant zero
-  // way to appear.
-  const [customersMasterList, setCustomersMasterList] = useState<{ name: string; number: string; createdAt?: number }[]>([]);
+  // Customers master list: a customer whose only order was deleted still shows up
+  // if their customer record was created inside the applied date range.
+  const [customersMasterList, setCustomersMasterList] = useState<
+    ({ name: string; number: string; createdAt?: number } & CustomerSourceFields)[]
+  >([]);
   const [companyName, setCompanyName] = useState<string>('');
-
-  useEffect(() => {
-        const fetchCompanyName = async () => {
-            if (!currentUser?.companyId) return;
-            try {
-                const businessInfoRef = doc(
-                    db,
-                    'companies',
-                    currentUser.companyId,
-                    'business_info',
-                    currentUser.companyId,
-                );
-                const snap = await getDoc(businessInfoRef);
-                if (snap.exists()) {
-                    setCompanyName(snap.data().businessName || '');
-                }
-            } catch (e) {
-                console.error('Failed to fetch company name', e);
-            }
-        };
-        fetchCompanyName();
-    }, [currentUser?.companyId]);
-  // const [obAdvanceMap, setObAdvanceMap] = useState<Record<string, number>>({});
-  const [sortConfig, setSortConfig] = useState<{
-    key: keyof CustomerRowWithCredit;
-    direction: 'asc' | 'desc';
-  }>({
-    key: 'totalSales',
+  const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({
+    key: 'sales',
     direction: 'desc',
   });
+
+  useEffect(() => {
+    const fetchCompanyName = async () => {
+      if (!currentUser?.companyId) return;
+      try {
+        const ref = doc(db, 'companies', currentUser.companyId, 'business_info', currentUser.companyId);
+        const snap = await getDoc(ref);
+        if (snap.exists()) setCompanyName(snap.data().businessName || '');
+      } catch (e) {
+        console.error('Failed to fetch company name', e);
+      }
+    };
+    fetchCompanyName();
+  }, [currentUser?.companyId]);
 
   useEffect(() => {
     if (!currentUser?.companyId) {
       setCustomerCreditMap({});
       return;
     }
-
     const customersRef = collection(db, 'companies', currentUser.companyId, 'customers');
     const unsubscribe = onSnapshot(
       query(customersRef),
       (snapshot) => {
         const nextMap: Record<string, number> = {};
-        const nextMasterList: { name: string; number: string; createdAt?: number }[] = [];
+        const nextMasterList: ({ name: string; number: string; createdAt?: number } & CustomerSourceFields)[] = [];
         snapshot.forEach((docSnap) => {
           const data = docSnap.data() as Record<string, unknown>;
           const credit = Number(data.creditBalance || 0);
@@ -129,208 +159,215 @@ const CatalogueCustomerReport: React.FC = () => {
             name: String(data.name || 'Unknown'),
             number: numberKey || docSnap.id,
             createdAt: typeof createdAtValue?.toMillis === 'function' ? createdAtValue.toMillis() : undefined,
+            ...customerSourceFields(data),
           });
         });
         setCustomerCreditMap(nextMap);
         setCustomersMasterList(nextMasterList);
       },
-      () => { setCustomerCreditMap({}); setCustomersMasterList([]); },
+      () => {
+        setCustomerCreditMap({});
+        setCustomersMasterList([]);
+      },
     );
-
     return unsubscribe;
   }, [currentUser?.companyId]);
-  // useEffect(() => {
-  //   if (!currentUser?.companyId) {
-  //     setObAdvanceMap({});
-  //     return;
-  //   }
 
-  //   const obRef = collection(db, 'companies', currentUser.companyId, 'openingBalances');
-  //   const unsubscribe = onSnapshot(
-  //     query(obRef),
-  //     (snapshot) => {
-  //       const nextMap: Record<string, number> = {};
-  //       snapshot.forEach((docSnap) => {
-  //         const data = docSnap.data() as Record<string, unknown>;
-  //         if ((data.balanceType ?? 'advance') !== 'advance') return;
-  //         if (data.source !== 'catalogue') return;  // ← ADD THIS
+  // Re-render every minute so "days overdue" stays accurate.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
-  //         const amount = Number(data.amount ?? 0);
-  //         const numberKey = String(data.partyNumber || '').trim();
-  //         const nameKey = String(data.partyName || '').trim().toLowerCase();
+  /* ---------- RANGE ---------- */
+  const rangeStartMs = appliedFilters.start ? new Date(appliedFilters.start).getTime() : 0;
+  const rangeEndMs = appliedFilters.end ? new Date(appliedFilters.end).getTime() : Infinity;
+  const labelStartMs = appliedFilters.start
+    ? new Date(appliedFilters.start).getTime()
+    : parseInputDate(startDate).getTime();
+  const labelEndMs = appliedFilters.end
+    ? new Date(appliedFilters.end).getTime()
+    : parseInputDate(endDate).getTime();
 
-  //         if (numberKey) {
-  //           nextMap[`num:${numberKey}`] = (nextMap[`num:${numberKey}`] || 0) + amount;
-  //         }
-  //         if (nameKey) {
-  //           nextMap[`name:${nameKey}`] = (nextMap[`name:${nameKey}`] || 0) + amount;
-  //         }
-  //       });
-  //       setObAdvanceMap(nextMap);
-  //     },
-  //     () => setObAdvanceMap({}),
-  //   );
+  const handleDatePresetChange = (preset: string) => {
+    const range = getPresetRange(preset);
+    if (!range) return;
+    setDatePreset(preset);
+    setIsRangeOpen(false);
+    setStartDate(formatDateForInput(range.start));
+    setEndDate(formatDateForInput(range.end));
+    setAppliedFilters({ start: range.start.toISOString(), end: range.end.toISOString() });
+  };
 
-  //   return unsubscribe;
-  // }, [currentUser?.companyId]);
+  const handleApplyCustomRange = (startValue: string, endValue: string) => {
+    const start = parseInputDate(startValue);
+    start.setHours(0, 0, 0, 0);
+    const end = parseInputDate(endValue);
+    end.setHours(23, 59, 59, 999);
+    setDatePreset('custom');
+    setStartDate(startValue);
+    setEndDate(endValue);
+    setAppliedFilters({ start: start.toISOString(), end: end.toISOString() });
+    setIsRangeOpen(false);
+  };
 
-  /* ---------- CUSTOMER AGGREGATION ---------- */
-  const customerRows: CustomerRowWithCredit[] = useMemo(() => {
-    const map = new Map<string, CustomerRowWithCredit>();
+  const handleSort = (key: SortKey) => {
+    setSortConfig((prev) => ({
+      key,
+      direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc',
+    }));
+  };
 
-    // NEW: seed the map with every known customer whose master-record
-    // createdAt falls inside the applied date range, at zero — so a customer
-    // with no remaining orders in range (e.g. their only order was deleted)
-    // still shows up. Orders processed below fill in on top of this seed
-    // using the same key, so nothing gets double-counted.
-    const seedStart = appliedFilters.start ? new Date(appliedFilters.start).getTime() : 0;
-    const seedEnd = appliedFilters.end ? new Date(appliedFilters.end).getTime() : Infinity;
+  /* ---------- ROWS + SUMMARY ---------- */
+  // Date range + search: drives the summary cards and the two insight cards.
+  const rows: CustomerRow[] = useMemo(() => {
+    const map = new Map<string, CustomerRow>();
+    const blank = (key: string, name: string, phone: string): CustomerRow => ({
+      key,
+      name,
+      phone,
+      bills: 0,
+      sales: 0,
+      due: 0,
+      creditNote: 0,
+      lastVisit: 0,
+      dueEntries: [],
+      recentBills: [],
+    });
+
+    // POS customers share the customers collection; only catalogue customers are listed here
     customersMasterList
-      .filter(c => c.createdAt !== undefined && c.createdAt >= seedStart && c.createdAt <= seedEnd)
-      .forEach(c => {
+      .filter((c) => c.createdAt !== undefined && c.createdAt >= rangeStartMs && c.createdAt <= rangeEndMs && customerBelongsTo('catalogue', c))
+      .forEach((c) => {
         const key = `${c.name}-${c.number}`;
-        map.set(key, {
-          id: key,
-          customerName: c.name,
-          customerNumber: c.number || 'N/A',
-          totalBills: 0,
-          totalSales: 0,
-          totalDue: 0,
-          creditNote: 0,
-        });
+        map.set(key, blank(key, c.name, c.number || ''));
       });
 
-    filteredSales.forEach((sale) => {
+    sales.forEach((sale) => {
+      const t = sale.createdAt.getTime();
+      if (t < rangeStartMs || t > rangeEndMs) return;
+
       const key = `${sale.partyName}-${sale.partyNumber}`;
-
-      if (!map.has(key)) {
-        map.set(key, {
-          id: key,
-          customerName: sale.partyName,
-          customerNumber: sale.partyNumber || 'N/A',
-          totalBills: 0,
-          totalSales: 0,
-          totalDue: 0,
-          creditNote: 0,
-        });
-      }
-
+      if (!map.has(key)) map.set(key, blank(key, sale.partyName || '', sale.partyNumber || ''));
       const row = map.get(key)!;
-      if (!(sale as any).isOpeningBalance) {
-        row.totalBills += 1;
-        row.totalSales += sale.totalAmount;
-      }
 
+      const isOpening = !!(sale as any).isOpeningBalance;
       const due = sale.dueAmount || 0;
 
-      if (due > 0) {
-        row.totalDue += due;
+      if (!isOpening) {
+        row.bills += 1;
+        row.sales += sale.totalAmount;
+        row.lastVisit = Math.max(row.lastVisit, t);
+        row.recentBills.push({
+          id: String((sale as any).id ?? `${key}-${t}`),
+          invoiceNumber: String((sale as any).invoiceNumber ?? (sale as any).orderId ?? '—'),
+          date: t,
+          amount: sale.totalAmount,
+          due: due > 0 ? due : 0,
+        });
       }
-
+      if (due > 0) {
+        row.due += due;
+        row.dueEntries.push({ date: t, amount: due, isOpeningBalance: isOpening });
+      }
     });
 
-    let result = Array.from(map.values());
-    result = result.map((row) => {
-      const byNumber = customerCreditMap[`num:${row.customerNumber}`];
-      const byName = customerCreditMap[`name:${row.customerName.toLowerCase()}`];
-      // ✅ Sirf customers collection se lo — advance ab wahan store hota hai
+    let result = Array.from(map.values()).map((row) => {
+      const byNumber = customerCreditMap[`num:${row.phone}`];
+      const byName = customerCreditMap[`name:${row.name.toLowerCase()}`];
       const creditNote = byNumber ?? byName ?? 0;
-      return { ...row, creditNote: Math.max(0, Number(creditNote || 0)) };
+      return {
+        ...row,
+        creditNote: Math.max(0, Number(creditNote || 0)),
+        recentBills: [...row.recentBills].sort((a, b) => b.date - a.date),
+      };
     });
 
-    // 🔍 SEARCH FILTER
-    const trimmedQuery = searchQuery.toLowerCase().trim();
-
-    if (trimmedQuery) {
-      result = result.filter((c) =>
-        c.customerName.toLowerCase().includes(trimmedQuery) ||
-        c.customerNumber.toLowerCase().includes(trimmedQuery)
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      const qDigits = q.replace(/\D/g, '');
+      result = result.filter(
+        (r) =>
+          displayName(r).toLowerCase().includes(q) || (!!qDigits && r.phone.replace(/\D/g, '').includes(qDigits)),
       );
     }
-
-    result.sort((a, b) => {
-      const key = sortConfig.key;
-      const direction = sortConfig.direction === 'asc' ? 1 : -1;
-
-      const valA = a[key];
-      const valB = b[key];
-
-      if (typeof valA === 'string' && typeof valB === 'string') {
-        return valA.localeCompare(valB) * direction;
-      }
-
-      if (typeof valA === 'number' && typeof valB === 'number') {
-        return (valA - valB) * direction;
-      }
-
-      return 0;
-    });
-
     return result;
-  }, [filteredSales, searchQuery, customerCreditMap, sortConfig, customersMasterList, appliedFilters]);
+  }, [sales, customersMasterList, customerCreditMap, rangeStartMs, rangeEndMs, searchQuery]);
 
-  /* ---------- SUMMARY METRICS ---------- */
-  const metrics = useMemo(() => {
-    const totalCustomers = customerRows.length;
-
-    const totalBills = filteredSales.filter(
-      (s) => !(s as any).isOpeningBalance
-    ).length;
-
-    const totalDue = customerRows.reduce(
-      (sum, c) => sum + Math.max(0, c.totalDue),
-      0
-    );
-
-    const totalSales = filteredSales.reduce(
-      (sum, s) => (s as any).isOpeningBalance ? sum : sum + s.totalAmount,
-      0,
-    );
-
-    const averageSalePerCustomer =
-      totalCustomers > 0 ? totalSales / totalCustomers : 0;
-
+  const summary = useMemo(() => {
+    const totalSales = rows.reduce((s, r) => s + r.sales, 0);
+    const totalBills = rows.reduce((s, r) => s + r.bills, 0);
+    const totalDue = rows.reduce((s, r) => s + r.due, 0);
+    const totalCredit = rows.reduce((s, r) => s + r.creditNote, 0);
+    const buying = rows.filter((r) => r.bills > 0).length;
+    const duesOnly = rows.filter((r) => r.bills === 0 && r.due > 0).length;
+    const debtors = rows.filter((r) => r.due > 0).sort((a, b) => b.due - a.due);
+    const dueEntries = rows.flatMap((r) => r.dueEntries);
+    const ageDays = (t: number) => Math.max(0, Math.floor((now - t) / DAY_MS));
+    const oldestDays = dueEntries.length ? Math.max(...dueEntries.map((e) => ageDays(e.date))) : 0;
     return {
-      totalCustomers,
+      totalCustomers: rows.length,
+      totalSales,
       totalBills,
       totalDue,
-      totalSales,
-      averageSalePerCustomer,
+      totalCredit,
+      buying,
+      duesOnly,
+      debtors,
+      oldestDays,
+      due0to30: dueEntries.filter((e) => ageDays(e.date) <= 30).reduce((s, e) => s + e.amount, 0),
+      due30plus: dueEntries.filter((e) => ageDays(e.date) > 30).reduce((s, e) => s + e.amount, 0),
+      averageSalePerCustomer: rows.length > 0 ? totalSales / rows.length : 0,
     };
-  }, [customerRows, filteredSales]);
+  }, [rows, now]);
 
-  const handleApplyFilters = () => {
-    const start = new Date(startDate);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
+  const topBuyers = useMemo(
+    () => rows.filter((r) => r.sales > 0).sort((a, b) => b.sales - a.sales).slice(0, 4),
+    [rows],
+  );
 
-    setAppliedFilters({
-      start: start.toISOString(),
-      end: end.toISOString(),
+  // Row filter + sort: drives the list and the downloads.
+  const listRows = useMemo(() => {
+    const list = rows.filter((r) =>
+      rowFilter === 'dues' ? r.due > 0 : rowFilter === 'noname' ? !r.name : true,
+    );
+    const dir = sortConfig.direction === 'asc' ? 1 : -1;
+    list.sort((a, b) => {
+      if (sortConfig.key === 'name') return displayName(a).localeCompare(displayName(b)) * dir;
+      return (a[sortConfig.key] - b[sortConfig.key]) * dir;
     });
+    return list;
+  }, [rows, rowFilter, sortConfig]);
+
+  const listTotals = useMemo(
+    () => ({
+      bills: listRows.reduce((s, r) => s + r.bills, 0),
+      sales: listRows.reduce((s, r) => s + r.sales, 0),
+      due: listRows.reduce((s, r) => s + r.due, 0),
+      credit: listRows.reduce((s, r) => s + r.creditNote, 0),
+    }),
+    [listRows],
+  );
+
+  // Shape the export code below uses.
+  const customerRows = listRows.map((r) => ({
+    customerName: displayName(r),
+    customerNumber: r.phone ? formatPhone(r.phone) : 'N/A',
+    totalBills: r.bills,
+    totalSales: r.sales,
+    totalDue: r.due,
+    creditNote: r.creditNote,
+  }));
+  const exportSummary = {
+    totalCustomers: listRows.length,
+    totalBills: listTotals.bills,
+    totalSales: listTotals.sales,
+    totalDue: listTotals.due,
+    averageSalePerCustomer: listRows.length > 0 ? listTotals.sales / listRows.length : 0,
   };
 
-  const onDatePresetChange = (preset: string) =>
-    handleDatePresetChange(preset, setDatePreset, setStartDate, setEndDate);
-
-  const handleStartDateChange = (value: string) => {
-    setStartDate(value);
-    setDatePreset('custom');
-  };
-  const handleEndDateChange = (value: string) => {
-    setEndDate(value);
-    setDatePreset('custom');
-  };
-  // /* ---------- EXPORT HELPERS ---------- */
-  // const prepareExportData = (row: CustomerRowWithCredit) => ({
-  //   customerName: row.customerName,
-  //   totalBills: row.totalBills,
-  //   totalSales: row.totalSales,
-  //   totalDue: row.totalDue,
-  //   creditNote: row.creditNote || 0,
-  // });
-
+  /* ---------- EXPORT HELPERS ---------- */
   const downloadAsExcel = () => {
     try {
       const s = (font: any, fill?: any, alignment?: any, border?: any) => ({
@@ -353,89 +390,69 @@ const CatalogueCustomerReport: React.FC = () => {
       };
 
       const generationDate = new Date().toLocaleDateString('en-IN', {
-        year: 'numeric', month: 'short', day: 'numeric',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
       });
+      const periodLabel = `Period: ${startDate} – ${endDate}`;
 
       const COLS = [
         { header: '#', width: 6 },
-        { header: 'Customer Name', width: 28 },
-        { header: 'Contact No', width: 20 },
-        { header: 'Total Bills', width: 16 },
-        { header: 'Total Sales (₹)', width: 22 },
-        { header: 'Total Due (₹)', width: 20 },
-        { header: 'Credit Note (₹)', width: 20 },
+        { header: 'Customer', width: 24 },
+        { header: 'Phone', width: 20 },
+        { header: 'Bills', width: 16 },
+        { header: 'Sales (₹)', width: 28 },
+        { header: 'Due (₹)', width: 26 },
+        { header: 'Credit Note (₹)', width: 26 },
       ];
       const colCount = COLS.length;
 
-      // Row layout:
-      // 0 → Title (merged)
-      // 1 → Meta (merged)
-      // 2 → blank spacer
-      // 3 → Summary label (merged)
-      // 4 → Summary values
-      // 5 → blank spacer
-      // 6 → Column headers
-      // 7+ → Data rows
-      // Last → Totals footer
-
+      // 0 Title | 1 Meta | 2 spacer | 3 Summary label | 4 Summary values | 5 spacer | 6 Headers | 7+ Data | Last: Totals
       const dataStartRow = 7;
-      const totalCreditNote = customerRows.reduce((sum, c) => sum + (c.creditNote || 0), 0);
       const totalRows = dataStartRow + customerRows.length + 1;
       const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
 
-      // Row 0 – Title
-      aoa[0][0] = companyName
-        ? `Customer Report  —  ${companyName}`
-        : 'Customer Report';
-
-      // Row 1 – Meta
-      aoa[1][0] = `Generated: ${generationDate}   |   Total Customers: ${metrics.totalCustomers}   |   Total Bills: ${metrics.totalBills}`;
-
-      // Row 3 – Summary label
+      aoa[0][0] = companyName ? `Customer Report  —  ${companyName}` : 'Customer Report';
+      aoa[1][0] = `Generated: ${generationDate}   |   ${periodLabel}   |   Customers: ${exportSummary.totalCustomers}`;
       aoa[3][0] = 'SUMMARY';
+      aoa[4][0] = `Total Customers: ${exportSummary.totalCustomers}   |   Total Sales: ₹${exportSummary.totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Total Due: ₹${exportSummary.totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Avg Sale: ₹${Math.round(exportSummary.averageSalePerCustomer).toLocaleString('en-IN')}`;
 
-      // Row 4 – Summary values (single merged cell)
-      aoa[4][0] = `Total Customers: ${metrics.totalCustomers}   |   Total Bills: ${metrics.totalBills}   |   Total Due: ₹${metrics.totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}   |   Avg Sale: ₹${Math.round(metrics.averageSalePerCustomer).toLocaleString('en-IN')}`;
+      COLS.forEach((c, i) => {
+        aoa[6][i] = c.header;
+      });
 
-      // Row 6 – Column headers
-      COLS.forEach((c, i) => { aoa[6][i] = c.header; });
-
-      // Rows 7+ – Data
       customerRows.forEach((row, idx) => {
         const r = dataStartRow + idx;
         aoa[r][0] = idx + 1;
-        aoa[r][1] = row.customerName || '-';
+        aoa[r][1] = row.customerName;
         aoa[r][2] = row.customerNumber || 'N/A';
         aoa[r][3] = row.totalBills;
-        aoa[r][4] = row.totalSales;
-        aoa[r][5] = Math.max(0, row.totalDue);
-        aoa[r][6] = row.creditNote || 0;
+        aoa[r][4] = Math.round(row.totalSales);
+        aoa[r][5] = Math.round(Math.max(0, row.totalDue));
+        aoa[r][6] = Math.round(row.creditNote || 0);
       });
 
-      // Footer row
       const footerRow = dataStartRow + customerRows.length;
       aoa[footerRow][0] = 'TOTAL';
       aoa[footerRow][1] = `${customerRows.length} customers`;
-      aoa[footerRow][3] = metrics.totalBills;
-      aoa[footerRow][4] = metrics.totalSales;
-      aoa[footerRow][5] = metrics.totalDue;
-      aoa[footerRow][6] = totalCreditNote;
+      aoa[footerRow][3] = exportSummary.totalBills;
+      aoa[footerRow][4] = Math.round(exportSummary.totalSales);
+      aoa[footerRow][5] = Math.round(exportSummary.totalDue);
+      aoa[footerRow][6] = Math.round(customerRows.reduce((sum, c) => sum + (c.creditNote || 0), 0));
 
-      // ── BUILD WORKSHEET ──────────────────────────────────────────────
       const worksheet = XLSX.utils.aoa_to_sheet(aoa);
-      worksheet['!cols'] = COLS.map(c => ({ wch: c.width }));
+      worksheet['!cols'] = COLS.map((c) => ({ wch: c.width }));
       worksheet['!rows'] = [
-        { hpt: 36 }, // 0 title
-        { hpt: 20 }, // 1 meta
-        { hpt: 8 }, // 2 spacer
-        { hpt: 18 }, // 3 summary label
-        { hpt: 22 }, // 4 summary values
-        { hpt: 8 }, // 5 spacer
-        { hpt: 28 }, // 6 headers
+        { hpt: 36 },
+        { hpt: 20 },
+        { hpt: 8 },
+        { hpt: 18 },
+        { hpt: 22 },
+        { hpt: 8 },
+        { hpt: 28 },
         ...customerRows.map(() => ({ hpt: 20 })),
-        { hpt: 24 }, // footer
+        { hpt: 24 },
       ];
-
       worksheet['!merges'] = [
         { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
         { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
@@ -449,70 +466,34 @@ const CatalogueCustomerReport: React.FC = () => {
         worksheet[addr].s = st;
       };
 
-      // Title (row 0) — deep orange
-      style('A1', s(
-        { sz: 16, bold: true, color: { rgb: 'FFFFFF' } },
-        solidFill('EA580C'),
-        { horizontal: 'center', vertical: 'center' },
-      ));
+      style('A1', s({ sz: 16, bold: true, color: { rgb: 'FFFFFF' } }, solidFill('EA580C'), { horizontal: 'center', vertical: 'center' }));
+      style('A2', s({ sz: 9, italic: true, color: { rgb: '7C2D12' } }, solidFill('FFEDD5'), { horizontal: 'center', vertical: 'center' }));
+      style('A4', s({ sz: 10, bold: true, color: { rgb: 'C2410C' } }, solidFill('FFF7ED'), { horizontal: 'left', vertical: 'center' }, allBorders));
+      style('A5', s({ sz: 10, bold: true, color: { rgb: '9A3412' } }, solidFill('FFF7ED'), { horizontal: 'center', vertical: 'center' }, bblr));
 
-      // Meta (row 1) — light orange tint
-      style('A2', s(
-        { sz: 9, italic: true, color: { rgb: '7C2D12' } },
-        solidFill('FFEDD5'),
-        { horizontal: 'center', vertical: 'center' },
-      ));
-
-      // Summary label (row 3)
-      style('A4', s(
-        { sz: 10, bold: true, color: { rgb: 'C2410C' } },
-        solidFill('FFF7ED'),
-        { horizontal: 'left', vertical: 'center' },
-        allBorders,
-      ));
-
-      style('A5', s(
-        { sz: 10, bold: true, color: { rgb: '9A3412' } },
-        solidFill('FFF7ED'),
-        { horizontal: 'center', vertical: 'center' },
-        bblr,
-      ));
-
-      // Column headers (row 6) — dark orange header bar
       COLS.forEach((_c, i) => {
         const addr = XLSX.utils.encode_cell({ r: 6, c: i });
-        style(addr, s(
-          { sz: 10, bold: true, color: { rgb: 'FFFFFF' } },
-          solidFill('C2410C'),
-          { horizontal: i <= 2 ? 'left' : 'center', vertical: 'center' },
-          allBorders,
-        ));
+        style(addr, s({ sz: 10, bold: true, color: { rgb: 'FFFFFF' } }, solidFill('C2410C'), { horizontal: i <= 2 ? 'left' : 'center', vertical: 'center' }, allBorders));
       });
 
-      // Data rows
+      const currencyCols = new Set([4, 5, 6]);
+
       customerRows.forEach((_row, idx) => {
         const r = dataStartRow + idx;
         const isAlt = idx % 2 === 1;
         const rowBg = solidFill(isAlt ? 'FFF7ED' : 'FFFFFF');
-
         for (let ci = 0; ci < colCount; ci++) {
           const addr = XLSX.utils.encode_cell({ r, c: ci });
-          const isNumeric = ci >= 3;
-          style(addr, s(
-            { sz: 9, color: { rgb: '1E293B' } },
-            rowBg,
-            { horizontal: isNumeric ? 'center' : 'left', vertical: 'center' },
-            bblr,
-          ));
-          // Format currency columns (Sales, Due, Credit Note)
-          if ((ci === 4 || ci === 5 || ci === 6) && worksheet[addr]) {
+          const isCurrency = currencyCols.has(ci);
+          const isNumeric = ci === 3 || isCurrency;
+          style(addr, s({ sz: 9, color: { rgb: '1E293B' } }, rowBg, { horizontal: isNumeric ? 'center' : 'left', vertical: 'center' }, bblr));
+          if (worksheet[addr] && isCurrency) {
             worksheet[addr].t = 'n';
             worksheet[addr].z = '₹#,##0.00';
           }
         }
       });
 
-      // Footer row
       for (let ci = 0; ci < colCount; ci++) {
         const addr = XLSX.utils.encode_cell({ r: footerRow, c: ci });
         style(addr, s(
@@ -526,7 +507,7 @@ const CatalogueCustomerReport: React.FC = () => {
             right: { style: 'thin', color: { rgb: 'FED7AA' } },
           },
         ));
-        if ((ci === 4 || ci === 5 || ci === 6) && worksheet[addr]) {
+        if (currencyCols.has(ci) && worksheet[addr]) {
           worksheet[addr].t = 'n';
           worksheet[addr].z = '₹#,##0.00';
         }
@@ -534,69 +515,38 @@ const CatalogueCustomerReport: React.FC = () => {
 
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Customer Report');
-      XLSX.writeFile(workbook, `Customer-Report-${new Date().toISOString().split('T')[0]}.xlsx`);
+      XLSX.writeFile(workbook, `Customer-Report-${startDate}-to-${endDate}.xlsx`);
 
-      setIsDownloadModalOpen(false);
-      setFeedbackModal({
-        isOpen: true,
-        type: State.SUCCESS,
-        message: 'Excel file downloaded successfully!',
-      });
+      setFeedbackModal({ isOpen: true, type: State.SUCCESS, message: 'Excel downloaded successfully!' });
     } catch {
-      setFeedbackModal({
-        isOpen: true,
-        type: State.ERROR,
-        message: 'Failed to generate Excel file.',
-      });
+      setFeedbackModal({ isOpen: true, type: State.ERROR, message: 'Failed to generate Excel file.' });
     }
   };
 
   const downloadAsPdf = async () => {
     try {
-      const doc = new jsPDF();
-      const pageWidth = doc.internal.pageSize.getWidth();
+      const pdf = new jsPDF();
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
 
-      doc.setFontSize(16);
-
-      const pageHeight = doc.internal.pageSize.getHeight();
-
-      // ===== CLEAN GENERATION TAG (drawn first, reserves space for logo) =====
-      const generatedAt = new Date().toLocaleString();
-      const margin = 14;
-      const y = 10;
-
-      const tagText = `Genrated by SELLAR • ${generatedAt}`;
-
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(8);
-
-      const textWidth = doc.getTextWidth(tagText);
+      // ===== GENERATION TAG (drawn first, reserves space for logo) =====
+      const tagText = `Generated by SELLAR • ${new Date().toLocaleString('en-IN')}`;
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(8);
+      const textWidth = pdf.getTextWidth(tagText);
       const paddingX = 2;
-
       const boxWidth = textWidth + paddingX * 2;
       const boxHeight = 5;
+      const logoReservedWidth = 18;
+      const boxX = pageWidth - 14 - logoReservedWidth - boxWidth;
+      const boxY = 11;
+      pdf.setFillColor(245, 245, 245);
+      pdf.rect(boxX, boxY, boxWidth, boxHeight, 'F');
+      pdf.setTextColor(80, 80, 80);
+      pdf.text(tagText, boxX + paddingX, boxY + 3.5);
+      pdf.setTextColor(0, 0, 0);
 
-      const logoReservedWidth = 18; // space reserved for logo + gap, so tag never overlaps it
-      const boxX = pageWidth - margin - logoReservedWidth - boxWidth;
-      const boxY = y + 1;
-
-      // light gray background
-      doc.setFillColor(245, 245, 245);
-      doc.rect(boxX, boxY, boxWidth, boxHeight, "F");
-
-      // text
-      doc.setTextColor(80, 80, 80);
-      doc.text(
-        tagText,
-        boxX + paddingX,
-        boxY + 3.5
-      );
-
-      // reset styles
-      doc.setTextColor(0, 0, 0);
-      doc.setFont("helvetica", "bold");
-
-      // Embed company logo (drawn after, in its own reserved slot at top-right corner)
+      // ===== LOGO =====
       try {
         const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
         if (base64Logo) {
@@ -606,8 +556,7 @@ const CatalogueCustomerReport: React.FC = () => {
             img.onload = () => {
               const logoWidth = 13;
               const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
-              const logoX = pageWidth - logoWidth - 14;
-              doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
+              pdf.addImage(base64Logo, 'PNG', pageWidth - logoWidth - 14, 8, logoWidth, logoHeight);
               resolve();
             };
             img.onerror = () => resolve();
@@ -617,203 +566,292 @@ const CatalogueCustomerReport: React.FC = () => {
         // Continue without logo
       }
 
-      // --- 1. BRAND ACCENT BAR ---
-      // Uses the #F97316 orange from your UI
-      doc.setFillColor(249, 115, 22);
-      doc.rect(0, 0, pageWidth, 6, 'F');
+      // ===== ORANGE BAR + HEADER =====
+      pdf.setFillColor(249, 115, 22);
+      pdf.rect(0, 0, pageWidth, 6, 'F');
 
-      // --- 2. HEADER SECTION ---
-      doc.setFontSize(22);
-      doc.setTextColor(17, 24, 39); // gray-900
-      doc.setFont('helvetica', 'bold');
-      const reportTitle = companyName
-  ? `Customer Report — ${companyName}`
-  : 'Customer Report';
-doc.text(reportTitle, 14, 24);
+      pdf.setFontSize(22);
+      pdf.setTextColor(17, 24, 39);
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(companyName ? `Customer Report — ${companyName}` : 'Customer Report', 14, 24);
 
-      // Dynamic Subtitle with Date Range
-      doc.setFontSize(10);
-      doc.setTextColor(107, 114, 128); // gray-500
-      doc.setFont('helvetica', 'normal');
-
+      pdf.setFontSize(10);
+      pdf.setTextColor(107, 114, 128);
+      pdf.setFont('helvetica', 'normal');
       const generationDate = new Date().toLocaleDateString('en-IN', {
-        year: 'numeric', month: 'short', day: 'numeric',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
       });
+      pdf.text(`Generated on: ${generationDate}   |   Period: ${startDate} to ${endDate}`, 14, 31);
 
-      let subtitleText = `Generated on: ${generationDate}`;
-      if (startDate && endDate) {
-        subtitleText += `   |   Period: ${startDate} to ${endDate}`;
-      }
-      doc.text(subtitleText, 14, 31);
-
-      // --- 3. AUTOTABLE GENERATION ---
-      autoTable(doc, {
+      autoTable(pdf, {
         startY: 38,
         head: [['CUSTOMER', 'PHONE', 'BILLS', 'SALES (Rs.)', 'DUE (Rs.)', 'CREDIT NOTE (Rs.)']],
-        body: customerRows.map((c) => {
-          const formattedName = c.customerName
-            ? c.customerName.charAt(0).toUpperCase() + c.customerName.slice(1).toLowerCase()
-            : 'N/A';
-
-          return [
-            formattedName,
-            c.customerNumber || 'N/A',
-            c.totalBills.toString(),
-            c.totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-            Math.max(0, c.totalDue).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-            (c.creditNote || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-          ];
-        }),
+        body: customerRows.map((c) => [
+          c.customerName,
+          c.customerNumber || 'N/A',
+          c.totalBills.toString(),
+          c.totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          Math.max(0, c.totalDue).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          (c.creditNote || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        ]),
         foot: [
           [
             'TOTAL',
             '-',
-            metrics.totalBills.toString(),
-            metrics.totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-            metrics.totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-            customerRows.reduce((sum, c) => sum + (c.creditNote || 0), 0)
+            exportSummary.totalBills.toString(),
+            exportSummary.totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            exportSummary.totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            customerRows
+              .reduce((sum, c) => sum + (c.creditNote || 0), 0)
               .toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-          ]
+          ],
         ],
         showFoot: 'lastPage',
         theme: 'plain',
-        styles: {
-          font: 'helvetica',
-          cellPadding: 7,
-          fontSize: 10,
-          textColor: [55, 65, 81], // gray-700
-        },
+        styles: { font: 'helvetica', cellPadding: 7, fontSize: 10, textColor: [55, 65, 81] },
         headStyles: {
-          fillColor: [249, 250, 251], // gray-50
-          textColor: [17, 24, 39], // gray-900
+          fillColor: [249, 250, 251],
+          textColor: [17, 24, 39],
           fontStyle: 'bold',
           halign: 'center',
           lineWidth: { top: 1, bottom: 1 },
-          lineColor: [229, 231, 235], // gray-200
+          lineColor: [229, 231, 235],
         },
         footStyles: {
           fillColor: [255, 255, 255],
           textColor: [17, 24, 39],
           fontStyle: 'bold',
           halign: 'right',
-          lineWidth: { top: 1, bottom: 2 }, // Thicker bottom line for totals
+          lineWidth: { top: 1, bottom: 2 },
           lineColor: [17, 24, 39],
         },
-        alternateRowStyles: {
-          fillColor: [252, 252, 252], // Extremely subtle zebra striping
-        },
+        alternateRowStyles: { fillColor: [252, 252, 252] },
         columnStyles: {
           0: { halign: 'left', cellWidth: 'auto' },
-          1: { halign: 'center', cellWidth: 30 },
-          2: { halign: 'right', cellWidth: 20 },
-          3: { halign: 'right', cellWidth: 30 },
+          1: { halign: 'center', cellWidth: 35 },
+          2: { halign: 'right', cellWidth: 25 },
+          3: { halign: 'right', cellWidth: 34 },
           4: { halign: 'right', cellWidth: 30 },
-          5: { halign: 'right', cellWidth: 30 },
+          5: { halign: 'right', cellWidth: 36 },
         },
-        // --- 4. CONDITIONAL FORMATTING ---
-        didParseCell: function (data) {
-          // Check body and foot rows for negative values in the 'Due' column
-          if ((data.section === 'body' || data.section === 'foot') && data.column.index === 4) {
-            const rawVal = parseFloat(String(data.cell.raw).replace(/,/g, ''));
-            if (rawVal < 0) {
-              data.cell.styles.textColor = [220, 38, 38]; // red-600
-              data.cell.styles.fontStyle = 'bold';
-            }
-          }
-        },
-        // --- 5. PAGINATION FOOTER ---
         didDrawPage: function () {
-          const pageCount = (doc as any).getNumberOfPages() || 0;
-          doc.setFontSize(9);
-          doc.setTextColor(156, 163, 175); // gray-400
-          // Draw page number at the bottom right
-          doc.text(
-            `Page ${pageCount}`,
-            pageWidth - 14,
-            pageHeight - 10,
-            { align: 'right' }
-          );
+          const pageCount = (pdf.internal as any).getNumberOfPages();
+          pdf.setFontSize(9);
+          pdf.setTextColor(156, 163, 175);
+          pdf.text(`Page ${pageCount}`, pageWidth - 14, pageHeight - 10, { align: 'right' });
         },
       });
 
-      doc.save(`Customer_Report_${new Date().toISOString().split('T')[0]}.pdf`);
-
-      setIsDownloadModalOpen(false);
-      setFeedbackModal({
-        isOpen: true,
-        type: State.SUCCESS,
-        message: 'PDF downloaded successfully!',
-      });
+      pdf.save(`Customer_Report_${startDate}_to_${endDate}.pdf`);
     } catch (err) {
       console.error('PDF Generation Error:', err);
-      setFeedbackModal({
-        isOpen: true,
-        type: State.ERROR,
-        message: 'Failed to generate PDF.',
-      });
+      setFeedbackModal({ isOpen: true, type: State.ERROR, message: 'Failed to generate PDF.' });
     }
   };
 
-  /* ---------- TABLE COLUMNS ---------- */
-  const tableColumns: TableColumn<CustomerRowWithCredit>[] = [
-    {
-      header: 'Customer',
-      accessor: 'customerName',
-      sortKey: 'customerName',
-    },
-    {
-      header: 'Contact No',
-      accessor: 'customerNumber',
-      sortKey: 'customerNumber',
-    },
-    {
-      header: 'Bills',
-      accessor: 'totalBills',
-      sortKey: 'totalBills',
-      className: 'text-right',
-    },
-    {
-      header: 'Total Sales',
-      accessor: (row) => `₹${row.totalSales.toLocaleString('en-IN')}`,
-      sortKey: 'totalSales',
-      className: 'text-center',
-    },
-    {
-      header: 'Total Due',
-      accessor: (row) => `₹${Math.max(0, row.totalDue).toLocaleString('en-IN')}`,
-      sortKey: 'totalDue',
-      className: 'text-center',
-    },
-    {
-      header: 'Credit Note',
-      accessor: (row) => `₹${(row.creditNote || 0).toLocaleString('en-IN')}`,
-      sortKey: 'creditNote',
-      className: 'text-center',
-    },
-  ];
-
-  const handleSort = (key: keyof CustomerRowWithCredit) => {
-    let direction: 'asc' | 'desc' = 'asc';
-
-    if (sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
+  /* ---------- DOWNLOAD / SHARE ---------- */
+  const runDownload = (action: () => void) => {
+    if (customerRows.length === 0) {
+      setFeedbackModal({ isOpen: true, type: State.INFO, message: 'No data available to download.' });
+      return;
     }
-
-    setSortConfig({ key, direction });
+    action();
   };
 
-  /* ---------- STATES ---------- */
+  const shareOnWhatsApp = () => {
+    const text = [
+      `*Customer Report${companyName ? ` — ${companyName}` : ''}*`,
+      formatRangeLabel(labelStartMs, labelEndMs),
+      '',
+      `Customers: ${summary.totalCustomers} · Bills: ${summary.totalBills}`,
+      `Sales: ${formatCurrency(Math.round(summary.totalSales))}`,
+      `To collect: ${formatCurrency(Math.round(summary.totalDue))}`,
+      ...(topBuyers.length
+        ? ['', 'Top customers:', ...topBuyers.map((r) => `• ${displayName(r)}: ${formatCurrency(r.sales)}`)]
+        : []),
+    ].join('\n');
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+  };
+
+  /* ---------- RENDER HELPERS ---------- */
+  const plural = (n: number, word: string, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
+  const shareOf = (value: number) => (summary.totalSales > 0 ? (value / summary.totalSales) * 100 : 0);
+
+  const renderSortHeader = (label: string, key: SortKey, align: 'left' | 'right' = 'left') => {
+    const isActive = sortConfig.key === key;
+    const Icon = !isActive ? ArrowUpDown : sortConfig.direction === 'asc' ? ArrowUp : ArrowDown;
+    return (
+      <th className={`px-4 py-3 font-semibold ${align === 'right' ? 'text-right' : 'text-left'}`}>
+        <button
+          onClick={() => handleSort(key)}
+          className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-orange-800 ${
+            align === 'right' ? 'flex-row-reverse' : ''
+          } ${isActive ? 'text-orange-800' : ''}`}
+        >
+          {label}
+          <Icon size={11} className={isActive ? 'opacity-100' : 'opacity-40'} />
+        </button>
+      </th>
+    );
+  };
+
+  const renderAvatar = (row: CustomerRow) => (
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-orange-100 text-xs font-semibold text-orange-800">
+      {row.name ? row.name[0].toUpperCase() : row.phone ? '?' : 'W'}
+    </span>
+  );
+
+  // One customer, opened in the detail panel (side panel on desktop, bottom sheet on mobile).
+  const renderCustomerPanel = (row: CustomerRow) => {
+    const openingDues = row.dueEntries.filter((e) => e.isOpeningBalance);
+    return (
+      <DetailPanel
+        open
+        onClose={() => setExpandedKey(null)}
+        title={displayName(row)}
+        subtitle={[
+          row.phone && formatPhone(row.phone),
+          plural(row.bills, 'bill'),
+          row.lastVisit > 0 && `last visit ${formatDayMonth(row.lastVisit)}`,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
+        footer={
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CATALOGUE_PARTY_LEDGER}`)}
+              className="ml-auto inline-flex items-center gap-1.5 rounded-sm bg-orange-700 px-4 py-1.5 text-sm font-semibold text-white hover:bg-orange-800"
+            >
+              <Scale size={14} /> Party ledger
+            </button>
+          </div>
+        }
+      >
+        <DetailSection title="This period">
+          <DetailRows
+            rows={[
+              { label: 'Total sales', value: formatCurrency(row.sales), strong: true },
+              { label: 'Bills', value: row.bills },
+              { label: 'Share of sales', value: `${Math.round(shareOf(row.sales))}%` },
+              {
+                label: 'Due',
+                value: row.due > 0 ? formatCurrency(row.due) : 'No due',
+                tone: row.due > 0 ? 'text-yellow-700' : 'text-green-700',
+              },
+              ...(row.creditNote > 0 ? [{ label: 'Credit note', value: formatCurrency(row.creditNote) }] : []),
+            ]}
+          />
+        </DetailSection>
+
+        <DetailSection title={`Bills · ${row.recentBills.length}`}>
+          {row.recentBills.length === 0 ? (
+            <p className="rounded-sm bg-[#fff8f2] px-3 py-2.5 text-sm text-slate-500">No bills in this period.</p>
+          ) : (
+            <ul className="divide-y divide-[#f6e1d0] rounded-sm border border-[#f6e1d0]">
+              {row.recentBills.map((b) => (
+                <li key={b.id} className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-slate-800">{b.invoiceNumber}</p>
+                    <p className="text-xs text-slate-500">{formatDayMonth(b.date)}</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="font-semibold text-slate-900">{formatCurrency(b.amount)}</p>
+                    {b.due > 0 && <p className="text-xs font-medium text-yellow-700">due {formatCurrency(b.due)}</p>}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </DetailSection>
+
+        {openingDues.length > 0 && (
+          <DetailSection title="Opening balance">
+            <DetailRows
+              rows={openingDues.map((e, i) => ({
+                label: `${formatDayMonth(e.date)}${openingDues.length > 1 ? ` (${i + 1})` : ''}`,
+                value: `due ${formatCurrency(e.amount)}`,
+                tone: 'text-yellow-700',
+              }))}
+            />
+          </DetailSection>
+        )}
+      </DetailPanel>
+    );
+  };
+
+  /* ---------- LOAD STATES ---------- */
   if (authLoading || loading)
-    return <div className="p-4 text-center">Loading Report...</div>;
-  if (error)
-    return <div className="p-4 text-center text-red-500">Error: {error}</div>;
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center bg-[#fff5ec] text-sm text-slate-500">
+        Loading customers...
+      </div>
+    );
+  if (error) return <div className="p-4 text-center text-red-500">Error: {error}</div>;
   if (!currentUser) {
     navigate('/login');
     return null;
   }
 
+  const rangeLabel = formatRangeLabel(labelStartMs, labelEndMs);
+  const rangeLabelShort = formatRangeLabel(labelStartMs, labelEndMs, false);
+
+  const perBuying = summary.buying > 0 ? Number((summary.totalBills / summary.buying).toFixed(1)) : 0;
+  const statCards = [
+    {
+      label: 'Total customers',
+      shortLabel: 'Customers',
+      value: summary.totalCustomers.toString(),
+      hint: `${summary.buying} bought${summary.duesOnly ? ` · ${summary.duesOnly} only ${summary.duesOnly === 1 ? 'has' : 'have'} dues` : ''}`,
+      icon: Users,
+      iconClass: 'bg-pink-50 text-pink-600',
+      valueClass: 'text-slate-900',
+    },
+    {
+      label: 'Total bills',
+      shortLabel: 'Bills',
+      value: summary.totalBills.toString(),
+      hint: `${perBuying} per buying customer`,
+      icon: FileText,
+      iconClass: 'bg-blue-50 text-blue-600',
+      valueClass: 'text-slate-900',
+    },
+    {
+      label: 'Total due',
+      shortLabel: 'Total due',
+      value: formatCurrency(Math.round(summary.totalDue)),
+      hint: summary.debtors.length
+        ? `${plural(summary.debtors.length, 'customer')} · oldest ${plural(summary.oldestDays, 'day')}`
+        : 'Nothing to collect',
+      icon: IndianRupee,
+      iconClass: 'bg-yellow-100 text-yellow-700',
+      valueClass: summary.totalDue > 0 ? 'text-yellow-700' : 'text-slate-900',
+    },
+    {
+      label: 'Avg sale / customer',
+      shortLabel: 'Avg / customer',
+      value: formatCurrency(Math.round(summary.averageSalePerCustomer)),
+      hint: `${formatCurrency(Math.round(summary.totalSales))} across ${summary.totalCustomers}`,
+      icon: TrendingUp,
+      iconClass: 'bg-green-50 text-green-600',
+      valueClass: 'text-orange-700',
+    },
+  ];
+
+  const topDebtor = summary.debtors[0];
+  const topDebtorSince = topDebtor ? Math.min(...topDebtor.dueEntries.map((e) => e.date)) : 0;
+  const otherDebtors = summary.debtors.length - 1;
+
+  const chipClass = (active: boolean) =>
+    `shrink-0 whitespace-nowrap rounded-sm border px-3.5 py-1.5 text-sm font-medium transition ${
+      active
+        ? 'border-slate-900 bg-slate-900 text-white'
+        : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+    }`;
+
   return (
-    <div className="min-h-screen bg-gray-100 p-2">
+    <div className="min-h-full bg-[#fff5ec] px-3 pb-20 pt-3 md:px-6 md:pb-8 md:pt-5">
       {feedbackModal.isOpen && (
         <Modal
           type={feedbackModal.type}
@@ -823,139 +861,429 @@ doc.text(reportTitle, 14, 24);
         />
       )}
 
-      <DownloadChoiceModal
-        isOpen={isDownloadModalOpen}
-        onClose={() => setIsDownloadModalOpen(false)}
-        onDownloadPdf={downloadAsPdf}
-        onDownloadExcel={downloadAsExcel}
-      />
-
       {/* HEADER */}
-      <div className="flex items-center justify-between pb-3 border-b mb-2">
-
-        <BackButton />
-
-        {/* TITLE */}
-        <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
-          Customer Report
-        </h1>
-
-        <button onClick={() => setShowSearch(true)} className="p-2">
-          <IconSearch />
+      <header className="mb-4 flex items-center gap-2 md:gap-3">
+        <button
+          onClick={() => navigate(-1)}
+          aria-label="Back"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-slate-700 transition hover:bg-slate-200 md:border md:border-slate-300 md:bg-white"
+        >
+          <ChevronLeft size={20} />
         </button>
 
-      </div>
+        <div className="min-w-0 flex-1">
+          <p className="hidden text-xs text-slate-500 md:block">Reports /</p>
+          <div className="flex items-baseline gap-3">
+            <h1 className="text-lg font-bold text-slate-900 md:text-xl">Customer report</h1>
+            <span className="hidden text-xs text-slate-500 md:inline">
+              {plural(summary.totalCustomers, 'customer')} · {rangeLabelShort}
+            </span>
+          </div>
+          <p className="truncate text-xs text-slate-500 md:hidden">{rangeLabel}</p>
+        </div>
+
+        {/* Desktop search */}
+        <div className="relative hidden w-72 md:block">
+          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search customer name or phone"
+            className="w-full rounded-sm border border-slate-300 bg-white py-2 pl-9 pr-8 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-orange-600 focus:ring-2 focus:ring-orange-100"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-0.5 text-slate-400 hover:text-slate-600"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
+        {/* Mobile actions */}
+        <div className="flex items-center md:hidden">
+          <button
+            onClick={() => setShowSearch((v) => !v)}
+            aria-label="Search"
+            className="rounded-sm p-2 text-slate-700 transition hover:bg-slate-200"
+          >
+            <Search size={20} />
+          </button>
+          <DownloadMenu
+            variant="icon"
+            onExcel={() => runDownload(downloadAsExcel)}
+            onPdf={() => runDownload(downloadAsPdf)}
+            onWhatsApp={shareOnWhatsApp}
+          />
+        </div>
+      </header>
 
       {showSearch && (
-        <div className="flex justify-center mb-2 px-2">
-          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-[#F97316]">
-
-            <input
-              type="text"
-              placeholder="Search by Customer..."
-              className="flex-1 text-base font-light p-2 outline-none bg-transparent text-center"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              autoFocus
-            />
-
-            <button
-              onClick={() => {
-                setSearchQuery('');
-                setShowSearch(false);
-              }}
-              className="p-1 text-gray-500 hover:text-black"
-            >
-              <IconClose />
-            </button>
-
-          </div>
+        <div className="relative mb-3 md:hidden">
+          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search customer name or phone"
+            autoFocus
+            className="w-full rounded-sm border border-slate-300 bg-white py-2 pl-9 pr-9 text-sm outline-none focus:border-orange-600 focus:ring-2 focus:ring-orange-100"
+          />
+          <button
+            onClick={() => {
+              setSearchQuery('');
+              setShowSearch(false);
+            }}
+            aria-label="Close search"
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-1 text-slate-400 hover:text-slate-600"
+          >
+            <X size={15} />
+          </button>
         </div>
       )}
 
-      {/* FILTERS */}
-      <ReportDateFilter
-        datePreset={datePreset}
-        startDate={startDate}
-        endDate={endDate}
-        onPresetChange={onDatePresetChange}
-        onStartDateChange={handleStartDateChange}
-        onEndDateChange={handleEndDateChange}
-        onApply={handleApplyFilters}
-        theme="catalogue"
-      />
+      {/* DATE FILTERS */}
+      <div className="relative mb-4 flex items-center gap-3">
+        <div className="flex flex-1 gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {DATE_PRESETS.map((p) => (
+            <button key={p.value} onClick={() => handleDatePresetChange(p.value)} className={chipClass(datePreset === p.value)}>
+              <span className="md:hidden">{p.shortLabel}</span>
+              <span className="hidden md:inline">{p.label}</span>
+            </button>
+          ))}
+          <button onClick={() => setIsRangeOpen((o) => !o)} className={`md:hidden ${chipClass(datePreset === 'custom')}`}>
+            Custom
+          </button>
+        </div>
 
-      {/* SUMMARY CARDS */}
-      <div className="grid grid-cols-2 gap-2">
-        <CustomCard
-          variant={CardVariant.Summary}
-          title="Total Customers"
-          value={metrics.totalCustomers.toString()}
-          valueClassName="text-[#F97316] text-3xl"
-        />
-        <CustomCard
-          variant={CardVariant.Summary}
-          title="Total Bills"
-          value={metrics.totalBills.toString()}
-          valueClassName="text-indigo-600 text-3xl"
-        />
-        <CustomCard
-          variant={CardVariant.Summary}
-          title="Total Due"
-          value={`₹${metrics.totalDue.toLocaleString('en-IN')}`}
-          valueClassName="text-red-600 text-3xl"
-        />
-        <CustomCard
-          variant={CardVariant.Summary}
-          title="Avg Sale / Customer"
-          value={`₹${Math.round(metrics.averageSalePerCustomer).toLocaleString(
-            'en-IN',
-          )}`}
-          valueClassName="text-green-600 text-3xl"
-        />
+        <button
+          onClick={() => setIsRangeOpen((o) => !o)}
+          className={`hidden shrink-0 items-center gap-2 rounded-sm border bg-white px-3 py-1.5 text-sm font-medium text-slate-800 transition hover:border-slate-400 md:inline-flex ${
+            datePreset === 'custom' ? 'border-slate-900' : 'border-slate-300'
+          }`}
+        >
+          <CalendarDays size={15} className="text-slate-500" />
+          {rangeLabel}
+          <ChevronDown size={15} className="text-slate-500" />
+        </button>
+
+        {isRangeOpen && (
+          <div className="absolute right-0 top-full z-30 mt-2 w-full md:w-80">
+            <CustomRangePanel
+              initialStart={startDate}
+              initialEnd={endDate}
+              onApply={handleApplyCustomRange}
+              onCancel={() => setIsRangeOpen(false)}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* SUMMARY — 2 cols on mobile, 4 cols on md+ */}
+      <div className="mb-4 grid grid-cols-2 gap-2.5 md:grid-cols-4 md:gap-4">
+        {statCards.map(({ label, shortLabel, value, hint, icon: Icon, iconClass, valueClass }) => (
+          <div key={label} className="min-w-0 rounded-sm border border-[#f6e1d0] bg-white shadow-card p-3 md:p-4">
+            <div className="flex items-center gap-2">
+              <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-sm md:h-7 md:w-7 ${iconClass}`}>
+                <Icon size={14} />
+              </span>
+              <span className="truncate text-xs font-medium text-slate-700 md:text-sm">
+                <span className="md:hidden">{shortLabel}</span>
+                <span className="hidden md:inline">{label}</span>
+              </span>
+            </div>
+            <p className={`mt-2 truncate text-xl font-bold md:text-2xl ${valueClass}`}>{value}</p>
+            <p title={hint} className="mt-0.5 truncate text-[11px] text-slate-500 md:text-xs">{hint}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* MOBILE: who owes the most */}
+      {topDebtor && (
+        <div className="mb-3 rounded-sm border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800 md:hidden">
+          <span className="font-medium">{displayName(topDebtor)}</span> owes {formatCurrency(Math.round(topDebtor.due))}
+          {otherDebtors > 0 && <span className="text-xs"> · +{otherDebtors} more</span>}
+        </div>
+      )}
+
+      {/* INSIGHT CARDS (desktop) */}
+      <div className="mb-4 hidden gap-4 md:grid md:grid-cols-2">
+        <div className="rounded-sm border border-[#f6e1d0] bg-white shadow-card p-4">
+          <h3 className="text-sm font-semibold text-slate-900">Who buys the most</h3>
+          {topBuyers.length === 0 ? (
+            <p className="mt-4 text-xs text-slate-500">No sales in this period.</p>
+          ) : (
+            <ul className="mt-4 space-y-4">
+              {topBuyers.map((r) => (
+                <li key={r.key}>
+                  <div className="flex items-center justify-between gap-3 text-xs">
+                    <span className="truncate text-slate-700">
+                      {displayName(r)} · {plural(r.bills, 'bill')}
+                    </span>
+                    <span className="shrink-0 font-semibold text-slate-900">
+                      {formatCurrency(r.sales)} · {Math.round(shareOf(r.sales))}%
+                    </span>
+                  </div>
+                  <div className="mt-1.5 h-1.5 overflow-hidden rounded-sm bg-slate-100">
+                    <div className="h-full rounded-sm bg-orange-500" style={{ width: `${shareOf(r.sales)}%` }} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="flex flex-col rounded-sm border border-[#f6e1d0] bg-white shadow-card p-4">
+          <h3 className="text-sm font-semibold text-slate-900">Money to collect</h3>
+          <dl className="mt-4 space-y-2.5 text-sm">
+            <div className="flex justify-between">
+              <dt className="text-slate-600">Due 0–30 days</dt>
+              <dd className={`font-semibold ${summary.due0to30 > 0 ? 'text-yellow-700' : 'text-slate-900'}`}>
+                {formatCurrency(Math.round(summary.due0to30))}
+              </dd>
+            </div>
+            <div className="flex justify-between">
+              <dt className="text-slate-600">Due 30+ days</dt>
+              <dd className={`font-semibold ${summary.due30plus > 0 ? 'text-red-600' : 'text-slate-900'}`}>
+                {formatCurrency(Math.round(summary.due30plus))}
+              </dd>
+            </div>
+            <div className="flex justify-between">
+              <dt className="text-slate-600">Credit notes you owe</dt>
+              <dd className="font-semibold text-slate-900">{formatCurrency(Math.round(summary.totalCredit))}</dd>
+            </div>
+          </dl>
+          {topDebtor && (
+            <div className="mt-auto pt-4">
+              <p className="rounded-sm border border-yellow-200 bg-yellow-50 p-2.5 text-xs text-yellow-800">
+                <span className="font-medium">{displayName(topDebtor)}</span> owes{' '}
+                {formatCurrency(Math.round(topDebtor.due))} since {formatDayMonth(topDebtorSince)}.
+                {otherDebtors > 0 &&
+                  ` ${plural(otherDebtors, 'more customer')} ${otherDebtors === 1 ? 'owes' : 'owe'} too.`}
+              </p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* REPORT DETAILS */}
-      <div className="bg-white p-4 rounded-sm flex justify-between items-center mt-2">
-        <h2 className="text-lg font-semibold text-gray-700">Report Details</h2>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setIsListVisible(!isListVisible)}
-            className="px-4 py-2 bg-slate-200 rounded-sm font-semibold"
-          >
-            {isListVisible ? 'Hide List' : 'Show List'}
-          </button>
+      {/* No overflow-hidden here: it would clip the Download menu when the list is short. */}
+      <section className="rounded-sm border border-[#f6e1d0] bg-white shadow-card">
+        <div className="flex items-center justify-between gap-3 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-slate-900">
+              <span className="md:hidden">Customers</span>
+              <span className="hidden md:inline">Report details</span>
+            </h2>
+            <span className="hidden rounded-sm bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-800 md:inline">
+              {plural(listRows.length, 'customer')}
+            </span>
+          </div>
 
-          <button
-            onClick={() => {
-              if (customerRows.length === 0) {
-                setFeedbackModal({
-                  isOpen: true,
-                  type: State.INFO,
-                  message: 'No data available to download.',
-                });
-              } else {
-                setIsDownloadModalOpen(true);
+          {/* Desktop controls */}
+          <div className="hidden items-center gap-2 md:flex">
+            <div className="relative">
+              <Filter size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <select
+                value={rowFilter}
+                onChange={(e) => setRowFilter(e.target.value as RowFilter)}
+                className="appearance-none rounded-sm border border-slate-300 bg-white py-2 pl-8 pr-8 text-sm text-slate-700 outline-none transition hover:border-slate-400 focus:border-orange-600"
+              >
+                <option value="all">All customers</option>
+                <option value="dues">With dues</option>
+                <option value="noname">No name</option>
+              </select>
+              <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+            </div>
+            <button
+              onClick={() => setIsListVisible(!isListVisible)}
+              className="inline-flex items-center gap-1.5 rounded-sm px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
+            >
+              {isListVisible ? <EyeOff size={15} /> : <Eye size={15} />}
+              {isListVisible ? 'Hide list' : 'Show list'}
+            </button>
+            <DownloadMenu
+              onExcel={() => runDownload(downloadAsExcel)}
+              onPdf={() => runDownload(downloadAsPdf)}
+              onWhatsApp={shareOnWhatsApp}
+            />
+          </div>
+
+          {/* Mobile sort */}
+          <div className="relative md:hidden">
+            <select
+              value={sortConfig.key}
+              onChange={(e) =>
+                setSortConfig({
+                  key: e.target.value as SortKey,
+                  direction: e.target.value === 'name' ? 'asc' : 'desc',
+                })
               }
-            }}
-            className="px-4 py-2 bg-[#F97316] text-white rounded-sm font-semibold"
-          >
-            Download Report
-          </button>
-
+              className="appearance-none rounded-sm border border-slate-300 bg-white py-1.5 pl-3 pr-8 text-sm text-slate-700 outline-none focus:border-orange-600"
+            >
+              <option value="sales">Top sales</option>
+              <option value="due">Most due</option>
+              <option value="lastVisit">Recent visit</option>
+              <option value="bills">Most bills</option>
+              <option value="name">Name A–Z</option>
+            </select>
+            <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+          </div>
         </div>
-      </div>
 
-      {isListVisible && (
-        <CustomTable<CustomerRowWithCredit>
-          data={customerRows}
-          columns={tableColumns}
-          keyExtractor={(row) => row.id}
-          sortConfig={sortConfig}
-          onSort={handleSort}
-          emptyMessage="No customers found for selected period."
-        />
-      )}
+        {/* Desktop table */}
+        {isListVisible && (
+          <div className="hidden overflow-x-auto rounded-b-sm md:block">
+            <table className="w-full text-sm">
+              <thead className="bg-[#fff8f2] text-[11px] text-orange-800/80">
+                <tr>
+                  {renderSortHeader('Customer', 'name')}
+                  {renderSortHeader('Bills', 'bills')}
+                  {renderSortHeader('Total sales', 'sales', 'right')}
+                  <th className="px-4 py-3 text-left font-semibold uppercase tracking-wide">Share</th>
+                  {renderSortHeader('Last visit', 'lastVisit')}
+                  {renderSortHeader('Total due', 'due', 'right')}
+                  {renderSortHeader('Credit note', 'creditNote', 'right')}
+                  <th className="w-10" />
+                </tr>
+              </thead>
+              <tbody>
+                {listRows.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-500">
+                      No customers in this period. They appear here once an order has their name or phone.
+                    </td>
+                  </tr>
+                )}
+                {listRows.map((row) => {
+                  const isOpen = expandedKey === row.key;
+                  const share = shareOf(row.sales);
+                  return (
+                    <tr
+                      key={row.key}
+                      onClick={() => setExpandedKey(row.key)}
+                      className={`cursor-pointer border-t border-[#f6e1d0] transition ${
+                        isOpen ? 'bg-orange-100' : 'hover:bg-[#fff8f2]'
+                      }`}
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          {renderAvatar(row)}
+                          <div className="min-w-0">
+                            <p className={`truncate font-semibold ${row.name ? 'text-slate-900' : 'text-slate-500'}`}>
+                              {displayName(row)}
+                            </p>
+                            {row.phone && <p className="text-xs text-slate-500">{formatPhone(row.phone)}</p>}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">{row.bills}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-slate-900">
+                        {formatCurrency(row.sales)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="h-1.5 w-16 overflow-hidden rounded-sm bg-slate-100">
+                            <div className="h-full rounded-sm bg-orange-500" style={{ width: `${share}%` }} />
+                          </div>
+                          <span className="text-xs text-slate-500">{Math.round(share)}%</span>
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-600">
+                        {row.lastVisit ? formatDayMonth(row.lastVisit) : '—'}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right">
+                        <p className={`font-semibold ${row.due > 0 ? 'text-yellow-700' : 'text-green-700'}`}>
+                          {formatCurrency(row.due)}
+                        </p>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right text-slate-700">
+                        {formatCurrency(row.creditNote)}
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        <ChevronRight size={16} className="inline text-slate-400" />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              {listRows.length > 0 && (
+                <tfoot className="border-t border-[#f6e1d0] bg-[#fff8f2] text-sm font-semibold text-slate-900">
+                  <tr>
+                    <td className="px-4 py-3">Total · {plural(listRows.length, 'customer')}</td>
+                    <td className="px-4 py-3">{listTotals.bills}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right">{formatCurrency(listTotals.sales)}</td>
+                    <td />
+                    <td />
+                    <td className={`whitespace-nowrap px-4 py-3 text-right ${listTotals.due > 0 ? 'text-yellow-700' : ''}`}>
+                      {formatCurrency(listTotals.due)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right">{formatCurrency(listTotals.credit)}</td>
+                    <td />
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        )}
+
+        {/* Mobile list */}
+        <ul className="md:hidden">
+          {listRows.length === 0 && (
+            <li className="border-t border-[#f6e1d0] px-4 py-10 text-center text-sm text-slate-500">
+              No customers in this period. They appear here once an order has their name or phone.
+            </li>
+          )}
+          {listRows.map((row) => (
+            <li
+              key={row.key}
+              onClick={() => setExpandedKey(row.key)}
+              className="cursor-pointer border-t border-[#f6e1d0] px-4 py-3 active:bg-[#fff8f2]"
+            >
+              <div className="flex items-center gap-3">
+                {renderAvatar(row)}
+                <div className="min-w-0 flex-1">
+                  <p className={`truncate text-sm font-semibold ${row.name ? 'text-slate-900' : 'text-slate-500'}`}>
+                    {displayName(row)}
+                  </p>
+                  <p className="truncate text-xs text-slate-500">
+                    {[
+                      row.phone && formatPhone(row.phone),
+                      plural(row.bills, 'bill'),
+                      row.lastVisit > 0 && `last ${formatDayMonth(row.lastVisit)}`,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="text-sm font-semibold text-slate-900">{formatCurrency(row.sales)}</p>
+                  <p className={`text-xs ${row.due > 0 ? 'font-medium text-yellow-700' : 'text-slate-500'}`}>
+                    {row.due > 0 ? `Due ${formatCurrency(row.due)}` : 'No due'}
+                  </p>
+                </div>
+              </div>
+            </li>
+          ))}
+          {listRows.length > 0 && (
+            <li className="flex items-center justify-between rounded-b-sm border-t border-[#f6e1d0] bg-[#fff8f2] px-4 py-3 text-sm font-semibold text-slate-900">
+              <span>Total · {listRows.length}</span>
+              <span>
+                {formatCurrency(listTotals.sales)}
+                {listTotals.due > 0 && <span className="text-yellow-700"> · due {formatCurrency(listTotals.due)}</span>}
+              </span>
+            </li>
+          )}
+        </ul>
+      </section>
+
+      {(() => {
+        const selected = expandedKey ? listRows.find((r) => r.key === expandedKey) : undefined;
+        return selected ? renderCustomerPanel(selected) : null;
+      })()}
     </div>
   );
 };

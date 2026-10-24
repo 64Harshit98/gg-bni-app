@@ -2,13 +2,14 @@ import { useState, useEffect } from 'react';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
 import type { CartItem, CatalogueSalesSettings } from '../checkOut.types';
-import { deriveTaxContext, buildUpcomingSyncPayload } from '../checkOut.calculations';
+import { deriveTaxContext, buildUpcomingSyncPayload, lineKeyOf } from '../checkOut.calculations';
 import { getSlabForQty } from '../../../constants/models';
 
 // Quantity-slab pricing for a checkout line.
 // - qty inside a slab  -> slab price
 // - qty outside slabs  -> base price saved when the item was added in the catalogue
 const repriceCartLine = (line: CartItem, qty: number): CartItem => {
+    if ((line as any).addOnKey) return line; // add-on lines keep their own price
     if (!line.quantitySlabs || line.quantitySlabs.length === 0) return line;
     const slab = getSlabForQty({ quantitySlabs: line.quantitySlabs }, qty);
     if (slab) return { ...line, salesPrice: slab.salesPrice };
@@ -41,10 +42,14 @@ export const useCart = (
                     note: '',
                     unit: entry.item.unit ?? "pcs",
                     unitMultiplier: entry.item.unitMultiplier ?? entry.item.multiplier ?? 1,
-                                        tierId: entry.item.tierId || undefined,        // 👈 NEW
+                    tierId: entry.item.tierId || undefined,        // 👈 NEW
                     tierLabel: entry.item.tierLabel || undefined,  // 👈 NEW
                     quantitySlabs: entry.item.quantitySlabs || undefined,
                     baseSalesPrice: entry.item.baseSalesPrice ?? undefined,
+                    // Add-ons: chosen options + a key that tells apart lines of the same item
+                    addOns: entry.item.addOns || undefined,
+                    addOnKey: entry.item.addOnKey || undefined,
+                    lineKey: [entry.item.id, entry.item.tierId || '__base__', entry.item.addOnKey || ''].join('__'),
                 } as any));
                 setCartItems(formattedItems);
             } catch (error) {
@@ -94,16 +99,16 @@ export const useCart = (
     };
 
     const updateItemNote = (id: string | number, note: string) => {
-        setCartItems(prev => prev.map(item => item.id === id ? { ...item, note } : item));
+        setCartItems(prev => prev.map(item => lineKeyOf(item) === id ? { ...item, note } : item));
     };
 
     const updateQuantity = (id: string | number, delta: number) => {
         const updatedItems = cartItems
             .map(item => {
-                if (item.id === id) {
+                if (lineKeyOf(item) === id) {
                     const moqQty = item.moq || 1;
                     let newQty = item.quantity + delta;
-                                        newQty = Math.max(moqQty, newQty);
+                    newQty = Math.max(moqQty, newQty);
                     return repriceCartLine({ ...item, quantity: newQty }, newQty);
                 }
                 return item;
@@ -119,7 +124,7 @@ export const useCart = (
     };
 
     const removeFromCart = (id: string | number) => {
-        const updatedCart = cartItems.filter(item => item.id !== id);
+        const updatedCart = cartItems.filter(item => lineKeyOf(item) !== id);
         setCartItems(updatedCart);
         localStorage.setItem('temp_cart', JSON.stringify(updatedCart.map(i => ({
             item: { ...i },

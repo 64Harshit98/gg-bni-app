@@ -1,13 +1,43 @@
-import React from 'react';
-import { CustomButton } from './index';
-import { Variant } from '../enums';
+import React, { useState } from 'react';
+import { FiChevronUp, FiChevronRight } from 'react-icons/fi';
 
 const formatINR = (value: number) =>
   value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SELLAR design-system class tokens (CSS variables with light-theme fallbacks)
+// ─────────────────────────────────────────────────────────────────────────────
+const BTN_PRIMARY =
+  'inline-flex items-center justify-center gap-2 rounded-sm border border-transparent font-medium whitespace-nowrap transition-colors cursor-pointer bg-[#155dfc] text-white hover:bg-[#1447e6] disabled:opacity-[.45] disabled:cursor-not-allowed';
+
+interface BillRowProps {
+  label: string;
+  value: string;
+  tone?: 'default' | 'success' | 'primary';
+  strong?: boolean;
+  divider?: boolean;
+}
+
+const BillRow: React.FC<BillRowProps> = ({ label, value, tone = 'default', strong = false, divider = false }) => {
+  const labelColor =
+    tone === 'success' ? 'text-[#008236]'
+      : tone === 'primary' ? 'text-[#155dfc]'
+        : strong ? 'text-[#0f172b]' : 'text-[#45556c]';
+  const valueColor =
+    tone === 'success' ? 'text-[#008236]'
+      : tone === 'primary' ? 'text-[#155dfc]'
+        : 'text-[#0f172b]';
+  return (
+    <div className={`flex justify-between gap-4 ${divider ? 'border-t border-[#dfe6fb] pt-1.5' : ''}`}>
+      <span className={`${labelColor} ${strong ? 'font-medium' : ''}`}>{label}</span>
+      <span className={`${valueColor} tabular-nums ${strong ? 'font-semibold' : 'font-medium'}`}>{value}</span>
+    </div>
+  );
+};
+
 interface GenericBillFooterProps {
-  isExpanded: boolean;
-  onToggleExpand: () => void;
+  isExpanded: boolean;          // kept for compatibility — the mobile breakdown now manages its own state
+  onToggleExpand: () => void;   // kept for compatibility
   totalQuantity: number;
   subtotal: number;
   totalDiscount?: number;
@@ -20,6 +50,12 @@ interface GenericBillFooterProps {
   onActionClick: () => void;
   disableAction?: boolean;
   children?: React.ReactNode;
+
+  // ── Optional wording / rows (defaults keep Sale exactly as before) ──
+  subtotalLabel?: string;                          // default 'MRP subtotal'
+  netLabel?: string;                               // default 'Net sale price'
+  showNetRow?: boolean;                            // default true (Purchase passes false)
+  extraRows?: { label: string; value: string }[];  // shown above the subtotal row (e.g. Purchase "MRP value")
 }
 
 export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
@@ -28,112 +64,115 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
   totalDiscount = 0,
   taxAmount = 0,
   taxLabel = 'Tax',
+  roundingOffAmount = 0,
   finalAmount,
   showTaxRow = false,
   actionLabel,
   onActionClick,
   disableAction = false,
-  children
+  children,
+  subtotalLabel = 'MRP subtotal',
+  netLabel = 'Net sale price',
+  showNetRow = true,
+  extraRows = [],
 }) => {
+  // Mobile: tap the total to see the breakdown
+  const [showBreakdown, setShowBreakdown] = useState(false);
+
+  const rows = (
+    <div className="space-y-1.5 text-sm">
+      {extraRows.map((r) => (
+        <BillRow key={r.label} label={r.label} value={r.value} />
+      ))}
+
+      <BillRow label={subtotalLabel} value={`₹${formatINR(subtotal)}`} />
+
+      {totalDiscount > 0 && (
+        <BillRow label="Discount" value={`− ₹${formatINR(totalDiscount)}`} tone="success" />
+      )}
+
+      {showNetRow && (
+        <BillRow label={netLabel} value={`₹${formatINR(subtotal - totalDiscount)}`} strong divider />
+      )}
+
+      {showTaxRow && (
+        <BillRow label={taxLabel} value={`+ ₹${formatINR(taxAmount)}`} tone="primary" />
+      )}
+
+      {Number(roundingOffAmount) !== 0 && (
+        <BillRow
+          label="Rounding off"
+          value={`${Number(roundingOffAmount) > 0 ? '+' : '−'} ₹${formatINR(Math.abs(Number(roundingOffAmount)))}`}
+        />
+      )}
+    </div>
+  );
+
   return (
+    <div className="flex-shrink-0 z-20 bg-[#ffffff] border-t border-[#dfe6fb] md:border-t-0 md:bg-transparent md:w-full md:flex md:flex-col md:flex-1 md:min-h-0">
 
-    <div className="flex-shrink-0 bg-white z-20 md:bg-transparent md:w-full">
+      {children && <div className="md:mb-4">{children}</div>}
 
-      <div className="md:mb-4">
-        {children}
-      </div>
-
-
-      <div className="hidden md:block px-0 pb-4 space-y-1.5 text-sm">
-
-        <div className="flex justify-between text-gray-600 pt-1">
-          <span> MRP Subtotal</span>
-          <span className="font-medium">₹{formatINR(subtotal)}</span>
-        </div>
-
-        {totalDiscount > 0 && (
-          <div className="flex justify-between text-green-600">
-            <span>Discount</span>
-            <span className="font-medium">- ₹{formatINR(totalDiscount)}</span>
-          </div>
-        )}
-        {/* Net Sale Price — desktop only */}
-        <div className="hidden md:flex justify-between text-gray-700 border-t border-gray-100 pt-1.5">
-          <span className="font-medium">Net Sale Price</span>
-          <span className="font-semibold">₹{formatINR(subtotal - totalDiscount)}</span>
-        </div>
-
-        {showTaxRow && (
-          <div className="border-b border-gray-200 pb-2 flex justify-between text-blue-600">
-            <span>{taxLabel}</span>
-            <span className="font-medium">+ ₹{formatINR(taxAmount)}</span>
-          </div>
-        )}
-      </div>
-
-      {/* Main Total & Action — desktop only */}
-      <div className="hidden md:block md:pt-4 md:border-t md:border-gray-100">
-        <div className="flex justify-between items-end mb-1">
-          <span className="text-gray-500 text-sm font-medium pb-1">Grand Total</span>
-          <span className="text-2xl font-extrabold text-gray-900 tracking-tight">
+      {/* ── DESKTOP: breakdown + bill total (directly under the heading) ── */}
+      <div className="hidden md:block">
+        {rows}
+        <div className="flex justify-between items-baseline mt-4 pt-4 border-t border-[#dfe6fb]">
+          <span className="text-sm text-[#45556c]">Bill total</span>
+          <b className="text-[30px] leading-[38px] font-semibold tracking-tight tabular-nums text-[#0f172b]">
             ₹{formatINR(finalAmount)}
-          </span>
-        </div>
-
-        <div className="w-full flex justify-center">
-          <div className="w-36">
-            <CustomButton
-              onClick={onActionClick}
-              variant={Variant.Payment}
-              className="w-full py-3.5 text-base font-bold shadow-lg shadow-blue-200 rounded-sm flex justify-center items-center active:scale-[0.98] transition-transform"
-              disabled={disableAction}
-            >
-              {actionLabel}
-            </CustomButton>
-          </div>
+          </b>
         </div>
       </div>
 
-      {/* Compact item count / total / action bar — mobile only, whole bar is the action button */}
-      <button
-        type="button"
-        onClick={onActionClick}
-        disabled={disableAction}
-        className="flex md:hidden w-full items-center justify-between gap-1 px-2 py-2 mb-1 rounded-sm border border-gray-100 bg-emerald-100 shadow-sm text-left disabled:opacity-50 disabled:pointer-events-none active:scale-[0.99] transition-transform"
-      >
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="flex items-center justify-center w-11 h-11 rounded-full bg-emerald-50 flex-shrink-0">
-            <svg
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.8}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="text-emerald-600"
-            >
-              <circle cx="9" cy="21" r="1" />
-              <circle cx="20" cy="21" r="1" />
-              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
-            </svg>
-          </span>
-          <div className="leading-tight min-w-0">
-            <p className="text-[11px] font-bold tracking-wider text-gray-500 uppercase">
-              {totalQuantity} {totalQuantity === 1 ? 'Item' : 'Items'}
-            </p>
-            <p className="text-lg font-extrabold text-gray-900 tracking-tight truncate">
-              ₹{formatINR(finalAmount)}
-            </p>
-          </div>
-        </div>
+      {/* ── DESKTOP: action pinned to the bottom ── */}
+      <div className="hidden md:block mt-auto pt-6">
+        <p className="m-0 mb-2.5 text-center text-xs text-[#5b6b86]">You choose how it's paid in the next step</p>
+        <button
+          type="button"
+          onClick={onActionClick}
+          disabled={disableAction}
+          className={`${BTN_PRIMARY} w-full h-14 text-base`}
+        >
+          {actionLabel} · ₹{formatINR(finalAmount)}
+        </button>
+      </div>
 
-        <span className="flex items-center gap-1 text-emerald-600 font-bold text-sm flex-shrink-0">
+      {/* ── MOBILE: breakdown (opens when the total is tapped) ── */}
+      {showBreakdown && <div className="md:hidden px-4 pt-3">{rows}</div>}
+
+      {/* ── MOBILE: sticky checkout bar ── */}
+      <div className="flex md:hidden items-center gap-3 px-4 pt-3 pb-4">
+        <button
+          type="button"
+          onClick={() => setShowBreakdown((v) => !v)}
+          aria-expanded={showBreakdown}
+          className="flex-1 min-w-0 text-left bg-transparent border-0 p-0 cursor-pointer"
+        >
+          <span className="flex items-center gap-1 text-xs text-[#45556c]">
+            <span className="truncate">
+              {totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}
+              {totalDiscount > 0 && ` · saves ₹${formatINR(totalDiscount)}`}
+            </span>
+            <FiChevronUp
+              size={14}
+              className={`flex-shrink-0 transition-transform ${showBreakdown ? 'rotate-180' : ''}`}
+            />
+          </span>
+          <b className="block text-xl leading-[26px] font-semibold tabular-nums text-[#0f172b] truncate">
+            ₹{formatINR(finalAmount)}
+          </b>
+        </button>
+
+        <button
+          type="button"
+          onClick={onActionClick}
+          disabled={disableAction}
+          className={`${BTN_PRIMARY} h-12 px-4 text-[15px]`}
+        >
           {actionLabel}
-          <span aria-hidden="true">→</span>
-        </span>
-      </button>
+          <FiChevronRight size={16} />
+        </button>
+      </div>
     </div>
   );
 };

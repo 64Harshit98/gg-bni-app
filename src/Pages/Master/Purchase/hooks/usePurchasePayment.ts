@@ -7,6 +7,8 @@ import {
     serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../../../../lib/Firebase';
+import { clearPurchaseReportCache } from '../../../Reports/PurchaseReportComponents/purchaseReportCache';
+import { clearStockTransferCache } from '../../../Reports/stockTransferCache';
 import type { Item } from '../../../../constants/models';
 import { State } from '../../../../enums';
 import { ROUTES } from '../../../../constants/routes.constants';
@@ -21,12 +23,22 @@ import type { Purchase, PurchaseDocumentData, PurchaseItem, TaxOption } from '..
 // Moved verbatim from Purchase.tsx (was a module-level helper above the
 // component, L34-38). Removes all undefined values from an object before
 // sending to Firestore.
-const sanitizeForFirestore = <T extends Record<string, any>>(obj: T): T => {
-    return Object.fromEntries(
-        Object.entries(obj).filter(([_, v]) => v !== undefined)
-    ) as T;
-};
+const isPlainObject = (v: unknown): v is Record<string, any> =>
+    v !== null && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype;
 
+const sanitizeForFirestore = <T>(value: T): T => {
+    if (Array.isArray(value)) {
+        return value.filter(v => v !== undefined).map(v => sanitizeForFirestore(v)) as unknown as T;
+    }
+    if (isPlainObject(value)) {
+        return Object.fromEntries(
+            Object.entries(value)
+                .filter(([, v]) => v !== undefined)
+                .map(([k, v]) => [k, sanitizeForFirestore(v)])
+        ) as T;
+    }
+    return value;
+};
 // Firestore document IDs can't contain '/' (and a few other characters are
 // unsafe) — an invoice number like "PUR/2024/001" would otherwise throw when
 // used directly as a doc ID for the uniqueness-registry check below.
@@ -370,6 +382,8 @@ export const usePurchasePayment = ({
                     });
                 });
             });
+            clearPurchaseReportCache(companyId);
+            clearStockTransferCache(companyId);
             setAvailableItems(prev => prev.map(item => {
                 const shopDelta = items
                     .filter(i => (i.productId || i.id) === item.id)
@@ -526,6 +540,8 @@ export const usePurchasePayment = ({
                 return { ...item, stock: (item.stock || 0) + delta };
             }));
 
+            clearPurchaseReportCache(companyId);
+            clearStockTransferCache(companyId);
             showSuccessModal('Purchase updated successfully!', ROUTES.JOURNAL);
         } catch (err: any) {
             console.error('Error updating purchase:', err?.code, err?.message);

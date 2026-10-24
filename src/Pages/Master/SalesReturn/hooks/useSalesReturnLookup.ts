@@ -156,7 +156,18 @@ export const useSalesReturnLookup = ({
                 const customersData = customersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
 
                 if (locationState?.invoiceData) {
-                    handleSelectSale(locationState.invoiceData);
+                    // Route state ka object items se addOnStock drop kar sakta hai, isliye Firestore se fresh bill lo
+                    let freshSale: SalesData | null = null;
+                    try {
+                        const routeId = locationState.invoiceData.id;
+                        if (routeId) {
+                            const snap = await getDoc(doc(db, 'companies', currentUser.companyId, 'sales', routeId));
+                            if (snap.exists()) freshSale = { id: snap.id, ...snap.data() } as SalesData;
+                        }
+                    } catch (e) {
+                        console.error('Fresh bill fetch failed, using route state', e);
+                    }
+                    handleSelectSale(freshSale || locationState.invoiceData);
                 }
                 else if (specificInvoiceSnap && specificInvoiceSnap.exists()) {
                     const specificData = { id: specificInvoiceSnap.id, ...specificInvoiceSnap.data() } as SalesData;

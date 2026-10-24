@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import type { ItemGroup } from '../../constants/models';
-import { useDatabase } from '../../context/auth-context';
+import { useAuth, useDatabase } from '../../context/auth-context';
+import { useItemSettings } from '../../context/SettingsContext';
+import { AddOnManager } from '../../Components/AddonManager';
 import { Spinner } from '../../constants/Spinner';
-import { FiTrash2, FiSearch, FiPackage, FiTag, FiGift, FiShoppingBag, FiGrid, FiList, FiPlus, FiMoreHorizontal, FiChevronDown, FiCopy, FiSliders, FiCheck } from 'react-icons/fi';
+import { FiTrash2, FiSearch, FiPackage, FiTag, FiGift, FiShoppingBag, FiGrid, FiList, FiPlus, FiMoreHorizontal, FiChevronDown, FiCopy, FiSliders, FiCheck, FiImage, FiX } from 'react-icons/fi';
 import { IconEdit } from '../../constants/Icons';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
 import { Modal } from '../../constants/Modal';
@@ -58,13 +60,54 @@ const looksLikeDuplicate = (a: string, b: string) => {
   return shorter >= 8 && (na.startsWith(nb) || nb.startsWith(na));
 };
 
-// --- UI only: ₹ compact format (1.9L, 88k, 450) ---
 const formatCompactINR = (n: number) => {
   if (n >= 10000000) return `₹${(n / 10000000).toFixed(1).replace(/\.0$/, '')}Cr`;
   if (n >= 100000) return `₹${(n / 100000).toFixed(1).replace(/\.0$/, '')}L`;
   if (n >= 1000) return `₹${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`;
   return `₹${Math.round(n)}`;
 };
+
+// Category image: centre-crop to 128x128, JPEG, compressed until it is small enough for a Firestore doc
+const CATEGORY_IMAGE_SIZE = 128;
+const CATEGORY_IMAGE_MAX_BYTES = 10 * 1024; // ~10 KB
+const CATEGORY_IMAGE_MAX_UPLOAD_MB = 10;
+
+const fileToCategoryImage = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    if (!file.type.startsWith('image/')) return reject(new Error('Please choose an image file.'));
+    if (file.size > CATEGORY_IMAGE_MAX_UPLOAD_MB * 1024 * 1024) {
+      return reject(new Error(`Image is too large. Max ${CATEGORY_IMAGE_MAX_UPLOAD_MB} MB.`));
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Could not read the image.'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Could not load the image.'));
+      img.onload = () => {
+        const side = Math.min(img.width, img.height);
+        const sx = (img.width - side) / 2;
+        const sy = (img.height - side) / 2;
+        const canvas = document.createElement('canvas');
+        canvas.width = CATEGORY_IMAGE_SIZE;
+        canvas.height = CATEGORY_IMAGE_SIZE;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return reject(new Error('Could not process the image.'));
+        ctx.fillStyle = '#ffffff'; // transparent PNGs would turn black in JPEG
+        ctx.fillRect(0, 0, CATEGORY_IMAGE_SIZE, CATEGORY_IMAGE_SIZE);
+        ctx.drawImage(img, sx, sy, side, side, 0, 0, CATEGORY_IMAGE_SIZE, CATEGORY_IMAGE_SIZE);
+
+        let quality = 0.8;
+        let dataUrl = canvas.toDataURL('image/jpeg', quality);
+        while (dataUrl.length * 0.75 > CATEGORY_IMAGE_MAX_BYTES && quality > 0.4) {
+          quality -= 0.1;
+          dataUrl = canvas.toDataURL('image/jpeg', quality);
+        }
+        resolve(dataUrl);
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
 
 export interface SharedItemGroupProps {
   routes: {
@@ -98,6 +141,10 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
   const navigate = useNavigate();
   const location = useLocation();
   const dbOperations = useDatabase();
+  const { currentUser } = useAuth();
+  const { itemSettings } = useItemSettings();
+  const addOnsEnabled = !!(itemSettings as any)?.enableAddOns; // the Add-ons button follows the Item settings toggle
+  const [isAddOnManagerOpen, setIsAddOnManagerOpen] = useState(false);
 
   const [itemGroups, setItemGroups] = useState<ItemGroup[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -107,6 +154,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
   const [groupCounts, setGroupCounts] = useState<Record<string, number>>({});
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editingGroupName, setEditingGroupName] = useState<string>('');
+  const [editingGroupImage, setEditingGroupImage] = useState<string>(''); // '' = no image
   const [deleteTargetGroup, setDeleteTargetGroup] = useState<ItemGroup | null>(null);
   const [viewingGroup, setViewingGroup] = useState<ItemGroup | null>(null);
   const [allItems, setAllItems] = useState<any[]>([]);
@@ -402,12 +450,26 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
   const handleEditClick = (group: ItemGroup) => {
     setEditingGroupId(group.id ?? null);
     setEditingGroupName(group.name);
+    setEditingGroupImage(group.imageUrl ?? '');
   };
 
   const handleCancelEdit = () => {
     setEditingGroupId(null);
     setEditingGroupName('');
+    setEditingGroupImage('');
     setError(null);
+  };
+
+  const handleCategoryImagePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // same file dobara choose ho sake
+    if (!file) return;
+    try {
+      setEditingGroupImage(await fileToCategoryImage(file));
+      setError(null);
+    } catch (err: any) {
+      setError(err.message || 'Failed to process image.');
+    }
   };
 
   const openEditDrawer = (item: any) => {
@@ -450,7 +512,13 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
 
   const handleSaveEdit = async (groupToUpdate: ItemGroup) => {
     const newName = editingGroupName.trim();
-    if (newName === '' || newName === groupToUpdate.name) {
+    if (newName === '') {
+      handleCancelEdit();
+      return;
+    }
+    const nameChanged = newName !== groupToUpdate.name;
+    const imageChanged = editingGroupImage !== (groupToUpdate.imageUrl ?? '');
+    if (!nameChanged && !imageChanged) {
       handleCancelEdit();
       return;
     }
@@ -458,10 +526,19 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
 
     setError(null);
     try {
-      await dbOperations.updateGroupAndSyncItems(groupToUpdate, newName);
+      if (nameChanged) {
+        await dbOperations.updateGroupAndSyncItems(groupToUpdate, newName);
+      }
+      if (imageChanged && groupToUpdate.id) {
+        await dbOperations.updateItemGroup(groupToUpdate.id, { imageUrl: editingGroupImage });
+      }
       handleCancelEdit();
       await fetchAndSyncGroups();
-      showSuccessMessage(`Group renamed to "${newName}" and items updated.`);
+      showSuccessMessage(
+        nameChanged
+          ? `Group renamed to "${newName}" and items updated.`
+          : 'Group image updated.'
+      );
     } catch (err: any) {
       console.error('Error updating item group:', err);
       setError(err.message || 'Failed to update group.');
@@ -704,24 +781,36 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
         <div className="lg:p-5 lg:bg-white lg:border lg:border-gray-200 lg:rounded-sm lg:shadow-sm">
           <div className="flex flex-col gap-3 mb-3 lg:mb-6">
             <div className="flex flex-col lg:flex-row gap-2">
-              <label className="relative flex-1 min-w-0 block">
-                <FiSearch size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  aria-label="Search groups or items"
-                  value={newItemGroupName}
-                  onChange={(e) => setNewItemGroupName(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleAddItemGroup()}
-                  className={`w-full h-11 pl-9 pr-3 border border-[#7a8aa3] rounded-sm bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 ${theme.focusRing}`}
-                />
-                {newItemGroupName === '' && (
-                  <span className="pointer-events-none absolute left-9 right-3 top-1/2 -translate-y-1/2 truncate text-sm text-slate-500">
-                    <span className="lg:hidden">Search groups or items</span>
-                    <span className="hidden lg:inline">Search groups or items — or type a new group name</span>
-                  </span>
+              <div className="flex flex-1 min-w-0 gap-2">
+                <label className="relative flex-1 min-w-0 block">
+                  <FiSearch size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    aria-label="Search groups or items"
+                    value={newItemGroupName}
+                    onChange={(e) => setNewItemGroupName(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleAddItemGroup()}
+                    className={`w-full h-11 pl-9 pr-3 border border-[#7a8aa3] rounded-sm bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 ${theme.focusRing}`}
+                  />
+                  {newItemGroupName === '' && (
+                    <span className="pointer-events-none absolute left-9 right-3 top-1/2 -translate-y-1/2 truncate text-sm text-slate-500">
+                      <span className="lg:hidden">Search groups or items</span>
+                      <span className="hidden lg:inline">Search groups or items — or type a new group name</span>
+                    </span>
+                  )}
+                </label>
+                {addOnsEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => setIsAddOnManagerOpen(true)}
+                    className="h-11 inline-flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-sm border border-[#7a8aa3] bg-white px-3 text-sm font-medium text-slate-900 transition-colors hover:bg-gray-50"
+                  >
+                    <FiPlus size={16} />
+                    Add-ons
+                  </button>
                 )}
-              </label>
+              </div>
               <div className="hidden lg:flex gap-2">
                 <label className="relative flex-1 lg:flex-none inline-flex items-center">
                   <span className="sr-only">Sort groups</span>
@@ -847,18 +936,53 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
                 return (
                   <div key={group.id} className="flex items-center justify-between gap-3 px-3.5 py-3 bg-white rounded-sm shadow-sm border border-gray-200 hover:border-gray-300 transition-colors">
                     {editingGroupId === group.id ? (
-                      <div className="flex flex-col w-full gap-2">
-                        <input type="text" value={editingGroupName} onChange={(e) => setEditingGroupName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSaveEdit(group)} autoFocus className={`w-full h-10 px-3 text-sm border rounded-sm focus:outline-none focus:ring-2 ${theme.primaryBorder} ${theme.focusRing}`} />
-                        <div className="flex justify-end gap-2">
-                          <button onClick={() => handleSaveEdit(group)} className="bg-green-600 hover:bg-green-700 text-white h-8 px-3 rounded-sm text-sm font-medium transition-colors">Save</button>
-                          <button onClick={handleCancelEdit} className="bg-white hover:bg-gray-50 text-slate-700 border border-gray-300 h-8 px-3 rounded-sm text-sm font-medium transition-colors">Cancel</button>
+                      <div className="flex items-stretch gap-3 w-full">
+                        {/* Image block (80x80): tap = pick image, + corner = add/change, ✕ corner = remove */}
+                        <div className="relative w-20 h-20 flex-shrink-0 overflow-hidden rounded-sm border border-gray-300 bg-gray-50">
+                          <label
+                            className="w-full h-full flex items-center justify-center text-slate-400 cursor-pointer hover:bg-gray-100 transition-colors"
+                            aria-label={editingGroupImage ? 'Change category image' : 'Add category image'}
+                          >
+                            {editingGroupImage
+                              ? <img src={editingGroupImage} alt="" className="w-full h-full object-cover" />
+                              : <FiImage size={26} strokeWidth={1.5} />}
+                            <input type="file" accept="image/*" onChange={handleCategoryImagePick} className="sr-only" />
+                          </label>
+
+                          {/* + tab, bottom-right corner */}
+                          <span aria-hidden="true" className={`absolute bottom-0 right-0 w-6 h-6 inline-flex items-center justify-center rounded-full text-white pointer-events-none ${actionBg}`}>
+                            <FiPlus size={14} strokeWidth={2.5} />
+                          </span>
+
+                          {/* ✕ remove, top-right (only when an image exists) */}
+                          {editingGroupImage && (
+                            <button
+                              type="button"
+                              onClick={() => setEditingGroupImage('')}
+                              aria-label="Remove category image"
+                              className="absolute top-1 left-1 w-5 h-5 inline-flex items-center justify-center rounded-full bg-black/55 hover:bg-red-600 text-white transition-colors"
+                            >
+                              <FiX size={12} strokeWidth={2.5} />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Name + actions */}
+                        <div className="flex flex-col flex-1 min-w-0 gap-2">
+                          <input type="text" value={editingGroupName} onChange={(e) => setEditingGroupName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSaveEdit(group)} autoFocus className={`w-full h-10 px-3 text-sm border rounded-sm focus:outline-none focus:ring-2 ${theme.primaryBorder} ${theme.focusRing}`} />
+                          <div className="flex justify-end gap-2">
+                            <button onClick={() => handleSaveEdit(group)} className="bg-green-600 hover:bg-green-700 text-white h-8 px-3 rounded-sm text-sm font-medium transition-colors">Save</button>
+                            <button onClick={handleCancelEdit} className="bg-white hover:bg-gray-50 text-slate-700 border border-gray-300 h-8 px-3 rounded-sm text-sm font-medium transition-colors">Cancel</button>
+                          </div>
                         </div>
                       </div>
                     ) : (
                       <>
                         <div className="flex items-center gap-3 overflow-hidden min-w-0">
-                          <span className={`w-10 h-10 flex-shrink-0 inline-flex items-center justify-center rounded-sm ${chip.classes}`}>
-                            <chip.Icon size={20} />
+                          <span className={`w-10 h-10 flex-shrink-0 inline-flex items-center justify-center overflow-hidden rounded-sm ${group.imageUrl ? 'bg-gray-50 border border-gray-200' : chip.classes}`}>
+                            {group.imageUrl
+                              ? <img src={group.imageUrl} alt="" loading="lazy" className="w-full h-full object-cover" />
+                              : <chip.Icon size={20} />}
                           </span>
                           <div className="min-w-0 flex flex-col items-start gap-0.5">
                             <button
@@ -1040,6 +1164,14 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
           showConfirmButton={true}
         />
       )}
+
+      <AddOnManager
+        isOpen={isAddOnManagerOpen}
+        onClose={() => setIsAddOnManagerOpen(false)}
+        companyId={currentUser?.companyId}
+        items={allItems}
+        actionClass={`${actionBg} ${actionHoverBg}`}
+      />
 
       <ItemEditDrawer item={selectedItemForEdit} isOpen={isEditDrawerOpen} onClose={closeEditDrawer} onSaveSuccess={() => fetchAndSyncGroups()} />
 

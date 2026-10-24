@@ -155,9 +155,15 @@ service cloud.firestore {
         allow read, create, update: if true;
       }
       
-      // Public can read item groups (categories)
+            // Public can read item groups (categories)
       match /itemGroups/{groupId} {
         allow read: if true;
+      }
+
+      // Add-on library: customers read it to show add-on choices on product pages
+      match /addOnTemplates/{templateId} {
+        allow read: if true;
+        allow write: if isCompanyMember(companyId);
       }
       
       match /AuthorizedUser/{userId} {

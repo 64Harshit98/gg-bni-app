@@ -10,6 +10,7 @@ import {
 import { State } from '../../../enums';
 import { ROUTES } from '../../../constants/routes.constants';
 import type { PaymentCompletionData } from '../../../Components/PaymentDrawer';
+import { addOnStockToRestore } from '../../../constants/models';
 import type { Order, OrderItem } from '../../Orders';
 import type { TransactionItem, ExchangeItem } from '../ordersReturn.types';
 import {
@@ -191,6 +192,25 @@ export const useReturnTransaction = ({
               stock: firebaseIncrement(returnItem.quantity),
               updatedAt: serverTimestamp()
             }
+          );
+        }
+      });
+
+      // --- 3.5b RETURN STOCK for linked add-on items (e.g. Coke sold with a burger) ---
+      const linkedRestore = new Map<string, number>();
+      itemsToReturn.forEach(returnItem => {
+        // Read from the untouched order, since originalItemsMap lines may already be reduced/removed above
+        const billLine = (selectedSale.items || []).find((i: any) => i.id === returnItem.originalItemId);
+        if (billLine) {
+          addOnStockToRestore(billLine as any, Number(returnItem.quantity)).forEach((qty, itemId) =>
+            linkedRestore.set(itemId, (linkedRestore.get(itemId) || 0) + qty));
+        }
+      });
+      linkedRestore.forEach((qty, itemId) => {
+        if (validInventoryIds.has(itemId)) {
+          batch.update(
+            doc(db, 'companies', companyId, 'items', itemId),
+            { stock: firebaseIncrement(qty), updatedAt: serverTimestamp() }
           );
         }
       });

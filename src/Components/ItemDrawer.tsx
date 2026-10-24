@@ -18,8 +18,9 @@ import ShowWrapper from '../context/ShowWrapper';
 import { Permissions, State } from '../enums';
 import { Modal } from '../constants/Modal';
 import { VariantPicker } from './VariantPicker';
-import type { PriceTier, QuantitySlab } from '../constants/models';
-import { validateQuantitySlabs } from '../constants/models';
+import type { PriceTier, QuantitySlab, AddOnGroup } from '../constants/models';
+import { validateQuantitySlabs, buildAddOnPicks } from '../constants/models';
+import { useAddOnTemplates } from '../lib/addOnTemplates';
 
 interface ItemEditDrawerProps {
     item: Item | null;
@@ -161,6 +162,9 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
     const { itemSettings } = useItemSettings();
     const enablePriceTiers = !!itemSettings?.enablePriceTiers;
     const enableQuantitySlabs = !!itemSettings?.enableQuantitySlabs;
+    const enableAddOns = !!(itemSettings as any)?.enableAddOns;
+    const { templates: addOnTemplates, loaded: addOnsLoaded } =
+        useAddOnTemplates(enableAddOns ? currentUser?.companyId : undefined);
     const [formData, setFormData] = useState<Partial<Item>>({});
     const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
     const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
@@ -185,6 +189,22 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
     const [variantIds, setVariantIds] = useState<string[]>([]);
     const [priceTiers, setPriceTiers] = useState<PriceTier[]>([]);
     const [quantitySlabs, setQuantitySlabs] = useState<QuantitySlab[]>([]);
+    const [addOnGroupIds, setAddOnGroupIds] = useState<string[]>([]);
+    // Older items saved their add-ons inside the item; kept working, removable here
+    const [legacyAddOnGroups, setLegacyAddOnGroups] = useState<AddOnGroup[]>([]);
+    // groupId -> option ids this item shows. Missing key = all options of the group
+    const [addOnPick, setAddOnPick] = useState<Record<string, string[]>>({});
+    const [addOnOpenId, setAddOnOpenId] = useState<string | null>(null);
+    // groupId -> max choices for THIS item. Missing/0 = the group's own limit
+    const [addOnLimit, setAddOnLimit] = useState<Record<string, number>>({});
+    const toggleAddOnOption = (g: AddOnGroup, optionId: string) =>
+        setAddOnPick(prev => {
+            const cur = prev[g.id] ?? g.options.map(o => o.id);
+            const next = cur.includes(optionId) ? cur.filter(id => id !== optionId) : [...cur, optionId];
+            return next.length === 0 ? prev : { ...prev, [g.id]: next }; // at least one option stays checked
+        });
+    const selectAllAddOnOptions = (g: AddOnGroup) =>
+        setAddOnPick(prev => ({ ...prev, [g.id]: g.options.map(o => o.id) }));
     const [showCropModal, setShowCropModal] = useState(false);
     const [rawImageSrc, setRawImageSrc] = useState<string | null>(null);
     const [crop, setCrop] = useState<Crop>();
@@ -233,6 +253,11 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
 
                     setPriceTiers((liveData as any).priceTiers || []);   // 👈 NEW
                     setQuantitySlabs(liveData.quantitySlabs || []);
+                    setAddOnGroupIds(liveData.addOnGroupIds || []);
+                    setLegacyAddOnGroups(liveData.addOnGroups || []);
+                    setAddOnPick(Object.fromEntries((liveData.addOnPicks || []).filter(p => p.optionIds).map(p => [p.groupId, p.optionIds as string[]])));
+                    setAddOnLimit(Object.fromEntries((liveData.addOnPicks || []).filter(p => Number(p.maxSelect) > 0).map(p => [p.groupId, Number(p.maxSelect)])));
+                    setAddOnOpenId(null);
 
                     // NEW — existing additional photos (imageUrls minus the cover photo)
                     const savedImageUrls: string[] = (liveData as any).imageUrls || [];
@@ -325,6 +350,11 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 setVariantIds([]);
                 setPriceTiers([]);
                 setQuantitySlabs([]);
+                setAddOnGroupIds([]);
+                setLegacyAddOnGroups([]);
+                setAddOnPick({});
+                setAddOnLimit({});
+                setAddOnOpenId(null);
                 setAdditionalImageFiles([]);
                 setAdditionalImagePreviews([]);
                 setExistingAdditionalUrls([]);
@@ -551,6 +581,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
             setModal({ message: slabError, type: State.ERROR });
             return;
         }
+
         const newBarcode = String(formData.barcode || '').trim();
         const oldBarcode = String((item as any).barcode || '').trim();
 
@@ -665,6 +696,11 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 ...(enableQuantitySlabs
                     ? { quantitySlabs: [...activeSlabs].sort((a, b) => a.minQty - b.minQty) }
                     : {}),
+                ...(enableAddOns ? {
+                    addOnGroupIds,
+                    addOnPicks: buildAddOnPicks(addOnGroupIds, addOnPick, addOnLimit, addOnTemplates),
+                    addOnGroups: legacyAddOnGroups,
+                } : {}),
             };
 
             await dbOperations.updateItem(item.id, dataToUpdate);
@@ -882,45 +918,45 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                 <div className="grid gap-3 content-start">
                                     <div className="rounded-xl border border-[#dfe6fb] bg-white shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] overflow-hidden">
                                         <div className="grid grid-cols-[110px_minmax(0,1fr)] items-center md:block">
-                                        <ImagePreview imageUrl={imagePreview} alt={formData.name || "Item Preview"} />
+                                            <ImagePreview imageUrl={imagePreview} alt={formData.name || "Item Preview"} />
 
-                                        {/* CAMERA INPUT (HIDDEN) */}
-                                        <input
-                                            type="file"
-                                            accept="image/*"
-                                            capture="environment"
-                                            onChange={handleFileChange}
-                                            ref={cameraInputRef}
-                                            className="hidden"
-                                        />
-                                        {/* FILE INPUT (HIDDEN — opened by Replace button) */}
-                                        <input
-                                            type="file"
-                                            accept="image/png, image/jpeg"
-                                            onChange={handleFileChange}
-                                            ref={fileInputRef}
-                                            className="hidden"
-                                            disabled={isSaving}
-                                        />
+                                            {/* CAMERA INPUT (HIDDEN) */}
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                capture="environment"
+                                                onChange={handleFileChange}
+                                                ref={cameraInputRef}
+                                                className="hidden"
+                                            />
+                                            {/* FILE INPUT (HIDDEN — opened by Replace button) */}
+                                            <input
+                                                type="file"
+                                                accept="image/png, image/jpeg"
+                                                onChange={handleFileChange}
+                                                ref={fileInputRef}
+                                                className="hidden"
+                                                disabled={isSaving}
+                                            />
 
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5 p-2.5">
-                                            <button
-                                                type="button"
-                                                onClick={() => fileInputRef.current?.click()}
-                                                disabled={isSaving}
-                                                className={BTN_SECONDARY}
-                                            >
-                                                <FiUpload size={14} /> <span className="md:hidden">Replace photo</span><span className="hidden md:inline">Replace</span>
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => cameraInputRef.current?.click()}
-                                                disabled={isSaving}
-                                                className={BTN_SECONDARY}
-                                            >
-                                                <FiCamera size={14} /> <span className="md:hidden">Take photo</span><span className="hidden md:inline">Camera</span>
-                                            </button>
-                                        </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5 p-2.5">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => fileInputRef.current?.click()}
+                                                    disabled={isSaving}
+                                                    className={BTN_SECONDARY}
+                                                >
+                                                    <FiUpload size={14} /> <span className="md:hidden">Replace photo</span><span className="hidden md:inline">Replace</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => cameraInputRef.current?.click()}
+                                                    disabled={isSaving}
+                                                    className={BTN_SECONDARY}
+                                                >
+                                                    <FiCamera size={14} /> <span className="md:hidden">Take photo</span><span className="hidden md:inline">Camera</span>
+                                                </button>
+                                            </div>
                                         </div>
 
                                         {/* OPTION TO REMOVE LOCAL FILE IF SELECTED */}
@@ -1579,6 +1615,173 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                             <p className="text-[10px] text-[#5b6b86]">
                                                                 The slab price applies to the whole quantity. Quantities outside all slabs use the base Sales Price.
                                                             </p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* Add-ons: pick from the groups created in Item groups */}
+                                            {enableAddOns && (
+                                                <div className="border-t border-[#dfe6fb] pt-3">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#e6eeff] text-base font-semibold text-[#155dfc]">+</span>
+                                                        <div className="min-w-0">
+                                                            <b className="block text-[15px] font-semibold leading-5 text-[#0f172b]">Add-ons</b>
+                                                            <small className="block text-[11px] leading-4 text-[#5b6b86]">Pick groups created in Item groups, then choose which options this item shows</small>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => { onClose(); navigate(itemGroupRoute); }}
+                                                            className="ml-auto shrink-0 text-xs font-semibold text-[#155dfc] hover:underline"
+                                                        >
+                                                            Manage add-ons
+                                                        </button>
+                                                    </div>
+
+                                                    <div className="mt-2.5">
+                                                        {addOnTemplates.length === 0 ? (
+                                                            <p className="m-0 text-xs text-[#5b6b86]">No add-on groups yet. Create them in Item groups → Add-ons.</p>
+                                                        ) : (
+                                                            <select
+                                                                value=""
+                                                                disabled={isSaving}
+                                                                onChange={(e) => {
+                                                                    const id = e.target.value;
+                                                                    if (id) {
+                                                                        setAddOnGroupIds(prev => (prev.includes(id) ? prev : [...prev, id]));
+                                                                        setAddOnOpenId(id); // open its checklist right away
+                                                                    }
+                                                                }}
+                                                                className={`${INPUT_CLS} !h-9`}
+                                                            >
+                                                                <option value="">Add an add-on group…</option>
+                                                                {addOnTemplates.filter(t => !addOnGroupIds.includes(t.id)).map(t => (
+                                                                    <option key={t.id} value={t.id}>{t.name}</option>
+                                                                ))}
+                                                            </select>
+                                                        )}
+                                                    </div>
+
+                                                    {addOnGroupIds.length > 0 && (
+                                                        <div className="mt-2 flex flex-wrap gap-1.5">
+                                                            {addOnGroupIds.map((gid) => {
+                                                                const g = addOnTemplates.find(t => t.id === gid);
+                                                                const picked = g ? (addOnPick[gid] ?? g.options.map(o => o.id)) : [];
+                                                                const partial = !!g && picked.length < g.options.length;
+                                                                const open = addOnOpenId === gid;
+                                                                return (
+                                                                    <div
+                                                                        key={gid}
+                                                                        className={`inline-flex h-7 items-center rounded-full border pl-2.5 pr-1 text-xs ${open ? 'border-[#155dfc] bg-[#e6eeff]' : 'border-[#dfe6fb] bg-[#f5f7ff]'}`}
+                                                                    >
+                                                                        <button
+                                                                            type="button"
+                                                                            disabled={!g}
+                                                                            onClick={() => setAddOnOpenId(open ? null : gid)}
+                                                                            aria-expanded={open}
+                                                                            className="inline-flex items-center gap-1.5"
+                                                                        >
+                                                                            <span className="max-w-[140px] truncate font-semibold text-[#0f172b]">
+                                                                                {g ? g.name : addOnsLoaded ? 'Removed group' : '…'}
+                                                                            </span>
+                                                                            {g && (
+                                                                                <span className={`text-[11px] ${partial ? 'font-semibold text-[#155dfc]' : 'text-[#5b6b86]'}`}>
+                                                                                    {picked.length}/{g.options.length}
+                                                                                </span>
+                                                                            )}
+                                                                            {g && (
+                                                                                <svg
+                                                                                    viewBox="0 0 24 24"
+                                                                                    aria-hidden="true"
+                                                                                    className={`h-3 w-3 fill-none stroke-[#5b6b86] transition-transform ${open ? 'rotate-90' : ''}`}
+                                                                                    strokeWidth={2.5}
+                                                                                    strokeLinecap="round"
+                                                                                    strokeLinejoin="round"
+                                                                                >
+                                                                                    <path d="M9 6l6 6-6 6" />
+                                                                                </svg>
+                                                                            )}
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            disabled={isSaving}
+                                                                            aria-label="Remove add-on group"
+                                                                            onClick={() => setAddOnGroupIds(prev => prev.filter(id => id !== gid))}
+                                                                            className="ml-1 grid h-5 w-5 place-items-center rounded-full text-[#5b6b86] hover:bg-white hover:text-[#d5000c]"
+                                                                        ><FiX size={12} /></button>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+
+                                                    {(() => {
+                                                        const g = addOnOpenId && addOnGroupIds.includes(addOnOpenId)
+                                                            ? addOnTemplates.find(t => t.id === addOnOpenId)
+                                                            : undefined;
+                                                        if (!g) return null;
+                                                        const gid = g.id;
+                                                        const picked = addOnPick[gid] ?? g.options.map(o => o.id);
+                                                        const partial = picked.length < g.options.length;
+                                                        return (
+                                                            <div className="mt-2 grid gap-1.5 rounded-lg bg-[#f5f7ff] p-2.5">
+                                                                {g.multiple && (
+                                                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#45556c]">
+                                                                        <label htmlFor={`addon-limit-${gid}`}>Max choices</label>
+                                                                        <input
+                                                                            id={`addon-limit-${gid}`}
+                                                                            type="number"
+                                                                            min="1"
+                                                                            disabled={isSaving}
+                                                                            value={addOnLimit[gid] || ''}
+                                                                            placeholder={Number(g.maxSelect) > 0 ? `${g.maxSelect}` : '∞'}
+                                                                            onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                                            onChange={(e) => setAddOnLimit(prev => ({ ...prev, [gid]: parseInt(e.target.value, 10) || 0 }))}
+                                                                            className="h-7 w-14 rounded-md border border-[#7a8aa3] bg-white px-2 text-xs text-[#0f172b] outline-none focus:border-[#155dfc] focus:ring-2 focus:ring-[#155dfc]/40 disabled:opacity-45"
+                                                                        />
+                                                                        <span className="text-[11px] text-[#5b6b86]">Blank = group limit · 1 = choose one</span>
+                                                                    </div>
+                                                                )}
+
+                                                                <div className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
+                                                                    {g.options.map((o) => (
+                                                                        <label key={o.id} className="flex min-w-0 cursor-pointer items-center gap-2 text-xs text-[#0f172b]">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                disabled={isSaving}
+                                                                                checked={picked.includes(o.id)}
+                                                                                onChange={() => toggleAddOnOption(g, o.id)}
+                                                                                className="h-3.5 w-3.5 shrink-0 accent-[#155dfc]"
+                                                                            />
+                                                                            <span className="min-w-0 flex-1 truncate" title={o.name}>{o.name}{o.itemId ? ' (item)' : ''}</span>
+                                                                            <small className="shrink-0 text-[11px] text-[#5b6b86]">{Number(o.price) > 0 ? `+₹${o.price}` : 'Free'}</small>
+                                                                        </label>
+                                                                    ))}
+                                                                </div>
+
+                                                                {partial && (
+                                                                    <button type="button" onClick={() => selectAllAddOnOptions(g)} className="w-fit text-xs font-semibold text-[#155dfc] hover:underline">
+                                                                        Select all
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })()}
+
+                                                    {legacyAddOnGroups.length > 0 && (
+                                                        <div className="mt-2 flex flex-wrap gap-1.5">
+                                                            {legacyAddOnGroups.map((g) => (
+                                                                <span key={g.id} className="inline-flex h-7 items-center gap-1 rounded-full bg-[#fff3dd] pl-2.5 pr-1.5 text-xs font-medium text-[#bb4d00]">
+                                                                    {g.name} (this item only)
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={isSaving}
+                                                                        aria-label="Remove add-on group"
+                                                                        onClick={() => setLegacyAddOnGroups(prev => prev.filter(x => x.id !== g.id))}
+                                                                        className="grid h-4 w-4 place-items-center rounded-full hover:bg-white"
+                                                                    ><FiX size={12} /></button>
+                                                                </span>
+                                                            ))}
                                                         </div>
                                                     )}
                                                 </div>

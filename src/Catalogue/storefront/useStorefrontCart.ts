@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
-import type { Item } from '../../constants/models';
+import type { Item, AddOnOption } from '../../constants/models';
 import { getSlabForQty } from '../../constants/models';
 import type { CatalogueSalesSettings } from '../Settings/CatalogueSalesSetting';
 import { getEffectivePriceInfo, hasQuantitySlabs } from '../../Pages/utils/pricingUtils';
@@ -12,13 +12,8 @@ import { getLeadData, type CartLineItem } from './storefront.utils';
 
 export type CartLine = { item: Item; quantity: number };
 
-// Quantity-slab pricing for a cart line. `source` = the ORIGINAL catalogue item
-// (its salesPrice isn't overwritten by a slab price), `cartItem` = the line stored in cart.
-// - qty inside a slab  -> slab price becomes the line's salesPrice (discount % auto = MRP vs slab price)
-// - qty outside slabs  -> back to the normal base price logic
-// discount is set to 0 on slab lines so later getEffectivePriceInfo() calls
-// (cartTotal / syncToUpcoming) don't apply the preset discount a second time.
 export const repriceForQty = (cartItem: Item, qty: number, source: Item): Item => {
+    if ((cartItem as Item & AddOnLine).addOnKey) return cartItem; // add-on lines keep their own price
     if (!hasQuantitySlabs(source)) return cartItem;
     const slab = getSlabForQty(source, qty);
     if (slab) {
@@ -28,7 +23,18 @@ export const repriceForQty = (cartItem: Item, qty: number, source: Item): Item =
     return { ...cartItem, mrp, salesPrice: salePrice, discount: source.discount };
 };
 
-const cartKey = (i: Item) => `${i.id}__${(i as CartLineItem).tierId || '__base__'}`;
+type AddOnLine = { addOns?: AddOnOption[]; addOnKey?: string };
+
+// Same add-on combo = same key (order of selection doesn't matter)
+const addOnKeyOf = (addOns: AddOnOption[]) => addOns.map((a) => a.id).sort().join('|');
+const addOnText = (item: Item) => {
+    const a = (item as Item & AddOnLine).addOns;
+    return a?.length ? ` + ${a.map((o) => o.name).join(', ')}` : '';
+};
+
+const cartKey = (i: Item) => `${i.id}__${(i as CartLineItem).tierId || '__base__'}__${(i as Item & AddOnLine).addOnKey || ''}`;
+/** Identifies one cart line (item + pack + add-ons). Pass to updateQuantity when an item has several lines. */
+export const cartLineKey = cartKey;
 
 const readCart = (): CartLine[] => {
     try { return JSON.parse(localStorage.getItem('temp_cart') || '[]'); } catch { return []; }
@@ -83,7 +89,7 @@ export const useStorefrontCart = ({ companyId, settings, allItems, currentUser }
             const cartItemsForTax: CartItem[] = updatedCart.map((c) => {
                 const { salePrice, mrp } = getEffectivePriceInfo(c.item);
                 return {
-                    id: c.item.id ?? '', name: c.item.name, category: '', mrp, salesPrice: salePrice,
+                    id: c.item.id ?? '', name: c.item.name + addOnText(c.item), category: '', mrp, salesPrice: salePrice,
                     quantity: c.quantity, image: '', note: '', unit: c.item.unit,
                     unitMultiplier: c.item.unitMultiplier ?? 1, tax: c.item.tax,
                 };
@@ -94,7 +100,7 @@ export const useStorefrontCart = ({ companyId, settings, allItems, currentUser }
                 const line: Record<string, unknown> = {
                     id: String(c.item.id),
                     docId: c.item.firestoreDocId || c.item.id,
-                    name: c.item.name,
+                    name: c.item.name + addOnText(c.item),
                     quantity: c.quantity,
                     mrp: taxedItems[idx].mrp,
                     salesPrice: taxedItems[idx].salesPrice,
@@ -142,7 +148,7 @@ export const useStorefrontCart = ({ companyId, settings, allItems, currentUser }
     }, [cart]);
 
     /** Adds `qty` (default: one MOQ step), capped at stock unless negative inventory is allowed. Callers check the lead form first (see needsLead). */
-    const addToCart = useCallback((item: Item, tierId?: string, groupId?: string, qty?: number) => {
+    const addToCart = useCallback((item: Item, tierId?: string, groupId?: string, qty?: number, addOns: AddOnOption[] = []) => {
         if (companyId) {
             const leadData = getLeadData();
             const cleanNumber = (leadData.number || '').replace(/\D/g, '').trim();
@@ -150,14 +156,22 @@ export const useStorefrontCart = ({ companyId, settings, allItems, currentUser }
         }
         setCart((prev) => {
             const newTierId = tierId || '__base__';
-            const existing = prev.find((i) => cartKey(i.item) === `${item.id}__${newTierId}`);
+            const newKey = `${item.id}__${newTierId}__${addOnKeyOf(addOns)}`;
+            const existing = prev.find((i) => cartKey(i.item) === newKey);
             const moq = Math.max(1, Number(item.moq) || 1);
             const step = existing ? Math.max(1, Math.round(qty ?? moq)) : Math.max(moq, Math.round(qty ?? moq));
             // Packs (tiers) hold several pieces each, so only single-piece lines are capped at stock
-            const cap = !settings?.allowNegativeInventory && newTierId === '__base__' ? Number(item.stock || 0) : Infinity;
+            // Other lines of the same item (e.g. different add-ons) use the same stock
+            const usedByOtherLines = prev
+                .filter((i) => i.item.id === item.id && !(i.item as CartLineItem).tierId && cartKey(i.item) !== newKey)
+                .reduce((a, c) => a + c.quantity, 0);
+            const cap = !settings?.allowNegativeInventory && newTierId === '__base__' ? Number(item.stock || 0) - usedByOtherLines : Infinity;
             const moqQty = Math.min(step, cap - (existing?.quantity ?? 0));
             if (moqQty <= 0) return prev;
-            const { salePrice, mrp } = getEffectivePriceInfo(item);
+            const addOnExtra = addOns.reduce((sum, a) => sum + (Number(a.price) || 0), 0);
+            const { salePrice: baseSale, mrp: baseMrp } = getEffectivePriceInfo(item);
+            const salePrice = baseSale + addOnExtra;
+            const mrp = baseMrp > 0 ? baseMrp + addOnExtra : 0;
             const itemWithPrice = {
                 ...item,
                 tax: Number(item.tax ?? 0),
@@ -169,9 +183,11 @@ export const useStorefrontCart = ({ companyId, settings, allItems, currentUser }
                 tierId: newTierId === '__base__' ? undefined : newTierId,
                 tierLabel: newTierId === '__base__' ? undefined : (item as CartLineItem).tierLabel,
                 baseSalesPrice: salePrice, // price outside any quantity slab (used by checkout to reprice)
+                // Add-on lines: extra is already inside mrp/salesPrice, so no preset discount on top
+                ...(addOns.length > 0 ? { addOns, addOnKey: addOnKeyOf(addOns), discount: 0 } : {}),
             };
             const newCart = existing
-                ? prev.map((i) => cartKey(i.item) === `${item.id}__${newTierId}`
+                ? prev.map((i) => cartKey(i.item) === newKey
                     ? { ...i, item: repriceForQty(i.item, i.quantity + moqQty, item), quantity: i.quantity + moqQty }
                     : i)
                 : [...prev, { item: repriceForQty(itemWithPrice as Item, moqQty, item), quantity: moqQty }];
@@ -184,16 +200,24 @@ export const useStorefrontCart = ({ companyId, settings, allItems, currentUser }
         });
     }, [companyId, settings]);
 
-    const updateQuantity = useCallback((itemId: string, delta: number) => {
+    const updateQuantity = useCallback((itemId: string, delta: number, lineKey?: string) => {
         setCart((prev) => {
-            const newCart = prev.map((i) => {
-                if (i.item.id !== itemId) return i;
+            // One line only: the given lineKey, else the most recently added line of this item
+            let target = -1;
+            prev.forEach((c, idx) => { if (c.item.id === itemId && (!lineKey || cartKey(c.item) === lineKey)) target = idx; });
+            if (target === -1) return prev;
+            const newCart = prev.map((i, idx) => {
+                if (idx !== target) return i;
                 const moqQty = Number(i.item.moq) > 0 ? Number(i.item.moq) : 1;
                 const newQty = i.quantity + (delta > 0 ? 1 : -1);
                 if (newQty < moqQty) return null;
                 const source = allItems.find((a) => a.id === i.item.id) ?? i.item;
                 const isPack = !!(i.item as CartLineItem).tierId;
-                if (delta > 0 && !settings?.allowNegativeInventory && !isPack && newQty > Number(source.stock || 0)) return i;
+                // Other lines of the same item (e.g. different add-ons) use the same stock
+                const usedByOthers = prev.reduce((a, c, idx2) => (
+                    idx2 !== target && c.item.id === i.item.id && !(c.item as CartLineItem).tierId ? a + c.quantity : a
+                ), 0);
+                if (delta > 0 && !settings?.allowNegativeInventory && !isPack && newQty + usedByOthers > Number(source.stock || 0)) return i;
                 return { ...i, item: repriceForQty(i.item, newQty, source), quantity: newQty };
             }).filter(Boolean) as CartLine[];
             localStorage.setItem('temp_cart', JSON.stringify(newCart));

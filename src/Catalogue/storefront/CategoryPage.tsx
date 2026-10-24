@@ -4,7 +4,7 @@ import { collection, getDocs, updateDoc } from 'firebase/firestore';
 import { CheckCircle2, ChevronDown, ChevronRight, Search } from 'lucide-react';
 import { db } from '../../lib/Firebase';
 import { useAuth } from '../../context/auth-context';
-import type { Item, PriceTier } from '../../constants/models';
+import type { Item, PriceTier, AddOnOption } from '../../constants/models';
 import LeadPopUp from '../PopUp';
 import BulkQuotePopup from '../BulkQuotePopup';
 import SearchBar from '../SearchBar';
@@ -168,9 +168,9 @@ const CategoryPage: React.FC = () => {
     }, [groupId, group, groups, links]);
     const openProduct = (item: Item) => { const h = productHref(item); if (h) navigate(h); };
 
-    const addLine = (item: Item, tier?: PriceTier, qty?: number) => {
+    const addLine = (item: Item, tier?: PriceTier, qty?: number, addOns?: AddOnOption[]) => {
         const withTier: Item = tier ? { ...item, mrp: tier.mrp, salesPrice: tier.salesPrice, discount: tier.discount ?? 0, tierLabel: tier.label, unitMultiplier: tier.quantity } as CartLineItem : item;
-        cart.addToCart(withTier, tier?.id, groupId, qty);
+        cart.addToCart(withTier, tier?.id, groupId, qty, addOns);
     };
 
     const renderCard = (item: Item, i: number, opts: { rail?: boolean } = {}) => {
@@ -184,7 +184,7 @@ const CategoryPage: React.FC = () => {
                 inCart={qty} highlight={highlight === String(item.id)}
                 onOpen={() => openProduct(item)}
                 onAdd={() => (s.hasOptions ? openProduct(item) : actions.requireLead(() => addLine(item)))}
-                onInc={() => (s.hasOptions ? setTierItem(item) : cart.updateQuantity(item.id!, 1))}
+                onInc={() => (s.hasOptions ? (item.addOnGroups?.length ? openProduct(item) : setTierItem(item)) : cart.updateQuantity(item.id!, 1))}
                 onDec={() => cart.updateQuantity(item.id!, -1)}
                 onNotify={() => actions.notify(item)} />
         );
@@ -232,7 +232,7 @@ const CategoryPage: React.FC = () => {
                         shopName={name} hasGstin={!!business.gstin} settings={settings} pricesVisible={pricesVisible}
                         inCart={cart.quantityOf(product.id)} variants={variantGroup(product, listed)}
                         variantHref={(v) => productHref(v) || '#'} notified={!!actions.notified[product.id!]} whatsappHref={waHref}
-                        onAdd={(item, qty, tier) => actions.requireLead(() => addLine(item, tier, qty))}
+                        onAdd={(item, qty, tier, addOns) => actions.requireLead(() => addLine(item, tier, qty, addOns))}
                         onInc={() => cart.updateQuantity(product.id!, 1)} onDec={() => cart.updateQuantity(product.id!, -1)}
                         onNotify={() => actions.notify(product)}
                         onBulkQuote={() => (approvalEnabled ? actions.requireLead(() => setBulkItem(product)) : setBulkItem(product))}

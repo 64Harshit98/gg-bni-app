@@ -21,6 +21,7 @@ import {
 } from '../salesReturn.calculations';
 import type { SalesData, TransactionItem, ExchangeItem } from '../salesReturn.types';
 import type { Item } from '../../../../constants/models';
+import { addOnStockToRestore } from '../../../../constants/models';
 
 interface UseSaveSalesReturnParams {
     currentUser: any;
@@ -138,6 +139,8 @@ export const useSaveSalesReturn = ({
 
             // 2. HANDLE STOCK (RETURN)
             let returnedItemsGrossValue = 0;
+            // Linked add-on items (e.g. Coke sold with a burger) that go back to stock, summed per item
+            const linkedRestore = new Map<string, number>();
             itemsToReturn.forEach(returnItem => {
                 const originalItem = originalItemsMap.get(returnItem.originalItemId);
                 if (originalItem) {
@@ -148,6 +151,22 @@ export const useSaveSalesReturn = ({
                 if (returnItem.originalItemId && validInventoryIds.has(returnItem.originalItemId)) {
                     batch.update(doc(db, 'companies', companyId, 'items', returnItem.originalItemId), {
                         stock: firebaseIncrement(returnItem.quantity),
+                        updatedAt: serverTimestamp()
+                    });
+                }
+
+                // Same bill line (from the untouched original bill) tells which linked items it took
+                const billLine = selectedSale.items.find((i: any) => (i.id || i.productId) === returnItem.originalItemId);
+                if (billLine) {
+                    addOnStockToRestore(billLine as any, Number(returnItem.quantity)).forEach((qty, itemId) =>
+                        linkedRestore.set(itemId, (linkedRestore.get(itemId) || 0) + qty));
+                }
+            });
+
+            linkedRestore.forEach((qty, itemId) => {
+                if (validInventoryIds.has(itemId)) {
+                    batch.update(doc(db, 'companies', companyId, 'items', itemId), {
+                        stock: firebaseIncrement(qty),
                         updatedAt: serverTimestamp()
                     });
                 }

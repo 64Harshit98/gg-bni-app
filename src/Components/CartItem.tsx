@@ -35,6 +35,8 @@ interface GenericCartListProps<T extends CartItem> {
   State: typeof State;
   setModal: (modal: { message: string; type: State } | null) => void;
   onOpenEditDrawer: (item: Item) => void;
+  /** Click on the item name. Return true if handled (e.g. add-ons popup opened). Gets the cart line itself */
+  onNameClick?: (cartItem: T) => boolean | void;
   onItemNotFound?: (cartItem: T) => void;
   onDeleteItem: (id: string) => void;
   onDiscountChange: (id: string, value: number | string) => void;
@@ -120,6 +122,7 @@ export const GenericCartList = <T extends CartItem>({
   State,
   setModal,
   onOpenEditDrawer,
+  onNameClick,
   onItemNotFound,
   onDeleteItem,
   onDiscountChange,
@@ -207,7 +210,11 @@ export const GenericCartList = <T extends CartItem>({
                     </button>
 
 
-                    <h3 className="font-semibold text-gray-800 text-sm" title={item.name}>
+                    <h3
+                      className={`font-semibold text-gray-800 text-sm ${onNameClick ? 'cursor-pointer hover:text-blue-600' : ''}`}
+                      title={item.name}
+                      onClick={onNameClick ? () => onNameClick(item) : undefined}
+                    >
                       {item.name.slice(0, 30) || 'Unnamed Item'}
                     </h3>
                     {item.tierLabel && (
@@ -386,7 +393,10 @@ export const GenericCartList = <T extends CartItem>({
 
                 {/* Name + unit + edit */}
                 <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                  <span className="text-sm font-medium text-gray-800 truncate">
+                  <span
+                    className={`text-sm font-medium text-gray-800 truncate ${onNameClick ? 'cursor-pointer hover:text-blue-600' : ''}`}
+                    onClick={onNameClick ? () => onNameClick(item) : undefined}
+                  >
                     {item.name || 'Unnamed Item'}
                   </span>
                   {item.tierLabel && (

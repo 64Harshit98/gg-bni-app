@@ -1,3 +1,5 @@
+import { FiEdit } from 'react-icons/fi';
+
 export interface CompactCartLine {
   id: string;
   name: string;
@@ -10,6 +12,7 @@ interface CartLinesCompactProps<T extends CompactCartLine> {
   getUnitPrice: (item: T) => number;
   onQuantityChange: (id: string, quantity: number) => void;
   onDelete: (id: string) => void;
+  onEditAddOns?: (item: T) => void;
 }
 
 // Desktop side-panel cart lines (name, line total, "qty × ₹unit", −/+ stepper).
@@ -19,6 +22,7 @@ export const CartLinesCompact = <T extends CompactCartLine>({
   getUnitPrice,
   onQuantityChange,
   onDelete,
+  onEditAddOns,
 }: CartLinesCompactProps<T>) => (
   <div>
     {items.map((i) => {
@@ -33,6 +37,12 @@ export const CartLinesCompact = <T extends CompactCartLine>({
               <p className="m-0 mt-0.5 text-xs text-[#155dfc] [overflow-wrap:anywhere]">
                 + {i.addOns!.map((a) => a.name).join(', ')}
               </p>
+            )}
+            {onEditAddOns && (i.addOns?.length ?? 0) > 0 && (
+              <button type="button" onClick={() => onEditAddOns(i)}
+                className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-[#155dfc] hover:underline">
+                <FiEdit size={12} /> Edit add-ons
+              </button>
             )}
           </div>
           <div className="inline-flex items-center border border-[#7a8aa3] rounded-sm bg-white h-7 justify-self-end">

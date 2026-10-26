@@ -210,13 +210,23 @@ export const GenericCartList = <T extends CartItem>({
                     </button>
 
 
-                    <h3
-                      className={`font-semibold text-gray-800 text-sm ${onNameClick ? 'cursor-pointer hover:text-blue-600' : ''}`}
-                      title={item.name}
-                      onClick={onNameClick ? () => onNameClick(item) : undefined}
-                    >
-                      {item.name.slice(0, 30) || 'Unnamed Item'}
-                    </h3>
+                    <div className="min-w-0">
+                      <h3
+                        className={`font-semibold text-gray-800 text-sm ${onNameClick ? 'cursor-pointer hover:text-blue-600' : ''}`}
+                        title={item.name}
+                        onClick={onNameClick ? () => onNameClick(item) : undefined}
+                      >
+                        {item.name.slice(0, 30) || 'Unnamed Item'}
+                      </h3>
+                      {item.addOnText && (
+                        <p
+                          className={`m-0 mt-0.5 text-[11px] leading-[14px] text-blue-600 [overflow-wrap:anywhere] ${onNameClick ? 'cursor-pointer' : ''}`}
+                          onClick={onNameClick ? () => onNameClick(item) : undefined}
+                        >
+                          + {item.addOnText}
+                        </p>
+                      )}
+                    </div>
                     {item.tierLabel && (
                       <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-sm font-semibold flex-shrink-0">
                         {item.tierLabel}
@@ -393,12 +403,23 @@ export const GenericCartList = <T extends CartItem>({
 
                 {/* Name + unit + edit */}
                 <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                  <span
-                    className={`text-sm font-medium text-gray-800 truncate ${onNameClick ? 'cursor-pointer hover:text-blue-600' : ''}`}
-                    onClick={onNameClick ? () => onNameClick(item) : undefined}
-                  >
-                    {item.name || 'Unnamed Item'}
-                  </span>
+                  <div className="min-w-0 flex flex-col">
+                    <span
+                      className={`text-sm font-medium text-gray-800 truncate ${onNameClick ? 'cursor-pointer hover:text-blue-600' : ''}`}
+                      onClick={onNameClick ? () => onNameClick(item) : undefined}
+                    >
+                      {item.name || 'Unnamed Item'}
+                    </span>
+                    {item.addOnText && (
+                      <span
+                        className={`text-[11px] leading-[14px] text-blue-600 truncate ${onNameClick ? 'cursor-pointer' : ''}`}
+                        title={item.addOnText}
+                        onClick={onNameClick ? () => onNameClick(item) : undefined}
+                      >
+                        + {item.addOnText}
+                      </span>
+                    )}
+                  </div>
                   {item.tierLabel && (
                     <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-sm font-semibold flex-shrink-0">
                       {item.tierLabel}

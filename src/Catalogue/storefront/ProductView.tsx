@@ -74,17 +74,36 @@ export const ProductView: React.FC<Props> = (p) => {
     const unitPrice = slab && slab.salesPrice < basePrice ? slab.salesPrice : basePrice;
     const saving = baseMrp > unitPrice ? baseMrp - unitPrice : 0;
 
+    const addOnLimit = (g: AddOnGroup) => (g.multiple ? Number(g.maxSelect) || 0 : 0);
+    const hasExtraPrice = (g: AddOnGroup) => g.extraPrice != null;
+    // Going over the limit is only blocked when the group has no extra price
+    const atAddOnLimit = (g: AddOnGroup) => !hasExtraPrice(g) && addOnLimit(g) > 0 && (addOnSel[g.id] ?? []).length >= addOnLimit(g);
+    // Selection order: choices beyond the limit carry the extra price
     const pickedAddOns: AddOnOption[] = hasAddOns
-        ? (item.addOnGroups ?? []).flatMap((g: AddOnGroup) => g.options.filter((o) => (addOnSel[g.id] ?? []).includes(o.id)))
+        ? (item.addOnGroups ?? []).flatMap((g: AddOnGroup) =>
+            (addOnSel[g.id] ?? []).flatMap((id, idx) => {
+                const o = g.options.find((x) => x.id === id);
+                if (!o) return [];
+                return addOnLimit(g) > 0 && hasExtraPrice(g) && idx >= addOnLimit(g)
+                    ? [{ ...o, price: (Number(o.price) || 0) + (Number(g.extraPrice) || 0) }]
+                    : [o];
+            }))
         : [];
     const addOnExtra = pickedAddOns.reduce((sum, o) => sum + (Number(o.price) || 0), 0);
-    const addOnLimit = (g: AddOnGroup) => (g.multiple ? Number(g.maxSelect) || 0 : 0);
-    const atAddOnLimit = (g: AddOnGroup) => addOnLimit(g) > 0 && (addOnSel[g.id] ?? []).length >= addOnLimit(g);
+    // Price shown on an option: choices beyond the limit carry the extra price
+    const optionPriceFor = (g: AddOnGroup, optId: string): number => {
+        const base = Number(g.options.find((x) => x.id === optId)?.price) || 0;
+        if (addOnLimit(g) <= 0 || !hasExtraPrice(g)) return base;
+        const sel = addOnSel[g.id] ?? [];
+        const idx = sel.indexOf(optId);
+        const isExtra = idx >= 0 ? idx >= addOnLimit(g) : sel.length >= addOnLimit(g);
+        return isExtra ? base + (Number(g.extraPrice) || 0) : base;
+    };
     const toggleAddOn = (g: AddOnGroup, optionId: string) => {
         setAddOnSel((prev) => {
             const cur = prev[g.id] ?? [];
             const has = cur.includes(optionId);
-            if (!has && addOnLimit(g) > 0 && cur.length >= addOnLimit(g)) return prev; // "Choose up to N"
+            if (!has && !hasExtraPrice(g) && addOnLimit(g) > 0 && cur.length >= addOnLimit(g)) return prev; // "Choose up to N"
             if (!has && g.options.find((o) => o.id === optionId)?.soldOut) return prev;
             const next = g.multiple ? (has ? cur.filter((id) => id !== optionId) : [...cur, optionId]) : (has ? [] : [optionId]);
             return { ...prev, [g.id]: next };
@@ -329,14 +348,14 @@ export const ProductView: React.FC<Props> = (p) => {
                                     <div className="mb-2 flex items-center justify-between">
                                         <p className="text-[13px] font-medium text-slate-900">{g.name}</p>
                                         <small className="text-xs text-slate-500">
-                                            {g.multiple ? (addOnLimit(g) > 0 ? `Choose up to ${addOnLimit(g)}` : 'Choose any') : 'Choose one'}
+                                            {g.multiple ? (addOnLimit(g) > 0 ? `Choose up to ${addOnLimit(g)}${hasExtraPrice(g) && pricesVisible ? ` · extra +${formatINR(Number(g.extraPrice) || 0)} each` : ''}` : 'Choose any') : 'Choose one'}
                                         </small>
                                     </div>
                                     <div className="grid gap-2">
                                         {/* plain options first, linked inventory items after, under "Items" */}
                                         {[...g.options].sort((a, b) => Number(!!a.itemId) - Number(!!b.itemId)).map((o, idx, arr) => {
                                             const on = (addOnSel[g.id] ?? []).includes(o.id);
-                                            const price = Number(o.price) || 0;
+                                            const price = optionPriceFor(g, o.id);
                                             const off = !on && (atAddOnLimit(g) || !!o.soldOut);
                                             const firstLinked = !!o.itemId && (idx === 0 || !arr[idx - 1].itemId);
                                             return (

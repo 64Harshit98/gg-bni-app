@@ -161,7 +161,8 @@ export interface AddOnGroup {
   id: string;                 // for saved groups this is the Firestore doc id of companies/{id}/addOnTemplates
   name: string;               // "Crust", "Toppings"
   multiple: boolean;          // false = choose one, true = choose many
-  maxSelect?: number;         // only when multiple: max choices (e.g. 4 sauces out of 10). 0 / empty = no limit
+    maxSelect?: number;         // only when multiple: max choices (e.g. 4 sauces out of 10). 0 / empty = no limit
+  extraPrice?: number | null; // only with maxSelect: price added to each choice beyond maxSelect. empty = going over the limit is not allowed
   options: AddOnOption[];
 }
 
@@ -263,9 +264,11 @@ export const resolveAddOnGroups = (
       let multiple = g.multiple;
       let maxSelect = Number(g.maxSelect) || 0;
       if (multiple && Number(pick?.maxSelect) > 0) maxSelect = Number(pick!.maxSelect); // this item's own limit
+            let extraPrice = g.extraPrice != null ? Number(g.extraPrice) || 0 : undefined;
       if (multiple && maxSelect >= options.length) maxSelect = 0;                       // limit can never be reached = no limit
-      if (multiple && maxSelect === 1) { multiple = false; maxSelect = 0; }              // limit 1 = "Choose one"
-      return { ...g, options, multiple, maxSelect };
+      if (maxSelect === 0) extraPrice = undefined;                                      // no limit = no extra price
+      if (multiple && maxSelect === 1 && extraPrice === undefined) { multiple = false; maxSelect = 0; } // limit 1 = "Choose one"
+      return { ...g, options, multiple, maxSelect, extraPrice };
     })
     .filter((g) => g.options.length > 0);
   return [...(item.addOnGroups ?? []), ...fromLibrary];

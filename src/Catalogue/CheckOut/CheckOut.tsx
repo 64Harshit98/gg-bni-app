@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Check, ChevronUp, MessageCircle, ShieldCheck } from 'lucide-react';
+import { Check, ChevronUp, MessageCircle, ShieldCheck, X } from 'lucide-react';
+import type { AddOnGroup, AddOnOption } from '../../constants/models';
+import { useStorefrontData } from '../storefront/useStorefront';
 import { useNavigate, useParams } from 'react-router-dom';
 import LeadPopUp from '../PopUp';
 import { indianStates } from '../../Components/IndianStates';
@@ -94,6 +96,72 @@ const CartPage: React.FC = () => {
     const [specialInstruction, setSpecialInstruction] = useState("");
 
     const { cartItems, setCartItems, updateItemNote, updateQuantity, removeFromCart } = useCart(effectiveCompanyId, salesSettings);
+
+    // ── Edit add-ons of a cart line ──
+    const { data: storeData } = useStorefrontData(effectiveCompanyId ?? null);
+    const [editLineKey, setEditLineKey] = useState<string | null>(null);
+    const [editSel, setEditSel] = useState<Record<string, string[]>>({});
+
+    const groupsOfLine = (line: any): AddOnGroup[] =>
+        (storeData?.items.find((i) => String(i.id) === String(line.id))?.addOnGroups ?? []) as AddOnGroup[];
+    const limitOf = (g: AddOnGroup) => (g.multiple ? Number(g.maxSelect) || 0 : 0);
+    const hasExtra = (g: AddOnGroup) => g.extraPrice != null;
+    const editLine: any = editLineKey ? cartItems.find((c) => lineKeyOf(c) === editLineKey) : null;
+    const editGroups = editLine ? groupsOfLine(editLine) : [];
+
+    const openAddOnEdit = (line: any) => {
+        const chosen = new Set(((line.addOns ?? []) as AddOnOption[]).map((o) => o.id));
+        const sel: Record<string, string[]> = {};
+        groupsOfLine(line).forEach((g) => {
+            const ids = g.options.filter((o) => chosen.has(o.id)).map((o) => o.id);
+            if (ids.length) sel[g.id] = ids;
+        });
+        setEditSel(sel);
+        setEditLineKey(lineKeyOf(line));
+    };
+    const closeAddOnEdit = () => { setEditLineKey(null); setEditSel({}); };
+
+    const optionPriceFor = (g: AddOnGroup, optId: string): number => {
+        const base = Number(g.options.find((x) => x.id === optId)?.price) || 0;
+        if (limitOf(g) <= 0 || !hasExtra(g)) return base;
+        const sel = editSel[g.id] ?? [];
+        const idx = sel.indexOf(optId);
+        const isExtra = idx >= 0 ? idx >= limitOf(g) : sel.length >= limitOf(g);
+        return isExtra ? base + (Number(g.extraPrice) || 0) : base;
+    };
+
+    const toggleEditAddOn = (g: AddOnGroup, optionId: string) => {
+        setEditSel((prev) => {
+            const cur = prev[g.id] ?? [];
+            const has = cur.includes(optionId);
+            if (!has && !hasExtra(g) && limitOf(g) > 0 && cur.length >= limitOf(g)) return prev;
+            if (!has && g.options.find((o) => o.id === optionId)?.soldOut) return prev;
+            const next = g.multiple ? (has ? cur.filter((id) => id !== optionId) : [...cur, optionId]) : (has ? [] : [optionId]);
+            return { ...prev, [g.id]: next };
+        });
+    };
+
+    // Selection order: choices beyond the limit carry the extra price (same as the product page)
+    const pickedEdit: AddOnOption[] = editGroups.flatMap((g) =>
+        (editSel[g.id] ?? []).flatMap((id, idx) => {
+            const o = g.options.find((x) => x.id === id);
+            if (!o) return [];
+            return limitOf(g) > 0 && hasExtra(g) && idx >= limitOf(g)
+                ? [{ ...o, price: (Number(o.price) || 0) + (Number(g.extraPrice) || 0) }]
+                : [o];
+        }));
+
+    // Same cart line, new add-ons: unit price moves by the difference, quantity and note stay
+    const saveAddOnEdit = (list: AddOnOption[]) => {
+        if (!editLineKey) return;
+        const sum = (a: AddOnOption[]) => a.reduce((s, o) => s + (Number(o.price) || 0), 0);
+        setCartItems(cartItems.map((c: any) => {
+            if (lineKeyOf(c) !== editLineKey) return c;
+            const next = Math.round((Number(c.salesPrice) - sum(c.addOns ?? []) + sum(list)) * 100) / 100;
+            return { ...c, addOns: list, salesPrice: next };
+        }) as typeof cartItems);
+        closeAddOnEdit();
+    };
 
     useEffect(() => {
         if (movError) window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
@@ -207,6 +275,11 @@ const CartPage: React.FC = () => {
                                                         <Photo src={item.imageUrl} alt={item.name} fit="contain" className="aspect-square border border-sf-line" />
                                                         <div className="min-w-0">
                                                             <h3 className="text-sm font-medium leading-5">{item.name}{(item as { tierLabel?: string }).tierLabel ? <span className="font-normal text-slate-500"> · {(item as { tierLabel?: string }).tierLabel}</span> : null}{(item as { addOns?: { name: string }[] }).addOns?.length ? <span className="block text-xs font-normal leading-[18px] text-sf-primary">+ {(item as { addOns?: { name: string }[] }).addOns!.map((a) => a.name).join(', ')}</span> : null}</h3>
+                                                            {groupsOfLine(item).length > 0 && (
+                                                                <button type="button" onClick={() => openAddOnEdit(item)} className="mt-0.5 text-xs font-medium text-sf-primary hover:underline">
+                                                                    {(item as { addOns?: unknown[] }).addOns?.length ? 'Edit add-ons' : 'Add add-ons'}
+                                                                </button>
+                                                            )}
                                                             <p className="text-xs leading-[18px] text-slate-500">
                                                                 {item.unitMultiplier && item.unitMultiplier > 1 ? `${item.unitMultiplier} pcs` : '1 pc'}
                                                                 {shouldShowPrice && <> · {formatINR(item.salesPrice)} each {struck ? <s className="ml-0.5">{formatINR(item.baseSalesPrice!)}</s> : null}</>}
@@ -304,6 +377,71 @@ const CartPage: React.FC = () => {
                 footer={<button type="button" onClick={() => setShowAlert(false)} className={btnClass('primary')}>OK</button>}>
                 <p className="text-sm text-slate-600">Fill in your name, a 10-digit mobile number, city, state and address so the shop can deliver your order.</p>
             </Sheet>
+
+            {/* Edit add-ons popup: bottom sheet on phones, centred card on desktop */}
+            {editLine && editGroups.length > 0 && (
+                <div className="fixed inset-0 z-[90] flex items-end justify-center bg-slate-900/45 md:items-center md:p-4" onClick={closeAddOnEdit}>
+                    <div role="dialog" aria-label={`Edit add-ons for ${editLine.name}`}
+                        className="flex max-h-[85dvh] w-full flex-col overflow-hidden rounded-t-sm bg-white shadow-sf-float md:max-w-md md:rounded-sm"
+                        onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-start justify-between gap-3 border-b border-sf-line px-4 pb-3 pt-4">
+                            <div className="min-w-0">
+                                <h2 className="line-clamp-1 text-base font-semibold text-slate-900">{editLine.name}</h2>
+                                <p className="mt-0.5 text-[13px] text-slate-500">Edit add-ons</p>
+                            </div>
+                            <button type="button" onClick={closeAddOnEdit} aria-label="Close" className="grid size-9 shrink-0 place-items-center rounded-sm text-slate-500 hover:bg-sf-sunken hover:text-slate-900"><X className="size-5" /></button>
+                        </div>
+
+                        <div className="grid flex-1 gap-5 overflow-y-auto px-4 py-4">
+                            {editGroups.map((g) => (
+                                <div key={g.id}>
+                                    <div className="mb-2 flex items-center justify-between">
+                                        <p className="text-[13px] font-medium text-slate-900">{g.name}</p>
+                                        <small className="text-xs text-slate-500">
+                                            {g.multiple ? (limitOf(g) > 0 ? `Choose up to ${limitOf(g)}${hasExtra(g) && shouldShowPrice ? ` · extra +${formatINR(Number(g.extraPrice) || 0)} each` : ''}` : 'Choose any') : 'Choose one'}
+                                        </small>
+                                    </div>
+                                    <div className="grid gap-2">
+                                        {[...g.options].sort((a, b) => Number(!!a.itemId) - Number(!!b.itemId)).map((o, idx, arr) => {
+                                            const on = (editSel[g.id] ?? []).includes(o.id);
+                                            const atLimit = !hasExtra(g) && limitOf(g) > 0 && (editSel[g.id] ?? []).length >= limitOf(g);
+                                            const off = !on && (atLimit || !!o.soldOut);
+                                            const firstLinked = !!o.itemId && (idx === 0 || !arr[idx - 1].itemId);
+                                            const price = optionPriceFor(g, o.id);
+                                            return (
+                                                <React.Fragment key={o.id}>
+                                                    {firstLinked && <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-slate-500">Items</p>}
+                                                    <button type="button" aria-pressed={on} onClick={() => toggleEditAddOn(g, o.id)} disabled={off}
+                                                        className={cx('flex min-h-12 items-center justify-between gap-3 rounded-sm px-3 py-2 text-left disabled:cursor-not-allowed disabled:opacity-45',
+                                                            on ? 'border-2 border-sf-primary bg-sf-soft' : 'border border-sf-control bg-white hover:bg-sf-sunken')}>
+                                                        <span className="flex min-w-0 items-center gap-2.5">
+                                                            <span className={cx('grid size-5 shrink-0 place-items-center border', g.multiple ? 'rounded-sm' : 'rounded-full',
+                                                                on ? 'border-sf-primary bg-sf-primary text-white' : 'border-sf-control bg-white')}>
+                                                                {on && <Check className="size-3.5" strokeWidth={3} />}
+                                                            </span>
+                                                            <b className={cx('truncate text-[13px] font-medium', on ? 'text-sf-soft-ink' : 'text-slate-900')}>{o.name}</b>
+                                                        </span>
+                                                        {(shouldShowPrice || o.soldOut) && (
+                                                            <small className={cx('shrink-0 text-xs tabular-nums', on ? 'text-sf-soft-ink' : 'text-slate-500')}>
+                                                                {o.soldOut ? 'Out of stock' : price > 0 ? `+ ${formatINR(price)}` : 'Free'}
+                                                            </small>
+                                                        )}
+                                                    </button>
+                                                </React.Fragment>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="grid gap-2 border-t border-sf-line px-4 pb-5 pt-3">
+                            <button type="button" onClick={() => saveAddOnEdit(pickedEdit)} disabled={pickedEdit.length === 0} className={btnClass('primary', 'lg', true)}>Update add-ons</button>
+                            <button type="button" onClick={() => saveAddOnEdit([])} className={btnClass('secondary', 'lg', true)}>Remove all add-ons</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {orderSuccess && (
                 <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4">

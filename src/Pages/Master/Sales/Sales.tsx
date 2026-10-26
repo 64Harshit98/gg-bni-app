@@ -349,10 +349,31 @@ const Sales: React.FC = () => {
     });
     const itemHasAddOns = (item: Item) => addOnsEnabled && groupsOf(item).length > 0;
 
-    const getPickedAddOns = (item: Item) =>
-        groupsOf(item).flatMap((g: AddOnGroup) =>
-            g.options.filter(o => (addOnSelection[g.id] ?? []).includes(o.id))
-        );
+        // Selection order matters: choices beyond the group's limit carry the extra price
+    const getPickedAddOns = (item: Item): any[] =>
+        groupsOf(item).flatMap((g: AddOnGroup) => {
+            const limit = g.multiple ? Number(g.maxSelect) || 0 : 0;
+            const extra = g.extraPrice != null ? Number(g.extraPrice) || 0 : null;
+            return (addOnSelection[g.id] ?? []).flatMap((id, idx) => {
+                const o = g.options.find(x => x.id === id);
+                if (!o) return [];
+                return limit > 0 && extra !== null && idx >= limit
+                    ? [{ ...o, price: (Number(o.price) || 0) + extra }]
+                    : [o];
+            });
+        });
+
+        // Price shown on an option: choices beyond the group's limit carry the extra price
+    const optionPriceFor = (group: AddOnGroup, optId: string): number => {
+        const o = group.options.find(x => x.id === optId);
+        const base = Number(o?.price) || 0;
+        const limit = group.multiple ? Number(group.maxSelect) || 0 : 0;
+        if (limit <= 0 || group.extraPrice == null) return base;
+        const sel = addOnSelection[group.id] ?? [];
+        const idx = sel.indexOf(optId);
+        const isExtra = idx >= 0 ? idx >= limit : sel.length >= limit; // selected: its position, not selected: the next pick
+        return isExtra ? base + (Number(group.extraPrice) || 0) : base;
+    };
 
     const toggleAddOn = (group: AddOnGroup, optionId: string) => {
         setAddOnSelection(prev => {
@@ -360,7 +381,7 @@ const Sales: React.FC = () => {
             const has = cur.includes(optionId);
             // "Choose up to N": ignore taps beyond the limit
             const limit = group.multiple ? Number(group.maxSelect) || 0 : 0;
-            if (!has && limit > 0 && cur.length >= limit) return prev;
+                        if (!has && limit > 0 && cur.length >= limit && group.extraPrice == null) return prev;
             if (!has && group.options.find(o => o.id === optionId)?.soldOut) return prev;
             const next = group.multiple
                 ? (has ? cur.filter(id => id !== optionId) : [...cur, optionId])
@@ -477,8 +498,8 @@ const Sales: React.FC = () => {
 
     const amountToPayNow = useMemo(() => finalAmount, [finalAmount]);
     const netAmount = subtotal - totalDiscount;
-    const taxableValue = activeTaxMode === 'inclusive' ? netAmount - taxAmount : netAmount;
-    const roundOff = finalAmount - (activeTaxMode === 'inclusive' ? netAmount : netAmount + taxAmount);
+    // const taxableValue = activeTaxMode === 'inclusive' ? netAmount - taxAmount : netAmount;
+    // const roundOff = finalAmount - (activeTaxMode === 'inclusive' ? netAmount : netAmount + taxAmount);
 
     const {
         savedBillData, setSavedBillData,
@@ -1109,7 +1130,7 @@ const Sales: React.FC = () => {
                             <div key={group.id}>
                                 <div className="flex items-center justify-between mb-2">
                                     <span className={LABEL_CLS}>{group.name}</span>
-                                    <span className="text-[11px] text-[#5b6b86]">{group.multiple ? (Number(group.maxSelect) > 0 ? `Choose up to ${group.maxSelect}` : 'Choose any') : 'Choose one'}</span>
+                                   <span className="text-[11px] text-[#5b6b86]">{group.multiple ? (Number(group.maxSelect) > 0 ? `Choose up to ${group.maxSelect}${group.extraPrice != null ? ` · extra +₹${group.extraPrice} each` : ''}` : 'Choose any') : 'Choose one'}</span>
                                 </div>
                                 <div className="flex flex-col gap-2">
                                     {/* plain options first, linked inventory items after, under their own heading */}
@@ -1123,7 +1144,7 @@ const Sales: React.FC = () => {
                                                     type="button"
                                                     aria-pressed={on}
                                                     onClick={() => toggleAddOn(group, opt.id)}
-                                                    disabled={!on && (!!opt.soldOut || (group.multiple && Number(group.maxSelect) > 0 && (addOnSelection[group.id] ?? []).length >= Number(group.maxSelect)))}
+                                                                                                    disabled={!on && (!!opt.soldOut || (group.extraPrice == null && group.multiple && Number(group.maxSelect) > 0 && (addOnSelection[group.id] ?? []).length >= Number(group.maxSelect)))}
                                                     className={`flex items-center justify-between gap-3 h-11 px-3 rounded-sm border text-sm font-medium transition-colors disabled:opacity-45 disabled:cursor-not-allowed ${on ? 'bg-[#e6eeff] border-[#155dfc] text-[#155dfc]' : 'bg-white border-[#7a8aa3] text-[#0f172b] hover:bg-[#f5f7ff]'}`}
                                                 >
                                                     <span className="inline-flex items-center gap-2 min-w-0">
@@ -1132,7 +1153,7 @@ const Sales: React.FC = () => {
                                                         </span>
                                                         <span className="truncate">{opt.name}</span>
                                                     </span>
-                                                    <span className="tabular-nums flex-shrink-0">{opt.soldOut ? 'Out of stock' : Number(opt.price) > 0 ? `+ ₹${fmtINR(Number(opt.price))}` : 'Free'}</span>
+                                                                                                        <span className="tabular-nums flex-shrink-0">{opt.soldOut ? 'Out of stock' : optionPriceFor(group, opt.id) > 0 ? `+ ₹${fmtINR(optionPriceFor(group, opt.id))}` : 'Free'}</span>
                                                 </button>
                                             </React.Fragment>
                                         );
@@ -1330,14 +1351,19 @@ const Sales: React.FC = () => {
         : undefined;
 
     // Bill panel: desktop right column and phone/tablet bill sheet share this
-    const renderBillPanel = (onCollect: () => void) => (
+    const renderBillPanel = (onCollect: () => void, onClose?: () => void) => (
         <div className="flex-1 min-h-0 flex flex-col">
-            <div className="flex-1 min-h-0 p-5 flex flex-col gap-4 overflow-y-auto">
-                <div className="flex items-center justify-between">
+            <div className={`flex-1 min-h-0 px-5 pb-5 flex flex-col gap-4 overflow-y-auto ${onClose ? 'pt-2' : 'pt-5'}`}>
+                <div className="flex items-center justify-between gap-2 -mb-2">
                     <h2 className="m-0 text-base font-semibold text-[#0f172b]">Bill · {totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}</h2>
-                    {items.length > 0 && (
-                        <button onClick={handleClearCart} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-sm text-[13px] font-medium text-[#d5000c] bg-[#ffeef0] hover:bg-[#ffdde1] transition-colors"><FiTrash2 size={14} /> Clear</button>
-                    )}
+                    <div className="flex items-center gap-1">
+                        {items.length > 0 && (
+                            <button onClick={handleClearCart} className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-sm text-[13px] font-medium text-[#d5000c] bg-[#ffeef0] hover:bg-[#ffdde1] transition-colors"><FiTrash2 size={14} /> Clear</button>
+                        )}
+                        {onClose && (
+                            <button type="button" onClick={onClose} aria-label="Close" className="inline-flex items-center justify-center w-7 h-7 rounded-sm text-[#45556c] hover:bg-[#f5f7ff] transition-colors flex-shrink-0"><FiX size={16} /></button>
+                        )}
+                    </div>
                 </div>
 
                 <CartLinesCompact
@@ -1345,6 +1371,7 @@ const Sales: React.FC = () => {
                     getUnitPrice={(i: any) => Number(i.customPrice ?? i.salesPrice ?? i.mrp ?? 0)}
                     onQuantityChange={handleQuantityChange}
                     onDelete={handleDeleteItem}
+                    onEditAddOns={openAddOnEdit}
                 />
 
                 <div className="space-y-1.5 text-sm">
@@ -1375,12 +1402,8 @@ const Sales: React.FC = () => {
     const renderBillSheet = () =>
         isBillOpen && items.length > 0 ? (
             <div className="xl:hidden fixed inset-0 z-[60] flex items-end justify-center bg-[#020618]/45" onClick={() => setIsBillOpen(false)}>
-                <div className={`w-full md:max-w-lg h-[88dvh] flex flex-col bg-white rounded-t-sm ${SHADOW_FLOAT}`} onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-between px-4 pt-3 pb-1 flex-shrink-0">
-                        <span className={LABEL_CLS}>Review bill</span>
-                        <button type="button" onClick={() => setIsBillOpen(false)} aria-label="Close" className={ICON_BTN_CLS}><FiX size={18} /></button>
-                    </div>
-                    {renderBillPanel(() => { setIsBillOpen(false); handleProceedToPayment(); })}
+                <div className={`w-full md:max-w-lg h-[88dvh] flex flex-col bg-white rounded-t-sm pt-2 ${SHADOW_FLOAT}`} onClick={(e) => e.stopPropagation()}>
+                    {renderBillPanel(() => { setIsBillOpen(false); handleProceedToPayment(); }, () => setIsBillOpen(false))}
                 </div>
             </div>
         ) : null;
@@ -1944,7 +1967,7 @@ ${colClass || ''}`}
                         <GenericCartList
                             items={displayItems.map(i =>
                                 (i.addOns?.length ?? 0) > 0
-                                    ? { ...i, name: `${i.name} + ${i.addOns!.map(a => a.name).join(', ')}` }
+                                    ? { ...i, addOnText: i.addOns!.map(a => a.name).join(', ') }
                                     : i
                             )}
                             availableItems={availableItems}
@@ -2004,41 +2027,7 @@ ${colClass || ''}`}
 
                 {/* RIGHT PANEL — desktop only */}
                 <div className="hidden xl:flex w-[360px] flex-shrink-0 flex-col bg-white h-full relative border-l border-[#dfe6fb] z-10">
-                    <div className="flex-1 min-h-0 p-5 flex flex-col gap-4 overflow-y-auto">
-                        <h2 className="m-0 text-base font-semibold text-[#0f172b]">Bill summary</h2>
-
-                        <div className="space-y-1.5 text-sm">
-                            <div className="flex justify-between gap-4">
-                                <span className="text-[#45556c]">MRP total <span className="text-[#5b6b86]">({totalQuantity} {totalQuantity === 1 ? 'item' : 'items'})</span></span>
-                                <span className="tabular-nums">₹{fmtINR(subtotal)}</span>
-                            </div>
-                            {totalDiscount > 0 && (
-                                <div className="flex justify-between gap-4 text-[#008236]"><span>Discount</span><span className="tabular-nums">− ₹{fmtINR(totalDiscount)}</span></div>
-                            )}
-                            {showTaxRow && (
-                                <>
-                                    <div className="flex justify-between gap-4"><span className="text-[#45556c]">Taxable value</span><span className="tabular-nums">₹{fmtINR(taxableValue)}</span></div>
-                                    <div className="flex justify-between gap-4"><span className="text-[#45556c]">Tax ({activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})</span><span className="tabular-nums">₹{fmtINR(taxAmount)}</span></div>
-                                </>
-                            )}
-                            <div className="flex justify-between gap-4"><span className="text-[#45556c]">Round off</span><span className="tabular-nums">₹{fmtINR(roundOff)}</span></div>
-                        </div>
-
-                        {renderSaveBox(' on this bill')}
-
-                        <div className="flex justify-between items-baseline">
-                            <span className="text-sm text-[#45556c]">Grand total</span>
-                            <b className="text-[30px] leading-[38px] font-semibold tracking-tight tabular-nums text-[#0f172b]">₹{fmtINR(finalAmount)}</b>
-                        </div>
-
-                        <div className="mt-auto grid gap-3">
-                            <p className="m-0 text-center text-xs text-[#5b6b86]">You choose how it's paid in the next step</p>
-                            <button type="button" onClick={handleProceedToPayment} disabled={items.length === 0}
-                                className="w-full h-14 rounded-sm bg-[#155dfc] text-white text-base font-medium hover:bg-[#1447e6] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed">
-                                {isEditMode ? 'Update invoice' : 'Pay'} · ₹{fmtINR(finalAmount)}
-                            </button>
-                        </div>
-                    </div>
+                    {renderBillPanel(handleProceedToPayment)}
                 </div>
             </div>
 

@@ -8,7 +8,8 @@ export const fromTemplateDoc = (id: string, data: any): AddOnGroup => ({
   id,
   name: data?.name || '',
   multiple: data?.multiple !== false,
-  maxSelect: Number(data?.maxSelect) || 0,
+    maxSelect: Number(data?.maxSelect) || 0,
+  extraPrice: data?.extraPrice != null ? Number(data.extraPrice) : undefined,
   options: (data?.options || []) as AddOnOption[],
 });
 
@@ -44,7 +45,9 @@ export const useAddOnTemplates = (companyId?: string) => {
     const payload = {
       name: group.name.trim(),
       multiple: group.multiple,
-      maxSelect: group.multiple ? Number(group.maxSelect) || 0 : 0,
+            maxSelect: group.multiple ? Number(group.maxSelect) || 0 : 0,
+      // Firestore rejects undefined, so "not allowed" is saved as null
+      extraPrice: group.multiple && Number(group.maxSelect) > 0 && group.extraPrice != null ? Number(group.extraPrice) || 0 : null,
       options: group.options.map(cleanOption),
       updatedAt: serverTimestamp(),
     };

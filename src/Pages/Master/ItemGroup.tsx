@@ -171,6 +171,10 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
   const [isMergeOpen, setIsMergeOpen] = useState(false);
   const [mergeKeepIds, setMergeKeepIds] = useState<Record<string, string>>({});
   const [pendingMerge, setPendingMerge] = useState<{ keep: ItemGroup; duplicates: ItemGroup[] } | null>(null);
+  const [isNewGroupModalOpen, setIsNewGroupModalOpen] = useState(false);
+  const [newGroupModalName, setNewGroupModalName] = useState('');
+  const [newGroupModalError, setNewGroupModalError] = useState<string | null>(null);
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const isActive = (path: string) => location.pathname === path;
   const displayedItemGroups = useMemo(() => {
@@ -258,6 +262,12 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
   const trimmedQuery = newItemGroupName.trim();
   const canCreateGroup =
     trimmedQuery !== '' && !itemGroups.some(g => g.name.toLowerCase() === trimmedQuery.toLowerCase());
+
+  // Same rule for the New group popup
+  const modalTrimmedName = newGroupModalName.trim();
+  const modalNameExists =
+    modalTrimmedName !== '' && itemGroups.some(g => g.name.toLowerCase() === modalTrimmedName.toLowerCase());
+  const canCreateFromModal = modalTrimmedName !== '' && !modalNameExists;
 
   const actionPalette = /orange|f97316|ea580c|c2410c/i.test(theme.primaryBg) ? ACTION_COLOURS.orange : ACTION_COLOURS.blue;
   const actionBg = theme.actionBg ?? actionPalette.bg;
@@ -444,6 +454,43 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
     } catch (err) {
       console.error('Error adding item group:', err);
       setError('Failed to add item group.');
+    }
+  };
+
+  const openNewGroupModal = () => {
+    setNewGroupModalName('');
+    setNewGroupModalError(null);
+    setIsNewGroupModalOpen(true);
+  };
+
+  const closeNewGroupModal = () => {
+    if (isCreatingGroup) return;
+    setIsNewGroupModalOpen(false);
+    setNewGroupModalName('');
+    setNewGroupModalError(null);
+  };
+
+  const handleCreateGroupFromModal = async () => {
+    const name = newGroupModalName.trim();
+    if (name === '') return setNewGroupModalError('Item group name cannot be empty.');
+    if (itemGroups.some(g => g.name.toLowerCase() === name.toLowerCase())) {
+      return setNewGroupModalError('This group name already exists.');
+    }
+    if (!dbOperations) return;
+
+    setIsCreatingGroup(true);
+    setNewGroupModalError(null);
+    try {
+      await dbOperations.createItemGroup({ name, description: '' });
+      setIsNewGroupModalOpen(false);
+      setNewGroupModalName('');
+      showSuccessMessage('Group created successfully!');
+      await fetchAndSyncGroups();
+    } catch (err) {
+      console.error('Error adding item group:', err);
+      setNewGroupModalError('Failed to add item group.');
+    } finally {
+      setIsCreatingGroup(false);
     }
   };
 
@@ -726,12 +773,19 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
         {/* Desktop: tabs + New group */}
         <div className="hidden lg:flex items-center gap-3">
           {renderTabs(false)}
+          {addOnsEnabled && (
+            <button
+              type="button"
+              onClick={() => setIsAddOnManagerOpen(true)}
+              className="h-10 inline-flex items-center gap-1.5 whitespace-nowrap px-4 rounded-sm border border-[#7a8aa3] bg-white text-sm font-medium text-slate-900 transition-colors hover:bg-gray-50"
+            >
+              <FiPlus size={16} />
+              Add-ons
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => {
-              searchInputRef.current?.focus();
-              searchInputRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-            }}
+            onClick={openNewGroupModal}
             className={`h-10 inline-flex items-center gap-1.5 px-4 rounded-sm text-sm font-medium text-white transition-colors ${actionBg} ${actionHoverBg}`}
           >
             <FiPlus size={16} />
@@ -800,16 +854,6 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
                     </span>
                   )}
                 </label>
-                {addOnsEnabled && (
-                  <button
-                    type="button"
-                    onClick={() => setIsAddOnManagerOpen(true)}
-                    className="h-11 inline-flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-sm border border-[#7a8aa3] bg-white px-3 text-sm font-medium text-slate-900 transition-colors hover:bg-gray-50"
-                  >
-                    <FiPlus size={16} />
-                    Add-ons
-                  </button>
-                )}
               </div>
               <div className="hidden lg:flex gap-2">
                 <label className="relative flex-1 lg:flex-none inline-flex items-center">
@@ -837,7 +881,27 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
                 </div>
               </div>
             </div>
-
+            {/* Phone only: Add-ons + New group row under the search bar */}
+            <div className="flex gap-2 lg:hidden">
+              {addOnsEnabled && (
+                <button
+                  type="button"
+                  onClick={() => setIsAddOnManagerOpen(true)}
+                  className="h-11 flex-1 inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-sm border border-[#7a8aa3] bg-white text-sm font-medium text-slate-900 transition-colors hover:bg-gray-50"
+                >
+                  <FiPlus size={16} />
+                  Add-ons
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={openNewGroupModal}
+                className={`h-11 flex-1 inline-flex items-center justify-center gap-1.5 rounded-sm text-sm font-medium text-white transition-colors ${actionBg} ${actionHoverBg}`}
+              >
+                <FiPlus size={16} />
+                New group
+              </button>
+            </div>
             {canCreateGroup && (
               <div className={`flex items-center gap-2 px-3 py-2.5 border-[1.5px] border-dashed rounded-sm ${actionBorder} ${theme.primarySoftBg ?? 'bg-blue-50'}`}>
                 <FiPlus size={16} className={`flex-shrink-0 ${theme.primaryText}`} />
@@ -1067,6 +1131,55 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
       </main>
 
       {/* Modals & Drawers */}
+      {isNewGroupModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={closeNewGroupModal}>
+          <div className="bg-white rounded-sm shadow-xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold text-slate-900 mb-1.5">New item group</h2>
+            <p className="text-sm text-slate-600 mb-4">Enter a name for the new group.</p>
+
+            {newGroupModalError && (
+              <p className="mb-3 rounded-sm bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{newGroupModalError}</p>
+            )}
+
+            <label className="grid gap-1 mb-6">
+              <span className="text-xs font-medium text-slate-600">Group name</span>
+              <input
+                type="text"
+                autoFocus
+                value={newGroupModalName}
+                onChange={(e) => setNewGroupModalName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && canCreateFromModal && handleCreateGroupFromModal()}
+                placeholder="e.g. Beverages"
+                className={`w-full h-11 px-3 border border-[#7a8aa3] rounded-sm bg-white text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 ${theme.focusRing}`}
+              />
+              {modalNameExists && (
+                <span className="text-xs font-medium text-amber-700">
+                  A group called "{modalTrimmedName}" already exists.
+                </span>
+              )}
+            </label>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeNewGroupModal}
+                disabled={isCreatingGroup}
+                className="h-10 px-4 text-sm font-medium rounded-sm bg-white text-slate-700 border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateGroupFromModal}
+                disabled={isCreatingGroup || !canCreateFromModal}
+                className={`h-10 px-4 text-sm font-medium rounded-sm text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${actionBg} ${actionHoverBg}`}
+              >
+                {isCreatingGroup ? 'Creating…' : 'Create group'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {deleteTargetGroup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-sm shadow-xl w-full max-w-md p-5">
@@ -1168,7 +1281,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
       <AddOnManager
         isOpen={isAddOnManagerOpen}
         onClose={() => setIsAddOnManagerOpen(false)}
-        companyId={currentUser?.companyId}
+        companyId={addOnsEnabled ? currentUser?.companyId : undefined}
         items={allItems}
         actionClass={`${actionBg} ${actionHoverBg}`}
       />

@@ -30,7 +30,7 @@ import type { SalesItem } from './sales.types';
 import { TierPickerModal } from '../../../Components/TierPickerModal';
 import { hasMultiplePricing } from '../../utils/pricingUtils';
 import type { Item, AddOnGroup } from '../../../constants/models';
-import { resolveAddOnGroups, addOnStockOf } from '../../../constants/models';
+import { resolveAddOnGroups, addOnStockOf, extraChargeOf } from '../../../constants/models';
 import { useAddOnTemplates } from '../../../lib/addOnTemplates';
 import { applyRounding, calculateSaleTotals } from './sales.calculations';
 import {
@@ -349,21 +349,22 @@ const Sales: React.FC = () => {
     });
     const itemHasAddOns = (item: Item) => addOnsEnabled && groupsOf(item).length > 0;
 
-        // Selection order matters: choices beyond the group's limit carry the extra price
+    // Selection order matters: choices beyond the group's limit carry the extra price
     const getPickedAddOns = (item: Item): any[] =>
         groupsOf(item).flatMap((g: AddOnGroup) => {
             const limit = g.multiple ? Number(g.maxSelect) || 0 : 0;
-            const extra = g.extraPrice != null ? Number(g.extraPrice) || 0 : null;
             return (addOnSelection[g.id] ?? []).flatMap((id, idx) => {
                 const o = g.options.find(x => x.id === id);
                 if (!o) return [];
-                return limit > 0 && extra !== null && idx >= limit
-                    ? [{ ...o, price: (Number(o.price) || 0) + extra }]
-                    : [o];
+                // Limit + extra set: included picks are free, picks beyond the limit pay their extra charge
+                if (limit > 0 && g.extraPrice != null) {
+                    return [{ ...o, price: idx >= limit ? extraChargeOf(g, o) : 0 }];
+                }
+                return [o];
             });
         });
 
-        // Price shown on an option: choices beyond the group's limit carry the extra price
+    // Price shown on an option: choices beyond the group's limit carry the extra price
     const optionPriceFor = (group: AddOnGroup, optId: string): number => {
         const o = group.options.find(x => x.id === optId);
         const base = Number(o?.price) || 0;
@@ -372,7 +373,7 @@ const Sales: React.FC = () => {
         const sel = addOnSelection[group.id] ?? [];
         const idx = sel.indexOf(optId);
         const isExtra = idx >= 0 ? idx >= limit : sel.length >= limit; // selected: its position, not selected: the next pick
-        return isExtra ? base + (Number(group.extraPrice) || 0) : base;
+        return o ? (isExtra ? extraChargeOf(group, o) : 0) : base;
     };
 
     const toggleAddOn = (group: AddOnGroup, optionId: string) => {
@@ -381,7 +382,7 @@ const Sales: React.FC = () => {
             const has = cur.includes(optionId);
             // "Choose up to N": ignore taps beyond the limit
             const limit = group.multiple ? Number(group.maxSelect) || 0 : 0;
-                        if (!has && limit > 0 && cur.length >= limit && group.extraPrice == null) return prev;
+            if (!has && limit > 0 && cur.length >= limit && group.extraPrice == null) return prev;
             if (!has && group.options.find(o => o.id === optionId)?.soldOut) return prev;
             const next = group.multiple
                 ? (has ? cur.filter(id => id !== optionId) : [...cur, optionId])
@@ -412,21 +413,15 @@ const Sales: React.FC = () => {
         return true;
     };
 
-    // Same cart line, new add-ons: price moves by the difference, quantity and discounts stay
-    const applyAddOnEdit = (lineId: string, picked: any[]) => {
-        const sum = (list: any[]) => list.reduce((s, o) => s + (Number(o.price) || 0), 0);
-        setItems((prev: any[]) => prev.map(l => {
-            if (l.id !== lineId) return l;
-            const hasCustom = l.customPrice !== undefined && l.customPrice !== null && l.customPrice !== '';
-            const base = hasCustom ? Number(l.customPrice) - sum(l.addOns ?? []) : Number(l.salesPrice || l.mrp || 0);
-            const stock = addOnStockOf({ addOns: picked });
-            return {
-                ...l,
-                addOns: picked,
-                addOnKey: picked.map(o => o.id).sort().join('|'), // use the same separator as useSalesCart
-                addOnStock: stock.length > 0 ? stock : undefined,
-                customPrice: Math.round((base + sum(picked)) * 100) / 100,
-            };
+        const applyAddOnEdit = (lineId: string, picked: any[]) => {
+        const amount = picked.reduce((s, o) => s + (Number(o.price) || 0), 0);
+        const stock = addOnStockOf({ addOns: picked });
+        setItems((prev: any[]) => prev.map(l => l.id !== lineId ? l : {
+            ...l,
+            addOns: picked.length > 0 ? picked : undefined,
+            addOnKey: picked.length > 0 ? picked.map(o => o.id).sort().join('|') : undefined,
+            addOnStock: stock.length > 0 ? stock : undefined,
+            addOnAmount: amount > 0 ? amount : undefined,
         }));
     };
 
@@ -1130,7 +1125,7 @@ const Sales: React.FC = () => {
                             <div key={group.id}>
                                 <div className="flex items-center justify-between mb-2">
                                     <span className={LABEL_CLS}>{group.name}</span>
-                                   <span className="text-[11px] text-[#5b6b86]">{group.multiple ? (Number(group.maxSelect) > 0 ? `Choose up to ${group.maxSelect}${group.extraPrice != null ? ` · extra +₹${group.extraPrice} each` : ''}` : 'Choose any') : 'Choose one'}</span>
+                                    <span className="text-[11px] text-[#5b6b86]">{group.multiple ? (Number(group.maxSelect) > 0 ? `Choose up to ${group.maxSelect}${group.extraPrice != null ? ' · more picks are paid' : ''}` : 'Choose any') : 'Choose one'}</span>
                                 </div>
                                 <div className="flex flex-col gap-2">
                                     {/* plain options first, linked inventory items after, under their own heading */}
@@ -1144,16 +1139,16 @@ const Sales: React.FC = () => {
                                                     type="button"
                                                     aria-pressed={on}
                                                     onClick={() => toggleAddOn(group, opt.id)}
-                                                                                                    disabled={!on && (!!opt.soldOut || (group.extraPrice == null && group.multiple && Number(group.maxSelect) > 0 && (addOnSelection[group.id] ?? []).length >= Number(group.maxSelect)))}
+                                                    disabled={!on && (!!opt.soldOut || (group.extraPrice == null && group.multiple && Number(group.maxSelect) > 0 && (addOnSelection[group.id] ?? []).length >= Number(group.maxSelect)))}
                                                     className={`flex items-center justify-between gap-3 h-11 px-3 rounded-sm border text-sm font-medium transition-colors disabled:opacity-45 disabled:cursor-not-allowed ${on ? 'bg-[#e6eeff] border-[#155dfc] text-[#155dfc]' : 'bg-white border-[#7a8aa3] text-[#0f172b] hover:bg-[#f5f7ff]'}`}
                                                 >
                                                     <span className="inline-flex items-center gap-2 min-w-0">
-                                                        <span className={`w-5 h-5 flex-shrink-0 grid place-items-center border ${group.multiple ? 'rounded-sm' : 'rounded-full'} ${on ? 'bg-[#155dfc] border-[#155dfc] text-white' : 'bg-white border-[#7a8aa3]'}`}>
+                                                        <span className={`w-5 h-5 flex-shrink-0 grid place-items-center border rounded-sm ${on ? 'bg-[#155dfc] border-[#155dfc] text-white' : 'bg-white border-[#7a8aa3]'}`}>
                                                             {on && <FiCheck size={12} strokeWidth={3} />}
                                                         </span>
                                                         <span className="truncate">{opt.name}</span>
                                                     </span>
-                                                                                                        <span className="tabular-nums flex-shrink-0">{opt.soldOut ? 'Out of stock' : optionPriceFor(group, opt.id) > 0 ? `+ ₹${fmtINR(optionPriceFor(group, opt.id))}` : 'Free'}</span>
+                                                    <span className="tabular-nums flex-shrink-0">{opt.soldOut ? 'Out of stock' : optionPriceFor(group, opt.id) > 0 ? `+ ₹${fmtINR(optionPriceFor(group, opt.id))}` : 'Free'}</span>
                                                 </button>
                                             </React.Fragment>
                                         );
@@ -1176,7 +1171,7 @@ const Sales: React.FC = () => {
                             disabled={picked.length === 0}
                             className="w-full h-12 rounded-sm bg-[#155dfc] text-white font-medium hover:bg-[#1447e6] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed"
                         >
-                            {editingLineId ? 'Update add-ons' : 'Add to bill with add-ons'}
+                            {editingLineId ? 'Update add-ons' : 'Add to Cart'}
                         </button>
                         <button
                             type="button"
@@ -1368,7 +1363,7 @@ const Sales: React.FC = () => {
 
                 <CartLinesCompact
                     items={items}
-                    getUnitPrice={(i: any) => Number(i.customPrice ?? i.salesPrice ?? i.mrp ?? 0)}
+                    getUnitPrice={(i: any) => Number(i.customPrice ?? i.salesPrice ?? i.mrp ?? 0) + (Number(i.addOnAmount) || 0)}
                     onQuantityChange={handleQuantityChange}
                     onDelete={handleDeleteItem}
                     onEditAddOns={openAddOnEdit}
@@ -1526,8 +1521,8 @@ const Sales: React.FC = () => {
                                         ? Number(lastAddedCartItem.customPrice)
                                         : baseDisplayPrice;
                                     const sp = effectiveSp;
-                                    const lineSubtotal = itemHasAddOns(item)
-                                        ? Math.round(matchingCartItems.reduce((s, i) => s + Number(i.customPrice ?? 0) * (i.quantity || 0), 0) * 100) / 100
+                                                                        const lineSubtotal = itemHasAddOns(item)
+                                        ? Math.round(matchingCartItems.reduce((s, i) => s + (Number(i.customPrice ?? 0) + (Number((i as any).addOnAmount) || 0)) * (i.quantity || 0), 0) * 100) / 100
                                         : Math.round((Number(sp) * quantity) * 100) / 100;
                                     const discPct = (!hideMrp && allowItemDiscount && mrp > 0 && Number(sp) < mrp && Number(sp) > 0)
                                         ? Math.round(((mrp - Number(sp)) / mrp) * 100)

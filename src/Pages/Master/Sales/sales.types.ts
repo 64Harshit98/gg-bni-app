@@ -33,7 +33,8 @@ export interface SalesItem extends OriginalSalesItem {
     quantitySlabs?: QuantitySlab[];  // copied from Item at add-to-cart time
     slabAutoPrice?: number;          // last auto-applied slab price; if customPrice differs, user overrode it
     addOns?: AddOnOption[];          // chosen add-ons (price already included in mrp/salesPrice of this line)
-        addOnKey?: string;               // sorted add-on ids joined; same item + same key = same line
+    addOnKey?: string;               // sorted add-on ids joined; same item + same key = same line
+    addOnAmount?: number;            // add-ons total per 1 unit. Not part of mrp / discount
     addOnStock?: { itemId: string; qty: number }[]; // linked inventory items this line takes (saved on the invoice, used when the bill is edited)
 }
 

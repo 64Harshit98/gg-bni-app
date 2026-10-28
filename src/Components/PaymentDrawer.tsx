@@ -179,7 +179,7 @@ const FIELD_CLS = 'w-full h-10 px-3 text-sm text-[#0f172b] placeholder:text-[#5b
 const LABEL_CLS = 'block text-xs font-medium text-[#45556c] mb-1';
 const OVERLINE_CLS = 'text-[11px] leading-4 font-semibold tracking-[0.08em] uppercase text-[#5b6b86]';
 const BTN_TEXT_PRIMARY = 'justify-self-start inline-flex items-center gap-1.5 h-8 px-3 text-[13px] font-medium text-[#155dfc] hover:bg-[#e6eeff] rounded-sm transition-colors';
-const DISC_BOX = 'flex items-center gap-1 h-10 px-2.5 rounded-sm border border-[#7a8aa3]';
+const DISC_BOX = 'flex items-center gap-1 h-10 px-2.5 rounded-sm border';
 const SEG_WRAP = 'flex p-[3px] gap-0.5 bg-[#f5f7ff] border border-[#dfe6fb] rounded-sm';
 const SEG_ON = 'bg-white text-[#155dfc] shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]';
 const SEG_OFF = 'text-[#45556c] hover:text-[#0f172b]';
@@ -426,7 +426,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const longPressTimer = useRef<NodeJS.Timeout | null>(null);
     // Values captured when a pop-up opens, so Cancel / Esc can restore them
     const popupSnapshot = useRef<any>(null);
-    const [discountInfo, setDiscountInfo] = useState<string | null>(null);
+    const [discountBlocked, setDiscountBlocked] = useState(false);
+    const blockedTimer = useRef<NodeJS.Timeout | null>(null);
     const [addressType, setAddressType] = useState<'billing' | 'shipping'>('billing');
     const [isSameAsBilling, setIsSameAsBilling] = useState(true);
     const [shippingName, setShippingName] = useState('');
@@ -1087,7 +1088,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             shippingGST, shippingAddress, shippingState, shippingPinCode, isSameAsBilling,
             narration, expenses,
             transport: { transportName, grRrNo, grRrDate, vehicleNo, stationFrom, pinCode },
-            discount, discountPercent, taxMode,
+            discount, discountPercent,
         };
         if (which === 'gst') setShowGstAddressModal(true);
         if (which === 'note') setShowNarrationModal(true);
@@ -1115,7 +1116,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 setVehicleNo(snap.transport.vehicleNo); setStationFrom(snap.transport.stationFrom); setPinCode(snap.transport.pinCode);
             } else if (which === 'discount') {
                 setDiscount(snap.discount); setDiscountPercent(snap.discountPercent);
-                if (snap.taxMode !== taxMode && onTaxModeChange) onTaxModeChange(snap.taxMode);
             }
         }
         closePopups();
@@ -1138,9 +1138,19 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         closePopups();
     };
 
-    const handleDiscountPressStart = () => longPressTimer.current = setTimeout(() => setIsDiscountLocked(false), 500);
+    const handleDiscountPressStart = () => {
+        longPressTimer.current = setTimeout(() => {
+            setIsDiscountLocked(false);
+            setDiscountBlocked(false); // long press succeeded -> remove red state
+        }, 500);
+    };
     const handleDiscountPressEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
-    const handleDiscountClick = () => { if (isDiscountLocked) { setDiscountInfo("Cannot edit"); setTimeout(() => setDiscountInfo(null), 3000); } };
+    const handleDiscountClick = () => {
+        if (!isDiscountLocked) return;
+        setDiscountBlocked(true);
+        if (blockedTimer.current) clearTimeout(blockedTimer.current); // no overlapping timers
+        blockedTimer.current = setTimeout(() => setDiscountBlocked(false), 1200);
+    };
     // Sales Setting cap on Bill Discount — 0/unset means no cap. Converts
     // whichever unit the owner configured (% or ₹) to both, against the
     // current bill total, so either input can be clamped directly.
@@ -1311,7 +1321,28 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const expenseSummary = `${filledExpenses[0]?.name?.trim() || 'Expense'}${filledExpenses.length > 1 ? ` +${filledExpenses.length - 1} more` : ''} · ₹${fmtShort(parsedExpense)} · added to bill`;
 
     const transportSummary = [transportName, grRrNo && `GR/RR ${grRrNo}`, grRrDate, vehicleNo, stationFrom, pinCode].filter(Boolean).join(' · ') || 'Transport details added';
-    const discountRowSummary = `${discount > 0 ? `₹${fmtShort(discount)} off` : 'No discount'} · GST ${taxMode}`;
+    const discountRowSummary = `₹${fmtShort(discount)} off · whole bill`;
+
+    // GST on prices — main control, lives in the drawer (not in a pop-up)
+    const taxToggleBlock = (
+        <div className="grid gap-1.5">
+            <div className={OVERLINE_CLS}>GST on prices</div>
+            <div className={SEG_WRAP} role="group">
+                {(['exempt', 'inclusive', 'exclusive'] as const).map((m) => (
+                    <button
+                        key={m}
+                        type="button"
+                        onClick={() => onTaxModeChange && onTaxModeChange(m)}
+                        disabled={isTaxToggleLocked}
+                        aria-pressed={taxMode === m}
+                        className={`flex-1 h-9 rounded-sm text-sm font-medium transition-all ${taxMode === m ? SEG_ON : SEG_OFF} ${isTaxToggleLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                    >
+                        {m.charAt(0).toUpperCase() + m.slice(1)}
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
 
     const hasDiscountExtra = discount > 0;
     const showGstRow = showPartyExtras && hasGst;
@@ -1337,10 +1368,10 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                         <ExtraRow tint={TINT_BLUE} icon={transportIcon} title="Transport details" subtitle={transportSummary} onClick={() => openPopup('transport')} />
                     )}
                     {showNoteRow && (
-                        <ExtraRow tint={TINT_AMBER} icon={noteIcon} title="Note" subtitle={narration} onClick={() => openPopup('note')} />
+                        <ExtraRow tint={TINT_AMBER} icon={noteIcon} title="Narration" subtitle={narration} onClick={() => openPopup('note')} />
                     )}
                     {hasDiscountExtra && (
-                        <ExtraRow tint={TINT_GREEN} icon={discountTaxIcon} title="Bill discount & tax" subtitle={discountRowSummary} onClick={() => openPopup('discount')} />
+                        <ExtraRow tint={TINT_GREEN} icon={discountTaxIcon} title="Bill discount" subtitle={discountRowSummary} onClick={() => openPopup('discount')} />
                     )}
                 </div>
             )}
@@ -1348,8 +1379,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 <div className="flex flex-wrap gap-2">
                     {showPartyExtras && !hasGst && <AddChip label="GST & address" onClick={() => openPopup('gst')} />}
                     {showTransportExtra && !hasTransportDetails && <AddChip label="Transport details" onClick={() => openPopup('transport')} />}
-                    {!hasDiscountExtra && <AddChip label="Bill discount & tax" onClick={() => openPopup('discount')} />}
-                    {showNoteExtra && !narration && <AddChip label="Note" onClick={() => openPopup('note')} />}
+                    {!hasDiscountExtra && <AddChip label="Bill discount" onClick={() => openPopup('discount')} />}
+                    {showNoteExtra && !narration && <AddChip label="Narration" onClick={() => openPopup('note')} />}
                     {showExpenseExtra && !hasExpense && <AddChip label="Shop expense" onClick={() => openPopup('expense')} />}
                 </div>
             )}
@@ -1437,14 +1468,14 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 <PopupDialog
                     tint={TINT_AMBER}
                     icon={noteIcon}
-                    title="Note"
-                    subtitle="Shows on this bill"
+                    title="Narration"
+                    subtitle="Will show on this bill"
                     onCancel={() => cancelPopup('note')}
                     onSave={closePopups}
-                    saveLabel="Save note"
+                    saveLabel="Save narration"
                 >
                     <div>
-                        <span className={LABEL_CLS}>Note on bill</span>
+                        <span className={LABEL_CLS}>Narration on bill</span>
                         <textarea placeholder="e.g. Delivered to shop, 2 bags" value={narration} onChange={(e) => setNarration(e.target.value)} className="w-full p-3 text-sm leading-[21px] text-[#0f172b] placeholder:text-[#5b6b86] rounded-sm border border-[#7a8aa3] bg-white outline-none focus:border-[#155dfc] focus:ring-2 focus:ring-[#155dfc]/20 resize-none" rows={3} autoFocus />
                     </div>
                 </PopupDialog>
@@ -1493,7 +1524,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 <PopupDialog
                     tint={TINT_GREEN}
                     icon={discountTaxIcon}
-                    title="Bill discount & tax"
+                    title="Bill discount"
                     subtitle="Applies to the whole bill"
                     onCancel={() => cancelPopup('discount')}
                     onSave={closePopups}
@@ -1509,14 +1540,14 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                         onClick={handleDiscountClick}
                     >
                         <div className="flex items-center gap-1.5 mb-1">
-                            <span className={`text-xs font-medium ${isDiscountLocked ? 'text-[#45556c]' : 'text-[#155dfc]'}`}>Bill discount</span>
+                            <span className={`text-xs font-medium ${isDiscountLocked ? 'text-[#d5000c]' : 'text-[#155dfc]'}`}>Bill discount</span>
                             {isDiscountLocked && lockIcon}
-                            {discountInfo && (
-                                <span className="text-[10px] text-[#d5000c] bg-[#ffeef0] px-1.5 rounded animate-pulse">{discountInfo}</span>
+                            {discountBlocked && (
+                                <span className="text-[11px] font-semibold text-white bg-[#d5000c] px-1.5 py-0.5 rounded-sm">Cannot edit</span>
                             )}
                         </div>
                         <div className="grid grid-cols-2 gap-2">
-                            <div className={`${DISC_BOX} ${isDiscountLocked ? 'bg-[#f5f7ff]' : 'bg-white'}`}>
+                            <div className={`${DISC_BOX} ${isDiscountLocked ? 'border-[#d5000c] bg-[#ffeef0]' : 'border-[#7a8aa3] bg-white'}`}>
                                 <input
                                     type="number"
                                     placeholder="0"
@@ -1527,7 +1558,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                 />
                                 <i className="not-italic text-[#5b6b86] text-sm">%</i>
                             </div>
-                            <div className={`${DISC_BOX} ${isDiscountLocked ? 'bg-[#f5f7ff]' : 'bg-white'}`}>
+                            <div className={`${DISC_BOX} ${isDiscountLocked ? 'border-[#d5000c] bg-[#ffeef0]' : 'border-[#7a8aa3] bg-white'}`}>
                                 <i className="not-italic text-[#5b6b86] text-sm">₹</i>
                                 <input
                                     id="discount"
@@ -1540,24 +1571,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                 />
                             </div>
                         </div>
-                        <div className="text-xs text-[#5b6b86] mt-1">{isDiscountLocked ? 'Press and hold to edit.' : 'Type either — the other fills in.'}</div>
-                    </div>
-
-                    <div>
-                        <span className={LABEL_CLS}>GST on prices</span>
-                        <div className={SEG_WRAP} role="group">
-                            {(['exempt', 'inclusive', 'exclusive'] as const).map((m) => (
-                                <button
-                                    key={m}
-                                    type="button"
-                                    onClick={() => onTaxModeChange && onTaxModeChange(m)}
-                                    disabled={isTaxToggleLocked}
-                                    aria-pressed={taxMode === m}
-                                    className={`flex-1 h-9 rounded-sm text-sm font-medium transition-all ${taxMode === m ? SEG_ON : SEG_OFF} ${isTaxToggleLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                                >
-                                    {m.charAt(0).toUpperCase() + m.slice(1)}
-                                </button>
-                            ))}
+                        <div className={`text-xs mt-1 ${isDiscountLocked ? 'text-[#d5000c] font-medium' : 'text-[#5b6b86]'}`}>
+                            {isDiscountLocked ? 'Locked.' : 'Type either — the other fills in.'}
                         </div>
                     </div>
 
@@ -1745,6 +1760,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     <div className="shrink-0 md:shrink md:flex-1 md:min-w-0 md:overflow-y-auto px-4 py-4 md:px-6 md:py-5 grid grid-cols-1 auto-rows-max gap-3.5 content-start">
 
                         {customerBlock}
+
+                        {taxToggleBlock}
 
                         {/* Allocation bar */}
                         <div className="grid gap-1.5">

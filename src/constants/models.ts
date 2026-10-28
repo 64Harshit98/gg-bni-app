@@ -153,7 +153,8 @@ export interface AddOnOption {
   price: number | string;     // extra amount on top of the item price (0 = free). String only while typing in the form; saved as number
   itemId?: string;            // set when this option is an inventory item (e.g. Coke sold with a burger)
   itemQty?: number;           // pieces of that item taken from stock per 1 add-on (default 1)
-  syncPrice?: boolean;        // linked option: use the inventory item's current price instead of the saved one
+    syncPrice?: boolean;        // linked option: use the inventory item's current price instead of the saved one
+  extraPrice?: number | null; // charge when picked beyond the group's limit. empty = option's Price, then the group's flat extra
   soldOut?: boolean;          // runtime only (set by resolveAddOnGroups): linked item has not enough stock
 }
 
@@ -232,7 +233,15 @@ export const validateAddOnGroups = (groups: AddOnGroup[]): string | null => {
   }
   return null;
 };
+/** Charge for a pick beyond the limit: option's own Extra, else its Price, else the group's flat extra. */
+export const extraChargeOf = (g: AddOnGroup, o: AddOnOption): number =>
+  o.extraPrice != null
+    ? Number(o.extraPrice) || 0
+    : Number(o.price) > 0
+      ? Number(o.price)
+      : Number(g.extraPrice) || 0;
 
+/** All add-on groups of an item: legacy groups saved on the item + groups picked from the library (only the options this item chose). */
 export const resolveAddOnGroups = (
   item: {
     addOnGroups?: AddOnGroup[];

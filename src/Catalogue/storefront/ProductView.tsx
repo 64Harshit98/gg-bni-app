@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Bell, Check, ChevronRight, FileText, MessageCircle, Share2, ShieldCheck, ShoppingCart, X } from 'lucide-react';
 import type { Item, ItemGroup, PriceTier, AddOnGroup, AddOnOption } from '../../constants/models';
-import { getSlabForQty } from '../../constants/models';
+import { getSlabForQty, extraChargeOf } from '../../constants/models';
 import type { CatalogueSalesSettings } from '../Settings/CatalogueSalesSetting';
 import { getAllTiers, getEffectivePriceInfo } from '../../Pages/utils/pricingUtils';
 import { productState } from './productState';
@@ -84,20 +84,22 @@ export const ProductView: React.FC<Props> = (p) => {
             (addOnSel[g.id] ?? []).flatMap((id, idx) => {
                 const o = g.options.find((x) => x.id === id);
                 if (!o) return [];
-                return addOnLimit(g) > 0 && hasExtraPrice(g) && idx >= addOnLimit(g)
-                    ? [{ ...o, price: (Number(o.price) || 0) + (Number(g.extraPrice) || 0) }]
-                    : [o];
+                if (addOnLimit(g) > 0 && hasExtraPrice(g)) {
+                    return [{ ...o, price: idx >= addOnLimit(g) ? extraChargeOf(g, o) : 0 }];
+                }
+                return [o];
             }))
         : [];
     const addOnExtra = pickedAddOns.reduce((sum, o) => sum + (Number(o.price) || 0), 0);
     // Price shown on an option: choices beyond the limit carry the extra price
     const optionPriceFor = (g: AddOnGroup, optId: string): number => {
-        const base = Number(g.options.find((x) => x.id === optId)?.price) || 0;
-        if (addOnLimit(g) <= 0 || !hasExtraPrice(g)) return base;
+        const opt = g.options.find((x) => x.id === optId);
+        const base = Number(opt?.price) || 0;
+        if (!opt || addOnLimit(g) <= 0 || !hasExtraPrice(g)) return base;
         const sel = addOnSel[g.id] ?? [];
         const idx = sel.indexOf(optId);
         const isExtra = idx >= 0 ? idx >= addOnLimit(g) : sel.length >= addOnLimit(g);
-        return isExtra ? base + (Number(g.extraPrice) || 0) : base;
+        return isExtra ? extraChargeOf(g, opt) : 0;
     };
     const toggleAddOn = (g: AddOnGroup, optionId: string) => {
         setAddOnSel((prev) => {
@@ -348,7 +350,7 @@ export const ProductView: React.FC<Props> = (p) => {
                                     <div className="mb-2 flex items-center justify-between">
                                         <p className="text-[13px] font-medium text-slate-900">{g.name}</p>
                                         <small className="text-xs text-slate-500">
-                                            {g.multiple ? (addOnLimit(g) > 0 ? `Choose up to ${addOnLimit(g)}${hasExtraPrice(g) && pricesVisible ? ` · extra +${formatINR(Number(g.extraPrice) || 0)} each` : ''}` : 'Choose any') : 'Choose one'}
+                                            {g.multiple ? (addOnLimit(g) > 0 ? `Choose up to ${addOnLimit(g)}${hasExtraPrice(g) ? ' · more picks are paid' : ''}` : 'Choose any') : 'Choose one'}
                                         </small>
                                     </div>
                                     <div className="grid gap-2">
@@ -365,8 +367,7 @@ export const ProductView: React.FC<Props> = (p) => {
                                                         className={cx('flex min-h-12 items-center justify-between gap-3 rounded-sm px-3 py-2 text-left disabled:cursor-not-allowed disabled:opacity-45',
                                                             on ? 'border-2 border-sf-primary bg-sf-soft' : 'border border-sf-control bg-white hover:bg-sf-sunken')}>
                                                         <span className="flex min-w-0 items-center gap-2.5">
-                                                            <span className={cx('grid size-5 shrink-0 place-items-center border',
-                                                                g.multiple ? 'rounded-sm' : 'rounded-full',
+                                                            <span className={cx('grid size-5 shrink-0 place-items-center border rounded-sm',
                                                                 on ? 'border-sf-primary bg-sf-primary text-white' : 'border-sf-control bg-white')}>
                                                                 {on && <Check className="size-3.5" strokeWidth={3} />}
                                                             </span>

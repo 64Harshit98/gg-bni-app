@@ -308,7 +308,7 @@ const Journal: React.FC = () => {
     handleSendWhatsapp,
     handleSendWhatsappSnapto,
     handleSendReminder,
-    handleSendReminderSnapto,
+    //handleSendReminderSnapto,
     handleShowQr,
   } = useInvoiceCommunication({ currentUser, salesSettings, isPosBasicPlan, setModal });
 
@@ -657,15 +657,6 @@ const Journal: React.FC = () => {
               className={BTN_SECONDARY}
             >
               {sendingPdf ? <Spinner /> : <>Remind</>}
-            </button>
-          )}
-          {invoice.status === 'Unpaid' && invoice.partyNumber && (
-            <button
-              onClick={(e) => { e.stopPropagation(); handleSendReminderSnapto(invoice); }}
-              disabled={sendingPdf}
-              className={BTN_SECONDARY}
-            >
-              {sendingPdf ? <Spinner /> : <>Remind (Snapto)</>}
             </button>
           )}
 

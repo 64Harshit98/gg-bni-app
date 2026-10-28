@@ -167,7 +167,7 @@ export const GenericCartList = <T extends CartItem>({
           const isUnlinked = typeof item.name === 'string' && item.name.includes('(Not in DB)');
 
           const netPrice = parseFloat(displayPrice) || 0;
-          const lineSubtotal = Math.round((netPrice * (item.quantity || 1)) * 100) / 100;
+                    const lineSubtotal = Math.round(((netPrice + (Number(item.addOnAmount) || 0)) * (item.quantity || 1)) * 100) / 100;
           const handleDiscountChange = (val: string) => {
             if (val === '') {
               onDiscountChange(item.id, val);

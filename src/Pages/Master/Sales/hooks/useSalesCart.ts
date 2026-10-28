@@ -66,7 +66,7 @@ export const useSalesCart = ({
     const [isPriceLocked, setIsPriceLocked] = useState(true);
     const [priceInfo, setPriceInfo] = useState<string | null>(null);
 
-        const [duplicateItemPrompt, setDuplicateItemPrompt] = useState<{ item: Item; existingCount: number; tier?: PriceTier; addOns?: AddOnOption[] } | null>(null);
+    const [duplicateItemPrompt, setDuplicateItemPrompt] = useState<{ item: Item; existingCount: number; tier?: PriceTier; addOns?: AddOnOption[] } | null>(null);
     const [isScannerOpen, setIsScannerOpen] = useState(false);
 
     const [barcodeToLink, setBarcodeToLink] = useState<string | null>(null);
@@ -99,7 +99,10 @@ export const useSalesCart = ({
                 id: crypto.randomUUID(),
                 productId: item.id,
                 isEditable: true,
-                customPrice: item.effectiveUnitPrice,
+                // saved effectiveUnitPrice includes add-ons; the cart keeps them separate
+                customPrice: item.effectiveUnitPrice !== undefined
+                    ? Number(item.effectiveUnitPrice) - (Number(item.addOnAmount) || 0)
+                    : undefined,
                 quantity: item.quantity || 1,
                 mrp: item.mrp || 0,
                 discount: item.discount || 0,
@@ -219,9 +222,9 @@ export const useSalesCart = ({
 
         const itemTaxExtracted = Number(itemToAdd.tax ?? (itemToAdd as any).taxRate ?? salesSettings?.defaultTaxRate ?? 0);
 
-        const addOnExtra = addOns.reduce((sum, a) => sum + (Number(a.price) || 0), 0);
-        const mrp = Number(priceSource.mrp || 0) > 0 ? Number(priceSource.mrp) + addOnExtra : 0;
-        const salesPrice = Number(priceSource.salesPrice || 0) > 0 ? Number(priceSource.salesPrice) + addOnExtra : 0;
+        const addOnAmount = addOns.reduce((sum, a) => sum + (Number(a.price) || 0), 0);
+        const mrp = Number(priceSource.mrp || 0) > 0 ? Number(priceSource.mrp) : 0;
+        const salesPrice = Number(priceSource.salesPrice || 0) > 0 ? Number(priceSource.salesPrice) : 0;
         const presetDiscount = Number(priceSource.discount || 0);
         const initialMoq = Number((itemToAdd as any).moq || 1);
 
@@ -270,6 +273,7 @@ export const useSalesCart = ({
             tierQuantity: tier?.quantity || itemToAdd.unitMultiplier || 1,  // 👈 NEW — base tier ka fallback
             addOns: addOns.length > 0 ? addOns : undefined,
             addOnKey: addOns.length > 0 ? addOnKeyOf(addOns) : undefined,
+            addOnAmount: addOnAmount > 0 ? addOnAmount : undefined,
         };
 
         // Quantity slabs: initial qty (MOQ) might already fall in a slab
@@ -298,7 +302,7 @@ export const useSalesCart = ({
         });
     };
 
-        const addItemWithAddOns = (item: Item, addOns: AddOnOption[], askIfDuplicate = false) => {
+    const addItemWithAddOns = (item: Item, addOns: AddOnOption[], askIfDuplicate = false) => {
         const key = addOnKeyOf(addOns);
         const matches = items.filter(i => i.productId === item.id && !i.tierId && (i.addOnKey || '') === key);
 
@@ -357,11 +361,11 @@ export const useSalesCart = ({
     const handleIncreaseExistingQuantity = () => {
         if (!duplicateItemPrompt) return;
         const targetProductId = duplicateItemPrompt.item.id;
-                const targetTierId = duplicateItemPrompt.tier?.id;   // 👈 NEW
+        const targetTierId = duplicateItemPrompt.tier?.id;   // 👈 NEW
         const targetAddOnKey = addOnKeyOf(duplicateItemPrompt.addOns ?? []);
 
         setItems(prev => {
-                        const matches = prev.filter(i => i.productId === targetProductId && (i.tierId || undefined) === targetTierId && (i.addOnKey || '') === targetAddOnKey);
+            const matches = prev.filter(i => i.productId === targetProductId && (i.tierId || undefined) === targetTierId && (i.addOnKey || '') === targetAddOnKey);
             if (matches.length === 0) return prev;
 
             const lastAdded = matches.reduce((latest, current) =>
@@ -379,7 +383,7 @@ export const useSalesCart = ({
     // User ne "Naya Item Add Karo" choose kiya
     const handleAddAsNewLine = () => {
         if (!duplicateItemPrompt) return;
-                addItemToCart(duplicateItemPrompt.item, duplicateItemPrompt.tier, duplicateItemPrompt.addOns);
+        addItemToCart(duplicateItemPrompt.item, duplicateItemPrompt.tier, duplicateItemPrompt.addOns);
         setDuplicateItemPrompt(null);
     };
     const closeBarcodeLinkModal = () => {
@@ -544,9 +548,8 @@ export const useSalesCart = ({
             if (cartItem.productId === selectedItemForEdit?.id || cartItem.id === selectedItemForEdit?.id) {
                 const mergedItem = { ...cartItem, ...updateForCart } as SalesItem;
 
-                const addOnExtra = (cartItem.addOns ?? []).reduce((sum, a) => sum + (Number(a.price) || 0), 0);
-                const mrp = Number(mergedItem.mrp || 0) > 0 ? Number(mergedItem.mrp) + addOnExtra : 0;
-                const salesPrice = Number(mergedItem.salesPrice || 0) > 0 ? Number(mergedItem.salesPrice) + addOnExtra : 0;
+                const mrp = Number(mergedItem.mrp || 0) > 0 ? Number(mergedItem.mrp) : 0;
+                const salesPrice = Number(mergedItem.salesPrice || 0) > 0 ? Number(mergedItem.salesPrice) : 0;
                 const presetDiscount = Number(mergedItem.discount || 0);
                 const existingDiscount2 = Number(mergedItem.discount2 || 0);
 
@@ -571,10 +574,6 @@ export const useSalesCart = ({
                 finalNetPrice = applyRounding(finalNetPrice, isRoundingEnabled, roundingInterval);
 
                 mergedItem.customPrice = finalNetPrice;
-                if (addOnExtra > 0) {
-                    mergedItem.mrp = mrp;
-                    mergedItem.salesPrice = salesPrice;
-                }
                 mergedItem.discount = parseFloat(calculatedDiscount.toFixed(2)); // Make sure discount updates!
                 mergedItem.discount2 = existingDiscount2;
                 return mergedItem;

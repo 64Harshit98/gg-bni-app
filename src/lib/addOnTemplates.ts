@@ -17,8 +17,9 @@ export const fromTemplateDoc = (id: string, data: any): AddOnGroup => ({
 const cleanOption = (o: AddOnOption): AddOnOption => ({
   id: o.id,
   name: o.name.trim(),
-  price: Number(o.price) || 0,
-    ...(o.itemId ? { itemId: o.itemId, itemQty: Number(o.itemQty) || 1, syncPrice: !!o.syncPrice } : {}),
+    price: Number(o.price) || 0,
+  ...(o.extraPrice != null ? { extraPrice: Number(o.extraPrice) || 0 } : {}),
+  ...(o.itemId ? { itemId: o.itemId, itemQty: Number(o.itemQty) || 1, syncPrice: !!o.syncPrice } : {}),
 });
 
 // The company's add-on library. Pass undefined to skip loading.

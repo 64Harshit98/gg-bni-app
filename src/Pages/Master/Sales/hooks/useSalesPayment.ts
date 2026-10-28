@@ -145,8 +145,8 @@ export const useSalesPayment = ({
                     effectiveUnitPrice = mrp * (1 - currentDiscount / 100);
                 }
 
-                // If the user's custom price is higher than the MRP, flag it
-                if (effectiveUnitPrice > mrp) {
+                // If the user's custom price is higher than the MRP, flag it (0.01 tolerance for float rounding)
+                if (effectiveUnitPrice - mrp > 0.01) {
                     invalidMrpItems.push(`${item.name} (Max: ₹${mrp})`);
                 }
             }

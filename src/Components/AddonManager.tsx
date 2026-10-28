@@ -43,6 +43,8 @@ export const AddOnManager: React.FC<AddOnManagerProps> = ({ isOpen, onClose, com
 
     const itemName = (id?: string) => items.find((i) => i.id === id)?.name;
     const close = () => { setDraft(null); setError(null); setLinkOpen(false); setDeleteTarget(null); onClose(); };
+// One step back: edit screen -> group list (modal stays open)
+const backToList = () => { setDraft(null); setError(null); setLinkOpen(false); setLinkQuery(''); };
     const patchDraft = (patch: Partial<AddOnGroup>) => setDraft((d) => (d ? { ...d, ...patch } : d));
     const patchOption = (optionId: string, patch: Partial<AddOnOption>) =>
         setDraft((d) => (d ? { ...d, options: d.options.map((o) => (o.id === optionId ? { ...o, ...patch } : o)) } : d));
@@ -86,7 +88,14 @@ export const AddOnManager: React.FC<AddOnManagerProps> = ({ isOpen, onClose, com
             extraPrice: draft.multiple && Number(draft.maxSelect) > 0 && draft.extraPrice != null ? Math.max(0, Number(draft.extraPrice) || 0) : undefined,
             options: draft.options
                 .filter((o) => o.name.trim() || o.itemId)
-                .map((o) => ({ ...o, name: o.name.trim(), price: Number(o.price) || 0 })),
+                .map((o) => {
+                    const linked = o.itemId && o.syncPrice ? items.find((i) => i.id === o.itemId) : undefined;
+                    return {
+                        ...o,
+                        name: o.name.trim(),
+                        price: linked ? Number(linked.salesPrice || linked.mrp || 0) : Number(o.price) || 0,
+                    };
+                }),
         };
         const err = validateAddOnGroups([clean]);
         if (err) { setError(err); return; }
@@ -126,6 +135,7 @@ export const AddOnManager: React.FC<AddOnManagerProps> = ({ isOpen, onClose, com
             <div className="flex max-h-[90vh] w-full flex-col rounded-t-sm bg-white shadow-xl sm:max-w-2xl sm:rounded-sm" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between gap-2 border-b border-gray-200 px-4 py-3">
                     <h2 className="text-lg font-semibold text-slate-900">{draft ? (templates.some((t) => t.id === draft.id) ? 'Edit add-on group' : 'New add-on group') : 'Add-ons'}</h2>
+                    <button type="button" aria-label={draft ? 'Back to add-on groups' : 'Close'} onClick={draft ? backToList : close} className={ICON_BTN}><FiX size={18} /></button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto px-4 py-4">
@@ -166,7 +176,7 @@ export const AddOnManager: React.FC<AddOnManagerProps> = ({ isOpen, onClose, com
                                 </label>
                                 {draft.multiple && (
                                     <label className="grid gap-1">
-                                        <span className="text-xs font-medium text-slate-600">Max per order</span>
+                                        <span className="text-xs font-medium text-slate-600">Max limit* per order</span>
                                         <input className={INPUT} type="number" min="0" value={draft.maxSelect || ''} placeholder="Unlimited"
                                             onWheel={(e) => (e.target as HTMLInputElement).blur()}
                                             onChange={(e) => patchDraft({ maxSelect: parseInt(e.target.value, 10) || 0 })} />
@@ -175,21 +185,28 @@ export const AddOnManager: React.FC<AddOnManagerProps> = ({ isOpen, onClose, com
                             </div>
 
                             {draft.multiple && Number(draft.maxSelect) > 0 && (
-                                <label className="grid gap-1">
-                                    <span className="text-xs font-medium text-slate-600">Charge for extra picks (₹, optional)</span>
-                                    <input className={INPUT} type="number" min="0" value={draft.extraPrice ?? ''} placeholder="Leave empty to block extras"
-                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                        onChange={(e) => patchDraft({ extraPrice: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value) || 0) })} />
-                                    <span className="text-[11px] text-slate-500">
-                                        {draft.extraPrice != null
-                                            ? `First ${draft.maxSelect} are included. Each extra pick costs ₹${draft.extraPrice} more.`
-                                            : `Customers can pick at most ${draft.maxSelect}. No extras allowed.`}
+                                <label className="flex items-start gap-2.5 rounded-sm border border-gray-200 bg-gray-50 px-3 py-2.5 cursor-pointer">
+                                    <input type="checkbox" className="mt-0.5 h-4 w-4 accent-blue-600"
+                                        checked={draft.extraPrice != null}
+                                        onChange={(e) => patchDraft({ extraPrice: e.target.checked ? 0 : undefined })} />
+                                    <span className="grid gap-0.5">
+                                        <span className="text-sm font-medium text-slate-900">Allow more picks (paid)</span>
+                                        <span className="text-[11px] text-slate-500">
+                                            {draft.extraPrice != null
+                                                ? `First ${draft.maxSelect} picks are free. Picks after that cost the price set on each option.`
+                                                : `Customers can pick at most ${draft.maxSelect}.`}
+                                        </span>
                                     </span>
                                 </label>
                             )}
 
                             <div className="grid gap-2">
                                 <span className="text-xs font-medium text-slate-600">Options</span>
+                                {draft.extraPrice != null && draft.multiple && Number(draft.maxSelect) > 0 && (
+                                    <p className="text-[11px] text-slate-500">
+                                        Any {draft.maxSelect} picks are free. The price below is charged only when a customer picks that option after that.
+                                    </p>
+                                )}
                                 {draft.options.some((o) => !o.itemId) && (
                                     <div className="grid grid-cols-[minmax(0,1fr)_84px_36px] gap-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                                         <span>Option name</span>
@@ -200,9 +217,10 @@ export const AddOnManager: React.FC<AddOnManagerProps> = ({ isOpen, onClose, com
                                 {draft.options.filter((o) => !o.itemId).map((o) => (
                                     <div key={o.id} className="grid grid-cols-[minmax(0,1fr)_84px_36px] items-center gap-2">
                                         <input className={INPUT} value={o.name} placeholder="e.g. Mint mayo" onChange={(e) => patchOption(o.id, { name: e.target.value })} />
-                                        <input className={INPUT} type="number" min="0" value={o.price} placeholder="0 = free"
+                                        <input className={INPUT} type="number" min="0" value={o.price} placeholder="₹ 0"
+                                            title={draft.extraPrice != null ? 'Charged only when picked after the free picks' : 'Add-on price'}
                                             onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                            onChange={(e) => patchOption(o.id, { price: e.target.value })} />
+                                            onChange={(e) => patchOption(o.id, { price: e.target.value, extraPrice: undefined })} />
                                         <button type="button" aria-label="Remove option" onClick={() => removeOption(o.id)} className={`${ICON_BTN} hover:!text-red-600`}><FiX size={16} /></button>
                                     </div>
                                 ))}
@@ -261,7 +279,16 @@ export const AddOnManager: React.FC<AddOnManagerProps> = ({ isOpen, onClose, com
                                             onChange={(e) => patchOption(o.id, { itemQty: parseInt(e.target.value, 10) || 1 })} />
                                         <button type="button" aria-label="Remove linked item" onClick={() => removeOption(o.id)} className={`${ICON_BTN} hover:!text-red-600`}><FiX size={16} /></button>
                                         <label className="col-span-full flex items-center gap-1.5 whitespace-nowrap text-[11px] text-slate-600">
-                                            <input type="checkbox" checked={!!o.syncPrice} onChange={(e) => patchOption(o.id, { syncPrice: e.target.checked })} className="accent-blue-600" />
+                                            <input type="checkbox" checked={!!o.syncPrice}
+                                                onChange={(e) => {
+                                                    const linked = items.find((i) => i.id === o.itemId);
+                                                    patchOption(o.id, {
+                                                        syncPrice: e.target.checked,
+                                                        // ticking again: bring back the item's current price, drop any custom amount
+                                                        ...(e.target.checked && linked ? { price: String(linked.salesPrice || linked.mrp || 0) } : {}),
+                                                    });
+                                                }}
+                                                className="accent-blue-600" />
                                             Use item's current price
                                         </label>
                                     </div>
@@ -276,7 +303,7 @@ export const AddOnManager: React.FC<AddOnManagerProps> = ({ isOpen, onClose, com
                 <div className="flex justify-end gap-2 border-t border-gray-200 px-4 py-3">
                     {draft ? (
                         <>
-                            <button type="button" onClick={() => { setDraft(null); setError(null); }} className="h-10 rounded-sm border border-gray-300 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-gray-50">Cancel</button>
+                            <button type="button" onClick={backToList} className="h-10 rounded-sm border border-gray-300 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-gray-50">Cancel</button>
                             <button type="button" onClick={save} disabled={busy} className={`h-10 rounded-sm px-4 text-sm font-medium text-white disabled:opacity-60 ${actionClass}`}>{busy ? 'Saving…' : 'Save group'}</button>
                         </>
                     ) : (

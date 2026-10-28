@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Check, ChevronUp, MessageCircle, ShieldCheck, X } from 'lucide-react';
 import type { AddOnGroup, AddOnOption } from '../../constants/models';
+import { extraChargeOf } from '../../constants/models';
 import { useStorefrontData } from '../storefront/useStorefront';
 import { useNavigate, useParams } from 'react-router-dom';
 import LeadPopUp from '../PopUp';
@@ -122,12 +123,13 @@ const CartPage: React.FC = () => {
     const closeAddOnEdit = () => { setEditLineKey(null); setEditSel({}); };
 
     const optionPriceFor = (g: AddOnGroup, optId: string): number => {
-        const base = Number(g.options.find((x) => x.id === optId)?.price) || 0;
-        if (limitOf(g) <= 0 || !hasExtra(g)) return base;
+        const opt = g.options.find((x) => x.id === optId);
+        const base = Number(opt?.price) || 0;
+        if (!opt || limitOf(g) <= 0 || !hasExtra(g)) return base;
         const sel = editSel[g.id] ?? [];
         const idx = sel.indexOf(optId);
         const isExtra = idx >= 0 ? idx >= limitOf(g) : sel.length >= limitOf(g);
-        return isExtra ? base + (Number(g.extraPrice) || 0) : base;
+        return isExtra ? extraChargeOf(g, opt) : 0;
     };
 
     const toggleEditAddOn = (g: AddOnGroup, optionId: string) => {
@@ -146,9 +148,10 @@ const CartPage: React.FC = () => {
         (editSel[g.id] ?? []).flatMap((id, idx) => {
             const o = g.options.find((x) => x.id === id);
             if (!o) return [];
-            return limitOf(g) > 0 && hasExtra(g) && idx >= limitOf(g)
-                ? [{ ...o, price: (Number(o.price) || 0) + (Number(g.extraPrice) || 0) }]
-                : [o];
+            if (limitOf(g) > 0 && hasExtra(g)) {
+                return [{ ...o, price: idx >= limitOf(g) ? extraChargeOf(g, o) : 0 }];
+            }
+            return [o];
         }));
 
     // Same cart line, new add-ons: unit price moves by the difference, quantity and note stay
@@ -398,7 +401,7 @@ const CartPage: React.FC = () => {
                                     <div className="mb-2 flex items-center justify-between">
                                         <p className="text-[13px] font-medium text-slate-900">{g.name}</p>
                                         <small className="text-xs text-slate-500">
-                                            {g.multiple ? (limitOf(g) > 0 ? `Choose up to ${limitOf(g)}${hasExtra(g) && shouldShowPrice ? ` · extra +${formatINR(Number(g.extraPrice) || 0)} each` : ''}` : 'Choose any') : 'Choose one'}
+                                            {g.multiple ? (limitOf(g) > 0 ? `Choose up to ${limitOf(g)}${hasExtra(g) ? ' · more picks are paid' : ''}` : 'Choose any') : 'Choose one'}
                                         </small>
                                     </div>
                                     <div className="grid gap-2">

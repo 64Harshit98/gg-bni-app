@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { arrayUnion, collection, doc, onSnapshot, orderBy, query, Timestamp, updateDoc, where } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 import { useAuth } from '../../context/auth-context';
-import Loading from '../Loading/Loading';
+import PageLoader from '../../Components/PageLoader';
 import type { AdminCompany, RangeKey } from './superAdmin/data';
 import { DAY_MS, ageText, downloadCsv, fmtDate, fmtDateTime, last10, loadCompanies, rangeFor, toDate, waLink } from './superAdmin/data';
 import { Alert, Btn, Card, Chip, EmptyRow, Field, LinkBtn, PageHeader, PageShell, RangeTabs, SearchBox, SelectBox, StatCard, inputCls } from './superAdmin/ui';
@@ -160,7 +160,7 @@ const WebsiteLeadsDashboard: React.FC = () => {
       q.sourcePage, STATUS_META[q.status].label, q.firstRepliedAt?.toISOString() || '', q.message]),
   );
 
-  if (loading && queries.length === 0) return <Loading />;
+  if (loading && queries.length === 0) return <PageLoader />;
 
   const fmtHours = (h: number | null) => h === null ? '—' : h < 1 ? `${Math.max(1, Math.round(h * 60))}m` : h < 48 ? `${Math.round(h)}h` : `${Math.round(h / 24)}d`;
   const total = queries.length;

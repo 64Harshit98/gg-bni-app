@@ -515,27 +515,6 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
     }
   };
 
-  const shareOnWhatsApp = () => {
-    const text = isStock
-      ? [
-        `*Stock by location${companyName ? ` — ${companyName}` : ''}*`,
-        formatFullDate(Date.now()),
-        '',
-        ...locations.map((l) => `${l.name}: ${qty(locationTotals(l.id).qty)} pcs (${plural(locationTotals(l.id).items, 'item')})`),
-        '',
-        `Total: ${qty(stockSummary.totalQty)} pcs`,
-      ]
-      : [
-        `*Stock movements${companyName ? ` — ${companyName}` : ''}*`,
-        appliedFilters ? formatRangeLabel(appliedFilters.start, appliedFilters.end) : '',
-        '',
-        `Moved: ${qty(historySummary.totalQty)} pcs in ${plural(historySummary.count, 'entry', 'entries')}`,
-        `From purchases: ${qty(historySummary.purchaseQty)} pcs`,
-        `Between locations: ${qty(historySummary.transferQty)} pcs`,
-      ];
-    window.open(`https://wa.me/?text=${encodeURIComponent(text.join('\n'))}`, '_blank', 'noopener');
-  };
-
   const runDownload = (action: () => void) => {
     if ((isStock ? filteredStock.length : filteredHistory.length) === 0) {
       setFeedbackModal({ isOpen: true, type: State.INFO, message: 'No data available to download.' });
@@ -716,7 +695,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
             <button onClick={() => setShowSearch((s) => !s)} aria-label="Search" className="rounded-sm p-2 text-slate-700 transition hover:bg-slate-200">
               <Search size={20} />
             </button>
-            <DownloadMenu variant="icon" onExcel={() => runDownload(downloadAsExcel)} onPdf={() => runDownload(downloadAsPdf)} onWhatsApp={shareOnWhatsApp} />
+            <DownloadMenu variant="icon" onExcel={() => runDownload(downloadAsExcel)} onPdf={() => runDownload(downloadAsPdf)} />
           </div>
         </div>
 
@@ -956,7 +935,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
                 {isListVisible ? <EyeOff size={15} /> : <Eye size={15} />}
                 {isListVisible ? 'Hide list' : 'Show list'}
               </button>
-              <DownloadMenu onExcel={() => runDownload(downloadAsExcel)} onPdf={() => runDownload(downloadAsPdf)} onWhatsApp={shareOnWhatsApp} />
+              <DownloadMenu onExcel={() => runDownload(downloadAsExcel)} onPdf={() => runDownload(downloadAsPdf)} />
             </div>
 
             {/* Mobile sort (stock) */}

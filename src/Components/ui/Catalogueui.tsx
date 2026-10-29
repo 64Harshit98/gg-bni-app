@@ -80,7 +80,10 @@ export const HiddenState: React.FC<{ height?: number }> = ({ height = 160 }) => 
     </div>
 );
 
-export const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
+export const inr = (n: number) => {
+    const r = Math.round(n);
+    return `${r < 0 ? '-' : ''}₹${Math.abs(r).toLocaleString('en-IN')}`; // "-₹500", not "₹-500"
+};
 
 // "2 Jul – 30 Sep" / "2 Jul"
 export const usePeriodText = () => {

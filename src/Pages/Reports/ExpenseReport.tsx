@@ -488,22 +488,6 @@ const ExpenseReportPage: React.FC = () => {
         action();
     };
 
-    const shareOnWhatsApp = () => {
-        if (!appliedFilters) return;
-        const text = [
-            `*Expense Report${companyName ? ` — ${companyName}` : ''}*`,
-            formatRangeLabel(appliedFilters.start, appliedFilters.end),
-            '',
-            `Total expenses: ${formatCurrency(Math.round(totals.total))}`,
-            `Entries: ${totals.count}`,
-            ...(totals.share !== null ? [`Share of sales: ${totals.share.toFixed(1)}%`] : []),
-            ...(totals.categories.length
-                ? ['', ...totals.categories.map(c => `${c.name}: ${formatCurrency(c.amount)}`)]
-                : []),
-        ].join('\n');
-        window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
-    };
-
     /* ---------- RENDER HELPERS ---------- */
     const renderSortHeader = (label: string, sortKey: keyof ExpenseRow, align: 'left' | 'right' = 'left') => {
         const isActive = sortConfig.key === sortKey;
@@ -728,7 +712,6 @@ const ExpenseReportPage: React.FC = () => {
                         variant="icon"
                         onExcel={() => runDownload(downloadAsExcel)}
                         onPdf={() => runDownload(downloadAsPdf)}
-                        onWhatsApp={shareOnWhatsApp}
                     />
                 </div>
             </header>
@@ -864,7 +847,6 @@ const ExpenseReportPage: React.FC = () => {
                             <DownloadMenu
                                 onExcel={() => runDownload(downloadAsExcel)}
                                 onPdf={() => runDownload(downloadAsPdf)}
-                                onWhatsApp={shareOnWhatsApp}
                             />
                         </div>
                     </div>

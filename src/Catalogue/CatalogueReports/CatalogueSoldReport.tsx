@@ -561,22 +561,6 @@ const ItemsSoldReport: React.FC = () => {
         action();
     };
 
-    const shareOnWhatsApp = () => {
-        if (!appliedFilters) return;
-        const text = [
-            `*Items Sold${companyName ? ` — ${companyName}` : ''}*`,
-            formatRangeLabel(appliedFilters.start, appliedFilters.end),
-            '',
-            `Value sold: ${inrRound(summary.totalValueSold)}`,
-            `Quantity: ${summary.totalQuantitySold.toLocaleString('en-IN')} pcs · ${summary.uniqueItemCount} items`,
-            ...(aggregatedItems.length
-                ? ['', 'Best sellers:', ...aggregatedItems.slice(0, 5).map((i, idx) => `${idx + 1}. ${i.name}: ${inrRound(i.valueSold)}`)]
-                : []),
-            ...(unsoldItems.length ? ['', `${unsoldItems.length} items didn't sell`] : []),
-        ].join('\n');
-        window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
-    };
-
     /* ---------- RENDER HELPERS ---------- */
     const renderSortHeader = (label: string, key: keyof AggregatedItem, align: 'left' | 'right' = 'left') => {
         const isActive = sortConfig.key === key;
@@ -741,7 +725,6 @@ const ItemsSoldReport: React.FC = () => {
                         variant="icon"
                         onExcel={() => runDownload(downloadAsExcel)}
                         onPdf={() => runDownload(downloadAsPdf)}
-                        onWhatsApp={shareOnWhatsApp}
                     />
                 </div>
             </div>
@@ -862,7 +845,6 @@ const ItemsSoldReport: React.FC = () => {
                                 <DownloadMenu
                                     onExcel={() => runDownload(downloadAsExcel)}
                                     onPdf={() => runDownload(downloadAsPdf)}
-                                    onWhatsApp={shareOnWhatsApp}
                                 />
                             </div>
 

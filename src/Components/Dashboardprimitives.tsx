@@ -8,7 +8,10 @@ import ShowWrapper from '../context/ShowWrapper';
    ink #0f172b · muted #45556c · subtle #5b6b86
    ───────────────────────────────────────────────────────────── */
 
-export const inr = (n: number) => `₹${Math.round(n || 0).toLocaleString('en-IN')}`;
+export const inr = (n: number) => {
+  const r = Math.round(n || 0);
+  return `${r < 0 ? '-' : ''}₹${Math.abs(r).toLocaleString('en-IN')}`; // "-₹500", not "₹-500"
+};
 export const MASK = '₹ ••••';
 
 export const SlCard: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = '' }) => (

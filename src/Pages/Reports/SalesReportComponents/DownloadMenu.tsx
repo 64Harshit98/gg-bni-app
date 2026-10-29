@@ -4,7 +4,8 @@ import { ChevronDown, Download, FileSpreadsheet, FileText, Share2 } from 'lucide
 interface DownloadMenuProps {
   onExcel: () => void;
   onPdf: () => void;
-  onWhatsApp: () => void;
+  // Only the Restock order list shares to WhatsApp; reports export to Excel/PDF only
+  onWhatsApp?: () => void;
   variant?: 'button' | 'icon';
 }
 
@@ -36,7 +37,7 @@ export default function DownloadMenu({
   const options = [
     { label: 'Excel (.xlsx)', hint: 'All columns, for your CA', icon: FileSpreadsheet, onClick: onExcel },
     { label: 'PDF', hint: 'Print-ready summary + list', icon: FileText, onClick: onPdf },
-    { label: 'Share on WhatsApp', hint: '', icon: Share2, onClick: onWhatsApp },
+    ...(onWhatsApp ? [{ label: 'Share on WhatsApp', hint: '', icon: Share2, onClick: onWhatsApp }] : []),
   ];
 
   return (

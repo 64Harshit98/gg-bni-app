@@ -720,25 +720,6 @@ const PnlReportPage: React.FC = () => {
     action();
   };
 
-  const shareOnWhatsApp = () => {
-    if (!appliedFilters) return;
-    const text = [
-      `*Profit & Loss${companyName ? ` — ${companyName}` : ''}*`,
-      formatRangeLabel(appliedFilters.start, appliedFilters.end),
-      '',
-      `Sales: ${formatCurrency(Math.round(totals.sales))}`,
-      `Cost of goods: ${formatCurrency(Math.round(totals.cost))}`,
-      `Gross profit: ${formatCurrency(Math.round(totals.gross))} (${formatPercent(totals.grossMargin)})`,
-      `Expenses: ${formatCurrency(Math.round(totals.expenses))}`,
-      `*Net profit: ${formatCurrency(Math.round(totals.net))} (${formatPercent(totals.netMargin)})*`,
-      ...(totals.missingCount > 0
-        ? ['', `Note: ${totals.missingCount} bills have no purchase cost, so profit is overstated.`]
-        : []),
-    ].join('\n');
-
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
-  };
-
   const reviewMissingCost = () => {
     setBillFilter('missing');
     setIsListVisible(true);
@@ -1060,7 +1041,6 @@ const PnlReportPage: React.FC = () => {
             variant="icon"
             onExcel={() => runDownload(downloadAsExcel)}
             onPdf={() => runDownload(downloadAsPdf)}
-            onWhatsApp={shareOnWhatsApp}
           />
         </div>
       </header>
@@ -1250,7 +1230,6 @@ const PnlReportPage: React.FC = () => {
               <DownloadMenu
                 onExcel={() => runDownload(downloadAsExcel)}
                 onPdf={() => runDownload(downloadAsPdf)}
-                onWhatsApp={shareOnWhatsApp}
               />
             </div>
 

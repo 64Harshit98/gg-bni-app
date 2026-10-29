@@ -52,6 +52,14 @@ const CatalogueLayout = () => {
     ];
 
     const currentPath = normPath(location.pathname);
+    // Pages with a sticky Save bar at the bottom — the share FAB would sit on top of it
+    const HIDE_SHARE_FAB_PATHS = [
+        ROUTES.CATA_SALE_SETTING, ROUTES.CATA_BILL_SETTING, ROUTES.CATA_ITEM_SETTING,
+        ROUTES.CATA_USER_SETTING, ROUTES.CATA_PERMISSION_SETTING,
+        ROUTES.CATA_EDIT, ROUTES.CATA_STORE_PAGE, ROUTES.ADD_PRODUCT,
+    ].map(normPath);
+    const showShareFab = !HIDE_SHARE_FAB_PATHS.includes(currentPath)
+        && !currentPath.startsWith(`${normPath(ROUTES.CATA_PRODUCT_PAGE)}/`); // product page builder (has its own Save bar)
     const showBanner =
         banner.visible && !!banner.tier && banner.days !== null && BANNER_PATHS.includes(currentPath);
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -451,14 +459,16 @@ const CatalogueLayout = () => {
                 </div>
 
                 {/* SHARE BUTTON (MOBILE) */}
-                <div className="md:hidden absolute bottom-20 right-4 z-50">
-                    <button
-                        onClick={handleShare}
-                        className="bg-white border border-gray-300 shadow-md rounded-full p-3"
-                    >
-                        <Share2 size={20} />
-                    </button>
-                </div>
+                {showShareFab && (
+                    <div className="md:hidden absolute bottom-20 right-4 z-50">
+                        <button
+                            onClick={handleShare}
+                            className="bg-white border border-gray-300 shadow-md rounded-full p-3"
+                        >
+                            <Share2 size={20} />
+                        </button>
+                    </div>
+                )}
             </main>
 
             {/* --- MOBILE BOTTOM NAV --- */}

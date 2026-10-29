@@ -14,8 +14,10 @@ export const getItemGroupIds = (item: Item): string[] => [
 
 export const itemInGroup = (item: Item, groupId: string) => getItemGroupIds(item).includes(groupId);
 
+// Every photo the item has: the cover (imageUrl) first, then the gallery. Excel bulk upload only
+// updates imageUrl, so it can differ from imageUrls[0]; blank entries are dropped.
 export const getItemImages = (item: Item): string[] =>
-    item.imageUrls?.length ? item.imageUrls : item.imageUrl ? [item.imageUrl] : [];
+    [...new Set([item.imageUrl, ...(item.imageUrls || [])].filter((u): u is string => typeof u === 'string' && u.trim() !== ''))];
 
 /** Category slug for an item: its first real category. */
 export const findItemGroup = (item: Item, groups: ItemGroup[]) => {
@@ -24,6 +26,28 @@ export const findItemGroup = (item: Item, groups: ItemGroup[]) => {
 };
 
 export const itemSlug = (item: Item) => slugify(item.name) || String(item.id);
+
+/** Public address of a product page: <shop>.sellar.in/<category>/<item>, or the app link while the shop has no subdomain. */
+export const productPageUrl = (item: Item, categoryName: string, companyId: string, subdomain?: string | null) => {
+    const path = `${slugify(categoryName)}/${itemSlug(item)}`;
+    return subdomain ? `https://${subdomain}.sellar.in/${path}` : `${window.location.origin}/${companyId}/${path}`;
+};
+
+/** Every item linked to this one through `variants` (links can be one-way), in catalogue order. */
+export const variantGroup = (item: Item, listed: Item[]) => {
+    const visited = new Set<string>();
+    const queue = [String(item.id)];
+    while (queue.length) {
+        const id = queue.shift()!;
+        if (visited.has(id)) continue;
+        visited.add(id);
+        const cur = listed.find((i) => String(i.id) === id);
+        if (!cur) continue;
+        (cur.variants || []).map(String).forEach((v: string) => { if (!visited.has(v) && listed.some((i) => String(i.id) === v)) queue.push(v); });
+        listed.forEach((i) => { if ((i.variants || []).map(String).includes(id) && !visited.has(String(i.id))) queue.push(String(i.id)); });
+    }
+    return listed.filter((i) => visited.has(String(i.id)));
+};
 
 /** Finds the item for a product URL segment: by name slug inside the category first, then by id. */
 export const findItemBySlug = (items: Item[], slug: string, groupId?: string) => {
@@ -34,7 +58,7 @@ export const findItemBySlug = (items: Item[], slug: string, groupId?: string) =>
 };
 
 export const formatINR = (n: number, decimals = false) =>
-    '₹' + Number(n || 0).toLocaleString('en-IN', decimals
+    (Number(n) < 0 ? '-₹' : '₹') + Math.abs(Number(n || 0)).toLocaleString('en-IN', decimals
         ? { minimumFractionDigits: 2, maximumFractionDigits: 2 }
         : { maximumFractionDigits: 2 });
 

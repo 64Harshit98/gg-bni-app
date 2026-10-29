@@ -24,6 +24,7 @@ import type { Item } from '../../../constants/models';
 import { usePurchaseSettings } from '../../../context/SettingsContext';
 import { GenericCartList } from '../../../Components/CartItem';
 import { GenericBillFooter } from '../../../Components/Footer';
+import { CartLinesCompact } from '../../../Components/CartLinesCompact';
 import { IconScanCircle } from '../../../constants/Icons';
 import { PurchaseGodownAssignModal } from '../../../Components/PurchaseGodownAssign';
 import type { PurchaseItem, PurchaseDocumentData, Purchase } from './purchase.types';
@@ -633,20 +634,28 @@ const PurchasePage: React.FC = () => {
     </div>
   );
 
-  // Desktop (xl+) summary panel
-  const renderSummaryPanel = (itemCount?: number, showClear = false) => (
+  // Desktop (xl+) summary panel — card view also lists the cart lines (like Sales), list view already shows them on the left
+  const renderSummaryPanel = (showLines = false) => (
     <aside className="hidden xl:flex xl:w-[360px] flex-shrink-0 flex-col gap-4 h-full p-5 overflow-y-auto bg-[#ffffff] border-l border-[#dfe6fb] z-10">
       {renderSupplierCard()}
       <div className="border-t border-[#dfe6fb]" />
       <div className="flex items-center justify-between">
         <h2 className="m-0 text-base font-semibold text-[#0f172b]">Purchase summary</h2>
         <div className="flex items-center gap-2">
-          {itemCount !== undefined && <span className={BADGE}>{itemCount} {itemCount === 1 ? 'line' : 'lines'}</span>}
-          {showClear && items.length > 0 && (
+          <span className={BADGE}>{totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}</span>
+          {showLines && items.length > 0 && (
             <button type="button" onClick={handleClearCart} className={BTN_CLEAR}><FiTrash2 size={14} /> Clear</button>
           )}
         </div>
       </div>
+      {showLines && items.length > 0 && (
+        <CartLinesCompact
+          items={items}
+          getUnitPrice={(i) => Number(i.purchasePrice) || 0}
+          onQuantityChange={handleQuantityChange}
+          onDelete={handleDeleteItem}
+        />
+      )}
       <GenericBillFooter {...footerProps} />
     </aside>
   );
@@ -703,7 +712,7 @@ const PurchasePage: React.FC = () => {
       <div className="hidden md:flex flex-wrap items-center gap-2 md:gap-3 px-4 py-3 md:px-6 md:py-4">
         <h1 className="m-0 mr-2 text-[22px] leading-[30px] font-semibold text-[#0f172b]">{pageTitle}</h1>
         <label className={META_CHIP}>
-          <span className={META_LABEL}>Inv no</span>
+          <span className={META_LABEL}>Bill no.</span>
           <input
             type="text"
             value={invoiceNumber}
@@ -737,7 +746,7 @@ const PurchasePage: React.FC = () => {
 
           <div className="grid grid-cols-2 gap-2">
             <label className={`${META_CHIP} min-w-0`}>
-              <span className={META_LABEL}>Inv no</span>
+              <span className={META_LABEL}>Bill no.</span>
               <input type="text" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} className={`${META_INPUT} w-full`} />
             </label>
             <label className={`${META_CHIP} min-w-0`}>
@@ -749,7 +758,7 @@ const PurchasePage: React.FC = () => {
           {items.length > 0 && (
             <button type="button" onClick={() => { setIsMoreOpen(false); handleClearCart(); }}
               className="inline-flex items-center justify-center gap-2 h-11 rounded-sm text-sm font-medium text-[#d5000c] bg-[#ffeef0]">
-              <FiTrash2 size={16} /> Clear cart
+              <FiTrash2 size={16} /> Clear
             </button>
           )}
         </div>
@@ -842,7 +851,7 @@ const PurchasePage: React.FC = () => {
             type="text"
             value={gridSearchQuery}
             onChange={(e) => setGridSearchQuery(e.target.value)}
-            placeholder="Search item or barcode"
+            placeholder="Search item name or barcode"
             className="flex-1 min-w-0 h-full px-2.5 bg-transparent border-0 outline-none text-[15px] font-medium text-[#0f172b] placeholder:text-[#5b6b86]"
             autoComplete="off"
             autoFocus
@@ -958,6 +967,7 @@ const PurchasePage: React.FC = () => {
     <>
       <PaymentDrawer
         mode='purchase'
+        payingOut
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
         subtotal={subtotal}
@@ -1325,7 +1335,7 @@ const PurchasePage: React.FC = () => {
           </div>
 
           {/* Right Section — desktop only */}
-          {renderSummaryPanel(items.length, true)}
+          {renderSummaryPanel(true)}
         </div>
 
         {renderCommonOverlays()}
@@ -1525,7 +1535,7 @@ const PurchasePage: React.FC = () => {
           <div className="flex-shrink-0 px-3 pt-3 md:px-5 md:pt-5">
             <div className="flex gap-2.5 items-end">
               <div className="flex-grow min-w-0">
-                <SearchableItemInput label="Search & Add Item" placeholder="Search by name or barcode..." items={availableItems} onItemSelected={handleItemSelectedWrapper} isLoading={pageIsLoading} error={error} categories={categories}
+                <SearchableItemInput label="Search item" placeholder="Search item name or barcode" items={availableItems} onItemSelected={handleItemSelectedWrapper} isLoading={pageIsLoading} error={error} categories={categories}
                   onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })}
                   itemGroupMap={itemGroupMap}
                   onSearchChange={setCartSearchQuery}
@@ -1538,7 +1548,7 @@ const PurchasePage: React.FC = () => {
                 title="Scan item or upload bill"
                 aria-label="Scan item or upload bill"
               >
-                <FiMaximize size={18} />
+                <IconScanCircle width={20} height={20} />
                 <span className="hidden md:inline">Scan</span>
               </button>
               <button
@@ -1648,7 +1658,7 @@ const PurchasePage: React.FC = () => {
         </div>
 
         {/* Desktop summary */}
-        {renderSummaryPanel(items.length)}
+        {renderSummaryPanel()}
       </div>
 
       {renderCommonOverlays()}

@@ -6,8 +6,9 @@ import { getSlabForQty } from '../../constants/models';
 import type { CatalogueSalesSettings } from '../Settings/CatalogueSalesSetting';
 import { getAllTiers, getEffectivePriceInfo } from '../../Pages/utils/pricingUtils';
 import { productState } from './productState';
-import { Photo, PriceBlock, QtyStepper, Tag, btnClass, toneClass } from './StoreUI';
+import { PriceBlock, QtyStepper, Tag, btnClass, toneClass } from './StoreUI';
 import { formatINR, getItemImages } from './storefront.utils';
+import { ZoomPhoto } from './ZoomPhoto';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 
@@ -34,13 +35,19 @@ interface Props {
     onBulkQuote: () => void;
     onAsk: () => void;
     onViewCart: () => void;
+    /** Product page builder: breadcrumbs don't navigate and variants switch through onVariantSelect */
+    preview?: boolean;
+    onVariantSelect?: (v: Item) => void;
+    /** Link the Share button sends (defaults to this page); null hides Share */
+    shareUrl?: string | null;
 }
 
 /** Full product page (replaces the old bottom drawer): gallery, price, packs, variants, bulk rates, add to cart. */
 export const ProductView: React.FC<Props> = (p) => {
     const { item, settings, pricesVisible } = p;
     const images = getItemImages(item);
-    const [photo, setPhoto] = useState(0);
+    const [photoIdx, setPhoto] = useState(0);
+    const photo = Math.min(photoIdx, Math.max(0, images.length - 1)); // photos can be removed while the builder previews
     const tiers = useMemo(() => (item.priceTiers?.length ? getAllTiers(item) : []), [item]);
     const [tierId, setTierId] = useState<string>('__base__');
     const minQty = Math.max(1, Number(item.moq) || 1);
@@ -62,7 +69,7 @@ export const ProductView: React.FC<Props> = (p) => {
     const saving = baseMrp > unitPrice ? baseMrp - unitPrice : 0;
 
     const share = async () => {
-        const url = window.location.href;
+        const url = p.shareUrl ?? window.location.href;
         try {
             if (navigator.share) await navigator.share({ title: item.name, url });
             else await navigator.clipboard.writeText(url);
@@ -82,9 +89,13 @@ export const ProductView: React.FC<Props> = (p) => {
             ? <button type="button" onClick={p.onViewCart} className={btnClass('primary', 'lg', true)}>
                 <ShoppingCart className="size-4" />View cart
             </button>
-            : <button type="button" onClick={add} disabled={p.inCart >= stockCap} className={btnClass('primary', 'lg', true)}>
-                <ShoppingCart className="size-4" />Add to cart{pricesVisible ? ` · ${formatINR(unitPrice * qty)}` : ''}
+            : <button type="button" onClick={add} disabled={p.inCart >= stockCap} className={cx(btnClass('primary', 'lg', true), 'min-w-0')}>
+                <ShoppingCart className="size-4 shrink-0" /><span className="min-w-0 truncate">Add to cart{pricesVisible ? ` · ${formatINR(unitPrice * qty)}` : ''}</span>
             </button>;
+
+    // Breadcrumb / category links: plain text in the builder's preview
+    const crumb = (to: string, label: string, className: string) =>
+        p.preview ? <span className={className}>{label}</span> : <Link to={to} className={className}>{label}</Link>;
 
     const specs: [string, string][] = [
         ['Unit', s.unit],
@@ -96,8 +107,8 @@ export const ProductView: React.FC<Props> = (p) => {
     return (
         <>
             <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 pt-4 text-[13px] text-slate-500 md:pt-5">
-                <Link to={p.homeHref} className="font-medium text-sf-primary">Store</Link><ChevronRight className="size-3.5" />
-                {p.group && <><Link to={p.groupHref} className="font-medium text-sf-primary">{p.group.name}</Link><ChevronRight className="size-3.5" /></>}
+                {crumb(p.homeHref, 'Store', 'font-medium text-sf-primary')}<ChevronRight className="size-3.5" />
+                {p.group && <>{crumb(p.groupHref, p.group.name, 'font-medium text-sf-primary')}<ChevronRight className="size-3.5" /></>}
                 <span className="line-clamp-1">{item.name}</span>
             </nav>
 
@@ -105,7 +116,7 @@ export const ProductView: React.FC<Props> = (p) => {
                 {/* Gallery */}
                 <div className={cx('grid gap-3', images.length > 1 && 'md:grid-cols-[72px_minmax(0,1fr)]')}>
                     <div className="relative order-1 md:order-2">
-                        <Photo src={images[photo]} alt={item.name} fit="contain" className="aspect-square border border-sf-line" />
+                        <ZoomPhoto src={images[photo]} alt={item.name} className="aspect-square border border-sf-line" />
                         {s.showDiscount && pricesVisible && <span className="absolute left-3 top-3"><Tag tone="success">{s.discountPercent}% off</Tag></span>}
                     </div>
                     {images.length > 1 && (
@@ -123,7 +134,7 @@ export const ProductView: React.FC<Props> = (p) => {
                 {/* Buy box */}
                 <div className="grid gap-5">
                     <div>
-                        {p.group && <Link to={p.groupHref} className="text-[13px] font-medium text-sf-primary">{p.group.name}</Link>}
+                        {p.group && crumb(p.groupHref, p.group.name, 'text-[13px] font-medium text-sf-primary')}
                         <h1 className="mt-1 text-[19px] font-semibold leading-[26px] tracking-tight text-slate-900 md:text-2xl md:leading-8">{item.name}</h1>
                         <p className="mt-1 text-[13px] text-slate-500">{s.unit}</p>
                     </div>
@@ -165,16 +176,19 @@ export const ProductView: React.FC<Props> = (p) => {
                                     const on = v.id === item.id;
                                     const vs = productState(v, settings, 0);
                                     const img = getItemImages(v)[0];
-                                    return (
-                                        <Link key={v.id} to={p.variantHref(v)} replace aria-current={on}
-                                            className={cx('flex min-h-12 items-center gap-2.5 rounded-sm py-1.5 pl-1.5 pr-3', on ? 'border-2 border-sf-primary bg-sf-soft' : 'border border-sf-control bg-white', vs.outOfStock && !on && 'opacity-60')}>
+                                    const chipClass = cx('flex min-h-12 items-center gap-2.5 rounded-sm py-1.5 pl-1.5 pr-3 text-left', on ? 'border-2 border-sf-primary bg-sf-soft' : 'border border-sf-control bg-white', vs.outOfStock && !on && 'opacity-60');
+                                    const chip = (
+                                        <>
                                             <span className={cx('size-9 shrink-0 overflow-hidden rounded-sm', img ? 'bg-white' : toneClass(i))}>{img && <img src={img} alt="" className="h-full w-full object-cover" />}</span>
                                             <span className="min-w-0">
                                                 <b className="block max-w-[160px] truncate text-[13px] font-medium leading-[18px] text-slate-900">{v.name}</b>
                                                 <small className="block text-xs tabular-nums text-slate-500">{vs.outOfStock ? 'Out of stock' : pricesVisible ? formatINR(vs.price) : ''}</small>
                                             </span>
-                                        </Link>
+                                        </>
                                     );
+                                    return p.onVariantSelect
+                                        ? <button key={v.id} type="button" onClick={() => p.onVariantSelect!(v)} aria-current={on} className={chipClass}>{chip}</button>
+                                        : <Link key={v.id} to={p.variantHref(v)} replace aria-current={on} className={chipClass}>{chip}</Link>;
                                 })}
                             </div>
                         </div>
@@ -208,13 +222,15 @@ export const ProductView: React.FC<Props> = (p) => {
                     )}
 
                     {/* Buy row: sticky at the bottom on phones */}
-                    <div className="fixed inset-x-0 bottom-0 z-[66] flex gap-3 border-t border-sf-line bg-white px-4 pb-5 pt-3 shadow-sf-float md:static md:z-auto md:grid md:grid-cols-[136px_minmax(0,1fr)] md:border-0 md:bg-transparent md:p-0 md:shadow-none">
+                    <div className={cx('inset-x-0 bottom-0 flex gap-3 border-t border-sf-line bg-white px-4 pb-5 pt-3 shadow-sf-float md:static md:z-auto md:grid md:grid-cols-[136px_minmax(0,1fr)] md:border-0 md:bg-transparent md:p-0 md:shadow-none',
+                        // In the builder it sticks to the bottom of the preview instead of covering the app's nav
+                        p.preview ? 'sticky z-10 -mx-4 md:mx-0' : 'fixed z-[66]')}>
                         {!s.outOfStock && (editsCart
                             ? <QtyStepper value={p.inCart} outline trashAtOne className="h-12 w-[128px] shrink-0 md:w-auto"
                                 onDec={p.onDec} onInc={p.onInc} incDisabled={atCap} />
                             : <QtyStepper value={qty} outline className="h-12 w-[128px] shrink-0 md:w-auto" incDisabled={atCap}
                                 onDec={() => setQty((q) => Math.max(minQty, q - 1))} onInc={() => setQty((q) => q + 1)} />)}
-                        <div className="flex-1">{buyButton}</div>
+                        <div className="min-w-0 flex-1">{buyButton}</div>
                     </div>
 
                     {!s.outOfStock && atCap && Number.isFinite(stockCap) && (
@@ -231,7 +247,7 @@ export const ProductView: React.FC<Props> = (p) => {
                     <div className="-mt-1 flex flex-wrap gap-2">
                         {p.whatsappHref && <a href={p.whatsappHref} target="_blank" rel="noopener noreferrer" className={btnClass('whatsapp')}><MessageCircle className="size-4" />Ask on WhatsApp</a>}
                         <button type="button" onClick={p.onAsk} className={btnClass('ghost')}>Ask a question</button>
-                        <button type="button" onClick={share} className={btnClass('ghost')}><Share2 className="size-4" />Share</button>
+                        {p.shareUrl !== null && <button type="button" onClick={share} className={btnClass('ghost')}><Share2 className="size-4" />Share</button>}
                     </div>
 
                     <div className="grid gap-2.5 rounded-sm bg-sf-sunken p-4 text-[13px] text-slate-600">

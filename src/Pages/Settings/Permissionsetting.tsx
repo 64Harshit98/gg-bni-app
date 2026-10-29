@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../../lib/Firebase';
 import { doc, getDoc, getDocs, setDoc, collection } from 'firebase/firestore';
 import { Permissions, PLANS, ROLES } from '../../enums';
-import Loading from '../Loading/Loading';
 import { useAuth } from '../../context/auth-context';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
@@ -480,6 +479,137 @@ const ICON_USERS = ['M9 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8z', 'M2 21a7 7 0 0 1 14 0M1
 const CARD_CLASS =
     'bg-white border border-[#dfe6fb] rounded-sm shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]';
 
+// ---------- loading skeleton: same frame as the page, grey blocks for the data ----------
+const Bone: React.FC<{ className?: string }> = ({ className = '' }) => (
+    <span aria-hidden="true" className={`block rounded-sm bg-[#e4e9f7] motion-safe:animate-pulse ${className}`} />
+);
+
+const SkeletonRow: React.FC<{ cells: number; wide?: boolean }> = ({ cells, wide }) => (
+    <div className="flex items-center gap-3 px-3.5 py-3 border-t border-[#dfe6fb]">
+        <div className="flex-1 min-w-0 grid gap-1.5">
+            <Bone className={`h-3.5 ${wide ? 'w-2/5' : 'w-1/3'}`} />
+            <Bone className={`h-2.5 ${wide ? 'w-3/5' : 'w-1/2'}`} />
+        </div>
+        {Array.from({ length: cells }, (_, i) => (
+            <span key={i} className="w-28 shrink-0 flex justify-center max-xl:w-auto">
+                <Bone className="h-5 w-5" />
+            </span>
+        ))}
+    </div>
+);
+
+const SkeletonSection: React.FC<{ rows: number; cells: number }> = ({ rows, cells }) => (
+    <div>
+        <div className="flex items-center gap-3 px-3.5 py-3">
+            <Bone className="h-8 w-8 shrink-0" />
+            <div className="flex-1 grid gap-1.5">
+                <Bone className="h-4 w-32" />
+                <Bone className="h-2.5 w-48 max-xl:hidden" />
+            </div>
+            {Array.from({ length: cells }, (_, i) => (
+                <span key={i} className="w-28 shrink-0 grid justify-items-center gap-1.5 max-xl:w-auto">
+                    <Bone className="h-2.5 w-10" />
+                    <Bone className="h-2.5 w-12" />
+                </span>
+            ))}
+        </div>
+        {Array.from({ length: rows }, (_, i) => (
+            <SkeletonRow key={i} cells={cells} wide={i % 2 === 0} />
+        ))}
+    </div>
+);
+
+const PermissionsSkeleton: React.FC = () => (
+    <div className="bg-[#eef2ff] min-h-screen pb-24 xl:pb-0" aria-busy="true">
+        <span className="sr-only" role="status">Loading permissions…</span>
+
+        {/* Header — real, so Back works while the data loads */}
+        <div className="bg-white border-b border-[#dfe6fb] sticky top-0 z-30">
+            <div className="flex items-center gap-3 px-3 py-3 xl:px-6 xl:py-4">
+                <BackButton />
+                <div className="min-w-0">
+                    <div className="hidden xl:block whitespace-nowrap text-xs text-[#5b6b86]">Settings / Manage users /</div>
+                    <h1 className="text-xl xl:text-[22px] font-semibold text-[#0f172b] leading-tight">Permissions</h1>
+                    <div className="xl:hidden text-xs text-[#5b6b86]">Settings</div>
+                </div>
+                <span className="hidden xl:block self-end pb-1 text-xs text-[#5b6b86]">
+                    What managers and salesmen can see and do
+                </span>
+                <Bone className="hidden xl:block ml-auto h-[38px] w-[260px]" />
+            </div>
+        </div>
+
+        {/* Mobile / tablet */}
+        <div className="xl:hidden max-w-2xl mx-auto">
+            <div className="px-4 py-2.5 bg-white border-b border-[#dfe6fb]">
+                <Bone className="h-10 w-full" />
+            </div>
+            <div className="px-4 pt-3 grid gap-3">
+                <div className={`${CARD_CLASS} px-3.5 py-3 grid gap-2`}>
+                    <Bone className="h-4 w-44" />
+                    <Bone className="h-1.5 w-full" />
+                </div>
+                {[3, 4, 2].map((rows, i) => (
+                    <div key={i} className={`${CARD_CLASS} overflow-hidden`}>
+                        <SkeletonSection rows={rows} cells={1} />
+                    </div>
+                ))}
+            </div>
+        </div>
+
+        {/* Desktop */}
+        <div className="hidden xl:grid grid-cols-[184px_minmax(0,1fr)_264px] gap-5 px-6 py-5 items-start">
+            <div className="grid gap-1.5">
+                {Array.from({ length: 6 }, (_, i) => (
+                    <Bone key={i} className="h-8 w-full" />
+                ))}
+            </div>
+
+            <div className="grid gap-4 min-w-0">
+                <Bone className="h-10 w-full !bg-[#e6eeff]" />
+                <div className={`${CARD_CLASS} overflow-hidden`}>
+                    <div className="flex items-center gap-3 px-3.5 py-3 bg-[#f5f7ff]">
+                        <Bone className="h-2.5 w-20 flex-1 max-w-20" />
+                        <span className="flex-1" />
+                        {[0, 1].map(i => (
+                            <span key={i} className="w-28 shrink-0 flex justify-center">
+                                <Bone className="h-[22px] w-20" />
+                            </span>
+                        ))}
+                    </div>
+                    <SkeletonSection rows={3} cells={2} />
+                    <div className="border-t border-[#dfe6fb]">
+                        <SkeletonSection rows={2} cells={2} />
+                    </div>
+                </div>
+            </div>
+
+            <div className="grid gap-3">
+                <div className={`${CARD_CLASS} px-4 py-3.5 grid gap-3`}>
+                    <Bone className="h-4 w-32" />
+                    {[0, 1].map(i => (
+                        <div key={i} className="grid gap-1.5">
+                            <Bone className="h-3 w-full" />
+                            <Bone className="h-1.5 w-full" />
+                        </div>
+                    ))}
+                </div>
+                <div className={`${CARD_CLASS} px-4 py-3.5 grid gap-3`}>
+                    {[0, 1, 2].map(i => (
+                        <div key={i} className="flex items-center gap-2.5">
+                            <Bone className="h-8 w-8 shrink-0" />
+                            <div className="flex-1 grid gap-1.5">
+                                <Bone className="h-3 w-3/4" />
+                                <Bone className="h-2.5 w-1/2" />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    </div>
+);
+
 const getInitials = (name: string) =>
     name.trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() || '').join('') || '?';
 
@@ -742,7 +872,7 @@ const ManagePermissionsPage: React.FC = () => {
         });
     };
 
-    if (loading) return <Loading />;
+    if (loading) return <PermissionsSkeleton />;
 
     // ---------- derived UI values ----------
     const has = (role: string, p: Permissions) => (rolePermissions[role] || []).includes(p);

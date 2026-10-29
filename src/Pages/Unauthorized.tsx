@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import {
   ArrowLeft,
+  ArrowUpRight,
   BarChart3,
   BookOpen,
-  ChevronRight,
   CircleUser,
   ClipboardList,
   FileText,
@@ -35,7 +36,11 @@ import { Permissions, PLANS } from '../enums';
 import { Cata_Permissions } from '../Catalogue/enum/cata_permissions.enum';
 import { ROUTES } from '../constants/routes.constants';
 import { logoutUser } from '../lib/AuthOperations';
-import StatusShell, { RISE, STATUS_THEMES, StatusMark, riseDelay, statusButton, type StatusTone } from '../Components/StatusShell';
+import StatusShell, { STATUS_THEMES, rise, stagger, statusButton, type StatusTone } from '../Components/StatusShell';
+import { LockArt } from '../Components/StatusArt';
+
+const MotionLink = motion.create(Link);
+const TILE_SPRING = { type: 'spring', stiffness: 260, damping: 24 } as const;
 
 // IconChip tones: sales blue, received/reports green, unpaid amber, people magenta, expenses red.
 const CHIP = {
@@ -202,7 +207,9 @@ const UnauthorizedPage: React.FC = () => {
     }
   };
 
-  let step = 0;
+  const [filter, setFilter] = useState('All');
+  const filters = groups.length > 1 ? ['All', ...groups.map((g) => g.title)] : [];
+  const tiles = filter === 'All' ? allPages : (groups.find((g) => g.title === filter)?.pages ?? allPages);
 
   return (
     <StatusShell
@@ -227,35 +234,34 @@ const UnauthorizedPage: React.FC = () => {
         </>
       }
     >
-      <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-8 md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] md:gap-12 md:px-6 md:py-14">
-        {/* Why, and what to do */}
-        <section className="md:sticky md:top-24 md:self-start">
-          <div className={RISE} style={riseDelay(step++)}>
-            <StatusMark icon={Lock} tone="amber" />
-          </div>
-          <p className={`mt-5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 ${RISE}`} style={riseDelay(step++)}>
-            Access denied
-          </p>
-          <h1
-            className={`mt-1.5 text-2xl font-semibold tracking-tight text-slate-900 md:text-[28px] md:leading-tight ${RISE}`}
-            style={riseDelay(step++)}
-          >
-            You don't have access to this page
-          </h1>
-          <p className={`mt-3 max-w-[46ch] text-sm leading-relaxed text-slate-600 md:text-base ${RISE}`} style={riseDelay(step++)}>
-            {canSetPermissions
-              ? 'Your role doesn’t have this page turned on. You can change that in Permissions.'
-              : 'Your role doesn’t have this page turned on. Ask your shop owner to turn it on for you in Permissions.'}
-          </p>
+      <motion.div
+        variants={stagger}
+        initial="hidden"
+        animate="show"
+        className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-6 md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] md:gap-12 md:px-6 md:py-12"
+      >
+        {/* The lock, and what to do */}
+        <motion.section variants={stagger} className="text-center md:sticky md:top-24 md:self-start md:text-left">
+          <motion.div variants={rise} className="mx-auto w-full max-w-[220px] md:mx-0 md:max-w-[300px]">
+            <LockArt tone={tone} label="This page is locked. Tap the lock to try it." />
+          </motion.div>
+          <motion.h1 variants={rise} className="mt-3 text-2xl font-semibold tracking-tight text-slate-900 md:text-[32px] md:leading-tight">
+            This page is locked
+          </motion.h1>
+          <motion.p variants={rise} className="mt-2 text-sm text-slate-600 md:text-base">
+            {canSetPermissions ? 'Turn it on in Permissions.' : 'Ask your shop owner to turn it on.'}
+          </motion.p>
 
           {requested && (
-            <div className={`mt-4 flex flex-wrap items-center gap-2 text-xs ${RISE}`} style={riseDelay(step++)}>
-              <span className="text-slate-500">You tried to open</span>
-              <span className={`max-w-full truncate rounded-sm px-2 py-1 font-medium ${theme.soft}`}>{requested}</span>
-            </div>
+            <motion.div variants={rise} className="mt-4 flex justify-center md:justify-start">
+              <span className={`inline-flex max-w-full items-center gap-1.5 rounded-sm px-2.5 py-1 text-xs font-medium ${theme.soft}`}>
+                <Lock size={12} aria-hidden="true" />
+                <span className="truncate">{requested}</span>
+              </span>
+            </motion.div>
           )}
 
-          <div className={`mt-7 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center ${RISE}`} style={riseDelay(step++)}>
+          <motion.div variants={rise} className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:justify-center md:justify-start">
             {homeLink && (
               <Link to={homeLink.path} className={`${statusButton(tone, 'primary')} w-full sm:w-auto`}>
                 <House size={16} aria-hidden="true" />
@@ -275,72 +281,91 @@ const UnauthorizedPage: React.FC = () => {
                 </button>
               )
             )}
-          </div>
-        </section>
+          </motion.div>
+        </motion.section>
 
         {/* Pages they can open */}
-        <section aria-labelledby="open-pages">
-          <div className={`mb-3 flex items-baseline gap-2 ${RISE}`} style={riseDelay(2)}>
+        <motion.section variants={rise} aria-labelledby="open-pages">
+          <div className="mb-3 flex items-center gap-2">
             <h2 id="open-pages" className="text-base font-semibold text-slate-900">
-              Pages you can open
+              Open instead
             </h2>
             {openCount > 0 && (
-              <span className="text-xs text-slate-500">
-                {openCount} {openCount === 1 ? 'page' : 'pages'}
-              </span>
+              <span className="rounded-sm bg-white px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-slate-600 shadow-card">{openCount}</span>
             )}
           </div>
 
+          {filters.length > 0 && (
+            <LayoutGroup id="denied-filter">
+              <div role="tablist" aria-label="Filter pages" className="-mx-4 mb-4 flex gap-1 overflow-x-auto px-4 pb-1 md:mx-0 md:flex-wrap md:px-0">
+                {filters.map((name) => {
+                  const active = filter === name;
+                  return (
+                    <button
+                      key={name}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => setFilter(name)}
+                      className={`relative shrink-0 rounded-sm px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 ${theme.focus} ${active ? 'text-white' : 'text-slate-600 hover:bg-white/70 hover:text-slate-900'}`}
+                    >
+                      {active && (
+                        <motion.span layoutId="denied-filter-pill" className="absolute inset-0 rounded-sm bg-slate-900" transition={TILE_SPRING} />
+                      )}
+                      <span className="relative">{name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </LayoutGroup>
+          )}
+
           {openCount === 0 ? (
-            <div className={`flex flex-col items-center rounded-sm border bg-white px-6 py-10 text-center ${theme.line} ${theme.card} ${RISE}`} style={riseDelay(3)}>
+            <div className={`flex flex-col items-center rounded-sm border bg-white px-6 py-10 text-center ${theme.line} ${theme.card}`}>
               <Lock size={28} strokeWidth={1.75} className="text-slate-400" aria-hidden="true" />
-              <strong className="mt-3 text-sm font-semibold text-slate-900">No pages are turned on for you yet</strong>
-              <p className="mt-1 max-w-[36ch] text-xs leading-relaxed text-slate-500">
-                Ask your shop owner to give your role at least one page in Permissions.
-              </p>
+              <strong className="mt-3 text-sm font-semibold text-slate-900">No pages turned on yet</strong>
+              <p className="mt-1 max-w-[32ch] text-xs leading-relaxed text-slate-500">Ask your shop owner to turn on a page for your role.</p>
             </div>
           ) : (
-            <div className="space-y-5">
-              {groups.map((group, gi) => (
-                <div key={group.title}>
-                  <h3
-                    className={`mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 ${RISE}`}
-                    style={riseDelay(3 + gi)}
-                  >
-                    {group.title}
-                  </h3>
-                  <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                    {group.pages.map((page, pi) => {
-                      const Icon = page.icon;
-                      return (
-                        <li key={page.path} className={RISE} style={riseDelay(4 + gi + pi)}>
-                          <Link
-                            to={page.path}
-                            className={`group flex h-full items-center gap-3 rounded-sm border bg-white p-3.5 no-underline transition hover:-translate-y-px hover:border-slate-300 active:translate-y-0 active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 ${theme.line} ${theme.card} ${theme.secondaryBtn}`}
-                          >
-                            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-sm ${CHIP[page.chip]}`}>
-                              <Icon size={18} aria-hidden="true" />
-                            </span>
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-sm font-semibold text-slate-900">{page.title}</span>
-                              <span className="block truncate text-xs text-slate-500">{page.description}</span>
-                            </span>
-                            <ChevronRight
-                              size={16}
-                              className="shrink-0 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-slate-600"
-                              aria-hidden="true"
-                            />
-                          </Link>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              ))}
-            </div>
+            <motion.ul layout className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+              <AnimatePresence mode="popLayout" initial={false}>
+                {tiles.map((page, i) => {
+                  const Icon = page.icon;
+                  return (
+                    <motion.li
+                      key={page.path}
+                      layout
+                      initial={{ opacity: 0, scale: 0.92, y: 10 }}
+                      animate={{ opacity: 1, scale: 1, y: 0, transition: { ...TILE_SPRING, delay: 0.15 + i * 0.03 } }}
+                      exit={{ opacity: 0, scale: 0.92, transition: { duration: 0.15 } }}
+                      transition={TILE_SPRING}
+                    >
+                      <MotionLink
+                        to={page.path}
+                        title={page.description}
+                        whileHover={{ y: -3 }}
+                        whileTap={{ scale: 0.97 }}
+                        transition={TILE_SPRING}
+                        className={`group relative flex h-full flex-col gap-3 rounded-sm border bg-white p-3.5 no-underline transition-[border-color,box-shadow] hover:border-slate-300 ${tone === 'catalogue' ? 'hover:shadow-sf-float' : 'hover:shadow-float'} focus-visible:outline-2 focus-visible:outline-offset-2 ${theme.line} ${theme.card} ${theme.focus}`}
+                      >
+                        <span className={`flex h-10 w-10 items-center justify-center rounded-sm transition-transform duration-300 group-hover:scale-110 ${CHIP[page.chip]}`}>
+                          <Icon size={19} aria-hidden="true" />
+                        </span>
+                        <span className="text-sm font-semibold leading-snug text-slate-900">{page.title}</span>
+                        <ArrowUpRight
+                          size={16}
+                          aria-hidden="true"
+                          className="absolute right-3 top-3 text-slate-300 transition duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-slate-600"
+                        />
+                      </MotionLink>
+                    </motion.li>
+                  );
+                })}
+              </AnimatePresence>
+            </motion.ul>
           )}
-        </section>
-      </div>
+        </motion.section>
+      </motion.div>
     </StatusShell>
   );
 };

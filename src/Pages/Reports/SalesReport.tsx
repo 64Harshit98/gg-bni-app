@@ -686,25 +686,6 @@ const SalesReport: React.FC = () => {
     action();
   };
 
-  const shareOnWhatsApp = () => {
-    if (!appliedFilters) return;
-    const modeLines = (Object.keys(paymentBreakdown) as PayMode[])
-      .filter((m) => paymentBreakdown[m].amount > 0)
-      .map((m) => `${PAY_MODE_META[m].label}: ${formatCurrency(paymentBreakdown[m].amount)}`);
-
-    const text = [
-      `*Sales Report${companyName ? ` — ${companyName}` : ''}*`,
-      formatRangeLabel(appliedFilters.start, appliedFilters.end),
-      '',
-      `Total sales: ${formatCurrency(Math.round(rangeSummary.totalSales))}`,
-      `Bills: ${rangeSummary.totalTransactions} · Items sold: ${rangeSummary.totalItemsSold}`,
-      `Avg sale: ${formatCurrency(Math.round(rangeSummary.averageSaleValue))}`,
-      ...(modeLines.length ? ['', ...modeLines] : []),
-    ].join('\n');
-
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
-  };
-
   /* ---------- SORT HELPERS ---------- */
   const mobileSortValue =
     sortConfig.key === 'totalAmount'
@@ -921,7 +902,6 @@ const SalesReport: React.FC = () => {
             variant="icon"
             onExcel={() => runDownload(downloadAsExcel)}
             onPdf={() => runDownload(downloadAsPdf)}
-            onWhatsApp={shareOnWhatsApp}
           />
         </div>
       </header>
@@ -1067,7 +1047,6 @@ const SalesReport: React.FC = () => {
             <DownloadMenu
               onExcel={() => runDownload(downloadAsExcel)}
               onPdf={() => runDownload(downloadAsPdf)}
-              onWhatsApp={shareOnWhatsApp}
             />
           </div>
 

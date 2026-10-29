@@ -744,22 +744,6 @@ const CustomerReport: React.FC = () => {
     action();
   };
 
-  const shareOnWhatsApp = () => {
-    if (!appliedFilters) return;
-    const text = [
-      `*Customer Report${companyName ? ` — ${companyName}` : ''}*`,
-      formatRangeLabel(appliedFilters.start, appliedFilters.end),
-      '',
-      `Customers: ${summary.totalCustomers} · Bills: ${summary.totalBills}`,
-      `Sales: ${formatCurrency(Math.round(summary.totalSales))}`,
-      `To collect: ${formatCurrency(Math.round(summary.totalDue))}`,
-      ...(topBuyers.length
-        ? ['', 'Top customers:', ...topBuyers.map((r) => `• ${displayCustomerName(r)}: ${formatCurrency(r.sales)}`)]
-        : []),
-    ].join('\n');
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
-  };
-
   /* ---------- RENDER HELPERS ---------- */
   const plural = (n: number, word: string, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
   const shareOf = (value: number) => (summary.totalSales > 0 ? (value / summary.totalSales) * 100 : 0);
@@ -1083,7 +1067,6 @@ const CustomerReport: React.FC = () => {
             variant="icon"
             onExcel={() => runDownload(downloadAsExcel)}
             onPdf={() => runDownload(downloadAsPdf)}
-            onWhatsApp={shareOnWhatsApp}
           />
         </div>
       </header>
@@ -1290,7 +1273,6 @@ const CustomerReport: React.FC = () => {
               <DownloadMenu
                 onExcel={() => runDownload(downloadAsExcel)}
                 onPdf={() => runDownload(downloadAsPdf)}
-                onWhatsApp={shareOnWhatsApp}
               />
             </div>
 

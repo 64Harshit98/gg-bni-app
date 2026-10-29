@@ -939,11 +939,11 @@ const CatalogueBillSettings: React.FC = () => {
                             onReset={() => resetSection('bs-payment')}
                         />
                         <div className={`${OPT} ${optBg(chg.upi)}`}>
-                            <div className="grid gap-1.5">
+                            <div className="grid gap-1.5 min-w-0">
                                 <label className="block text-xs font-medium text-slate-600" htmlFor="bs-upi">
                                     UPI ID{chg.upi && <ChangedTag />}
                                 </label>
-                                <label className="flex items-center gap-2 h-10 px-3 max-w-[360px] rounded-sm border border-slate-400 bg-white text-slate-500 focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-orange-600">
+                                <label className="flex items-center gap-2 h-10 px-3 w-full min-w-0 max-w-[360px] rounded-sm border border-slate-400 bg-white text-slate-500 focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-orange-600">
                                     <Icon name="wallet" />
                                     <input
                                         id="bs-upi"
@@ -952,7 +952,7 @@ const CatalogueBillSettings: React.FC = () => {
                                         value={settings.upiId || ''}
                                         onChange={handleChange}
                                         placeholder="e.g. yourname@upi"
-                                        className="flex-1 min-w-0 border-0 outline-none bg-transparent text-sm leading-5 text-slate-900 placeholder:text-slate-500"
+                                        className="flex-1 w-0 min-w-0 border-0 outline-none bg-transparent text-sm leading-5 text-slate-900 placeholder:text-slate-500"
                                     />
                                 </label>
                                 {settings.upiId ? (
@@ -1055,40 +1055,42 @@ const CatalogueBillSettings: React.FC = () => {
 
                         {/* Discount display format */}
                         <div className={`${OPT} ${optBg(chg.discount)}`}>
-                            <div>
-                                <div className={OPT_T}><Icon name="percent" />Show discount as{chg.discount && <ChangedTag />}</div>
-                                <div className={OPT_D}>How the Disc1 + Disc2 column is shown on the printed/PDF bill.</div>
-                            </div>
-                            <div className="grid gap-2.5">
-                                <div
-                                    className={`inline-flex p-[3px] gap-0.5 rounded-sm border border-orange-100 ${chg.discount ? 'bg-white' : 'bg-orange-50/60'}`}
-                                    role="group"
-                                    aria-label="Discount display format"
-                                >
-                                    {[
-                                        { label: 'Amount (₹)', value: 'amount' },
-                                        { label: 'Percentage (%)', value: 'percentage' },
-                                    ].map(opt => {
-                                        const on = (settings.discountDisplayFormat ?? 'amount') === opt.value;
-                                        return (
-                                            <button
-                                                key={opt.value}
-                                                type="button"
-                                                aria-pressed={on}
-                                                onClick={() =>
-                                                    setSettings(prev => ({ ...prev, discountDisplayFormat: opt.value as 'amount' | 'percentage' }))
-                                                }
-                                                className={`h-[30px] px-3.5 rounded-sm text-[13px] font-medium leading-none ${
-                                                    on ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-600'
-                                                }`}
-                                            >
-                                                {opt.label}
-                                            </button>
-                                        );
-                                    })}
+                            <div className={OPT_X}>
+                                <div>
+                                    <div className={OPT_T}><Icon name="percent" />Show discount as{chg.discount && <ChangedTag />}</div>
+                                    <div className={OPT_D}>How the Disc1 + Disc2 column is shown on the printed/PDF bill.</div>
                                 </div>
-                                <div className="inline-flex items-center gap-1.5 w-fit px-3 py-2 rounded-sm bg-orange-50/60 text-xs text-slate-600">
-                                    Shirt ₹1,000 · disc. <b className="text-slate-900 tabular-nums">{discountExample.disc}</b> → {discountExample.after}
+                                <div className="grid gap-2.5 justify-items-start">
+                                    <div
+                                        className={`inline-flex p-[3px] gap-0.5 rounded-sm border border-orange-100 ${chg.discount ? 'bg-white' : 'bg-orange-50/60'}`}
+                                        role="group"
+                                        aria-label="Discount display format"
+                                    >
+                                        {[
+                                            { label: 'Amount (₹)', value: 'amount' },
+                                            { label: 'Percentage (%)', value: 'percentage' },
+                                        ].map(opt => {
+                                            const on = (settings.discountDisplayFormat ?? 'amount') === opt.value;
+                                            return (
+                                                <button
+                                                    key={opt.value}
+                                                    type="button"
+                                                    aria-pressed={on}
+                                                    onClick={() =>
+                                                        setSettings(prev => ({ ...prev, discountDisplayFormat: opt.value as 'amount' | 'percentage' }))
+                                                    }
+                                                    className={`h-[30px] px-3.5 rounded-sm text-[13px] font-medium leading-none ${
+                                                        on ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-600'
+                                                    }`}
+                                                >
+                                                    {opt.label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="inline-flex items-center gap-1.5 w-fit px-3 py-2 rounded-sm bg-orange-50/60 text-xs text-slate-600">
+                                        Shirt ₹1,000 · disc. <b className="text-slate-900 tabular-nums">{discountExample.disc}</b> → {discountExample.after}
+                                    </div>
                                 </div>
                             </div>
                         </div>

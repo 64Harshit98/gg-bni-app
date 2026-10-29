@@ -200,7 +200,8 @@ const StoreBuilder: React.FC = () => {
     const env = { companyId, categories, onRemovedImage: (p?: string) => { if (p) removedPaths.current.push(p); } };
 
     const preview = (
-        <div className="sf min-h-full bg-sf-canvas font-sans text-slate-900">
+        // sf-frame + @container/sf: section breakpoints follow this box's width, not the screen's.
+        <div className="sf sf-frame @container/sf min-h-full bg-sf-canvas font-sans text-slate-900">
             <div className="flex h-14 items-center gap-2.5 border-b border-sf-line bg-white px-4">
                 <span className="grid size-[34px] place-items-center overflow-hidden rounded-sm bg-sf-soft text-[13px] font-semibold text-sf-soft-ink">
                     {business.companyLogo ? <img src={business.companyLogo} alt="" className="h-full w-full object-cover" /> : initialsOf(business.businessName)}

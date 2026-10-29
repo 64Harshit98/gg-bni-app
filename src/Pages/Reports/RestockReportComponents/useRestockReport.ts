@@ -1,21 +1,15 @@
 import { useMemo } from 'react';
 import { useCatalogueData } from '../../../context/CatalogueDataContext';
-import { type ItemDoc } from './restockReport.utils';
+import { buildRestockRows } from './restockReport.utils';
 
+// Items come from the shared CatalogueDataContext (already loaded app-wide),
+// so this report costs no extra reads.
 const useRestockReport = () => {
-  const { items: catalogueItems, itemsLoading } = useCatalogueData();
+  const { items, itemsLoading, itemGroups, itemGroupsLoading } = useCatalogueData();
 
-  // items now come from the shared CatalogueDataContext instead of this hook
-  // fetching them itself.
-  const items = useMemo(() => (catalogueItems as ItemDoc[])
-    .filter(item => (item.stock ?? 0) <= item.restockQuantity)
-    .sort((a, b) => {
-      const aDeficit = (a.stock || 0) - a.restockQuantity;
-      const bDeficit = (b.stock || 0) - b.restockQuantity;
-      return aDeficit - bDeficit;
-    }), [catalogueItems]);
+  const rows = useMemo(() => buildRestockRows(items, itemGroups), [items, itemGroups]);
 
-  return { items, loading: itemsLoading, error: null };
+  return { rows, itemGroups, loading: itemsLoading || itemGroupsLoading };
 };
 
 export default useRestockReport;

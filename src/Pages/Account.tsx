@@ -9,7 +9,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { ROUTES } from '../constants/routes.constants';
 import { Permissions } from '../enums';
 import ShowWrapper from '../context/ShowWrapper';
-import ShinyText from '../Components/ShinyText';
+//import ShinyText from '../Components/ShinyText';
 //import NotificationBell from '../Components/NotificationBell';
 //import { useMemo } from 'react';
 import BusinessCard from '../Catalogue/BusinessCards/BusinessCard';
@@ -20,9 +20,77 @@ interface UserProfile {
   name: string;
   email: string;
   profilePicture?: string;
+  role?: string;
+  phone?: string;
+  phoneNumber?: string;
+  address?: string;
 }
 
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 8;
+
+
+/* ---------- UI-only helpers (no logic) ---------- */
+
+const Ico: React.FC<{ className?: string; children: React.ReactNode }> = ({
+  className = 'w-5 h-5',
+  children,
+}) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.75}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    {children}
+  </svg>
+);
+
+type Tint = 'green' | 'blue' | 'amber' | 'magenta';
+const TINTS: Record<Tint, string> = {
+  green: 'bg-[#e9faef] text-[#008236]',
+  blue: 'bg-[#e6eeff] text-[#155dfc]',
+  amber: 'bg-[#fff3dd] text-[#bb4d00]',
+  magenta: 'bg-[#ffe8f8] text-[#c4009a]',
+};
+
+const SHADOW_CARD = 'shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]';
+
+// Row content (icon chip + title + description + chevron) — same as SettingsRow in the design
+const RowLink: React.FC<{
+  to: string;
+  tint: Tint;
+  title: string;
+  desc: string;
+  children: React.ReactNode;
+}> = ({ to, tint, title, desc, children }) => (
+  <Link to={to} className="flex items-center gap-3 px-4 py-3 text-[#0f172b] no-underline">
+    <span className={`inline-grid h-10 w-10 shrink-0 place-items-center rounded-sm ${TINTS[tint]}`}>
+      <Ico className="h-5 w-5">{children}</Ico>
+    </span>
+    <span className="min-w-0 flex-1">
+      <span className="block text-sm font-medium leading-[22px]">{title}</span>
+      <span className="block text-xs leading-[18px] text-[#5b6b86]">{desc}</span>
+    </span>
+    <Ico className="h-4 w-4 shrink-0 text-[#5b6b86]">
+      <path d="m9 6 6 6-6 6" />
+    </Ico>
+  </Link>
+);
+
+// Grid cell (one row of the grouped settings card). Hover lives on the cell so corners stay rounded.
+const CELL =
+  'bg-white transition-colors hover:bg-[#f5f7ff] empty:hidden ' +
+  // 1-col (mobile): first row rounded top, last row rounded bottom
+  '[&:first-child]:rounded-t-sm [&:last-child]:rounded-b-sm ' +
+  // 2-col (md+): corners
+  'lg:[&:first-child]:rounded-tr-none lg:[&:nth-child(2)]:rounded-tr-sm ' +
+  'lg:[&:last-child]:rounded-bl-none lg:[&:last-child]:rounded-br-sm ' +
+  'lg:[&:last-child:nth-child(odd)]:col-span-2 lg:[&:last-child:nth-child(odd)]:rounded-bl-sm ' +
+  'lg:[&:nth-last-child(2):nth-child(odd)]:rounded-bl-sm';
 
 const Account: React.FC = () => {
   const navigate = useNavigate();
@@ -35,6 +103,7 @@ const Account: React.FC = () => {
   const [companyReferralCode, setCompanyReferralCode] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [businessAddress, setBusinessAddress] = useState<string | null>(null);
 
   // Tutorial State
   const [tutorialStep, setTutorialStep] = useState(0);
@@ -46,6 +115,7 @@ const Account: React.FC = () => {
   const settingRef = useRef<HTMLDivElement | null>(null);
   const plansRef = useRef<HTMLDivElement | null>(null);
   const supportRef = useRef<HTMLDivElement | null>(null);
+  const usersRef = useRef<HTMLDivElement | null>(null);
   const addOnsRef = useRef<HTMLDivElement | null>(null);
   const logoutRef = useRef<HTMLDivElement | null>(null);
 
@@ -56,8 +126,9 @@ const Account: React.FC = () => {
     4: settingRef,
     5: plansRef,
     6: supportRef,
-    7: addOnsRef,
-    8: logoutRef,
+    7: usersRef,
+    8: addOnsRef,
+    9: logoutRef,
   };
 
   const next = useCallback((n: number) => {
@@ -82,27 +153,6 @@ const Account: React.FC = () => {
       });
     }, 80);
   }, [tutorialStep]);
-
-  const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
-
-  useEffect(() => {
-    const fetchExpiry = async () => {
-      if (!currentUser?.companyId) return;
-      const ref = doc(db, 'companies', currentUser.companyId);
-      const snap = await getDoc(ref);
-      if (snap.exists()) {
-        const expiry = snap.data().expiryDate;
-        if (!expiry) return;
-        const d = expiry.toDate ? expiry.toDate() : new Date(expiry);
-        const diff = d.getTime() - new Date().getTime();
-        setDaysRemaining(Math.ceil(diff / (1000 * 60 * 60 * 24)));
-      }
-    };
-    fetchExpiry();
-  }, [currentUser?.companyId]);
-
-  const showBadge = daysRemaining !== null && daysRemaining <= 7 && daysRemaining >= 0;
-  const isUrgent = daysRemaining !== null && daysRemaining <= 2;
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -136,6 +186,14 @@ const Account: React.FC = () => {
           const companyDocSnap = await getDoc(companyDocRef);
           if (companyDocSnap.exists()) {
             setCompanyReferralCode(companyDocSnap.data().ownReferralCode || null);
+          }
+
+          // Address is stored in business_info (same source the business card uses)
+          const businessInfoSnap = await getDoc(
+            doc(db, 'companies', currentUser.companyId, 'business_info', currentUser.companyId)
+          );
+          if (businessInfoSnap.exists()) {
+            setBusinessAddress(businessInfoSnap.data().streetAddress || null);
           }
         } else {
           setError('User profile not found in Firestore.');
@@ -186,7 +244,7 @@ const Account: React.FC = () => {
 
   if (loadingAuth || loadingProfile) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 text-slate-500">
+      <div className="flex min-h-screen flex-col items-center justify-center bg-[#eef2ff] text-[#45556c]">
         <p>Loading profile data...</p>
       </div>
     );
@@ -194,7 +252,7 @@ const Account: React.FC = () => {
 
   if (error) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 text-red-500">
+      <div className="flex min-h-screen flex-col items-center justify-center bg-[#eef2ff] text-[#d5000c]">
         <p>{error}</p>
       </div>
     );
@@ -202,28 +260,43 @@ const Account: React.FC = () => {
 
   if (!profileData) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 text-red-500">
+      <div className="flex min-h-screen flex-col items-center justify-center bg-[#eef2ff] text-[#d5000c]">
         <p>No profile data available.</p>
       </div>
     );
   }
 
+  const initials =
+    profileData.name
+      ?.split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join('')
+      .toUpperCase() || '?';
+
+  const phoneToShow = profileData.phone || profileData.phoneNumber;
+  const addressToShow = profileData.address || businessAddress;
+
+  const copyButton = (
+    <button
+      onClick={handleCopy}
+      className="grid h-8 w-8 place-items-center rounded-sm text-[#45556c] transition-colors hover:bg-[#f5f7ff] hover:text-[#0f172b]"
+      title="Copy Referral Code"
+      aria-label="Copy referral code"
+    >
+      {copied ? <FiCheck className="text-[#008236]" size={16} /> : <FiCopy size={16} />}
+    </button>
+  );
+
   return (
-    <div className="flex min-h-screen flex-col bg-gray-100">
-      {showBadge && (
-        <div className={`w-full text-center py-2 text-sm font-bold text-white shadow-sm transition-colors duration-300 ${isUrgent ? 'bg-red-300' : 'bg-amber-200'}`}>
-          <ShinyText
-            text={`Subscription expires in ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}.`}
-            speed={4} delay={0} color="#030303" shineColor="#faf5f5" spread={100} direction="left" yoyo={false} pauseOnHover={false} disabled={false}
-          />
-          <Link to="/subscription" className="text-black ml-2 underline hover:text-gray-100">Renew Now</Link>
+    <div className="flex min-h-screen w-full max-w-full flex-col overflow-x-clip bg-[#eef2ff] text-sm text-[#0f172b]">
+      {/* Page head */}
+      <header className="hidden items-center gap-4 px-4 pb-4 pt-4 md:flex md:px-6 md:pt-5">
+        <div className="hidden min-w-0 md:block">
+          <h1 className="m-0 text-2xl font-semibold leading-8 tracking-[-0.01em]">Account</h1>
+          <p className="m-0 text-[13px] text-[#45556c]">Your profile, business card and store settings</p>
         </div>
-      )}
-
-      <div className="grid grid-cols-3 items-center bg-gray-100 p-2 border-b border-gray-300 mb-4">
-        <div />
-
-        <h1 className="text-2xl font-bold text-center text-slate-800">Account</h1>
 
         {/* Notification Bell */}
         {/* <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
@@ -231,189 +304,300 @@ const Account: React.FC = () => {
             <NotificationBell />
           </div>
         </ShowWrapper> */}
-      </div>
 
-      {/* Step 1 — Profile photo + edit */}
-      <div ref={profileRef} className="flex flex-col items-center py-3 pb-4">
-        <TutorialStep
-          step={1}
-          currentStep={tutorialStep}
-          text="This is your profile. Tap the pencil icon to update your photo and name."
-          onNext={() => next(2)}
-          onSkip={skip}
-        >
-          <div className="relative mb-2">
-            {profileData.profilePicture ? (
-              <img
-                className="w-32 h-32 rounded-full object-cover border border-white shadow-lg bg-white"
-                src={profileData.profilePicture}
-                alt="Profile"
-              />
-            ) : (
-              <div className="w-32 h-32 rounded-full border border-white shadow-lg bg-gray-200 flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-16 h-16 text-gray-400">
-                  <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clipRule="evenodd" />
-                </svg>
-              </div>
-            )}
-            <div className="absolute top-0 left-0 right-0 bottom-0 border-2 border-green-500 rounded-full animate-pulse"></div>
-            <button
-              onClick={handleEditProfile}
-              className="absolute -top-1 -right-1 bg-white p-1.5 rounded-full shadow-lg hover:bg-gray-200 transition focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-center"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-gray-700">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-              </svg>
-            </button>
-          </div>
-        </TutorialStep>
-
-        <h2 className="text-2xl font-semibold text-slate-900">{profileData.name}</h2>
-        <p className="text-base text-gray-500">{profileData.email}</p>
-
-        {/* Referral Code Block from File 1 */}
-        <div className="mt-3 h-10 flex items-center justify-center">
-          {companyReferralCode ? (
-            <div className="flex items-center bg-white border border-gray-300 rounded-sm px-3 py-1.5 shadow-sm">
-              <span className="text-sm text-gray-500 mr-2">Ref Code:</span>
-              <span className="font-mono font-bold tracking-wider text-gray-800">{companyReferralCode}</span>
-              <button
-                onClick={handleCopy}
-                className="ml-3 text-gray-500 hover:text-black transition"
-                title="Copy Referral Code"
-              >
-                {copied ? <FiCheck className="text-green-500" size={18} /> : <FiCopy size={16} />}
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={handleGenerateCode}
-              disabled={isGenerating}
-              className="text-sm text-blue-600 hover:underline disabled:text-gray-400"
-            >
-              {isGenerating ? 'Generating...' : 'Generate Referral Code'}
-            </button>
-          )}
+        <div ref={logoutRef} className="ml-auto">
+          <button
+            onClick={handleLogout}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-sm px-4 text-sm font-medium text-[#d5000c] transition-colors hover:bg-[#ffeef0] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#155dfc]"
+          >
+            <Ico className="h-4 w-4">
+              <path d="M9 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4M16 17l5-5-5-5M21 12H9" />
+            </Ico>
+            Log out
+          </button>
         </div>
-      </div>
+      </header>
 
-      <div className="flex-1 bg-gray-100 p-2">
-        <div className="w-full">
-          <h2 className="text-xl font-semibold text-slate-800 mb-4">Share your Business Card</h2>
+      <div className="grid grid-cols-1 items-start gap-4 px-4 pb-6 pt-4 md:gap-5 md:px-6 md:pt-0 xl:grid-cols-[320px_minmax(0,1fr)]">
+        {/* ================= LEFT: PROFILE ================= */}
+        {/* Step 1 — Profile photo + edit */}
+        <div ref={profileRef} className="min-w-0">
+          <TutorialStep
+            step={1}
+            currentStep={tutorialStep}
+            text="This is your profile. Tap the pencil icon to update your photo and name."
+            onNext={() => next(2)}
+            onSkip={skip}
+          >
+            <div className={`min-w-0 md:grid md:grid-cols-[auto_minmax(0,1fr)] md:items-center md:gap-x-6 md:gap-y-4 md:rounded-sm md:border md:border-[#dfe6fb] md:bg-white md:p-5 xl:block xl:pt-7 ${SHADOW_CARD.replace('shadow', 'md:shadow')}`}>
+              {/* Identity */}
+              <div className="flex items-center gap-3.5 xl:flex-col xl:gap-1 xl:text-center">
+                {profileData.profilePicture ? (
+                  <img
+                    className="h-[60px] w-[60px] shrink-0 rounded-full object-cover md:h-[72px] md:w-[72px] xl:h-[88px] xl:w-[88px]"
+                    src={profileData.profilePicture}
+                    alt="Profile"
+                  />
+                ) : (
+                  <span className="grid h-[60px] w-[60px] shrink-0 place-items-center rounded-full bg-[#e6eeff] text-xl font-semibold text-[#155dfc] md:h-[72px] md:w-[72px] md:text-2xl xl:h-[88px] xl:w-[88px] xl:text-[30px]">
+                    {initials}
+                  </span>
+                )}
 
+                <div className="min-w-0 flex-1 xl:mt-3 xl:flex-none">
+                  <h2 className="m-0 truncate text-lg font-semibold leading-[26px] md:text-xl md:leading-7">{profileData.name}</h2>
+                  {profileData.role && (
+                    <div className="mt-0.5 text-xs leading-[18px] text-[#45556c] md:mt-1">
+                      <span className="hidden h-[22px] items-center rounded-sm bg-[#0f172b] px-2 align-middle text-[11px] font-semibold uppercase leading-[22px] tracking-[0.03em] text-white md:inline-flex">
+                        {profileData.role}
+                      </span>
+                      <span className="capitalize md:hidden">{profileData.role}</span>
+                    </div>
+                  )}
+                  {/* Mobile email */}
+                  <div className="truncate text-xs leading-[18px] text-[#5b6b86] md:hidden">{profileData.email}</div>
+                  {phoneToShow && (
+                    <div className="truncate text-xs leading-[18px] text-[#5b6b86] md:hidden">{phoneToShow}</div>
+                  )}
+                  {addressToShow && (
+                    <div className="line-clamp-2 text-xs leading-[18px] text-[#5b6b86] md:hidden">{addressToShow}</div>
+                  )}
+                </div>
+
+                {/* Mobile: outlined icon edit button */}
+                <button
+                  onClick={handleEditProfile}
+                  aria-label="Edit profile"
+                  className="inline-grid h-10 w-10 shrink-0 place-items-center rounded-sm border border-[#7a8aa3] bg-white text-[#45556c] transition-colors hover:bg-[#f5f7ff] hover:text-[#0f172b] md:hidden"
+                >
+                  <Ico>
+                    <path d="M17 3l4 4L8 20H4v-4z" />
+                  </Ico>
+                </button>
+              </div>
+
+              {/* Desktop facts */}
+              <div className="hidden w-full gap-2.5 text-left text-[13px] text-[#45556c] md:grid md:content-center md:border-l md:border-[#dfe6fb] md:pl-6 xl:my-4 xl:border-y xl:border-l-0 xl:border-[#dfe6fb] xl:py-4 xl:pl-0">
+                <span className="flex items-center gap-2.5">
+                  <Ico className="h-4 w-4 shrink-0">
+                    <rect x="3" y="5" width="18" height="14" rx="2" />
+                    <path d="m3 7 9 6 9-6" />
+                  </Ico>
+                  <span className="min-w-0 break-all">{profileData.email}</span>
+                </span>
+                {phoneToShow && (
+                  <span className="flex items-center gap-2.5">
+                    <Ico className="h-4 w-4 shrink-0">
+                      <path d="M5 3h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 12l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 5a2 2 0 0 1 2-2" />
+                    </Ico>
+                    {phoneToShow}
+                  </span>
+                )}
+                {addressToShow && (
+                  <span className="flex items-center gap-2.5">
+                    <Ico className="h-4 w-4 shrink-0">
+                      <path d="M12 21s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z" />
+                      <circle cx="12" cy="9" r="2.5" />
+                    </Ico>
+                    <span className="min-w-0">{addressToShow}</span>
+                  </span>
+                )}
+              </div>
+
+              {/* Actions: referral + edit */}
+              <div className="md:col-span-2 md:flex md:items-center md:gap-3 md:border-t md:border-[#dfe6fb] md:pt-4 xl:block xl:border-t-0 xl:pt-0">
+                {/* Referral code */}
+                <div className="mt-4 flex min-h-10 items-center md:mt-0 md:flex-1 xl:flex-none xl:justify-center">
+                  {companyReferralCode ? (
+                    <div className="inline-flex h-10 w-full items-center justify-between gap-2.5 rounded-sm border border-dashed border-[#7a8aa3] pl-3.5 pr-1.5 text-[13px] text-[#45556c] md:w-auto md:justify-start">
+                      Referral code
+                      <span className="font-mono text-sm font-semibold leading-none tracking-[0.06em] text-[#0f172b]">{companyReferralCode}</span>
+                      {copyButton}
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleGenerateCode}
+                      disabled={isGenerating}
+                      className="inline-flex h-10 w-full items-center justify-center rounded-sm border border-dashed border-[#7a8aa3] px-4 text-[13px] font-medium text-[#155dfc] transition-colors hover:bg-[#f5f7ff] disabled:cursor-not-allowed disabled:opacity-45 md:w-auto"
+                    >
+                      {isGenerating ? 'Generating...' : 'Generate Referral Code'}
+                    </button>
+                  )}
+                </div>
+
+                {/* Desktop: Edit profile (secondary, block) */}
+                <button
+                  onClick={handleEditProfile}
+                  className="mt-4 hidden h-10 w-full items-center justify-center gap-2 rounded-sm border border-[#7a8aa3] bg-white text-sm font-medium text-[#0f172b] transition-colors hover:bg-[#f5f7ff] md:mt-0 md:inline-flex md:w-auto md:px-5 xl:mt-4 xl:w-full xl:px-0"
+                >
+                  <Ico className="h-4 w-4">
+                    <path d="M17 3l4 4L8 20H4v-4z" />
+                  </Ico>
+                  Edit profile
+                </button>
+              </div>
+            </div>
+          </TutorialStep>
+        </div>
+
+        {/* ================= RIGHT ================= */}
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 md:gap-5">
           {/* Step 2 — Business Card */}
-          <div ref={businessCardRef}>
-            <TutorialStep
-              step={2}
-              currentStep={tutorialStep}
-              text="Share your digital business card with customers directly from here."
-              onNext={() => next(3)}
-              onSkip={skip}
-            >
-              <BusinessCard />
-            </TutorialStep>
-          </div>
-
-          <div className="w-full grid grid-cols-2 gap-4 justify-center mt-2 space-y-2 flex-col">
-            <ShowWrapper requiredPermission={Permissions.ViewReports}>
-              {/* Step 3 — Reports */}
-              <div ref={reportsRef}>
-                <TutorialStep
-                  step={3}
-                  currentStep={tutorialStep}
-                  text="View detailed sales and business reports here."
-                  onNext={() => next(4)}
-                  onSkip={skip}
-                  mobileArrowAlign="left"
-                >
-                  <Link to={ROUTES.REPORTS} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-2 border border-gray-200 text-gray-800 hover:shadow-lg">
-                    <span className="text-lg font-medium">Reports</span>
-                    <span className="text-xl text-gray-600">→</span>
-                  </Link>
-                </TutorialStep>
+          <div ref={businessCardRef} className="min-w-0">
+            <div className={`min-w-0 md:rounded-sm md:border md:border-[#dfe6fb] md:bg-white md:p-5 ${SHADOW_CARD.replace('shadow', 'md:shadow')}`}>
+              {/* Mobile label */}
+              <div className="mb-2 px-1 text-[11px] font-semibold uppercase leading-4 tracking-[0.08em] text-[#5b6b86] md:hidden">
+                Business card
               </div>
-
-              {/* Step 4 — Settings */}
-              <div ref={settingRef}>
-                <TutorialStep
-                  step={4}
-                  currentStep={tutorialStep}
-                  text="Configure your business settings, taxes, units and more."
-                  onNext={() => next(5)}
-                  onSkip={skip}
-                >
-                  <Link to={ROUTES.MASTERS} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-2 border border-gray-200 text-gray-800 hover:shadow-lg">
-                    <span className="text-lg font-medium">Setting</span>
-                    <span className="text-xl text-gray-600">→</span>
-                  </Link>
-                </TutorialStep>
+              {/* Desktop head */}
+              <div className="mb-4 hidden md:block">
+                <h2 className="m-0 text-base font-semibold leading-6">Business card</h2>
+                <p className="m-0 text-xs leading-[18px] text-[#5b6b86]">Pick a design, then download or share it on WhatsApp</p>
               </div>
-            </ShowWrapper>
-
-            {/* Step 5 — Plans */}
-            <div ref={plansRef}>
               <TutorialStep
-                step={5}
+                step={2}
                 currentStep={tutorialStep}
-                text="View and manage your subscription plan here."
-                onNext={() => next(6)}
-                onSkip={skip}
-                mobileArrowAlign="left"
-              >
-                <Link to={ROUTES.SUBSCRIPTION_PAGE} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-2 border border-gray-200 text-gray-800 hover:shadow-lg">
-                  <span className="text-lg font-medium">Plans</span>
-                  <span className="text-xl text-gray-600">→</span>
-                </Link>
-              </TutorialStep>
-            </div>
-
-            {/* Step 6 — Support */}
-            <div ref={supportRef}>
-              <TutorialStep
-                step={6}
-                currentStep={tutorialStep}
-                text="Need help? Reach out to our support team from here."
-                onNext={() => next(7)}
+                text="Share your digital business card with customers directly from here."
+                onNext={() => next(3)}
                 onSkip={skip}
               >
-                <Link to={ROUTES.SUPPORT_PAGE} className="flex justify-between items-center bg-white p-4 rounded-sm shadow-md mb-2 border border-gray-200 text-gray-800 hover:shadow-lg">
-                  <span className="text-lg font-medium">Support</span>
-                  <span className="text-xl text-gray-600">→</span>
-                </Link>
+                <BusinessCard />
               </TutorialStep>
             </div>
           </div>
 
-          {/* Step 7 — Add Ons */}
-          <div ref={addOnsRef} className="mt-4 mb-6 flex justify-center">
-            {/* Preserved ViewAddons permission from File 1 instead of ViewReports from File 2 */}
-            <ShowWrapper requiredPermission={Permissions.ViewAddons}>
-              <TutorialStep
-                step={7}
-                currentStep={tutorialStep}
-                text="Unlock extra features for your business with Add Ons."
-                onNext={() => completeTutorial(currentUser, 'accountTutorialDone', setTutorialStep)}
-                onSkip={skip}
-                isLast
-              >
-                <Link to={ROUTES.ADDITIONAL_FEATURES} className="rounded-sm bg-white py-3 px-8 font-semibold shadow-md mb-2 border border-gray-200 text-gray-800 hover:shadow-lg">
-                  <span className="text-lg font-medium">Add Ons</span>
-                  <span className="text-xl text-gray-600">→</span>
-                </Link>
-              </TutorialStep>
-            </ShowWrapper>
-          </div>
+          {/* Settings group */}
+          <div className="min-w-0">
+            <div className="mb-2 px-1 text-[11px] font-semibold uppercase leading-4 tracking-[0.08em] text-[#5b6b86] md:hidden">
+              Store
+            </div>
+            <div className={`rounded-sm border border-[#dfe6fb] bg-[#dfe6fb] ${SHADOW_CARD}`}>
+              <div className="grid grid-cols-1 gap-px lg:grid-cols-2">
+                <ShowWrapper requiredPermission={Permissions.ViewReports}>
+                  {/* Step 3 — Reports */}
+                  <div ref={reportsRef} className={CELL}>
+                    <TutorialStep
+                      step={3}
+                      currentStep={tutorialStep}
+                      text="View detailed sales and business reports here."
+                      onNext={() => next(4)}
+                      onSkip={skip}
+                      mobileArrowAlign="left"
+                    >
+                      <RowLink to={ROUTES.REPORTS} tint="green" title="Reports" desc="Sales and business reports">
+                        <path d="M3 3v18h18" />
+                        <path d="M8 16v-4M13 16V8M18 16v-6" />
+                      </RowLink>
+                    </TutorialStep>
+                  </div>
 
-          {/* Logout Section */}
-          <div ref={logoutRef} className="mt-2 flex justify-center">
-            <button onClick={handleLogout} className="rounded-sm bg-red-500 py-3 px-8 font-semibold text-white transition hover:bg-red-600">
-              Logout
-            </button>
-          </div>
+                  {/* Step 4 — Settings */}
+                  <div ref={settingRef} className={CELL}>
+                    <TutorialStep
+                      step={4}
+                      currentStep={tutorialStep}
+                      text="Configure your business settings, taxes, units and more."
+                      onNext={() => next(5)}
+                      onSkip={skip}
+                    >
+                      <RowLink to={ROUTES.MASTERS} tint="blue" title="Setting" desc="Business, tax, units and more">
+                        <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12" />
+                        <circle cx="16" cy="6" r="2" />
+                        <circle cx="10" cy="12" r="2" />
+                        <circle cx="18" cy="18" r="2" />
+                      </RowLink>
+                    </TutorialStep>
+                  </div>
+                </ShowWrapper>
 
+                {/* Step 5 — Plans */}
+                <div ref={plansRef} className={CELL}>
+                  <TutorialStep
+                    step={5}
+                    currentStep={tutorialStep}
+                    text="View and manage your subscription plan here."
+                    onNext={() => next(6)}
+                    onSkip={skip}
+                    mobileArrowAlign="left"
+                  >
+                    <RowLink to={ROUTES.SUBSCRIPTION_PAGE} tint="amber" title="Plans" desc="Your plan and billing">
+                      <path d="M3 8l4 4 5-7 5 7 4-4-2 11H5z" />
+                    </RowLink>
+                  </TutorialStep>
+                </div>
+
+                {/* Step 6 — Support */}
+                <div ref={supportRef} className={CELL}>
+                  <TutorialStep
+                    step={6}
+                    currentStep={tutorialStep}
+                    text="Need help? Reach out to our support team from here."
+                    onNext={() => next(7)}
+                    onSkip={skip}
+                  >
+                    <RowLink to={ROUTES.SUPPORT_PAGE} tint="green" title="Support" desc="Get help from our team">
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.5v.01" />
+                    </RowLink>
+                  </TutorialStep>
+                </div>
+
+                {/* Step 7 — Users & staff */}
+                <div ref={usersRef} className={CELL}>
+                  <ShowWrapper requiredPermission={Permissions.ManageUsers}>
+                    <TutorialStep
+                      step={7}
+                      currentStep={tutorialStep}
+                      text="Add your staff and salespeople, and set their access here."
+                      onNext={() => next(8)}
+                      onSkip={skip}
+                      mobileArrowAlign="left"
+                    >
+                      <RowLink to={ROUTES.USERSETTING} tint="magenta" title="Users & staff" desc="Add salespeople and set access">
+                        <circle cx="9" cy="8" r="4" />
+                        <path d="M2 21a7 7 0 0 1 14 0M16 3.5a4 4 0 0 1 0 8M22 21a7 7 0 0 0-4-6.3" />
+                      </RowLink>
+                    </TutorialStep>
+                  </ShowWrapper>
+                </div>
+
+                {/* Step 8 — Add Ons */}
+                <div ref={addOnsRef} className={CELL}>
+                  <ShowWrapper requiredPermission={Permissions.ViewAddons}>
+                    <TutorialStep
+                      step={8}
+                      currentStep={tutorialStep}
+                      text="Unlock extra features for your business with Add Ons."
+                      onNext={() => completeTutorial(currentUser, 'accountTutorialDone', setTutorialStep)}
+                      onSkip={skip}
+                      isLast
+                    >
+                      <RowLink to={ROUTES.ADDITIONAL_FEATURES} tint="magenta" title="Add Ons" desc="Unlock extra features for your business">
+                        <path d="M21 8 12 3 3 8v8l9 5 9-5z" />
+                        <path d="M3 8l9 5 9-5M12 13v8" />
+                      </RowLink>
+                    </TutorialStep>
+                  </ShowWrapper>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-    </div >
+
+      {/* Mobile: Log out at the very bottom */}
+      <div className="px-4 pb-6 md:hidden">
+        <button
+          onClick={handleLogout}
+          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-sm border border-[#dfe6fb] bg-white text-sm font-medium text-[#d5000c] transition-colors hover:bg-[#ffeef0] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#155dfc]"
+        >
+          <Ico className="h-4 w-4">
+            <path d="M9 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4M16 17l5-5-5-5M21 12H9" />
+          </Ico>
+          Log out
+        </button>
+      </div>
+    </div>
   );
 };
 

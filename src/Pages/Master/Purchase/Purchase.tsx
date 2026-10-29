@@ -1,15 +1,21 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { db } from '../../../lib/Firebase';
+import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ROUTES } from '../../../constants/routes.constants';
 import { useAuth, useDatabase } from '../../../context/auth-context';
 import BarcodeScanner from '../../../UseComponents/BarcodeScanner';
 import PaymentDrawer from '../../../Components/PaymentDrawer';
 import { Modal } from '../../../constants/Modal';
-import { State, Variant } from '../../../enums';
+import { State } from '../../../enums';
 import SearchableItemInput from '../../../UseComponents/SearchIteminput';
-import { CustomButton } from '../../../Components';
 import { Spinner } from '../../../constants/Spinner';
-import { FiTrash2, FiEdit, FiCamera, FiX, FiSearch, FiMenu } from 'react-icons/fi';
+import {
+  FiTrash2, FiEdit, FiCamera, FiX, FiSearch, FiChevronLeft, FiMoreHorizontal,
+  FiFileText, FiMaximize, FiAlertTriangle, FiCheckCircle, FiInfo, FiPackage, FiPlus,
+  FiChevronUp, FiChevronRight, FiMinus, FiSliders,
+} from 'react-icons/fi';
 import { ItemEditDrawer } from '../../../Components/ItemDrawer';
 import ItemAdd from '../ItemAdd';
 import { TierPickerModal } from '../../../Components/TierPickerModal';
@@ -18,8 +24,8 @@ import type { Item } from '../../../constants/models';
 import { usePurchaseSettings } from '../../../context/SettingsContext';
 import { GenericCartList } from '../../../Components/CartItem';
 import { GenericBillFooter } from '../../../Components/Footer';
+import { CartLinesCompact } from '../../../Components/CartLinesCompact';
 import { IconScanCircle } from '../../../constants/Icons';
-import { FiFileText, FiMaximize } from 'react-icons/fi'; // Add to existing react-icons
 import { PurchaseGodownAssignModal } from '../../../Components/PurchaseGodownAssign';
 import type { PurchaseItem, PurchaseDocumentData, Purchase } from './purchase.types';
 import { calculatePurchaseTotals } from './purchase.calculations';
@@ -33,6 +39,67 @@ import {
 
 export type { PurchaseItem, PurchaseDocumentData, Purchase };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SELLAR design-system class tokens.
+// Every colour is a CSS variable from the design system's tokens.css with the
+// light-theme value as fallback, so this works whether or not tokens.css is
+// loaded (and picks up dark theme automatically when it is).
+// ─────────────────────────────────────────────────────────────────────────────
+const SHADOW_CARD = '[box-shadow:0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]';
+const SHADOW_FLOAT = '[box-shadow:0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]';
+
+const CARD = `bg-[#ffffff] border border-[#dfe6fb] rounded-sm ${SHADOW_CARD}`;
+
+const BTN_BASE =
+  'inline-flex items-center justify-center gap-2 h-10 px-4 rounded-sm border border-transparent text-sm font-medium whitespace-nowrap transition-colors cursor-pointer disabled:opacity-[.45] disabled:cursor-not-allowed';
+const BTN_PRIMARY = `${BTN_BASE} bg-[#155dfc] text-white hover:bg-[#1447e6]`;
+const BTN_SECONDARY = `${BTN_BASE} bg-[#ffffff] text-[#0f172b] border-[#7a8aa3] hover:bg-[#f5f7ff]`;
+const BTN_DANGER_SOLID = `${BTN_BASE} bg-[#d5000c] text-white hover:opacity-90`;
+const BTN_GHOST = `${BTN_BASE} text-[#45556c] hover:bg-[#f5f7ff] hover:text-[#0f172b]`;
+const BTN_CLEAR =
+  'inline-flex items-center gap-1.5 h-8 px-3 rounded-sm text-[13px] font-medium text-[#d5000c] hover:bg-[#ffeef0] transition-colors cursor-pointer';
+
+const INPUT =
+  'w-full h-10 px-3 text-sm rounded-sm border border-[#7a8aa3] bg-[#ffffff] text-[#0f172b] placeholder:text-[#5b6b86] focus:outline-none focus:ring-2 focus:ring-[#155dfc] focus:border-transparent';
+
+const BADGE =
+  'inline-flex items-center h-[22px] px-2 rounded-full text-[11px] font-semibold tracking-wide whitespace-nowrap bg-[#e6eeff] text-[#155dfc]';
+
+const OVERLINE = 'text-[11px] font-semibold uppercase tracking-[.08em] text-[#5b6b86]';
+
+// header "meta" chips (invoice no / date)
+const META_CHIP =
+  'inline-flex items-center gap-2 h-9 px-3 rounded-sm border border-[#7a8aa3] bg-[#ffffff] text-[13px] text-[#0f172b] focus-within:ring-2 focus-within:ring-[#155dfc]';
+const META_LABEL = 'text-[11px] font-semibold uppercase tracking-[.06em] text-[#5b6b86] whitespace-nowrap';
+const META_INPUT = 'min-w-0 bg-transparent border-0 outline-none p-0 font-semibold text-[#0f172b] tabular-nums';
+
+// dialogs: centred card on desktop, bottom sheet on mobile
+const OVERLAY = 'fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-[rgba(2,6,24,0.45)] sm:p-4';
+const DIALOG = `w-full sm:max-w-sm bg-[#ffffff] text-[#0f172b] rounded-t-[20px] sm:rounded-sm border border-[#dfe6fb] ${SHADOW_FLOAT} p-5`;
+
+// ── Card-view toolbar tokens (same as Sales card view) ──
+const FIELD_CLS =
+  'w-full h-12 md:h-[52px] pl-11 pr-10 bg-white border border-[#7a8aa3] rounded-sm text-[15px] font-medium text-[#0f172b] placeholder:text-[#5b6b86] outline-none transition-all focus:border-[#155dfc] focus:ring-4 focus:ring-[#e6eeff]';
+const SCAN_BTN_CLS =
+  'inline-flex items-center justify-center gap-2 h-12 md:h-[52px] w-12 md:w-auto md:px-4 flex-shrink-0 rounded-sm text-sm font-medium transition-colors bg-[#155dfc] text-white hover:bg-[#1447e6] md:bg-white md:text-[#0f172b] md:border md:border-[#7a8aa3] md:hover:bg-[#f5f7ff]';
+const ICON_BTN_CLS =
+  'inline-flex items-center justify-center w-10 h-10 rounded-sm text-[#45556c] hover:bg-[#f5f7ff] transition-colors flex-shrink-0';
+const SORT_OPTIONS = [
+  { value: 'az', label: 'A → Z' },
+  { value: 'za', label: 'Z → A' },
+  { value: 'price_asc', label: 'Price ↑' },
+  { value: 'price_desc', label: 'Price ↓' },
+] as const;
+const chipCls = (active: boolean) =>
+  `inline-flex items-center h-[34px] px-3.5 rounded-full border text-[13px] font-medium whitespace-nowrap flex-shrink-0 cursor-pointer transition-colors ${active
+    ? 'bg-[#0f172b] border-[#0f172b] text-white'
+    : 'bg-white border-[#7a8aa3] text-[#45556c] hover:bg-[#f5f7ff]'}`;
+const SEG_WRAP = 'inline-flex p-[3px] gap-0.5 bg-[#f5f7ff] border border-[#dfe6fb] rounded-sm';
+const segBtnCls = (active: boolean) =>
+  `inline-flex items-center gap-1.5 h-7 px-3 rounded-sm text-xs font-medium transition-colors ${active
+    ? 'bg-white text-[#155dfc] shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]'
+    : 'text-[#45556c] hover:text-[#0f172b]'}`;
+
 // Maps OCR-extracted unit text to one of the standard UNIT_OPTIONS values used in ItemAdd/ItemEditDrawer
 const normalizeUnit = (rawUnit: string | undefined | null): string => {
   if (!rawUnit) return 'pcs';
@@ -45,7 +112,11 @@ const normalizeUnit = (rawUnit: string | undefined | null): string => {
   if (['pkt', 'packet', 'packets', 'pack', 'pk'].includes(u)) return 'pkt';
   return 'pcs'; // safe fallback — always a valid dropdown option
 };
-
+interface SupplierSuggestion {
+  name: string;
+  number: string;
+  debitBalance?: number;
+}
 const PurchasePage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -55,21 +126,17 @@ const PurchasePage: React.FC = () => {
 
   const purchaseIdToEdit = location.state?.purchaseId as string | undefined;
   const isEditMode = !!purchaseIdToEdit;
+  // "Add bill" from the party ledger opens a new purchase with the supplier filled in.
+  const prefillParty = (location.state as { prefillParty?: { name: string; number: string } } | null)?.prefillParty;
 
   const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [tierPickerItem, setTierPickerItem] = useState<Item | null>(null);
-  const [isSortOpen, setIsSortOpen] = useState(false);
   const [isFooterExpanded, setIsFooterExpanded] = useState(false);
-
-  // `items`/`setItems` is declared here at the component level, rather than
-  // owned by usePurchaseCart, because of a genuine circular dependency
-  // between usePurchaseCatalogueAndSettings (needs setItems to hydrate the
-  // cart when loading an existing purchase for editing) and usePurchaseCart
-  // (needs availableItems/setAvailableItems FROM the catalogue hook for its
-  // grid memos). See the long note in usePurchaseCart.ts for the full
-  // reasoning. Behavior is unchanged from the original single-component
-  // version — only which file declares this particular useState call.
+  const [isTabletBreakdownOpen, setIsTabletBreakdownOpen] = useState(false);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+  const [showPhotos, setShowPhotos] = useState<boolean | null>(null);
   const [items, setItems] = useState<PurchaseItem[]>(() => {
     if (isEditMode || !currentUser?.companyId) return [];
     try {
@@ -140,6 +207,38 @@ const PurchasePage: React.FC = () => {
     companyId: currentUser?.companyId, // 👈 ADD
   });
 
+  // "Create purchase" from the Restock report: add the picked items with their
+  // order quantities once the catalogue is loaded, then drop the navigation
+  // state so a refresh doesn't add them again.
+  // Item tile long-press (touch) → opens edit drawer
+  const tileHoldTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const tileHoldFired = useRef(false);
+
+  const restockHandled = useRef(false);
+  useEffect(() => {
+    const restockItems = (location.state as { restockItems?: { id: string; quantity: number }[] } | null)?.restockItems;
+    if (restockHandled.current || isEditMode || !restockItems?.length || availableItems.length === 0) return;
+    restockHandled.current = true;
+
+    const startedAt = Date.now();
+    const quantities = new Map(restockItems.map((r) => [r.id, Math.max(1, Math.round(r.quantity))]));
+    restockItems.forEach(({ id }) => {
+      const item = availableItems.find((a) => a.id === id);
+      if (item) addItemToCart(item);
+    });
+    // addItemToCart adds each line with quantity 1 — set the order quantity on
+    // just the lines added here (existing draft lines keep theirs).
+    setItems((prev) =>
+      prev.map((line) =>
+        line.productId && (line.addedAt ?? 0) >= startedAt && quantities.has(line.productId)
+          ? { ...line, quantity: quantities.get(line.productId)! }
+          : line,
+      ),
+    );
+    navigate(location.pathname, { replace: true, state: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableItems, isEditMode]);
+
   const {
     godowns,
     isGodownAssignOpen, setIsGodownAssignOpen,
@@ -171,6 +270,110 @@ const PurchasePage: React.FC = () => {
     name?: string; mrp?: number; purchasePrice?: number; purchasediscount?: number; tax?: number; barcode?: string; unit?: string;
   } | null>(null);
   const [unlinkedCartItemId, setUnlinkedCartItemId] = useState<string | null>(null);
+
+  // Supplier — captured here, passed to the payment drawer as its starting party details
+  const [supplierName, setSupplierName] = useState(prefillParty?.name ?? '');
+  const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
+  const [showSupplierModal, setShowSupplierModal] = useState(false);
+  const [supplierDraft, setSupplierDraft] = useState({ name: '', phone: '' });
+
+  // Supplier popup suggestions (same behaviour as PaymentDrawer, name search only)
+  const [supplierSuggestions, setSupplierSuggestions] = useState<SupplierSuggestion[]>([]);
+  const [showSupplierSuggestions, setShowSupplierSuggestions] = useState(false);
+  const supplierSearchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const supplierNameWrapRef = useRef<HTMLDivElement>(null);
+  const supplierSuggestionsRef = useRef<HTMLDivElement>(null);
+
+  const closeSupplierModal = () => {
+    setShowSupplierModal(false);
+    setShowSupplierSuggestions(false);
+    setSupplierSuggestions([]);
+  };
+
+  const openSupplierModal = () => {
+    setSupplierDraft({ name: supplierName, phone: supplierPhone });
+    setSupplierSuggestions([]);
+    setShowSupplierSuggestions(false);
+    setShowSupplierModal(true);
+  };
+
+  const saveSupplier = () => {
+    setSupplierName(supplierDraft.name.trim());
+    setSupplierPhone(supplierDraft.phone.trim());
+    closeSupplierModal();
+  };
+
+  const searchSupplier = async (term: string) => {
+    if (!term || term.length < 2 || !currentUser?.companyId) {
+      setSupplierSuggestions([]);
+      setShowSupplierSuggestions(false);
+      return;
+    }
+    const partyRef = collection(db, 'companies', currentUser.companyId, 'suppliers');
+    const termLower = term.toLowerCase();
+    const termCap = termLower.charAt(0).toUpperCase() + termLower.slice(1);
+
+    try {
+      const queries = [
+        getDocs(query(partyRef, where('name', '>=', termLower), where('name', '<=', termLower + '\uf8ff'), limit(5))),
+      ];
+      if (termCap !== termLower) {
+        queries.push(
+          getDocs(query(partyRef, where('name', '>=', termCap), where('name', '<=', termCap + '\uf8ff'), limit(5)))
+        );
+      }
+      const snapshots = await Promise.all(queries);
+      const map = new Map<string, SupplierSuggestion>();
+      snapshots.forEach(snap => snap.forEach(d => {
+        if (!map.has(d.id)) {
+          const data = d.data();
+          map.set(d.id, {
+            name: data.name || '',
+            number: data.number || d.id,
+            debitBalance: data.debitBalance,
+          });
+        }
+      }));
+      const results = Array.from(map.values());
+      setSupplierSuggestions(results);
+      setShowSupplierSuggestions(results.length > 0);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSupplierNameChange = (value: string) => {
+    setSupplierDraft(d => ({ ...d, name: value }));
+    if (supplierSearchTimeout.current) clearTimeout(supplierSearchTimeout.current);
+    supplierSearchTimeout.current = setTimeout(() => searchSupplier(value), 400);
+  };
+
+  const selectSupplierSuggestion = (s: SupplierSuggestion) => {
+    setSupplierDraft({ name: s.name, phone: s.number || '' });
+    setShowSupplierSuggestions(false);
+  };
+
+  // Outside click pe dropdown band
+  useEffect(() => {
+    if (!showSupplierSuggestions) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (
+        supplierSuggestionsRef.current?.contains(t) ||
+        supplierNameWrapRef.current?.contains(t)
+      ) return;
+      setShowSupplierSuggestions(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [showSupplierSuggestions]);
+
+  // "+ New item" — create a product without leaving the purchase
+  const handleOpenNewItem = () => {
+    setUnlinkedPrefill(null);
+    setUnlinkedCartItemId(null);
+    setShowAddItemModal(true);
+  };
   const handleAddOrPickTier = (item: Item) => {
     if (hasMultiplePricing(item)) {
       setTierPickerItem(item);
@@ -218,10 +421,18 @@ const PurchasePage: React.FC = () => {
       };
     }));
 
+    // Created from the "+ New item" button (not from a flagged cart row): put it straight into the cart
+    if (!unlinkedCartItemId) addItemToCart(createdItem as Item);
+
     setShowAddItemModal(false);
     setUnlinkedPrefill(null);
     setUnlinkedCartItemId(null);
-    setModal({ message: `"${createdItem.name}" added to inventory and linked!`, type: State.SUCCESS });
+    setModal({
+      message: unlinkedCartItemId
+        ? `"${createdItem.name}" added to inventory and linked!`
+        : `"${createdItem.name}" added to inventory and to this purchase!`,
+      type: State.SUCCESS,
+    });
     setTimeout(() => setModal(null), 1500);
   };
 
@@ -278,300 +489,641 @@ const PurchasePage: React.FC = () => {
     setGodownAssignments,
   });
 
-  if (pageIsLoading) return (<div className="flex items-center justify-center h-screen"><Spinner /> <p className="ml-2">Loading...</p></div>);
-  if (error) return (<div className="flex flex-col items-center justify-center h-screen text-red-600"><p>{error}</p><button onClick={() => navigate(-1)} className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Go Back</button></div>);
+  if (pageIsLoading) return (
+    <div className="flex items-center justify-center h-screen bg-[#eef2ff] text-[#45556c]">
+      <Spinner /> <p className="ml-2">Loading...</p>
+    </div>
+  );
+  if (error) return (
+    <div className="flex flex-col items-center justify-center h-screen bg-[#eef2ff] px-4">
+      <div className={`${CARD} p-6 max-w-sm w-full text-center`}>
+        <div className="mx-auto mb-3 w-10 h-10 rounded-sm flex items-center justify-center bg-[#ffeef0] text-[#d5000c]">
+          <FiAlertTriangle size={20} />
+        </div>
+        <p className="m-0 text-sm text-[#d5000c]">{error}</p>
+        <button onClick={() => navigate(-1)} className={`${BTN_PRIMARY} mt-4`}>Go back</button>
+      </div>
+    </div>
+  );
 
   const showTaxToggle = true; // Always show the manual tax toggle on the UI
   const displayTaxTotal = showTaxToggle && billTaxType !== 'exempt';
   const isCardView = purchaseSettings?.purchaseViewType === 'card';
-  const isCardImageView = isCardView && (purchaseSettings?.cardViewWithPhoto !== false);
+  const isCardImageView = isCardView && (showPhotos ?? (purchaseSettings?.cardViewWithPhoto !== false));
+  // Filter button par blue dot: Photos/Compact ya sort default se alag ho
+  const hasViewChanges =
+    isCardImageView !== (purchaseSettings?.cardViewWithPhoto !== false) ||
+    sortOrder !== SORT_OPTIONS[0].value;
   // Checks if any item in the current cart has the unlinked warning flag
   const hasUnlinkedItems = items.some(item => item.name.includes('(Not in DB)'));
 
-  const renderHeader = () => (
-    <div className="flex flex-col md:flex-row md:justify-between md:items-center bg-gray-100 md:bg-white border-b border-gray-200 shadow-sm flex-shrink-0 p-2 md:px-4 md:py-3 mb-2 md:mb-0">
+  // Linked cart lines that have no MRP (flagged under the cart, like the design)
+  const missingMrpItems = items.filter(
+    i => i.productId && !i.name.includes('(Not in DB)') && !(Number((i as any).mrp) > 0)
+  );
 
-      {/* MOBILE: date left, title center, inv no right */}
-      <div className="flex md:hidden items-center justify-between w-full mb-2">
-        <div className="flex flex-col items-center">
-          <input
-            type="date" // 👈 Changed to "date"
-            value={invoiceDate}
-            onChange={(e) => setInvoiceDate(e.target.value)}
-            // 👇 Changed width to w-32 and added cursor-pointer
-            className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-25 text-sm outline-none transition-colors cursor-pointer"
-          />
-          <span className="text-[9px] text-gray-400 uppercase tracking-wide mt-0.5">DATE</span>
+  const pageTitle = editModeData ? 'Edit purchase' : (purchaseSettings?.voucherName ?? 'Purchase');
+  const actionLabel = isEditMode ? 'Update purchase' : 'Record purchase';
+  const disableAction = items.length === 0 || hasUnlinkedItems;
 
+  // Shared footer (Components/Footer) — purchase wording passed in as props
+  const footerProps = {
+    isExpanded: isFooterExpanded,
+    onToggleExpand: () => setIsFooterExpanded(!isFooterExpanded),
+    totalQuantity,
+    subtotal,
+    taxAmount,
+    finalAmount,
+    roundingOffAmount,
+    showTaxRow: displayTaxTotal,
+    taxLabel: 'GST input credit',
+    subtotalLabel: `Items cost (Qty ${totalQuantity})`,
+    showNetRow: false,
+    extraRows: Number(totalMrp) > 0
+      ? [{ label: 'MRP value', value: `₹${Number(totalMrp).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` }]
+      : [],
+    actionLabel,
+    onActionClick: handleProceedToPayment,
+    disableAction,
+  };
+
+  const fmtINR = (n: number) =>
+    Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // Tablet (768–1279): same bottom checkout bar as the mobile footer
+  const renderTabletCheckoutBar = () => (
+    <div className="hidden md:block xl:hidden flex-shrink-0 z-20 bg-[#ffffff] border-t border-[#dfe6fb]">
+      {isTabletBreakdownOpen && (
+        <div className="px-4 pt-3 space-y-1.5 text-sm">
+          <div className="flex justify-between gap-4">
+            <span className="text-[#45556c]">Items cost</span>
+            <span className="font-medium tabular-nums text-[#0f172b]">₹{fmtINR(subtotal)}</span>
+          </div>
+          {displayTaxTotal && (
+            <div className="flex justify-between gap-4">
+              <span className="text-[#45556c]">GST input credit</span>
+              <span className="font-medium tabular-nums text-[#155dfc]">+ ₹{fmtINR(taxAmount)}</span>
+            </div>
+          )}
+          {Number(roundingOffAmount) !== 0 && (
+            <div className="flex justify-between gap-4">
+              <span className="text-[#45556c]">Round off</span>
+              <span className="font-medium tabular-nums text-[#0f172b]">₹{fmtINR(roundingOffAmount)}</span>
+            </div>
+          )}
+          {Number(totalMrp) > 0 && (
+            <div className="flex justify-between gap-4 border-t border-[#dfe6fb] pt-1.5">
+              <span className="text-[#5b6b86]">MRP value</span>
+              <span className="tabular-nums text-[#5b6b86]">₹{fmtINR(Number(totalMrp))}</span>
+            </div>
+          )}
         </div>
-        <h1 className="text-2xl font-bold text-gray-800 text-center flex-1">
-          {editModeData ? 'Edit Purchase' : (purchaseSettings?.voucherName ?? 'Purchase')}
+      )}
+      <div className="flex items-center gap-3 px-4 pt-3 pb-4">
+        <button type="button" onClick={() => setIsTabletBreakdownOpen(v => !v)} aria-expanded={isTabletBreakdownOpen}
+          className="flex-1 min-w-0 text-left bg-transparent border-0 p-0 cursor-pointer">
+          <span className="flex items-center gap-1 text-xs text-[#45556c]">
+            <span className="truncate">{totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}</span>
+            <FiChevronUp size={14} className={`flex-shrink-0 transition-transform ${isTabletBreakdownOpen ? 'rotate-180' : ''}`} />
+          </span>
+          <b className="block text-xl leading-[26px] font-semibold tabular-nums text-[#0f172b] truncate">₹{fmtINR(finalAmount)}</b>
+        </button>
+        <button type="button" onClick={handleProceedToPayment} disabled={disableAction}
+          className={`${BTN_PRIMARY} !h-12 !px-4 !text-[15px]`}>
+          {actionLabel}
+          <FiChevronRight size={16} />
+        </button>
+      </div>
+    </div>
+  );
+
+  // ── Supplier card (design: supplier first, shown in the summary panel on desktop, on top below xl) ──
+  const supplierDisplayName = editModeData ? (editModeData.partyName || '') : supplierName;
+  const supplierDisplayPhone = editModeData ? (editModeData.partyNumber || '') : supplierPhone;
+
+  const renderSupplierCard = () => (
+    <div>
+      {/* <span className={`block mb-1.5 ${OVERLINE}`}>
+        Supplier{purchaseSettings?.requireSupplierName && <span className="text-[#d5000c]"> *</span>}
+      </span> */}
+      <div className={`${CARD} flex items-center gap-2.5 p-2.5`}>
+        <span className="inline-grid place-items-center w-8 h-8 flex-none rounded-sm bg-[#e9faef] text-[#008236]">
+          <FiPackage size={18} />
+        </span>
+        <div className="flex-1 min-w-0">
+          {supplierDisplayName ? (
+            <>
+              <div className="text-sm font-semibold text-[#0f172b] truncate">{supplierDisplayName}</div>
+              {supplierDisplayPhone && (
+                <div className="text-xs text-[#5b6b86] truncate">{supplierDisplayPhone}</div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="text-sm font-semibold text-[#45556c]">No supplier added</div>
+              <div className="text-xs text-[#5b6b86]">Add now, or at payment</div>
+            </>
+          )}
+        </div>
+        {!editModeData && (
+          <button type="button" onClick={openSupplierModal} className={`${BTN_GHOST} !h-8 !px-3 text-[13px] flex-shrink-0`}>
+            {supplierName ? 'Change' : 'Add'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  // Desktop (xl+) summary panel — card view also lists the cart lines (like Sales), list view already shows them on the left
+  const renderSummaryPanel = (showLines = false) => (
+    <aside className="hidden xl:flex xl:w-[360px] flex-shrink-0 flex-col gap-4 h-full p-5 overflow-y-auto bg-[#ffffff] border-l border-[#dfe6fb] z-10">
+      {renderSupplierCard()}
+      <div className="border-t border-[#dfe6fb]" />
+      <div className="flex items-center justify-between">
+        <h2 className="m-0 text-base font-semibold text-[#0f172b]">Purchase summary</h2>
+        <div className="flex items-center gap-2">
+          <span className={BADGE}>{totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}</span>
+          {showLines && items.length > 0 && (
+            <button type="button" onClick={handleClearCart} className={BTN_CLEAR}><FiTrash2 size={14} /> Clear</button>
+          )}
+        </div>
+      </div>
+      {showLines && items.length > 0 && (
+        <CartLinesCompact
+          items={items}
+          getUnitPrice={(i) => Number(i.purchasePrice) || 0}
+          onQuantityChange={handleQuantityChange}
+          onDelete={handleDeleteItem}
+        />
+      )}
+      <GenericBillFooter {...footerProps} />
+    </aside>
+  );
+
+  // ── Header: title + invoice no / date chips + view toggle ─────────────────
+  const renderPhotosToggle = () =>
+    isCardView ? (
+      <div role="group" aria-label="Photos" className={`ml-auto ${SEG_WRAP}`}>
+        {([[true, 'Photos'], [false, 'Compact']] as const).map(([val, label]) => (
+          <button key={label} type="button" aria-pressed={isCardImageView === val} onClick={() => setShowPhotos(val)} className={segBtnCls(isCardImageView === val)}>
+            {label}
+          </button>
+        ))}
+      </div>
+    ) : null;
+
+  const renderHeader = () => (
+    <header className="flex-shrink-0 bg-[#ffffff] border-b border-[#dfe6fb]">
+      {/* MOBILE */}
+      <div className="md:hidden flex items-center gap-2 h-14 px-2">
+        <button type="button" onClick={() => navigate(-1)} aria-label="Back" className={ICON_BTN_CLS}>
+          <FiChevronLeft size={20} />
+        </button>
+        <h1 className="m-0 flex-1 min-w-0 text-lg font-semibold leading-tight text-[#0f172b]">
+          <span className="block truncate">{pageTitle}</span>
+          <span className="block text-xs font-normal text-[#5b6b86] truncate">
+            {invoiceNumber}{invoiceDate ? ` · ${new Date(`${invoiceDate}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}
+          </span>
         </h1>
-        <div className="flex flex-col items-center">
+        {/* Supplier pill — tap = supplier popup */}
+        <button
+          type="button"
+          onClick={openSupplierModal}
+          disabled={!!editModeData}
+          aria-label="Supplier"
+          className="inline-flex items-center gap-1.5 h-9 max-w-[130px] pl-1.5 pr-3 rounded-full bg-[#e9faef] text-[#008236] text-[13px] font-semibold flex-shrink-0"
+        >
+          <span className="relative w-6 h-6 rounded-full bg-white flex items-center justify-center flex-shrink-0">
+            <FiPackage size={14} />
+            {!(supplierDisplayName || supplierDisplayPhone) && (
+              <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-[#008236] text-white flex items-center justify-center">
+                <FiPlus size={9} />
+              </span>
+            )}
+          </span>
+          <span className="truncate">{supplierDisplayName || supplierDisplayPhone || 'Supplier'}</span>
+        </button>
+        <button type="button" onClick={() => setIsMoreOpen(true)} aria-label="More" className={ICON_BTN_CLS}>
+          <FiMoreHorizontal size={20} />
+        </button>
+      </div>
+
+      {/* DESKTOP / TABLET */}
+      <div className="hidden md:flex flex-wrap items-center gap-2 md:gap-3 px-4 py-3 md:px-6 md:py-4">
+        <h1 className="m-0 mr-2 text-[22px] leading-[30px] font-semibold text-[#0f172b]">{pageTitle}</h1>
+        <label className={META_CHIP}>
+          <span className={META_LABEL}>Bill no.</span>
           <input
             type="text"
             value={invoiceNumber}
             onChange={(e) => setInvoiceNumber(e.target.value)}
-            className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-24 text-sm outline-none transition-colors"
+            className={`${META_INPUT} w-24`}
           />
-          <span className="text-[9px] text-gray-400 uppercase tracking-wide mt-0.5">Inv No</span>
+        </label>
+        <label className={META_CHIP}>
+          <span className={META_LABEL}>Date</span>
+          <input
+            type="date"
+            value={invoiceDate}
+            onChange={(e) => setInvoiceDate(e.target.value)}
+            className={`${META_INPUT} w-[7.25rem] cursor-pointer`}
+          />
+        </label>
+        {renderPhotosToggle()}
+      </div>
+    </header>
+  );
+
+  // Mobile "More" sheet: inv no / date, sort (card view), clear cart
+  const renderMoreSheet = () =>
+    !isMoreOpen ? null : (
+      <div className="md:hidden fixed inset-0 z-[60] flex items-end bg-[rgba(2,6,24,0.45)]" onClick={() => setIsMoreOpen(false)}>
+        <div className={`w-full bg-[#ffffff] rounded-t-2xl p-4 pb-6 flex flex-col gap-4 ${SHADOW_FLOAT}`} onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center justify-between">
+            <h3 className="m-0 text-base font-semibold text-[#0f172b]">More</h3>
+            <button type="button" onClick={() => setIsMoreOpen(false)} aria-label="Close" className={ICON_BTN_CLS}><FiX size={18} /></button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <label className={`${META_CHIP} min-w-0`}>
+              <span className={META_LABEL}>Bill no.</span>
+              <input type="text" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} className={`${META_INPUT} w-full`} />
+            </label>
+            <label className={`${META_CHIP} min-w-0`}>
+              <span className={META_LABEL}>Date</span>
+              <input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} className={`${META_INPUT} w-full`} />
+            </label>
+          </div>
+
+          {items.length > 0 && (
+            <button type="button" onClick={() => { setIsMoreOpen(false); handleClearCart(); }}
+              className="inline-flex items-center justify-center gap-2 h-11 rounded-sm text-sm font-medium text-[#d5000c] bg-[#ffeef0]">
+              <FiTrash2 size={16} /> Clear
+            </button>
+          )}
         </div>
       </div>
+    );
 
-      {/* DESKTOP */}
-      <div className="hidden md:flex md:flex-row md:items-center w-full md:w-auto gap-1 md:gap-4 md:mb-0">
-        <h1 className="text-2xl font-bold text-gray-800">
-          {editModeData ? 'Edit Purchase' : (purchaseSettings?.voucherName ?? 'Purchase')}
-        </h1>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 font-medium uppercase tracking-wide">INV NO:</span>
-            <input
-              type="text"
-              value={invoiceNumber}
-              onChange={(e) => setInvoiceNumber(e.target.value)}
-              className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-24 text-sm outline-none transition-colors"
-            />
+  // Phone: filter button sheet — only Photos/Compact + Sort
+  const renderFilterSheet = () =>
+    !isFilterOpen ? null : (
+      <div className="md:hidden fixed inset-0 z-[60] flex items-end bg-[rgba(2,6,24,0.45)]" onClick={() => setIsFilterOpen(false)}>
+        <div className={`w-full bg-[#ffffff] rounded-t-2xl p-4 pb-6 flex flex-col gap-4 ${SHADOW_FLOAT}`} onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center justify-between">
+            <h3 className="m-0 text-base font-semibold text-[#0f172b]">View options</h3>
+            <button type="button" onClick={() => setIsFilterOpen(false)} aria-label="Close" className={ICON_BTN_CLS}><FiX size={18} /></button>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 font-medium uppercase tracking-wide">DATE:</span>
-            <input
-              type="date" // 👈 Changed to "date"
-              value={invoiceDate}
-              onChange={(e) => setInvoiceDate(e.target.value)}
-              // 👇 Changed width to w-32 and added cursor-pointer
-              className="bg-transparent border-b border-gray-400 focus:border-blue-600 text-gray-800 font-bold text-center w-25 text-sm outline-none transition-colors cursor-pointer"
-            />
+
+          <div>
+            <span className={OVERLINE}>Cards</span>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              {([[true, 'Photos'], [false, 'Compact']] as const).map(([val, label]) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => setShowPhotos(val)}
+                  className={`h-10 rounded-sm text-[13px] font-medium border transition-colors ${isCardImageView === val ? 'bg-[#e6eeff] border-[#155dfc] text-[#155dfc]' : 'bg-white border-[#7a8aa3] text-[#45556c]'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <span className={OVERLINE}>Sort</span>
+            <div className="mt-2 grid grid-cols-4 gap-1.5">
+              {SORT_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setSortOrder(opt.value)}
+                  className={`h-9 rounded-sm text-[13px] font-medium border transition-colors ${sortOrder === opt.value ? 'bg-[#e6eeff] border-[#155dfc] text-[#155dfc]' : 'bg-white border-[#7a8aa3] text-[#45556c]'}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
+    );
 
-      {/* Purchase / Purchase Return buttons*/}
+  // Card-view search + scan (+ New item on desktop)
+  const renderGridSearch = () => (
+    <div className="flex gap-2 items-center">
+      <div className="relative flex-1">
+        <FiSearch size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#5b6b86] pointer-events-none" />
+        <input
+          type="text"
+          value={gridSearchQuery}
+          onChange={(e) => setGridSearchQuery(e.target.value)}
+          placeholder="Search item name or barcode"
+          className={FIELD_CLS}
+          autoComplete="off"
+        />
+        {gridSearchQuery && (
+          <button type="button" onClick={() => setGridSearchQuery('')} aria-label="Clear search"
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full text-[#5b6b86] hover:text-[#0f172b] hover:bg-[#f5f7ff] transition-colors">
+            <FiX size={16} />
+          </button>
+        )}
+      </div>
+      <button type="button" onClick={() => setIsScannerOpen(true)} title="Scan barcode" aria-label="Scan barcode" className={SCAN_BTN_CLS}>
+        <IconScanCircle width={20} height={20} />
+        <span className="hidden md:inline">Scan</span>
+      </button>
+      <button type="button" onClick={handleOpenNewItem} title="Create a new item" className={`${BTN_SECONDARY} hidden md:inline-flex !h-[52px]`}>
+        <FiPlus size={18} /> New item
+      </button>
     </div>
+  );
+
+  // Phone only: [search icon] [category scroll] [camera]  →  tap icon = full search bar
+  const renderMobileToolbar = () =>
+    isMobileSearchOpen ? (
+      <div className="flex gap-2 items-center">
+        {/* Search bar: icon + input + clear + blue scan segment */}
+        <div className="flex flex-1 min-w-0 items-center h-12 rounded-full border border-[#7a8aa3] bg-white overflow-hidden transition-all focus-within:border-[#155dfc] focus-within:ring-4 focus-within:ring-[#e6eeff]">
+          <FiSearch size={18} className="ml-3.5 text-[#5b6b86] flex-shrink-0" />
+          <input
+            type="text"
+            value={gridSearchQuery}
+            onChange={(e) => setGridSearchQuery(e.target.value)}
+            placeholder="Search item name or barcode"
+            className="flex-1 min-w-0 h-full px-2.5 bg-transparent border-0 outline-none text-[15px] font-medium text-[#0f172b] placeholder:text-[#5b6b86]"
+            autoComplete="off"
+            autoFocus
+          />
+          {gridSearchQuery && (
+            <button type="button" onClick={() => setGridSearchQuery('')} aria-label="Clear search"
+              className="p-1 mr-1 rounded-full text-[#5b6b86] hover:text-[#0f172b] hover:bg-[#f5f7ff] transition-colors flex-shrink-0">
+              <FiX size={16} />
+            </button>
+          )}
+          <button type="button" aria-label="Scan barcode" onClick={() => setIsScannerOpen(true)}
+            className="h-full w-12 flex-shrink-0 inline-flex items-center justify-center bg-[#155dfc] text-white hover:bg-[#1447e6] transition-colors">
+            <IconScanCircle width={20} height={20} />
+          </button>
+        </div>
+        <button type="button" aria-label="Close search"
+          onClick={() => { setIsMobileSearchOpen(false); setGridSearchQuery(''); }}
+          className="inline-flex items-center justify-center w-10 h-10 flex-shrink-0 rounded-sm border border-[#7a8aa3] bg-white text-[#45556c]">
+          <FiX size={18} />
+        </button>
+      </div>
+    ) : (
+      <div className="flex items-center gap-2">
+        {/* Left-most: search icon */}
+        <button type="button" aria-label="Search" onClick={() => setIsMobileSearchOpen(true)}
+          className="inline-flex items-center justify-center w-10 h-10 flex-shrink-0 rounded-sm border border-[#7a8aa3] bg-white text-[#0f172b]">
+          <FiSearch size={18} />
+        </button>
+        <div className="flex gap-1.5 overflow-x-auto flex-1 min-w-0 scrollbar-hide">
+          {categories.map((cat) => (
+            <button key={cat} type="button" onClick={() => setSelectedCategory(cat)} className={chipCls(selectedCategory === cat)}>
+              {cat === 'All' ? (
+                <>All <span className="ml-1.5 text-xs opacity-60">{availableItems.length}</span></>
+              ) : (itemGroupMap[cat] || 'uncategorized')}
+            </button>
+          ))}
+        </div>
+        {/* Filter / View options */}
+        <button type="button" aria-label="View options" onClick={() => setIsFilterOpen(true)}
+          className="relative inline-flex items-center justify-center w-10 h-10 flex-shrink-0 rounded-sm border border-[#7a8aa3] bg-white text-[#0f172b]">
+          <FiSliders size={18} />
+          {hasViewChanges && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#155dfc] ring-2 ring-white" />}
+        </button>
+      </div>
+    );
+
+  // ── Shared dialogs ────────────────────────────────────────────────────────
+  const renderModal = () =>
+    modal && (
+      <Modal
+        message={modal.message}
+        onClose={() => {
+          setModal(null);
+          setShowClearCartConfirm(false);
+        }}
+        onConfirm={showClearCartConfirm ? () => {
+          handleConfirmClearCart();
+          setModal(null);
+        } : undefined}
+        showConfirmButton={showClearCartConfirm}
+        type={modal.type}
+      />
+    );
+
+  const renderClearCartConfirm = () =>
+    showClearCartConfirm && (
+      <div className={OVERLAY}>
+        <div className={DIALOG}>
+          <h3 className="m-0 text-lg font-semibold">Clear cart</h3>
+          <p className="mt-2 mb-0 text-sm text-[#45556c]">Are you sure you want to remove all items?</p>
+          <div className="flex justify-end gap-3 mt-6">
+            <button onClick={() => setShowClearCartConfirm(false)} className={BTN_SECONDARY}>Cancel</button>
+            <button onClick={handleConfirmClearCart} className={BTN_DANGER_SOLID}>Clear</button>
+          </div>
+        </div>
+      </div>
+    );
+  const renderSupplierSuggestions = () => {
+    if (!showSupplierSuggestions || supplierSuggestions.length === 0) return null;
+    const rect = supplierNameWrapRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+
+    return createPortal(
+      <div
+        ref={supplierSuggestionsRef}
+        style={{ position: 'fixed', top: rect.bottom + 4, left: rect.left, width: rect.width, zIndex: 99999 }}
+        className="bg-white border border-[#dfe6fb] shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)] rounded-sm p-1.5 max-h-48 overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {supplierSuggestions.map((s, idx) => (
+          <div
+            key={idx}
+            className="px-2.5 py-2 hover:bg-[#e6eeff] rounded-sm cursor-pointer flex justify-between items-center gap-2"
+            onClick={() => selectSupplierSuggestion(s)}
+          >
+            <div className="min-w-0">
+              <div className="font-semibold text-xs text-[#0f172b] truncate">{s.name}</div>
+              <div className="text-[10px] text-[#5b6b86]">{s.number}</div>
+            </div>
+            {(s.debitBalance ?? 0) > 0 && (
+              <span className="text-[11px] font-medium text-[#d5000c] bg-[#ffeef0] px-2 py-0.5 rounded-full whitespace-nowrap">
+                Debit: ₹{s.debitBalance}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>,
+      document.body
+    );
+  };
+  // Drawers / pickers / add-item popup — identical in both views
+  const renderCommonOverlays = () => (
+    <>
+      <PaymentDrawer
+        mode='purchase'
+        payingOut
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        subtotal={subtotal}
+        totalTax={taxAmount} // Ensure totalTax is passed
+        billTotal={finalAmount}
+        initialDiscount={editModeData?.manualDiscount}
+        onPaymentComplete={handleSavePurchase}
+        isPartyNameEditable={!editModeData}
+        initialPartyName={editModeData ? editModeData.partyName : supplierName}
+        initialPartyNumber={editModeData ? editModeData.partyNumber : supplierPhone}
+        initialPaymentMethods={editModeData ? editModeData.paymentMethods : undefined}
+        totalQuantity={totalQuantity}
+        enableCustomerDetails={true}
+        requireCustomerName={purchaseSettings?.requireSupplierName}
+        requireCustomerMobile={purchaseSettings?.requireSupplierMobile}
+        taxMode={billTaxType}
+        onTaxModeChange={setBillTaxType}
+        isTaxToggleLocked={false}
+        totalMrp={totalMrp}
+      />
+
+      <PurchaseGodownAssignModal
+        isOpen={isGodownAssignOpen}
+        items={assignableItemsForGodown}
+        godowns={godowns}
+        companyId={currentUser?.companyId} // 👈 NEW
+        onConfirm={handleGodownAssignConfirm}
+        onClose={() => setIsGodownAssignOpen(false)}
+      />
+
+      <ItemEditDrawer
+        item={selectedItemForEdit}
+        isOpen={isItemDrawerOpen}
+        onClose={handleCloseEditDrawer}
+        onSaveSuccess={handleSaveSuccess}
+      />
+      <TierPickerModal
+        item={tierPickerItem}
+        isOpen={!!tierPickerItem}
+        onClose={() => setTierPickerItem(null)}
+        onSelect={(item, tier) => {
+          handleItemSelected(item, tier.id === '__base__' ? undefined : tier);   // 👈 CHANGED
+        }}
+      />
+      {showSupplierModal && (
+        <div className={OVERLAY} onClick={closeSupplierModal}>
+          <div className={DIALOG} onClick={(e) => e.stopPropagation()}>
+            <h3 className="m-0 text-lg font-semibold">Supplier</h3>
+            <p className="mt-1 mb-4 text-sm text-[#45556c]">These details are filled in at payment.</p>
+            <div className="space-y-4">
+              <div ref={supplierNameWrapRef} className="relative">
+                <label className={`block mb-1.5 ${OVERLINE}`}>Name</label>
+                <input
+                  type="text"
+                  value={supplierDraft.name}
+                  onChange={(e) => handleSupplierNameChange(e.target.value)}
+                  onFocus={() => {
+                    if (supplierDraft.name.length >= 3) searchSupplier(supplierDraft.name);
+                  }}
+                  placeholder="Supplier name"
+                  className={INPUT}
+                  autoComplete="off"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className={`block mb-1.5 ${OVERLINE}`}>Mobile</label>
+                <input
+                  type="tel"
+                  inputMode="tel"
+                  value={supplierDraft.phone}
+                  onChange={(e) => setSupplierDraft({ ...supplierDraft, phone: e.target.value.replace(/\D/g, '') })}
+                  placeholder="9000000000"
+                  className={INPUT}
+                  autoComplete="off"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button onClick={closeSupplierModal} className={BTN_SECONDARY}>Cancel</button>
+              <button onClick={saveSupplier} className={BTN_PRIMARY}>Save</button>
+            </div>
+          </div>
+          {renderSupplierSuggestions()}
+        </div>
+      )}
+      {showAddItemModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(2,6,24,0.45)] px-4">
+          <div className={`bg-[#ffffff] rounded-sm ${SHADOW_FLOAT} w-full max-w-2xl h-[90vh] max-h-[90vh] flex flex-col overflow-hidden`}>
+            <ItemAdd
+              isModal
+              prefillData={unlinkedPrefill || undefined}
+              onItemCreated={handleUnlinkedItemCreated}
+              onCancel={handleCloseUnlinkedModal}
+            />
+          </div>
+        </div>
+      )}
+    </>
   );
 
   // --- CARD VIEW RENDER (GRID) ---
   if (isCardView) {
     return (
-      <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden pb-0">
-        {modal && (
-          <Modal
-            message={modal.message}
-            onClose={() => {
-              setModal(null);
-              setShowClearCartConfirm(false);
-            }}
-            onConfirm={showClearCartConfirm ? () => {
-              handleConfirmClearCart();
-              setModal(null);
-            } : undefined}
-            showConfirmButton={showClearCartConfirm}
-            type={modal.type}
-          />
-        )}
-        {showClearCartConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm bg-black/20">
-            <div className="bg-white p-6 rounded-sm shadow-xl w-full max-w-sm mx-4">
-              <h3 className="text-lg font-bold text-gray-800">Clear Cart</h3>
-              <p className="my-4 text-gray-600">Are you sure you want to remove all items?</p>
-              <div className="flex justify-end gap-4 mt-6">
-                <CustomButton variant={Variant.Outline} onClick={() => setShowClearCartConfirm(false)}>Cancel</CustomButton>
-                <CustomButton variant={Variant.Filled} onClick={handleConfirmClearCart}>Clear</CustomButton>
-              </div>
-            </div>
-          </div>
-        )}
+      <div className="flex flex-col h-full bg-[#eef2ff] w-full overflow-hidden pb-0">
+        {renderModal()}
+        {renderClearCartConfirm()}
 
         <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
         {renderHeader()}
+        {renderMoreSheet()}
+        {renderFilterSheet()}
 
-        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-          <div className="flex flex-col w-full md:w-3/4 h-full relative min-w-0 border-r border-gray-200 overflow-hidden">
-            <div className="flex-shrink-0 bg-gray-50 border-b border-gray-200">
+        <div className="flex-1 flex flex-col xl:flex-row overflow-hidden">
+          <div className="flex flex-col w-full xl:flex-1 h-full relative min-w-0 overflow-hidden">
+            <div className="flex-shrink-0 bg-[#ffffff] border-b border-[#dfe6fb]">
 
-              {/* ── MOBILE: single toolbar row ── */}
-              <div className="flex md:hidden items-center gap-2 px-3 py-2 bg-white border-b border-gray-200">
+              {/* Supplier — phone par header pill mein hai; tablet (md–xl) par yahan, desktop par summary panel mein */}
+              <div className="hidden md:block xl:hidden px-5 pt-4">{renderSupplierCard()}</div>
 
-                {/* Search toggle icon */}
-                <button
-                  onClick={() => setIsSearchOpen(prev => !prev)}
-                  className={`p-2 rounded-sm border transition-colors flex-shrink-0 ${isSearchOpen ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-100 text-gray-600 border-gray-300'}`}
-                  title="Search"
-                >
-                  <FiSearch size={16} />
-                </button>
-
-                {/* Category pills - scrollable, fills remaining space */}
+              {/* Desktop / tablet: pehle jaisa */}
+              <div className="hidden md:block px-5 pt-4">{renderGridSearch()}</div>
+              <div className="hidden md:flex items-center gap-2 px-5 py-3">
                 <div className="flex gap-1.5 overflow-x-auto flex-1 scrollbar-hide">
                   {categories.map((cat) => (
-                    <button
-                      key={cat}
-                      onClick={() => setSelectedCategory(cat)}
-                      className={`px-2.5 py-1 rounded-sm text-xs whitespace-nowrap border transition flex-shrink-0
-            ${selectedCategory === cat
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-gray-100 text-gray-700 border-gray-300'
-                        }`}
-                    >
+                    <button key={cat} type="button" onClick={() => setSelectedCategory(cat)} className={chipCls(selectedCategory === cat)}>
                       {cat === 'All' ? 'All' : itemGroupMap[cat] || 'uncategorized'}
                     </button>
                   ))}
                 </div>
-
-                {/* Sort menu icon - rightmost, with dropdown */}
-                <div className="relative flex-shrink-0">
-                  <button
-                    onClick={() => setIsSortOpen(prev => !prev)}
-                    className={`p-2 rounded-sm border transition-colors ${isSortOpen ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-100 text-gray-600 border-gray-300'}`}
-                    title="Sort"
-                  >
-                    <FiMenu size={16} />
-                  </button>
-
-                  {/* Sort dropdown */}
-                  {isSortOpen && (
-                    <>
-                      {/* backdrop to close on outside tap */}
-                      <div className="fixed inset-0 z-10" onClick={() => setIsSortOpen(false)} />
-                      <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-sm shadow-lg z-20 min-w-[100px]">
-                        {([
-                          { value: 'az', label: 'A-Z' },
-                          { value: 'za', label: 'Z-A' },
-                          { value: 'price_asc', label: 'Price ↑' },
-                          { value: 'price_desc', label: 'Price ↓' },
-                        ] as const).map(opt => (
-                          <button
-                            key={opt.value}
-                            onClick={() => { setSortOrder(opt.value); setIsSortOpen(false); }}
-                            className={`w-full text-left px-3 py-2 text-xs font-medium transition-colors
-                  ${sortOrder === opt.value
-                                ? 'bg-blue-50 text-blue-600 font-semibold'
-                                : 'text-gray-700 hover:bg-gray-50'
-                              }`}
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
               </div>
 
-              {/* ── MOBILE: expandable search bar + camera (below toolbar row) ── */}
-              {isSearchOpen && (
-                <div className="flex md:hidden gap-2 items-center px-3 py-2 bg-white border-b border-gray-200">
-                  <div className="flex-grow relative">
-                    <input
-                      type="text"
-                      value={gridSearchQuery}
-                      onChange={(e) => setGridSearchQuery(e.target.value)}
-                      placeholder="Search items by name or barcode..."
-                      className="w-full border border-gray-300 rounded-sm px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-8"
-                      autoComplete="off"
-                      autoFocus
-                    />
-                    {gridSearchQuery && (
-                      <button
-                        onClick={() => setGridSearchQuery('')}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                      >
-                        <FiX size={14} />
-                      </button>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => setIsScannerOpen(true)}
-                    className='bg-blue-600 text-white p-3 rounded-sm hover:bg-blue-700 transition-colors flex-shrink-0'
-                    title="Scan Barcode"
-                  >
-                    <IconScanCircle width={22} height={22} />
-                  </button>
-                </div>
-              )}
+              {/* Phone: ek compact row */}
+              <div className="md:hidden px-4 py-3">{renderMobileToolbar()}</div>
 
-              {/* ── DESKTOP: original search bar (unchanged) ── */}
-              <div className="hidden md:flex p-3 bg-white gap-2 items-center">
-                <div className="flex-grow relative">
-                  <input
-                    type="text"
-                    value={gridSearchQuery}
-                    onChange={(e) => setGridSearchQuery(e.target.value)}
-                    placeholder="Search items by name or barcode..."
-                    className="w-full border border-gray-300 rounded-sm px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-8"
-                    autoComplete="off"
-                  />
-                  {gridSearchQuery && (
-                    <button
-                      onClick={() => setGridSearchQuery('')}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      <FiX size={14} />
-                    </button>
-                  )}
-                </div>
-                <button
-                  onClick={() => setIsScannerOpen(true)}
-                  className='bg-blue-600 text-white p-3 rounded-sm hover:bg-blue-700 transition-colors'
-                  title="Scan Barcode"
+              {/* Items count + sort + Clear — tablet/desktop only (phone par sab filter sheet mein hai) */}
+              <div className="hidden md:flex items-center gap-2 px-5 pb-3">
+                <span className={OVERLINE}>Items · {sortedGridItems.length}</span>
+                <span className="flex-1" />
+                <select
+                  value={sortOrder}
+                  onChange={(e) => setSortOrder(e.target.value as typeof sortOrder)}
+                  aria-label="Sort"
+                  className="h-8 px-2 bg-white border border-[#7a8aa3] rounded-sm text-xs font-medium text-[#0f172b] outline-none focus:border-[#155dfc] focus:ring-4 focus:ring-[#e6eeff]"
                 >
-                  <IconScanCircle width={22} height={22} />
-                </button>
-              </div>
-
-              {/* ── DESKTOP: category pills (unchanged) ── */}
-              <div className="hidden md:flex gap-2 overflow-x-auto px-3 pb-3 bg-white border-b border-gray-300">
-                {categories.map((cat) => (
-                  <button
-                    key={cat}
-                    onClick={() => setSelectedCategory(cat)}
-                    className={`px-3 py-1 rounded-sm text-xs whitespace-nowrap border transition
-          ${selectedCategory === cat
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'
-                      }`}
-                  >
-                    {cat === 'All' ? 'All' : itemGroupMap[cat] || 'uncategorized'}
+                  {SORT_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                </select>
+                {/* Tablet only — no summary panel here, so Clear lives in the toolbar */}
+                {items.length > 0 && (
+                  <button type="button" onClick={handleClearCart} className={`${BTN_CLEAR} xl:hidden`}>
+                    <FiTrash2 size={14} /> Clear
                   </button>
-                ))}
-              </div>
-
-              {/* ── DESKTOP: sort bar (unchanged) ── */}
-              <div className="hidden md:flex gap-1.5 items-center px-3 py-2 bg-white border-b border-gray-200 overflow-x-auto flex-shrink-0">
-                <span className="text-xs text-gray-400 font-medium uppercase tracking-wide whitespace-nowrap flex-shrink-0">Sort:</span>
-                {([
-                  { value: 'az', label: 'A → Z' },
-                  { value: 'za', label: 'Z → A' },
-                  { value: 'price_asc', label: 'Price ↑' },
-                  { value: 'price_desc', label: 'Price ↓' },
-                ] as const).map(opt => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setSortOrder(opt.value)}
-                    className={`px-2.5 py-1 rounded-sm text-xs whitespace-nowrap border transition flex-shrink-0 ${sortOrder === opt.value
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200'
-                      }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-              <div className="px-3 pt-2 pb-2 bg-white border-b border-gray-100 grid grid-cols-3 items-center">
-                <div className="justify-self-start">
-                  <h3 className="text-gray-700 font-medium">Cart</h3>
-                </div>
-                <div className="justify-self-center" />
-                <div className="justify-self-end">
-                  {items.length > 0 && (
-                    <button onClick={handleClearCart} className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded border border-red-200 flex items-center gap-1">
-                      <FiTrash2 /> Clear
-                    </button>
-                  )}
-                </div>
+                )}
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-5  bg-gray-100" style={{ gridAutoRows: 'auto', alignContent: 'start', gap: '14px', padding: '8px 14px' }}>
+            <div className="flex-1 overflow-y-auto grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] md:grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] auto-rows-max content-start gap-2 bg-[#eef2ff] px-2 pt-2.5 pb-6 md:px-3">
               {sortedGridItems.length === 0 ? (
                 <div className="col-span-full text-center text-gray-500 mt-10 py-10 bg-white rounded-sm">
                   {gridSearchQuery ? (
@@ -648,517 +1200,237 @@ const PurchasePage: React.FC = () => {
                   const lineSubtotal = Math.round((Number(cp) * quantity) * 100) / 100;
 
                   // ── CARD WITH IMAGE ────────────────────────────────────────────────────
-                  if (isCardImageView) {
-                    const imageUrl: string | undefined =
-                      (item as any).image ||
-                      (item as any).imageUrl ||
-                      (item as any).thumbnail ||
-                      (item as any).imageURL;
+                  const photoUrl: string | undefined = isCardImageView
+                    ? ((item as any).image || (item as any).imageUrl || (item as any).thumbnail || (item as any).imageURL)
+                    : undefined;
+                  const atMin = isSelected && quantity <= 1;
 
-                    return (
-                      <div
-                        key={item.id}
-                        onClick={() => {
-                          if (isSelected) handleQuantityChange(lastAddedCartItem.id, quantity + 1);
-                          else handleAddOrPickTier(item);   // 👈 CHANGED
+                  const openEdit = () => {
+                    const orig = availableItems.find(a => a.id === item.id);
+                    if (orig) handleOpenEditDrawer(orig);
+                  };
+                  const handleTileTap = () => {
+                    if (tileHoldFired.current) { tileHoldFired.current = false; return; }
+                    if (isSelected) handleQuantityChange(lastAddedCartItem.id, quantity + 1);
+                    else handleAddOrPickTier(item);
+                  };
+
+                  return (
+                    <div key={item.id} className="relative min-w-0">
+                      <button
+                        type="button"
+                        aria-label={`Add one ${item.name}${isSelected ? `, ${quantity} in bill` : ''}`}
+                        onClick={handleTileTap}
+                        onPointerDown={(e) => {
+                          if (e.pointerType !== 'touch') return;
+                          tileHoldFired.current = false;
+                          clearTimeout(tileHoldTimer.current);
+                          tileHoldTimer.current = setTimeout(() => { tileHoldFired.current = true; openEdit(); }, 450);
                         }}
-                        className={`bg-white rounded-sm flex flex-col w-full overflow-visible transition-all duration-200 relative group
-        ${isSelected
-                            ? 'border-2 border-blue-400 shadow-md ring-1 ring-blue-100'
-                            : 'border border-gray-100 hover:shadow-md hover:border-gray-200'}`}
-                        style={{ margin: '0 2px' }}
+                        onPointerUp={() => clearTimeout(tileHoldTimer.current)}
+                        onPointerLeave={() => clearTimeout(tileHoldTimer.current)}
+                        onPointerCancel={() => clearTimeout(tileHoldTimer.current)}
+                        onContextMenu={(e) => e.preventDefault()}
+                        className={`relative flex flex-col w-full overflow-hidden p-0 text-left rounded-sm border-2 select-none cursor-pointer transition active:scale-[0.97] [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent]
+        ${isCardImageView ? 'h-[136px] md:h-[164px]' : 'h-[100px]'}
+        ${isSelected ? 'bg-blue-50 border-blue-600' : 'bg-white border-transparent ring-1 ring-gray-200 hover:ring-gray-300'}`}
                       >
-                        {/* ── Image Block ── */}
-                        <div className="relative w-full bg-gray-100 rounded-t-sm overflow-hidden" style={{ height: '140px' }}>
-
-                          {/* Centered image container */}
-                          <div className="w-full h-full flex items-center justify-center p-1.5">
-                            {imageUrl ? (
+                        {/* Photo strip (photo mode only) */}
+                        {isCardImageView && (
+                          <span className={`relative flex items-center justify-center w-full h-[60px] md:h-[88px] p-1 shrink-0 overflow-hidden ${isSelected ? 'bg-white' : 'bg-gray-50'}`}>
+                            {photoUrl && (
                               <img
-                                src={imageUrl}
-                                alt={item.name}
-                                className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105"
+                                src={photoUrl}
+                                alt=""
                                 loading="lazy"
+                                className="max-w-full max-h-full object-contain block"
                                 onError={(e) => {
                                   (e.currentTarget as HTMLImageElement).style.display = 'none';
-                                  const placeholder = (e.currentTarget as HTMLImageElement)
-                                    .parentElement
-                                    ?.querySelector<HTMLElement>('[data-no-image]');
-                                  if (placeholder) placeholder.style.display = 'flex';
+                                  const ph = (e.currentTarget as HTMLImageElement).parentElement?.querySelector<HTMLElement>('[data-no-image]');
+                                  if (ph) ph.style.display = 'flex';
                                 }}
                               />
-                            ) : null}
-
-                            {/* Camera placeholder – shown when no image */}
-                            <div
-                              data-no-image
-                              className="absolute inset-0 flex flex-col items-center justify-center bg-gray-50"
-                              style={{ display: imageUrl ? 'none' : 'flex' }}
-                            >
-                              <FiCamera className="text-gray-300" size={22} strokeWidth={1.4} />
-                              <span className="text-[9px] text-gray-300 mt-1 uppercase tracking-wide font-medium">No Image</span>
-                            </div>
-                          </div>
-
-                          {/* ── Discount badge – Blinkit style, top-left ── */}
-                          {discPct > 0 && (
-                            <div
-                              className="absolute top-1.5 left-1.5 z-10 bg-blue-600 text-white font-bold text-[9px] leading-tight px-1.5 py-[3px] rounded-md shadow-sm"
-                            >
-                              {discPct}% OFF
-                            </div>
-                          )}
-
-                          {/* ✕ remove – shown only when in cart */}
-                          {isSelected && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleDeleteItem(lastAddedCartItem.id); }}
-                              className="absolute top-1 right-1.5 z-20 w-5 h-5 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors text-[10px] font-bold shadow-sm border border-gray-100"
-                            >
-                              ✕
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Content block */}
-                        <div className="p-1.5 sm:p-2 flex flex-col flex-1 gap-0.5">
-                          {/* Item name — always 2 lines, fixed height */}
-                          <div className="flex items-start justify-between gap-1" style={{ minHeight: '28px' }}>
-                            <p
-                              className="text-[11px]  font-bold text-gray-900 leading-snug flex-1 overflow-hidden"
-                              style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}
-                              title={item.name}
-                            >
-                              {item.name.length > 45 ? item.name.slice(0, 45) : item.name}
-                            </p>
-                            <button onClick={(e) => { e.stopPropagation(); const orig = availableItems.find(a => a.id === item.id); if (orig) handleOpenEditDrawer(orig); }}
-                              className="text-gray-400 hover:text-blue-600 flex-shrink-0 mt-0.5">
-                              <FiEdit size={11} />
-                            </button>
-                          </div>
-
-                          {/* Fixed bottom section — always same height regardless of name */}
-                          <div className="mt-auto flex flex-col gap-1 pt-1 border-t border-gray-50" onClick={(e) => e.stopPropagation()}>
-
-                            {/* Row 1: Price + MRP */}
-                            <div className="flex items-baseline gap-1">
-                              <span className="text-xs font-semibold text-gray-900">
-                                ₹{Number(cp).toLocaleString('en-IN')}
+                            )}
+                            <span data-no-image className="absolute inset-0 items-center justify-center" style={{ display: photoUrl ? 'none' : 'flex' }}>
+                              <FiCamera size={20} strokeWidth={1.5} className="text-gray-300" />
+                            </span>
+                            {discPct > 0 && (
+                              <span className="absolute top-1 left-1 inline-flex items-center h-4 px-1 rounded-sm bg-blue-600 text-white text-[10px] leading-[14px] font-bold whitespace-nowrap">
+                                {discPct}% OFF
                               </span>
-                              {discPct > 0 && mrp > 0 && Number(cp) < mrp && (
-                                <span className="text-[10px] text-gray-400 line-through">
-                                  ₹{mrp.toLocaleString('en-IN')}
-                                </span>
-                              )}
-                              {item.unit && (
-                                <span className="text-[9px] text-gray-400 font-medium ml-0.5">
-                                  ({item.unit})
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Subtotal row — only when selected */}
-                            {isSelected && (
-                              <div className="flex items-center gap-1 border-t border-gray-50 pt-1 min-w-0">
-                                <span className="text-[9px] uppercase text-gray-400 tracking-wide flex-shrink-0">Subtotal</span>
-                                <span className="text-[10px] font-semibold text-blue-600 truncate">₹{lineSubtotal.toLocaleString('en-IN')}</span>
-                              </div>
                             )}
+                          </span>
+                        )}
 
-                            {/* Row 3: Add button OR Quantity selector — always pinned last */}
-                            {!isSelected ? (
-                              <>
-                                <div className="h-[18px] border-t border-gray-50" />
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleAddOrPickTier(item);   // 👈 CHANGED
-                                  }}
-                                  className="w-full h-[26px] rounded-md text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 transition-colors"
-                                >
-                                  + Add
-                                </button>
-                              </>
+                        {/* Name + price row */}
+                        <span className={`flex flex-col flex-1 min-w-0 gap-1 ${isCardImageView ? 'px-1.5 py-1' : 'p-1.5'}`}>
+                          <span
+                            className={`block overflow-hidden pr-2 text-[12px] leading-4 font-semibold text-gray-900 break-words [display:-webkit-box] [-webkit-box-orient:vertical] ${isCardImageView ? '[-webkit-line-clamp:2] h-8' : '[-webkit-line-clamp:3] h-12'}`}
+                            title={item.name}
+                          >
+                            {item.name}
+                          </span>
+                          <span className={`flex items-center gap-1 mt-auto min-w-0 tabular-nums ${isCardImageView ? 'h-7' : 'h-8'}`}>
+                            {isSelected ? (
+                              <span className="ml-auto text-xs leading-4 font-bold text-blue-600 whitespace-nowrap md:mr-[34px]">
+                                ₹{lineSubtotal.toLocaleString('en-IN')}
+                              </span>
                             ) : (
-                              <div
-                                className="flex items-center border border-gray-200 rounded-md overflow-hidden bg-white w-full"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1);
-                                    else handleDeleteItem(lastAddedCartItem.id);
-                                  }}
-                                  className="h-7 flex-1 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
-                                >−</button>
-                                <span className="w-8 text-center text-[11px] font-semibold text-gray-800">{quantity}</span>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleQuantityChange(lastAddedCartItem.id, quantity + 1);
-                                  }}
-                                  className="h-7 flex-1 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
-                                >+</button>
-                              </div>
+                              <>
+                                <span className="text-[13px] leading-4 font-bold text-gray-900 whitespace-nowrap">₹{Number(cp).toLocaleString('en-IN')}</span>
+                                {discPct > 0 && mrp > 0 && Number(cp) < mrp && (
+                                  <span className="min-w-0 truncate text-[11px] leading-[14px] text-gray-500 line-through whitespace-nowrap">₹{mrp.toLocaleString('en-IN')}</span>
+                                )}
+                              </>
                             )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  }
-                  // ── CARD WITHOUT IMAGE (existing card — unchanged below) ───────────────
-                  return (
-                    <div
-                      key={item.id}
-                      onClick={() => {
-                        if (isSelected) handleQuantityChange(lastAddedCartItem.id, quantity + 1);
-                        else addItemToCart(item);
-                      }}
-                      className={`bg-white rounded-sm border flex flex-col overflow-visible transition-all relative
-      ${isSelected ? 'border-blue-400 ring-1 ring-blue-100' : 'border-gray-100 hover:shadow-sm'}`}
-                      style={{ minHeight: 130 }}
-                    >
-                      {/* Discount badge - corner stamp */}
-                      {discPct > 0 && (
-                        <div
-                          className="absolute -top-px -left-px bg-blue-600 text-white text-[8px] font-medium leading-tight text-center z-10"
-                          style={{ borderRadius: '10px 0 8px 0', padding: '3px 6px', minWidth: 28 }}
-                        >
-                          {discPct}% OFF
-                        </div>
+                          </span>
+                        </span>
+                      </button>
+
+                      {/* Qty badge */}
+                      {isSelected && (
+                        <span aria-hidden="true" className="absolute -top-[7px] -right-[7px] z-[2] min-w-[22px] h-[22px] px-1.5 grid place-items-center rounded-full bg-blue-600 text-white text-[11px] leading-[14px] font-bold tabular-nums ring-2 ring-[#eef2ff] pointer-events-none">
+                          {quantity}
+                        </span>
                       )}
 
-                      {/* X button - only when selected */}
+                      {/* Minus (trash at qty 1) */}
                       {isSelected && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); handleDeleteItem(lastAddedCartItem.id); }}
-                          className="absolute top-1 right-2 text-gray-400 hover:text-red-500 transition-colors z-10 bg-transparent border-none cursor-pointer text-xs leading-none"
+                          type="button"
+                          aria-label={`${atMin ? 'Remove' : 'One less'} ${item.name}`}
+                          onClick={() => {
+                            if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1);
+                            else handleDeleteItem(lastAddedCartItem.id);
+                          }}
+                          className={`absolute z-[1] grid place-items-center rounded-sm bg-white text-blue-600 border-[1.5px] border-blue-600 hover:bg-blue-600 hover:text-white transition-colors
+          ${isCardImageView ? 'bottom-1.5 left-1.5 w-7 h-7' : 'bottom-2 left-2 w-8 h-8'}`}
                         >
-                          ✕
+                          {atMin ? <FiTrash2 size={16} /> : <FiMinus size={16} />}
                         </button>
                       )}
 
-                      <div className="p-2.5 flex flex-col gap-1.5 flex-1">
-
-                        {/* Item name - 2 line clamp then ellipsis */}
-                        <p
-                          className="text-[12px] font-medium text-gray-900 leading-snug pr-4 min-h-[32px] flex items-start"
-                          style={{
-                            marginTop: discPct > 0 ? 14 : 2,
-                            display: '-webkit-box',
-                            WebkitLineClamp: 2,
-                            WebkitBoxOrient: 'vertical' as any,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                          }}
-                          title={item.name}
-                        >
-                          {item.name}
-                        </p>
-
-                        {/* Price + edit icon in same row */}
-                        <div className="flex items-center justify-between gap-1">
-                          <div className="flex items-baseline gap-1.5">
-                            <span className="text-xs font-semibold text-gray-900">
-                              ₹{Number(cp).toLocaleString('en-IN')}
-                            </span>
-                            {discPct > 0 && mrp > 0 && Number(cp) < mrp && (
-                              <span className="text-[10px] text-gray-400 line-through">
-                                ₹{mrp.toLocaleString('en-IN')}
-                              </span>
-                            )}
-                            {item.unit && (
-                              <span className="text-[9px] text-gray-400 font-medium ml-0.5">
-                                ({item.unit})
-                              </span>
-                            )}
-                          </div>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const orig = availableItems.find(a => a.id === item.id);
-                              if (orig) handleOpenEditDrawer(orig);
-                            }}
-                            className="text-gray-400 hover:text-blue-600 transition-colors flex-shrink-0"
-                          >
-                            <FiEdit size={10} />
-                          </button>
-                        </div>
-
-                        {/* Bottom - pinned, same height for all cards */}
-                        {/* Bottom - pinned, same height for all cards */}
-                        <div className="mt-auto pt-2 flex items-center justify-between gap-2 min-w-0 overflow-hidden" onClick={(e) => e.stopPropagation()}>
-
-                          {!isSelected ? (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); addItemToCart(item); }}
-                              className="w-full py-1.5 rounded-md text-[11px] font-medium text-gray-600 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 transition-colors"
-                            >
-                              + Add
-                            </button>
-                          ) : (
-                            <div className="flex items-center justify-between gap-1 w-full min-w-0 overflow-hidden">
-                              {/* Subtotal LEFT */}
-                              <div className="text-left min-w-0 flex-shrink overflow-hidden">
-                                <p className="text-[9px] uppercase text-gray-400 tracking-wide leading-none">Subtotal</p>
-                                <p className="text-[11px] font-semibold text-blue-600 truncate">
-                                  ₹{lineSubtotal.toLocaleString('en-IN')}
-                                </p>
-                              </div>
-
-                              {/* Quantity RIGHT */}
-                              <div className="flex items-center border border-gray-200 rounded-md overflow-hidden bg-white flex-shrink-0">
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1); else handleDeleteItem(lastAddedCartItem.id); }}
-                                  className="w-6 h-7 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
-                                >−</button>
-                                <span className="w-5 text-center text-xs font-semibold text-gray-800">{quantity}</span>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleQuantityChange(lastAddedCartItem.id, quantity + 1); }}
-                                  className="w-6 h-7 flex items-center justify-center bg-gray-50 hover:bg-gray-200 text-gray-700 font-bold text-sm transition-colors"
-                                >+</button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                      {/* Edit (md and up; touch uses long-press) */}
+                      <button
+                        type="button"
+                        aria-label={`Edit ${item.name}`}
+                        onClick={openEdit}
+                        className={`hidden md:grid absolute z-[1] place-items-center rounded-sm bg-transparent text-gray-500 border border-transparent hover:text-blue-600 hover:border-gray-200 hover:bg-white transition-colors
+        ${isCardImageView ? 'bottom-1.5 right-1.5 w-7 h-7' : 'bottom-2 right-2 w-8 h-8'}`}
+                      >
+                        <FiEdit size={15} />
+                      </button>
                     </div>
                   );
                 })
               )}
             </div>
-          </div>
 
-          {/* Right Section - Purchase Summary (Same as before) */}
-          <div className="hidden md:flex w-1/4 flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
-            <div className="flex-1 p-6 flex flex-col justify-end">
-              <h2 className="text-xl font-bold text-gray-800 mb-6 border-b pb-2">Purchase Summary</h2>
-
-              <GenericBillFooter
-                isExpanded={true}
-                onToggleExpand={() => { }}
-                totalQuantity={totalQuantity}
-                subtotal={subtotal}
-                taxAmount={taxAmount}
-                finalAmount={finalAmount}
-                roundingOffAmount={roundingOffAmount}
-                showTaxRow={displayTaxTotal}
-                taxLabel="Total Tax"
-                actionLabel={isEditMode ? 'Update' : 'Pay Now'}
-                onActionClick={handleProceedToPayment}
-                disableAction={items.length === 0 || hasUnlinkedItems}
-              >
-              </GenericBillFooter>
+            {/* Mobile footer */}
+            <div className="md:hidden flex-shrink-0">
+              <GenericBillFooter {...footerProps} />
             </div>
+            {/* Tablet checkout bar */}
+            {renderTabletCheckoutBar()}
           </div>
 
-          {/* Mobile Footer */}
-          <div className="md:hidden w-full flex-shrink-0">
-            <GenericBillFooter
-              isExpanded={isFooterExpanded}
-              onToggleExpand={() => setIsFooterExpanded(!isFooterExpanded)}
-              totalQuantity={totalQuantity}
-              subtotal={subtotal}
-              taxAmount={taxAmount}
-              finalAmount={finalAmount}
-              roundingOffAmount={roundingOffAmount}
-              showTaxRow={displayTaxTotal}
-              taxLabel="Total Tax"
-              actionLabel={isEditMode ? 'Update' : 'Pay Now'}
-              onActionClick={handleProceedToPayment}
-              disableAction={items.length === 0 || hasUnlinkedItems}
-            >
-            </GenericBillFooter>
-          </div>
+          {/* Right Section — desktop only */}
+          {renderSummaryPanel(true)}
         </div>
 
-        <PaymentDrawer
-          mode='purchase'
-          isOpen={isDrawerOpen}
-          onClose={() => setIsDrawerOpen(false)}
-          subtotal={subtotal}
-          totalTax={taxAmount} // Ensure totalTax is passed
-          billTotal={finalAmount}
-          initialDiscount={editModeData?.manualDiscount}
-          onPaymentComplete={handleSavePurchase}
-          isPartyNameEditable={!editModeData}
-          initialPartyName={editModeData ? editModeData.partyName : ''}
-          initialPartyNumber={editModeData ? editModeData.partyNumber : ''}
-          initialPaymentMethods={editModeData ? editModeData.paymentMethods : undefined}
-          totalQuantity={totalQuantity}
-          enableCustomerDetails={true}
-          requireCustomerName={purchaseSettings?.requireSupplierName}
-          requireCustomerMobile={purchaseSettings?.requireSupplierMobile}
-
-          // 👇 ADD THESE 4 LINES TO BOTH DRAWERS:
-          taxMode={billTaxType}
-          onTaxModeChange={setBillTaxType}
-          isTaxToggleLocked={false}
-          totalMrp={totalMrp}
-        />
-
-        <PurchaseGodownAssignModal
-          isOpen={isGodownAssignOpen}
-          items={assignableItemsForGodown}
-          godowns={godowns}
-          companyId={currentUser?.companyId} // 👈 NEW
-          onConfirm={handleGodownAssignConfirm}
-          onClose={() => setIsGodownAssignOpen(false)}
-        />
-
-        <ItemEditDrawer
-          item={selectedItemForEdit}
-          isOpen={isItemDrawerOpen}
-          onClose={handleCloseEditDrawer}
-          onSaveSuccess={handleSaveSuccess}
-        />
-        <TierPickerModal
-          item={tierPickerItem}
-          isOpen={!!tierPickerItem}
-          onClose={() => setTierPickerItem(null)}
-          onSelect={(item, tier) => {
-            handleItemSelected(item, tier.id === '__base__' ? undefined : tier);   // 👈 CHANGED
-          }}
-        />
-        {showAddItemModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl h-[90vh] max-h-[90vh] flex flex-col overflow-hidden">
-              <ItemAdd
-                isModal
-                prefillData={unlinkedPrefill || undefined}
-                onItemCreated={handleUnlinkedItemCreated}
-                onCancel={handleCloseUnlinkedModal}
-              />
-            </div>
-          </div>
-        )}
-      </div >
+        {renderCommonOverlays()}
+      </div>
     );
   }
 
-  // --- LIST VIEW (Desktop Split / Mobile Stack) ---
+  // --- LIST VIEW (Desktop Split / Tablet + Mobile Stack) ---
   return (
-    <div className="flex flex-col h-full bg-gray-100 w-full overflow-hidden">
+    <div className="flex flex-col h-full bg-[#eef2ff] w-full overflow-hidden">
       {/* SMART SCAN VERIFICATION MODAL */}
       {scannedData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm bg-black/40">
-          <div className="bg-white p-4 rounded-sm shadow-xl w-full max-w-md mx-4">
-            <h3 className="text-lg font-bold text-gray-800 border-b pb-2 mb-4 flex items-center gap-2">
-              <FiFileText className="text-blue-600" /> Verify Extracted Items
+        <div className={OVERLAY}>
+          <div className={`${DIALOG} sm:!max-w-md`}>
+            <h3 className="m-0 mb-4 flex items-center gap-3 text-lg font-semibold">
+              <span className="inline-grid place-items-center w-8 h-8 rounded-sm bg-[#e6eeff] text-[#155dfc]">
+                <FiFileText size={18} />
+              </span>
+              Verify extracted items
             </h3>
             <div className="space-y-4">
 
               <div>
-                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Total Amount Found</label>
+                <label className={`block mb-1.5 ${OVERLINE}`}>Total amount found</label>
                 <input
                   type="text"
                   value={scannedData.amount}
                   onChange={(e) => setScannedData({ ...scannedData, amount: e.target.value })}
-                  className="w-full border border-gray-300 rounded-sm px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  className={INPUT}
                 />
               </div>
 
               {/* --- ITEM LIST PREVIEW --- */}
               {scannedData.items && scannedData.items.length > 0 ? (
-                <div className="mt-4 border-t pt-4">
-                  <label className="block text-xs font-semibold text-gray-600 uppercase mb-2">
-                    Items Found ({scannedData.items.length})
+                <div className="pt-4 border-t border-[#dfe6fb]">
+                  <label className={`block mb-2 ${OVERLINE}`}>
+                    Items found ({scannedData.items.length})
                   </label>
-                  <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-sm divide-y divide-gray-100">
+                  <div className="max-h-48 overflow-y-auto border border-[#dfe6fb] rounded-sm divide-y divide-[#dfe6fb]">
                     {scannedData.items.map((item, idx) => (
-                      <div key={idx} className="p-2 text-xs flex justify-between items-center bg-gray-50">
-                        <span className="font-medium text-gray-800 truncate pr-2 w-3/5" title={item.name}>
+                      <div key={idx} className="px-3 py-2 text-xs flex justify-between items-center bg-[#f5f7ff]">
+                        <span className="font-medium text-[#0f172b] truncate pr-2 w-3/5" title={item.name}>
                           {item.name}
                         </span>
-                        <span className="text-gray-500 w-1/5 text-right">
+                        <span className="text-[#45556c] w-1/5 text-right tabular-nums">
                           {item.quantity} {item.unit}
                         </span>
-                        <span className="text-blue-600 font-semibold w-1/5 text-right">
+                        <span className="text-[#155dfc] font-semibold w-1/5 text-right tabular-nums">
                           ₹{item.purchasePrice}
                         </span>
                       </div>
                     ))}
                   </div>
-                  <p className="text-[9px] text-gray-400 mt-1">
+                  <p className="mt-1.5 mb-0 text-[11px] text-[#5b6b86]">
                     These items will be matched with your inventory when applied.
                   </p>
                 </div>
               ) : (
-                <div className="mt-4 border-t pt-4 text-center">
-                  <p className="text-xs text-orange-600 font-medium bg-orange-50 p-2 rounded-sm border border-orange-100">
-                    ⚠️ No items could be automatically extracted from this format.
-                  </p>
+                <div className="flex items-start gap-2 p-2.5 rounded-sm text-[13px] leading-[19px] bg-[#fff3dd] text-[#bb4d00]">
+                  <FiAlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+                  <span>No items could be automatically extracted from this format.</span>
                 </div>
               )}
             </div>
 
-            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
-              <CustomButton variant={Variant.Outline} onClick={clearScannedData}>Cancel</CustomButton>
-              <CustomButton variant={Variant.Filled} onClick={handleApplySmartScan}>Apply Items to Bill</CustomButton>
+            <div className="flex justify-end gap-3 mt-6">
+              <button onClick={clearScannedData} className={BTN_SECONDARY}>Cancel</button>
+              <button onClick={handleApplySmartScan} className={BTN_PRIMARY}>Apply items to bill</button>
             </div>
           </div>
         </div>
       )}
-      {modal && (
-        <Modal
-          message={modal.message}
-          onClose={() => {
-            setModal(null);
-            setShowClearCartConfirm(false);
-          }}
-          onConfirm={showClearCartConfirm ? () => {
-            handleConfirmClearCart();
-            setModal(null);
-          } : undefined}
-          showConfirmButton={showClearCartConfirm}
-          type={modal.type}
-        />
-      )}
-      {showClearCartConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm bg-black/20">
-          <div className="bg-white p-6 rounded-sm shadow-xl w-full max-w-sm mx-4">
-            <h3 className="text-lg font-bold text-gray-800">Clear Cart</h3>
-            <p className="my-4 text-gray-600">Are you sure you want to remove all items?</p>
-            <div className="flex justify-end gap-4 mt-6">
-              <CustomButton variant={Variant.Outline} onClick={() => setShowClearCartConfirm(false)}>Cancel</CustomButton>
-              <CustomButton variant={Variant.Filled} onClick={handleConfirmClearCart}>Clear</CustomButton>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* 👇 NEW: Duplicate item popup */}
+      {renderModal()}
+      {renderClearCartConfirm()}
+      {/* Duplicate item popup */}
       {duplicateItemPrompt && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[2000] p-4">
-          <div className="bg-white rounded-sm shadow-2xl p-6 w-full max-w-sm text-center">
-            <div className="mx-auto mb-4 w-12 h-12 rounded-sm flex items-center justify-center bg-blue-100">
-              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-              </svg>
+        <div className="fixed inset-0 z-[2000] flex items-end sm:items-center justify-center bg-[rgba(2,6,24,0.45)] sm:p-4">
+          <div className={`${DIALOG} text-center`}>
+            <div className="mx-auto mb-4 w-12 h-12 rounded-sm flex items-center justify-center bg-[#e6eeff] text-[#155dfc]">
+              <FiInfo size={24} />
             </div>
-            <h3 className="text-lg font-bold text-gray-800 mb-1">Item Already in Cart</h3>
-            <p className="text-sm text-gray-600 mb-6">
-              "<span className="font-medium">{duplicateItemPrompt.item.name}</span>" is already in your cart
+            <h3 className="m-0 mb-1 text-lg font-semibold">Item already in cart</h3>
+            <p className="m-0 mb-6 text-sm text-[#45556c]">
+              "<span className="font-medium text-[#0f172b]">{duplicateItemPrompt.item.name}</span>" is already in your cart
               {duplicateItemPrompt.existingCount > 1 ? ` (${duplicateItemPrompt.existingCount} times)` : ''}.
               What would you like to do?
             </p>
             <div className="flex flex-col gap-2">
-              <button
-                onClick={handleIncreaseExistingQuantity}
-                className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-sm font-semibold hover:bg-blue-700 transition-colors"
-              >
-                Increase Quantity
+              <button onClick={handleIncreaseExistingQuantity} className={`${BTN_PRIMARY} w-full h-11`}>
+                Increase quantity
               </button>
-              <button
-                onClick={handleAddAsNewLine}
-                className="w-full bg-gray-200 text-gray-800 py-2.5 px-4 rounded-sm font-semibold hover:bg-gray-300 transition-colors"
-              >
-                Add as New Item
+              <button onClick={handleAddAsNewLine} className={`${BTN_SECONDARY} w-full h-11`}>
+                Add as new item
               </button>
-              <button
-                onClick={() => setDuplicateItemPrompt(null)}
-                className="w-full text-xs font-medium text-gray-400 hover:text-gray-600 mt-1"
-              >
+              <button onClick={() => setDuplicateItemPrompt(null)} className={`${BTN_GHOST} w-full h-10 text-[13px]`}>
                 Cancel
               </button>
             </div>
@@ -1168,26 +1440,26 @@ const PurchasePage: React.FC = () => {
 
       {/* FULL SCREEN LOADING OVERLAY */}
       {isScanning && (
-        <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center backdrop-blur-sm bg-white/70">
+        <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center backdrop-blur-sm bg-[#ffffff]/80">
           {/* Animated Spinner */}
-          <div className="w-12 h-12 border-4 border-gray-200 border-t-[#ff1894] rounded-full animate-spin mb-4 shadow-sm"></div>
+          <div className="w-12 h-12 border-4 border-[#dfe6fb] border-t-[#155dfc] rounded-full animate-spin mb-4"></div>
 
-          <h3 className="text-lg font-bold text-gray-800 animate-pulse">
-            Analyzing Document...
+          <h3 className="m-0 text-lg font-semibold text-[#0f172b] animate-pulse">
+            Analyzing document...
           </h3>
-          <p className="text-sm text-gray-500 mt-2 font-medium">
+          <p className="text-sm text-[#45556c] mt-2 mb-0">
             Extracting items, prices, and discounts
           </p>
 
           {/* Sellar AI Badge */}
-          <div className="mt-6 flex items-center gap-2 px-3 py-1.5 bg-[#ff1894]/10 rounded-full border border-[#ff1894]/20">
+          <div className="mt-6 flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#e6eeff] border border-[#dfe6fb]">
             {/* Glowing Dot */}
             <div className="relative flex h-2 w-2">
-              <div className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#ff1894] opacity-75"></div>
-              <div className="relative inline-flex rounded-full h-2 w-2 bg-[#ff1894]"></div>
+              <div className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#155dfc] opacity-75"></div>
+              <div className="relative inline-flex rounded-full h-2 w-2 bg-[#155dfc]"></div>
             </div>
 
-            <span className="text-[10px] uppercase font-bold tracking-wider text-black">
+            <span className="text-[10px] uppercase font-semibold tracking-wider text-[#155dfc]">
               Sellar AI
             </span>
           </div>
@@ -1195,24 +1467,26 @@ const PurchasePage: React.FC = () => {
       )}
       {/* CAMERA SELECTION MODAL */}
       {showScannerModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm bg-black/40">
-          <div className="bg-white p-6 rounded-sm shadow-xl w-full max-w-sm mx-4">
-            <h3 className="text-lg font-bold text-gray-800 mb-4 text-center">
-              Choose Action
+        <div className={OVERLAY}>
+          <div className={DIALOG}>
+            <h3 className="m-0 mb-4 text-lg font-semibold text-center">
+              Choose action
             </h3>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
               {/* OPTION 1: SCAN ITEM BARCODE */}
               <button
                 onClick={() => {
                   setShowScannerModal(false);
                   setIsScannerOpen(true); // <-- Add this line to trigger the scanner
                 }}
-                className="flex flex-col items-center justify-center p-6 border-2 border-gray-100 rounded-sm hover:border-blue-500 hover:bg-blue-50 transition-all group"
+                className="flex flex-col items-center justify-center gap-3 p-5 rounded-sm border border-[#dfe6fb] bg-[#ffffff] hover:border-[#155dfc] hover:bg-[#e6eeff] transition-colors"
               >
-                <FiMaximize className="text-3xl text-gray-400 group-hover:text-blue-600 mb-3" />
-                <span className="text-sm font-semibold text-gray-700 group-hover:text-blue-700">
-                  Scan Item
+                <span className="inline-grid place-items-center w-10 h-10 rounded-sm bg-[#e6eeff] text-[#155dfc]">
+                  <FiMaximize size={20} />
+                </span>
+                <span className="text-sm font-medium text-[#0f172b]">
+                  Scan item
                 </span>
               </button>
 
@@ -1223,19 +1497,21 @@ const PurchasePage: React.FC = () => {
                   // This triggers your existing Smart Scanner flow!
                   fileInputRef.current?.click();
                 }}
-                className="flex flex-col items-center justify-center p-6 border-2 border-gray-100 rounded-sm hover:border-blue-500 hover:bg-blue-50 transition-all group"
+                className="flex flex-col items-center justify-center gap-3 p-5 rounded-sm border border-[#dfe6fb] bg-[#ffffff] hover:border-[#155dfc] hover:bg-[#e6eeff] transition-colors"
               >
-                <FiFileText className="text-3xl text-gray-400 group-hover:text-blue-600 mb-3" />
-                <span className="text-sm font-semibold text-gray-700 group-hover:text-blue-700">
-                  Upload Bill
+                <span className="inline-grid place-items-center w-10 h-10 rounded-sm bg-[#e9faef] text-[#008236]">
+                  <FiFileText size={20} />
+                </span>
+                <span className="text-sm font-medium text-[#0f172b]">
+                  Upload bill
                 </span>
               </button>
             </div>
 
-            <div className="mt-6 flex justify-center">
+            <div className="mt-5 flex justify-center">
               <button
                 onClick={() => setShowScannerModal(false)}
-                className="text-sm font-medium text-gray-500 hover:text-gray-800"
+                className={`${BTN_GHOST} h-9 text-[13px]`}
               >
                 Cancel
               </button>
@@ -1246,27 +1522,43 @@ const PurchasePage: React.FC = () => {
       <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
 
       {renderHeader()}
+      {renderMoreSheet()}
 
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+      <div className="flex-1 flex flex-col xl:flex-row overflow-hidden">
 
-        <div className="flex flex-col w-full md:w-3/4 h-full relative min-w-0 border-r border-gray-200">
+        <div className="flex flex-col w-full xl:flex-1 h-full relative min-w-0">
 
-          <div className="flex-shrink-0 p-2 bg-white border-b mt-2 rounded-sm md:mt-0">
-            <div className="flex gap-2 items-end">
+          {/* Supplier — phone par header pill mein hai; tablet (md–xl) par yahan, desktop par summary panel mein */}
+          <div className="hidden md:block xl:hidden flex-shrink-0 px-5 pt-4">{renderSupplierCard()}</div>
 
-              <div className="flex-grow">
-                <SearchableItemInput label="Search & Add Item" placeholder="Search by name or barcode..." items={availableItems} onItemSelected={handleItemSelectedWrapper} isLoading={pageIsLoading} error={error} categories={categories}
+          {/* Search row: search field · Scan · New item */}
+          <div className="flex-shrink-0 px-3 pt-3 md:px-5 md:pt-5">
+            <div className="flex gap-2.5 items-end">
+              <div className="flex-grow min-w-0">
+                <SearchableItemInput label="Search item" placeholder="Search item name or barcode" items={availableItems} onItemSelected={handleItemSelectedWrapper} isLoading={pageIsLoading} error={error} categories={categories}
                   onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })}
                   itemGroupMap={itemGroupMap}
                   onSearchChange={setCartSearchQuery}
                 />
               </div>
-              {/* Change your existing camera button's onClick to this: */}
+              {/* Opens the "Choose action" dialog (scan item / upload bill) */}
               <button
                 onClick={() => setShowScannerModal(true)}
-                className="p-3 bg-gray-700 text-white rounded-md font-semibold transition hover:bg-gray-800"
+                className={`${BTN_SECONDARY} !h-12 md:!h-[52px] !px-3 md:!px-4 flex-shrink-0`}
+                title="Scan item or upload bill"
+                aria-label="Scan item or upload bill"
               >
-                <FiCamera size={20} />
+                <IconScanCircle width={20} height={20} />
+                <span className="hidden md:inline">Scan</span>
+              </button>
+              <button
+                onClick={handleOpenNewItem}
+                className={`${BTN_SECONDARY} !h-12 md:!h-[52px] !px-3 md:!px-4 flex-shrink-0`}
+                title="Create a new item"
+                aria-label="New item"
+              >
+                <FiPlus size={18} />
+                <span className="hidden md:inline">New item</span>
               </button>
 
               {/* Keep your hidden file input exactly where it is! */}
@@ -1280,11 +1572,28 @@ const PurchasePage: React.FC = () => {
             </div>
           </div>
 
-          <div ref={cartListRef} className='flex-grow overflow-y-auto p-2 bg-gray-100'>
-            <div className="flex justify-between items-center px-2 mb-2 border-b pt-1">
-              <h3 className="text-gray-700 text-lg font-medium">Cart</h3>
+          <div ref={cartListRef} className='flex-grow overflow-y-auto px-3 md:px-5 py-3 bg-[#eef2ff]'>
+            {hasUnlinkedItems && (
+              <div className="mb-3 flex items-start gap-2 p-2.5 rounded-sm text-[13px] leading-[19px] bg-[#fff3dd] text-[#bb4d00]">
+                <FiAlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+                <span>
+                  <b className="font-semibold">Some scanned items aren't in your inventory yet.</b>{' '}
+                  Add them to inventory to record this purchase.
+                </span>
+              </div>
+            )}
+
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="m-0 flex items-center gap-2 text-base font-semibold text-[#0f172b]">
+                Items
+                {items.length > 0 && (
+                  <span className={BADGE}>{items.length} {items.length === 1 ? 'line' : 'lines'} · Qty {totalQuantity}</span>
+                )}
+              </h3>
               {items.length > 0 && (
-                <div className="justify-self-end">{items.length > 0 && <button onClick={handleClearCart} className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded border border-red-200 flex items-center gap-1"><FiTrash2 /> Clear</button>}</div>
+                <button onClick={handleClearCart} className={BTN_CLEAR}>
+                  <FiTrash2 size={14} /> Clear
+                </button>
               )}
             </div>
 
@@ -1315,129 +1624,56 @@ const PurchasePage: React.FC = () => {
                 onQuantityChange={(id, qty) => handleQuantityChange(id, qty)}
               />
             </div>
+
+            {missingMrpItems.length > 0 && (
+              <div className="mt-3 flex flex-wrap items-start gap-2 p-2.5 rounded-sm text-[13px] leading-[19px] bg-[#fff3dd] text-[#bb4d00]">
+                <FiAlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+                <span className="flex-1">
+                  <b className="font-semibold">
+                    {missingMrpItems[0].name}{missingMrpItems.length > 1 ? ` and ${missingMrpItems.length - 1} more have` : ' has'} no MRP.
+                  </b>{' '}
+                  Set it so it prints on labels and sale bills — the stock will be added either way.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const orig = availableItems.find(a => a.id === missingMrpItems[0].productId);
+                    if (orig) handleOpenEditDrawer(orig);
+                  }}
+                  className="flex-shrink-0 font-semibold underline underline-offset-2 hover:opacity-80"
+                >
+                  Set MRP
+                </button>
+              </div>
+            )}
           </div>
 
-          <div className="md:hidden">
-            <GenericBillFooter
-              isExpanded={isFooterExpanded}
-              onToggleExpand={() => setIsFooterExpanded(!isFooterExpanded)}
-              totalQuantity={totalQuantity}
-              subtotal={subtotal}
-              taxAmount={taxAmount}
-              finalAmount={finalAmount}
-              roundingOffAmount={roundingOffAmount}
-              showTaxRow={displayTaxTotal}
-              taxLabel="Total Tax"
-              actionLabel={isEditMode ? 'Update' : 'Pay Now'}
-              onActionClick={handleProceedToPayment}
-              disableAction={items.length === 0 || hasUnlinkedItems}
-            >
-            </GenericBillFooter>
+          {/* Mobile checkout bar */}
+          <div className="md:hidden flex-shrink-0">
+            <GenericBillFooter {...footerProps} />
           </div>
+          {/* Tablet checkout bar */}
+          {renderTabletCheckoutBar()}
 
         </div>
 
-        <div className="hidden md:flex w-1/4 flex-col bg-white h-full relative border-l border-gray-200 shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-10">
-          <div className="flex-1 p-6 flex flex-col justify-end">
-            <div className="mb-6 border-b pb-2 flex items-end justify-between">
-              <h2 className="text-xl font-bold text-gray-800">Purchase Summary</h2>
-              <span className="text-xs text-indigo-500 font-semibold">{items.length} Items</span>
-            </div>
-
-            <GenericBillFooter
-              isExpanded={true}
-              onToggleExpand={() => { }}
-              totalQuantity={totalQuantity}
-              subtotal={subtotal}
-              taxAmount={taxAmount}
-              finalAmount={finalAmount}
-              roundingOffAmount={roundingOffAmount}
-              showTaxRow={displayTaxTotal}
-              taxLabel="Total Tax"
-              actionLabel={isEditMode ? 'Update' : 'Pay Now'}
-              onActionClick={handleProceedToPayment}
-              disableAction={items.length === 0 || hasUnlinkedItems}
-            >
-            </GenericBillFooter>
-          </div>
-        </div>
+        {/* Desktop summary */}
+        {renderSummaryPanel()}
       </div>
 
-      <PaymentDrawer
-        mode='purchase'
-        isOpen={isDrawerOpen}
-        onClose={() => setIsDrawerOpen(false)}
-        subtotal={subtotal}
-        totalTax={taxAmount} // Ensure totalTax is passed
-        billTotal={finalAmount}
-        initialDiscount={editModeData?.manualDiscount}
-        onPaymentComplete={handleSavePurchase}
-        isPartyNameEditable={!editModeData}
-        initialPartyName={editModeData ? editModeData.partyName : ''}
-        initialPartyNumber={editModeData ? editModeData.partyNumber : ''}
-        initialPaymentMethods={editModeData ? editModeData.paymentMethods : undefined}
-        totalQuantity={totalQuantity}
-        enableCustomerDetails={true}
-        requireCustomerName={purchaseSettings?.requireSupplierName}
-        requireCustomerMobile={purchaseSettings?.requireSupplierMobile}
+      {renderCommonOverlays()}
 
-        // 👇 ADD THESE 4 LINES TO BOTH DRAWERS:
-        taxMode={billTaxType}
-        onTaxModeChange={setBillTaxType}
-        isTaxToggleLocked={false}
-        totalMrp={totalMrp}
-      />
-
-      <PurchaseGodownAssignModal
-        isOpen={isGodownAssignOpen}
-        items={assignableItemsForGodown}
-        godowns={godowns}
-        companyId={currentUser?.companyId} // 👈 NEW
-        onConfirm={handleGodownAssignConfirm}
-        onClose={() => setIsGodownAssignOpen(false)}
-      />
-
-      <ItemEditDrawer
-        item={selectedItemForEdit}
-        isOpen={isItemDrawerOpen}
-        onClose={handleCloseEditDrawer}
-        onSaveSuccess={handleSaveSuccess}
-      />
-      <TierPickerModal
-        item={tierPickerItem}
-        isOpen={!!tierPickerItem}
-        onClose={() => setTierPickerItem(null)}
-        onSelect={(item, tier) => {
-          handleItemSelected(item, tier.id === '__base__' ? undefined : tier);   // 👈 CHANGED
-        }}
-      />
-      {showAddItemModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl h-[90vh] max-h-[90vh] flex flex-col overflow-hidden">
-            <ItemAdd
-              isModal
-              prefillData={unlinkedPrefill || undefined}
-              onItemCreated={handleUnlinkedItemCreated}
-              onCancel={handleCloseUnlinkedModal}
-            />
-          </div>
-        </div>
-      )}
-      {hasUnlinkedItems && (
-        <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded-sm">
-          <p className="text-xs text-red-600 font-medium text-center leading-tight">
-            ⚠️ Some scanned items aren't in your inventory yet.
-          </p>
-        </div>
-      )}
       {showPrintQrModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm bg-black/20">
-          <div className="bg-white p-6 rounded-sm shadow-xl w-full max-w-sm mx-4">
-            <h3 className="text-lg font-bold text-gray-800">Purchase Saved!</h3>
-            <p className="my-4 text-gray-600">Print barcodes/QR codes for the items?</p>
-            <div className="flex justify-end gap-4 mt-6">
-              <CustomButton variant={Variant.Outline} onClick={handleCloseQrModal}>No</CustomButton>
-              <CustomButton variant={Variant.Filled} onClick={handleNavigateToQrPage}>Yes, Print</CustomButton>
+        <div className={OVERLAY}>
+          <div className={DIALOG}>
+            <div className="mb-3 w-10 h-10 rounded-sm flex items-center justify-center bg-[#e9faef] text-[#008236]">
+              <FiCheckCircle size={20} />
+            </div>
+            <h3 className="m-0 text-lg font-semibold">Purchase saved</h3>
+            <p className="mt-2 mb-0 text-sm text-[#45556c]">Print barcodes/QR codes for the items?</p>
+            <div className="flex justify-end gap-3 mt-6">
+              <button onClick={handleCloseQrModal} className={BTN_SECONDARY}>No</button>
+              <button onClick={handleNavigateToQrPage} className={BTN_PRIMARY}>Yes, print</button>
             </div>
           </div>
         </div>

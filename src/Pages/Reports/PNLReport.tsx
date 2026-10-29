@@ -1,53 +1,85 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import XLSX from 'xlsx-js-style';
-import { CustomCard } from '../../Components/CustomCard';
-import { CardVariant, State } from '../../enums';
-import { CustomTable } from '../../Components/CustomTable';
-import { IconClose, IconSearch } from '../../constants/Icons';
-import { getPnlColumns } from '../../constants/TableColoumns';
-import ReportDateFilter from '../../Components/ReportDateFilter';
-import { usePnlReport, usePnlStates } from './PNLReportComponents/usePnlReport';
-import { type TransactionDetail } from './PNLReportComponents/pnlReport.utils';
-import { formatDate } from './PNLReportComponents/pnlReport.utils';
-import { handleDatePresetChange } from './PNLReportComponents/pnlReport.utils';
-import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  CalendarDays,
+  ChevronDown,
+  ChevronLeft,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  FileText,
+  Filter,
+  Package,
+  Percent,
+  RefreshCw,
+  Search,
+  Tag,
+  TrendingUp,
+  Wallet,
+  X,
+} from 'lucide-react';
+import { State } from '../../enums';
+import { usePnlReport } from './PNLReportComponents/usePnlReport';
+import {
+  formatDate,
+  formatPercent,
+  toPnlBill,
+  type PnlBill,
+} from './PNLReportComponents/pnlReport.utils';
+import {
+  DATE_PRESETS,
+  formatCurrency,
+  formatDateForInput,
+  formatDayMonth,
+  formatFullDate,
+  formatRangeLabel,
+  getPresetRange,
+  parseInputDate,
+} from './SalesReportComponents/salesReport.utils';
+import ReportByDayChart from './SalesReportComponents/ReportByDayChart';
+import DownloadMenu from './SalesReportComponents/DownloadMenu';
+import CustomRangePanel from './SalesReportComponents/CustomRangePanel';
+import DetailPanel, { DetailItems, DetailRows, DetailSection } from './SalesReportComponents/DetailPanel';
 import { Modal } from '../../constants/Modal';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
-import BackButton from '../../Components/BackButton';
-import { useExpenses } from './ExpenseReport/useExpense';
+import { useAuth } from '../../context/auth-context';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 
+type BillFilter = 'all' | 'missing' | 'loss';
+
 const PnlReportPage: React.FC = () => {
+  const { currentUser } = useAuth();
   const {
-    navigate,
-    currentUser,
     authLoading,
     datePreset,
     setDatePreset,
     startDate,
     endDate,
+    setStartDate,
+    setEndDate,
     appliedFilters,
     setAppliedFilters,
     isListVisible,
     setIsListVisible,
     sortConfig,
     setSortConfig,
-    setStartDate,
-    setEndDate,
-  } = usePnlStates();
-
-  const {
     sales,
-    loading: dataLoading,
+    expenses,
+    isLoading,
+    isFetching,
+    lastUpdated,
     error,
-  } = usePnlReport(currentUser?.companyId);
-  const { expenses: posExpenses } = useExpenses(currentUser?.companyId, 'pos');
-  const { expenses: catExpenses } = useExpenses(currentUser?.companyId, 'catalogue');
-  const expenses = [...posExpenses, ...catExpenses];
+    refresh,
+  } = usePnlReport();
 
+  const navigate = useNavigate();
   const [companyName, setCompanyName] = useState<string>('');
 
   useEffect(() => {
@@ -72,146 +104,155 @@ const PnlReportPage: React.FC = () => {
     fetchCompanyName();
   }, [currentUser?.companyId]);
 
-  /* ---------- LOCAL STATES (ADDED) ---------- */
-  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+  /* ---------- LOCAL STATES ---------- */
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isRangeOpen, setIsRangeOpen] = useState(false);
+  const [billFilter, setBillFilter] = useState<BillFilter>('all');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const listRef = useRef<HTMLElement>(null);
   const [feedbackModal, setFeedbackModal] = useState({
     isOpen: false,
     type: State.INFO,
     message: '',
   });
 
-  /* ---------- FILTER + SUMMARY ---------- */
-  const { pnlSummary, filteredTransactions } = useMemo(() => {
-    const startTimestamp = appliedFilters?.start
-      ? new Date(appliedFilters.start).getTime()
-      : 0;
-    const endTimestamp = appliedFilters?.end
-      ? new Date(appliedFilters.end).getTime()
-      : Infinity;
+  // Re-render every minute so the "Updated x min ago" label stays accurate.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const updatedLabel = useMemo(() => {
+    if (!lastUpdated) return 'Refresh';
+    const mins = Math.floor((now - lastUpdated) / 60_000);
+    if (mins < 1) return 'Updated just now';
+    if (mins < 60) return `Updated ${mins} min ago`;
+    return `Updated at ${new Date(lastUpdated).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}`;
+  }, [lastUpdated, now]);
 
-    const filteredSales = sales.filter(
-      (s) =>
-        s.createdAt.getTime() >= startTimestamp &&
-        s.createdAt.getTime() <= endTimestamp,
-    );
+  /* ---------- DATE PRESET ---------- */
+  const handleDatePresetChange = (preset: string) => {
+    const range = getPresetRange(preset);
+    if (!range) return;
+    setDatePreset(preset);
+    setIsRangeOpen(false);
+    setStartDate(formatDateForInput(range.start));
+    setEndDate(formatDateForInput(range.end));
+    setAppliedFilters({ start: range.start.getTime(), end: range.end.getTime() });
+  };
 
-    // const totalRevenue = filteredSales.reduce(
-    //   (sum, sale) => sum + sale.totalAmount,
-    //   0,
-    // );
-    // const totalCostOfGoodsSold = filteredSales.reduce(
-    //   (sum, sale) => sum + (sale.costOfGoodsSold || 0),
-    //   0,
-    // );
+  const handleApplyCustomRange = (startValue: string, endValue: string) => {
+    const start = parseInputDate(startValue);
+    start.setHours(0, 0, 0, 0);
+    const end = parseInputDate(endValue);
+    end.setHours(23, 59, 59, 999);
 
-    const totalExpenses = expenses
-      .filter(e => e.date >= startTimestamp && e.date <= endTimestamp)
-      .reduce((sum, e) => sum + e.amount, 0);
-    const salesTransactions: TransactionDetail[] = filteredSales.map((s) => {
-      const cogs = s.costOfGoodsSold ?? 0;
-      // If cogs is 0 but totalAmount > 0, we know there's a data entry error
-      const isMissingCost = cogs === 0 && s.totalAmount > 0;
-
-      return {
-        ...s,
-        type: 'Revenue' as const,
-        costOfGoodsSold: cogs,
-        profit: s.totalAmount - cogs,
-        isWarning: isMissingCost // Use this to style your table row later
-      };
-    });
-
-    const searchTerm = searchQuery.trim().toLowerCase();
-    const invoiceFilteredTransactions = searchTerm
-      ? salesTransactions.filter((t) =>
-        (t.invoiceNumber || '').toLowerCase().includes(searchTerm),
-      )
-      : salesTransactions;
-
-    invoiceFilteredTransactions.sort((a, b) => {
-      const key = sortConfig.key;
-      const direction = sortConfig.direction === 'asc' ? 1 : -1;
-      const valA = (a[key] as any) ?? (typeof a[key] === 'number' ? 0 : '');
-      const valB = (b[key] as any) ?? (typeof b[key] === 'number' ? 0 : '');
-
-      if (valA instanceof Date && valB instanceof Date) {
-        return (valA.getTime() - valB.getTime()) * direction;
-      }
-      if (typeof valA === 'number' && typeof valB === 'number') {
-        return (valA - valB) * direction;
-      }
-      if (typeof valA === 'string' && typeof valB === 'string') {
-        return valA.localeCompare(valB) * direction;
-      }
-      return 0;
-    });
-
-    return {
-      pnlSummary: {
-        totalRevenue: invoiceFilteredTransactions.reduce(
-          (sum, t) => sum + t.totalAmount,
-          0,
-        ),
-        totalCost: invoiceFilteredTransactions.reduce(
-          (sum, t) => sum + (t.costOfGoodsSold || 0),
-          0,
-        ),
-        totalExpenses,
-        grossProfit: invoiceFilteredTransactions.reduce(
-          (sum, t) => sum + (t.profit || 0),
-          0,
-        ) - totalExpenses,
-        grossProfitPercentage: (() => {
-          const totalSalesSum = invoiceFilteredTransactions.reduce((sum, t) => sum + t.totalAmount, 0);
-          const totalProfitSum = invoiceFilteredTransactions.reduce((sum, t) => sum + (t.profit || 0), 0) - totalExpenses;
-
-          if (totalSalesSum > 0) {
-            return (totalProfitSum / totalSalesSum) * 100;
-          }
-          return totalProfitSum < 0 ? -100 : 0;
-        })(),
-      },
-      filteredTransactions: invoiceFilteredTransactions,
-    };
-  }, [sales, expenses, appliedFilters, sortConfig, searchQuery]);
+    setDatePreset('custom');
+    setStartDate(startValue);
+    setEndDate(endValue);
+    setAppliedFilters({ start: start.getTime(), end: end.getTime() });
+    setIsRangeOpen(false);
+  };
 
   /* ---------- SORT ---------- */
-  const handleSort = (key: keyof TransactionDetail) => {
+  const handleSort = (key: keyof PnlBill) => {
     setSortConfig((prev) => ({
       key,
       direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
     }));
   };
 
-  /* ---------- APPLY FILTER ---------- */
-  const handleApplyFilters = () => {
-    const start = new Date(startDate);
-    start.setHours(0, 0, 0, 0);
+  /* ---------- FILTER + SUMMARY ---------- */
+  // Date range + search: drives the summary cards, breakdown and chart.
+  const rangeBills = useMemo(() => {
+    if (!appliedFilters) return [];
+    const q = searchQuery.trim().toLowerCase();
+    const qDigits = q.replace(/\D/g, '');
 
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
+    return sales
+      .filter((sale) => {
+        const matchesDate =
+          sale.createdAt >= appliedFilters.start && sale.createdAt <= appliedFilters.end;
+        if (!matchesDate) return false;
+        if (!q) return true;
+        return (
+          (sale.invoiceNumber || '').toLowerCase().includes(q) ||
+          (sale.partyName || '').toLowerCase().includes(q) ||
+          (!!qDigits && (sale.partyNumber || '').replace(/\D/g, '').includes(qDigits))
+        );
+      })
+      .map(toPnlBill);
+  }, [appliedFilters, sales, searchQuery]);
 
-    setAppliedFilters({
-      start: start.toISOString(),
-      end: end.toISOString(),
+  const rangeExpenses = useMemo(() => {
+    if (!appliedFilters) return [];
+    return expenses.filter((e) => e.date >= appliedFilters.start && e.date <= appliedFilters.end);
+  }, [appliedFilters, expenses]);
+
+  const totals = useMemo(() => {
+    const salesTotal = rangeBills.reduce((s, b) => s + b.sales, 0);
+    const cost = rangeBills.reduce((s, b) => s + b.cost, 0);
+    const gross = salesTotal - cost;
+    const expenseTotal = rangeExpenses.reduce((s, e) => s + e.amount, 0);
+    const net = gross - expenseTotal;
+    const missingBills = rangeBills.filter((b) => b.costMissing);
+    return {
+      sales: salesTotal,
+      cost,
+      gross,
+      expenses: expenseTotal,
+      net,
+      grossMargin: salesTotal > 0 ? (gross / salesTotal) * 100 : 0,
+      netMargin: salesTotal > 0 ? (net / salesTotal) * 100 : 0,
+      missingCount: missingBills.length,
+      missingSales: missingBills.reduce((s, b) => s + b.sales, 0),
+      missingItems: new Set(missingBills.flatMap((b) => b.missingItemKeys)).size,
+    };
+  }, [rangeBills, rangeExpenses]);
+
+  // Bill filter + sort: drives the list and the downloads.
+  const filteredBills = useMemo(() => {
+    const list = rangeBills.filter((b) =>
+      billFilter === 'missing' ? b.costMissing : billFilter === 'loss' ? b.profit < 0 : true,
+    );
+    list.sort((a, b) => {
+      const direction = sortConfig.direction === 'asc' ? 1 : -1;
+      const valA = a[sortConfig.key] ?? -Infinity;
+      const valB = b[sortConfig.key] ?? -Infinity;
+      if (typeof valA === 'number' && typeof valB === 'number') return (valA - valB) * direction;
+      if (typeof valA === 'string' && typeof valB === 'string')
+        return valA.localeCompare(valB, undefined, { numeric: true }) * direction;
+      return 0;
     });
-  };
+    return list;
+  }, [rangeBills, billFilter, sortConfig]);
 
-  const onDatePresetChange = (preset: string) =>
-    handleDatePresetChange(preset, setDatePreset, setStartDate, setEndDate);
+  const listTotals = useMemo(() => {
+    const salesTotal = filteredBills.reduce((s, b) => s + b.sales, 0);
+    const cost = filteredBills.reduce((s, b) => s + b.cost, 0);
+    const profit = salesTotal - cost;
+    return { sales: salesTotal, cost, profit, margin: salesTotal > 0 ? (profit / salesTotal) * 100 : 0 };
+  }, [filteredBills]);
 
-  const handleStartDateChange = (value: string) => {
-    setStartDate(value);
-    setDatePreset('custom');
+  // Shape the export code below has always used.
+  const pnlSummary = {
+    totalRevenue: listTotals.sales,
+    totalCost: listTotals.cost,
+    totalExpenses: totals.expenses,
+    billProfit: listTotals.profit,
+    grossProfit: listTotals.profit - totals.expenses,
+    grossProfitPercentage:
+      listTotals.sales > 0 ? ((listTotals.profit - totals.expenses) / listTotals.sales) * 100 : 0,
   };
-  const handleEndDateChange = (value: string) => {
-    setEndDate(value);
-    setDatePreset('');
-  };
+  const filteredTransactions = filteredBills;
 
-  /* ---------- PDF DOWNLOAD (UNCHANGED) ---------- */
+  const profitByDay = useMemo(
+    () => rangeBills.map((b) => ({ createdAt: b.createdAt, totalAmount: b.profit })),
+    [rangeBills],
+  );
+
+  /* ---------- PDF DOWNLOAD ---------- */
   const downloadAsPdf = async () => {
     try {
       const doc = new jsPDF();
@@ -267,7 +308,7 @@ const PnlReportPage: React.FC = () => {
       doc.rect(0, 0, pageWidth, 6, 'F');
 
       // --- 2. HEADER SECTION ---
-       doc.setFontSize(22);
+      doc.setFontSize(22);
       doc.setTextColor(17, 24, 39); // gray-900
       doc.setFont('helvetica', 'bold');
       const reportTitle = companyName
@@ -284,8 +325,8 @@ const PnlReportPage: React.FC = () => {
         year: 'numeric', month: 'short', day: 'numeric',
       });
 
-      const start = appliedFilters?.start ? formatDate(new Date(appliedFilters.start)) : 'All Time';
-      const end = appliedFilters?.end ? formatDate(new Date(appliedFilters.end)) : 'All Time';
+      const start = appliedFilters ? formatDate(new Date(appliedFilters.start)) : 'All Time';
+      const end = appliedFilters ? formatDate(new Date(appliedFilters.end)) : 'All Time';
 
       const subtitleText = `Generated: ${generationDate}   |   Period: ${start} to ${end}`;
       doc.text(subtitleText, 14, 31);
@@ -297,13 +338,13 @@ const PnlReportPage: React.FC = () => {
           [
             'TOTAL SALES (Rs.)',
             totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-            'GROSS PROFIT / LOSS (Rs.)',
+            'NET PROFIT / LOSS (Rs.)',
             grossProfit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
           ],
           [
             'TOTAL COST (Rs.)',
             totalCost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-            'GROSS MARGIN',
+            'NET MARGIN',
             `${grossProfitPercentage.toFixed(2)}%`,
           ],
           [
@@ -327,7 +368,7 @@ const PnlReportPage: React.FC = () => {
           3: { fontStyle: 'bold', halign: 'right', cellWidth: 40 },            // Values
         },
         didParseCell: function (data) {
-          // Highlight negative Gross Profit or Margin in red
+          // Highlight negative Net Profit or Margin in red
           if ((data.row.index === 0 && data.column.index === 3) ||
             (data.row.index === 1 && data.column.index === 3)) {
             const rawVal = parseFloat(String(data.cell.raw).replace(/,/g, '').replace('%', ''));
@@ -343,18 +384,20 @@ const PnlReportPage: React.FC = () => {
         startY: (doc as any).lastAutoTable.finalY + 12,
         head: [['DATE', 'INVOICE', 'SALES (Rs.)', 'COST (Rs.)', 'PROFIT (Rs.)']],
         body: filteredTransactions.map((t) => [
-          formatDate(t.createdAt),
+          formatDate(new Date(t.createdAt)),
           t.invoiceNumber || 'N/A',
-          t.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-          (t.costOfGoodsSold || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-          (t.profit || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          t.sales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          t.costMissing
+            ? `${t.cost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}*`
+            : t.cost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          t.profit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         ]),
         foot: [[
           'TOTAL',
           '-',
           totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
           totalCost.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-          grossProfit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          pnlSummary.billProfit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         ]],
         showFoot: 'lastPage',
         theme: 'plain',
@@ -419,17 +462,25 @@ const PnlReportPage: React.FC = () => {
         },
       });
 
-      // Safely naming the file based on the parsed dates
-      const safeStart = appliedFilters?.start ? startDate : 'All_Time';
-      const safeEnd = appliedFilters?.end ? endDate : 'All_Time';
-      doc.save(`PNL_Report_${safeStart}_to_${safeEnd}.pdf`);
+      if (filteredTransactions.some((t) => t.costMissing)) {
+        const finalY = (doc as any).lastAutoTable.finalY + 6;
+        doc.setFontSize(8);
+        doc.setTextColor(180, 83, 9); // amber-700
+        doc.text('* Some items on this bill have no purchase price, so its profit is overstated.', 14, finalY);
+      }
 
+      doc.save(`PNL_Report_${startDate}_to_${endDate}.pdf`);
     } catch (err) {
       console.error('PDF Generation Error:', err);
+      setFeedbackModal({
+        isOpen: true,
+        type: State.ERROR,
+        message: 'Failed to generate PDF file.',
+      });
     }
   };
 
-  /* ---------- EXCEL DOWNLOAD (NEW) ---------- */
+  /* ---------- EXCEL DOWNLOAD ---------- */
   const downloadAsExcel = () => {
     try {
       const s = (font: any, fill?: any, alignment?: any, border?: any) => ({
@@ -467,6 +518,7 @@ const PnlReportPage: React.FC = () => {
         { header: 'Sales (₹)', width: 22 },
         { header: 'Cost (₹)', width: 22 },
         { header: 'Profit (₹)', width: 22 },
+        { header: 'Cost missing', width: 16 },
       ];
       const colCount = COLS.length;
 
@@ -506,11 +558,12 @@ const PnlReportPage: React.FC = () => {
       filteredTransactions.forEach((txn, idx) => {
         const r = dataStartRow + idx;
         aoa[r][0] = idx + 1;
-        aoa[r][1] = formatDate(txn.createdAt);
+        aoa[r][1] = formatDate(new Date(txn.createdAt));
         aoa[r][2] = txn.invoiceNumber || 'N/A';
-        aoa[r][3] = Math.round(txn.totalAmount);
-        aoa[r][4] = Math.round(txn.costOfGoodsSold || 0);
-        aoa[r][5] = Math.round(txn.profit || 0);
+        aoa[r][3] = Math.round(txn.sales);
+        aoa[r][4] = Math.round(txn.cost);
+        aoa[r][5] = Math.round(txn.profit);
+        aoa[r][6] = txn.costMissing ? 'Yes' : '';
       });
 
       // Footer row
@@ -519,7 +572,7 @@ const PnlReportPage: React.FC = () => {
       aoa[footerRow][1] = `${filteredTransactions.length} transactions`;
       aoa[footerRow][3] = Math.round(pnlSummary.totalRevenue);
       aoa[footerRow][4] = Math.round(pnlSummary.totalCost);
-      aoa[footerRow][5] = Math.round(pnlSummary.grossProfit);
+      aoa[footerRow][5] = Math.round(pnlSummary.billProfit);
 
       // ── BUILD WORKSHEET ──────────────────────────────────────────────────
       const worksheet = XLSX.utils.aoa_to_sheet(aoa);
@@ -595,10 +648,10 @@ const PnlReportPage: React.FC = () => {
       const numericCols = new Set([3, 4, 5]);
 
       // Data rows
-      filteredTransactions.forEach((_txn, idx) => {
+      filteredTransactions.forEach((txn, idx) => {
         const r = dataStartRow + idx;
         const isAlt = idx % 2 === 1;
-        const rowBg = solidFill(isAlt ? 'F8FAFC' : 'FFFFFF');
+        const rowBg = solidFill(txn.costMissing ? 'FFFBEB' : isAlt ? 'F8FAFC' : 'FFFFFF');
 
         for (let ci = 0; ci < colCount; ci++) {
           const addr = XLSX.utils.encode_cell({ r, c: ci });
@@ -640,7 +693,6 @@ const PnlReportPage: React.FC = () => {
       XLSX.utils.book_append_sheet(workbook, worksheet, 'PNL Report');
       XLSX.writeFile(workbook, `PNL-Report-${startDate}-to-${endDate}.xlsx`);
 
-      setIsDownloadModalOpen(false);
       setFeedbackModal({
         isOpen: true,
         type: State.SUCCESS,
@@ -655,19 +707,265 @@ const PnlReportPage: React.FC = () => {
     }
   };
 
-  const tableColumns = useMemo(() => getPnlColumns(), []);
+  /* ---------- DOWNLOAD / SHARE ---------- */
+  const runDownload = (action: () => void) => {
+    if (filteredBills.length === 0) {
+      setFeedbackModal({
+        isOpen: true,
+        type: State.INFO,
+        message: 'No data available to download.',
+      });
+      return;
+    }
+    action();
+  };
 
-  if (authLoading || dataLoading)
-    return <div className="p-4 text-center">Loading Report...</div>;
-  if (error)
-    return <div className="p-4 text-center text-red-500">Error: {error}</div>;
-  if (!currentUser) {
-    navigate('/login');
-    return null;
-  }
+  const reviewMissingCost = () => {
+    setBillFilter('missing');
+    setIsListVisible(true);
+    listRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  /* ---------- RENDER HELPERS ---------- */
+  const renderSortHeader = (
+    label: string,
+    sortKey: keyof PnlBill,
+    align: 'left' | 'right' = 'left',
+  ) => {
+    const isActive = sortConfig.key === sortKey;
+    const Icon = !isActive ? ArrowUpDown : sortConfig.direction === 'asc' ? ArrowUp : ArrowDown;
+    return (
+      <th className={`px-4 py-3 font-semibold ${align === 'right' ? 'text-right' : 'text-left'}`}>
+        <button
+          onClick={() => handleSort(sortKey)}
+          className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-blue-800 ${
+            align === 'right' ? 'flex-row-reverse' : ''
+          }`}
+        >
+          {label}
+          <Icon size={11} className={isActive ? 'opacity-100' : 'opacity-40'} />
+        </button>
+      </th>
+    );
+  };
+
+  const signedCurrency = (value: number) =>
+    `${value < 0 ? '−' : ''}${formatCurrency(Math.abs(Math.round(value)))}`;
+  const profitClass = (value: number) => (value < 0 ? 'text-red-600' : 'text-green-700');
+  const plural = (n: number, word: string, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
+  // One bill's profit, opened in the detail panel (side panel on desktop, bottom sheet on mobile).
+  const renderBillPanel = (bill: PnlBill) => {
+    const time = new Date(bill.createdAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+    const walkIn = !bill.partyName || ['n/a', 'walk-in', 'walk in', 'cash'].includes(bill.partyName.trim().toLowerCase());
+    return (
+      <DetailPanel
+        open
+        onClose={() => setSelectedId(null)}
+        title={bill.invoiceNumber}
+        badge={
+          bill.costMissing ? (
+            <span className="rounded-sm bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-700">No cost</span>
+          ) : undefined
+        }
+        subtitle={`${formatFullDate(bill.createdAt)}, ${time} · ${walkIn ? 'Walk-in' : bill.partyName}`}
+        footer={
+          currentUser?.companyId ? (
+            <a
+              href={`/download-bill/${currentUser.companyId}/${bill.id}`}
+              target="_blank"
+              rel="noreferrer"
+              className="flex w-full items-center justify-center gap-1.5 rounded-sm bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              <ExternalLink size={15} /> View bill
+            </a>
+          ) : undefined
+        }
+      >
+        <DetailSection title="Profit on this bill">
+          <DetailRows
+            rows={[
+              { label: 'Sale', value: formatCurrency(bill.sales) },
+              { label: 'Cost', value: formatCurrency(bill.cost), tone: bill.costMissing ? 'text-amber-700' : undefined },
+              { label: 'Profit', value: signedCurrency(bill.profit), tone: profitClass(bill.profit), strong: true },
+              { label: 'Margin', value: bill.margin === null ? '—' : formatPercent(bill.margin) },
+            ]}
+          />
+          {bill.costMissing && (
+            <p className="mt-2 rounded-sm bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Some items have no purchase price, so profit looks higher than it is. Add the purchase price on the item to fix it.
+            </p>
+          )}
+        </DetailSection>
+
+        <DetailSection title={`Items · ${(bill.items || []).length}`}>
+          <DetailItems
+            items={(bill.items || []).map((raw) => {
+              const item = raw as unknown as Record<string, unknown>;
+              const unitCost = Number(item.purchasePrice) || 0;
+              return {
+                name: String(item.name ?? ''),
+                quantity: Number(item.quantity) || 0,
+                unitPrice: Number(item.mrp) || 0,
+                note: unitCost > 0 ? `cost ${formatCurrency(unitCost)} each` : 'no purchase price',
+              };
+            })}
+          />
+        </DetailSection>
+      </DetailPanel>
+    );
+  };
+
+  // Bars are drawn on a track whose full width is total sales.
+  const pctOfSales = (value: number) =>
+    totals.sales > 0 ? Math.min(100, Math.max(0, (value / totals.sales) * 100)) : 0;
+
+  const expenseTitles = [...new Set(rangeExpenses.map((e) => e.title).filter(Boolean))];
+  const breakdownRows = [
+    {
+      label: 'Sales',
+      hint: '',
+      value: totals.sales,
+      display: formatCurrency(Math.round(totals.sales)),
+      bar: { left: 0, width: totals.sales > 0 ? 100 : 0, color: 'bg-blue-600' },
+    },
+    {
+      label: '− Cost of goods',
+      hint: 'Purchase price of items sold',
+      value: -totals.cost,
+      display: `− ${formatCurrency(Math.round(totals.cost))}`,
+      bar: { left: pctOfSales(totals.gross), width: pctOfSales(totals.cost), color: 'bg-orange-700' },
+    },
+    {
+      label: 'Gross profit',
+      hint: `${formatPercent(totals.grossMargin)} of sales`,
+      value: totals.gross,
+      display: signedCurrency(totals.gross),
+      bar: { left: 0, width: pctOfSales(totals.gross), color: 'bg-green-700' },
+    },
+    {
+      label: '− Expenses',
+      hint: `${plural(rangeExpenses.length, 'entry', 'entries')}${
+        expenseTitles.length ? ` · ${expenseTitles.slice(0, 2).join(', ')}${expenseTitles.length > 2 ? '…' : ''}` : ''
+      }`,
+      value: -totals.expenses,
+      display: `− ${formatCurrency(Math.round(totals.expenses))}`,
+      bar: {
+        left: pctOfSales(totals.gross - totals.expenses),
+        // Keep a visible tick for small expenses.
+        width: totals.expenses > 0 ? Math.max(1, pctOfSales(totals.expenses)) : 0,
+        color: 'bg-red-600',
+      },
+    },
+  ];
+
+  const renderBreakdown = () => (
+    <div className="space-y-3">
+      {breakdownRows.map((row) => (
+        <div key={row.label} className="grid grid-cols-[6.5rem_1fr_auto] items-center gap-3 md:grid-cols-[9rem_1fr_5.5rem]">
+          <div className="min-w-0">
+            <p className="text-xs text-slate-800 md:text-sm">{row.label}</p>
+            {row.hint && <p className="hidden text-[11px] leading-tight text-slate-500 md:block">{row.hint}</p>}
+          </div>
+          <div className="relative h-4 rounded-sm bg-slate-100">
+            <div
+              className={`absolute inset-y-0 rounded-sm ${row.bar.color}`}
+              style={{ left: `${row.bar.left}%`, width: `${row.bar.width}%` }}
+            />
+          </div>
+          <p className={`text-right text-xs font-semibold md:text-sm ${row.value < 0 ? 'text-slate-700' : 'text-slate-900'}`}>
+            {row.display}
+          </p>
+        </div>
+      ))}
+      <div className="grid grid-cols-[6.5rem_1fr_auto] items-center gap-3 border-t border-line pt-3 md:grid-cols-[9rem_1fr_5.5rem]">
+        <div>
+          <p className="text-xs font-semibold text-slate-900 md:text-sm">Net profit</p>
+          <p className="hidden text-[11px] text-slate-500 md:block">{formatPercent(totals.netMargin)} of sales</p>
+        </div>
+        <div className="relative h-4 rounded-sm bg-slate-100">
+          <div
+            className={`absolute inset-y-0 left-0 rounded-sm ${totals.net < 0 ? 'bg-red-600' : 'bg-green-700'}`}
+            style={{ width: `${pctOfSales(Math.abs(totals.net))}%` }}
+          />
+        </div>
+        <p className={`text-right text-xs font-bold md:text-sm ${profitClass(totals.net)}`}>
+          {signedCurrency(totals.net)}
+        </p>
+      </div>
+    </div>
+  );
+
+  /* ---------- LOAD STATES ---------- */
+  if (isLoading || authLoading)
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center bg-canvas text-sm text-slate-500">
+        Loading profit & loss...
+      </div>
+    );
+  if (error) return <div className="p-4 text-center text-red-500">Error: {error}</div>;
+
+  const rangeLabel = appliedFilters ? formatRangeLabel(appliedFilters.start, appliedFilters.end) : '';
+  const rangeLabelShort = appliedFilters
+    ? formatRangeLabel(appliedFilters.start, appliedFilters.end, false)
+    : '';
+
+  const statCards = [
+    {
+      label: 'Total sales',
+      value: formatCurrency(Math.round(totals.sales)),
+      hint: plural(rangeBills.length, 'bill'),
+      icon: FileText,
+      iconClass: 'bg-blue-50 text-blue-600',
+      valueClass: 'text-blue-600',
+    },
+    {
+      label: 'Total cost',
+      value: formatCurrency(Math.round(totals.cost)),
+      hint: 'of items sold',
+      icon: Package,
+      iconClass: 'bg-green-50 text-green-600',
+      valueClass: 'text-slate-900',
+    },
+    {
+      label: 'Expenses',
+      value: formatCurrency(Math.round(totals.expenses)),
+      hint: plural(rangeExpenses.length, 'entry', 'entries'),
+      icon: Wallet,
+      iconClass: 'bg-red-50 text-red-600',
+      valueClass: 'text-slate-900',
+    },
+    {
+      label: 'Net profit',
+      value: signedCurrency(totals.net),
+      hint: 'sales − cost − expenses',
+      icon: TrendingUp,
+      iconClass: 'bg-indigo-50 text-indigo-600',
+      valueClass: profitClass(totals.net),
+    },
+    {
+      label: 'Net margin',
+      value: formatPercent(totals.netMargin),
+      hint: `gross ${formatPercent(totals.grossMargin)}`,
+      icon: Percent,
+      iconClass: 'bg-green-50 text-green-600',
+      valueClass: profitClass(totals.net),
+    },
+  ];
+
+  // Old-range data stays on screen while a new range loads; dim it meanwhile.
+  const fetchingClass = isFetching ? 'pointer-events-none opacity-50' : '';
+
+  const chipClass = (active: boolean) =>
+    `shrink-0 whitespace-nowrap rounded-sm border px-3.5 py-1.5 text-sm font-medium transition ${
+      active
+        ? 'border-slate-900 bg-slate-900 text-white'
+        : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+    }`;
+
+  const showNetRows = billFilter === 'all';
 
   return (
-    <div className="min-h-screen bg-gray-100 p-2 pb-16">
+    <div className="min-h-screen bg-canvas px-3 pb-20 pt-3 md:px-6 md:pb-8 md:pt-5">
       {feedbackModal.isOpen && (
         <Modal
           type={feedbackModal.type}
@@ -677,145 +975,428 @@ const PnlReportPage: React.FC = () => {
         />
       )}
 
-      <DownloadChoiceModal
-        isOpen={isDownloadModalOpen}
-        onClose={() => setIsDownloadModalOpen(false)}
-        onDownloadPdf={downloadAsPdf}
-        onDownloadExcel={downloadAsExcel}
-      />
-
       {/* HEADER */}
-      <div className="flex items-center justify-between pb-3 border-b mb-2">
-        <BackButton />
-        <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
-          Profit & Loss Report
-        </h1>
-        <button onClick={() => setShowSearch(true)} className="p-2">
-          <IconSearch />
+      <header className="mb-4 flex items-center gap-2 md:gap-3">
+        <button
+          onClick={() => navigate(-1)}
+          aria-label="Back"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-slate-700 transition hover:bg-slate-200 md:border md:border-slate-300 md:bg-white"
+        >
+          <ChevronLeft size={20} />
         </button>
-      </div>
 
-      {showSearch && (
-        <div className="flex justify-center mb-2 px-2">
-          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-blue-700">
-            <input
-              type="text"
-              placeholder="Search by INV Number..."
-              className="flex-1 text-base font-light p-2 outline-none bg-transparent text-center"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              autoFocus
-            />
+        <div className="min-w-0 flex-1">
+          <p className="hidden text-xs text-slate-500 md:block">Reports /</p>
+          <div className="flex items-baseline gap-3">
+            <h1 className="text-lg font-bold text-slate-900 md:text-xl">Profit & loss</h1>
+            <span className="hidden text-xs text-slate-500 md:inline">
+              {plural(rangeBills.length, 'bill')} · {rangeLabelShort}
+            </span>
+          </div>
+          <div className="flex min-w-0 items-center gap-1.5 text-xs text-slate-500">
+            <span className="truncate md:hidden">{rangeLabel} ·</span>
             <button
-              onClick={() => {
-                setSearchQuery('');
-                setShowSearch(false);
-              }}
-              className="p-1 text-gray-500 hover:text-black"
+              onClick={refresh}
+              disabled={isFetching}
+              title="Fetch the latest sales and expenses"
+              className="inline-flex shrink-0 items-center gap-1 rounded-sm transition hover:text-slate-800 disabled:cursor-default"
             >
-              <IconClose />
+              <RefreshCw size={11} className={isFetching ? 'animate-spin' : ''} />
+              {isFetching ? 'Updating…' : updatedLabel}
             </button>
           </div>
         </div>
-      )}
 
-      {/* FILTERS */}
-      <ReportDateFilter
-        datePreset={datePreset}
-        startDate={startDate}
-        endDate={endDate}
-        onPresetChange={onDatePresetChange}
-        onStartDateChange={handleStartDateChange}
-        onEndDateChange={handleEndDateChange}
-        onApply={handleApplyFilters}
-      />
+        {/* Desktop search */}
+        <div className="relative hidden w-72 md:block">
+          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search bill no., party or phone"
+            className="w-full rounded-sm border border-slate-300 bg-white py-2 pl-9 pr-8 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-0.5 text-slate-400 hover:text-slate-600"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
 
-      {/* SUMMARY */}
-      <div className="grid grid-cols-2 md:grid-cols-6 xl:grid-cols-5 gap-2 mb-2">
-        <CustomCard
-          className="py-10 md:col-span-2 xl:col-span-1"
-          variant={CardVariant.Summary}
-          title="Total Sales"
-          value={`₹${pnlSummary.totalRevenue.toLocaleString('en-IN')}`}
-          valueClassName="text-blue-600"
-        />
-        <CustomCard
-          className="py-10 md:col-span-2 xl:col-span-1"
-          variant={CardVariant.Summary}
-          title="Total Cost"
-          value={`₹${pnlSummary.totalCost.toLocaleString('en-IN')}`}
-          valueClassName="text-red-600"
-        />
-        <CustomCard
-          className="py-10 md:col-span-2 xl:col-span-1"
-          variant={CardVariant.Summary}
-          title="Expenses"
-          value={`₹${(pnlSummary.totalExpenses ?? 0).toLocaleString('en-IN')}`}
-          valueClassName="text-orange-600"
-        />
-        <CustomCard
-          className="py-10 md:col-span-3 xl:col-span-1"
-          variant={CardVariant.Summary}
-          title="Profit / Loss"
-          value={`₹${pnlSummary.grossProfit.toLocaleString('en-IN')}`}
-          valueClassName={
-            pnlSummary.grossProfit >= 0
-              ? 'text-green-600'
-              : 'text-red-600'
-          }
-        />
-        <CustomCard
-          className="col-span-2 md:col-span-3 xl:col-span-1"
-          variant={CardVariant.Summary}
-          title="Gross Profit %"
-          value={`${Math.round(pnlSummary.grossProfitPercentage)}%`}
-          valueClassName={
-            pnlSummary.grossProfit >= 0
-              ? 'text-green-600'
-              : 'text-red-600'
-          }
-        />
-      </div>
-
-      {/* DETAILS */}
-      <div className="bg-white p-4 rounded-lg shadow-md flex flex-col md:flex-row md:justify-between md:items-center gap-3">
-        <h2 className="text-lg font-semibold text-gray-700 text-center md:text-left w-full md:w-auto">Report Details</h2>
-        <div className="flex justify-between w-full md:w-auto md:justify-end md:space-x-3 ">
+        {/* Mobile actions */}
+        <div className="flex items-center md:hidden">
           <button
-            onClick={() => setIsListVisible(!isListVisible)}
-            className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition"
+            onClick={() => setShowSearch((s) => !s)}
+            aria-label="Search"
+            className="rounded-sm p-2 text-slate-700 transition hover:bg-slate-200"
           >
-            {isListVisible ? 'Hide List' : 'Show List'}
+            <Search size={20} />
           </button>
+          <DownloadMenu
+            variant="icon"
+            onExcel={() => runDownload(downloadAsExcel)}
+            onPdf={() => runDownload(downloadAsPdf)}
+          />
+        </div>
+      </header>
+
+      {showSearch && (
+        <div className="relative mb-3 md:hidden">
+          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search bill no., party or phone"
+            autoFocus
+            className="w-full rounded-sm border border-slate-300 bg-white py-2 pl-9 pr-9 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          />
           <button
             onClick={() => {
-              if (filteredTransactions.length === 0) {
-                setFeedbackModal({
-                  isOpen: true,
-                  type: State.INFO,
-                  message: 'No data available to download.',
-                });
-              } else {
-                setIsDownloadModalOpen(true);
-              }
+              setSearchQuery('');
+              setShowSearch(false);
             }}
-            className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md"
+            aria-label="Close search"
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-1 text-slate-400 hover:text-slate-600"
           >
-            Download Report
+            <X size={15} />
           </button>
         </div>
+      )}
+
+      {/* DATE FILTERS */}
+      <div className="relative mb-4 flex items-center gap-3">
+        <div className="flex flex-1 gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {DATE_PRESETS.map((p) => (
+            <button
+              key={p.value}
+              onClick={() => handleDatePresetChange(p.value)}
+              className={chipClass(datePreset === p.value)}
+            >
+              <span className="md:hidden">{p.shortLabel}</span>
+              <span className="hidden md:inline">{p.label}</span>
+            </button>
+          ))}
+          <button
+            onClick={() => setIsRangeOpen((o) => !o)}
+            className={`md:hidden ${chipClass(datePreset === 'custom')}`}
+          >
+            Custom
+          </button>
+        </div>
+
+        <button
+          onClick={() => setIsRangeOpen((o) => !o)}
+          className={`hidden shrink-0 items-center gap-2 rounded-sm border bg-white px-3 py-1.5 text-sm font-medium text-slate-800 transition hover:border-slate-400 md:inline-flex ${
+            datePreset === 'custom' ? 'border-slate-900' : 'border-slate-300'
+          }`}
+        >
+          <CalendarDays size={15} className="text-slate-500" />
+          {rangeLabel}
+          <ChevronDown size={15} className="text-slate-500" />
+        </button>
+
+        {isRangeOpen && (
+          <div className="absolute right-0 top-full z-30 mt-2 w-full md:w-80">
+            <CustomRangePanel
+              initialStart={startDate}
+              initialEnd={endDate}
+              onApply={handleApplyCustomRange}
+              onCancel={() => setIsRangeOpen(false)}
+            />
+          </div>
+        )}
       </div>
 
-      {isListVisible && (
-        <CustomTable<TransactionDetail>
-          data={filteredTransactions}
-          columns={tableColumns}
-          keyExtractor={(item) => item.id}
-          sortConfig={sortConfig}
-          onSort={handleSort}
-          emptyMessage="No transactions found for this period."
-        />
-      )}
+      <div className={`transition-opacity ${fetchingClass}`}>
+        {/* MOBILE: net profit first */}
+        <div className="mb-3 rounded-sm border border-line bg-white shadow-card p-4 md:hidden">
+          <p className="text-xs text-slate-600">Net profit</p>
+          <p className={`mt-1 text-3xl font-bold ${profitClass(totals.net)}`}>{signedCurrency(totals.net)}</p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            {formatPercent(totals.netMargin)} of {formatCurrency(Math.round(totals.sales))} sales · gross{' '}
+            {formatPercent(totals.grossMargin)}
+          </p>
+        </div>
+
+        {/* DESKTOP: summary cards */}
+        <div className="mb-4 hidden grid-cols-5 gap-4 md:grid">
+          {statCards.map(({ label, value, hint, icon: Icon, iconClass, valueClass }) => (
+            <div key={label} className="rounded-sm border border-line bg-white shadow-card p-4">
+              <div className="flex items-center gap-2">
+                <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-sm ${iconClass}`}>
+                  <Icon size={14} />
+                </span>
+                <span className="truncate text-sm font-medium text-slate-700">{label}</span>
+              </div>
+              <p className={`mt-2 text-2xl font-bold ${valueClass}`}>{value}</p>
+              <p title={hint} className="mt-0.5 truncate text-xs text-slate-500">{hint}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* DESKTOP: missing cost warning */}
+        {totals.missingCount > 0 && (
+          <div className="mb-4 hidden items-center gap-3 rounded-sm border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900 md:flex">
+            <Tag size={16} className="shrink-0 text-amber-600" />
+            <p className="flex-1">
+              <strong className="text-amber-700">
+                {totals.missingCount} of {plural(rangeBills.length, 'bill')} {totals.missingCount === 1 ? 'has' : 'have'} no
+                purchase cost
+              </strong>{' '}
+              ({formatCurrency(Math.round(totals.missingSales))} of sales), so profit is shown higher than it really is.
+              Add purchase prices to those items to fix it.
+            </p>
+            <button
+              onClick={reviewMissingCost}
+              className="shrink-0 rounded-sm border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 transition hover:border-amber-400"
+            >
+              Review {plural(totals.missingItems, 'item')}
+            </button>
+          </div>
+        )}
+
+        {/* BREAKDOWN + CHART */}
+        <div className="mb-3 grid gap-4 md:mb-4 md:grid-cols-5">
+          <div className="rounded-sm border border-line bg-white shadow-card p-4 md:col-span-3">
+            <h3 className="mb-4 hidden text-sm font-semibold text-slate-900 md:block">How profit is made</h3>
+            {renderBreakdown()}
+          </div>
+          <div className="hidden md:col-span-2 md:block">
+            {appliedFilters && (
+              <ReportByDayChart
+                records={profitByDay}
+                start={appliedFilters.start}
+                end={appliedFilters.end}
+                noun="Profit"
+                bestPrefix="Best"
+              />
+            )}
+          </div>
+        </div>
+
+        {/* MOBILE: missing cost warning */}
+        {totals.missingCount > 0 && (
+          <button
+            onClick={reviewMissingCost}
+            className="mb-3 flex w-full gap-2 rounded-sm border border-amber-200 bg-amber-50 p-3 text-left text-sm text-amber-800 md:hidden"
+          >
+            <Tag size={15} className="mt-0.5 shrink-0 text-amber-600" />
+            <span>
+              <strong>{plural(totals.missingCount, 'bill')} {totals.missingCount === 1 ? 'has' : 'have'} no cost</strong> —
+              profit looks higher than it is.
+            </span>
+          </button>
+        )}
+
+        {/* BILL-WISE PROFIT */}
+        {/* No overflow-hidden here: it would clip the Download menu when the list is short. */}
+        <section ref={listRef} className="scroll-mt-4 rounded-sm border border-line bg-white shadow-card">
+          <div className="flex items-center justify-between gap-3 px-4 py-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-slate-900">Bill-wise profit</h2>
+              <span className="hidden rounded-sm bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 md:inline">
+                {plural(filteredBills.length, 'bill')}
+              </span>
+            </div>
+
+            {/* Desktop controls */}
+            <div className="hidden items-center gap-2 md:flex">
+              <div className="relative">
+                <Filter size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                <select
+                  value={billFilter}
+                  onChange={(e) => setBillFilter(e.target.value as BillFilter)}
+                  className="appearance-none rounded-sm border border-slate-300 bg-white py-2 pl-8 pr-8 text-sm text-slate-700 outline-none transition hover:border-slate-400 focus:border-blue-500"
+                >
+                  <option value="all">All bills</option>
+                  <option value="missing">Cost missing</option>
+                  <option value="loss">Loss-making</option>
+                </select>
+                <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+              </div>
+              <button
+                onClick={() => setIsListVisible(!isListVisible)}
+                className="inline-flex items-center gap-1.5 rounded-sm px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
+              >
+                {isListVisible ? <EyeOff size={15} /> : <Eye size={15} />}
+                {isListVisible ? 'Hide list' : 'Show list'}
+              </button>
+              <DownloadMenu
+                onExcel={() => runDownload(downloadAsExcel)}
+                onPdf={() => runDownload(downloadAsPdf)}
+              />
+            </div>
+
+            {/* Mobile: only shown while reviewing, so the filter can be cleared */}
+            {billFilter !== 'all' && (
+              <button
+                onClick={() => setBillFilter('all')}
+                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 md:hidden"
+              >
+                {billFilter === 'missing' ? 'Cost missing' : 'Loss-making'}
+                <X size={12} />
+              </button>
+            )}
+          </div>
+
+          {/* Desktop table */}
+          {isListVisible && (
+            <div className="hidden overflow-x-auto rounded-b-sm md:block">
+              <table className="w-full text-sm">
+                <thead className="bg-sunken text-[11px] text-blue-700/80">
+                  <tr>
+                    {renderSortHeader('Date', 'createdAt')}
+                    {renderSortHeader('Bill no.', 'invoiceNumber')}
+                    {renderSortHeader('Sales', 'sales', 'right')}
+                    {renderSortHeader('Cost', 'cost', 'right')}
+                    {renderSortHeader('Profit', 'profit', 'right')}
+                    {renderSortHeader('Margin', 'margin', 'right')}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredBills.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-500">
+                        No bills in this period. Pick another period to see your profit.
+                      </td>
+                    </tr>
+                  )}
+                  {filteredBills.map((bill) => (
+                    <React.Fragment key={bill.id}>
+                      <tr
+                        onClick={() => setSelectedId(bill.id)}
+                        className={`cursor-pointer border-t border-line transition ${
+                          selectedId === bill.id ? 'bg-blue-50' : bill.costMissing ? 'bg-amber-50/70 hover:bg-amber-50' : 'hover:bg-sunken'
+                        }`}
+                      >
+                        <td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatFullDate(bill.createdAt)}</td>
+                        <td className="whitespace-nowrap px-4 py-3 font-semibold text-blue-600">{bill.invoiceNumber}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-right text-slate-700">{formatCurrency(bill.sales)}</td>
+                        <td
+                          className={`whitespace-nowrap px-4 py-3 text-right ${
+                            bill.costMissing ? 'font-medium text-amber-700' : 'text-slate-700'
+                          }`}
+                        >
+                          {formatCurrency(bill.cost)}
+                          {bill.costMissing && ' · cost missing'}
+                        </td>
+                        <td className={`whitespace-nowrap px-4 py-3 text-right font-semibold ${profitClass(bill.profit)}`}>
+                          {signedCurrency(bill.profit)}
+                        </td>
+                        <td
+                          className={`whitespace-nowrap px-4 py-3 text-right text-xs font-semibold ${
+                            bill.margin === null ? 'text-slate-400' : profitClass(bill.margin)
+                          }`}
+                        >
+                          {bill.margin === null ? '—' : formatPercent(bill.margin)}
+                        </td>
+                      </tr>
+                    </React.Fragment>
+                  ))}
+                </tbody>
+                {filteredBills.length > 0 && (
+                  <tfoot className="border-t border-line bg-sunken text-sm">
+                    <tr className="font-semibold text-slate-900">
+                      <td colSpan={2} className="px-4 py-3">Total · {plural(filteredBills.length, 'bill')}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right">{formatCurrency(listTotals.sales)}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right">{formatCurrency(listTotals.cost)}</td>
+                      <td className={`whitespace-nowrap px-4 py-3 text-right ${profitClass(listTotals.profit)}`}>
+                        {signedCurrency(listTotals.profit)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right text-xs">{formatPercent(listTotals.margin)}</td>
+                    </tr>
+                    {showNetRows && (
+                      <>
+                        <tr className="text-slate-600">
+                          <td colSpan={4} className="px-4 py-2 text-xs">
+                            Less expenses ({plural(rangeExpenses.length, 'entry', 'entries')})
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-2 text-right text-sm font-semibold text-red-600">
+                            − {formatCurrency(Math.round(totals.expenses))}
+                          </td>
+                          <td />
+                        </tr>
+                        <tr className="border-t border-line font-bold text-slate-900">
+                          <td colSpan={4} className="px-4 py-3">Net profit</td>
+                          <td className={`whitespace-nowrap px-4 py-3 text-right ${profitClass(totals.net)}`}>
+                            {signedCurrency(totals.net)}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-3 text-right text-xs">{formatPercent(totals.netMargin)}</td>
+                        </tr>
+                      </>
+                    )}
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          )}
+
+          {/* Mobile list */}
+          <ul className="md:hidden">
+            {filteredBills.length === 0 && (
+              <li className="border-t border-line px-4 py-10 text-center text-sm text-slate-500">
+                No bills in this period. Pick another period to see your profit.
+              </li>
+            )}
+            {filteredBills.map((bill) => (
+              <li
+                key={bill.id}
+                onClick={() => setSelectedId(bill.id)}
+                className={`cursor-pointer border-t border-line px-4 py-3 ${
+                  bill.costMissing ? 'bg-amber-50/70' : 'active:bg-sunken'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="truncate font-semibold text-slate-900">{bill.invoiceNumber}</span>
+                    {bill.costMissing && (
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-amber-700">No cost</span>
+                    )}
+                  </div>
+                  <span className={`shrink-0 font-semibold ${profitClass(bill.profit)}`}>{signedCurrency(bill.profit)}</span>
+                </div>
+                <div className="mt-0.5 flex items-center justify-between gap-3 text-xs text-slate-500">
+                  <span className="truncate">
+                    Sale {formatCurrency(bill.sales)} · cost {formatCurrency(bill.cost)}
+                  </span>
+                  <span className="shrink-0">{formatDayMonth(bill.createdAt)}</span>
+                </div>
+              </li>
+            ))}
+            {filteredBills.length > 0 && (
+              <li className="space-y-1.5 rounded-b-sm border-t border-line bg-sunken px-4 py-3 text-sm">
+                <div className="flex justify-between font-semibold text-slate-900">
+                  <span>Total · {plural(filteredBills.length, 'bill')}</span>
+                  <span className={profitClass(listTotals.profit)}>{signedCurrency(listTotals.profit)}</span>
+                </div>
+                {showNetRows && (
+                  <>
+                    <div className="flex justify-between text-xs text-slate-600">
+                      <span>Less expenses ({plural(rangeExpenses.length, 'entry', 'entries')})</span>
+                      <span className="font-semibold text-red-600">− {formatCurrency(Math.round(totals.expenses))}</span>
+                    </div>
+                    <div className="flex justify-between border-t border-line pt-1.5 font-bold text-slate-900">
+                      <span>Net profit</span>
+                      <span className={profitClass(totals.net)}>{signedCurrency(totals.net)}</span>
+                    </div>
+                  </>
+                )}
+              </li>
+            )}
+          </ul>
+        </section>
+      </div>
+
+      {(() => {
+        const selected = selectedId ? filteredBills.find((b) => b.id === selectedId) : undefined;
+        return selected ? renderBillPanel(selected) : null;
+      })()}
     </div>
   );
 };

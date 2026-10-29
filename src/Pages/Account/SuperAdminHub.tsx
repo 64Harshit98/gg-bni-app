@@ -5,7 +5,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { AlertTriangle, Gift } from 'lucide-react';
 import { db } from '../../lib/Firebase';
 import { ROUTES } from '../../constants/routes.constants';
-import Loading from '../Loading/Loading';
+import PageLoader from '../../Components/PageLoader';
 import type { AdminCompany, AdminCoupon, AdminLead, AdminTicket, DateRange, PaidOrder, RangeKey } from './superAdmin/data';
 import {
   DAY_MS, ageText, buildLeads, buildTickets, companyStatus, couponHighRisk, daysUntil, estimateMrr,
@@ -192,7 +192,7 @@ const SuperAdminHub: React.FC = () => {
     else navigate(`${ROUTES.SUPER_ADMIN}?q=${encodeURIComponent(q)}`);
   };
 
-  if (loading) return <Loading />;
+  if (loading) return <PageLoader />;
 
   const pct = (n: number, d: number) => (d ? `${Math.round((n / d) * 100)}%` : '—');
   const revDelta = k.revenuePrev ? Math.round(((k.revenue - k.revenuePrev) / k.revenuePrev) * 100) : null;

@@ -44,8 +44,9 @@ const PaymentReturnPage = lazy(() => import('../Pages/Account/PaymentReturnPage'
 const SuperAdminCompanies = lazy(() => import('../Pages/Account/SuperAdmin'));
 const SuperAdminCoupons = lazy(() => import('../Pages/Account/SuperAdminCoupons'));
 const SuperAdminWhatsapp = lazy(() => import('../Pages/Account/SuperAdminWhatsapp'));
-const SharedProduct = lazy(() => import('../Catalogue/SharedProduct'));
-const Catalogue = lazy(() => import('../Catalogue/SharedCatalouge'));
+// Customer-facing storefront: the Store page is the home; a category page also shows single products
+const StorePage = lazy(() => import('../Catalogue/storefront/StorePage'));
+const CategoryPage = lazy(() => import('../Catalogue/storefront/CategoryPage'));
 const CartPage = lazy(() => import('../Catalogue/CheckOut'));
 const UnauthorizedPage = lazy(() => import('../Pages/Unauthorized'));
 const SuperAdminHub = lazy(() => import('../Pages/Account/SuperAdminHub'))
@@ -85,10 +86,11 @@ const router = createBrowserRouter(
         errorElement: <GlobalError />,
         element: <RootLayout />,
         children: [
-          { index: true, element: <Catalogue />, handle: { isPublic: true } },
+          { index: true, element: <StorePage />, handle: { isPublic: true } },
           { path: 'checkout', element: <CartPage />, handle: { isPublic: true } },
-          { path: ':groupId', element: <SharedProduct />, handle: { isPublic: true } },
-          { path: '*', element: <Catalogue /> }
+          { path: ':groupId', element: <CategoryPage />, handle: { isPublic: true } },
+          { path: ':groupId/:itemSlug', element: <CategoryPage />, handle: { isPublic: true } },
+          { path: '*', element: <StorePage /> }
         ]
       }
     ]
@@ -100,8 +102,9 @@ const router = createBrowserRouter(
         children: [
 
           // --- 1. LEGACY PUBLIC ROUTES (Completely outside permissions!) ---
-          { path: 'catalogue/:companyId', element: <Catalogue />, handle: { isPublic: true } },
-          { path: ':companyId/:groupId', element: <SharedProduct />, handle: { isPublic: true } },
+          { path: 'catalogue/:companyId', element: <StorePage />, handle: { isPublic: true } },
+          { path: ':companyId/:groupId', element: <CategoryPage />, handle: { isPublic: true } },
+          { path: ':companyId/:groupId/:itemSlug', element: <CategoryPage />, handle: { isPublic: true } },
           { path: 'checkout/:companyId', element: <CartPage />, handle: { isPublic: true } },
 
 

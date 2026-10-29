@@ -12,6 +12,7 @@ import {
     serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../../../../lib/Firebase';
+import { clearPurchaseReportCache } from '../../../Reports/PurchaseReportComponents/purchaseReportCache';
 import { ROUTES } from '../../../../constants/routes.constants';
 import { State } from '../../../../enums';
 import type { PaymentCompletionData } from '../../../../Components/PaymentDrawer';
@@ -238,6 +239,7 @@ export const useSavePurchaseReturn = ({
             }
 
             await batch.commit();
+            clearPurchaseReportCache(companyId);
             setModal({ type: State.SUCCESS, message: 'Purchase Return processed successfully!' });
             setTimeout(() => navigate(ROUTES.JOURNAL), 1500);
         } catch (error: any) {

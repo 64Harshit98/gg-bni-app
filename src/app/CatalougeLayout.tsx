@@ -1,12 +1,12 @@
-import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react'; // <-- Add useState
-import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'; // <-- Add useLocation
+import { Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '../Components/ui/button';
 import { FloatingButton } from '../Components/FloatingButton';
 import { ROUTES } from '../constants/routes.constants';
 import { CatItems, CatMobileNavItems } from '../routes/CatalougeRoutes';
 import { useAuth } from '../context/auth-context';
 import sellarLogo from '../assets/sellar-logo-heading.png';
-import { Share2, Store, Package, RotateCcw, Inbox, Wallet, UserPlus, Search, PackagePlus } from "lucide-react";
+import { Share2, Store, Package, RotateCcw, Inbox, Wallet, UserPlus, Search, PackagePlus, LayoutTemplate } from "lucide-react";
 import { useOrderSound } from '../Catalogue/hooks/useOrderSound';
 import { useConfirmedOrdersCount } from '../Catalogue/hooks/useConfirmedOrdersCount';
 import GlobalCatalogueModal from '../Components/CatalogueShareCard';
@@ -27,13 +27,41 @@ import PosCataSwitcher from '../Components/PosCataSwitcher';
 import NotificationBell from '../Components/NotificationBell';
 import { Sidebar, type QuickAction } from '../Components/layout/SideBar';
 import { Header } from '../Components/layout/Header';
-import { CommandPalette, type Destination } from '../Components/layout/CommandPalette';
+import { CommandPalette, LAYOUT_ACTION_EVENT, type Destination, type LayoutAction } from '../Components/layout/CommandPalette';
+import { SubscriptionBanner, useSubscriptionBanner } from '../Components/layout/SubscriptionBanner';
 
 const CatalogueLayout = () => {
     const navigate = useNavigate();
     const location = useLocation();
     //const isCatalogueHomePage = location.pathname === ROUTES.CHOME;
     const { currentUser } = useAuth();
+    const banner = useSubscriptionBanner();
+
+    const normPath = (p: string) => {
+        const abs = p.startsWith('/') ? p : `${ROUTES.CHOME}/${p}`; // relative `to` ko absolute banao
+        return abs.replace(/\/+$/, '') || '/';
+    };
+    const BANNER_LABEL = /^(home|dashboard|orders?|accounts?)$/i;
+    const BANNER_PATHS = [
+        ...CatItems
+            .filter((i) => BANNER_LABEL.test(i.label))
+            .map((i) => normPath(i.to)),
+        '/accounts',        // Catalogue Account page, root level pe hai (catalogue-home ke andar nahi)
+        ROUTES.ORDERDETAILS, // '/order-details', Orders page
+        ROUTES.CHOME,        // Catalogue Home
+    ];
+
+    const currentPath = normPath(location.pathname);
+    // Pages with a sticky Save bar at the bottom — the share FAB would sit on top of it
+    const HIDE_SHARE_FAB_PATHS = [
+        ROUTES.CATA_SALE_SETTING, ROUTES.CATA_BILL_SETTING, ROUTES.CATA_ITEM_SETTING,
+        ROUTES.CATA_USER_SETTING, ROUTES.CATA_PERMISSION_SETTING,
+        ROUTES.CATA_EDIT, ROUTES.CATA_STORE_PAGE, ROUTES.ADD_PRODUCT,
+    ].map(normPath);
+    const showShareFab = !HIDE_SHARE_FAB_PATHS.includes(currentPath)
+        && !currentPath.startsWith(`${normPath(ROUTES.CATA_PRODUCT_PAGE)}/`); // product page builder (has its own Save bar)
+    const showBanner =
+        banner.visible && !!banner.tier && banner.days !== null && BANNER_PATHS.includes(currentPath);
     const scrollRef = useRef<HTMLDivElement>(null);
     const [tutorialStep, setTutorialStep] = useState(-1);
 
@@ -59,6 +87,17 @@ const CatalogueLayout = () => {
     const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
     const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
     const { addExpense } = useExpenses(currentUser?.companyId, 'catalogue');
+
+    // CommandPalette ke 'Add User' / 'Add Expense' layout-level modals yahin khulte hain
+    useEffect(() => {
+        const onAction = (e: Event) => {
+            const action = (e as CustomEvent<LayoutAction>).detail;
+            if (action === 'add-user') setIsAddUserModalOpen(true);
+            if (action === 'add-expense') setIsExpenseModalOpen(true);
+        };
+        window.addEventListener(LAYOUT_ACTION_EVENT, onAction);
+        return () => window.removeEventListener(LAYOUT_ACTION_EVENT, onAction);
+    }, []);
 
     const { settings: shopSettings, isClosingSoon, shouldAutoClose, needsReset } = useShopHours(currentUser?.companyId);
     const isOwner =
@@ -182,7 +221,7 @@ const CatalogueLayout = () => {
                 end
                 className={({ isActive }) =>
                     `flex-1 flex flex-col items-center justify-center gap-1 py-1 text-sm transition-colors duration-200 min-w-0 ${isActive
-                        ? 'text-[#F97316]'
+                        ? 'text-[#c2410c]'
                         : 'text-gray-500'
                     }`
                 }
@@ -211,12 +250,6 @@ const CatalogueLayout = () => {
         ) : link;
     };
 
-    // const sidebarLinkClass = (isActive: boolean) =>
-    //     `flex items-center gap-3 px-4 py-3 rounded-md text-sm font-medium transition-all ${isActive
-    //         ? 'bg-orange-50 text-[#F97316] shadow-sm border border-orange-100'
-    //         : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent'
-    //     }`;
-
     const handleShare = () => {
         window.dispatchEvent(new CustomEvent("open-catalogue-share", {
             detail: { link: storeLink }
@@ -232,6 +265,7 @@ const CatalogueLayout = () => {
     // Sidebar quick actions
     const quickActions: QuickAction[] = [
         { key: 'catalog', to: `${ROUTES.CHOME}/${ROUTES.ORDER}`, icon: <Store className="size-4" />, label: 'Edit Catalog', permission: Cata_Permissions.ViewShop },
+        { key: 'storepage', to: `${ROUTES.CHOME}/${ROUTES.CATA_STORE_PAGE}`, icon: <LayoutTemplate className="size-4" />, label: 'Store page', permission: Cata_Permissions.ManageEditProfile },
         { key: 'item', to: `${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`, icon: <PackagePlus className="size-4" />, label: 'Add Item', permission: Cata_Permissions.ManageItems },
         { key: 'requests', to: `${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`, icon: <Inbox className="size-4" />, label: 'Requests', permission: Cata_Permissions.ViewCatalogueRequests },
         { key: 'returns', to: `${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`, icon: <RotateCcw className="size-4" />, label: 'Orders Return', permission: Cata_Permissions.ViewOrdersReturn },
@@ -244,13 +278,14 @@ const CatalogueLayout = () => {
     const searchDestinations: Destination[] = [
         ...CatItems.map(({ to, label }) => ({ label, hint: 'Go to page', to })),
         { label: 'Edit Catalog', hint: 'Manage your catalogue', to: `${ROUTES.CHOME}/${ROUTES.ORDER}` },
+        { label: 'Store page', hint: 'Edit what customers see first', to: `${ROUTES.CHOME}/${ROUTES.CATA_STORE_PAGE}` },
         { label: 'Add Item', hint: 'Add a new product', to: `${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}` },
         { label: 'Requests', hint: 'Catalogue requests', to: `${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}` },
         { label: 'Orders Return', hint: 'Returned orders', to: `${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}` },
     ];
 
     const fabActionClass = 'w-full mb-2 rounded-sm bg-white shadow-sm';
-    const fabIconBadgeClass = 'w-10 h-10 rounded-full bg-orange-100 text-[#F97316] flex items-center justify-center';
+    const fabIconBadgeClass = 'w-10 h-10 rounded-full bg-[#ffedd5] text-[#c2410c] flex items-center justify-center';
     const fabLabelClass = 'text-[11px] font-medium text-gray-700';
 
     const MobileActions = () => (
@@ -263,6 +298,16 @@ const CatalogueLayout = () => {
                 >
                     <span className={fabIconBadgeClass}><Store size={18} /></span>
                     <span className={fabLabelClass}>Catalog</span>
+                </Button>
+            </ShowWrapper>
+            <ShowWrapper requiredPermission={Cata_Permissions.ManageEditProfile}>
+                <Button
+                    variant="outline"
+                    className={fabActionClass}
+                    onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CATA_STORE_PAGE}`)}
+                >
+                    <span className={fabIconBadgeClass}><LayoutTemplate size={18} /></span>
+                    <span className={fabLabelClass}>Store page</span>
                 </Button>
             </ShowWrapper>
             <ShowWrapper requiredPermission={Cata_Permissions.ManageItems}>
@@ -313,7 +358,7 @@ const CatalogueLayout = () => {
     );
 
     return (
-        <div className="relative h-dvh w-screen flex flex-col md:flex-row overflow-hidden bg-gray-100 md:bg-gradient-to-br md:from-orange-50 md:via-white md:to-slate-100">
+        <div className="relative h-dvh w-screen flex flex-col md:flex-row overflow-hidden bg-gray-100 md:bg-[#fff5ec]">
             {showReminder && shopSettings && (
                 <ShopClosingReminderModal
                     closeTime={shopSettings.closeTime}
@@ -322,25 +367,34 @@ const CatalogueLayout = () => {
                 />
             )}
             {/* --- MOBILE TOP STRIP — Catalogue Home ka apna header hai, wahan hide --- */}
-            <header className="md:hidden relative flex items-center justify-between px-3 py-2 bg-white border-b border-slate-200 z-[140]">
-                <TutorialStep
-                    step={1}
-                    currentStep={isMobileView ? switcherStep : -1}
-                    text="Use this menu to switch between POS and Catalogue views."
-                    onNext={handleSwitcherNext}
-                    onSkip={handleSwitcherSkip}
-                    mobileArrowAlign="left"
-                >
-                    <div>
-                        <PosCataSwitcher current="CATALOG" />
-                    </div>
-                </TutorialStep>
-                <img
-                    src={sellarLogo}
-                    alt="Sellar Logo"
-                    className="h-6 absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-                />
-                <div className="flex items-center gap-1">
+            <header className="md:hidden flex items-center gap-2 px-3 py-2 bg-white border-b border-slate-200 z-[140]">
+                {/* Left: switcher */}
+                <div className="shrink-0">
+                    <TutorialStep
+                        step={1}
+                        currentStep={isMobileView ? switcherStep : -1}
+                        text="Use this menu to switch between POS and Catalogue views."
+                        onNext={handleSwitcherNext}
+                        onSkip={handleSwitcherSkip}
+                        mobileArrowAlign="left"
+                    >
+                        <div className="min-w-0">
+                            <PosCataSwitcher current="CATALOG" />
+                        </div>
+                    </TutorialStep>
+                </div>
+
+                {/* Middle: logo takes remaining space, can shrink, never overlaps */}
+                <div className="flex-1 min-w-0 flex justify-center">
+                    <img
+                        src={sellarLogo}
+                        alt="Sellar Logo"
+                        className="h-5 max-w-full object-contain"
+                    />
+                </div>
+
+                {/* Right: actions */}
+                <div className="flex shrink-0 items-center gap-1">
                     <button
                         type="button"
                         aria-label="Search"
@@ -354,6 +408,12 @@ const CatalogueLayout = () => {
                     </ShowWrapper>
                 </div>
             </header>
+            {showBanner && (
+                <SubscriptionBanner
+                    variant="mobile" theme="cat"
+                    days={banner.days!} endDate={banner.endDate} isTrial={banner.isTrial} tier={banner.tier!} onClose={banner.dismiss}
+                />
+            )}
 
             {/* --- DESKTOP SIDEBAR --- */}
             <Sidebar
@@ -371,7 +431,7 @@ const CatalogueLayout = () => {
                         onSkip={handleSwitcherSkip}
                     >
                         <div>
-                            <PosCataSwitcher current="CATALOG" />
+                            <PosCataSwitcher current="CATALOG" showCompany />
                         </div>
                     </TutorialStep>
                 }
@@ -386,6 +446,12 @@ const CatalogueLayout = () => {
                     destinations={searchDestinations}
                     notificationPermission={Cata_Permissions.ViewNotification}
                 />
+                {showBanner && (
+                    <SubscriptionBanner
+                        variant="desktop" theme="cat"
+                        days={banner.days!} endDate={banner.endDate} isTrial={banner.isTrial} tier={banner.tier!} onClose={banner.dismiss}
+                    />
+                )}
                 <div ref={scrollRef} className="flex-1 overflow-y-auto pb-20 md:pb-4 scroll-smooth">
                     <Suspense fallback={<div>Loading...</div>}>
                         <Outlet />
@@ -393,14 +459,16 @@ const CatalogueLayout = () => {
                 </div>
 
                 {/* SHARE BUTTON (MOBILE) */}
-                <div className="md:hidden absolute bottom-20 right-4 z-50">
-                    <button
-                        onClick={handleShare}
-                        className="bg-white border border-gray-300 shadow-md rounded-sm p-3"
-                    >
-                        <Share2 size={20} />
-                    </button>
-                </div>
+                {showShareFab && (
+                    <div className="md:hidden absolute bottom-20 right-4 z-50">
+                        <button
+                            onClick={handleShare}
+                            className="bg-white border border-gray-300 shadow-md rounded-full p-3"
+                        >
+                            <Share2 size={20} />
+                        </button>
+                    </div>
+                )}
             </main>
 
             {/* --- MOBILE BOTTOM NAV --- */}
@@ -440,6 +508,7 @@ const CatalogueLayout = () => {
             <AddUserModal
                 isOpen={isAddUserModalOpen}
                 onClose={() => setIsAddUserModalOpen(false)}
+                theme="orange"
             />
             <CommandPalette
                 open={isMobileSearchOpen}

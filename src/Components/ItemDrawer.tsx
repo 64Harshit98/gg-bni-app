@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { ROUTES } from '../constants/routes.constants';
 import type { Item } from '../constants/models';
 import { useAuth, useDatabase } from '../context/auth-context';
 import { useCatalogueData } from '../context/CatalogueDataContext';
@@ -7,7 +8,9 @@ import { useItemSettings } from '../context/SettingsContext';
 import { doc, getDoc, collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { db, storage } from '../lib/Firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { FiSave, FiX, FiPackage, FiCamera } from 'react-icons/fi';
+import {
+    FiSave, FiX, FiPackage, FiCamera, FiUpload, FiTag, FiFileText, FiBox, FiGrid, FiAlertTriangle,
+} from 'react-icons/fi';
 import { Spinner } from '../constants/Spinner';
 import imageCompression from 'browser-image-compression';
 import ReactCrop, { type Crop, centerCrop, makeAspectCrop } from 'react-image-crop';
@@ -16,8 +19,10 @@ import ShowWrapper from '../context/ShowWrapper';
 import { Permissions, State } from '../enums';
 import { Modal } from '../constants/Modal';
 import { VariantPicker } from './VariantPicker';
-import type { PriceTier, QuantitySlab } from '../constants/models';
-import { validateQuantitySlabs } from '../constants/models';
+import type { QuantitySlab, AddOnGroup } from '../constants/models';
+import { type PriceTierForm, toPriceTierForm, fromPriceTierForm, emptyPriceTierForm } from '../lib/priceTiers';
+import { validateQuantitySlabs, buildAddOnPicks } from '../constants/models';
+import { useAddOnTemplates } from '../lib/addOnTemplates';
 
 interface ItemEditDrawerProps {
     item: Item | null;
@@ -25,7 +30,34 @@ interface ItemEditDrawerProps {
     onClose: () => void;
     onSaveSuccess: (updatedItem: Partial<Item>) => void;
     itemGroupRoute?: string;
+    /** 'panel' renders the form in place (no overlay or slide-in) — used by the product page builder */
+    variant?: 'drawer' | 'panel';
+    /** The item as it would look if saved now (unsaved edits included). `fresh` marks the first call after the item loads. */
+    onDraftChange?: (draft: Item, fresh: boolean) => void;
+    /** Close after a successful save (default true) */
+    closeOnSave?: boolean;
 }
+
+// Brand colours: blue in POS, the storefront orange inside the Catalogue app
+const THEME_VARS = {
+    blue: {
+        '--dr-primary': '#155dfc', '--dr-primary-hover': '#1447e6', '--dr-soft': '#e6eeff',
+        '--dr-canvas': '#eef2ff', '--dr-sunken': '#f5f7ff', '--dr-line': '#dfe6fb',
+    },
+    orange: {
+        '--dr-primary': '#c2410c', '--dr-primary-hover': '#9a3412', '--dr-soft': '#ffedd5',
+        '--dr-canvas': '#fff5ec', '--dr-sunken': '#fff8f2', '--dr-line': '#f6e1d0',
+    },
+} as const;
+
+const unitMultiplierFor = (unit?: string, packetSize?: unknown) => {
+    if (unit === 'box') return 10;
+    if (unit === 'doz') return 12;
+    if (unit === 'qt') return 100;
+    if (unit === 'ton') return 1000;
+    if (unit === 'pkt') return parseInt(String(packetSize), 10) || 1;
+    return 1;
+};
 
 // Brought over the formatImageUrl function from ItemAdd to ensure Drive/Dropbox links work seamlessly
 const formatImageUrl = (url: string | null | undefined): string | null => {
@@ -55,10 +87,78 @@ const formatImageUrl = (url: string | null | undefined): string | null => {
     return cleanUrl;
 };
 
+/* ------------------------------------------------------------------ */
+/*  UI-only helpers (SELLAR design system: Edit item drawer)           */
+/* ------------------------------------------------------------------ */
+
+// Shared control styles — border-control outline, 8px radius, brand-blue focus ring
+const INPUT_CLS =
+    'flex h-10 w-full min-w-0 rounded-lg border border-[#7a8aa3] bg-white px-3 text-sm text-[#0f172b] ' +
+    'placeholder:text-[#5b6b86] focus-visible:outline-none focus-visible:border-(--dr-primary) ' +
+    'focus-visible:ring-2 focus-visible:ring-(--dr-primary)/40 disabled:cursor-not-allowed disabled:opacity-45';
+const INPUT_WARN_CLS = '!border-[#bb4d00]';
+const SMALL_INPUT_CLS =
+    'w-full h-9 rounded-lg border border-[#7a8aa3] bg-white px-2 py-1 text-sm text-[#0f172b] outline-none ' +
+    'focus:border-(--dr-primary) focus:ring-2 focus:ring-(--dr-primary)/40 disabled:opacity-45';
+const LABEL_CLS = 'text-xs font-medium text-[#45556c]';
+const SMALL_LABEL_CLS = 'text-[10px] font-medium text-[#5b6b86] block mb-1';
+const BTN_SECONDARY =
+    'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-[#7a8aa3] bg-white ' +
+    'px-3 h-8 text-xs font-medium text-[#0f172b] hover:bg-(--dr-sunken) ' +
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--dr-primary) focus-visible:ring-offset-2 ' +
+    'disabled:pointer-events-none disabled:opacity-45';
+
+type Tone = 'blue' | 'green' | 'amber' | 'magenta';
+const TONE_CLS: Record<Tone, string> = {
+    blue: 'bg-(--dr-soft) text-(--dr-primary)',
+    green: 'bg-[#e9faef] text-[#008236]',
+    amber: 'bg-[#fff3dd] text-[#bb4d00]',
+    magenta: 'bg-[#ffe8f8] text-[#c4009a]',
+};
+
+const SectionCard: React.FC<{
+    icon: React.ReactNode;
+    tone?: Tone;
+    title: string;
+    hint?: string;
+    children: React.ReactNode;
+}> = ({ icon, tone = 'blue', title, hint, children }) => (
+    <section className="rounded-xl border border-(--dr-line) bg-white shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] overflow-hidden">
+        <div className="flex items-center gap-2.5 px-4 py-3 border-b border-(--dr-line)">
+            <span className={`grid h-8 w-8 place-items-center rounded-lg ${TONE_CLS[tone]}`}>{icon}</span>
+            <b className="text-[15px] font-semibold text-[#0f172b]">{title}</b>
+            {hint && <small className="ml-auto text-xs text-[#5b6b86]">{hint}</small>}
+        </div>
+        <div className="p-4">{children}</div>
+    </section>
+);
+
+const FieldWrap: React.FC<{
+    label: React.ReactNode;
+    htmlFor?: string;
+    hint?: string;
+    warn?: string;
+    className?: string;
+    children: React.ReactNode;
+}> = ({ label, htmlFor, hint, warn, className = '', children }) => (
+    <div className={`grid gap-1 min-w-0 content-start ${className}`}>
+        <label htmlFor={htmlFor} className={LABEL_CLS}>{label}</label>
+        {children}
+        {warn ? (
+            <small className="flex items-start gap-1 text-[11px] leading-[15px] font-medium text-[#bb4d00]">
+                <FiAlertTriangle size={12} className="mt-px shrink-0" />
+                {warn}
+            </small>
+        ) : hint ? (
+            <small className="text-[11px] leading-[15px] text-[#5b6b86]">{hint}</small>
+        ) : null}
+    </div>
+);
+
 const ImagePreview: React.FC<{ imageUrl: string | null; alt: string }> = ({ imageUrl, alt }) => {
     if (!imageUrl) {
         return (
-            <div className="w-full h-40 bg-gray-200 rounded-sm flex items-center justify-center text-gray-400">
+            <div className="w-full h-[110px] md:h-44 bg-(--dr-sunken) flex items-center justify-center text-[#5b6b86] border-r md:border-r-0 md:border-b border-(--dr-line)">
                 <FiPackage size={40} />
             </div>
         );
@@ -67,7 +167,7 @@ const ImagePreview: React.FC<{ imageUrl: string | null; alt: string }> = ({ imag
         <img
             src={imageUrl}
             alt={alt}
-            className="w-full h-40 object-cover rounded-sm border border-gray-300"
+            className="w-full h-[110px] md:h-44 object-cover block border-r md:border-r-0 md:border-b border-(--dr-line)"
         />
     );
 };
@@ -82,7 +182,10 @@ const UNIT_OPTIONS = [
     { value: 'ton', label: 'Ton (1000)' },
 ];
 
-export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, onClose, onSaveSuccess, itemGroupRoute = '/item-group' }) => {
+export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, onClose, onSaveSuccess, itemGroupRoute = '/item-group', variant = 'drawer', onDraftChange, closeOnSave = true }) => {
+    const isPanel = variant === 'panel';
+    const { pathname } = useLocation();
+    const themeVars = THEME_VARS[pathname.startsWith(ROUTES.CHOME) ? 'orange' : 'blue'] as React.CSSProperties;
     const navigate = useNavigate();
     const cameraInputRef = useRef<HTMLInputElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null); // Added ref for the standard file input
@@ -91,6 +194,9 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
     const { itemSettings } = useItemSettings();
     const enablePriceTiers = !!itemSettings?.enablePriceTiers;
     const enableQuantitySlabs = !!itemSettings?.enableQuantitySlabs;
+    const enableAddOns = !!(itemSettings as any)?.enableAddOns;
+    const { templates: addOnTemplates, loaded: addOnsLoaded } =
+        useAddOnTemplates(enableAddOns ? currentUser?.companyId : undefined);
     const [formData, setFormData] = useState<Partial<Item>>({});
     const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
     const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
@@ -113,20 +219,42 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
     const [existingAdditionalUrls, setExistingAdditionalUrls] = useState<string[]>([]);
     const [unitChangeWarning, setUnitChangeWarning] = useState(false);
     const [variantIds, setVariantIds] = useState<string[]>([]);
-    const [priceTiers, setPriceTiers] = useState<PriceTier[]>([]);
+    const [priceTiers, setPriceTiers] = useState<PriceTierForm[]>([]);
     const [quantitySlabs, setQuantitySlabs] = useState<QuantitySlab[]>([]);
+    const [addOnGroupIds, setAddOnGroupIds] = useState<string[]>([]);
+    // Older items saved their add-ons inside the item; kept working, removable here
+    const [legacyAddOnGroups, setLegacyAddOnGroups] = useState<AddOnGroup[]>([]);
+    // groupId -> option ids this item shows. Missing key = all options of the group
+    const [addOnPick, setAddOnPick] = useState<Record<string, string[]>>({});
+    const [addOnOpenId, setAddOnOpenId] = useState<string | null>(null);
+    // groupId -> max choices for THIS item. Missing/0 = the group's own limit
+    const [addOnLimit, setAddOnLimit] = useState<Record<string, number>>({});
+    const toggleAddOnOption = (g: AddOnGroup, optionId: string) =>
+        setAddOnPick(prev => {
+            const cur = prev[g.id] ?? g.options.map(o => o.id);
+            const next = cur.includes(optionId) ? cur.filter(id => id !== optionId) : [...cur, optionId];
+            return next.length === 0 ? prev : { ...prev, [g.id]: next }; // at least one option stays checked
+        });
+    const selectAllAddOnOptions = (g: AddOnGroup) =>
+        setAddOnPick(prev => ({ ...prev, [g.id]: g.options.map(o => o.id) }));
     const [showCropModal, setShowCropModal] = useState(false);
     const [rawImageSrc, setRawImageSrc] = useState<string | null>(null);
     const [crop, setCrop] = useState<Crop>();
     const [completedCrop, setCompletedCrop] = useState<Crop | null>(null);
     const imgRef = useRef<HTMLImageElement>(null);
     const pendingRawFile = useRef<File | null>(null);
+    // Which item the form currently holds, so drafts are never reported for half-loaded data
+    const [loadedItemId, setLoadedItemId] = useState<string | null>(null);
+    const freshDraft = useRef(false);
+    const onDraftChangeRef = useRef(onDraftChange);
+    onDraftChangeRef.current = onDraftChange;
 
     useEffect(() => {
         const fetchLiveItemData = async () => {
             const resolvedCompanyId = item?.companyId || currentUser?.companyId;
             if (isOpen && item && item.id && resolvedCompanyId) {
                 setIsFetching(true);
+                setLoadedItemId(null);
                 setModal(null);
 
                 try {
@@ -161,8 +289,13 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                         moq: (liveData as any).moq ?? 1,
                     });
 
-                    setPriceTiers((liveData as any).priceTiers || []);   // 👈 NEW
+                    setPriceTiers(((liveData as any).priceTiers || []).map(toPriceTierForm));   // 👈 NEW
                     setQuantitySlabs(liveData.quantitySlabs || []);
+                    setAddOnGroupIds(liveData.addOnGroupIds || []);
+                    setLegacyAddOnGroups(liveData.addOnGroups || []);
+                    setAddOnPick(Object.fromEntries((liveData.addOnPicks || []).filter(p => p.optionIds).map(p => [p.groupId, p.optionIds as string[]])));
+                    setAddOnLimit(Object.fromEntries((liveData.addOnPicks || []).filter(p => Number(p.maxSelect) > 0).map(p => [p.groupId, Number(p.maxSelect)])));
+                    setAddOnOpenId(null);
 
                     // NEW — existing additional photos (imageUrls minus the cover photo)
                     const savedImageUrls: string[] = (liveData as any).imageUrls || [];
@@ -231,6 +364,8 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                     const existingIds: string[] = liveData.itemGroupIds as string[] ||
                         (liveData.itemGroupId ? [liveData.itemGroupId as string] : []);
                     setSelectedCategories(existingIds);
+                    setLoadedItemId(item.id);
+                    freshDraft.current = true;
                     setTimeout(() => {
                         firstInputRef.current?.focus();
                     }, 100);
@@ -243,6 +378,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 }
 
             } else if (!isOpen) {
+                setLoadedItemId(null);
                 setFormData({});
                 setModal(null);
                 setIsSaving(false);
@@ -255,6 +391,11 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 setVariantIds([]);
                 setPriceTiers([]);
                 setQuantitySlabs([]);
+                setAddOnGroupIds([]);
+                setLegacyAddOnGroups([]);
+                setAddOnPick({});
+                setAddOnLimit({});
+                setAddOnOpenId(null);
                 setAdditionalImageFiles([]);
                 setAdditionalImagePreviews([]);
                 setExistingAdditionalUrls([]);
@@ -280,23 +421,10 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
     };
 
     const addPriceTier = () => {
-        setPriceTiers(prev => [
-            ...prev,
-            {
-                id: crypto.randomUUID(),
-                label: '',
-                quantity: 1,
-                mrp: 0,
-                salesPrice: 0,
-                purchasePrice: 0,
-                discount: 0,
-                purchasediscount: 0,
-                barcode: '',
-            },
-        ]);
+        setPriceTiers(prev => [...prev, emptyPriceTierForm()]);
     };
 
-    const updatePriceTier = (id: string, field: keyof PriceTier, value: string | number) => {
+    const updatePriceTier = (id: string, field: keyof PriceTierForm, value: string) => {
         setPriceTiers(prev => prev.map(t => (t.id === id ? { ...t, [field]: value } : t)));
     };
 
@@ -446,7 +574,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
         }
 
         // 👇 NEW — same validation jaisi ItemAdd.tsx mein hai
-        const activeTiers = enablePriceTiers ? priceTiers : [];
+        const activeTiers = enablePriceTiers ? priceTiers.map(fromPriceTierForm) : [];
         for (const tier of activeTiers) {
             if (!tier.label.trim()) {
                 setModal({ message: 'Every pricing option needs a label (e.g. "Box of 10").', type: State.ERROR });
@@ -481,6 +609,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
             setModal({ message: slabError, type: State.ERROR });
             return;
         }
+
         const newBarcode = String(formData.barcode || '').trim();
         const oldBarcode = String((item as any).barcode || '').trim();
 
@@ -559,12 +688,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 });
             }
 
-            let currentMultiplier = 1;
-            if (formData.unit === 'box') currentMultiplier = 10;
-            if (formData.unit === 'doz') currentMultiplier = 12;
-            if (formData.unit === 'qt') currentMultiplier = 100;
-            if (formData.unit === 'ton') currentMultiplier = 1000;
-            if (formData.unit === 'pkt') currentMultiplier = parseInt(String(formData.packetSize), 10) || 1;
+            const currentMultiplier = unitMultiplierFor(formData.unit, formData.packetSize);
 
             const dataToUpdate: any = {
                 name: String(formData.name || ''),
@@ -590,11 +714,16 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 moq: Number(formData.moq || 1),
                 variants: variantIds,
                 // When feature is disabled, don't touch existing tiers saved on the item
-                ...(enablePriceTiers ? { priceTiers } : {}),
+                ...(enablePriceTiers ? { priceTiers: activeTiers } : {}),
                 // Same rule as tiers: if feature is disabled, don't touch existing slabs on the item
                 ...(enableQuantitySlabs
                     ? { quantitySlabs: [...activeSlabs].sort((a, b) => a.minQty - b.minQty) }
                     : {}),
+                ...(enableAddOns ? {
+                    addOnGroupIds,
+                    addOnPicks: buildAddOnPicks(addOnGroupIds, addOnPick, addOnLimit, addOnTemplates),
+                    addOnGroups: legacyAddOnGroups,
+                } : {}),
             };
 
             await dbOperations.updateItem(item.id, dataToUpdate);
@@ -631,7 +760,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
             };
 
             onSaveSuccess(dataForLocalState);
-            onClose();
+            if (closeOnSave) onClose();
 
         } catch (err: any) {
             console.error("Failed to save item:", err);
@@ -641,11 +770,43 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
         }
     };
 
+    // Live draft for the product page builder's preview (same field mapping as handleSave)
+    useEffect(() => {
+        if (!onDraftChangeRef.current || !item?.id || loadedItemId !== item.id) return;
+        const fresh = freshDraft.current;
+        freshDraft.current = false;
+        onDraftChangeRef.current({
+            ...item,
+            name: String(formData.name || ''),
+            mrp: Number(formData.mrp || 0),
+            salesPrice: Number(formData.salesPrice || 0),
+            discount: Number(formData.discount || 0),
+            stock: Number(formData.stock ?? 0),
+            hsnSac: String(formData.hsnSac || ''),
+            description: String(formData.description || ''),
+            unit: String(formData.unit || ''),
+            unitMultiplier: unitMultiplierFor(formData.unit, formData.packetSize),
+            packetSize: formData.unit === 'pkt' ? parseInt(String(formData.packetSize), 10) || undefined : undefined,
+            moq: Number(formData.moq || 1),
+            isListed: formData.isListed ?? false,
+            itemGroupId: selectedCategories[0] || '',
+            itemGroupIds: selectedCategories,
+            imageUrl: imagePreview || '',
+            imageUrls: [imagePreview, ...existingAdditionalUrls, ...additionalImagePreviews].filter((u): u is string => Boolean(u)),
+            variants: variantIds,
+            ...(enablePriceTiers ? { priceTiers: priceTiers.map(fromPriceTierForm) } : {}),
+            ...(enableQuantitySlabs ? { quantitySlabs } : {}),
+        }, fresh);
+    }, [item, loadedItemId, formData, selectedCategories, imagePreview, existingAdditionalUrls, additionalImagePreviews, variantIds, priceTiers, quantitySlabs, enablePriceTiers, enableQuantitySlabs]);
+
+    /* ---------------- UI-only derived values (display only) ---------------- */
+
+    // Drawer now slides in from the right (was a bottom sheet)
     const drawerClasses = isOpen
-        ? 'translate-y-0 opacity-100'
-        : 'translate-y-full opacity-0 pointer-events-none';
+        ? 'translate-x-0 opacity-100'
+        : 'translate-x-full opacity-0 pointer-events-none';
     const overlayClasses = isOpen
-        ? 'opacity-100 bg-black/60'
+        ? 'opacity-100 bg-[#020618]/50'
         : 'opacity-0 bg-transparent pointer-events-none';
 
     const getUnitLabel = () => {
@@ -657,21 +818,52 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
         return '1 pcs';
     };
 
+    const fmtINR = (n: number) =>
+        `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    const uiMrp = Number(formData.mrp || 0);
+    const uiSales = Number(formData.salesPrice || 0);
+    const uiPurchase = Number(formData.purchasePrice || 0);
+    const uiDiscount = Number(formData.discount || 0);
+    const uiStock = Number(formData.stock ?? 0);
+    const uiCustomerPays = uiSales - (uiSales * uiDiscount) / 100;
+    const uiProfit = uiPurchase > 0 ? uiCustomerPays - uiPurchase : null;
+    const GST_SLABS = [0, 0.25, 3, 5, 12, 18, 28];
+
+    const mrpWarn = uiMrp > 0 && uiSales > uiMrp ? 'Sale price is above MRP — check the printed MRP' : uiMrp === 0 && uiSales > 0 ? 'Below sale price — enter the printed MRP' : '';
+    const purchaseWarn = uiPurchase === 0 ? 'Add cost to see profit' : '';
+    const taxWarn = formData.tax !== undefined && formData.tax !== ('' as any) && Number.isFinite(Number(formData.tax)) && !GST_SLABS.includes(Number(formData.tax))
+        ? `${formData.tax}% isn’t a GST slab` : '';
+    const stockWarn = uiStock < 0 ? `${Math.abs(uiStock)} more sold than in stock` : '';
+
+    const uiIssueNames = [
+        mrpWarn && 'MRP',
+        purchaseWarn && 'purchase price',
+        taxWarn && 'GST rate',
+        stockWarn && 'stock',
+    ].filter(Boolean) as string[];
+    const uiIssueCount = uiIssueNames.length;
+
     return (
         <div
-            className={`fixed inset-0 z-1000 flex justify-center items-end transition-opacity duration-300 ease-in-out ${overlayClasses}`}
-            onClick={onClose}
+            className={isPanel ? 'h-full w-full' : `fixed inset-0 z-1000 flex justify-end items-stretch transition-opacity duration-300 ease-in-out ${overlayClasses}`}
+            style={themeVars}
+            onClick={isPanel ? undefined : onClose}
         >
             <div
-                className={`bg-white rounded-t-lg shadow-xl w-full max-w-md h-[80vh] flex flex-col transform transition-all duration-300 ease-in-out ${drawerClasses}`}
+                className={isPanel
+                    ? 'relative bg-(--dr-canvas) w-full h-full flex flex-col'
+                    : `relative bg-(--dr-canvas) shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)] w-full max-w-[780px] h-full flex flex-col transform transition-all duration-300 ease-in-out ${drawerClasses}`}
                 onClick={(e) => e.stopPropagation()}
+                role="dialog"
+                aria-label="Edit item"
             >
                 {/* CROP MODAL */}
                 {showCropModal && rawImageSrc && (
-                    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 rounded-t-lg px-4">
-                        <div className="bg-white rounded-lg shadow-xl w-full p-4 flex flex-col gap-3">
-                            <h3 className="text-base font-bold text-gray-800">Crop Image</h3>
-                            <p className="text-xs text-gray-500">Drag to select crop area. Tap <strong>Use Full Image</strong> to skip.</p>
+                    <div className="absolute inset-0 z-50 flex items-center justify-center bg-[#020618]/70 px-4">
+                        <div className="bg-white rounded-xl shadow-[0_10px_28px_rgba(21,48,140,0.14)] w-full max-w-md p-4 flex flex-col gap-3">
+                            <h3 className="text-base font-semibold text-[#0f172b]">Crop Image</h3>
+                            <p className="text-xs text-[#45556c]">Drag to select crop area. Tap <strong>Use Full Image</strong> to skip.</p>
                             <div className="flex justify-center overflow-hidden" style={{ maxHeight: 'calc(80vh - 180px)' }}>
                                 <ReactCrop
                                     crop={crop}
@@ -697,19 +889,19 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         if (cameraInputRef.current) cameraInputRef.current.value = '';
                                         if (fileInputRef.current) fileInputRef.current.value = '';
                                     }}
-                                    className="px-3 py-2 text-xs font-medium text-gray-600 bg-gray-100 rounded-sm hover:bg-gray-200"
+                                    className="px-3 h-9 text-xs font-medium text-[#45556c] rounded-lg hover:bg-(--dr-sunken)"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     onClick={async () => { if (pendingRawFile.current) await applyCompression(pendingRawFile.current); setShowCropModal(false); }}
-                                    className="px-3 py-2 text-xs font-medium text-gray-700 bg-gray-200 rounded-sm hover:bg-gray-300"
+                                    className="px-3 h-9 text-xs font-medium text-[#0f172b] bg-white border border-[#7a8aa3] rounded-lg hover:bg-(--dr-sunken)"
                                 >
                                     Use Full Image
                                 </button>
                                 <button
                                     onClick={handleCropConfirm}
-                                    className="px-4 py-2 text-xs font-bold text-white bg-sky-500 rounded-sm hover:bg-sky-600"
+                                    className="px-4 h-9 text-xs font-medium text-white bg-(--dr-primary) rounded-lg hover:bg-(--dr-primary-hover)"
                                 >
                                     Crop & Use
                                 </button>
@@ -718,700 +910,996 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                     </div>
                 )}
 
-                <div className="p-4 text-center relative border-b">
-                    <div className="absolute left-1/2 top-2 -translate-x-1/2">
-                        <div className="w-12 h-1.5 bg-gray-300 rounded-full"></div>
+                {/* ---------- HEADER ---------- */}
+                <div className="flex items-center gap-3 md:gap-3.5 px-3 md:px-5 pb-3 md:py-4 pt-[max(12px,env(safe-area-inset-top))] md:pt-4 bg-white border-b border-(--dr-line)">
+                    <div className="hidden md:grid h-[52px] w-[52px] shrink-0 place-items-center overflow-hidden rounded-[10px] bg-(--dr-sunken) text-[#5b6b86]">
+                        {imagePreview ? (
+                            <img src={imagePreview} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                            <FiPackage size={22} />
+                        )}
                     </div>
-                    <h2 className="text-lg font-semibold leading-none tracking-tight pt-4">
-                        Edit Item
-                    </h2>
-                    <p className="text-sm mt-1 text-gray-500">
-                        {item?.name || 'Item details'}
-                    </p>
-                    <button
-                        onClick={onClose}
-                        className="absolute right-3 top-3 rounded-sm p-1 text-gray-500 hover:bg-gray-100 opacity-70"
-                        aria-label="Close"
-                    >
-                        <FiX size={18} />
-                    </button>
+                    <div className="min-w-0 flex-1 order-2 md:order-none">
+                        {/* Mobile title: "Edit item" + item name caption */}
+                        <h2 className="md:hidden text-base font-semibold leading-5 text-[#0f172b]">Edit item</h2>
+                        <div className="md:hidden truncate text-xs text-[#5b6b86]">{item?.name || 'Item details'}</div>
+                        {/* Desktop title */}
+                        <div className="hidden md:block text-xs text-[#5b6b86]">Edit item</div>
+                        <h2 className="hidden md:block truncate text-lg font-semibold leading-6 text-[#0f172b]">
+                            {item?.name || 'Item details'}
+                        </h2>
+                        <div className="mt-1 hidden md:flex flex-wrap gap-1.5">
+                            {formData.barcode ? (
+                                <span className="inline-flex h-[22px] items-center rounded-full bg-(--dr-sunken) px-2.5 text-[11px] font-medium text-[#45556c] border border-(--dr-line)">
+                                    {formData.barcode}
+                                </span>
+                            ) : null}
+                            {formData.stock !== undefined && formData.stock !== ('' as any) ? (
+                                <span
+                                    className={`inline-flex h-[22px] items-center gap-1 rounded-full px-2.5 text-[11px] font-semibold uppercase ${uiStock < 0 ? 'bg-[#ffeef0] text-[#d5000c]' : 'bg-(--dr-sunken) text-[#45556c] border border-(--dr-line)'}`}
+                                >
+                                    <span className={`h-1.5 w-1.5 rounded-full ${uiStock < 0 ? 'bg-[#d5000c]' : 'bg-[#5b6b86]'}`} />
+                                    {uiStock} in stock
+                                </span>
+                            ) : null}
+                        </div>
+                    </div>
+                    {!isPanel && (
+                        <button
+                            onClick={onClose}
+                            className="order-1 md:order-none grid h-10 w-10 place-items-center rounded-lg text-[#45556c] hover:bg-(--dr-sunken) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--dr-primary)"
+                            aria-label="Close"
+                        >
+                            <FiX size={20} />
+                        </button>
+                    )}
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {/* ---------- BODY ---------- */}
+                <div className="flex-1 overflow-y-auto px-3 py-3 md:px-5 md:py-4">
                     {isFetching ? (
                         <div className="flex flex-col items-center justify-center h-40 space-y-2">
                             <Spinner />
-                            <p className="text-gray-500 text-sm">Loading latest details...</p>
+                            <p className="text-[#45556c] text-sm">Loading latest details...</p>
                         </div>
                     ) : (
                         <>
                             {modal && (
-                                <div onClick={(e) => e.stopPropagation()}>
+                                <div className="mb-4" onClick={(e) => e.stopPropagation()}>
                                     <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />
                                 </div>
                             )}
-                            <div>
-                                <label className="text-sm font-medium leading-none mb-1 block">Item Image</label>
 
-                                <ImagePreview imageUrl={imagePreview} alt={formData.name || "Item Preview"} />
+                            <div className={`grid gap-4 items-start ${isPanel ? '' : 'md:grid-cols-[240px_minmax(0,1fr)]'}`}>
+                                {/* ===== LEFT COLUMN: photo + summary ===== */}
+                                <div className="grid gap-3 content-start">
+                                    <div className="rounded-xl border border-(--dr-line) bg-white shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] overflow-hidden">
+                                        <div className="grid grid-cols-[110px_minmax(0,1fr)] items-center md:block">
+                                            <ImagePreview imageUrl={imagePreview} alt={formData.name || "Item Preview"} />
 
-                                {/* CAMERA INPUT (HIDDEN) */}
-                                <input
-                                    type="file"
-                                    accept="image/*"
-                                    capture="environment"
-                                    onChange={handleFileChange}
-                                    ref={cameraInputRef}
-                                    className="hidden"
-                                />
-
-                                <div className='flex items-center gap-2'>
-                                    <input
-                                        type="file"
-                                        accept="image/png, image/jpeg"
-                                        onChange={handleFileChange}
-                                        ref={fileInputRef}
-                                        className="mt-2 text-sm w-full file:mr-4 file:py-2 file:px-4 file:rounded-sm file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                                        disabled={isSaving}
-                                    />
-
-                                    <button
-                                        type="button"
-                                        onClick={() => cameraInputRef.current?.click()}
-                                        className="p-2 rounded bg-green-100 hover:bg-green-200 mt-2 cursor-pointer shrink-0"
-                                    >
-                                        <FiCamera size={20} />
-                                    </button>
-                                </div>
-
-                                {/* NEW URL INPUT SECTION */}
-                                <div className="mt-4">
-                                    <label className="text-sm font-medium leading-none mb-1 block">Or paste Image URL</label>
-                                    <input
-                                        type="text"
-                                        name="imageUrl"
-                                        value={formData.imageUrl || ''}
-                                        onChange={(e) => {
-                                            const url = e.target.value;
-                                            setFormData(prev => ({ ...prev, imageUrl: url }));
-                                            if (!imageFile) {
-                                                setImagePreview(url);
-                                            }
-                                        }}
-                                        disabled={!!imageFile || isSaving}
-                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                        placeholder="https://example.com/image.jpg"
-                                    />
-                                </div>
-
-                                {/* OPTION TO REMOVE LOCAL FILE IF SELECTED */}
-                                {imageFile && (
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setImageFile(null);
-                                            setImagePreview(formData.imageUrl || null);
-                                            if (cameraInputRef.current) cameraInputRef.current.value = '';
-                                            if (fileInputRef.current) fileInputRef.current.value = '';
-                                        }}
-                                        className="text-xs text-red-500 hover:underline mt-2 block"
-                                    >
-                                        Remove Selected File
-                                    </button>
-                                )}
-
-                                {/* NEW — Additional photos for catalogue slider */}
-                                <div className="mt-4">
-                                    <label className="text-sm font-medium leading-none mb-1 block">Additional Photos (for catalogue slider)</label>
-                                    <input
-                                        type="file"
-                                        accept="image/*"
-                                        multiple
-                                        onChange={handleAdditionalFilesChange}
-                                        disabled={isSaving}
-                                        className="text-xs"
-                                    />
-                                    {(existingAdditionalUrls.length > 0 || additionalImagePreviews.length > 0) && (
-                                        <div className="flex gap-2 mt-2 flex-wrap">
-                                            {existingAdditionalUrls.map((url) => (
-                                                <div key={url} className="relative w-16 h-16">
-                                                    <img src={url} className="w-full h-full object-cover rounded-sm border" />
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => removeExistingAdditionalImage(url)}
-                                                        disabled={isSaving}
-                                                        className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-5 h-5 text-xs leading-none"
-                                                    >✕</button>
-                                                </div>
-                                            ))}
-                                            {additionalImagePreviews.map((src, idx) => (
-                                                <div key={src + idx} className="relative w-16 h-16">
-                                                    <img src={src} className="w-full h-full object-cover rounded-sm border" />
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => removeNewAdditionalImage(idx)}
-                                                        disabled={isSaving}
-                                                        className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-5 h-5 text-xs leading-none"
-                                                    >✕</button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div>
-                                <label htmlFor="edit-name" className="text-sm font-medium leading-none mb-1 block">Name</label>
-                                <input
-                                    ref={firstInputRef}
-                                    type="text" id="edit-name" name="name"
-                                    value={formData.name || ''} onChange={handleChange}
-                                    className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                    disabled={isSaving}
-                                />
-                            </div>
-
-                            {/* --- Pricing Row --- */}
-
-                            <div className="grid grid-cols-2 gap-4">
-                                {/* --- MRP --- */}
-                                <div>
-                                    <label className="text-sm font-medium mb-1 block">
-                                        {`MRP (for ${getUnitLabel()})`}
-                                    </label>
-                                    <input
-                                        type="number"
-                                        name="mrp"
-                                        value={formData.mrp ?? ''}
-                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                        onChange={handleChange}
-                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                    />
-                                </div>
-                                <div>
-                                    <label htmlFor="edit-barcode" className="text-sm font-medium mb-1 block">Barcode</label>
-                                    <input
-                                        type="text" id="edit-barcode" name="barcode"
-                                        value={formData.barcode || ''} onChange={handleChange}
-                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                        disabled={isSaving}
-                                    />
-                                </div>
-
-                                {/* --- Sales Price --- */}
-                                <div>
-                                    <label className="text-sm font-medium mb-1 block">
-                                        {`Sales Price (for ${getUnitLabel()})`}
-                                    </label>
-                                    <input
-                                        type="number"
-                                        name="salesPrice"
-                                        value={formData.salesPrice ?? ''}
-                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                        onChange={handleChange}
-                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                    />
-                                </div>
-
-                                {/* --- Purchase Price --- */}
-                                <div>
-                                    <label className="text-sm font-medium mb-1 block">Purchase Price (₹)</label>
-                                    <input
-                                        type="number"
-                                        name="purchasePrice"
-                                        value={formData.purchasePrice ?? ''}
-                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                        onChange={handleChange}
-                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* --- Purchase & Stock Row --- */}
-                            <div className="grid grid-cols-2 gap-4">
-                                {/* --- Sale Disc (%) --- */}
-                                <div>
-                                    <label htmlFor="edit-discount" className="text-sm font-medium leading-none mb-1 block">Sale Disc (%)</label>
-                                    <input
-                                        type="number" id="edit-discount" name="discount" step="0.01"
-                                        value={formData.discount ?? ''}
-                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                        onChange={handleChange}
-                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                        disabled={isSaving}
-                                    />
-                                </div>
-                                {/* --- Purchase Disc (%) --- */}
-                                <div>
-                                    <label htmlFor="edit-purchasediscount" className="text-sm font-medium leading-none mb-1 block">Purchase Disc (%)</label>
-                                    <input
-                                        type="number" id="edit-purchasediscount" name="purchasediscount" step="0.01"
-                                        value={formData.purchasediscount ?? ''}
-                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                        onChange={handleChange}
-                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                        disabled={isSaving}
-                                    />
-                                </div>
-                            </div>
-
-                            {/* --- Tax & HSN Row --- */}
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label htmlFor="edit-tax" className="text-sm font-medium leading-none mb-1 block">Tax (%)</label>
-                                    <input
-                                        type="number" id="edit-tax" name="tax" step="0.01"
-                                        value={formData.tax ?? ''}
-                                        onChange={handleChange}
-                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                        disabled={isSaving}
-                                    />
-                                </div>
-                                <div>
-                                    <label htmlFor="edit-hsnSac" className="text-sm font-medium leading-none mb-1 block">HSN Code</label>
-                                    <input
-                                        type="text" id="edit-hsnSac" name="hsnSac"
-                                        value={formData.hsnSac || ''}
-                                        onChange={handleChange}
-                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                        disabled={isSaving}
-                                        placeholder="e.g. 123456"
-                                    />
-                                </div>
-                            </div>
-                            {unitChangeWarning && (
-                                <div className="mb-2 flex items-start gap-2 rounded-sm border border-yellow-300 bg-yellow-50 px-3 py-2 text-sm text-yellow-800">
-                                    <span>⚠️</span>
-                                    <span>Unit changed — MRP and Sales Price are still the same values. Please review and update them for the new unit.</span>
-                                    <button onClick={() => setUnitChangeWarning(false)} className="ml-auto text-yellow-600 hover:text-yellow-900">
-                                        <FiX size={14} />
-                                    </button>
-                                </div>
-                            )}
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="text-sm font-medium leading-none mb-1 block">MOQ</label>
-                                    <input
-                                        type="number"
-                                        name="moq"
-                                        value={formData.moq ?? ''}
-                                        onChange={handleChange}
-                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                        disabled={isSaving}
-                                    />
-                                </div>
-                                <div>
-
-                                    <label htmlFor="edit-unit" className="text-sm font-medium leading-none mb-1 block">Unit</label>
-                                    <div className="flex gap-2">
-                                        <select
-                                            id="edit-unit"
-                                            name="unit"
-                                            value={formData.unit || ''}
-                                            onChange={(e) => {
-                                                handleChange(e);
-                                                if (e.target.value !== 'pkt') {
-                                                    setFormData(prev => ({ ...prev, packetSize: undefined }));
-                                                }
-                                                if (e.target.value && e.target.value !== '') {
-                                                    setUnitChangeWarning(true);
-                                                }
-                                            }}
-                                            className={`flex h-10 rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50 ${formData.unit === 'pkt' ? 'w-1/2' : 'w-full'}`}
-                                            disabled={isSaving}
-                                        >
-                                            {UNIT_OPTIONS.map(u => (
-                                                <option key={u.value} value={u.value} disabled={u.value === ''}>
-                                                    {u.label}
-                                                </option>
-                                            ))}
-                                        </select>
-
-                                        {formData.unit === 'pkt' && (
+                                            {/* CAMERA INPUT (HIDDEN) */}
                                             <input
-                                                type="number"
-                                                name="packetSize"
-                                                value={formData.packetSize ?? ''}
-                                                onChange={handleChange}
-                                                placeholder="Qty per pkt"
-                                                className="flex h-10 w-1/2 rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
-                                                disabled={isSaving}
-                                                min="1"
+                                                type="file"
+                                                accept="image/*"
+                                                capture="environment"
+                                                onChange={handleFileChange}
+                                                ref={cameraInputRef}
+                                                className="hidden"
                                             />
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                            {/* --- Stock & Description Row --- */}
-                            <div className="grid grid-cols-2 gap-4">
+                                            {/* FILE INPUT (HIDDEN — opened by Replace button) */}
+                                            <input
+                                                type="file"
+                                                accept="image/png, image/jpeg"
+                                                onChange={handleFileChange}
+                                                ref={fileInputRef}
+                                                className="hidden"
+                                                disabled={isSaving}
+                                            />
 
-                                <div>
-                                    <label htmlFor="edit-stock" className="text-sm font-medium leading-none mb-1 block">Stock</label>
-                                    <input
-                                        type="number"
-                                        id="edit-stock"
-                                        name="stock"
-                                        step="1"
-                                        value={formData.stock ?? ''}
-                                        onChange={handleChange}
-                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                        disabled={isSaving}
-                                    />
-                                </div>
-                                <div>
-                                    <label htmlFor="edit-description" className="text-sm font-medium leading-none mb-1 block">Description</label>
-                                    <input
-                                        type="text" id="edit-description" name="description"
-                                        value={formData.description || ''} onChange={handleChange}
-                                        className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                        disabled={isSaving}
-                                    />
-                                </div>
-                            </div>
-
-                            {/* --- Category --- */}
-                            <div>
-                                <label className="text-sm font-medium mb-1 block">Category</label>
-
-                                {/* Primary category dropdown */}
-                                <select
-                                    value={selectedCategories[0] || ''}
-                                    onChange={(e) => {
-                                        const val = e.target.value;
-                                        if (val === 'ADD_NEW_GROUP') {
-                                            onClose();
-                                            navigate(itemGroupRoute);
-                                            return;
-                                        }
-                                        setSelectedCategories(prev => {
-                                            const rest = prev.slice(1);
-                                            return val ? [val, ...rest] : rest;
-                                        });
-                                    }}
-                                    disabled={isSaving}
-                                    className="flex h-10 w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                    <option value="ADD_NEW_GROUP" className="font-semibold bg-gray-100">+ Add New Group</option>
-                                    <option value="">Uncategorized</option>
-                                    {itemGroups.map((group) => (
-                                        <option key={group.id} value={group.id}>
-                                            {group.name}
-                                        </option>
-                                    ))}
-                                </select>
-
-                                {/* Extra category chips */}
-                                {selectedCategories.length > 1 && (
-                                    <div className="mt-2 flex flex-wrap gap-2">
-                                        {selectedCategories.slice(1).map((catId) => {
-                                            const group = itemGroups.find(g => g.id === catId);
-                                            if (!group) return null;
-                                            return (
-                                                <span key={catId} className="inline-flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-700 text-xs px-2 py-1 rounded-full">
-                                                    {group.name}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setSelectedCategories(prev => prev.filter(id => id !== catId))}
-                                                        className="ml-1 text-blue-400 hover:text-red-500 font-bold leading-none"
-                                                    >×</button>
-                                                </span>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-
-                                {/* Add more category */}
-                                {!showCategoryDropdown ? (
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowCategoryDropdown(true)}
-                                        className="mt-2 text-sm text-sky-500 hover:underline"
-                                    >
-                                        + Add more category
-                                    </button>
-                                ) : (
-                                    <div className="mt-2 flex gap-2 items-center">
-                                        <select
-                                            defaultValue=""
-                                            onChange={(e) => {
-                                                const val = e.target.value;
-                                                if (!val) return;
-                                                if (val === 'ADD_NEW_GROUP') {
-                                                    onClose();
-                                                    navigate(itemGroupRoute);
-                                                    return;
-                                                }
-                                                if (!selectedCategories.includes(val)) {
-                                                    setSelectedCategories(prev => [...prev, val]);
-                                                }
-                                                setShowCategoryDropdown(false);
-                                            }}
-                                            className="flex-1 min-w-0 h-10 rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
-                                            disabled={isSaving}
-                                        >
-                                            <option value="ADD_NEW_GROUP" className="font-semibold bg-gray-100">+ Add New Group</option>
-                                            {/* <option value="">Add more</option> */}
-                                            {itemGroups
-                                                .filter(g => !selectedCategories.includes(g.id!))
-                                                .map(g => (
-                                                    <option key={g.id} value={g.id!}>{g.name}</option>
-                                                ))}
-                                        </select>
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowCategoryDropdown(false)}
-                                            className="text-xs text-gray-400 hover:text-gray-600"
-                                        >
-                                            Cancel
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                            <div>
-                                <label className="text-sm font-medium leading-none mb-1 block">Variants</label>
-                                <VariantPicker
-                                    allItems={allItemsForVariants}
-                                    selectedIds={variantIds}
-                                    currentItemBarcode={formData.barcode || ''}
-                                    onChange={setVariantIds}
-                                    activeTheme={{ text: 'text-sky-500', border: 'border-sky-500', primaryBg: 'bg-sky-500', focusRing: 'focus:ring-sky-500' } as any}
-                                />
-                            </div>
-
-                            {/* 👇 NEW — Pricing Options (Tiers) */}
-                            {enablePriceTiers && (
-                                <div>
-                                    <div className="flex items-center justify-between mb-2">
-                                        <label className="text-sm font-medium leading-none block">
-                                            Pricing Options <span className="text-gray-400 font-normal text-xs">(e.g. Box of 10, Combo)</span>
-                                        </label>
-                                        <button
-                                            type="button"
-                                            onClick={addPriceTier}
-                                            disabled={quantitySlabs.length > 0}
-                                            title={quantitySlabs.length > 0 ? 'Remove Quantity Pricing slabs to use Pricing Options' : ''}
-                                            className="text-xs font-semibold text-sky-500 hover:underline disabled:text-gray-300 disabled:no-underline disabled:cursor-not-allowed"
-                                        >
-                                            + Add Pricing Option
-                                        </button>
-                                    </div>
-
-                                    {priceTiers.length === 0 ? (
-                                        <p className="text-[11px] text-gray-400 italic">
-                                            No extra pricing added. Item will only sell at the single price set above.
-                                        </p>
-                                    ) : (
-                                        <div className="space-y-3">
-                                            {priceTiers.map((tier) => (
-                                                <div key={tier.id} className="border border-gray-200 rounded-sm p-3 bg-gray-50 relative">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => removePriceTier(tier.id)}
-                                                        className="absolute top-2 right-2 text-gray-400 hover:text-red-500 text-sm font-bold leading-none"
-                                                    >
-                                                        ✕
-                                                    </button>
-
-                                                    <div className="grid grid-cols-2 gap-3 mb-2">
-                                                        <div>
-                                                            <label className="text-[10px] font-medium text-gray-500 block mb-1">Label</label>
-                                                            <input
-                                                                type="text"
-                                                                value={tier.label}
-                                                                onChange={(e) => updatePriceTier(tier.id, 'label', e.target.value)}
-                                                                placeholder="e.g. Box of 10"
-                                                                className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
-                                                            />
-                                                        </div>
-                                                        <div>
-                                                            <label className="text-[10px] font-medium text-gray-500 block mb-1">Quantity</label>
-                                                            <input
-                                                                type="number"
-                                                                value={tier.quantity}
-                                                                onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                                                onChange={(e) => updatePriceTier(tier.id, 'quantity', parseInt(e.target.value) || 1)}
-                                                                min="1"
-                                                                className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
-                                                            />
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="grid grid-cols-3 gap-3 mb-2">
-                                                        <div>
-                                                            <label className="text-[10px] font-medium text-gray-500 block mb-1">MRP</label>
-                                                            <input
-                                                                type="number"
-                                                                value={tier.mrp}
-                                                                onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                                                onChange={(e) => updatePriceTier(tier.id, 'mrp', parseFloat(e.target.value) || 0)}
-                                                                className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
-                                                            />
-                                                        </div>
-                                                        <div>
-                                                            <label className="text-[10px] font-medium text-gray-500 block mb-1">Sales Price</label>
-                                                            <input
-                                                                type="number"
-                                                                value={tier.salesPrice}
-                                                                onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                                                onChange={(e) => updatePriceTier(tier.id, 'salesPrice', parseFloat(e.target.value) || 0)}
-                                                                className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
-                                                            />
-                                                        </div>
-                                                        <div>
-                                                            <label className="text-[10px] font-medium text-gray-500 block mb-1">Purchase Price</label>
-                                                            <input
-                                                                type="number"
-                                                                value={tier.purchasePrice}
-                                                                onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                                                onChange={(e) => updatePriceTier(tier.id, 'purchasePrice', parseFloat(e.target.value) || 0)}
-                                                                className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
-                                                            />
-                                                        </div>
-                                                    </div>
-
-                                                    <div>
-                                                        <label className="text-[10px] font-medium text-gray-500 block mb-1">Barcode (optional)</label>
-                                                        <input
-                                                            type="text"
-                                                            value={tier.barcode}
-                                                            onChange={(e) => updatePriceTier(tier.id, 'barcode', e.target.value)}
-                                                            placeholder="Scan or type this pack's own barcode"
-                                                            className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
-                                                        />
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* --- Quantity Pricing (Volume Slabs) --- */}
-                            {enableQuantitySlabs && (
-                                <div>
-                                    <div className="flex items-center justify-between mb-2">
-                                        <label className="text-sm font-medium leading-none block">
-                                            Quantity Pricing <span className="text-gray-400 font-normal text-xs">(e.g. 1-10 @ ₹100, 11-20 @ ₹95)</span>
-                                        </label>
-                                        <button
-                                            type="button"
-                                            onClick={addQuantitySlab}
-                                            disabled={priceTiers.length > 0}
-                                            title={priceTiers.length > 0 ? 'Remove Pricing Options to use Quantity Pricing' : ''}
-                                            className="text-xs font-semibold text-sky-500 hover:underline disabled:text-gray-300 disabled:no-underline disabled:cursor-not-allowed"
-                                        >
-                                            + Add Slab
-                                        </button>
-                                    </div>
-
-                                    {priceTiers.length > 0 && (
-                                        <p className="text-[11px] text-amber-600 mb-2">
-                                            Pricing Options are in use. Remove them to add Quantity Pricing.
-                                        </p>
-                                    )}
-
-                                    {quantitySlabs.length === 0 ? (
-                                        <p className="text-[11px] text-gray-400 italic">
-                                            No quantity slabs added. Item will always sell at the single price set above.
-                                        </p>
-                                    ) : (
-                                        <div className="space-y-2">
-                                            <div className="grid grid-cols-[1fr_1fr_1fr_24px] gap-2 text-[10px] font-medium text-gray-500">
-                                                <span>From Qty</span>
-                                                <span>To Qty (blank = above)</span>
-                                                <span>Price / unit</span>
-                                                <span></span>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5 p-2.5">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => fileInputRef.current?.click()}
+                                                    disabled={isSaving}
+                                                    className={BTN_SECONDARY}
+                                                >
+                                                    <FiUpload size={14} /> <span className="md:hidden">Replace photo</span><span className="hidden md:inline">Replace</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => cameraInputRef.current?.click()}
+                                                    disabled={isSaving}
+                                                    className={BTN_SECONDARY}
+                                                >
+                                                    <FiCamera size={14} /> <span className="md:hidden">Take photo</span><span className="hidden md:inline">Camera</span>
+                                                </button>
                                             </div>
-                                            {quantitySlabs.map((slab) => (
-                                                <div key={slab.id} className="grid grid-cols-[1fr_1fr_1fr_24px] gap-2 items-center">
-                                                    <input
-                                                        type="number"
-                                                        min="1"
-                                                        value={slab.minQty || ''}
-                                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                                        onChange={(e) => updateQuantitySlab(slab.id, 'minQty', e.target.value)}
-                                                        placeholder="1"
-                                                        disabled={isSaving}
-                                                        className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
-                                                    />
-                                                    <input
-                                                        type="number"
-                                                        min="1"
-                                                        value={slab.maxQty ?? ''}
-                                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                                        onChange={(e) => updateQuantitySlab(slab.id, 'maxQty', e.target.value)}
-                                                        placeholder="And above"
-                                                        disabled={isSaving}
-                                                        className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
-                                                    />
-                                                    <input
-                                                        type="number"
-                                                        value={slab.salesPrice || ''}
-                                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                                        onChange={(e) => updateQuantitySlab(slab.id, 'salesPrice', e.target.value)}
-                                                        placeholder="0.00"
-                                                        disabled={isSaving}
-                                                        className="w-full h-9 rounded-sm border border-gray-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-sky-500"
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => removeQuantitySlab(slab.id)}
-                                                        disabled={isSaving}
-                                                        className="text-gray-400 hover:text-red-500 text-sm font-bold leading-none"
-                                                    >
-                                                        ✕
-                                                    </button>
+                                        </div>
+
+                                        {/* OPTION TO REMOVE LOCAL FILE IF SELECTED */}
+                                        {imageFile && (
+                                            <div className="px-3 pb-2.5 -mt-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setImageFile(null);
+                                                        setImagePreview(formData.imageUrl || null);
+                                                        if (cameraInputRef.current) cameraInputRef.current.value = '';
+                                                        if (fileInputRef.current) fileInputRef.current.value = '';
+                                                    }}
+                                                    className="text-xs font-medium text-[#d5000c] hover:underline"
+                                                >
+                                                    Remove Selected File
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {/* URL INPUT */}
+                                        <div className="border-t border-(--dr-line) px-3 py-3">
+                                            <label htmlFor="edit-imageUrl" className={`${LABEL_CLS} mb-1 block`}>Or paste Image URL</label>
+                                            <input
+                                                id="edit-imageUrl"
+                                                type="text"
+                                                name="imageUrl"
+                                                value={formData.imageUrl || ''}
+                                                onChange={(e) => {
+                                                    const url = e.target.value;
+                                                    setFormData(prev => ({ ...prev, imageUrl: url }));
+                                                    if (!imageFile) {
+                                                        setImagePreview(url);
+                                                    }
+                                                }}
+                                                disabled={!!imageFile || isSaving}
+                                                className={INPUT_CLS}
+                                                placeholder="https://example.com/image.jpg"
+                                            />
+                                        </div>
+
+                                        {/* Additional photos for catalogue slider */}
+                                        <div className="border-t border-(--dr-line) px-3 py-3">
+                                            <span className={`${LABEL_CLS} mb-1 block`}>Additional photos</span>
+                                            <p className="text-[11px] text-[#5b6b86] mb-2">Shown in the catalogue slider</p>
+                                            <label className={`${BTN_SECONDARY} w-full cursor-pointer ${isSaving ? 'pointer-events-none opacity-45' : ''}`}>
+                                                <FiUpload size={14} /> Add photos
+                                                <input
+                                                    type="file"
+                                                    accept="image/*"
+                                                    multiple
+                                                    onChange={handleAdditionalFilesChange}
+                                                    disabled={isSaving}
+                                                    className="hidden"
+                                                />
+                                            </label>
+                                            {(existingAdditionalUrls.length > 0 || additionalImagePreviews.length > 0) && (
+                                                <div className="flex gap-2 mt-3 flex-wrap">
+                                                    {existingAdditionalUrls.map((url) => (
+                                                        <div key={url} className="relative w-16 h-16">
+                                                            <img src={url} className="w-full h-full object-cover rounded-lg border border-(--dr-line)" />
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeExistingAdditionalImage(url)}
+                                                                disabled={isSaving}
+                                                                aria-label="Remove photo"
+                                                                className="absolute -top-1.5 -right-1.5 grid place-items-center bg-[#0f172b] text-white rounded-full w-5 h-5 text-[10px] leading-none"
+                                                            >✕</button>
+                                                        </div>
+                                                    ))}
+                                                    {additionalImagePreviews.map((src, idx) => (
+                                                        <div key={src + idx} className="relative w-16 h-16">
+                                                            <img src={src} className="w-full h-full object-cover rounded-lg border border-(--dr-line)" />
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeNewAdditionalImage(idx)}
+                                                                disabled={isSaving}
+                                                                aria-label="Remove photo"
+                                                                className="absolute -top-1.5 -right-1.5 grid place-items-center bg-[#0f172b] text-white rounded-full w-5 h-5 text-[10px] leading-none"
+                                                            >✕</button>
+                                                        </div>
+                                                    ))}
                                                 </div>
-                                            ))}
-                                            <p className="text-[10px] text-gray-400">
-                                                The slab price applies to the whole quantity. Quantities outside all slabs use the base Sales Price.
-                                            </p>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* AT THE COUNTER summary (display only) */}
+                                    <div className="hidden md:grid rounded-xl border border-(--dr-line) bg-white p-3.5 gap-2 shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]">
+                                        <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]">At the counter</div>
+                                        <div>
+                                            <span className="text-2xl font-semibold tabular-nums text-[#0f172b]">{fmtINR(uiCustomerPays)}</span>{' '}
+                                            <span className="text-xs text-[#5b6b86]">per {getUnitLabel()}</span>
+                                        </div>
+                                        <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 text-[13px]">
+                                            <dt className="text-[#45556c]">Sale price</dt>
+                                            <dd className="m-0 text-right font-semibold tabular-nums">{fmtINR(uiSales)}</dd>
+                                            <dt className="text-[#45556c]">Discount {uiDiscount}%</dt>
+                                            <dd className="m-0 text-right font-semibold tabular-nums">− {fmtINR((uiSales * uiDiscount) / 100)}</dd>
+                                            <dt className="text-[#45556c]">Profit</dt>
+                                            <dd className={`m-0 text-right font-semibold tabular-nums ${uiProfit === null ? 'text-[#5b6b86] font-normal' : uiProfit < 0 ? 'text-[#d5000c]' : 'text-[#008236]'}`}>
+                                                {uiProfit === null ? 'needs cost' : fmtINR(uiProfit)}
+                                            </dd>
+                                            <dt className="text-[#45556c]">In stock</dt>
+                                            <dd className={`m-0 text-right font-semibold tabular-nums ${uiStock < 0 ? 'text-[#d5000c]' : ''}`}>{uiStock} pcs</dd>
+                                        </dl>
+                                    </div>
+
+                                    {uiIssueCount > 0 && (
+                                        <div className="flex items-start gap-2 rounded-lg bg-[#fff3dd] px-3 py-2 text-xs text-[#bb4d00]">
+                                            <FiAlertTriangle size={14} className="mt-px shrink-0" />
+                                            <span><b>{uiIssueCount} {uiIssueCount === 1 ? 'thing' : 'things'} to check</b> — {uiIssueNames.join(', ')}. You can still save.</span>
                                         </div>
                                     )}
                                 </div>
-                            )}
 
-                            <ShowWrapper requiredPermission={Permissions.ViewCatalogue}>
-                                <div className="flex items-center space-x-2 pt-2">
-                                    <input
-                                        type="checkbox"
-                                        id={`edit-isListed-${item?.id}`}
-                                        name="isListed"
-                                        checked={formData.isListed ?? false}
-                                        onChange={handleChange}
-                                        disabled={isSaving}
-                                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-sky-500 cursor-pointer"
-                                    />
-                                    <label
-                                        htmlFor={`edit-isListed-${item?.id}`}
-                                        className="text-sm font-medium text-gray-700 select-none cursor-pointer"
-                                    >
-                                        List this item on Catalog
-                                    </label>
+                                {/* ===== RIGHT COLUMN: grouped form cards ===== */}
+                                <div className="grid gap-3 content-start min-w-0">
+
+                                    {/* ---------- DETAILS ---------- */}
+                                    <SectionCard icon={<FiTag size={16} />} title="Details" hint="Name is required">
+                                        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                                            <FieldWrap className="col-span-2" label={<>Item name <em className="not-italic text-[#d5000c]">*</em></>} htmlFor="edit-name">
+                                                <input
+                                                    ref={firstInputRef}
+                                                    type="text" id="edit-name" name="name"
+                                                    value={formData.name || ''} onChange={handleChange}
+                                                    className={`${INPUT_CLS} font-semibold`}
+                                                    disabled={isSaving}
+                                                />
+                                            </FieldWrap>
+
+                                            {/* --- Category --- */}
+                                            <FieldWrap className="col-span-2" label="Category" htmlFor="edit-category" hint="An item can be in more than one category">
+                                                {/* Primary category dropdown */}
+                                                <select
+                                                    id="edit-category"
+                                                    value={selectedCategories[0] || ''}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        if (val === 'ADD_NEW_GROUP') {
+                                                            onClose();
+                                                            navigate(itemGroupRoute);
+                                                            return;
+                                                        }
+                                                        setSelectedCategories(prev => {
+                                                            const rest = prev.slice(1);
+                                                            return val ? [val, ...rest] : rest;
+                                                        });
+                                                    }}
+                                                    disabled={isSaving}
+                                                    className={INPUT_CLS}
+                                                >
+                                                    <option value="ADD_NEW_GROUP" className="font-semibold bg-gray-100">+ Add New Group</option>
+                                                    <option value="">Uncategorized</option>
+                                                    {itemGroups.map((group) => (
+                                                        <option key={group.id} value={group.id}>
+                                                            {group.name}
+                                                        </option>
+                                                    ))}
+                                                </select>
+
+                                                {/* Extra category chips */}
+                                                {selectedCategories.length > 1 && (
+                                                    <div className="mt-1 flex flex-wrap gap-1.5">
+                                                        {selectedCategories.slice(1).map((catId) => {
+                                                            const group = itemGroups.find(g => g.id === catId);
+                                                            if (!group) return null;
+                                                            return (
+                                                                <span key={catId} className="inline-flex h-7 items-center gap-1 rounded-full bg-(--dr-soft) pl-2.5 pr-1.5 text-xs font-medium text-(--dr-primary)">
+                                                                    {group.name}
+                                                                    <button
+                                                                        type="button"
+                                                                        aria-label={`Remove ${group.name}`}
+                                                                        onClick={() => setSelectedCategories(prev => prev.filter(id => id !== catId))}
+                                                                        className="grid h-4 w-4 place-items-center rounded-full text-(--dr-primary) hover:bg-white"
+                                                                    ><FiX size={12} /></button>
+                                                                </span>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+
+                                                {/* Add more category */}
+                                                {!showCategoryDropdown ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowCategoryDropdown(true)}
+                                                        className="mt-1 w-fit text-xs font-semibold text-(--dr-primary) hover:underline"
+                                                    >
+                                                        + Add more category
+                                                    </button>
+                                                ) : (
+                                                    <div className="mt-1 flex gap-2 items-center">
+                                                        <select
+                                                            defaultValue=""
+                                                            onChange={(e) => {
+                                                                const val = e.target.value;
+                                                                if (!val) return;
+                                                                if (val === 'ADD_NEW_GROUP') {
+                                                                    onClose();
+                                                                    navigate(itemGroupRoute);
+                                                                    return;
+                                                                }
+                                                                if (!selectedCategories.includes(val)) {
+                                                                    setSelectedCategories(prev => [...prev, val]);
+                                                                }
+                                                                setShowCategoryDropdown(false);
+                                                            }}
+                                                            className={`${INPUT_CLS} flex-1`}
+                                                            disabled={isSaving}
+                                                        >
+                                                            <option value="ADD_NEW_GROUP" className="font-semibold bg-gray-100">+ Add New Group</option>
+                                                            {/* <option value="">Add more</option> */}
+                                                            {itemGroups
+                                                                .filter(g => !selectedCategories.includes(g.id!))
+                                                                .map(g => (
+                                                                    <option key={g.id} value={g.id!}>{g.name}</option>
+                                                                ))}
+                                                        </select>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setShowCategoryDropdown(false)}
+                                                            className="px-2 h-10 text-xs font-medium text-[#45556c] rounded-lg hover:bg-(--dr-sunken)"
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </FieldWrap>
+
+                                            <FieldWrap label="Barcode" htmlFor="edit-barcode">
+                                                <input
+                                                    type="text" id="edit-barcode" name="barcode"
+                                                    value={formData.barcode || ''} onChange={handleChange}
+                                                    className={INPUT_CLS}
+                                                    disabled={isSaving}
+                                                />
+                                            </FieldWrap>
+
+                                            <FieldWrap label="Unit" htmlFor="edit-unit">
+                                                <div className="flex gap-2">
+                                                    <select
+                                                        id="edit-unit"
+                                                        name="unit"
+                                                        value={formData.unit || ''}
+                                                        onChange={(e) => {
+                                                            handleChange(e);
+                                                            if (e.target.value !== 'pkt') {
+                                                                setFormData(prev => ({ ...prev, packetSize: undefined }));
+                                                            }
+                                                            if (e.target.value && e.target.value !== '') {
+                                                                setUnitChangeWarning(true);
+                                                            }
+                                                        }}
+                                                        className={`${INPUT_CLS} ${formData.unit === 'pkt' ? 'w-1/2' : 'w-full'}`}
+                                                        disabled={isSaving}
+                                                    >
+                                                        {UNIT_OPTIONS.map(u => (
+                                                            <option key={u.value} value={u.value} disabled={u.value === ''}>
+                                                                {u.label}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+
+                                                    {formData.unit === 'pkt' && (
+                                                        <input
+                                                            type="number"
+                                                            name="packetSize"
+                                                            value={formData.packetSize ?? ''}
+                                                            onChange={handleChange}
+                                                            placeholder="Qty per pkt"
+                                                            className={`${INPUT_CLS} w-1/2`}
+                                                            disabled={isSaving}
+                                                            min="1"
+                                                        />
+                                                    )}
+                                                </div>
+                                            </FieldWrap>
+
+                                            {unitChangeWarning && (
+                                                <div className="col-span-2 flex items-start gap-2 rounded-lg bg-[#fff3dd] px-3 py-2 text-[13px] text-[#bb4d00]">
+                                                    <FiAlertTriangle size={14} className="mt-0.5 shrink-0" />
+                                                    <span>Unit changed — MRP and Sales Price are still the same values. Please review and update them for the new unit.</span>
+                                                    <button onClick={() => setUnitChangeWarning(false)} aria-label="Dismiss" className="ml-auto text-[#bb4d00] hover:opacity-70">
+                                                        <FiX size={14} />
+                                                    </button>
+                                                </div>
+                                            )}
+
+                                            <FieldWrap className="col-span-2" label="Description" htmlFor="edit-description">
+                                                <input
+                                                    type="text" id="edit-description" name="description"
+                                                    value={formData.description || ''} onChange={handleChange}
+                                                    className={INPUT_CLS}
+                                                    placeholder="e.g. Keeps clothes fresh, 500 g pack"
+                                                    disabled={isSaving}
+                                                />
+                                            </FieldWrap>
+                                        </div>
+                                    </SectionCard>
+
+                                    {/* ---------- PRICING & TAX ---------- */}
+                                    <SectionCard icon={<FiFileText size={16} />} tone="green" title="Pricing & tax" hint={`For ${getUnitLabel()}`}>
+                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-x-3 md:gap-x-4 gap-y-3">
+                                            <FieldWrap label="MRP" htmlFor="edit-mrp" warn={mrpWarn}>
+                                                <div className="relative">
+                                                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-[#5b6b86]">₹</span>
+                                                    <input
+                                                        id="edit-mrp"
+                                                        type="number"
+                                                        name="mrp"
+                                                        value={formData.mrp ?? ''}
+                                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                        onChange={handleChange}
+                                                        className={`${INPUT_CLS} pl-7 ${mrpWarn ? INPUT_WARN_CLS : ''}`}
+                                                    />
+                                                </div>
+                                            </FieldWrap>
+
+                                            <FieldWrap label="Sale discount" htmlFor="edit-discount">
+                                                <div className="relative">
+                                                    <input
+                                                        type="number" id="edit-discount" name="discount" step="0.01"
+                                                        value={formData.discount ?? ''}
+                                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                        onChange={handleChange}
+                                                        className={`${INPUT_CLS} pr-8`}
+                                                        disabled={isSaving}
+                                                    />
+                                                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-[#5b6b86]">%</span>
+                                                </div>
+                                            </FieldWrap>
+
+                                            <FieldWrap
+                                                label="Sale price"
+                                                htmlFor="edit-salesPrice"
+                                                hint={uiSales > 0 ? `Customer pays ${fmtINR(uiCustomerPays)} after ${uiDiscount}% off` : undefined}
+                                            >
+                                                <div className="relative">
+                                                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-[#5b6b86]">₹</span>
+                                                    <input
+                                                        id="edit-salesPrice"
+                                                        type="number"
+                                                        name="salesPrice"
+                                                        value={formData.salesPrice ?? ''}
+                                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                        onChange={handleChange}
+                                                        className={`${INPUT_CLS} pl-7 font-semibold`}
+                                                    />
+                                                </div>
+                                            </FieldWrap>
+
+                                            <FieldWrap label="Purchase price" htmlFor="edit-purchasePrice" warn={purchaseWarn}>
+                                                <div className="relative">
+                                                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-[#5b6b86]">₹</span>
+                                                    <input
+                                                        id="edit-purchasePrice"
+                                                        type="number"
+                                                        name="purchasePrice"
+                                                        value={formData.purchasePrice ?? ''}
+                                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                        onChange={handleChange}
+                                                        className={`${INPUT_CLS} pl-7 ${purchaseWarn ? INPUT_WARN_CLS : ''}`}
+                                                    />
+                                                </div>
+                                            </FieldWrap>
+
+                                            <FieldWrap label="Purchase discount" htmlFor="edit-purchasediscount">
+                                                <div className="relative">
+                                                    <input
+                                                        type="number" id="edit-purchasediscount" name="purchasediscount" step="0.01"
+                                                        value={formData.purchasediscount ?? ''}
+                                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                        onChange={handleChange}
+                                                        className={`${INPUT_CLS} pr-8`}
+                                                        disabled={isSaving}
+                                                    />
+                                                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-[#5b6b86]">%</span>
+                                                </div>
+                                            </FieldWrap>
+
+                                            <FieldWrap label="Your profit">
+                                                <div className="flex h-10 items-center rounded-lg bg-(--dr-sunken) px-3 text-sm tabular-nums text-[#5b6b86]">
+                                                    {uiProfit === null ? 'Unknown' : fmtINR(uiProfit)}
+                                                </div>
+                                            </FieldWrap>
+
+                                            <FieldWrap label="Tax (%)" htmlFor="edit-tax" warn={taxWarn}>
+                                                <div className="relative">
+                                                    <input
+                                                        type="number" id="edit-tax" name="tax" step="0.01"
+                                                        value={formData.tax ?? ''}
+                                                        onChange={handleChange}
+                                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                        className={`${INPUT_CLS} pr-8 ${taxWarn ? INPUT_WARN_CLS : ''}`}
+                                                        disabled={isSaving}
+                                                    />
+                                                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-[#5b6b86]">%</span>
+                                                </div>
+                                            </FieldWrap>
+
+                                            <FieldWrap label="HSN code" htmlFor="edit-hsnSac" hint="Needed on GST bills">
+                                                <input
+                                                    type="text" id="edit-hsnSac" name="hsnSac"
+                                                    value={formData.hsnSac || ''}
+                                                    onChange={handleChange}
+                                                    onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                    className={INPUT_CLS}
+                                                    disabled={isSaving}
+                                                    placeholder="e.g. 123456"
+                                                />
+                                            </FieldWrap>
+                                        </div>
+                                    </SectionCard>
+
+                                    {/* ---------- STOCK ---------- */}
+                                    <SectionCard icon={<FiBox size={16} />} tone="amber" title="Stock">
+                                        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                                            <FieldWrap label="In stock" htmlFor="edit-stock" warn={stockWarn}>
+                                                <div className="relative">
+                                                    <input
+                                                        type="number"
+                                                        id="edit-stock"
+                                                        name="stock"
+                                                        step="1"
+                                                        value={formData.stock ?? ''}
+                                                        onChange={handleChange}
+                                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                        className={`${INPUT_CLS} pr-10 font-semibold ${uiStock < 0 ? 'text-[#d5000c] ' + INPUT_WARN_CLS : ''}`}
+                                                        disabled={isSaving}
+                                                    />
+                                                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-[#5b6b86]">pcs</span>
+                                                </div>
+                                            </FieldWrap>
+
+                                            <FieldWrap label="MOQ" htmlFor="edit-moq" hint="Minimum order quantity">
+                                                <div className="relative">
+                                                    <input
+                                                        id="edit-moq"
+                                                        type="number"
+                                                        name="moq"
+                                                        value={formData.moq ?? ''}
+                                                        onChange={handleChange}
+                                                        className={`${INPUT_CLS} pr-10`}
+                                                        disabled={isSaving}
+                                                    />
+                                                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-[#5b6b86]">pcs</span>
+                                                </div>
+                                            </FieldWrap>
+                                        </div>
+                                    </SectionCard>
+
+                                    {/* ---------- VARIANTS & CATALOGUE ---------- */}
+                                    <SectionCard icon={<FiGrid size={16} />} tone="magenta" title="Variants & catalogue">
+                                        <div className="grid gap-4">
+                                            <div className="grid gap-1">
+                                                <span className={LABEL_CLS}>Variants</span>
+                                                <VariantPicker
+                                                    allItems={allItemsForVariants}
+                                                    selectedIds={variantIds}
+                                                    currentItemBarcode={formData.barcode || ''}
+                                                    onChange={setVariantIds}
+                                                    activeTheme={{ text: 'text-(--dr-primary)', border: 'border-(--dr-primary)', primaryBg: 'bg-(--dr-primary)', focusRing: 'focus:ring-(--dr-primary)' } as any}
+                                                />
+                                                <small className="text-[11px] leading-[15px] text-[#5b6b86]">Link other sizes or colours of the same product</small>
+                                            </div>
+
+                                            {/* Pricing Options (Tiers) */}
+                                            {enablePriceTiers && (
+                                                <div className="border-t border-(--dr-line) pt-4">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className="text-sm font-medium leading-none text-[#0f172b]">
+                                                            Pricing options <span className="text-[#5b6b86] font-normal text-xs">(e.g. Box of 10, Combo)</span>
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={addPriceTier}
+                                                            disabled={quantitySlabs.length > 0}
+                                                            title={quantitySlabs.length > 0 ? 'Remove Quantity Pricing slabs to use Pricing Options' : ''}
+                                                            className="text-xs font-semibold text-(--dr-primary) hover:underline disabled:text-[#5b6b86] disabled:opacity-45 disabled:no-underline disabled:cursor-not-allowed"
+                                                        >
+                                                            + Add Pricing Option
+                                                        </button>
+                                                    </div>
+
+                                                    {priceTiers.length === 0 ? (
+                                                        <p className="text-[11px] text-[#5b6b86] italic">
+                                                            No extra pricing added. Item will only sell at the single price set above.
+                                                        </p>
+                                                    ) : (
+                                                        <div className="space-y-3">
+                                                            {priceTiers.map((tier) => (
+                                                                <div key={tier.id} className="border border-(--dr-line) rounded-lg p-3 bg-(--dr-sunken) relative">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => removePriceTier(tier.id)}
+                                                                        aria-label="Remove pricing option"
+                                                                        className="absolute top-2 right-2 text-[#5b6b86] hover:text-[#d5000c]"
+                                                                    >
+                                                                        <FiX size={16} />
+                                                                    </button>
+
+                                                                    <div className="grid grid-cols-2 gap-3 mb-2 pr-6">
+                                                                        <div>
+                                                                            <label className={SMALL_LABEL_CLS}>Label</label>
+                                                                            <input
+                                                                                type="text"
+                                                                                value={tier.label}
+                                                                                onChange={(e) => updatePriceTier(tier.id, 'label', e.target.value)}
+                                                                                placeholder="e.g. Box of 10"
+                                                                                className={SMALL_INPUT_CLS}
+                                                                            />
+                                                                        </div>
+                                                                        <div>
+                                                                            <label className={SMALL_LABEL_CLS}>Quantity</label>
+                                                                            <input
+                                                                                type="number"
+                                                                                value={tier.quantity}
+                                                                                onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                                                onChange={(e) => updatePriceTier(tier.id, 'quantity', e.target.value)}
+                                                                                placeholder="e.g. 10"
+                                                                                className={SMALL_INPUT_CLS}
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <div className="grid grid-cols-3 gap-3 mb-2">
+                                                                        <div>
+                                                                            <label className={SMALL_LABEL_CLS}>MRP</label>
+                                                                            <input
+                                                                                type="number"
+                                                                                value={tier.mrp}
+                                                                                onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                                                onChange={(e) => updatePriceTier(tier.id, 'mrp', e.target.value)}
+                                                                                placeholder="0.00"
+                                                                                className={SMALL_INPUT_CLS}
+                                                                            />
+                                                                        </div>
+                                                                        <div>
+                                                                            <label className={SMALL_LABEL_CLS}>Sales Price</label>
+                                                                            <input
+                                                                                type="number"
+                                                                                value={tier.salesPrice}
+                                                                                onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                                                onChange={(e) => updatePriceTier(tier.id, 'salesPrice', e.target.value)}
+                                                                                placeholder="0.00"
+                                                                                className={SMALL_INPUT_CLS}
+                                                                            />
+                                                                        </div>
+                                                                        <div>
+                                                                            <label className={SMALL_LABEL_CLS}>Purchase Price</label>
+                                                                            <input
+                                                                                type="number"
+                                                                                value={tier.purchasePrice}
+                                                                                onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                                                onChange={(e) => updatePriceTier(tier.id, 'purchasePrice', e.target.value)}
+                                                                                placeholder="0.00"
+                                                                                className={SMALL_INPUT_CLS}
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <div>
+                                                                        <label className={SMALL_LABEL_CLS}>Barcode (optional)</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            value={tier.barcode}
+                                                                            onChange={(e) => updatePriceTier(tier.id, 'barcode', e.target.value)}
+                                                                            placeholder="Scan or type this pack's own barcode"
+                                                                            className={SMALL_INPUT_CLS}
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* Quantity Pricing (Volume Slabs) */}
+                                            {enableQuantitySlabs && (
+                                                <div className="border-t border-(--dr-line) pt-4">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className="text-sm font-medium leading-none text-[#0f172b]">
+                                                            Quantity pricing <span className="text-[#5b6b86] font-normal text-xs">(e.g. 1-10 @ ₹100, 11-20 @ ₹95)</span>
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={addQuantitySlab}
+                                                            disabled={priceTiers.length > 0}
+                                                            title={priceTiers.length > 0 ? 'Remove Pricing Options to use Quantity Pricing' : ''}
+                                                            className="text-xs font-semibold text-(--dr-primary) hover:underline disabled:text-[#5b6b86] disabled:opacity-45 disabled:no-underline disabled:cursor-not-allowed"
+                                                        >
+                                                            + Add Slab
+                                                        </button>
+                                                    </div>
+
+                                                    {priceTiers.length > 0 && (
+                                                        <p className="text-[11px] text-[#bb4d00] mb-2">
+                                                            Pricing Options are in use. Remove them to add Quantity Pricing.
+                                                        </p>
+                                                    )}
+
+                                                    {quantitySlabs.length === 0 ? (
+                                                        <p className="text-[11px] text-[#5b6b86] italic">
+                                                            No quantity slabs added. Item will always sell at the single price set above.
+                                                        </p>
+                                                    ) : (
+                                                        <div className="space-y-2">
+                                                            <div className="grid grid-cols-[1fr_1fr_1fr_24px] gap-2 text-[10px] font-medium text-[#5b6b86]">
+                                                                <span>From Qty</span>
+                                                                <span>To Qty (blank = above)</span>
+                                                                <span>Price / unit</span>
+                                                                <span></span>
+                                                            </div>
+                                                            {quantitySlabs.map((slab) => (
+                                                                <div key={slab.id} className="grid grid-cols-[1fr_1fr_1fr_24px] gap-2 items-center">
+                                                                    <input
+                                                                        type="number"
+                                                                        min="1"
+                                                                        value={slab.minQty || ''}
+                                                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                                        onChange={(e) => updateQuantitySlab(slab.id, 'minQty', e.target.value)}
+                                                                        placeholder="1"
+                                                                        disabled={isSaving}
+                                                                        className={SMALL_INPUT_CLS}
+                                                                    />
+                                                                    <input
+                                                                        type="number"
+                                                                        min="1"
+                                                                        value={slab.maxQty ?? ''}
+                                                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                                        onChange={(e) => updateQuantitySlab(slab.id, 'maxQty', e.target.value)}
+                                                                        placeholder="And above"
+                                                                        disabled={isSaving}
+                                                                        className={SMALL_INPUT_CLS}
+                                                                    />
+                                                                    <input
+                                                                        type="number"
+                                                                        value={slab.salesPrice || ''}
+                                                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                                        onChange={(e) => updateQuantitySlab(slab.id, 'salesPrice', e.target.value)}
+                                                                        placeholder="0.00"
+                                                                        disabled={isSaving}
+                                                                        className={SMALL_INPUT_CLS}
+                                                                    />
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => removeQuantitySlab(slab.id)}
+                                                                        disabled={isSaving}
+                                                                        aria-label="Remove slab"
+                                                                        className="text-[#5b6b86] hover:text-[#d5000c]"
+                                                                    >
+                                                                        <FiX size={16} />
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                            <p className="text-[10px] text-[#5b6b86]">
+                                                                The slab price applies to the whole quantity. Quantities outside all slabs use the base Sales Price.
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* Add-ons: pick from the groups created in Item groups */}
+                                            {enableAddOns && (
+                                                <div className="border-t border-[#dfe6fb] pt-3">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#e6eeff] text-base font-semibold text-[#155dfc]">+</span>
+                                                        <div className="min-w-0">
+                                                            <b className="block text-[15px] font-semibold leading-5 text-[#0f172b]">Add-ons</b>
+                                                            <small className="block text-[11px] leading-4 text-[#5b6b86]">Pick groups created in Item groups, then choose which options this item shows</small>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => { onClose(); navigate(itemGroupRoute); }}
+                                                            className="ml-auto shrink-0 text-xs font-semibold text-[#155dfc] hover:underline"
+                                                        >
+                                                            Manage add-ons
+                                                        </button>
+                                                    </div>
+
+                                                    <div className="mt-2.5">
+                                                        {addOnTemplates.length === 0 ? (
+                                                            <p className="m-0 text-xs text-[#5b6b86]">No add-on groups yet. Create them in Item groups → Add-ons.</p>
+                                                        ) : (
+                                                            <select
+                                                                value=""
+                                                                disabled={isSaving}
+                                                                onChange={(e) => {
+                                                                    const id = e.target.value;
+                                                                    if (id) {
+                                                                        setAddOnGroupIds(prev => (prev.includes(id) ? prev : [...prev, id]));
+                                                                        setAddOnOpenId(id); // open its checklist right away
+                                                                    }
+                                                                }}
+                                                                className={`${INPUT_CLS} !h-9`}
+                                                            >
+                                                                <option value="">Add an add-on group…</option>
+                                                                {addOnTemplates.filter(t => !addOnGroupIds.includes(t.id)).map(t => (
+                                                                    <option key={t.id} value={t.id}>{t.name}</option>
+                                                                ))}
+                                                            </select>
+                                                        )}
+                                                    </div>
+
+                                                    {addOnGroupIds.length > 0 && (
+                                                        <div className="mt-2 flex flex-wrap gap-1.5">
+                                                            {addOnGroupIds.map((gid) => {
+                                                                const g = addOnTemplates.find(t => t.id === gid);
+                                                                const picked = g ? (addOnPick[gid] ?? g.options.map(o => o.id)) : [];
+                                                                const partial = !!g && picked.length < g.options.length;
+                                                                const open = addOnOpenId === gid;
+                                                                return (
+                                                                    <div
+                                                                        key={gid}
+                                                                        className={`inline-flex h-7 items-center rounded-full border pl-2.5 pr-1 text-xs ${open ? 'border-[#155dfc] bg-[#e6eeff]' : 'border-[#dfe6fb] bg-[#f5f7ff]'}`}
+                                                                    >
+                                                                        <button
+                                                                            type="button"
+                                                                            disabled={!g}
+                                                                            onClick={() => setAddOnOpenId(open ? null : gid)}
+                                                                            aria-expanded={open}
+                                                                            className="inline-flex items-center gap-1.5"
+                                                                        >
+                                                                            <span className="max-w-[140px] truncate font-semibold text-[#0f172b]">
+                                                                                {g ? g.name : addOnsLoaded ? 'Removed group' : '…'}
+                                                                            </span>
+                                                                            {g && (
+                                                                                <span className={`text-[11px] ${partial ? 'font-semibold text-[#155dfc]' : 'text-[#5b6b86]'}`}>
+                                                                                    {picked.length}/{g.options.length}
+                                                                                </span>
+                                                                            )}
+                                                                            {g && (
+                                                                                <svg
+                                                                                    viewBox="0 0 24 24"
+                                                                                    aria-hidden="true"
+                                                                                    className={`h-3 w-3 fill-none stroke-[#5b6b86] transition-transform ${open ? 'rotate-90' : ''}`}
+                                                                                    strokeWidth={2.5}
+                                                                                    strokeLinecap="round"
+                                                                                    strokeLinejoin="round"
+                                                                                >
+                                                                                    <path d="M9 6l6 6-6 6" />
+                                                                                </svg>
+                                                                            )}
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            disabled={isSaving}
+                                                                            aria-label="Remove add-on group"
+                                                                            onClick={() => setAddOnGroupIds(prev => prev.filter(id => id !== gid))}
+                                                                            className="ml-1 grid h-5 w-5 place-items-center rounded-full text-[#5b6b86] hover:bg-white hover:text-[#d5000c]"
+                                                                        ><FiX size={12} /></button>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+
+                                                    {(() => {
+                                                        const g = addOnOpenId && addOnGroupIds.includes(addOnOpenId)
+                                                            ? addOnTemplates.find(t => t.id === addOnOpenId)
+                                                            : undefined;
+                                                        if (!g) return null;
+                                                        const gid = g.id;
+                                                        const picked = addOnPick[gid] ?? g.options.map(o => o.id);
+                                                        const partial = picked.length < g.options.length;
+                                                        return (
+                                                            <div className="mt-2 grid gap-1.5 rounded-lg bg-[#f5f7ff] p-2.5">
+                                                                {g.multiple && (
+                                                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#45556c]">
+                                                                        <label htmlFor={`addon-limit-${gid}`}>Max choices</label>
+                                                                        <input
+                                                                            id={`addon-limit-${gid}`}
+                                                                            type="number"
+                                                                            min="1"
+                                                                            disabled={isSaving}
+                                                                            value={addOnLimit[gid] || ''}
+                                                                            placeholder={Number(g.maxSelect) > 0 ? `${g.maxSelect}` : '∞'}
+                                                                            onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                                            onChange={(e) => setAddOnLimit(prev => ({ ...prev, [gid]: parseInt(e.target.value, 10) || 0 }))}
+                                                                            className="h-7 w-14 rounded-md border border-[#7a8aa3] bg-white px-2 text-xs text-[#0f172b] outline-none focus:border-[#155dfc] focus:ring-2 focus:ring-[#155dfc]/40 disabled:opacity-45"
+                                                                        />
+                                                                        <span className="text-[11px] text-[#5b6b86]">Blank = group limit · 1 = choose one</span>
+                                                                    </div>
+                                                                )}
+
+                                                                <div className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
+                                                                    {g.options.map((o) => (
+                                                                        <label key={o.id} className="flex min-w-0 cursor-pointer items-center gap-2 text-xs text-[#0f172b]">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                disabled={isSaving}
+                                                                                checked={picked.includes(o.id)}
+                                                                                onChange={() => toggleAddOnOption(g, o.id)}
+                                                                                className="h-3.5 w-3.5 shrink-0 accent-[#155dfc]"
+                                                                            />
+                                                                            <span className="min-w-0 flex-1 truncate" title={o.name}>{o.name}{o.itemId ? ' (item)' : ''}</span>
+                                                                            <small className="shrink-0 text-[11px] text-[#5b6b86]">{Number(o.price) > 0 ? `+₹${o.price}` : 'Free'}</small>
+                                                                        </label>
+                                                                    ))}
+                                                                </div>
+
+                                                                {partial && (
+                                                                    <button type="button" onClick={() => selectAllAddOnOptions(g)} className="w-fit text-xs font-semibold text-[#155dfc] hover:underline">
+                                                                        Select all
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })()}
+
+                                                    {legacyAddOnGroups.length > 0 && (
+                                                        <div className="mt-2 flex flex-wrap gap-1.5">
+                                                            {legacyAddOnGroups.map((g) => (
+                                                                <span key={g.id} className="inline-flex h-7 items-center gap-1 rounded-full bg-[#fff3dd] pl-2.5 pr-1.5 text-xs font-medium text-[#bb4d00]">
+                                                                    {g.name} (this item only)
+                                                                    <button
+                                                                        type="button"
+                                                                        disabled={isSaving}
+                                                                        aria-label="Remove add-on group"
+                                                                        onClick={() => setLegacyAddOnGroups(prev => prev.filter(x => x.id !== g.id))}
+                                                                        className="grid h-4 w-4 place-items-center rounded-full hover:bg-white"
+                                                                    ><FiX size={12} /></button>
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* Catalogue listing */}
+                                            <ShowWrapper requiredPermission={Permissions.ViewCatalogue}>
+                                                <div className="flex items-center gap-3 border-t border-(--dr-line) pt-4">
+                                                    <div className="flex-1 min-w-0">
+                                                        <label
+                                                            htmlFor={`edit-isListed-${item?.id}`}
+                                                            className="block text-sm font-medium text-[#0f172b] select-none cursor-pointer"
+                                                        >
+                                                            List this item on Catalog
+                                                        </label>
+                                                        <div className="text-xs text-[#5b6b86]">Customers can see and order it from your catalogue link</div>
+                                                    </div>
+                                                    <input
+                                                        type="checkbox"
+                                                        id={`edit-isListed-${item?.id}`}
+                                                        name="isListed"
+                                                        checked={formData.isListed ?? false}
+                                                        onChange={handleChange}
+                                                        disabled={isSaving}
+                                                        className="h-5 w-5 rounded border-[#7a8aa3] accent-(--dr-primary) cursor-pointer"
+                                                    />
+                                                </div>
+                                            </ShowWrapper>
+                                        </div>
+                                    </SectionCard>
                                 </div>
-                            </ShowWrapper>
+                            </div>
                         </>
                     )}
-                    <div className="border-t p-4 flex gap-3 bg-white sticky bottom-0">
-                        <button
-                            onClick={handleSave}
-                            disabled={isSaving || isFetching}
-                            className="inline-flex items-center justify-center whitespace-nowrap rounded-sm text-sm font-medium ring-offset-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-sky-500 text-white hover:bg-gray-800 h-10 px-4 py-2 flex-1 gap-2 disabled:bg-gray-400"
-                        >
-                            {isSaving ? <Spinner /> : <FiSave size={16} />}
-                            {isSaving ? (uploadProgress !== null ? 'Uploading...' : 'Saving...') : 'Save Changes'}
-                        </button>
-                        <button
-                            onClick={onClose}
-                            disabled={isSaving}
-                            className="inline-flex items-center justify-center whitespace-nowrap rounded-sm text-sm font-medium ring-offset-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-gray-300 bg-white hover:bg-gray-100 hover:text-gray-900 h-10 px-4 py-2 flex-1"
-                        >
-                            Cancel
-                        </button>
+                </div>
+
+                {/* ---------- STICKY FOOTER ---------- */}
+                <div className="flex items-center gap-2.5 px-3 md:px-5 pt-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-white border-t border-(--dr-line) shadow-[0_-6px_16px_rgba(21,48,140,0.06)]">
+                    <div className="md:hidden mr-auto grid">
+                        <span className="text-xs text-[#45556c]">Customer pays</span>
+                        <b className="text-xl leading-6 font-semibold tabular-nums text-[#0f172b]">{fmtINR(uiCustomerPays)}</b>
                     </div>
+                    <span className="hidden md:block mr-auto" />
+                    <button
+                        onClick={onClose}
+                        disabled={isSaving}
+                        className="hidden md:inline-flex h-10 items-center justify-center whitespace-nowrap rounded-lg px-4 text-sm font-medium text-[#0f172b] hover:bg-(--dr-sunken) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--dr-primary) focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-45"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={handleSave}
+                        disabled={isSaving || isFetching}
+                        className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-(--dr-primary) px-5 text-sm font-medium text-white transition-colors hover:bg-(--dr-primary-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--dr-primary) focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-45"
+                    >
+                        {isSaving ? <Spinner /> : <FiSave size={16} />}
+                        {isSaving ? (uploadProgress !== null ? 'Uploading...' : 'Saving...') : 'Save changes'}
+                    </button>
                 </div>
             </div>
         </div>

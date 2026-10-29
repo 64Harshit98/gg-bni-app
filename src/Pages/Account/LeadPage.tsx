@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { collection, deleteDoc, doc, getDocs, Timestamp, updateDoc } from 'firebase/firestore';
 import { LineChart, Trash2, X } from 'lucide-react';
 import { db } from '../../lib/Firebase';
-import Loading from '../Loading/Loading';
+import PageLoader from '../../Components/PageLoader';
 import type { AdminLead, DateRange, LeadSalesStatus, LeadStage, RangeKey } from './superAdmin/data';
 import {
   LEAD_SALES_META, LEAD_STAGE_META, ageText, buildLeads, daysUntil, downloadCsv, fmtDate,
@@ -175,7 +175,7 @@ const LeadsPage: React.FC = () => {
       l.assignedTo, l.followUpAt?.toISOString().slice(0, 10) || '', l.lastUpdated?.toISOString() || '', l.company?.id || '']),
   );
 
-  if (loading) return <Loading />;
+  if (loading) return <PageLoader />;
 
   const pct = (n: number, d: number) => (d ? `${Math.round((n / d) * 100)}%` : '—');
   const deltaPts = compare ? Math.round((f.rate - fPrev.rate) * 100) : null;

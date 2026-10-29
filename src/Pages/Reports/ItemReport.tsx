@@ -1,34 +1,79 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router';
+import {
+  AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  CalendarDays,
+  ChevronDown,
+  ChevronLeft,
+  Eye,
+  EyeOff,
+  FileText,
+  Info,
+  Package,
+  Percent,
+  Search,
+  Tag,
+  X,
+} from 'lucide-react';
 import useItemReport from './ItemReportComponents/useItemReport';
 import type { Item } from '../../constants/models';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import XLSX from 'xlsx-js-style';
 import { Spinner } from '../../constants/Spinner';
-import { CustomCard } from '../../Components/CustomCard';
-import { CardVariant } from '../../enums';
-import { CustomTable } from '../../Components/CustomTable';
-import BackButton from '../../Components/BackButton';
-import { IconClose, IconSearch } from '../../constants/Icons';
-import { getItemColumns } from '../../constants/TableColoumns';
-import DownloadChoiceModal from './ItemReportComponents/DownloadChoiceModal';
-import FilterSelect from './ItemReportComponents/FilterSelect';
-import ReportDateFilter from '../../Components/ReportDateFilter';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
-import { useAuth } from '../../context/auth-context'
+import { useAuth } from '../../context/auth-context';
 import { useGodowns, useGodownStock, SHOP_ID, SHOP_NAME } from '../hooks/useStockTransfer';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
-// Import your Modal and State
-import { Modal } from '../../constants/Modal'; // Adjust path to where you saved the Modal code
-import { State } from '../../enums';
+import { Modal } from '../../constants/Modal';
+import { Permissions, State } from '../../enums';
 import { useStockLedger } from '../hooks/useStockLedger';
+import { ITEM_ISSUES, hasItemIssue, isItemIssue, type ItemIssue } from './ItemReportComponents/itemIssues';
+import {
+  formatDateForInput,
+  formatRangeLabel,
+  getPresetRange,
+  parseInputDate,
+} from './SalesReportComponents/salesReport.utils';
+import DownloadMenu from './SalesReportComponents/DownloadMenu';
+import CustomRangePanel from './SalesReportComponents/CustomRangePanel';
+import { ItemEditDrawer } from '../../Components/ItemDrawer';
 
 const UNASSIGNED_GROUP_NAME = 'Uncategorized';
-// --- Helper Component ---
+const PAGE_SIZE = 100;
+
+// The date range only drives the stock in/out columns of the downloads.
+const ITEM_DATE_PRESETS = [
+  { value: 'month', label: 'This month' },
+  { value: 'last30', label: 'Last 30 days' },
+  { value: 'fy', label: 'This FY' },
+];
+
+type ItemRow = Item & {
+  stock: number;
+  stockIn: number;
+  stockOut: number;
+  openingBalance: number;
+  closingBalance: number;
+  valueOfItem: number;
+};
+
+// Sign goes before the ₹ ("-₹5,411", not "₹-5,411")
+const inr = (n: number) =>
+  `${n < 0 ? '-' : ''}₹${Math.abs(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const inrRound = (n: number) => {
+  const r = Math.round(n);
+  return `${r < 0 ? '-' : ''}₹${Math.abs(r).toLocaleString('en-IN')}`;
+};
 
 const ItemReport: React.FC = () => {
-  const { currentUser } = useAuth();
+  const { currentUser, hasPermission } = useAuth();
+  const navigate = useNavigate();
+  const canEditItems = hasPermission(Permissions.ManageItems);
   const [showSearch, setShowSearch] = useState(false);
   const [companyName, setCompanyName] = useState<string>('');
 
@@ -55,15 +100,16 @@ const ItemReport: React.FC = () => {
   }, [currentUser?.companyId]);
   const [searchQuery, setSearchQuery] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const last30StartStr = (() => {
+  const [fromDate, setFromDate] = useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() - 29);
-    return d.toISOString().slice(0, 10);
-  })();
-  const [fromDate, setFromDate] = useState<string>(last30StartStr);
-  const [toDate, setToDate] = useState<string>(todayStr);
+    return formatDateForInput(d);
+  });
+  const [toDate, setToDate] = useState<string>(() => formatDateForInput(new Date()));
   const [datePreset, setDatePreset] = useState<string>('last30');
+  const [isRangeOpen, setIsRangeOpen] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [editingItem, setEditingItem] = useState<Item | null>(null);
   const {
     items,
     appliedItemGroupId,
@@ -71,7 +117,6 @@ const ItemReport: React.FC = () => {
     setAppliedItemGroupId,
     setSortConfig,
     itemGroups,
-    itemGroupId,
     setItemGroupId,
     setIsListVisible,
     isListVisible,
@@ -79,8 +124,20 @@ const ItemReport: React.FC = () => {
     setFeedbackModal,
     isLoading,
     feedbackModal,
-    isDownloadModalOpen,
   } = useItemReport();
+
+  // The list is the point of this page — show it by default.
+  useEffect(() => {
+    setIsListVisible(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Opened from an "Items that need a look" chip on the Item reports hub.
+  const location = useLocation();
+  const [issueFilter, setIssueFilter] = useState<ItemIssue | null>(() => {
+    const issue = (location.state as { issue?: unknown } | null)?.issue;
+    return isItemIssue(issue) ? issue : null;
+  });
 
   const { godowns } = useGodowns(currentUser?.companyId);
   const { stockRows } = useGodownStock(currentUser?.companyId, godowns);
@@ -99,7 +156,7 @@ const ItemReport: React.FC = () => {
 
   // Items with `stock` overridden to reflect the selected location
   // (or the sum across all locations when no location is selected).
-  const itemsWithLocationStock = useMemo(() => {
+  const itemsWithLocationStock: ItemRow[] = useMemo(() => {
     return items.map(item => {
       const locMap = stockByItemLocation.get(item.id || '');
       let stock: number;
@@ -120,21 +177,45 @@ const ItemReport: React.FC = () => {
     });
   }, [items, stockByItemLocation, locationFilter, ledgerMap]);
 
-  const { filteredItems, summary } = useMemo(() => {
-    const newFilteredItems = itemsWithLocationStock.filter((item) => {
-      const matchesSearch =
-        !searchQuery ||
-        (item.name && item.name.toLowerCase().includes(searchQuery.toLowerCase()));
-      if (!matchesSearch) return false;
+  // Items store their group by id or (after a rename) by name.
+  const groupOf = (item: Pick<Item, 'itemGroupId'>) =>
+    itemGroups.find((g) => g.id === item.itemGroupId || g.name === item.itemGroupId);
+  const getGroupName = (id?: string) => {
+    if (!id) return UNASSIGNED_GROUP_NAME;
+    return groupOf({ itemGroupId: id })?.name || id;
+  };
 
+  // Group + location + search: drives the summary cards and issue counts.
+  const baseItems = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const selectedGroup = itemGroups.find((g) => g.id === appliedItemGroupId);
+    return itemsWithLocationStock.filter((item) => {
+      if (q && !(item.name || '').toLowerCase().includes(q) && !String(item.barcode || '').toLowerCase().includes(q)) {
+        return false;
+      }
       // When a specific location is selected, only show items that actually
       // have stock there — an item with 0 stock at this location shouldn't appear.
       if (locationFilter && (item.stock || 0) <= 0) return false;
 
       if (!appliedItemGroupId) return true;
-      const itemGroupName = item.itemGroupId || UNASSIGNED_GROUP_NAME;
-      return itemGroupName === appliedItemGroupId;
+      if (appliedItemGroupId === UNASSIGNED_GROUP_NAME) return !item.itemGroupId || !groupOf(item);
+      return item.itemGroupId === appliedItemGroupId || (!!selectedGroup && item.itemGroupId === selectedGroup.name);
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemsWithLocationStock, searchQuery, locationFilter, appliedItemGroupId, itemGroups]);
+
+  const issueCounts = useMemo(
+    () =>
+      Object.fromEntries(
+        ITEM_ISSUES.map(({ value }) => [value, baseItems.filter((i) => hasItemIssue(i, value, i.stock || 0)).length]),
+      ) as Record<ItemIssue, number>,
+    [baseItems],
+  );
+
+  const { filteredItems, summary } = useMemo(() => {
+    const newFilteredItems = baseItems.filter(
+      (item) => !issueFilter || hasItemIssue(item, issueFilter, item.stock || 0),
+    );
 
     newFilteredItems.sort((a, b) => {
       const key = sortConfig.key;
@@ -143,29 +224,20 @@ const ItemReport: React.FC = () => {
       const valB = b[key] ?? '';
 
       if (typeof valA === 'string' && typeof valB === 'string')
-        return valA.localeCompare(valB) * direction;
+        return valA.localeCompare(valB, undefined, { numeric: true }) * direction;
       if (typeof valA === 'number' && typeof valB === 'number')
         return (valA - valB) * direction;
       return 0;
     });
 
-    const totalItems = newFilteredItems.length;
-    const totalMrp = newFilteredItems.reduce(
-      (sum, item) => sum + (item.mrp || 0),
-      0,
-    );
-    const totalPurchasePrice = newFilteredItems.reduce(
-      (sum, item) => sum + (item.purchasePrice || 0),
-      0,
-    );
-    const totalDiscount = newFilteredItems.reduce(
-      (sum, item) => sum + (item.discount || 0),
-      0,
-    );
-    const averageMrp = totalItems > 0 ? totalMrp / totalItems : 0;
-    const averagePurchasePrice =
-      totalItems > 0 ? totalPurchasePrice / totalItems : 0;
-    const averageDiscount = totalItems > 0 ? totalDiscount / totalItems : 0;
+    // Averages are over the group/location/search set, not the issue filter,
+    // so the cards don't jump when the user peeks at "No MRP" items.
+    const totalItems = baseItems.length;
+    const avgOf = (pick: (i: ItemRow) => number) =>
+      totalItems > 0 ? baseItems.reduce((sum, item) => sum + (pick(item) || 0), 0) / totalItems : 0;
+    const averageMrp = avgOf((i) => i.mrp);
+    const averagePurchasePrice = avgOf((i) => i.purchasePrice);
+    const averageDiscount = avgOf((i) => i.discount ?? 0);
     const averageSalePrice = averageMrp * (1 - averageDiscount / 100);
     const averageProfitMargin = averageSalePrice - averagePurchasePrice;
     const averageMarginPercentage =
@@ -182,56 +254,38 @@ const ItemReport: React.FC = () => {
         averageMarginPercentage,
       },
     };
-  }, [appliedItemGroupId, sortConfig, itemsWithLocationStock, searchQuery, locationFilter]);
+  }, [baseItems, issueFilter, sortConfig]);
 
-  const handleApplyFilters = () => setAppliedItemGroupId(itemGroupId);
+  // Start from the top of the list whenever what's listed changes.
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [baseItems, issueFilter, sortConfig]);
 
-  const getPresetRange = (preset: string): { from: string; to: string } => {
-    const today = new Date().toISOString().slice(0, 10);
-    switch (preset) {
-      case 'today':
-        return { from: today, to: today };
-      case 'yesterday': {
-        const d = new Date();
-        d.setDate(d.getDate() - 1);
-        const ds = d.toISOString().slice(0, 10);
-        return { from: ds, to: ds };
-      }
-      case 'last7': {
-        const d = new Date();
-        d.setDate(d.getDate() - 6);
-        return { from: d.toISOString().slice(0, 10), to: today };
-      }
-      case 'last30': {
-        const d = new Date();
-        d.setDate(d.getDate() - 29);
-        return { from: d.toISOString().slice(0, 10), to: today };
-      }
-      default:
-        // 'custom' — leave whatever the user typed in the date inputs
-        return { from: fromDate, to: toDate };
-    }
+  const handleGroupChange = (value: string) => {
+    setItemGroupId(value);
+    setAppliedItemGroupId(value);
   };
 
   const handleDatePresetChange = (preset: string) => {
+    const range = getPresetRange(preset);
+    if (!range) return;
     setDatePreset(preset);
-    if (preset !== 'custom') {
-      const { from, to } = getPresetRange(preset);
-      setFromDate(from);
-      setToDate(to);
-    }
+    setIsRangeOpen(false);
+    setFromDate(formatDateForInput(range.start));
+    setToDate(formatDateForInput(range.end));
+  };
+
+  const handleApplyCustomRange = (startValue: string, endValue: string) => {
+    setDatePreset('custom');
+    setFromDate(startValue);
+    setToDate(endValue);
+    setIsRangeOpen(false);
   };
 
   const handleSort = (key: keyof Item) => {
     const direction =
       sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';
     setSortConfig({ key, direction });
-  };
-
-  const getGroupName = (id?: string) => {
-    if (!id) return UNASSIGNED_GROUP_NAME;
-    const group = itemGroups.find((g) => g.id === id);
-    return group ? group.name : UNASSIGNED_GROUP_NAME;
   };
 
   const prepareExportDataForPdf = (item: Item) => {
@@ -827,193 +881,495 @@ const ItemReport: React.FC = () => {
     }
   };
 
-  const tableColumns = useMemo(() => getItemColumns(itemGroups), [itemGroups]);
+  /* ---------- DOWNLOAD / SHARE ---------- */
+  const runDownload = (action: () => void) => {
+    if (filteredItems.length === 0) {
+      setFeedbackModal({ isOpen: true, type: State.INFO, message: 'No items available to download.' });
+      return;
+    }
+    action();
+  };
+
+  /* ---------- RENDER HELPERS ---------- */
+  const renderSortHeader = (label: string, key: keyof Item, align: 'left' | 'right' = 'left') => {
+    const isActive = sortConfig.key === key;
+    const Icon = !isActive ? ArrowUpDown : sortConfig.direction === 'asc' ? ArrowUp : ArrowDown;
+    return (
+      <th className={`px-4 py-3 font-semibold ${align === 'right' ? 'text-right' : 'text-left'}`}>
+        <button
+          onClick={() => handleSort(key)}
+          className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-blue-800 ${
+            align === 'right' ? 'flex-row-reverse' : ''
+          }`}
+        >
+          {label}
+          <Icon size={11} className={isActive ? 'opacity-100' : 'opacity-40'} />
+        </button>
+      </th>
+    );
+  };
+
+  const issueChips = (compact: boolean) =>
+    ITEM_ISSUES.map(({ value, label }) => {
+      const active = issueFilter === value;
+      const count = issueCounts[value];
+      return (
+        <button
+          key={value}
+          onClick={() => setIssueFilter(active ? null : value)}
+          title={`${count} ${count === 1 ? 'item' : 'items'}`}
+          className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-sm border px-2.5 py-1 text-xs font-medium transition ${
+            active
+              ? 'border-slate-900 bg-slate-900 text-white'
+              : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+          }`}
+        >
+          {!compact && <AlertTriangle size={12} className={active ? 'text-amber-300' : 'text-amber-500'} />}
+          {compact && value === 'noCost' ? 'No cost' : label}
+          {count > 0 && <span className={active ? 'text-white/80' : 'text-slate-400'}>{count}</span>}
+        </button>
+      );
+    });
+
+  const openItem = (item: Item) => {
+    if (canEditItems) setEditingItem(item);
+  };
 
   if (isLoading) return <Spinner />;
 
+  const selectedGroupName = appliedItemGroupId
+    ? appliedItemGroupId === UNASSIGNED_GROUP_NAME
+      ? UNASSIGNED_GROUP_NAME
+      : getGroupName(appliedItemGroupId)
+    : '';
+  const selectedLocationName = locationFilter
+    ? locationFilter === SHOP_ID
+      ? SHOP_NAME
+      : godowns.find((g) => g.id === locationFilter)?.name || 'location'
+    : '';
+  const scopeLabel = `${selectedGroupName ? `in ${selectedGroupName}` : 'in all groups'} · ${
+    selectedLocationName ? `at ${selectedLocationName}` : 'all locations'
+  }`;
+  const rangeLabel = formatRangeLabel(parseInputDate(fromDate).getTime(), parseInputDate(toDate).getTime());
+
+  const statCards = [
+    {
+      label: 'Avg margin',
+      value: `${Math.round(summary.averageMarginPercentage)}%`,
+      hint: `${inrRound(summary.averageProfitMargin)} per item on average`,
+      icon: Percent,
+      iconClass: 'bg-green-50 text-green-600',
+      valueClass: 'text-blue-600',
+    },
+    {
+      label: 'Items',
+      value: summary.totalItems.toLocaleString('en-IN'),
+      hint: scopeLabel,
+      icon: Tag,
+      iconClass: 'bg-orange-50 text-orange-600',
+      valueClass: 'text-slate-900',
+    },
+    {
+      label: 'Avg sale price',
+      value: inrRound(summary.averageSalePrice),
+      hint: `MRP ${inrRound(summary.averageMrp)} on average`,
+      icon: FileText,
+      iconClass: 'bg-blue-50 text-blue-600',
+      valueClass: 'text-slate-900',
+    },
+    {
+      label: 'Avg cost price',
+      value: inrRound(summary.averagePurchasePrice),
+      hint: 'what you pay suppliers',
+      icon: Package,
+      iconClass: 'bg-green-50 text-green-600',
+      valueClass: 'text-slate-900',
+    },
+  ];
+
+  const chipClass = (active: boolean) =>
+    `shrink-0 whitespace-nowrap rounded-sm border px-3.5 py-1.5 text-sm font-medium transition ${
+      active
+        ? 'border-slate-900 bg-slate-900 text-white'
+        : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+    }`;
+
+  const selectClass =
+    'w-full appearance-none rounded-sm border border-slate-300 bg-white py-2 pl-3 pr-8 text-sm text-slate-700 outline-none transition hover:border-slate-400 focus:border-blue-500';
+
+  const visibleItems = filteredItems.slice(0, visibleCount);
+  const mobileSortValue = `${String(sortConfig.key)}:${sortConfig.direction}`;
+
   return (
-    <div className="min-h-screen bg-gray-50 p-2 mb-12">
-      {/* 1. Generic Modal for Success/Error/Info */}
+    <div className="min-h-screen bg-canvas px-3 pb-20 pt-3 md:px-6 md:pb-8 md:pt-5">
       {feedbackModal.isOpen && (
         <Modal
           type={feedbackModal.type}
           message={feedbackModal.message}
-          onClose={() =>
-            setFeedbackModal((prev) => ({ ...prev, isOpen: false }))
-          }
+          onClose={() => setFeedbackModal((prev) => ({ ...prev, isOpen: false }))}
           showConfirmButton={false}
         />
       )}
 
-      {/* 2. Download Choice Modal */}
-      <DownloadChoiceModal
-        isOpen={isDownloadModalOpen}
-        onClose={() => setIsDownloadModalOpen(false)}
-        onDownloadPdf={downloadAsPdf}
-        onDownloadExcel={downloadAsExcel}
-      />
+      {canEditItems && (
+        <ItemEditDrawer
+          item={editingItem}
+          isOpen={!!editingItem}
+          onClose={() => setEditingItem(null)}
+          // The shared items listener brings the saved item back into the list.
+          onSaveSuccess={() => { }}
+        />
+      )}
 
-      <div className="flex items-center justify-between pb-3 border-b mb-2">
-        <BackButton />
-        <h1 className="flex-1 text-xl text-center font-bold text-gray-800">
-          Item Report
-        </h1>
-        <button onClick={() => setShowSearch(true)} className="p-2">
-          <IconSearch />
+      {/* HEADER */}
+      <header className="mb-4 flex items-center gap-2 md:gap-3">
+        <button
+          onClick={() => navigate(-1)}
+          aria-label="Back"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-slate-700 transition hover:bg-slate-200 md:border md:border-slate-300 md:bg-white"
+        >
+          <ChevronLeft size={20} />
         </button>
-      </div>
+
+        <div className="min-w-0 flex-1">
+          <p className="hidden text-xs text-slate-500 md:block">Reports / Item reports /</p>
+          <div className="flex items-baseline gap-3">
+            <h1 className="text-lg font-bold text-slate-900 md:text-xl">Item report</h1>
+            <span className="hidden text-xs text-slate-500 md:inline">Stock, prices and margin for every item</span>
+          </div>
+          <p className="truncate text-xs text-slate-500 md:hidden">
+            {summary.totalItems.toLocaleString('en-IN')} items · {selectedGroupName || 'all groups'}
+          </p>
+        </div>
+
+        {/* Desktop search */}
+        <div className="relative hidden w-72 md:block">
+          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search item name or barcode"
+            className="w-full rounded-sm border border-slate-300 bg-white py-2 pl-9 pr-8 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-0.5 text-slate-400 hover:text-slate-600"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
+        {/* Mobile actions */}
+        <div className="flex items-center md:hidden">
+          <button
+            onClick={() => setShowSearch((s) => !s)}
+            aria-label="Search"
+            className="rounded-sm p-2 text-slate-700 transition hover:bg-slate-200"
+          >
+            <Search size={20} />
+          </button>
+          <DownloadMenu
+            variant="icon"
+            onExcel={() => runDownload(downloadAsExcel)}
+            onPdf={() => runDownload(downloadAsPdf)}
+          />
+        </div>
+      </header>
 
       {showSearch && (
-        <div className="flex justify-center mb-2 px-2">
-          <div className="flex items-center w-full max-w-md border-b-2 border-slate-300 focus-within:border-blue-700">
-            <input
-              type="text"
-              placeholder="Search by Name..."
-              className="flex-1 text-base font-light p-2 outline-none bg-transparent text-center"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              autoFocus
-            />
-            <button
-              onClick={() => {
-                setSearchQuery('');
-                setShowSearch(false);
-              }}
-              className="p-1 text-gray-500 hover:text-black"
-            >
-              <IconClose />
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="bg-white p-2 rounded-lg mb-2">
-        <h2 className="text-center text-sm font-semibold text-gray-700 uppercase tracking-wider mb-2">
-          FILTERS
-        </h2>
-        <div className="flex flex-col sm:flex-row w-full gap-2 sm:items-center">
-          <div className="flex w-full gap-2">
-            <div className="flex-1 min-w-0">
-              <FilterSelect
-                label="Item Group"
-                value={itemGroupId}
-                onChange={(e) => setItemGroupId(e.target.value)}
-              >
-                <option value="">All Groups</option>
-                {itemGroups.map((group) => (
-                  <option key={group.id} value={group.id}>
-                    {group.name}
-                  </option>
-                ))}
-                <option value={UNASSIGNED_GROUP_NAME}>Uncategorized</option>
-              </FilterSelect>
-            </div>
-            <div className="flex-1 min-w-0">
-              <FilterSelect
-                label="Locations"
-                value={locationFilter}
-                onChange={(e) => setLocationFilter(e.target.value)}
-              >
-                <option value="">All Locations</option>
-                <option value={SHOP_ID}>🏪 Shop</option>
-                {godowns.map((g) => (
-                  <option key={g.id} value={g.id}>{g.name}</option>
-                ))}
-              </FilterSelect>
-            </div>
-          </div>
-          <button
-            onClick={handleApplyFilters}
-            className="w-full sm:w-[28%] py-2 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 transition"
-          >
-            Apply
-          </button>
-        </div>
-      </div>
-
-      <ReportDateFilter
-        datePreset={datePreset}
-        startDate={fromDate}
-        endDate={toDate}
-        onPresetChange={handleDatePresetChange}
-        onStartDateChange={(value) => { setDatePreset('custom'); setFromDate(value); }}
-        onEndDateChange={(value) => { setDatePreset('custom'); setToDate(value); }}
-        onApply={handleApplyFilters}
-        theme="pos"
-      />
-
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-2">
-        <CustomCard
-          variant={CardVariant.Summary}
-          title="Total Items"
-          value={Math.round(summary.totalItems).toString()}
-        />
-        <CustomCard
-          variant={CardVariant.Summary}
-          title="Average MRP"
-          value={`₹${Math.round(summary.averageMrp).toLocaleString('en-IN')}`}
-        />
-        <CustomCard
-          variant={CardVariant.Summary}
-          title="Avg. Cost Price"
-          value={`₹${Math.round(summary.averagePurchasePrice).toLocaleString('en-IN')}`}
-        />
-        <CustomCard
-          variant={CardVariant.Summary}
-          title="Avg. Sale Price"
-          value={`₹${Math.round(summary.averageSalePrice).toLocaleString('en-IN')}`}
-        />
-        <CustomCard
-          variant={CardVariant.Summary}
-          title="Avg. Margin"
-          value={`₹${Math.round(summary.averageProfitMargin).toLocaleString('en-IN')}`}
-        />
-        <CustomCard
-          variant={CardVariant.Summary}
-          title="Avg. Margin %"
-          value={`${Math.round(summary.averageMarginPercentage).toFixed(0)} %`}
-        />
-      </div>
-
-      <div className="bg-white p-4 rounded-lg shadow-md flex flex-col md:flex-row md:justify-between md:items-center gap-3">
-        <h2 className="text-lg font-semibold text-gray-700 text-center md:text-left">Report Details</h2>
-        <div className="flex items-stretch gap-3">
-          <button
-            onClick={() => setIsListVisible(!isListVisible)}
-            className="flex-1 md:flex-none px-4 py-2 min-h-[44px] bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition"
-          >
-            {isListVisible ? 'Hide List' : 'Show List'}
-          </button>
-
-          {/* Single Download Button triggers the Choice Modal */}
+        <div className="relative mb-3 md:hidden">
+          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search item name or barcode"
+            autoFocus
+            className="w-full rounded-sm border border-slate-300 bg-white py-2 pl-9 pr-9 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          />
           <button
             onClick={() => {
-              if (filteredItems.length === 0) {
-                setFeedbackModal({
-                  isOpen: true,
-                  type: State.INFO,
-                  message: 'No items available to download.',
-                });
-              } else {
-                setIsDownloadModalOpen(true);
-              }
+              setSearchQuery('');
+              setShowSearch(false);
             }}
-            className="flex-1 md:flex-none px-4 py-2 min-h-[44px] bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 disabled:opacity-50"
+            aria-label="Close search"
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-1 text-slate-400 hover:text-slate-600"
           >
-            Download Report
+            <X size={15} />
           </button>
         </div>
+      )}
+
+      {/* FILTERS */}
+      <div className="relative mb-4 flex flex-col gap-3 md:flex-row md:items-center">
+        <div className="grid grid-cols-2 gap-2.5 md:flex md:gap-2">
+          <div className="relative md:w-44">
+            <select value={appliedItemGroupId} onChange={(e) => handleGroupChange(e.target.value)} className={selectClass}>
+              <option value="">All groups</option>
+              {itemGroups.map((group) => (
+                <option key={group.id} value={group.id}>{group.name}</option>
+              ))}
+              <option value={UNASSIGNED_GROUP_NAME}>Uncategorized</option>
+            </select>
+            <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+          </div>
+          <div className="relative md:w-44">
+            <select value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)} className={selectClass}>
+              <option value="">All locations</option>
+              <option value={SHOP_ID}>{SHOP_NAME}</option>
+              {godowns.map((g) => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </select>
+            <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+          </div>
+        </div>
+
+        {/* Date range — only affects stock in/out in the downloads, so desktop only */}
+        <div className="hidden items-center gap-2 md:ml-auto md:flex">
+          {ITEM_DATE_PRESETS.map((p) => (
+            <button key={p.value} onClick={() => handleDatePresetChange(p.value)} className={chipClass(datePreset === p.value)}>
+              {p.label}
+            </button>
+          ))}
+          <button
+            onClick={() => setIsRangeOpen((o) => !o)}
+            title="Period for stock in / out in the downloads"
+            className={`inline-flex shrink-0 items-center gap-2 rounded-sm border bg-white px-3 py-1.5 text-sm font-medium text-slate-800 transition hover:border-slate-400 ${
+              datePreset === 'custom' ? 'border-slate-900' : 'border-slate-300'
+            }`}
+          >
+            <CalendarDays size={15} className="text-slate-500" />
+            {rangeLabel}
+          </button>
+        </div>
+
+        {isRangeOpen && (
+          <div className="absolute right-0 top-full z-30 mt-2 w-80">
+            <CustomRangePanel
+              initialStart={fromDate}
+              initialEnd={toDate}
+              onApply={handleApplyCustomRange}
+              onCancel={() => setIsRangeOpen(false)}
+            />
+          </div>
+        )}
       </div>
 
-      {isListVisible && (
-        <CustomTable<Item>
-          data={filteredItems}
-          columns={tableColumns}
-          keyExtractor={(item) => item.id || Math.random()}
-          sortConfig={sortConfig}
-          onSort={handleSort}
-        />
-      )}
+      {/* SUMMARY — 2 cols up to laptop width (sidebar eats tablet width), 4 cols on xl+ */}
+      <div className="mb-3 grid grid-cols-2 gap-2.5 md:mb-3 md:gap-4 xl:grid-cols-4">
+        {statCards.map(({ label, value, hint, icon: Icon, iconClass, valueClass }) => (
+          <div key={label} className="min-w-0 rounded-sm border border-line bg-white shadow-card p-3 md:p-4">
+            <div className="flex items-center gap-2">
+              <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-sm md:h-7 md:w-7 ${iconClass}`}>
+                <Icon size={14} />
+              </span>
+              <span className="truncate text-xs font-medium text-slate-700 md:text-sm">{label}</span>
+            </div>
+            <p title={value} className={`mt-2 truncate text-lg font-bold sm:text-xl md:text-2xl ${valueClass}`}>{value}</p>
+            <p title={hint} className="mt-0.5 truncate text-[11px] text-slate-500 md:text-xs">{hint}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* HOW TO READ THE AVERAGES */}
+      <div className="mb-4 hidden items-center gap-2 rounded-sm bg-blue-50/70 px-3 py-2 text-xs text-blue-800 md:flex">
+        <Info size={14} className="shrink-0 text-blue-600" />
+        <p>
+          Averages are per item, so a few costly items pull them up — sort by MRP to see which. Margin = sale price − cost price.
+        </p>
+      </div>
+
+      {/* MOBILE: issue chips */}
+      <div className="mb-3 flex gap-2 overflow-x-auto [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden">
+        {issueChips(true)}
+      </div>
+
+      {/* ITEMS */}
+      {/* No overflow-hidden here: it would clip the Download menu when the list is short. */}
+      <section className="rounded-sm border border-line bg-white shadow-card">
+        <div className="flex items-center justify-between gap-3 px-4 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-slate-900">Items</h2>
+              <span className="hidden rounded-sm bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 md:inline">
+                {filteredItems.length.toLocaleString('en-IN')}
+              </span>
+            </div>
+            <div className="hidden items-center gap-2 md:flex">
+              <span className="text-xs text-slate-500">Show:</span>
+              {issueChips(false)}
+            </div>
+          </div>
+
+          {/* Desktop controls */}
+          <div className="hidden shrink-0 items-center gap-2 md:flex">
+            <button
+              onClick={() => setIsListVisible(!isListVisible)}
+              className="inline-flex items-center gap-1.5 rounded-sm px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
+            >
+              {isListVisible ? <EyeOff size={15} /> : <Eye size={15} />}
+              {isListVisible ? 'Hide list' : 'Show list'}
+            </button>
+            <DownloadMenu
+              onExcel={() => runDownload(downloadAsExcel)}
+              onPdf={() => runDownload(downloadAsPdf)}
+            />
+          </div>
+
+          {/* Mobile sort */}
+          <div className="relative md:hidden">
+            <select
+              value={mobileSortValue}
+              onChange={(e) => {
+                const [key, direction] = e.target.value.split(':') as [keyof Item, 'asc' | 'desc'];
+                setSortConfig({ key, direction });
+              }}
+              className="appearance-none rounded-sm border border-slate-300 bg-white py-1.5 pl-3 pr-8 text-sm text-slate-700 outline-none focus:border-blue-500"
+            >
+              <option value="name:asc">Name A–Z</option>
+              <option value="name:desc">Name Z–A</option>
+              <option value="stock:asc">Lowest stock</option>
+              <option value="stock:desc">Highest stock</option>
+              <option value="mrp:desc">Highest MRP</option>
+              <option value="purchasePrice:desc">Highest cost</option>
+            </select>
+            <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+          </div>
+        </div>
+
+        {/* Desktop table */}
+        {isListVisible && (
+          <div className="hidden overflow-x-auto md:block">
+            <table className="w-full text-sm">
+              <thead className="bg-sunken text-[11px] text-blue-700/80">
+                <tr>
+                  {renderSortHeader('Barcode', 'barcode')}
+                  {renderSortHeader('Item name', 'name')}
+                  {renderSortHeader('Stock', 'stock', 'right')}
+                  <th className="px-4 py-3 text-left font-semibold uppercase tracking-wide">Group</th>
+                  {renderSortHeader('MRP', 'mrp', 'right')}
+                  {renderSortHeader('Cost price', 'purchasePrice', 'right')}
+                  <th className="px-4 py-3 text-right font-semibold uppercase tracking-wide">Stock value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredItems.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-500">
+                      No items match these filters. Clear a filter or try a different search.
+                    </td>
+                  </tr>
+                )}
+                {visibleItems.map((item) => {
+                  const stock = item.stock || 0;
+                  const hasCost = Number(item.purchasePrice) > 0;
+                  return (
+                    <tr
+                      key={item.id}
+                      onClick={() => openItem(item)}
+                      className={`border-t border-line transition hover:bg-sunken ${canEditItems ? 'cursor-pointer' : ''}`}
+                    >
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-600">{item.barcode || '—'}</td>
+                      <td className="px-4 py-3 font-semibold text-slate-900">{item.name}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right">
+                        <p className={stock < 0 ? 'font-semibold text-red-600' : 'text-slate-700'}>{stock.toLocaleString('en-IN')}</p>
+                        {stock < 0 && <p className="text-[11px] text-red-600">Sold more than stock</p>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-block whitespace-nowrap rounded-sm bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">
+                          {getGroupName(item.itemGroupId)}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right">
+                        {Number(item.mrp) > 0 ? (
+                          <span className="text-slate-700">{inr(item.mrp)}</span>
+                        ) : (
+                          <span className="text-xs font-medium text-amber-600">No MRP</span>
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right">
+                        {hasCost ? (
+                          <span className="text-slate-700">{inr(item.purchasePrice)}</span>
+                        ) : (
+                          <span className="text-xs font-medium text-amber-600">No cost</span>
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right text-slate-700">
+                        {hasCost && stock > 0 ? inrRound(item.valueOfItem) : <span className="text-slate-400">—</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Mobile list */}
+        <ul className="md:hidden">
+          {filteredItems.length === 0 && (
+            <li className="border-t border-line px-4 py-10 text-center text-sm text-slate-500">
+              No items match these filters. Clear a filter or try a different search.
+            </li>
+          )}
+          {visibleItems.map((item) => {
+            const stock = item.stock || 0;
+            const hasMrp = Number(item.mrp) > 0;
+            const hasCost = Number(item.purchasePrice) > 0;
+            return (
+              <li
+                key={item.id}
+                onClick={() => openItem(item)}
+                className={`border-t border-line px-4 py-3 ${canEditItems ? 'cursor-pointer active:bg-sunken' : ''}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <p className="min-w-0 text-sm font-semibold text-slate-900">{item.name}</p>
+                  <p className={`shrink-0 text-sm ${stock < 0 ? 'font-semibold text-red-600' : 'text-slate-700'}`}>
+                    {stock.toLocaleString('en-IN')} in stock
+                  </p>
+                </div>
+                <div className="mt-0.5 flex items-center justify-between gap-3 text-xs text-slate-500">
+                  <span className="truncate">
+                    {[item.barcode, getGroupName(item.itemGroupId)].filter(Boolean).join(' · ')}
+                  </span>
+                  <span className="shrink-0">
+                    {hasMrp ? `MRP ${inr(item.mrp)}` : <span className="font-medium text-amber-600">No MRP</span>}
+                    {' · '}
+                    {hasCost ? `Cost ${inr(item.purchasePrice)}` : <span className="font-medium text-amber-600">No cost</span>}
+                  </span>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+
+        {/* Footer: paging + how stock value is worked out */}
+        {filteredItems.length > 0 && (
+          // The mobile list is always shown; the desktop table can be hidden.
+          <div className={`flex flex-wrap items-center justify-between gap-2 rounded-b-sm border-t border-line bg-sunken px-4 py-2.5 text-xs text-slate-500 ${isListVisible ? '' : 'md:hidden'}`}>
+            <span>
+              Showing {visibleItems.length.toLocaleString('en-IN')} of {summary.totalItems.toLocaleString('en-IN')}
+              <span className="hidden md:inline"> · stock value = stock × cost price</span>
+            </span>
+            <div className="flex items-center gap-3">
+              {visibleItems.length < filteredItems.length && (
+                <button
+                  onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}
+                  className="rounded-sm border border-slate-300 bg-white px-2.5 py-1 font-medium text-slate-700 hover:border-slate-400"
+                >
+                  Show {Math.min(PAGE_SIZE, filteredItems.length - visibleItems.length)} more
+                </button>
+              )}
+              {canEditItems && <span className="hidden md:inline">Open an item to edit it</span>}
+            </div>
+          </div>
+        )}
+      </section>
     </div>
   );
 };

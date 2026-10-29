@@ -1,18 +1,24 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   collection, addDoc, deleteDoc, updateDoc, doc,
-  onSnapshot, query, orderBy, runTransaction, serverTimestamp, limit,
+  onSnapshot, query, orderBy, runTransaction, serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
-import { useDatabase } from '../../context/auth-context';
+import { clearStockTransferCache, loadStockTransferHistoryForRange } from '../Reports/stockTransferCache';
+import { useCachedRange } from '../Reports/useCachedRange';
+import { useAuth, useDatabase } from '../../context/auth-context';
 
 // ============================================================
 // TYPES
 // ============================================================
+export type GodownType = 'godown' | 'branch';
+
 export interface Godown {
   id: string;
   name: string;
   location?: string;
+  /** 'godown' only holds stock; 'branch' is another shop. Older docs have none. */
+  type?: GodownType;
   isActive: boolean;
   createdAt: number;
 }
@@ -86,13 +92,16 @@ export function useGodowns(companyId: string | undefined) {
     return unsub;
   }, [companyId]);
 
-  const addGodown = async (companyId: string, data: { name: string; location?: string }) => {
-    await addDoc(collection(db, 'companies', companyId, 'godowns'), {
+  // Returns the new godown's id (used by "Save & transfer stock").
+  const addGodown = async (companyId: string, data: { name: string; location?: string; type?: GodownType }) => {
+    const ref = await addDoc(collection(db, 'companies', companyId, 'godowns'), {
       name: data.name.trim(),
       location: data.location?.trim() || '',
+      type: data.type || 'godown',
       isActive: true,
       createdAt: Date.now(),
     });
+    return ref.id;
   };
 
   const updateGodown = async (companyId: string, id: string, data: Partial<Pick<Godown, 'name' | 'location' | 'isActive'>>) => {
@@ -109,23 +118,21 @@ export function useGodowns(companyId: string | undefined) {
 // ============================================================
 // 2) STOCK TRANSFER HISTORY + ACTIONS
 // ============================================================
-export function useStockTransfers(companyId: string | undefined) {
-  const [transfers, setTransfers] = useState<StockTransfer[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!companyId) return;
-    const q = query(collection(db, 'companies', companyId, 'stockTransfers'), orderBy('date', 'desc'), limit(1000));
-    const unsub = onSnapshot(q,
-      (snap) => {
-        setTransfers(snap.docs.map(d => ({ id: d.id, ...d.data() } as StockTransfer)));
-        setLoading(false);
-      },
-      (err) => { setError(err.message); setLoading(false); },
-    );
-    return unsub;
-  }, [companyId]);
+// History for a date range, read through the per-range cache (see
+// reportRangeCache.ts) instead of a live listener on the whole collection.
+export function useStockTransfers(
+  companyId: string | undefined,
+  range: { start: number; end: number } | null,
+) {
+  const { loading: authLoading } = useAuth();
+  const {
+    records: transfers,
+    isLoading: loading,
+    isFetching,
+    lastUpdated,
+    error,
+    refresh,
+  } = useCachedRange(loadStockTransferHistoryForRange, companyId, range, authLoading);
 
   const transferStock = async (companyId: string, payload: {
     items: TransferItemInput[];
@@ -209,6 +216,8 @@ export function useStockTransfers(companyId: string | undefined) {
         });
       });
     });
+    await clearStockTransferCache(companyId);
+    refresh();
   };
 
   const deleteTransferRecord = async (companyId: string, id: string) => {
@@ -267,9 +276,11 @@ export function useStockTransfers(companyId: string | undefined) {
       tx.update(itemRef, updatePayload);
       tx.delete(transferRef);
     });
+    await clearStockTransferCache(companyId);
+    refresh();
   };
 
-  return { transfers, loading, error, transferStock, deleteTransferRecord };
+  return { transfers, loading, isFetching, lastUpdated, refresh, error, transferStock, deleteTransferRecord };
 }
 
 // ============================================================

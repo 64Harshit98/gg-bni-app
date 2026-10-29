@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AnimatePresence } from "framer-motion";
-import { Link } from 'react-router-dom';
+//import { Link } from 'react-router-dom';
 import { db } from '../../lib/Firebase';
 import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '../../../src/constants/routes.constants';
 import { useCatalogueData } from '../../context/CatalogueDataContext';
-import ShinyText from '../../Components/ShinyText';
+//import ShinyText from '../../Components/ShinyText';
 import {
     doc,
     getDoc,
@@ -120,6 +120,33 @@ const OrdersPage: React.FC = () => {
         tutorialStep,
     });
 
+    // Desktop = split view (list left, selected order right). Mobile keeps the accordion.
+    const [isDesktop, setIsDesktop] = useState(
+        () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches
+    );
+    useEffect(() => {
+        const mq = window.matchMedia('(min-width: 1024px)');
+        const onChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+        mq.addEventListener('change', onChange);
+        return () => mq.removeEventListener('change', onChange);
+    }, []);
+
+    const selectedId = isDesktop
+        ? (filteredOrders.find(o => o.id === expandedorderId)?.id ?? filteredOrders[0]?.id ?? null)
+        : expandedorderId;
+    const selectedOrder = filteredOrders.find(o => o.id === selectedId) ?? null;
+    // On desktop a click must only SELECT (never toggle the open order closed)
+    const handleSelectOrder = (id: string) => {
+        if (isDesktop && id === selectedId) return;
+        handleOrderClick(id);
+    };
+
+    // Mobile: the open order takes over the screen (SELLAR design). Tutorial keeps the list.
+    // Upcoming orders are the exception — they open inline inside their own card.
+    const mobileOpenOrder = !isDesktop && !isTutorialActive
+        ? (filteredOrders.find(o => o.id === expandedorderId && o.status !== 'Upcoming') ?? null)
+        : null;
+
     // Same date range currently applied to the Orders list itself, so the
     // "Customer Requests" badge count always agrees with what filtering the
     // Requests page to that same range would show.
@@ -133,27 +160,6 @@ const OrdersPage: React.FC = () => {
             el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
     }, [tutorialStep]);
-
-    // ── Subscription badge ────────────────────────────────────────────────────
-    const [daysRemaining, setDaysRemaining] = useState<number | null>(null);
-
-    useEffect(() => {
-        const fetchExpiry = async () => {
-            if (!currentUser?.companyId) return;
-            const ref = doc(db, 'companies', currentUser.companyId);
-            const snap = await getDoc(ref);
-            if (snap.exists()) {
-                const expiry = snap.data().expiryDate;
-                if (!expiry) return;
-                const d = expiry.toDate ? expiry.toDate() : new Date(expiry);
-                setDaysRemaining(Math.ceil((d.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)));
-            }
-        };
-        fetchExpiry();
-    }, [currentUser?.companyId]);
-
-    const showBadge = daysRemaining !== null && daysRemaining <= 7 && daysRemaining >= 0;
-    const isUrgent = daysRemaining !== null && daysRemaining <= 2;
 
     const {
         activeTab, setActiveTab,
@@ -430,109 +436,165 @@ const OrdersPage: React.FC = () => {
         setItemGroupMap(groupMap);
     }, [catalogueItemGroups]);
 
+    const cardProps = {
+        openEditor,
+        setSelectedOrderForAction,
+        pdfLoadingOrderId,
+        handleSendReminder,
+        handleSendReminderSnapto,
+        companyId: currentUser?.companyId,
+        sendingPdf,
+        handleDeleteOrder,
+        setShowPaymentModal,
+        handlePreviousStatus,
+        handleUpdateStatus,
+        isUpdatingStatus,
+    };
+
+    const detailCard = selectedOrder && (
+        <OrderCard
+            key={`detail-${selectedOrder.id}`}
+            {...cardProps}
+            order={selectedOrder}
+            variant="detail"
+            expandedorderId={selectedId}
+            handleOrderClick={handleSelectOrder}
+        />
+    );
+
     return (
-        <div className="flex min-h-screen w-full flex-col bg-gray-100 mb-10">
-            {showBadge && (
-                <div className={`w-full text-center py-2 text-sm font-bold text-white shadow-sm ${isUrgent ? 'bg-red-300' : 'bg-amber-200'}`}>
-                    <ShinyText text={`Subscription expires in ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}.`} speed={4} delay={0} color="#030303" shineColor="#faf5f5" spread={100} direction="left" yoyo={false} pauseOnHover={false} disabled={false} />
-                    <Link to="/subscription" className="text-black ml-2 underline hover:text-gray-100">Renew Now</Link>
-                </div>
-            )}
+        <div className="flex min-h-screen w-full flex-col bg-[#fff5ec] pb-10">
             {modal && <Modal message={modal.message} type={modal.type} onClose={() => setModal(null)} />}
 
-            <OrderListFilters
-                tutorialStep={tutorialStep}
-                next={next}
-                skip={skip}
-                setTutorialRef={setTutorialRef}
-                showSearch={showSearch}
-                setShowSearch={setShowSearch}
-                searchQuery={searchQuery}
-                setSearchQuery={setSearchQuery}
-                dateDisplay={getDateDisplay}
-                isFilterOpen={isFilterOpen}
-                setIsFilterOpen={setIsFilterOpen}
-                filterRef={filterRef}
-                dateFilters={dateFilters}
-                activeDateFilter={activeDateFilter}
-                handleDateFilterSelect={handleDateFilterSelect}
-                customDateRange={customDateRange}
-                setCustomDateRange={setCustomDateRange}
-                handleApplyCustomDate={handleApplyCustomDate}
-                pendingRequestCount={pendingRequestCount}
-                onRequestsClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`, {
-                    state: {
-                        activeDateFilter,
-                        startDate: dateRange.start ? dateRange.start.toISOString() : undefined,
-                        endDate: dateRange.end ? dateRange.end.toISOString() : undefined,
-                        customDateRange,
-                    }
-                })}
-                orderStatuses={ORDER_STATUSES}
-                activeStatusTab={activeStatusTab}
-                setActiveStatusTab={setActiveStatusTab}
-                statusCounts={statusCounts}
-                paymentFilter={paymentFilter}
-                setPaymentFilter={setPaymentFilter}
-            />
+            {/* List stays mounted (filters/search state safe), just hidden while an order is open on mobile */}
+            <div className="contents">
+                <OrderListFilters
+                    tutorialStep={tutorialStep}
+                    next={next}
+                    skip={skip}
+                    setTutorialRef={setTutorialRef}
+                    showSearch={showSearch}
+                    setShowSearch={setShowSearch}
+                    searchQuery={searchQuery}
+                    setSearchQuery={setSearchQuery}
+                    dateDisplay={getDateDisplay}
+                    isFilterOpen={isFilterOpen}
+                    setIsFilterOpen={setIsFilterOpen}
+                    filterRef={filterRef}
+                    dateFilters={dateFilters}
+                    activeDateFilter={activeDateFilter}
+                    handleDateFilterSelect={handleDateFilterSelect}
+                    customDateRange={customDateRange}
+                    setCustomDateRange={setCustomDateRange}
+                    handleApplyCustomDate={handleApplyCustomDate}
+                    pendingRequestCount={pendingRequestCount}
+                    onRequestsClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`, {
+                        state: {
+                            activeDateFilter,
+                            startDate: dateRange.start ? dateRange.start.toISOString() : undefined,
+                            endDate: dateRange.end ? dateRange.end.toISOString() : undefined,
+                            customDateRange,
+                        }
+                    })}
+                    orderStatuses={ORDER_STATUSES}
+                    activeStatusTab={activeStatusTab}
+                    setActiveStatusTab={setActiveStatusTab}
+                    statusCounts={statusCounts}
+                    paymentFilter={paymentFilter}
+                    setPaymentFilter={setPaymentFilter}
+                    isDesktop={isDesktop}
+                />
 
-            {/* --- 7. ORDERS LIST --- */}
+                {/* --- 7. ORDERS LIST --- */}
 
-            <div ref={setTutorialRef(5) as any} className="flex-grow overflow-y-hidden bg-slate-100 space-y-2 p-1 md:p-4">
-                {dataLoading ? (
-                    <div className="flex justify-center py-10"><Spinner /></div>
-                ) : error ? (
-                    <p className="p-8 text-center text-red-500">{error}</p>
-                ) : filteredOrders.length > 0 ? (
-                    <AnimatePresence>
-                        {filteredOrders.map((order) => {
-                            const card = (
-                                <OrderCard
-                                    key={order.id}
-                                    order={order}
-                                    expandedorderId={expandedorderId}
-                                    handleOrderClick={handleOrderClick}
-                                    openEditor={openEditor}
-                                    setSelectedOrderForAction={setSelectedOrderForAction}
-                                    pdfLoadingOrderId={pdfLoadingOrderId}
-                                    handleSendReminder={handleSendReminder}
-                                    handleSendReminderSnapto={handleSendReminderSnapto}
-                                    companyId={currentUser?.companyId}
-                                    sendingPdf={sendingPdf}
-                                    handleDeleteOrder={handleDeleteOrder}
-                                    setShowPaymentModal={setShowPaymentModal}
-                                    handlePreviousStatus={handlePreviousStatus}
-                                    handleUpdateStatus={handleUpdateStatus}
-                                    isUpdatingStatus={isUpdatingStatus}
-                                />
-                            );
-
-                            if (isTutorialActive && tutorialStep === 5 && order.id === expandedorderId) {
-                                return (
-                                    <TutorialStep
-                                        key={`tutorial-${order.id}`}
-                                        step={5}
-                                        currentStep={tutorialStep}
-                                        text="Tap any order to see full details — items, addresses, payments, and status actions."
-                                        onNext={handleTutorialFinish}
-                                        onSkip={skip}
-                                        isLast
-                                    >
-                                        {card}
-                                    </TutorialStep>
+                <div ref={setTutorialRef(5) as any} className="flex-grow overflow-y-hidden bg-[#fff5ec] space-y-3 px-3 pb-4 pt-1 md:px-6">
+                    {dataLoading ? (
+                        <div className="flex justify-center py-16"><Spinner /></div>
+                    ) : error ? (
+                        <p className="p-6 text-center text-sm text-red-700 bg-red-50 border border-red-200 rounded-sm">{error}</p>
+                    ) : filteredOrders.length > 0 && isDesktop ? (
+                        <div className="grid grid-cols-[380px_minmax(0,1fr)] gap-5 items-start">
+                            <div className="bg-white border border-[#f6e1d0] rounded-sm overflow-hidden shadow-sm">
+                                {filteredOrders.map((order) => (
+                                    <OrderCard
+                                        key={order.id}
+                                        {...cardProps}
+                                        order={order}
+                                        variant="row"
+                                        expandedorderId={selectedId}
+                                        handleOrderClick={handleSelectOrder}
+                                    />
+                                ))}
+                            </div>
+                            {isTutorialActive && tutorialStep === 5 && detailCard ? (
+                                <TutorialStep
+                                    step={5}
+                                    currentStep={tutorialStep}
+                                    text="Tap any order to see full details — items, addresses, payments, and status actions."
+                                    onNext={handleTutorialFinish}
+                                    onSkip={skip}
+                                    isLast
+                                >
+                                    {detailCard}
+                                </TutorialStep>
+                            ) : detailCard}
+                        </div>
+                    ) : filteredOrders.length > 0 ? (
+                        <AnimatePresence>
+                            {filteredOrders.map((order) => {
+                                const card = (
+                                    <OrderCard
+                                        key={order.id}
+                                        order={order}
+                                        expandedorderId={expandedorderId}
+                                        handleOrderClick={handleOrderClick}
+                                        openEditor={openEditor}
+                                        setSelectedOrderForAction={setSelectedOrderForAction}
+                                        pdfLoadingOrderId={pdfLoadingOrderId}
+                                        handleSendReminder={handleSendReminder}
+                                        handleSendReminderSnapto={handleSendReminderSnapto}
+                                        companyId={currentUser?.companyId}
+                                        sendingPdf={sendingPdf}
+                                        handleDeleteOrder={handleDeleteOrder}
+                                        setShowPaymentModal={setShowPaymentModal}
+                                        handlePreviousStatus={handlePreviousStatus}
+                                        handleUpdateStatus={handleUpdateStatus}
+                                        isUpdatingStatus={isUpdatingStatus}
+                                    />
                                 );
-                            }
 
-                            return card;
-                        })}
-                    </AnimatePresence>
-                ) : (
-                    <p className="p-8 text-center text-slate-500">
-                        {isTutorialActive
-                            ? 'Sample orders will appear here once you switch to a matching status.'
-                            : 'No Orders found.'}
-                    </p>
-                )}
+                                if (isTutorialActive && tutorialStep === 5 && order.id === expandedorderId) {
+                                    return (
+                                        <TutorialStep
+                                            key={`tutorial-${order.id}`}
+                                            step={5}
+                                            currentStep={tutorialStep}
+                                            text="Tap any order to see full details — items, addresses, payments, and status actions."
+                                            onNext={handleTutorialFinish}
+                                            onSkip={skip}
+                                            isLast
+                                        >
+                                            {card}
+                                        </TutorialStep>
+                                    );
+                                }
+
+                                return card;
+                            })}
+                        </AnimatePresence>
+                    ) : (
+                        <div className="py-12 px-6 text-center bg-white border border-[#f6e1d0] rounded-sm">
+                            <p className="text-sm font-semibold text-slate-800">
+                                {isTutorialActive ? 'Sample orders will appear here' : 'No orders found'}
+                            </p>
+                            <p className="text-xs text-slate-500 mt-1">
+                                {isTutorialActive
+                                    ? 'Switch to a matching status to see them.'
+                                    : 'Try another stage or a wider date range.'}
+                            </p>
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* Modals (SelectedAction, QR, Payment, Editing) Same as provided */}
@@ -704,6 +766,30 @@ const OrdersPage: React.FC = () => {
                     handleIncreaseExistingOrderItemQuantity={handleIncreaseExistingOrderItemQuantity}
                     handleAddOrderItemAsNew={handleAddOrderItemAsNew}
                 />
+            )}
+            {/* Mobile order sheet: covers the header and bottom nav (z-140 / z-50); stays below the order pop-ups (z-2000+) it opens */}
+            {mobileOpenOrder && (
+                <div className="lg:hidden fixed inset-0 z-[1500]">
+                    <div
+                        className="absolute inset-0 bg-[#020618]/45"
+                        onClick={() => handleOrderClick(mobileOpenOrder.id)}
+                    />
+                    <div className="absolute inset-x-0 bottom-0 mx-auto flex w-full max-w-xl max-h-[92dvh] flex-col overflow-hidden rounded-sm bg-[#fff5ec] shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]">
+                        <div className="shrink-0 bg-white pt-2 pb-1" aria-hidden="true">
+                            <div className="mx-auto h-1 w-10 rounded-full bg-[#f6e1d0]" />
+                        </div>
+                        <div className="flex flex-1 flex-col overflow-y-auto">
+                            <OrderCard
+                                key={`screen-${mobileOpenOrder.id}`}
+                                {...cardProps}
+                                order={mobileOpenOrder}
+                                variant="screen"
+                                expandedorderId={expandedorderId}
+                                handleOrderClick={handleOrderClick}
+                            />
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

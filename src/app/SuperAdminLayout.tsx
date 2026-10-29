@@ -7,7 +7,7 @@ import {
 import { useAuth } from '../context/auth-context';
 import { ROUTES } from '../constants/routes.constants';
 import { isSuperAdmin } from '../constants/superAdmin';
-import Loading from '../Pages/Loading/Loading';
+import PageLoader from '../Components/PageLoader';
 import { companyStatus, loadCompanies, loadTicketSummary } from '../Pages/Account/superAdmin/data';
 
 const NAV_ITEMS = [
@@ -45,7 +45,7 @@ const SuperAdminLayout: React.FC = () => {
     }).catch(err => console.error('Sidebar badge load failed:', err));
   }, [isAdmin, location.pathname]);
 
-  if (loading) return <Loading />;
+  if (loading) return <div className="min-h-screen bg-gray-100"><PageLoader /></div>;
 
   if (!currentUser || !isSuperAdmin(currentUser.uid)) {
     return (

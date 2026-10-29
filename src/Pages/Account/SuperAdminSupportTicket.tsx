@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { arrayUnion, collection, doc, onSnapshot, Timestamp, updateDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 import { useAuth } from '../../context/auth-context';
-import Loading from '../Loading/Loading';
+import PageLoader from '../../Components/PageLoader';
 import type { AdminCompany, AdminTicket, RangeKey, TicketPriority, TicketStatus } from './superAdmin/data';
 import {
   DAY_MS, PRIORITY_META, TICKET_STATUS_META, buildTickets, downloadCsv, fmtDate, fmtDateTime, inRange,
@@ -105,7 +105,7 @@ const SupportTicketLeads: React.FC = () => {
       t.priority, TICKET_STATUS_META[t.status].label, t.assignedTo, t.firstRepliedAt?.toISOString() || '', t.solvedAt?.toISOString() || '']),
   );
 
-  if (loading) return <Loading />;
+  if (loading) return <PageLoader />;
 
   const toggle = (f: typeof cardFilter) => setCardFilter(prev => (prev === f ? 'all' : f));
 

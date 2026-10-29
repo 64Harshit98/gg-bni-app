@@ -134,8 +134,9 @@ export const getPresetRange = (
 
 /* ---------- SALE HELPERS ---------- */
 
+// Sign before the ₹: "-₹500", not "₹-500"
 export const formatCurrency = (value: number): string =>
-  `₹${value.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+  `${value < 0 ? '-' : ''}₹${Math.abs(value).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
 export const getSaleItemCount = (sale: SaleRecord): number =>
   (sale.items || []).reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);

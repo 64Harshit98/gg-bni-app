@@ -62,9 +62,13 @@ type ItemRow = Item & {
   valueOfItem: number;
 };
 
+// Sign goes before the ₹ ("-₹5,411", not "₹-5,411")
 const inr = (n: number) =>
-  `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const inrRound = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
+  `${n < 0 ? '-' : ''}₹${Math.abs(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const inrRound = (n: number) => {
+  const r = Math.round(n);
+  return `${r < 0 ? '-' : ''}₹${Math.abs(r).toLocaleString('en-IN')}`;
+};
 
 const ItemReport: React.FC = () => {
   const { currentUser, hasPermission } = useAuth();
@@ -886,21 +890,6 @@ const ItemReport: React.FC = () => {
     action();
   };
 
-  const shareOnWhatsApp = () => {
-    const text = [
-      `*Item Report${companyName ? ` — ${companyName}` : ''}*`,
-      '',
-      `Items: ${summary.totalItems}`,
-      `Avg margin: ${Math.round(summary.averageMarginPercentage)}% (${inrRound(summary.averageProfitMargin)} per item)`,
-      `Avg sale price: ${inrRound(summary.averageSalePrice)}`,
-      `Avg cost price: ${inrRound(summary.averagePurchasePrice)}`,
-      ...ITEM_ISSUES.filter(({ value }) => issueCounts[value] > 0).map(
-        ({ value, label }) => `${label}: ${issueCounts[value]} items`,
-      ),
-    ].join('\n');
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
-  };
-
   /* ---------- RENDER HELPERS ---------- */
   const renderSortHeader = (label: string, key: keyof Item, align: 'left' | 'right' = 'left') => {
     const isActive = sortConfig.key === key;
@@ -967,7 +956,6 @@ const ItemReport: React.FC = () => {
     {
       label: 'Avg margin',
       value: `${Math.round(summary.averageMarginPercentage)}%`,
-      mobileValue: `${Math.round(summary.averageMarginPercentage)}% · ${inrRound(summary.averageProfitMargin)}`,
       hint: `${inrRound(summary.averageProfitMargin)} per item on average`,
       icon: Percent,
       iconClass: 'bg-green-50 text-green-600',
@@ -1088,7 +1076,6 @@ const ItemReport: React.FC = () => {
             variant="icon"
             onExcel={() => runDownload(downloadAsExcel)}
             onPdf={() => runDownload(downloadAsPdf)}
-            onWhatsApp={shareOnWhatsApp}
           />
         </div>
       </header>
@@ -1173,9 +1160,9 @@ const ItemReport: React.FC = () => {
         )}
       </div>
 
-      {/* SUMMARY — 2 cols on mobile, 4 cols on md+ */}
-      <div className="mb-3 grid grid-cols-2 gap-2.5 md:mb-3 md:grid-cols-4 md:gap-4">
-        {statCards.map(({ label, value, mobileValue, hint, icon: Icon, iconClass, valueClass }) => (
+      {/* SUMMARY — 2 cols up to laptop width (sidebar eats tablet width), 4 cols on xl+ */}
+      <div className="mb-3 grid grid-cols-2 gap-2.5 md:mb-3 md:gap-4 xl:grid-cols-4">
+        {statCards.map(({ label, value, hint, icon: Icon, iconClass, valueClass }) => (
           <div key={label} className="min-w-0 rounded-sm border border-line bg-white shadow-card p-3 md:p-4">
             <div className="flex items-center gap-2">
               <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-sm md:h-7 md:w-7 ${iconClass}`}>
@@ -1183,16 +1170,7 @@ const ItemReport: React.FC = () => {
               </span>
               <span className="truncate text-xs font-medium text-slate-700 md:text-sm">{label}</span>
             </div>
-            <p className={`mt-2 truncate text-xl font-bold md:text-2xl ${valueClass}`}>
-              {mobileValue ? (
-                <>
-                  <span className="md:hidden">{mobileValue}</span>
-                  <span className="hidden md:inline">{value}</span>
-                </>
-              ) : (
-                value
-              )}
-            </p>
+            <p title={value} className={`mt-2 truncate text-lg font-bold sm:text-xl md:text-2xl ${valueClass}`}>{value}</p>
             <p title={hint} className="mt-0.5 truncate text-[11px] text-slate-500 md:text-xs">{hint}</p>
           </div>
         ))}
@@ -1240,7 +1218,6 @@ const ItemReport: React.FC = () => {
             <DownloadMenu
               onExcel={() => runDownload(downloadAsExcel)}
               onPdf={() => runDownload(downloadAsPdf)}
-              onWhatsApp={shareOnWhatsApp}
             />
           </div>
 

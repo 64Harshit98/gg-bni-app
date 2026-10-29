@@ -12,19 +12,24 @@ export const toneClass = (i = 0) => TONES[Math.abs(i) % 4];
 // ── Photo: fixed-ratio image, tinted well with an icon when there is none ──
 export const Photo: React.FC<{
     src?: string | null;
+    /** Tried in order when src is missing or fails to load */
+    fallbacks?: string[];
     alt: string;
     className?: string;
     tone?: number;
     fit?: 'cover' | 'contain';
     children?: React.ReactNode;
-}> = ({ src, alt, className, tone = 0, fit = 'cover', children }) => {
-    const [broken, setBroken] = useState(false);
-    useEffect(() => setBroken(false), [src]);
-    const show = src && !broken;
+}> = ({ src, fallbacks, alt, className, tone = 0, fit = 'cover', children }) => {
+    const candidates = [...new Set([src, ...(fallbacks || [])].filter((u): u is string => !!u))];
+    const candidatesKey = candidates.join('|');
+    const [broken, setBroken] = useState<Set<string>>(new Set());
+    useEffect(() => setBroken(new Set()), [candidatesKey]);
+    const current = candidates.find((u) => !broken.has(u));
+    const show = !!current;
     return (
         <div className={cx('relative overflow-hidden rounded-sm', show ? (fit === 'contain' ? 'bg-white' : 'bg-sf-sunken') : toneClass(tone), className)}>
             {show ? (
-                <img src={src!} alt={alt} loading="lazy" onError={() => setBroken(true)}
+                <img key={current} src={current} alt={alt} loading="lazy" onError={() => setBroken((b) => new Set(b).add(current))}
                     className={cx('absolute inset-0 h-full w-full', fit === 'contain' ? 'object-contain' : 'object-cover')} />
             ) : (
                 <div className="absolute inset-0 grid place-items-center text-slate-500/70"><ImageIcon className="size-8" strokeWidth={1.25} aria-hidden /></div>
@@ -229,9 +234,10 @@ export const ProductCardSkeleton: React.FC = () => (
 );
 
 // ── Category tile (Blinkit style) ──
-export const CategoryTile: React.FC<{ name: string; image?: string | null; tone?: number; to: string }> = ({ name, image, tone, to }) => (
+// images: category photo first, then its items' photos — shows the first one that loads
+export const CategoryTile: React.FC<{ name: string; images: string[]; tone?: number; to: string }> = ({ name, images, tone, to }) => (
     <Link to={to} className="group grid content-start gap-2 text-center text-slate-900">
-        <Photo src={image} alt={name} tone={tone} fit="cover"
+        <Photo src={images[0]} fallbacks={images.slice(1)} alt={name} tone={tone} fit="cover"
             className="aspect-square border border-sf-line transition-[border-color,transform] duration-150 group-hover:-translate-y-0.5 group-hover:border-sf-primary motion-reduce:transition-none" />
         <span className="line-clamp-2 text-[13px] font-medium leading-[18px]">{name}</span>
     </Link>

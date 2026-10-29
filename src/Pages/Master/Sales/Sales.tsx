@@ -20,6 +20,7 @@ import BarcodeLinkModal from '../../../Components/BarcodeLinkModal';
 import { AddUserModal } from '../../../Components/AddUserModal';
 import { FiTrash2, FiX, FiEdit, FiCamera, FiDelete, FiSearch, FiChevronLeft, FiMoreVertical, FiCalendar, FiCheck, FiUser, FiUserPlus, FiChevronUp, FiChevronRight, FiMinus, FiSliders } from 'react-icons/fi';
 import { GenericBillFooter } from '../../../Components/Footer';
+import { CartLinesCompact } from '../../../Components/CartLinesCompact';
 import { IconScanCircle, IconPrint } from '../../../constants/Icons';
 import QRCode from 'react-qr-code';
 import { FiSend } from 'react-icons/fi';
@@ -531,7 +532,7 @@ const Sales: React.FC = () => {
                             type="text"
                             value={gridSearchQuery}
                             onChange={(e) => setGridSearchQuery(e.target.value)}
-                            placeholder="Search item or barcode"
+                            placeholder="Search item name or barcode"
                             className="flex-1 min-w-0 h-full px-2.5 bg-transparent border-0 outline-none text-[14px] font-medium text-[#0f172b] placeholder:text-[#5b6b86]"
                             autoComplete="off"
                         />
@@ -563,7 +564,7 @@ const Sales: React.FC = () => {
                 </h1>
 
                 <label className="inline-flex items-center gap-2 h-9 px-3 bg-white border border-[#7a8aa3] rounded-sm text-[13px] transition-all focus-within:border-[#155dfc] focus-within:ring-4 focus-within:ring-[#e6eeff]">
-                    <span className="text-[11px] font-semibold tracking-[.06em] uppercase text-[#5b6b86]">Bill</span>
+                    <span className="text-[11px] font-semibold tracking-[.06em] uppercase text-[#5b6b86]">Bill no.</span>
                     <input
                         type="text"
                         value={invoiceNumber}
@@ -810,7 +811,7 @@ const Sales: React.FC = () => {
         <div className="hidden md:block xl:hidden flex-shrink-0 z-20 bg-white border-t border-[#dfe6fb]">
             {isTabletBreakdownOpen && (
                 <div className="px-4 pt-3 space-y-1.5 text-sm">
-                    <div className="flex justify-between gap-4"><span className="text-[#45556c]">MRP subtotal</span><span className="font-medium tabular-nums text-[#0f172b]">₹{fmtINR(subtotal)}</span></div>
+                    <div className="flex justify-between gap-4"><span className="text-[#45556c]">MRP total</span><span className="font-medium tabular-nums text-[#0f172b]">₹{fmtINR(subtotal)}</span></div>
                     {totalDiscount > 0 && (
                         <div className="flex justify-between gap-4 text-[#008236]"><span>Discount</span><span className="font-medium tabular-nums">− ₹{fmtINR(totalDiscount)}</span></div>
                     )}
@@ -852,7 +853,7 @@ const Sales: React.FC = () => {
                     {/* Invoice number + Date — 2 columns */}
                     <div className="grid grid-cols-2 gap-3">
                         <div className="min-w-0">
-                            <span className={LABEL_CLS}>Invoice no.</span>
+                            <span className={LABEL_CLS}>Bill no.</span>
                             <input
                                 type="text"
                                 value={invoiceNumber}
@@ -887,7 +888,7 @@ const Sales: React.FC = () => {
                             onClick={() => { setIsMoreOpen(false); handleClearCart(); }}
                             className="inline-flex items-center justify-center gap-2 h-11 rounded-sm text-sm font-medium text-[#d5000c] bg-[#ffeef0]"
                         >
-                            <FiTrash2 size={16} /> Clear cart
+                            <FiTrash2 size={16} /> Clear
                         </button>
                     )}
                 </div>
@@ -968,8 +969,7 @@ const Sales: React.FC = () => {
                         className="inline-flex items-center gap-1.5 h-8 px-3 rounded-sm text-[13px] font-medium text-[#d5000c] bg-[#ffeef0] hover:bg-[#ffdde1] transition-colors"
                     >
                         <FiTrash2 size={14} />
-                        <span className="hidden md:inline">Clear cart</span>
-                        <span className="md:hidden">Clear</span>
+                        Clear
                     </button>
                 )}
             </div>
@@ -1014,13 +1014,13 @@ const Sales: React.FC = () => {
                             onClick={handleIncreaseExistingQuantity}
                             className="w-full h-11 rounded-sm bg-[#155dfc] text-white font-medium hover:bg-[#1447e6] transition-colors"
                         >
-                            Increase Quantity
+                            Increase quantity
                         </button>
                         <button
                             onClick={handleAddAsNewLine}
                             className="w-full h-11 rounded-sm bg-white border border-[#7a8aa3] text-[#0f172b] font-medium hover:bg-[#f5f7ff] transition-colors"
                         >
-                            Add as New Item
+                            Add as new item
                         </button>
                         <button
                             onClick={() => setDuplicateItemPrompt(null)}
@@ -1198,7 +1198,7 @@ const Sales: React.FC = () => {
                                             onClick={handleClearCart}
                                             className="hidden md:inline-flex xl:hidden items-center gap-1.5 h-8 px-3 rounded-sm text-xs font-medium text-[#d5000c] bg-[#ffeef0] hover:bg-[#ffdde1] transition-colors flex-shrink-0 whitespace-nowrap"
                                         >
-                                            <FiTrash2 size={14} /> Clear cart
+                                            <FiTrash2 size={14} /> Clear
                                         </button>
                                     )}
                                 </div>
@@ -1395,12 +1395,12 @@ const Sales: React.FC = () => {
                                 totalDiscount={totalDiscount} taxAmount={taxAmount}
                                 finalAmount={finalAmount} showTaxRow={showTaxRow}
                                 taxLabel={`Tax (${activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})`}
-                                actionLabel={isEditMode ? 'Update invoice' : 'View bill'}
+                                actionLabel={isEditMode ? 'Update invoice' : 'Pay'}
                                 onActionClick={handleProceedToPayment}
                                 disableAction={items.length === 0}>
                             </GenericBillFooter>
                         </div>
-                        {renderTabletCheckoutBar(isEditMode ? 'Update invoice' : 'View bill')}
+                        {renderTabletCheckoutBar(isEditMode ? 'Update invoice' : 'Pay')}
                     </div>
 
                     {/* RIGHT PANEL — desktop only */}
@@ -1411,28 +1411,17 @@ const Sales: React.FC = () => {
                             <div className="flex items-center justify-between">
                                 <h2 className="m-0 text-base font-semibold text-[#0f172b]">Bill · {totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}</h2>
                                 {items.length > 0 && (
-                                    <button onClick={handleClearCart} className="inline-flex items-center h-8 px-3 rounded-sm text-[13px] font-medium text-[#d5000c] hover:bg-[#ffeef0] transition-colors">Clear</button>
+                                    <button onClick={handleClearCart} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-sm text-[13px] font-medium text-[#d5000c] bg-[#ffeef0] hover:bg-[#ffdde1] transition-colors"><FiTrash2 size={14} /> Clear</button>
                                 )}
                             </div>
 
                             {/* Cart lines */}
-                            <div>
-                                {items.map((i: any) => {
-                                    const unit = Number(i.customPrice ?? i.salesPrice ?? i.mrp ?? 0);
-                                    return (
-                                        <div key={i.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 gap-y-0.5 py-2.5 border-b border-[#dfe6fb] items-center">
-                                            <b className="text-[13px] font-medium text-[#0f172b] truncate">{i.name}</b>
-                                            <b className="text-[13px] font-medium text-[#0f172b] tabular-nums">₹{(unit * i.quantity).toLocaleString('en-IN')}</b>
-                                            <span className="text-xs text-[#5b6b86]">{i.quantity} × ₹{unit.toLocaleString('en-IN')}</span>
-                                            <div className="inline-flex items-center border border-[#7a8aa3] rounded-sm bg-white h-7 justify-self-end">
-                                                <button onClick={() => i.quantity > 1 ? handleQuantityChange(i.id, i.quantity - 1) : handleDeleteItem(i.id)} aria-label="Less" className="w-6 h-[26px] text-[#45556c]">−</button>
-                                                <span className="min-w-[20px] text-center text-xs font-semibold tabular-nums">{i.quantity}</span>
-                                                <button onClick={() => handleQuantityChange(i.id, i.quantity + 1)} aria-label="More" className="w-6 h-[26px] text-[#45556c]">+</button>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
+                            <CartLinesCompact
+                                items={items}
+                                getUnitPrice={(i: any) => Number(i.customPrice ?? i.salesPrice ?? i.mrp ?? 0)}
+                                onQuantityChange={handleQuantityChange}
+                                onDelete={handleDeleteItem}
+                            />
 
                             {/* Summary */}
                             <div className="space-y-1.5 text-sm">
@@ -1450,7 +1439,7 @@ const Sales: React.FC = () => {
 
                             <button type="button" onClick={handleProceedToPayment} disabled={items.length === 0}
                                 className="mt-auto w-full h-14 rounded-sm bg-[#155dfc] text-white text-base font-medium hover:bg-[#1447e6] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed">
-                                {isEditMode ? 'Update invoice' : 'Collect payment'} · ₹{fmtINR(finalAmount)}
+                                {isEditMode ? 'Update invoice' : 'Pay'} · ₹{fmtINR(finalAmount)}
                             </button>
                         </div>
                     </div>
@@ -1602,7 +1591,7 @@ const Sales: React.FC = () => {
                             disabled={liveItemCount === 0}
                             className="w-full h-14 rounded-sm bg-[#155dfc] hover:bg-[#1447e6] text-white font-medium text-base transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed active:scale-[0.98]"
                         >
-                            Collect payment · ₹{liveTotal.toFixed(2)}
+                            Pay · ₹{liveTotal.toFixed(2)}
                         </button>
                     </div>
                 </div>
@@ -1688,8 +1677,8 @@ const Sales: React.FC = () => {
                         <div className="flex gap-2 items-center w-full">
                             <div className="flex-grow">
                                 <SearchableItemInput
-                                    label="Search Item"
-                                    placeholder="Search item name or code"
+                                    label="Search item"
+                                    placeholder="Search item name or barcode"
                                     items={availableItems}
                                     onItemSelected={handleItemSelectedWrapper}
                                     isLoading={pageIsLoading}
@@ -1702,7 +1691,7 @@ const Sales: React.FC = () => {
                             </div>
                             <button type="button" onClick={() => setIsScannerOpen(true)} title="Scan barcode" aria-label="Scan barcode" className={SCAN_BTN_CLS}>
                                 <IconScanCircle width={20} height={20} />
-                                <span className="hidden md:inline">Scan barcode</span>
+                                <span className="hidden md:inline">Scan</span>
                             </button>
                         </div>
                     </div>
@@ -1760,13 +1749,13 @@ const Sales: React.FC = () => {
                                 finalAmount={finalAmount}
                                 showTaxRow={showTaxRow}
                                 taxLabel={`Tax (${activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})`}
-                                actionLabel={isEditMode ? 'Update invoice' : 'Charge'}
+                                actionLabel={isEditMode ? 'Update invoice' : 'Pay'}
                                 onActionClick={handleProceedToPayment}
                                 disableAction={items.length === 0}
                             >
                             </GenericBillFooter>
                         </div>
-                        {renderTabletCheckoutBar(isEditMode ? 'Update invoice' : 'Charge')}
+                        {renderTabletCheckoutBar(isEditMode ? 'Update invoice' : 'Pay')}
                     </div>
                 </div>
 
@@ -1788,7 +1777,7 @@ const Sales: React.FC = () => {
                             {showTaxRow && (
                                 <>
                                     <div className="flex justify-between gap-4"><span className="text-[#45556c]">Taxable value</span><span className="tabular-nums">₹{fmtINR(taxableValue)}</span></div>
-                                    <div className="flex justify-between gap-4"><span className="text-[#45556c]">GST ({activeTaxMode === 'inclusive' ? 'incl.' : 'excl.'})</span><span className="tabular-nums">₹{fmtINR(taxAmount)}</span></div>
+                                    <div className="flex justify-between gap-4"><span className="text-[#45556c]">Tax ({activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})</span><span className="tabular-nums">₹{fmtINR(taxAmount)}</span></div>
                                 </>
                             )}
                             <div className="flex justify-between gap-4"><span className="text-[#45556c]">Round off</span><span className="tabular-nums">₹{fmtINR(roundOff)}</span></div>
@@ -1802,10 +1791,10 @@ const Sales: React.FC = () => {
                         </div>
 
                         <div className="mt-auto grid gap-3">
-                            <p className="m-0 text-center text-xs text-[#5b6b86]">Cash, UPI, card, udhaar or a split — chosen in the payment drawer</p>
+                            <p className="m-0 text-center text-xs text-[#5b6b86]">You choose how it's paid in the next step</p>
                             <button type="button" onClick={handleProceedToPayment} disabled={items.length === 0}
                                 className="w-full h-14 rounded-sm bg-[#155dfc] text-white text-base font-medium hover:bg-[#1447e6] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed">
-                                {isEditMode ? 'Update invoice' : 'Collect payment'} · ₹{fmtINR(finalAmount)}
+                                {isEditMode ? 'Update invoice' : 'Pay'} · ₹{fmtINR(finalAmount)}
                             </button>
                         </div>
                     </div>

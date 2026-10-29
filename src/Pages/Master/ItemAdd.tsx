@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import type { ItemGroup, PriceTier, QuantitySlab } from '../../constants/models';
+import type { ItemGroup, QuantitySlab } from '../../constants/models';
+import { type PriceTierForm, toPriceTierForm, fromPriceTierForm, emptyPriceTierForm } from '../../lib/priceTiers';
 import { validateQuantitySlabs } from '../../constants/models';
 //import { CustomButton } from '../../Components';
 import { State } from '../../enums';
@@ -324,6 +325,7 @@ const ADD_ITEM_CSS = `
 .ai-cropwrap{display:flex;justify-content:center;max-height:60vh;overflow:auto}
 `;
 const DRAFT_STORAGE_KEY = 'sellar_item_add_draft';
+const SAVE_AND_NEW_SEEN_KEY = 'sellar_save_and_new_explained';
 
 const ItemAdd: React.FC<ItemAddProps> = ({
   theme = 'blue',
@@ -419,7 +421,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   const pendingRawFile = useRef<File | null>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
-  const [priceTiers, setPriceTiers] = useState<PriceTier[]>([]);
+  const [priceTiers, setPriceTiers] = useState<PriceTierForm[]>([]);
   const [quantitySlabs, setQuantitySlabs] = useState<QuantitySlab[]>([]);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -469,7 +471,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         const parsed = JSON.parse(draft);
         if (parsed.itemName) setItemName(parsed.itemName);
         if (parsed.itemMRP) setItemMRP(parsed.itemMRP);
-        if (parsed.priceTiers) setPriceTiers(parsed.priceTiers);
+        if (parsed.priceTiers) setPriceTiers(parsed.priceTiers.map(toPriceTierForm));
         if (parsed.quantitySlabs) setQuantitySlabs(parsed.quantitySlabs);
         if (parsed.itemSalesPrice) setItemSalesPrice(parsed.itemSalesPrice);
         if (parsed.itemPurchasePrice) setItemPurchasePrice(parsed.itemPurchasePrice);
@@ -724,23 +726,10 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     setCrop(centeredCrop);
   };
   const addPriceTier = () => {
-    setPriceTiers(prev => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        label: '',
-        quantity: 1,
-        mrp: 0,
-        salesPrice: 0,
-        purchasePrice: 0,
-        discount: 0,
-        purchasediscount: 0,
-        barcode: '',
-      },
-    ]);
+    setPriceTiers(prev => [...prev, emptyPriceTierForm()]);
   };
 
-  const updatePriceTier = (id: string, field: keyof PriceTier, value: string | number) => {
+  const updatePriceTier = (id: string, field: keyof PriceTierForm, value: string) => {
     setPriceTiers(prev =>
       prev.map(t => (t.id === id ? { ...t, [field]: value } : t))
     );
@@ -797,7 +786,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       setModal({ message: 'Please enter either MRP or Sales Price.', type: State.ERROR }); return;
     }
     // Only validate/save tiers when the feature is enabled in settings
-    const activeTiers = itemSettings.enablePriceTiers ? priceTiers : [];
+    const activeTiers = itemSettings.enablePriceTiers ? priceTiers.map(fromPriceTierForm) : [];
 
     // Validate price tiers
     for (const tier of activeTiers) {
@@ -980,7 +969,22 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         return;
       }
 
-      setSuccess(`Item "${itemName}" added!`);
+      const savedAndNew = keepForNextRef.current; // read before resetForm clears it
+      if (savedAndNew) {
+        setSuccess(`Item "${itemName}" added. The form is ready for your next item — unit, GST rate and categories are kept from this one.`);
+        // Explain the button once per device, then the banner above does the job
+        try {
+          if (!localStorage.getItem(SAVE_AND_NEW_SEEN_KEY)) {
+            localStorage.setItem(SAVE_AND_NEW_SEEN_KEY, '1');
+            setModal({
+              message: `"${itemName}" is saved. Save & new clears the form so you can add the next item straight away, and keeps this item's unit, GST rate and categories so similar items are quicker to add.`,
+              type: State.SUCCESS,
+            });
+          }
+        } catch { /* storage blocked — the banner still explains it */ }
+      } else {
+        setSuccess(`Item "${itemName}" added!`);
+      }
       resetForm();
       requestAnimationFrame(() => {
         successBannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1892,22 +1896,22 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                           </div>)}
                         {fl(`Quantity (in ${getUnitLabel()})`,
                           <div className="ai-field ai-field--sm">
-                            <input type="number" value={tier.quantity} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => updatePriceTier(tier.id, 'quantity', parseInt(e.target.value) || 1)} min="1" placeholder="10" />
+                            <input type="number" value={tier.quantity} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => updatePriceTier(tier.id, 'quantity', e.target.value)} placeholder="e.g. 10" />
                           </div>)}
                       </div>
 
                       <div className="ai-g3">
                         {fl('MRP',
                           <div className="ai-field ai-field--sm"><i>₹</i>
-                            <input type="number" value={tier.mrp} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => updatePriceTier(tier.id, 'mrp', parseFloat(e.target.value) || 0)} placeholder="0.00" />
+                            <input type="number" value={tier.mrp} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => updatePriceTier(tier.id, 'mrp', e.target.value)} placeholder="0.00" />
                           </div>)}
                         {fl('Sales price',
                           <div className="ai-field ai-field--sm"><i>₹</i>
-                            <input type="number" value={tier.salesPrice} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => updatePriceTier(tier.id, 'salesPrice', parseFloat(e.target.value) || 0)} placeholder="0.00" />
+                            <input type="number" value={tier.salesPrice} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => updatePriceTier(tier.id, 'salesPrice', e.target.value)} placeholder="0.00" />
                           </div>)}
                         {fl('Purchase price',
                           <div className="ai-field ai-field--sm"><i>₹</i>
-                            <input type="number" value={tier.purchasePrice} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => updatePriceTier(tier.id, 'purchasePrice', parseFloat(e.target.value) || 0)} placeholder="0.00" />
+                            <input type="number" value={tier.purchasePrice} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => updatePriceTier(tier.id, 'purchasePrice', e.target.value)} placeholder="0.00" />
                           </div>)}
                         {fl('Barcode (optional)',
                           <div className="ai-field ai-field--sm">
@@ -2209,7 +2213,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
             title="Save this item and start another, keeping unit, tax and groups"
             className="ai-btn ai-btn--secondary ai-btn--lg"
           >
-            <AiIcon name="plus" sm />Another
+            Save &amp; new
           </button>
           <button
             onClick={() => { keepForNextRef.current = false; handleAddItem(); }}

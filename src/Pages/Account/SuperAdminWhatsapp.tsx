@@ -3,7 +3,7 @@ import { collection, collectionGroup, doc, getDoc, getDocs, limit, orderBy, quer
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { ChevronDown } from 'lucide-react';
 import { db } from '../../lib/Firebase';
-import Loading from '../Loading/Loading';
+import PageLoader from '../../Components/PageLoader';
 import { SELLAR_WHATSAPP_PLANS } from '../Additional/Whatsapp/SellarWhatsappPlans';
 import type { AdminCompany } from './superAdmin/data';
 import { DAY_MS, ageText, companyStatus, fmtDate, fmtDateTime, fmtMoney, loadCompanies, toDate } from './superAdmin/data';
@@ -213,7 +213,7 @@ const SuperAdminWhatsapp: React.FC = () => {
     return { ...r, status, health, requested: form.tier !== 'none' && form.active ? null : r.requested };
   }));
 
-  if (loading) return <Loading />;
+  if (loading) return <PageLoader />;
 
   const selected = rows.find(r => r.company.id === selectedId) || null;
 

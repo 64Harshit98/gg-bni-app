@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Minus, Plus, Trash2, Send, Pin, Download, Loader2, ArrowLeft, ChevronDown, Pencil } from 'lucide-react';
+import { Plus, Send, Pin, Download, Loader2, ArrowLeft, ChevronDown, Pencil } from 'lucide-react';
 import type { CatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting';
-import { ROUTES } from '../constants/routes.constants';
+import { ROUTES, productPageBuilderPath } from '../constants/routes.constants';
 import { useAuth, useDatabase } from '../context/auth-context';
 import { useCatalogueData } from '../context/CatalogueDataContext';
 import type { Item, ItemGroup } from '../constants/models';
 import { ItemEditDrawer } from '../Components/ItemDrawer';
-import { ItemDetailDrawer } from '../Components/ItemDetails';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useBusinessName } from './hooks/BusinessName';
 import { syncNotifyStock } from "../../src/Catalogue/utils/syncNotifyStock";
@@ -16,6 +15,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import ShowWrapper from '../context/ShowWrapper';
 import { Cata_Permissions } from './enum/cata_permissions.enum';
 import { Photo, Sheet, Tag, btnClass } from './storefront/StoreUI';
+import { findItemGroup, itemInGroup, productPageUrl } from './storefront/storefront.utils';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 
@@ -173,7 +173,8 @@ const MyShop: React.FC = () => {
     const highlightItemId = location.state?.highlightItemId;
     const highlightTrigger = location.state?.trigger;
     const { groupId } = useParams<{ groupId: string }>();
-    const { currentUser, loading: authLoading } = useAuth();
+    const { currentUser, loading: authLoading, hasCataloguePermission } = useAuth();
+    const canEditItems = hasCataloguePermission(Cata_Permissions.ViewEditButton);
     const companyId = currentUser?.companyId;
     const { businessName: companyName, loading: _nameLoading } = useBusinessName(companyId);
     const dbOperations = useDatabase();
@@ -190,11 +191,9 @@ const MyShop: React.FC = () => {
     const [_error, setError] = useState<string | null>(null);
     const [itemsToRenderCount, setItemsToRenderCount] = useState(ITEMS_PER_BATCH_RENDER);
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-    const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
     const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
-    const [selectedItemForDetails, setSelectedItemForDetails] = useState<Item | null>(null);
-    const [variantGroupIds, setVariantGroupIds] = useState<string[]>([]);
     const [catalogueSettings, setCatalogueSettings] = useState<CatalogueSalesSettings | null>(null);
+    const [subdomain, setSubdomain] = useState<string | null>(null);
 
     const observerRef = useRef<IntersectionObserver | null>(null);
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -202,8 +201,6 @@ const MyShop: React.FC = () => {
     const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A' | 'Price: Low-High' | 'Price: High-Low'>('A-Z');
     const [isSortOpen, setIsSortOpen] = useState(false);
     const isViewMode = false;
-    const [cart, setCart] = useState<{ item: Item; quantity: number }[]>([]);
-    const [isCartOpen, setIsCartOpen] = useState(false);
     const [allItemGroups, setAllItemGroups] = useState<ItemGroup[]>([]);
     const [isAllLive, setIsAllLive] = useState(false);
     const [showConfirmPopup, setShowConfirmPopup] = useState(false);
@@ -237,6 +234,14 @@ const MyShop: React.FC = () => {
         loadPins();
     }, [companyId]);
 
+    // Shop's <slug>.sellar.in address, for product links
+    useEffect(() => {
+        if (!companyId) return;
+        getDoc(doc(db, 'companies', companyId))
+            .then((snap) => setSubdomain(snap.exists() ? snap.data().subdomain || null : null))
+            .catch((err) => console.error("Error fetching subdomain:", err));
+    }, [companyId]);
+
     const generateSlug = (name: string) => {
         return name
             .toLowerCase()
@@ -265,42 +270,15 @@ const MyShop: React.FC = () => {
         setSearchQuery("");
     }, [groupId]);
 
-    const addToCart = (item: Item, quantity: number = 1, isFromDrawer: boolean = false) => {
-        setCart(prev => {
-            const existing = prev.find(i => i.item.id === item.id);
-            if (existing) {
-                const newQuantity = isFromDrawer ? quantity : existing.quantity + 1;
-                return prev.map(i => i.item.id === item.id ? { ...i, quantity: newQuantity } : i);
-            }
-            return [...prev, { item, quantity }];
-        });
-    };
-
-    const removeFromCart = (itemId: string) => {
-        setCart(prev => prev.filter(i => i.item.id !== itemId));
-    };
-
     const handleShareItem = async (item: Item) => {
-        if (!companyId || !item?.itemGroupId || !item?.id) return;
+        if (!companyId || !item?.id) return;
 
-        const group = allItemGroups.find((g) => g.id === item.itemGroupId);
-        const categorySlug = group ? generateSlug(group.name) : item.itemGroupId;
-        const itemSlug = generateSlug(item.name || "product");
-
-        // ADDED &cId=${companyId} to the base URL
-        let shareUrl = `${window.location.origin}/${companyId}/${categorySlug}?product=${itemSlug}&itemId=${item.id}&cId=${companyId}`;
-
-        try {
-            const docRef = doc(db, 'companies', companyId);
-            const snap = await getDoc(docRef);
-
-            if (snap.exists() && snap.data().subdomain) {
-                // ADDED &cId=${companyId} to the subdomain URL
-                shareUrl = `https://${snap.data().subdomain}.sellar.in/${categorySlug}?product=${itemSlug}&itemId=${item.id}&cId=${companyId}`;
-            }
-        } catch (error) {
-            console.error("Error fetching subdomain for sharing:", error);
-        }
+        // The product's own page, under the category being viewed when it's in it
+        const group = (resolvedGroupId && itemInGroup(item, resolvedGroupId)
+            ? allItemGroups.find((g) => g.id === resolvedGroupId)
+            : undefined) ?? findItemGroup(item, allItemGroups);
+        if (!group) return;
+        const shareUrl = productPageUrl(item, group.name, companyId, subdomain);
 
         try {
             const shareText = `Check out ${item.name} from ${companyName}`;
@@ -320,28 +298,6 @@ const MyShop: React.FC = () => {
             console.error("Error sharing item:", error);
         }
     };
-    const updateQuantity = (itemId: string, delta: number) => {
-        setCart(prev => prev.map(i => {
-            if (i.item.id === itemId) {
-                const allowZero = catalogueSettings?.allowQuantityDecreaseToZero;
-                const newQty = allowZero
-                    ? Math.max(0, i.quantity + delta)
-                    : Math.max(1, i.quantity + delta);
-                return { ...i, quantity: newQty };
-            }
-            return i;
-        }).filter(i => i.quantity > 0));
-    };
-
-    const cartTotal = useMemo(() =>
-        cart.reduce((acc, curr) => {
-            const { salePrice } = getEffectivePriceInfo(curr.item);
-            return acc + salePrice * curr.quantity;
-        }, 0),
-        [cart]
-    );
-
-    const cartCount = useMemo(() => cart.reduce((acc, curr) => acc + curr.quantity, 0), [cart]);
 
     const handleDownloadPDF = async () => {
         // 1. Filter out unlisted items immediately
@@ -742,52 +698,31 @@ const MyShop: React.FC = () => {
         return () => observerRef.current?.disconnect();
     }, [hasMoreItems, loadMoreItems]);
 
-    const resolveVariantGroup = (item: Item): string[] => {
-        const itemId = String(item.id!);
+    // After the drawer or the page builder saves: mirror it locally and sync back-in-stock alerts
+    const applySavedItem = async (itemId: string, updated: Partial<Item>) => {
+        const before = allItems.find((i) => i.id === itemId);
+        setAllItems(prev =>
+            prev.map(i =>
+                i.id === itemId
+                    ? {
+                        ...i,
+                        ...updated,
+                        stock: updated.stock !== undefined ? Number(updated.stock) : i.stock,
+                        moq: updated.moq ?? i.moq ?? 1
+                    }
+                    : i
+            )
+        );
 
-        // Walk the WHOLE connected component (forward + reverse edges, since
-        // variant links can be one-way) and collect every member — not just
-        // the "best" root's own declared variants array.
-        const visited = new Set<string>();
-        const queue = [itemId];
-
-        while (queue.length > 0) {
-            const currentId = queue.shift()!;
-            if (visited.has(currentId)) continue;
-            visited.add(currentId);
-
-            const currentItem = allItems.find(i => String(i.id) === currentId);
-            if (!currentItem) continue;
-
-            const currentVariants: string[] = ((currentItem as any).variants || []).map(String);
-            currentVariants.forEach(vid => { if (!visited.has(vid)) queue.push(vid); });
-
-            allItems.forEach(i => {
-                const iVariants: string[] = ((i as any).variants || []).map(String);
-                if (iVariants.includes(currentId) && !visited.has(String(i.id))) {
-                    queue.push(String(i.id));
-                }
-            });
+        if (companyId) {
+            const newStock = updated.stock !== undefined ? Number(updated.stock) : (before?.stock ?? 0);
+            await syncNotifyStock(companyId, itemId, newStock > 0);
         }
-
-        if (visited.size <= 1) return [itemId];
-
-        // Stable order: always follow the catalogue's own item order, so the
-        // variant chips never reshuffle depending on which variant is open.
-        return allItems
-            .filter(i => visited.has(String(i.id)))
-            .map(i => String(i.id));
     };
 
     const handleOpenEditDrawer = (item: Item) => {
         setSelectedItemForEdit(item);
         setIsDrawerOpen(true);
-    };
-
-    const handleOpenDetailDrawer = (item: Item) => {
-        setSelectedItemForDetails(item);
-        setVariantGroupIds(resolveVariantGroup(item));
-        setIsDetailDrawerOpen(true);
     };
 
     const handleTogglePin = (e: React.MouseEvent, id: string) => {
@@ -960,8 +895,9 @@ const MyShop: React.FC = () => {
                                 <article
                                     id={item.id}
                                     key={item.id}
-                                    onClick={() => handleOpenDetailDrawer(item)}
-                                    className={cx('group flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border bg-white shadow-sf-card transition-shadow hover:shadow-sf-float',
+                                    onClick={canEditItems ? () => navigate(productPageBuilderPath(item.id!), { state: { groupId: resolvedGroupId } }) : undefined}
+                                    className={cx('group flex min-w-0 flex-col overflow-hidden rounded-sm border bg-white shadow-sf-card',
+                                        canEditItems && 'cursor-pointer transition-shadow hover:shadow-sf-float',
                                         highlightedId === item.id ? 'border-sf-primary outline-2 outline-offset-2 outline-sf-primary' : pinned ? 'border-sf-primary' : 'border-sf-line')}
                                 >
                                     <div className={cx('relative aspect-square overflow-hidden', !item.isListed && 'opacity-60')}>
@@ -1036,31 +972,6 @@ const MyShop: React.FC = () => {
                 )}
             </div>
 
-            {/* Cart preview from the product detail drawer (owner trying the storefront flow) */}
-            <Sheet open={isCartOpen} title={`Cart (${cartCount})`} onClose={() => setIsCartOpen(false)}>
-                {cart.length === 0 ? (
-                    <p className="py-8 text-center text-sm text-slate-500">The cart is empty.</p>
-                ) : (
-                    <div className="grid gap-3">
-                        {cart.map(({ item, quantity }) => (
-                            <div key={item.id} className="grid grid-cols-[56px_minmax(0,1fr)_auto] items-center gap-3 rounded-sm border border-sf-line p-2.5">
-                                <Photo src={item.imageUrl} alt={item.name} fit="contain" className="aspect-square" />
-                                <div className="min-w-0">
-                                    <b className="block truncate text-sm font-medium">{item.name}</b>
-                                    <span className="text-xs tabular-nums text-slate-500">₹{getEffectivePriceInfo(item).salePrice.toLocaleString('en-IN')} each</span>
-                                    <div className="mt-1.5 flex items-center gap-1">
-                                        <button type="button" aria-label="Remove one" onClick={() => updateQuantity(item.id!, -1)} className="grid size-7 place-items-center rounded-sm border border-sf-control"><Minus className="size-3.5" /></button>
-                                        <span className="w-7 text-center text-sm font-semibold tabular-nums">{quantity}</span>
-                                        <button type="button" aria-label="Add one" onClick={() => updateQuantity(item.id!, 1)} className="grid size-7 place-items-center rounded-sm border border-sf-control"><Plus className="size-3.5" /></button>
-                                    </div>
-                                </div>
-                                <button type="button" aria-label={`Remove ${item.name}`} onClick={() => removeFromCart(item.id!)} className="grid size-8 place-items-center rounded-sm text-red-700 hover:bg-red-50"><Trash2 className="size-4" /></button>
-                            </div>
-                        ))}
-                        <div className="flex justify-between border-t border-sf-line pt-3 text-base font-semibold"><span>Subtotal</span><span className="tabular-nums">₹{cartTotal.toLocaleString('en-IN')}</span></div>
-                    </div>
-                )}
-            </Sheet>
 
             <ItemEditDrawer
                 item={selectedItemForEdit}
@@ -1069,25 +980,8 @@ const MyShop: React.FC = () => {
                     setIsDrawerOpen(false);
                     setSelectedItemForEdit(null);
                 }}
-                onSaveSuccess={async (updated) => {
-                    setAllItems(prev =>
-                        prev.map(i =>
-                            i.id === selectedItemForEdit?.id
-                                ? {
-                                    ...i,
-                                    ...updated,
-                                    stock: updated.stock !== undefined ? Number(updated.stock) : i.stock,
-                                    moq: updated.moq ?? i.moq ?? 1
-                                }
-                                : i
-                        )
-                    );
-
-                    if (companyId && selectedItemForEdit) {
-                        const newStock = updated.stock !== undefined ? Number(updated.stock) : (selectedItemForEdit.stock ?? 0);
-                        const isNowInStock = newStock > 0;
-                        await syncNotifyStock(companyId, selectedItemForEdit.id!, isNowInStock);
-                    }
+                onSaveSuccess={(updated) => {
+                    if (selectedItemForEdit?.id) applySavedItem(selectedItemForEdit.id, updated);
                 }}
                 itemGroupRoute={`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`}
             />
@@ -1108,22 +1002,6 @@ const MyShop: React.FC = () => {
                         : `All ${filteredItems.length} products in ${currentCategoryName} will be hidden from your store link.`}
                 </p>
             </Sheet>
-
-            <ItemDetailDrawer
-                catalogueSettings={catalogueSettings}
-                item={selectedItemForDetails}
-                isOpen={isDetailDrawerOpen}
-                onClose={() => { setIsDetailDrawerOpen(false); setSelectedItemForDetails(null); }}
-                onAddToCart={(item) => addToCart(item)}
-                initialQuantity={cart.find(i => i.item.id === selectedItemForDetails?.id)?.quantity || 0}
-                onUpdateQuantity={updateQuantity}
-                companyId={companyId}
-                variantGroupIds={variantGroupIds}
-                onVariantSelect={(variantItem) => {
-                    setSelectedItemForDetails(variantItem as Item);
-                    setVariantGroupIds(resolveVariantGroup(variantItem as Item));
-                }}
-            />
         </div>
     );
 };

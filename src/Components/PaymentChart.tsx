@@ -49,7 +49,11 @@ export const PaymentChart: React.FC<PaymentChartProps> = ({
   data,
   unpaidAmount = 0,
 }) => {
-  const whole = data.reduce((s, d) => s + d.amount, 0) + unpaidAmount;
+  // "Due" in the bill's payment split is the same money as udhaar; show it once, as the Udhaar row
+  const isDue = (m: PaymentMethod) => m.name.toLowerCase().includes('due');
+  const methods = data.filter((m) => !isDue(m));
+  const udhaar = unpaidAmount || data.filter(isDue).reduce((s, d) => s + d.amount, 0);
+  const whole = methods.reduce((s, d) => s + d.amount, 0) + udhaar;
   const pct = (n: number) => (whole > 0 ? (n / whole) * 100 : 0);
 
   return (
@@ -57,7 +61,7 @@ export const PaymentChart: React.FC<PaymentChartProps> = ({
       <SlCardHead title="Payment methods" subtitle="How customers paid" />
       {!isDataVisible ? (
         <EmptyState icon={<FiEyeOff />} title="Figures are hidden" />
-      ) : data.length === 0 && unpaidAmount === 0 ? (
+      ) : methods.length === 0 && udhaar === 0 ? (
         <EmptyState
           icon={<FiEyeOff />}
           title="No payments yet"
@@ -65,11 +69,11 @@ export const PaymentChart: React.FC<PaymentChartProps> = ({
         />
       ) : (
         <div className="grid gap-[18px]">
-          {data.map(m => (
+          {methods.map(m => (
             <Row key={m.name} label={m.name} amount={m.amount} pct={pct(m.amount)} showPct />
           ))}
-          {unpaidAmount > 0 && (
-            <Row label="Udhaar (unpaid)" amount={unpaidAmount} pct={pct(unpaidAmount)} showPct={false} warn />
+          {udhaar > 0 && (
+            <Row label="Udhaar (unpaid)" amount={udhaar} pct={pct(udhaar)} showPct warn />
           )}
         </div>
       )}

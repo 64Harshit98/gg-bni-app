@@ -72,6 +72,8 @@ interface PaymentDrawerProps {
     isOpen: boolean;
     onClose: () => void;
     mode?: 'sale' | 'purchase' | 'calculator';
+    /** Money goes out (paying a supplier) — wording becomes "Pay supplier / To pay". Returns flip direction per bill, so this isn't derived from mode. */
+    payingOut?: boolean;
     /** Which side a newly created customer belongs to (POS and catalogue share the customers collection) */
     customerSource?: 'pos' | 'catalogue';
     subtotal: number;
@@ -340,6 +342,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     isOpen,
     onClose,
     mode = 'sale',
+    payingOut = false,
     customerSource = 'pos',
     billTotal,
     originalBillTotal,
@@ -389,6 +392,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const partyLabel = isSale ? 'Customer' : 'Supplier';
     const isCalculator = mode === 'calculator';
     const isPurchaseReturnMode = mode === 'purchase';
+    const amountLabel = payingOut ? 'To pay' : 'To collect';
 
     // --- STATE ---
     const [partyName, setPartyName] = useState('');
@@ -1250,7 +1254,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         ...(parsedExpense > 0 ? [{ label: 'Extra expenses', value: `+ ₹${fmt(parsedExpense)}` }] : []),
         { label: 'Sub total', value: `₹${fmt(subTotalValue)}` },
         { label: `Tax · ${taxModeLabel}`, value: `₹${fmt(liveTax)}` },
-        { label: 'To collect', value: `₹${fmt(netPayable)}`, total: true },
+        { label: amountLabel, value: `₹${fmt(netPayable)}`, total: true },
     ];
 
     const confirmContent = isSubmitting ? (
@@ -1558,7 +1562,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     </div>
 
                     <div className="flex justify-between items-baseline px-3 py-2.5 rounded-sm bg-[#f5f7ff] text-[13px] text-[#45556c]">
-                        <span>To collect</span>
+                        <span>{amountLabel}</span>
                         <b className="text-lg font-semibold text-[#0f172b] tabular-nums">₹{fmt(netPayable)}</b>
                     </div>
                 </PopupDialog>
@@ -1724,7 +1728,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 <div className="px-5 md:px-6 py-3 md:py-4 bg-white rounded-sm md:rounded-none border-b border-[#dfe6fb] sticky top-0 z-10 flex items-center justify-between">
                     <div className="w-10 h-1 bg-[#dfe6fb] rounded-full absolute top-1.5 left-1/2 -translate-x-1/2 md:hidden"></div>
                     <div className="mt-2 md:mt-0">
-                        <h2 className="text-lg md:text-xl font-semibold text-[#0f172b] leading-tight">Take payment</h2>
+                        <h2 className="text-lg md:text-xl font-semibold text-[#0f172b] leading-tight">{payingOut ? 'Pay supplier' : 'Take payment'}</h2>
                         {totalQuantity > 0 && (
                             <div className="text-xs text-[#5b6b86]">{totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}</div>
                         )}
@@ -1836,7 +1840,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     {/* RIGHT COLUMN (desktop): To collect, summary, discount & tax, confirm */}
                     <aside className="hidden md:flex md:w-80 md:flex-none flex-col gap-3.5 p-5 bg-[#f5f7ff] border-l border-[#dfe6fb] overflow-y-auto [&>*]:shrink-0">
                         <div className="flex flex-col items-start">
-                            <span className="text-sm text-[#45556c]">To collect</span>
+                            <span className="text-sm text-[#45556c]">{amountLabel}</span>
                             <b className="text-[28px] leading-9 font-semibold tracking-tight text-[#0f172b] tabular-nums">₹{fmt(netPayable)}</b>
                         </div>
 

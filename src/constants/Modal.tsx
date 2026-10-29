@@ -190,7 +190,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
         }
     };
 
-    return (
+    // Portaled like Modal so it always sits above page sheets/drawers that opened it
+    return createPortal(
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex justify-center items-center z-[2000]">
             <div className="bg-white rounded-sm shadow-xl p-6 w-full max-w-md">
                 <h2 className="text-2xl font-bold mb-2 text-slate-800">Settle Payment</h2>
@@ -290,6 +291,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                     </div>
                 </form>
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 };

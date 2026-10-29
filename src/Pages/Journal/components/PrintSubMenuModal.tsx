@@ -23,7 +23,7 @@ export const PrintSubMenuModal: React.FC<PrintSubMenuModalProps> = ({
 }) => {
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
+      className="fixed inset-0 z-[2100] flex items-center justify-center bg-black/50"
       onClick={() => setShowPrintSubMenu(false)}
     >
       <div

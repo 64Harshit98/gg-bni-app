@@ -55,9 +55,13 @@ const SORT_OPTIONS: { value: string; label: string }[] = [
   { value: 'value:asc', label: 'Value low → high' },
 ];
 
+// Sign goes before the ₹ ("-₹5,411", not "₹-5,411")
 const inr = (n: number) =>
-  `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const inrRound = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
+  `${n < 0 ? '-' : ''}₹${Math.abs(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const inrRound = (n: number) => {
+  const r = Math.round(n);
+  return `${r < 0 ? '-' : ''}₹${Math.abs(r).toLocaleString('en-IN')}`;
+};
 
 // Same rule as the Restock report: in stock, but below the reorder quantity.
 const isLowStock = (item: Item, stock: number) =>

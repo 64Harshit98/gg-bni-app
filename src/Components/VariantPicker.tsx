@@ -19,6 +19,7 @@ export const VariantPicker: React.FC<VariantPickerProps> = ({
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -40,6 +41,13 @@ export const VariantPicker: React.FC<VariantPickerProps> = ({
          i.barcode?.includes(query))
       ).slice(0, 8)
     : [];
+
+  // Results sit in the page flow (not absolute) so a card's overflow can't clip them;
+  // bring the list fully into view, clear of the mobile save bar + bottom nav.
+  const hasResults = isOpen && query.trim().length > 0;
+  useEffect(() => {
+    if (hasResults) resultsRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [hasResults, suggestions.length]);
 
   const addVariant = (item: any) => {
     onChange([...selectedIds, item.id]);
@@ -89,7 +97,7 @@ export const VariantPicker: React.FC<VariantPickerProps> = ({
         />
 
         {isOpen && suggestions.length > 0 && (
-          <div className="absolute z-50 top-full left-0 right-0 bg-white border border-gray-200 rounded-sm shadow-lg mt-1 max-h-52 overflow-y-auto">
+          <div ref={resultsRef} className="bg-white border border-gray-200 rounded-sm shadow-lg mt-1 max-h-52 overflow-y-auto scroll-mb-40 md:scroll-mb-4">
             {suggestions.map(item => (
               <button
                 key={item.id}
@@ -111,7 +119,7 @@ export const VariantPicker: React.FC<VariantPickerProps> = ({
         )}
 
         {isOpen && query.trim().length > 0 && suggestions.length === 0 && (
-          <div className="absolute z-50 top-full left-0 right-0 bg-white border border-gray-200 rounded-sm shadow-lg mt-1 px-3 py-2 text-xs text-gray-400">
+          <div className="bg-white border border-gray-200 rounded-sm shadow-lg mt-1 px-3 py-2 text-xs text-gray-400">
             No items found
           </div>
         )}

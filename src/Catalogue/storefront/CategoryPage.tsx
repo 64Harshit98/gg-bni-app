@@ -16,7 +16,7 @@ import { canSeePrices, productState } from './productState';
 import { groupCategories, storeAddress } from './StoreSections';
 import { ProductView } from './ProductView';
 import { AskSheet, CartBar, EmptyState, Note, ProductCard, ProductCardSkeleton, StoreFooter, StoreHeader, StoreLoading, StoreMessage, WhatsAppFab, btnClass } from './StoreUI';
-import { type CartLineItem, findItemBySlug, findItemGroup, formatPhone, getItemGroupIds, getItemImages, itemInGroup, itemSlug, slugify, whatsappUrl } from './storefront.utils';
+import { type CartLineItem, findItemBySlug, findItemGroup, formatPhone, getItemGroupIds, getItemImages, itemInGroup, itemSlug, slugify, variantGroup, whatsappUrl } from './storefront.utils';
 
 const BATCH = 24;
 type Sort = 'popular' | 'az' | 'za' | 'low' | 'high';
@@ -28,22 +28,6 @@ const SORTS: { id: Sort; label: string }[] = [
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 const notifySynced = new Set<string>();
-
-/** Every item linked to this one through `variants` (links can be one-way), in catalogue order. */
-const variantGroup = (item: Item, listed: Item[]) => {
-    const visited = new Set<string>();
-    const queue = [String(item.id)];
-    while (queue.length) {
-        const id = queue.shift()!;
-        if (visited.has(id)) continue;
-        visited.add(id);
-        const cur = listed.find((i) => String(i.id) === id);
-        if (!cur) continue;
-        (cur.variants || []).map(String).forEach((v: string) => { if (!visited.has(v) && listed.some((i) => String(i.id) === v)) queue.push(v); });
-        listed.forEach((i) => { if ((i.variants || []).map(String).includes(id) && !visited.has(String(i.id))) queue.push(String(i.id)); });
-    }
-    return listed.filter((i) => visited.has(String(i.id)));
-};
 
 /** Products in one category (/:groupId), and a single product (/:groupId/:itemSlug). */
 const CategoryPage: React.FC = () => {

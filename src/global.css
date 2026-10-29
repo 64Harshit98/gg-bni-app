@@ -11,6 +11,23 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Storefront breakpoints (sf-sm / sf-md / sf-lg). On the live store they are the
+   normal screen breakpoints. Inside the Store page builder's preview (.sf-frame,
+   a query container) they follow the preview's own width instead, so the Phone
+   preview lays out like a phone even on a wide screen. */
+@custom-variant sf-sm {
+  @media (width >= 40rem) { &:not(:where(.sf-frame *)) { @slot; } }
+  @container sf (width >= 40rem) { @slot; }
+}
+@custom-variant sf-md {
+  @media (width >= 48rem) { &:not(:where(.sf-frame *)) { @slot; } }
+  @container sf (width >= 48rem) { @slot; }
+}
+@custom-variant sf-lg {
+  @media (width >= 64rem) { &:not(:where(.sf-frame *)) { @slot; } }
+  @container sf (width >= 64rem) { @slot; }
+}
+
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);

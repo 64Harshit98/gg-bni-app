@@ -5,7 +5,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { ChevronDown, MoreHorizontal } from 'lucide-react';
 import { db } from '../../lib/Firebase';
 import { PLANS } from '../../enums';
-import Loading from '../Loading/Loading';
+import PageLoader from '../../Components/PageLoader';
 import { confirmExpiryChange, MAX_EXPIRY_YEARS_AHEAD } from './superAdminExpiryGuard';
 import type { AdminCompany, PaidOrder } from './superAdmin/data';
 import {
@@ -272,7 +272,7 @@ const SuperAdminCompanies: React.FC = () => {
 
   const toggleCard = (f: CardFilter) => setCardFilter(prev => (prev === f ? 'all' : f));
 
-  if (loading) return <Loading />;
+  if (loading) return <PageLoader />;
 
   return (
     <PageShell>

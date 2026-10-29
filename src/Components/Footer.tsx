@@ -52,7 +52,7 @@ interface GenericBillFooterProps {
   children?: React.ReactNode;
 
   // ── Optional wording / rows (defaults keep Sale exactly as before) ──
-  subtotalLabel?: string;                          // default 'MRP subtotal'
+  subtotalLabel?: string;                          // default 'MRP total'
   netLabel?: string;                               // default 'Net sale price'
   showNetRow?: boolean;                            // default true (Purchase passes false)
   extraRows?: { label: string; value: string }[];  // shown above the subtotal row (e.g. Purchase "MRP value")
@@ -71,7 +71,7 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
   onActionClick,
   disableAction = false,
   children,
-  subtotalLabel = 'MRP subtotal',
+  subtotalLabel = 'MRP total',
   netLabel = 'Net sale price',
   showNetRow = true,
   extraRows = [],
@@ -101,7 +101,7 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
 
       {Number(roundingOffAmount) !== 0 && (
         <BillRow
-          label="Rounding off"
+          label="Round off"
           value={`${Number(roundingOffAmount) > 0 ? '+' : '−'} ₹${formatINR(Math.abs(Number(roundingOffAmount)))}`}
         />
       )}
@@ -117,7 +117,7 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
       <div className="hidden md:block">
         {rows}
         <div className="flex justify-between items-baseline mt-4 pt-4 border-t border-[#dfe6fb]">
-          <span className="text-sm text-[#45556c]">Bill total</span>
+          <span className="text-sm text-[#45556c]">Grand total</span>
           <b className="text-[30px] leading-[38px] font-semibold tracking-tight tabular-nums text-[#0f172b]">
             ₹{formatINR(finalAmount)}
           </b>

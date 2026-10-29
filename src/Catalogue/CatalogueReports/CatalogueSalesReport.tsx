@@ -563,19 +563,6 @@ const OrdersReport: React.FC = () => {
     action();
   };
 
-  const shareOnWhatsApp = () => {
-    if (!appliedFilters) return;
-    const text = [
-      `*Orders Report${companyName ? ` — ${companyName}` : ''}*`,
-      formatRangeLabel(appliedFilters.start, appliedFilters.end),
-      '',
-      `Total sales: ${formatCurrency(Math.round(summary.totalSales))}`,
-      `Orders: ${summary.totalTransactions} · Items sold: ${summary.totalItemsSold}`,
-      `Avg order: ${formatCurrency(Math.round(summary.averageSaleValue))}`,
-    ].join('\n');
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
-  };
-
   /* ---------- SORT HELPERS ---------- */
   const mobileSortValue =
     sortConfig.key === 'totalAmount'
@@ -749,7 +736,6 @@ const OrdersReport: React.FC = () => {
             variant="icon"
             onExcel={() => runDownload(downloadAsExcel)}
             onPdf={() => runDownload(downloadAsPdf)}
-            onWhatsApp={shareOnWhatsApp}
           />
         </div>
       </header>
@@ -901,7 +887,6 @@ const OrdersReport: React.FC = () => {
             <DownloadMenu
               onExcel={() => runDownload(downloadAsExcel)}
               onPdf={() => runDownload(downloadAsPdf)}
-              onWhatsApp={shareOnWhatsApp}
             />
           </div>
 

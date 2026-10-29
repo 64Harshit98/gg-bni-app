@@ -76,6 +76,7 @@ export const ROUTES = {
   CATA_PERMISSION_SETTING: 'cata-permission-setting',
   CATA_EDIT: 'cata-edit-profile',
   CATA_STORE_PAGE: 'store-page',
+  CATA_PRODUCT_PAGE: 'product-page',
   CATA_REQUEST: 'requests',
   PARTY_LEDGER: '/party-ledger',
   GALLA_HISAAB_TOOL: '/galla-hisaab-tool',
@@ -100,3 +101,6 @@ export const ROUTES = {
   AGENT_DASHBOARD: '/agent-dashboard',
   BARCODE_SETTING: '/barcode-setting',
 };
+
+/** Catalogue product page builder for one item (pass { groupId } in router state to keep the category breadcrumb) */
+export const productPageBuilderPath = (itemId: string) => `${ROUTES.CHOME}/${ROUTES.CATA_PRODUCT_PAGE}/${itemId}`;

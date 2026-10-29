@@ -287,9 +287,8 @@ const DashboardContent = () => {
             }
           }
 
-          let cust = d.partyName || d.customerName || d.customer || 'Walk-in';
+          let cust = d.partyName || d.customerName || d.customer || 'N/A';
           if (typeof cust === 'object' && cust.name) cust = cust.name;
-          if (String(cust).trim().toUpperCase() === 'N/A') cust = 'Walk-in';
           if (!customerMap[cust]) customerMap[cust] = { amount: 0, count: 0 };
           customerMap[cust].amount += amount; customerMap[cust].count++;
 

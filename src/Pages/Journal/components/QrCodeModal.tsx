@@ -16,7 +16,7 @@ export const QrCodeModal: React.FC<QrCodeModalProps> = ({
   companyId,
 }) => {
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
       <div className="bg-white rounded-sm shadow-2xl p-6 w-full max-w-sm flex flex-col items-center animate-in fade-in zoom-in duration-300 relative">
         <button onClick={() => setShowQrModal(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
           <FiX size={24} />

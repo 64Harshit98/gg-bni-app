@@ -713,24 +713,6 @@ const PurchaseReport: React.FC = () => {
     action();
   };
 
-  const shareOnWhatsApp = () => {
-    if (!appliedFilters) return;
-    const text = [
-      `*Purchase Report${companyName ? ` — ${companyName}` : ''}*`,
-      formatRangeLabel(appliedFilters.start, appliedFilters.end),
-      '',
-      `Total cost: ${formatCurrency(Math.round(rangeSummary.totalPurchases))}`,
-      `Orders: ${rangeSummary.totalOrders} · Items: ${rangeSummary.totalItemsPurchased}`,
-      `Avg purchase: ${formatCurrency(Math.round(rangeSummary.averagePurchaseValue))}`,
-      '',
-      `Paid to suppliers: ${formatCurrency(paymentStatus.paid)}`,
-      `Still due: ${formatCurrency(paymentStatus.due)}`,
-      `GST input credit: ${formatCurrency(paymentStatus.gst)}`,
-    ].join('\n');
-
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
-  };
-
   const openPurchaseForEdit = (purchase: PurchaseRecord) =>
     navigate(ROUTES.PURCHASE, { state: { purchaseId: purchase.id, isEditMode: true } });
 
@@ -1020,7 +1002,6 @@ const PurchaseReport: React.FC = () => {
             variant="icon"
             onExcel={() => runDownload(downloadAsExcel)}
             onPdf={() => runDownload(downloadAsPdf)}
-            onWhatsApp={shareOnWhatsApp}
           />
         </div>
       </header>
@@ -1195,7 +1176,6 @@ const PurchaseReport: React.FC = () => {
             <DownloadMenu
               onExcel={() => runDownload(downloadAsExcel)}
               onPdf={() => runDownload(downloadAsPdf)}
-              onWhatsApp={shareOnWhatsApp}
             />
           </div>
 

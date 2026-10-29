@@ -310,7 +310,6 @@ const Journal: React.FC = () => {
     handleSendReminder,
     handleSendReminderSnapto,
     handleShowQr,
-    handlePrintQr,
   } = useInvoiceCommunication({ currentUser, salesSettings, isPosBasicPlan, setModal });
 
   const handleEditInvoice = (invoice: Invoice) => {
@@ -631,7 +630,7 @@ const Journal: React.FC = () => {
             </button>
           )}
 
-          {/* Print: primary, except on an unpaid bill where Settle takes the primary slot */}
+          {/* Print (sales only — purchase bills have nothing useful to print): primary, except on an unpaid bill where Settle takes the primary slot */}
           {isSale && (
             <button
               onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }}
@@ -640,16 +639,6 @@ const Journal: React.FC = () => {
             >
               {pdfGenerating === invoice.id ? <Spinner /> : 'Print'}
             </button>
-          )}
-          {!isSale && (
-            <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-              <button
-                onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }}
-                className={invoice.status === 'Unpaid' ? BTN_SECONDARY : BTN_PRIMARY}
-              >
-                Print
-              </button>
-            </ShowWrapper>
           )}
 
           {hasTransportInfo && (
@@ -801,7 +790,6 @@ const Journal: React.FC = () => {
           handleSendWhatsappSnapto={handleSendWhatsappSnapto}
           handlePdfAction={handlePdfAction}
           handleShowQr={handleShowQr}
-          handlePrintQr={handlePrintQr}
         />
       )}
       {!isPosBasicPlan && showPrintSubMenu && invoiceToPrint && (
@@ -978,7 +966,7 @@ const Journal: React.FC = () => {
 
       {/* Mobile detail sheet (hidden while the walkthrough is running so it never covers the highlight) */}
       {selectedInvoice && !isTutorialActive && (
-        <div className="xl:hidden fixed inset-0 z-[9000]">
+        <div className="xl:hidden fixed inset-0 z-[1500]">
           <div
             className="absolute inset-0 bg-[#020618]/45"
             onClick={() => handleInvoiceClick(selectedInvoice.id)}

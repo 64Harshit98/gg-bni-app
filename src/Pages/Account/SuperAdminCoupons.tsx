@@ -4,7 +4,7 @@ import { AlertTriangle, Copy } from 'lucide-react';
 import { db } from '../../lib/Firebase';
 import { useAuth } from '../../context/auth-context';
 import { PLANS } from '../../enums';
-import Loading from '../Loading/Loading';
+import PageLoader from '../../Components/PageLoader';
 import type { AdminCoupon, PaidOrder } from './superAdmin/data';
 import {
   PLAN_META, PLAN_PRICE_YEARLY, couponExpired, couponHighRisk, couponMaxShare, fmtDate, fmtMoney,
@@ -220,7 +220,7 @@ const SuperAdminCoupons: React.FC = () => {
     }
   };
 
-  if (loading) return <Loading />;
+  if (loading) return <PageLoader />;
 
   return (
     <PageShell wide>

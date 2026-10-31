@@ -680,13 +680,13 @@ const SharedItemSettings: React.FC<SharedItemSettingsProps> = ({ theme = 'blue' 
                         </Section>
 
                         {/* Optional Features */}
-                        <Section id="is-optional" title="Optional features" subtitle="Extra sections on the item form" icon="layers" t={t}>
+                        <Section id="is-optional" title="Optional features" subtitle="Extra fields on the item form" icon="layers" t={t}>
                             <ToggleRow
                                 t={t}
                                 id="enable-price-tiers"
                                 icon="layers"
-                                label="Enable multiple pricing options"
-                                description="Show the Pricing Options section (e.g. Box of 10, Combo) when adding or editing an item."
+                                label="Multiple pricing options"
+                                description="Sell one item at different prices, e.g. Box of 10, Combo."
                                 checked={settings.enablePriceTiers}
                                 onChange={(checked: boolean) => handleCheckboxChange('enablePriceTiers', checked)}
                             />
@@ -694,8 +694,8 @@ const SharedItemSettings: React.FC<SharedItemSettingsProps> = ({ theme = 'blue' 
                                 t={t}
                                 id="enable-quantity-slabs"
                                 icon="bars"
-                                label="Enable quantity pricing"
-                                description="Show the Quantity Pricing section (e.g. 1-10 @ ₹100, 11-20 @ ₹95) when adding or editing an item."
+                                label="Quantity pricing"
+                                description="Price changes with quantity, e.g. 1-10 @ ₹100, 11-20 @ ₹95."
                                 checked={settings.enableQuantitySlabs}
                                 onChange={(checked: boolean) => handleCheckboxChange('enableQuantitySlabs', checked)}
                             />
@@ -703,8 +703,8 @@ const SharedItemSettings: React.FC<SharedItemSettingsProps> = ({ theme = 'blue' 
                                 t={t}
                                 id="enable-add-ons"
                                 icon="plus"
-                                label="Enable add-ons"
-                                description="Show an Add-ons button in Item groups, where add-on groups are created. Add item and Edit item then pick them from a dropdown. In Sales, a popup asks for add-ons when the item is tapped."
+                                label="Add-ons"
+                                description="Extras with an item, e.g. extra cheese. Create in Item groups, pick in Add/Edit item. Sales shows a popup."
                                 checked={settings.enableAddOns}
                                 onChange={(checked: boolean) => handleCheckboxChange('enableAddOns', checked)}
                             />

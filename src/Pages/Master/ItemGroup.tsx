@@ -5,7 +5,7 @@ import { useAuth, useDatabase } from '../../context/auth-context';
 import { useItemSettings } from '../../context/SettingsContext';
 import { AddOnManager } from '../../Components/AddonManager';
 import { Spinner } from '../../constants/Spinner';
-import { FiTrash2, FiSearch, FiPackage, FiTag, FiGift, FiShoppingBag, FiGrid, FiList, FiPlus, FiMoreHorizontal, FiChevronDown, FiCopy, FiSliders, FiCheck, FiImage, FiX } from 'react-icons/fi';
+import { FiTrash2, FiSearch, FiPackage, FiTag, FiGift, FiShoppingBag, FiGrid, FiList, FiPlus, FiMoreHorizontal, FiChevronDown, FiCopy, FiSliders, FiCheck, FiImage, FiX, FiArrowLeft } from 'react-icons/fi';
 import { IconEdit } from '../../constants/Icons';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
 import { Modal } from '../../constants/Modal';
@@ -270,6 +270,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
   const canCreateFromModal = modalTrimmedName !== '' && !modalNameExists;
 
   const actionPalette = /orange|f97316|ea580c|c2410c/i.test(theme.primaryBg) ? ACTION_COLOURS.orange : ACTION_COLOURS.blue;
+  const modalTheme: 'pos' | 'catalogue' = actionPalette === ACTION_COLOURS.orange ? 'catalogue' : 'pos';   // ← NEW
   const actionBg = theme.actionBg ?? actionPalette.bg;
   const actionHoverBg = theme.actionHoverBg ?? actionPalette.hover;
   const actionBorder = theme.actionBorder ?? actionPalette.border;
@@ -729,8 +730,19 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
   const renderHeader = () => (
     <div className="flex-shrink-0">
       <div className="flex items-center gap-2 bg-white border-b border-gray-200 px-4 py-2 lg:px-6 lg:py-4 lg:gap-4">
+        <button
+          type="button"
+          aria-label="Go back"
+          onClick={() => navigate(-1)}
+          className="-ml-2 w-10 h-10 flex-shrink-0 inline-flex items-center justify-center rounded-sm text-slate-700 hover:bg-gray-100 hover:text-slate-900 transition-colors"
+        >
+          <FiArrowLeft size={20} />
+        </button>
         <div className="flex-1 min-w-0 text-left">
-          <h1 className="text-lg lg:text-2xl font-semibold tracking-tight text-slate-900 leading-tight">Item groups</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-lg lg:text-2xl font-semibold tracking-tight text-slate-900 leading-tight whitespace-nowrap">Item groups</h1>
+            <div className="hidden lg:block">{renderTabs(false)}</div>
+          </div>
           <p className="text-xs text-slate-500 mt-0.5 truncate">
             {itemGroups.length} {itemGroups.length === 1 ? 'group' : 'groups'} · {uncategorizedCount} {uncategorizedCount === 1 ? 'item' : 'items'} not in any group
           </p>
@@ -770,9 +782,8 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
           )}
         </div>
 
-        {/* Desktop: tabs + New group */}
-        <div className="hidden lg:flex items-center gap-3">
-          {renderTabs(false)}
+        {/* Desktop: Add-ons + New group at right end */}
+        <div className="hidden lg:flex items-center gap-3 flex-shrink-0">
           {addOnsEnabled && (
             <button
               type="button"
@@ -1275,6 +1286,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
           onClose={() => setPendingMerge(null)}
           onConfirm={() => handleMergeGroups(pendingMerge.keep, pendingMerge.duplicates)}
           showConfirmButton={true}
+          theme={modalTheme}
         />
       )}
 
@@ -1289,7 +1301,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
       <ItemEditDrawer item={selectedItemForEdit} isOpen={isEditDrawerOpen} onClose={closeEditDrawer} onSaveSuccess={() => fetchAndSyncGroups()} />
 
       {itemPendingDelete && (
-        <Modal type={State.ERROR} message={`Are you sure you want to delete "${itemPendingDelete.name}"?`} onClose={() => setItemPendingDelete(null)} onConfirm={confirmDeleteItem} showConfirmButton={true} />
+        <Modal type={State.ERROR} message={`Are you sure you want to delete "${itemPendingDelete.name}"?`} onClose={() => setItemPendingDelete(null)} onConfirm={confirmDeleteItem} showConfirmButton={true} theme={modalTheme} />
       )}
       {groupPendingFullDelete && (
         <Modal
@@ -1302,11 +1314,12 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
           onClose={() => setGroupPendingFullDelete(null)}
           onConfirm={() => handleDeleteGroupAndItems(groupPendingFullDelete)}
           showConfirmButton={true}
+          theme={modalTheme}
         />
       )}
 
       {deleteModal && (
-        <Modal message={deleteModal.message} type={deleteModal.type} onClose={() => setDeleteModal(null)} />
+        <Modal message={deleteModal.message} type={deleteModal.type} onClose={() => setDeleteModal(null)} theme={modalTheme} />
       )}
     </div>
   );

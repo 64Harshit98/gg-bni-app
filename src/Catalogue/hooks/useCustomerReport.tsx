@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router';
 import { useAuth } from '../../context/auth-context';
 import { useState, useEffect } from 'react';
 import { State } from '../../enums';
-import { formatDateForInput } from '../../Pages/Reports/SalesReportComponents/salesReport.utils';
+import { formatDateForInput, getPresetRange } from '../../Pages/Reports/SalesReportComponents/salesReport.utils';
 import { collection, onSnapshot, query, where, Timestamp, limit } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 import { type Sale } from '../../Pages/Reports/CustomerReportComponents/customerReport.utils';
@@ -15,7 +15,7 @@ export default function useCustomerReport() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [datePreset, setDatePreset] = useState('last30');
+  const [datePreset, setDatePreset] = useState('fy');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [appliedFilters, setAppliedFilters] = useState({ start: '', end: '' });
@@ -29,24 +29,14 @@ export default function useCustomerReport() {
   });
 
   useEffect(() => {
-    const today = new Date();
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+    // Default: current financial year (1 Apr → today)
+    const range = getPresetRange('fy')!;
 
-    const formattedStart = formatDateForInput(thirtyDaysAgo);
-    const formattedEnd = formatDateForInput(today);
-
-    const start = new Date(formattedStart);
-    start.setHours(0, 0, 0, 0);
-
-    const end = new Date(formattedEnd);
-    end.setHours(23, 59, 59, 999);
-
-    setStartDate(formattedStart);
-    setEndDate(formattedEnd);
+    setStartDate(formatDateForInput(range.start));
+    setEndDate(formatDateForInput(range.end));
     setAppliedFilters({
-      start: start.toISOString(),
-      end: end.toISOString(),
+      start: range.start.toISOString(),
+      end: range.end.toISOString(),
     });
   }, []);
 
@@ -108,17 +98,17 @@ export default function useCustomerReport() {
     );
 
     const unsubscribeOB = onSnapshot(
-  obQ,
-  (snapshot) => {
-    setSales(prev => {
-      const salesEntries = prev.filter((s: any) => s.isOpeningBalance !== true);
-      const obEntries = snapshot.docs
-        .filter(doc => {
-          const data = doc.data();
-          return (data.balanceType ?? 'due') === 'due' 
-            && data.partyType === 'Customer'
-            && data.source === 'catalogue';  // ← ADD THIS
-        })
+      obQ,
+      (snapshot) => {
+        setSales(prev => {
+          const salesEntries = prev.filter((s: any) => s.isOpeningBalance !== true);
+          const obEntries = snapshot.docs
+            .filter(doc => {
+              const data = doc.data();
+              return (data.balanceType ?? 'due') === 'due'
+                && data.partyType === 'Customer'
+                && data.source === 'catalogue';  // ← ADD THIS
+            })
             .map(doc => {
               const data = doc.data();
               return {

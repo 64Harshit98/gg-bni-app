@@ -11,6 +11,16 @@ import {
 import { FiEyeOff } from 'react-icons/fi';
 import { SlCard, SlCardHead, SegControl, EmptyState, inr } from './Dashboardprimitives';
 
+// Compact axis label in Indian units: ₹5k · ₹2.5L · ₹1Cr
+const compactInr = (v: number) => {
+  if (v === 0) return '₹0';
+  const t = (n: number) => `${+n.toFixed(1)}`;
+  if (v >= 1e7) return `₹${t(v / 1e7)}Cr`;
+  if (v >= 1e5) return `₹${t(v / 1e5)}L`;
+  if (v >= 1e3) return `₹${t(v / 1e3)}k`;
+  return `₹${Math.round(v)}`;
+};
+
 interface SalesBarChartProps {
   isDataVisible: boolean;
   data: { name: string; sales: number; previousSales?: number; count?: number }[];
@@ -89,11 +99,7 @@ export const SalesBarChartReport: React.FC<SalesBarChartProps> = ({ isDataVisibl
               tickLine={false}
               tick={{ fill: '#5b6b86', fontSize: 11 }}
               allowDecimals={false}
-              tickFormatter={(v: number) => {
-                if (mode === 'quantity') return String(v);
-                if (v === 0) return '₹0';
-                return v >= 1000 ? `₹${(v / 1000).toFixed(1).replace('.0', '')}k` : `₹${v}`;
-              }}
+              tickFormatter={(v: number) => (mode === 'quantity' ? String(v) : compactInr(v))}
             />
             <Tooltip
               content={<DarkTip mode={mode} />}

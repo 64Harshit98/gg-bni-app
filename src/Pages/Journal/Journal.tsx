@@ -26,6 +26,7 @@ import { SAMPLE_INVOICES } from './journal.types';
 import { useJournalList, useInvoicePayment, useInvoiceDeletion, useInvoiceCommunication } from './hooks';
 import { JournalListFilters, InvoiceActionSheet, PrintSubMenuModal, QrCodeModal } from './components';
 import { JournalTabs } from '../Journal/Journaltabs';
+import { splitAddOns } from '../../UseComponents/addOnText';
 // ─── Total tutorial steps for Journal ───────────────────────────────────────
 const TOTAL_STEPS = 6;
 
@@ -34,6 +35,17 @@ const fmt = (n: number) =>
   Number(n).toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
 const fmt0 = (n: number) =>
   Number(n).toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 });
+
+// 1 lakh+ → "₹1.18 Cr" / "₹2.5 L", below 1 lakh → normal full amount
+const fmtCompact = (n: number) => {
+  const num = Number(n) || 0;
+  const abs = Math.abs(num);
+  const sign = num < 0 ? '-' : '';
+  const trim = (v: number) => v.toFixed(2).replace(/\.?0+$/, '');
+  if (abs >= 1e7) return `${sign}₹${trim(abs / 1e7)} Cr`;
+  if (abs >= 1e5) return `${sign}₹${trim(abs / 1e5)} L`;
+  return fmt(num);
+};
 
 const getActiveModes = (invoice: Invoice) =>
   Object.entries(invoice.paymentMethods || {}).filter(([key, value]) => key !== 'due' && Number(value) > 0);
@@ -54,7 +66,7 @@ const returnModeClass = (modeRaw: string) => {
 const fmtReturnDate = (v: any) =>
   new Date(v?.toDate ? v.toDate() : v).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
 
-const ITEM_GRID = 'grid grid-cols-[minmax(0,1fr)_32px_72px_84px] gap-x-3';
+const ITEM_GRID = 'grid grid-cols-[minmax(0,1fr)_32px_80px_88px] gap-x-3';
 
 const BTN_BASE =
   'h-10 px-4 inline-flex items-center justify-center gap-2 rounded-sm text-sm font-medium whitespace-nowrap transition-colors disabled:opacity-45 disabled:cursor-not-allowed focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#155dfc]';
@@ -379,14 +391,14 @@ const Journal: React.FC = () => {
           )}
         </div>
       </div>
-      <p className="text-right tabular-nums line-through">{qty}</p>
-      <p className="text-right tabular-nums line-through">{qty > 0 ? fmt(amount / qty) : ''}</p>
-      <p className="text-right tabular-nums font-medium line-through">{fmt(amount)}</p>
+      <p className="text-right tabular-nums line-through whitespace-nowrap">{qty}</p>
+      <p className="text-right tabular-nums line-through whitespace-nowrap" title={qty > 0 ? fmt(amount / qty) : ''}>{qty > 0 ? fmtCompact(amount / qty) : ''}</p>
+      <p className="text-right tabular-nums font-medium line-through whitespace-nowrap" title={fmt(amount)}>{fmtCompact(amount)}</p>
     </div>
   );
 
   // Full bill detail (used in the desktop side pane and the mobile sheet)
-  const renderInvoiceDetail = (invoice: Invoice) => {
+  const renderInvoiceDetail = (invoice: Invoice, onClose?: () => void) => {
     const activeModes = getActiveModes(invoice);
     const hasTransportInfo =
       !!(invoice as any).transportDetails && Object.values((invoice as any).transportDetails).some(Boolean);
@@ -394,7 +406,7 @@ const Journal: React.FC = () => {
     const dueAmount = invoice.dueAmount || 0;
 
     return (
-      <div className="grid gap-5">
+      <div className="grid gap-3">
         {/* Header: bill number + total */}
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
@@ -407,25 +419,37 @@ const Journal: React.FC = () => {
                 {invoice.status}
               </span>
             </div>
-            <h2 className="mt-1 text-lg lg:text-[22px] leading-[26px] lg:leading-[30px] font-semibold text-[#0f172b] break-words">
+            <h2 className="mt-0.5 text-lg lg:text-[22px] leading-[26px] lg:leading-[30px] font-semibold text-[#0f172b] break-words">
               {invoice.invoiceNumber}
             </h2>
-            <p className="text-xs text-[#45556c]">
+            <p className="text-xs leading-4 text-[#45556c]">
               {invoice.time}
               {salesSettings?.enableSalesmanSelection && invoice.salesmanName
                 ? ` · Billed by ${invoice.salesmanName.slice(0, 15)}`
                 : ''}
             </p>
           </div>
-          <div className="text-right shrink-0">
-            <p className="text-xs text-[#45556c]">Total</p>
-            <p className="text-lg lg:text-2xl leading-[26px] lg:leading-8 font-semibold text-[#0f172b] tabular-nums">{fmt(invoice.amount)}</p>
+          <div className="flex items-start gap-1 shrink-0">
+            <div className="text-right">
+              <p className="text-xs text-[#45556c]">Total</p>
+              <p className="text-lg lg:text-2xl leading-[26px] lg:leading-8 font-semibold text-[#0f172b] tabular-nums" title={fmt(invoice.amount)}>{fmtCompact(invoice.amount)}</p>
+            </div>
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close bill details"
+                className="-mr-2 -mt-1 inline-flex h-8 w-8 items-center justify-center rounded-sm text-[#45556c] transition-colors hover:bg-[#f5f7ff] hover:text-[#0f172b] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#155dfc]"
+              >
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+              </button>
+            )}
           </div>
         </div>
 
         {/* Customer strip */}
-        <div className="flex items-center gap-3 p-3 rounded-sm bg-[#f5f7ff]">
-          <span className="w-10 h-10 rounded-full grid place-items-center bg-[#e6eeff] text-[#155dfc] font-semibold shrink-0">
+        <div className="flex items-center gap-3 px-3 py-1.5 rounded-sm bg-[#f5f7ff]">
+          <span className="w-8 h-8 text-sm rounded-full grid place-items-center bg-[#e6eeff] text-[#155dfc] font-semibold shrink-0">
             {(invoice.partyName || 'W').trim().charAt(0).toUpperCase()}
           </span>
           <div className="min-w-0">
@@ -436,7 +460,7 @@ const Journal: React.FC = () => {
 
         {/* Return badges + payment modes */}
         {((invoice.returnHistory && invoice.returnHistory.length > 0) || activeModes.length > 0) && (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1.5 -my-1">
             {(invoice.returnHistory || []).map((historyItem: any, index: number) => (
               <span key={`return-${index}`} className={`${BADGE} uppercase ${returnModeClass(historyItem.modeOfReturn || 'Return')}`}>
                 {historyItem.modeOfReturn || 'Return'}
@@ -455,8 +479,8 @@ const Journal: React.FC = () => {
           <div className={`${ITEM_GRID} pb-2 border-b border-[#dfe6fb] text-[11px] font-semibold tracking-[0.08em] uppercase text-[#5b6b86]`}>
             <span>Item</span>
             <span className="text-right">Qty</span>
-            <span className="text-right">Rate</span>
-            <span className="text-right">Amount</span>
+            <span className="text-right whitespace-nowrap">Rate</span>
+            <span className="text-right whitespace-nowrap">Amount</span>
           </div>
 
           {(invoice.items && invoice.items.length > 0) ? invoice.items.map((item, index) => {
@@ -494,18 +518,22 @@ const Journal: React.FC = () => {
               ? `MRP: ${fmt0(item.mrp)}`
               : `Sales Price: ${fmt0(item.effectiveUnitPrice || (item.quantity > 0 ? item.finalPrice / item.quantity : 0))}`;
 
+            const { baseName, addOnText } = splitAddOns(item);
+
             return (
               <React.Fragment key={index}>
-                {/* REMAINING QTY ROW — shown only if some qty is not returned */}
                 {remainingQty > 0 && (
-                  <div className={`${ITEM_GRID} py-3 border-b border-[#dfe6fb] text-[#0f172b]`}>
+                  <div className={`${ITEM_GRID} py-2 border-b border-[#dfe6fb] text-[#0f172b]`}>
                     <div className="min-w-0">
-                      <p className="font-medium break-words">{item.name}</p>
+                      <p className="text-sm font-medium break-words">{baseName}</p>
+                      {addOnText && (
+                        <p className="text-xs text-[#5b6b86] break-words">+ {addOnText}</p>
+                      )}
                       <p className="text-xs text-[#5b6b86]">{priceLabel}</p>
                     </div>
-                    <p className="text-right tabular-nums">{remainingQty}</p>
-                    <p className="text-right tabular-nums">{fmt(netUnitPrice)}</p>
-                    <p className="text-right tabular-nums font-medium">{fmt(netUnitPrice * remainingQty)}</p>
+                    <p className="text-right tabular-nums whitespace-nowrap">{remainingQty}</p>
+                    <p className="text-right tabular-nums whitespace-nowrap" title={fmt(netUnitPrice)}>{fmtCompact(netUnitPrice)}</p>
+                    <p className="text-right tabular-nums font-medium whitespace-nowrap" title={fmt(netUnitPrice * remainingQty)}>{fmtCompact(netUnitPrice * remainingQty)}</p>
                   </div>
                 )}
 
@@ -571,18 +599,18 @@ const Journal: React.FC = () => {
         </div>
 
         {/* Totals */}
-        <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 text-sm">
+        <dl className="grid grid-cols-[1fr_auto] gap-x-2 gap-y-0.5 text-sm">
           {invoice.manualDiscount && invoice.manualDiscount > 0 ? (
             <>
               <dt className="text-[#45556c]">Bill discount</dt>
-              <dd className="text-right tabular-nums text-[#d5000c]">- {fmt(invoice.manualDiscount)}</dd>
+              <dd className="text-right tabular-nums text-[#d5000c]" title={fmt(invoice.manualDiscount)}>- {fmtCompact(invoice.manualDiscount)}</dd>
             </>
           ) : null}
 
           {invoice.taxAmount && invoice.taxAmount > 0 ? (
             <>
               <dt className="text-[#45556c]">Tax</dt>
-              <dd className="text-right tabular-nums">+ {fmt(invoice.taxAmount)}</dd>
+              <dd className="text-right tabular-nums" title={fmt(invoice.taxAmount)}>+ {fmtCompact(invoice.taxAmount)}</dd>
             </>
           ) : null}
 
@@ -591,36 +619,36 @@ const Journal: React.FC = () => {
             invoice.expenses.map((expense, idx) => (
               <React.Fragment key={`exp-${idx}`}>
                 <dt className="text-[#45556c]">{expense.name || 'Extra expense'}</dt>
-                <dd className="text-right tabular-nums">+ {fmt(Number(expense.amount))}</dd>
+                <dd className="text-right tabular-nums" title={fmt(Number(expense.amount))}>+ {fmtCompact(Number(expense.amount))}</dd>
               </React.Fragment>
             ))
           ) : (invoice.extraExpenseAmount && invoice.extraExpenseAmount > 0) ? (
             <>
               <dt className="text-[#45556c]">{invoice.extraExpenseName || 'Extra expense'}</dt>
-              <dd className="text-right tabular-nums">+ {fmt(invoice.extraExpenseAmount)}</dd>
+              <dd className="text-right tabular-nums" title={fmt(invoice.extraExpenseAmount)}>+ {fmtCompact(invoice.extraExpenseAmount)}</dd>
             </>
           ) : null}
 
           <dt className="pt-2 mt-1 border-t border-[#dfe6fb] text-base font-semibold text-[#0f172b]">Total</dt>
-          <dd className="pt-2 mt-1 border-t border-[#dfe6fb] text-right text-base font-semibold text-[#0f172b] tabular-nums">{fmt(invoice.amount)}</dd>
+          <dd className="pt-2 mt-1 border-t border-[#dfe6fb] text-right text-base font-semibold text-[#0f172b] tabular-nums" title={fmt(invoice.amount)}>{fmtCompact(invoice.amount)}</dd>
 
           {activeModes.map(([key, val]) => (
             <React.Fragment key={key}>
               <dt className="text-[#45556c]">Paid via {key === 'upi' ? 'UPI' : key.charAt(0).toUpperCase() + key.slice(1)}</dt>
-              <dd className="text-right tabular-nums font-medium text-[#008236]">{fmt(Number(val))}</dd>
+              <dd className="text-right tabular-nums font-medium text-[#008236]" title={fmt(Number(val))}>{fmtCompact(Number(val))}</dd>
             </React.Fragment>
           ))}
 
           {invoice.status === 'Unpaid' && dueAmount > 0 && (
             <>
               <dt className="font-medium text-[#bb4d00]">{isSale ? 'They owe you' : 'You owe'}</dt>
-              <dd className="text-right tabular-nums font-semibold text-[#bb4d00]">{fmt(dueAmount)}</dd>
+              <dd className="text-right tabular-nums font-semibold text-[#bb4d00]" title={fmt(dueAmount)}>{fmtCompact(dueAmount)}</dd>
             </>
           )}
         </dl>
 
         {/* Actions */}
-        <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-[#dfe6fb]">
+        <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-[#dfe6fb]">
           {invoice.status === 'Unpaid' && (
             <button
               onClick={(e) => { e.stopPropagation(); openPaymentModal(invoice); }}
@@ -942,7 +970,7 @@ const Journal: React.FC = () => {
 
           {/* Desktop detail pane */}
           <div className="hidden xl:block xl:sticky xl:top-4">
-            <div className="bg-white border border-[#dfe6fb] rounded-sm shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] p-5">
+            <div className="bg-white border border-[#dfe6fb] rounded-sm shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] p-4 2xl:p-5 overflow-x-auto">
               {selectedInvoice ? (
                 renderInvoiceDetail(selectedInvoice)
               ) : (
@@ -962,9 +990,10 @@ const Journal: React.FC = () => {
             className="absolute inset-0 bg-[#020618]/45"
             onClick={() => handleInvoiceClick(selectedInvoice.id)}
           />
-          <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-xl max-h-[88vh] overflow-y-auto bg-white rounded-sm shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)] px-4 pt-2 pb-6">
-            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[#dfe6fb]" aria-hidden="true" />
-            {renderInvoiceDetail(selectedInvoice)}
+          <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-xl max-h-[88vh] overflow-y-auto bg-white rounded-sm shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)] px-4 pt-5 pb-6">
+            {/* Drag handle */}
+            <div className="absolute left-1/2 top-2 h-1 w-10 -translate-x-1/2 rounded-full bg-[#dfe6fb]" aria-hidden="true" />
+            {renderInvoiceDetail(selectedInvoice, () => handleInvoiceClick(selectedInvoice.id))}
           </div>
         </div>
       )}

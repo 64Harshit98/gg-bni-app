@@ -500,20 +500,18 @@ const UploadRow: React.FC<{
   onRemove: () => void;
   children?: React.ReactNode;
 }> = ({ shape, title, desc, url, emptyIcon, onPick, onRemove, children }) => (
-  <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3.5 items-center p-3 sm:p-3.5 border border-[color:var(--border)] rounded-sm bg-[color:var(--surface-sunken)]">
+  <div className="grid grid-cols-[minmax(0,1fr)] grid-rows-[auto_1fr] justify-items-center text-center gap-2.5 items-start p-2.5 sm:p-3.5 sm:gap-3 border border-[color:var(--border)] rounded-sm bg-[color:var(--surface-sunken)] lg:grid-cols-[auto_minmax(0,1fr)] lg:grid-rows-none lg:items-center lg:justify-items-stretch lg:text-left lg:gap-3.5">
     <div className="relative w-16 h-16 sm:w-[76px] sm:h-[76px]">
       {url ? (
         <img
           src={url} alt={title}
-          className={`w-full h-full block ${shape === 'round'
-            ? 'object-cover rounded-full'
-            : 'object-contain p-1.5 rounded-sm border border-[color:var(--border)] bg-white'}`}
+          className={`w-full h-full block object-cover rounded-full border border-[color:var(--border)] bg-white`}
         />
       ) : (
         <div
           className={`w-full h-full grid place-items-center bg-[color:var(--surface)] text-[color:var(--ink-subtle)] border-[color:var(--border-control)] [&_svg]:w-6 [&_svg]:h-6 ${shape === 'round'
             ? 'rounded-full border'
-            : 'rounded-[14px] border-2 border-dashed'}`}
+            : 'rounded-full border-2 border-dashed'}`}
         >
           {emptyIcon}
         </div>
@@ -526,10 +524,10 @@ const UploadRow: React.FC<{
         <FiCamera />
       </button>
     </div>
-    <div>
+    <div className="flex flex-col w-full h-full">
       <b className="text-sm">{title}</b>
-      <p className="mt-0.5 mb-2 text-xs leading-[17px] text-[color:var(--ink-subtle)]">{desc}</p>
-      <div className="flex gap-1.5 flex-wrap">
+      <p className="mt-0.5 mb-2 flex-1 text-xs leading-[17px] text-[color:var(--ink-subtle)]">{desc}</p>
+      <div className="flex flex-col items-stretch gap-1.5 sm:flex-row sm:flex-wrap sm:justify-center sm:min-h-8 lg:justify-start">
         <button type="button" className={`${BTN_SECONDARY} ${BTN_SM}`} onClick={onPick}>
           <FiUpload />{url ? 'Change' : 'Add photo'}
         </button>
@@ -912,7 +910,7 @@ const EditProfilePage: React.FC = () => {
 
             {/* Photo & logo */}
             <Section id="ep-logo" title="Photo & logo" sub="How you and your shop look in SELLAR" tone="magenta" icon={<FiImage />}>
-              <div className="grid gap-3 p-3.5 sm:gap-4 sm:px-[18px] sm:py-4">
+              <div className="grid grid-cols-2 gap-2.5 p-3 sm:gap-4 sm:px-[18px] sm:py-4">
                 <UploadRow
                   shape="round" title="Profile photo"
                   desc="Shown to your team next to your name."
@@ -1110,8 +1108,8 @@ const EditProfilePage: React.FC = () => {
               <b className="text-sm">Top of your bill</b>
               <div className="grid grid-cols-[40px_1fr] gap-2.5 p-3.5 rounded-sm bg-white text-gray-800 text-[10px] leading-[14px] shadow-[0_8px_24px_rgba(21,48,140,.14)]">
                 {logoPreviewUrl
-                  ? <img className="w-10 h-10 rounded-sm object-contain bg-gray-100" src={logoPreviewUrl} alt="" />
-                  : <div className="w-10 h-10 rounded-sm bg-gray-100" />}
+                  ? <img className="w-10 h-10 rounded-full object-contain bg-gray-100" src={logoPreviewUrl} alt="" />
+                  : <div className="w-10 h-10 rounded-full bg-gray-100" />}
                 <div>
                   <h4 className="m-0 text-[13px] leading-[17px] [overflow-wrap:anywhere]">{formData.businessName || 'Your business name'}</h4>
                   {billAddress && <div className="text-gray-500 [overflow-wrap:anywhere]">{billAddress}</div>}

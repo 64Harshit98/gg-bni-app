@@ -724,7 +724,12 @@ const SubscriptionPage: React.FC = () => {
                     })}
                 </div>
 
-                <p className="m-0 text-center text-xs leading-[18px] text-[#5b6b86]">All plans are billed yearly</p>
+                <div className="grid gap-1 text-center text-xs leading-[18px] text-[#5b6b86]">
+                    <p className="m-0">All plans are billed yearly</p>
+                    <p className="m-0">
+                        No refunds, exchanges, swaps or transfers are possible after purchase, as technical enablement is allotted immediately.
+                    </p>
+                </div>
             </div>
 
             {/* ---------- Checkout pop-up (bottom sheet on phones) ---------- */}

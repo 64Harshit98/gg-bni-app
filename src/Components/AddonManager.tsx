@@ -25,6 +25,7 @@ const selectionLabel = (g: AddOnGroup) =>
 export const AddOnManager: React.FC<AddOnManagerProps> = ({ isOpen, onClose, companyId, items, actionClass }) => {
     const { templates, saveTemplate, deleteTemplate } = useAddOnTemplates(companyId);
     const [draft, setDraft] = useState<AddOnGroup | null>(null);
+    const [mode, setMode] = useState<'custom' | 'inventory' | 'both'>('custom'); // UI only: kaunsa block dikhana hai
     //const [bulk, setBulk] = useState('');
     const [linkOpen, setLinkOpen] = useState(false);
     const [linkQuery, setLinkQuery] = useState('');
@@ -43,8 +44,8 @@ export const AddOnManager: React.FC<AddOnManagerProps> = ({ isOpen, onClose, com
 
     const itemName = (id?: string) => items.find((i) => i.id === id)?.name;
     const close = () => { setDraft(null); setError(null); setLinkOpen(false); setDeleteTarget(null); onClose(); };
-// One step back: edit screen -> group list (modal stays open)
-const backToList = () => { setDraft(null); setError(null); setLinkOpen(false); setLinkQuery(''); };
+    // One step back: edit screen -> group list (modal stays open)
+    const backToList = () => { setDraft(null); setError(null); setLinkOpen(false); setLinkQuery(''); };
     const patchDraft = (patch: Partial<AddOnGroup>) => setDraft((d) => (d ? { ...d, ...patch } : d));
     const patchOption = (optionId: string, patch: Partial<AddOnOption>) =>
         setDraft((d) => (d ? { ...d, options: d.options.map((o) => (o.id === optionId ? { ...o, ...patch } : o)) } : d));
@@ -134,7 +135,7 @@ const backToList = () => { setDraft(null); setError(null); setLinkOpen(false); s
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4" onClick={close}>
             <div className="flex max-h-[90vh] w-full flex-col rounded-t-sm bg-white shadow-xl sm:max-w-2xl sm:rounded-sm" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between gap-2 border-b border-gray-200 px-4 py-3">
-                    <h2 className="text-lg font-semibold text-slate-900">{draft ? (templates.some((t) => t.id === draft.id) ? 'Edit add-on group' : 'New add-on group') : 'Add-ons'}</h2>
+                    <h2 className="text-lg font-semibold text-slate-900">{draft ? (templates.some((t) => t.id === draft.id) ? 'Edit add-on group' : mode === 'inventory' ? 'Add item as add-on' : 'New add-on group') : 'Add-ons'}</h2>
                     <button type="button" aria-label={draft ? 'Back to add-on groups' : 'Close'} onClick={draft ? backToList : close} className={ICON_BTN}><FiX size={18} /></button>
                 </div>
 
@@ -153,7 +154,14 @@ const backToList = () => { setDraft(null); setError(null); setLinkOpen(false); s
                                             <p className="truncate text-xs text-slate-500">{selectionLabel(g)} · {g.options.length} option{g.options.length === 1 ? '' : 's'}</p>
                                         </div>
                                         <div className="flex shrink-0 gap-0.5">
-                                            <button type="button" aria-label={`Edit ${g.name}`} onClick={() => setDraft({ ...g })} className={ICON_BTN}><FiEdit2 size={16} /></button>
+                                            <button type="button" aria-label={`Edit ${g.name}`}
+                                                onClick={() => {
+                                                    const linked = g.options.some((o) => o.itemId);
+                                                    const custom = g.options.some((o) => !o.itemId);
+                                                    setMode(linked && custom ? 'both' : linked ? 'inventory' : 'custom');
+                                                    setDraft({ ...g });
+                                                }}
+                                                className={ICON_BTN}><FiEdit2 size={16} /></button>
                                             <button type="button" aria-label={`Delete ${g.name}`} onClick={() => setDeleteTarget(g)} className={`${ICON_BTN} hover:!text-red-600`}><FiTrash2 size={16} /></button>
                                         </div>
                                     </div>
@@ -199,102 +207,104 @@ const backToList = () => { setDraft(null); setError(null); setLinkOpen(false); s
                                     </span>
                                 </label>
                             )}
-
-                            <div className="grid gap-2">
-                                <span className="text-xs font-medium text-slate-600">Options</span>
-                                {draft.extraPrice != null && draft.multiple && Number(draft.maxSelect) > 0 && (
-                                    <p className="text-[11px] text-slate-500">
-                                        Any {draft.maxSelect} picks are free. The price below is charged only when a customer picks that option after that.
-                                    </p>
-                                )}
-                                {draft.options.some((o) => !o.itemId) && (
-                                    <div className="grid grid-cols-[minmax(0,1fr)_84px_36px] gap-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                                        <span>Option name</span>
-                                        <span>Price (₹)</span>
-                                        <span />
-                                    </div>
-                                )}
-                                {draft.options.filter((o) => !o.itemId).map((o) => (
-                                    <div key={o.id} className="grid grid-cols-[minmax(0,1fr)_84px_36px] items-center gap-2">
-                                        <input className={INPUT} value={o.name} placeholder="e.g. Mint mayo" onChange={(e) => patchOption(o.id, { name: e.target.value })} />
-                                        <input className={INPUT} type="number" min="0" value={o.price} placeholder="₹ 0"
-                                            title={draft.extraPrice != null ? 'Charged only when picked after the free picks' : 'Add-on price'}
-                                            onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                            onChange={(e) => patchOption(o.id, { price: e.target.value, extraPrice: undefined })} />
-                                        <button type="button" aria-label="Remove option" onClick={() => removeOption(o.id)} className={`${ICON_BTN} hover:!text-red-600`}><FiX size={16} /></button>
-                                    </div>
-                                ))}
-                                <button type="button" onClick={addOption} className="w-fit text-sm font-semibold text-blue-600 hover:underline">+ Add another option</button>
-                            </div>
+                            {mode !== 'inventory' && (
+                                <div className="grid gap-2">
+                                    <span className="text-xs font-medium text-slate-600">Options</span>
+                                    {draft.extraPrice != null && draft.multiple && Number(draft.maxSelect) > 0 && (
+                                        <p className="text-[11px] text-slate-500">
+                                            Any {draft.maxSelect} picks are free. The price below is charged only when a customer picks that option after that.
+                                        </p>
+                                    )}
+                                    {draft.options.some((o) => !o.itemId) && (
+                                        <div className="grid grid-cols-[minmax(0,1fr)_84px_36px] gap-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                            <span>Option name</span>
+                                            <span>Price (₹)</span>
+                                            <span />
+                                        </div>
+                                    )}
+                                    {draft.options.filter((o) => !o.itemId).map((o) => (
+                                        <div key={o.id} className="grid grid-cols-[minmax(0,1fr)_84px_36px] items-center gap-2">
+                                            <input className={INPUT} value={o.name} placeholder="e.g. Mint mayo" onChange={(e) => patchOption(o.id, { name: e.target.value })} />
+                                            <input className={INPUT} type="number" min="0" value={o.price} placeholder="₹ 0"
+                                                title={draft.extraPrice != null ? 'Charged only when picked after the free picks' : 'Add-on price'}
+                                                onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                onChange={(e) => patchOption(o.id, { price: e.target.value, extraPrice: undefined })} />
+                                            <button type="button" aria-label="Remove option" onClick={() => removeOption(o.id)} className={`${ICON_BTN} hover:!text-red-600`}><FiX size={16} /></button>
+                                        </div>
+                                    ))}
+                                    <button type="button" onClick={addOption} className="w-fit text-sm font-semibold text-blue-600 hover:underline">+ Add another option</button>
+                                </div>
+                            )}
 
                             {/* Inventory items: sold with this group, their own stock is deducted */}
-                            <div className="grid gap-2 rounded-sm border border-blue-100 bg-blue-50/50 p-2.5">
-                                <div className="flex items-start justify-between gap-2">
-                                    <span className="min-w-0 text-xs font-medium text-slate-600">
-                                        Sell from inventory
-                                        <span className="block font-normal text-slate-500">Linked item's stock reduces automatically when sold</span>
-                                    </span>
-                                    <button type="button" onClick={() => { setLinkOpen((v) => !v); setLinkQuery(''); }}
-                                        className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-sm font-semibold text-blue-600 hover:underline">
-                                        <FiLink size={14} /> Link inventory item
-                                    </button>
-                                </div>
-
-                                {linkOpen && (
-                                    <div className="grid gap-1">
-                                        <input autoFocus className={INPUT} placeholder="Search an inventory item…" value={linkQuery} onChange={(e) => setLinkQuery(e.target.value)} />
-                                        {linkResults.map((it) => (
-                                            <button key={it.id ?? it.name} type="button" onClick={() => addLinkedItem(it)}
-                                                className="flex items-center justify-between gap-2 rounded-sm border border-gray-200 bg-white px-2.5 py-1.5 text-left text-sm hover:bg-blue-50">
-                                                <span className="truncate">{it.name}</span>
-                                                <span className="shrink-0 text-xs tabular-nums text-slate-500">₹{it.salesPrice || it.mrp || 0} · stock {it.stock ?? 0}</span>
-                                            </button>
-                                        ))}
-                                        {linkQuery.trim() && linkResults.length === 0 && <p className="text-xs text-slate-500">No item found.</p>}
+                            {mode !== 'custom' && (
+                                <div className="grid gap-2 rounded-sm border border-blue-100 bg-blue-50/50 p-2.5">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <span className="min-w-0 text-xs font-medium text-slate-600">
+                                            Sell from inventory
+                                            <span className="block font-normal text-slate-500">Linked item's stock reduces automatically when sold</span>
+                                        </span>
+                                        <button type="button" onClick={() => { setLinkOpen((v) => !v); setLinkQuery(''); }}
+                                            className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-sm font-semibold text-blue-600 hover:underline">
+                                            <FiLink size={14} /> Link inventory item
+                                        </button>
                                     </div>
-                                )}
 
-                                {draft.options.filter((o) => o.itemId).length === 0 && !linkOpen && (
-                                    <p className="text-xs text-slate-500">No item linked. e.g. link Coca Cola to sell it with a burger.</p>
-                                )}
-
-                                {draft.options.some((o) => o.itemId) && (
-                                    <div className="grid grid-cols-[minmax(0,1fr)_84px_64px_36px] gap-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                                        <span>Display name</span>
-                                        <span>Price (₹)</span>
-                                        <span>Qty used</span>
-                                        <span />
-                                    </div>
-                                )}
-                                {draft.options.filter((o) => o.itemId).map((o) => (
-                                    <div key={o.id} className="grid grid-cols-[minmax(0,1fr)_84px_64px_36px] items-start gap-2">
-                                        <div className="min-w-0">
-                                            <input className={INPUT} value={o.name} onChange={(e) => patchOption(o.id, { name: e.target.value })} />
-                                            <p className="mt-0.5 truncate text-[11px] text-slate-500">Item: {itemName(o.itemId) || 'Item not found'}</p>
+                                    {linkOpen && (
+                                        <div className="grid gap-1">
+                                            <input autoFocus className={INPUT} placeholder="Search an inventory item…" value={linkQuery} onChange={(e) => setLinkQuery(e.target.value)} />
+                                            {linkResults.map((it) => (
+                                                <button key={it.id ?? it.name} type="button" onClick={() => addLinkedItem(it)}
+                                                    className="flex items-center justify-between gap-2 rounded-sm border border-gray-200 bg-white px-2.5 py-1.5 text-left text-sm hover:bg-blue-50">
+                                                    <span className="truncate">{it.name}</span>
+                                                    <span className="shrink-0 text-xs tabular-nums text-slate-500">₹{it.salesPrice || it.mrp || 0} · stock {it.stock ?? 0}</span>
+                                                </button>
+                                            ))}
+                                            {linkQuery.trim() && linkResults.length === 0 && <p className="text-xs text-slate-500">No item found.</p>}
                                         </div>
-                                        <input className={INPUT} type="number" min="0" value={o.price} placeholder="₹ 0" title="Add-on price" disabled={!!o.syncPrice}
-                                            onWheel={(e) => (e.target as HTMLInputElement).blur()}
-                                            onChange={(e) => patchOption(o.id, { price: e.target.value })} />
-                                        <input className={INPUT} type="number" min="1" value={o.itemQty || 1} title="Pieces deducted from stock per add-on sold"
-                                            onChange={(e) => patchOption(o.id, { itemQty: parseInt(e.target.value, 10) || 1 })} />
-                                        <button type="button" aria-label="Remove linked item" onClick={() => removeOption(o.id)} className={`${ICON_BTN} hover:!text-red-600`}><FiX size={16} /></button>
-                                        <label className="col-span-full flex items-center gap-1.5 whitespace-nowrap text-[11px] text-slate-600">
-                                            <input type="checkbox" checked={!!o.syncPrice}
-                                                onChange={(e) => {
-                                                    const linked = items.find((i) => i.id === o.itemId);
-                                                    patchOption(o.id, {
-                                                        syncPrice: e.target.checked,
-                                                        // ticking again: bring back the item's current price, drop any custom amount
-                                                        ...(e.target.checked && linked ? { price: String(linked.salesPrice || linked.mrp || 0) } : {}),
-                                                    });
-                                                }}
-                                                className="accent-blue-600" />
-                                            Use item's current price
-                                        </label>
-                                    </div>
-                                ))}
+                                    )}
 
-                            </div>
+                                    {draft.options.filter((o) => o.itemId).length === 0 && !linkOpen && (
+                                        <p className="text-xs text-slate-500">No item linked. e.g. link Coca Cola to sell it with a burger.</p>
+                                    )}
+
+                                    {draft.options.some((o) => o.itemId) && (
+                                        <div className="grid grid-cols-[minmax(0,1fr)_84px_64px_36px] gap-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                            <span>Display name</span>
+                                            <span>Price (₹)</span>
+                                            <span>Qty used</span>
+                                            <span />
+                                        </div>
+                                    )}
+                                    {draft.options.filter((o) => o.itemId).map((o) => (
+                                        <div key={o.id} className="grid grid-cols-[minmax(0,1fr)_84px_64px_36px] items-start gap-2">
+                                            <div className="min-w-0">
+                                                <input className={INPUT} value={o.name} onChange={(e) => patchOption(o.id, { name: e.target.value })} />
+                                                <p className="mt-0.5 truncate text-[11px] text-slate-500">Item: {itemName(o.itemId) || 'Item not found'}</p>
+                                            </div>
+                                            <input className={INPUT} type="number" min="0" value={o.price} placeholder="₹ 0" title="Add-on price" disabled={!!o.syncPrice}
+                                                onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                onChange={(e) => patchOption(o.id, { price: e.target.value })} />
+                                            <input className={INPUT} type="number" min="1" value={o.itemQty || 1} title="Pieces deducted from stock per add-on sold"
+                                                onChange={(e) => patchOption(o.id, { itemQty: parseInt(e.target.value, 10) || 1 })} />
+                                            <button type="button" aria-label="Remove linked item" onClick={() => removeOption(o.id)} className={`${ICON_BTN} hover:!text-red-600`}><FiX size={16} /></button>
+                                            <label className="col-span-full flex items-center gap-1.5 whitespace-nowrap text-[11px] text-slate-600">
+                                                <input type="checkbox" checked={!!o.syncPrice}
+                                                    onChange={(e) => {
+                                                        const linked = items.find((i) => i.id === o.itemId);
+                                                        patchOption(o.id, {
+                                                            syncPrice: e.target.checked,
+                                                            // ticking again: bring back the item's current price, drop any custom amount
+                                                            ...(e.target.checked && linked ? { price: String(linked.salesPrice || linked.mrp || 0) } : {}),
+                                                        });
+                                                    }}
+                                                    className="accent-blue-600" />
+                                                Use item's current price
+                                            </label>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
 
                         </div>
                     )}
@@ -307,7 +317,18 @@ const backToList = () => { setDraft(null); setError(null); setLinkOpen(false); s
                             <button type="button" onClick={save} disabled={busy} className={`h-10 rounded-sm px-4 text-sm font-medium text-white disabled:opacity-60 ${actionClass}`}>{busy ? 'Saving…' : 'Save group'}</button>
                         </>
                     ) : (
-                        <button type="button" onClick={() => { setDraft(newGroup()); setError(null); }} className={`h-10 rounded-sm px-4 text-sm font-medium text-white ${actionClass}`}>New add-on group</button>
+                        <>
+                            <button type="button"
+                                onClick={() => { setMode('inventory'); setDraft({ ...newGroup(), options: [] }); setError(null); setLinkOpen(true); }}
+                                className="h-10 rounded-sm border border-blue-300 bg-white px-4 text-sm font-medium text-blue-600 hover:bg-blue-50">
+                                Add item as add-on
+                            </button>
+                            <button type="button"
+                                onClick={() => { setMode('custom'); setDraft(newGroup()); setError(null); }}
+                                className={`h-10 rounded-sm px-4 text-sm font-medium text-white ${actionClass}`}>
+                                New add-on group
+                            </button>
+                        </>
                     )}
                 </div>
             </div>

@@ -771,7 +771,7 @@ const CatalogueBillSettings: React.FC = () => {
                 document.body
             )}
 
-            {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+            {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} theme="catalogue" />}
 
             {/* Header (+ section chips on mobile) */}
             <div className="sticky top-0 z-10 bg-white border-b border-orange-100">

@@ -699,9 +699,8 @@ const CatalogueItemReport: React.FC = () => {
       <th className={`px-4 py-3 font-semibold ${align === 'right' ? 'text-right' : 'text-left'}`}>
         <button
           onClick={() => handleSort(key)}
-          className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-orange-800 ${
-            align === 'right' ? 'flex-row-reverse' : ''
-          }`}
+          className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-orange-800 ${align === 'right' ? 'flex-row-reverse' : ''
+            }`}
         >
           {label}
           <Icon size={11} className={isActive ? 'opacity-100' : 'opacity-40'} />
@@ -719,11 +718,10 @@ const CatalogueItemReport: React.FC = () => {
           key={value}
           onClick={() => setIssueFilter(active ? null : value)}
           title={`${count} ${count === 1 ? 'item' : 'items'}`}
-          className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-sm border px-2.5 py-1 text-xs font-medium transition ${
-            active
-              ? 'border-slate-900 bg-slate-900 text-white'
-              : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
-          }`}
+          className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-sm border px-2.5 py-1 text-xs font-medium transition ${active
+            ? 'border-slate-900 bg-slate-900 text-white'
+            : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+            }`}
         >
           {!compact && <AlertTriangle size={12} className={active ? 'text-amber-300' : 'text-amber-500'} />}
           {compact && value === 'noCost' ? 'No cost' : label}
@@ -748,9 +746,8 @@ const CatalogueItemReport: React.FC = () => {
       ? SHOP_NAME
       : godowns.find((g) => g.id === locationFilter)?.name || 'location'
     : '';
-  const scopeLabel = `${selectedGroupName ? `in ${selectedGroupName}` : 'in all groups'} · ${
-    selectedLocationName ? `at ${selectedLocationName}` : 'all locations'
-  }`;
+  const scopeLabel = `${selectedGroupName ? `in ${selectedGroupName}` : 'in all groups'} · ${selectedLocationName ? `at ${selectedLocationName}` : 'all locations'
+    }`;
   const rangeLabel = formatRangeLabel(parseInputDate(fromDate).getTime(), parseInputDate(toDate).getTime());
 
   const statCards = [
@@ -789,10 +786,9 @@ const CatalogueItemReport: React.FC = () => {
   ];
 
   const chipClass = (active: boolean) =>
-    `shrink-0 whitespace-nowrap rounded-sm border px-3.5 py-1.5 text-sm font-medium transition ${
-      active
-        ? 'border-slate-900 bg-slate-900 text-white'
-        : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+    `shrink-0 whitespace-nowrap rounded-sm border px-3.5 py-1.5 text-sm font-medium transition ${active
+      ? 'border-slate-900 bg-slate-900 text-white'
+      : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
     }`;
 
   const selectClass =
@@ -809,6 +805,7 @@ const CatalogueItemReport: React.FC = () => {
           message={feedbackModal.message}
           onClose={() => setFeedbackModal((prev) => ({ ...prev, isOpen: false }))}
           showConfirmButton={false}
+          theme="catalogue"
         />
       )}
 
@@ -818,7 +815,7 @@ const CatalogueItemReport: React.FC = () => {
           isOpen={!!editingItem}
           onClose={() => setEditingItem(null)}
           // The shared items listener brings the saved item back into the list.
-          onSaveSuccess={() => {}}
+          onSaveSuccess={() => { }}
         />
       )}
 
@@ -944,9 +941,8 @@ const CatalogueItemReport: React.FC = () => {
           <button
             onClick={() => setIsRangeOpen((o) => !o)}
             title="Period for stock in / out in the downloads"
-            className={`inline-flex shrink-0 items-center gap-2 rounded-sm border bg-white px-3 py-1.5 text-sm font-medium text-slate-800 transition hover:border-slate-400 ${
-              datePreset === 'custom' ? 'border-slate-900' : 'border-slate-300'
-            }`}
+            className={`inline-flex shrink-0 items-center gap-2 rounded-sm border bg-white px-3 py-1.5 text-sm font-medium text-slate-800 transition hover:border-slate-400 ${datePreset === 'custom' ? 'border-slate-900' : 'border-slate-300'
+              }`}
           >
             <CalendarDays size={15} className="text-slate-500" />
             {rangeLabel}
@@ -1082,7 +1078,9 @@ const CatalogueItemReport: React.FC = () => {
                       className={`border-t border-[#f6e1d0] transition hover:bg-[#fff8f2] ${canEditItems ? 'cursor-pointer' : ''}`}
                     >
                       <td className="whitespace-nowrap px-4 py-3 text-slate-600">{item.barcode || '—'}</td>
-                      <td className="px-4 py-3 font-semibold text-slate-900">{item.name}</td>
+                      <td className="max-w-[320px] px-4 py-3 font-semibold text-slate-900">
+                        <span title={item.name} className="block truncate">{item.name}</span>
+                      </td>
                       <td className="whitespace-nowrap px-4 py-3 text-right">
                         <p className={stock < 0 ? 'font-semibold text-red-600' : 'text-slate-700'}>
                           {stock.toLocaleString('en-IN')}
@@ -1090,7 +1088,10 @@ const CatalogueItemReport: React.FC = () => {
                         {stock < 0 && <p className="text-[11px] text-red-600">Sold more than stock</p>}
                       </td>
                       <td className="px-4 py-3">
-                        <span className="inline-block whitespace-nowrap rounded-sm bg-orange-50 px-1.5 py-0.5 text-[11px] text-orange-800">
+                        <span
+                          title={getGroupName(item.itemGroupId)}
+                          className="inline-block max-w-[160px] truncate rounded-sm bg-orange-50 px-1.5 py-0.5 align-middle text-[11px] text-orange-800"
+                        >
                           {getGroupName(item.itemGroupId)}
                         </span>
                       </td>
@@ -1161,9 +1162,8 @@ const CatalogueItemReport: React.FC = () => {
         {filteredItems.length > 0 && (
           // The mobile list is always shown; the desktop table can be hidden.
           <div
-            className={`flex flex-wrap items-center justify-between gap-2 rounded-b-sm border-t border-[#f6e1d0] bg-[#fff8f2] px-4 py-2.5 text-xs text-slate-500 ${
-              isListVisible ? '' : 'md:hidden'
-            }`}
+            className={`flex flex-wrap items-center justify-between gap-2 rounded-b-sm border-t border-[#f6e1d0] bg-[#fff8f2] px-4 py-2.5 text-xs text-slate-500 ${isListVisible ? '' : 'md:hidden'
+              }`}
           >
             <span>
               Showing {visibleItems.length.toLocaleString('en-IN')} of {summary.totalItems.toLocaleString('en-IN')}

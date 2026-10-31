@@ -271,6 +271,17 @@ const PurchasePage: React.FC = () => {
   } | null>(null);
   const [unlinkedCartItemId, setUnlinkedCartItemId] = useState<string | null>(null);
 
+  // Link an unlinked (Not in DB) cart row to an existing inventory item
+  const [linkTargetId, setLinkTargetId] = useState<string | null>(null);
+  const [linkSearch, setLinkSearch] = useState('');
+  const [linkPicked, setLinkPicked] = useState<Item | null>(null);
+    const [linkNameChoice, setLinkNameChoice] = useState<'inventory' | 'supplier'>('inventory');
+  const [linkPriceChoice, setLinkPriceChoice] = useState<'bill' | 'inventory'>('bill');
+  // Edit clicked on a "Not in DB" row → ask: link to existing or add as new
+  const [unlinkedChoiceItem, setUnlinkedChoiceItem] = useState<PurchaseItem | null>(null);
+
+  // Supplier — captured here, passed to the payment drawer as its starting party detailsconst [unlinkedCartItemId, setUnlinkedCartItemId] = useState<string | null>(null);
+
   // Supplier — captured here, passed to the payment drawer as its starting party details
   const [supplierName, setSupplierName] = useState(prefillParty?.name ?? '');
   const [supplierPhone, setSupplierPhone] = useState(prefillParty?.number ?? '');
@@ -440,6 +451,108 @@ const PurchasePage: React.FC = () => {
     setShowAddItemModal(false);
     setUnlinkedPrefill(null);
     setUnlinkedCartItemId(null);
+  };
+
+  // ── Link unlinked cart row → existing inventory item ──
+  const stripUnlinkedFlag = (name: string) =>
+    name.replace(/^⚠️\s*/, '').replace(/\s*\(Not in DB\)\s*$/, '');
+
+    const handleOpenLinkModal = (cartItem: PurchaseItem) => {
+    setLinkTargetId(cartItem.id);
+    setLinkSearch('');
+    setLinkPicked(null);
+    setLinkNameChoice('inventory'); // default
+    setLinkPriceChoice('bill');     // default
+  };
+
+  // Bill's net rate vs inventory's expected cost. Returns null when it looks fine.
+  const LINK_MISMATCH_THRESHOLD = 30; // percent
+  const getLinkMismatch = (cartItem: PurchaseItem, inv: Item) => {
+    const i = inv as any;
+    const billNet = Number(cartItem.purchasePrice) || 0;
+    const invMrp = Number(i.mrp) || 0;
+    const invCost = Number(i.purchasePrice) > 0
+      ? Number(i.purchasePrice)
+      : invMrp * (1 - (Number(i.purchasediscount) || 0) / 100);
+    if (billNet <= 0 || invCost <= 0) return null;
+    const diffPct = Math.abs(billNet - invCost) / invCost * 100;
+    if (diffPct <= LINK_MISMATCH_THRESHOLD) return null;
+    return { billNet, invCost, invMrp, diffPct: Math.round(diffPct) };
+  };
+
+  const handleCloseLinkModal = () => {
+    setLinkTargetId(null);
+    setLinkSearch('');
+    setLinkPicked(null);
+  };
+
+  const handleConfirmLink = () => {
+    if (!linkTargetId || !linkPicked) return;
+    const picked = linkPicked as any; // remove `as any` if barcode/tax/stock are typed on Item
+
+            setItems(prev => prev.map(ci => {
+      if (ci.id !== linkTargetId) return ci;
+
+      const invMrp = Number(picked.mrp) || 0;
+      const invPurchasePrice = Number(picked.purchasePrice) || 0;
+
+      let newMrp: number;
+      let newNet: number;
+      let newDiscount: number;
+      let newDiscount2 = ci.purchasediscount2 ?? 0;
+
+      if (linkPriceChoice === 'inventory') {
+        // Same pricing rules as addItemToCart (grid add)
+        const invDisc = Number(picked.purchasediscount) || 0;
+        const globalDisc = purchaseSettings?.defaultDiscount ?? 0;
+        const salesBase = Number(picked.salesPrice) || 0;
+        newMrp = invMrp;
+        if (invPurchasePrice > 0) {
+          newNet = invPurchasePrice;
+          newDiscount = invMrp > 0 ? ((invMrp - invPurchasePrice) / invMrp) * 100 : 0;
+        } else if (invMrp > 0) {
+          const d = invDisc > 0 ? invDisc : globalDisc;
+          newDiscount = d;
+          newNet = invMrp * (1 - d / 100);
+        } else {
+          const d = invDisc > 0 ? invDisc : globalDisc;
+          newDiscount = d;
+          newNet = salesBase * (1 - d / 100);
+        }
+        newNet = parseFloat(newNet.toFixed(2));
+        newDiscount = parseFloat(newDiscount.toFixed(2));
+        newDiscount2 = 0;
+      } else {
+        // Bill's net rate stays (real cost). MRP from inventory, discount % re-derived.
+        newNet = Number(ci.purchasePrice) || 0;
+        newMrp = invMrp > 0 ? invMrp : (Number(ci.mrp) || 0);
+        newDiscount = newMrp > 0
+          ? Math.max(0, parseFloat((((newMrp - newNet) / newMrp) * 100).toFixed(2)))
+          : 0;
+      }
+
+      return {
+        ...ci,
+        // "(Not in DB)" flag always goes away, so hasUnlinkedItems becomes false
+        name: linkNameChoice === 'inventory' ? picked.name : stripUnlinkedFlag(ci.name),
+        productId: picked.id,
+        barcode: picked.barcode || ci.barcode,
+        taxRate: picked.tax ?? picked.taxRate ?? ci.taxRate,
+        stock: picked.stock ?? picked.Stock ?? 0,
+        unit: picked.unit || ci.unit,
+        mrp: newMrp,
+        purchasePrice: newNet,
+        originalPurchasePrice: invPurchasePrice || ci.originalPurchasePrice,
+        discount: newDiscount,
+        purchasediscount: newDiscount,
+        purchasediscount2: newDiscount2,
+        // quantity stays as scanned
+      };
+    }));
+
+    handleCloseLinkModal();
+    setModal({ message: `Linked to "${picked.name}"`, type: State.SUCCESS });
+    setTimeout(() => setModal(null), 1500);
   };
 
   const {
@@ -1054,6 +1167,142 @@ const PurchasePage: React.FC = () => {
           {renderSupplierSuggestions()}
         </div>
       )}
+      {unlinkedChoiceItem && (
+        <div className={OVERLAY} onClick={() => setUnlinkedChoiceItem(null)}>
+          <div className={DIALOG} onClick={(e) => e.stopPropagation()}>
+            <h3 className="m-0 text-lg font-semibold">Item not in inventory</h3>
+            <p className="mt-1 mb-4 text-sm text-[#45556c]">
+              "<b className="text-[#0f172b]">{stripUnlinkedFlag(unlinkedChoiceItem.name)}</b>" from the supplier bill was not found in your inventory.
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const it = unlinkedChoiceItem;
+                  setUnlinkedChoiceItem(null);
+                  handleOpenLinkModal(it);
+                }}
+                className={`${BTN_PRIMARY} w-full h-11`}
+              >
+                Link to existing item
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const it = unlinkedChoiceItem;
+                  setUnlinkedChoiceItem(null);
+                  handleAddUnlinkedItemToInventory(it);
+                }}
+                className={`${BTN_SECONDARY} w-full h-11`}
+              >
+                Add as new item
+              </button>
+              <button type="button" onClick={() => setUnlinkedChoiceItem(null)} className={`${BTN_GHOST} w-full h-10 text-[13px]`}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {linkTargetId && (() => {
+        const target = items.find(i => i.id === linkTargetId);
+        const q = linkSearch.trim().toLowerCase();
+                const results = q.length >= 1
+          ? availableItems.filter(a => a.name?.toLowerCase().includes(q)).slice(0, 8)
+          : [];
+        const mismatch = target && linkPicked ? getLinkMismatch(target, linkPicked) : null;
+        return (
+          <div className={OVERLAY} onClick={handleCloseLinkModal}>
+            <div className={DIALOG} onClick={(e) => e.stopPropagation()}>
+              <h3 className="m-0 text-lg font-semibold">Link to inventory item</h3>
+              <p className="mt-1 mb-4 text-sm text-[#45556c]">
+                Supplier bill name: <b className="text-[#0f172b]">{target ? stripUnlinkedFlag(target.name) : ''}</b>
+              </p>
+
+              {!linkPicked ? (
+                <>
+                  <input
+                    type="text"
+                    value={linkSearch}
+                    onChange={(e) => setLinkSearch(e.target.value)}
+                    placeholder="Search inventory item"
+                    className={INPUT}
+                    autoComplete="off"
+                    autoFocus
+                  />
+                  <div className="mt-2 max-h-56 overflow-y-auto border border-[#dfe6fb] rounded-sm divide-y divide-[#dfe6fb]">
+                    {results.length === 0 ? (
+                      <div className="px-3 py-3 text-[13px] text-[#5b6b86]">
+                        {q ? 'No matching item in inventory' : 'Type to search your inventory'}
+                      </div>
+                    ) : results.map(r => (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => setLinkPicked(r)}
+                        className="w-full text-left px-3 py-2 text-sm text-[#0f172b] hover:bg-[#e6eeff]"
+                      >
+                        {r.name}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2 p-2.5 rounded-sm bg-[#f5f7ff] border border-[#dfe6fb]">
+                    <span className="text-sm font-semibold text-[#0f172b] truncate">{linkPicked.name}</span>
+                    <button type="button" onClick={() => setLinkPicked(null)} className={`${BTN_GHOST} !h-7 !px-2 text-[12px]`}>Change</button>
+                  </div>
+                  <span className={`block mt-3 ${OVERLINE}`}>Which name to show on this bill?</span>
+                  {([
+                    ['inventory', 'Use inventory name', linkPicked.name],
+                    ['supplier', "Keep supplier's name", target ? stripUnlinkedFlag(target.name) : ''],
+                  ] as const).map(([val, label, sub]) => (
+                    <label key={val} className={`flex items-start gap-2.5 p-2.5 rounded-sm border cursor-pointer ${linkNameChoice === val ? 'border-[#155dfc] bg-[#e6eeff]' : 'border-[#dfe6fb] bg-white'}`}>
+                      <input type="radio" name="linkNameChoice" checked={linkNameChoice === val} onChange={() => setLinkNameChoice(val)} className="mt-1" />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium text-[#0f172b]">{label}</span>
+                        <span className="block text-xs text-[#5b6b86] truncate">{sub}</span>
+                      </span>
+                                       </label>
+                  ))}
+
+                  <span className={`block mt-3 ${OVERLINE}`}>Which pricing to use?</span>
+                  {([
+                    ['bill', "Keep bill's rate", `Net ₹${fmtINR(Number(target?.purchasePrice) || 0)} from the supplier bill, MRP from inventory`],
+                    ['inventory', 'Use inventory pricing', 'MRP, discount and purchase price from inventory'],
+                  ] as const).map(([val, label, sub]) => (
+                    <label key={val} className={`flex items-start gap-2.5 p-2.5 rounded-sm border cursor-pointer ${linkPriceChoice === val ? 'border-[#155dfc] bg-[#e6eeff]' : 'border-[#dfe6fb] bg-white'}`}>
+                      <input type="radio" name="linkPriceChoice" checked={linkPriceChoice === val} onChange={() => setLinkPriceChoice(val)} className="mt-1" />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium text-[#0f172b]">{label}</span>
+                        <span className="block text-xs text-[#5b6b86]">{sub}</span>
+                      </span>
+                    </label>
+                  ))}
+
+                  {mismatch && (
+                    <div className="flex items-start gap-2 p-2.5 rounded-sm text-[13px] leading-[19px] bg-[#fff3dd] text-[#bb4d00]">
+                      <FiAlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+                      <span>
+                        <b className="font-semibold">Price looks different.</b>{' '}
+                        Bill rate ₹{fmtINR(mismatch.billNet)} vs inventory cost ₹{fmtINR(mismatch.invCost)}
+                        {mismatch.invMrp > 0 ? ` (MRP ₹${fmtINR(mismatch.invMrp)})` : ''}, about {mismatch.diffPct}% apart.
+                        Are you sure this is the same item?
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 mt-6">
+                <button onClick={handleCloseLinkModal} className={BTN_SECONDARY}>Cancel</button>
+                <button onClick={handleConfirmLink} disabled={!linkPicked} className={BTN_PRIMARY}>Link item</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       {showAddItemModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(2,6,24,0.45)] px-4">
           <div className={`bg-[#ffffff] rounded-sm ${SHADOW_FLOAT} w-full max-w-2xl h-[90vh] max-h-[90vh] flex flex-col overflow-hidden`}>
@@ -1615,7 +1864,7 @@ const PurchasePage: React.FC = () => {
                 State={State}
                 setModal={setModal}
                 onOpenEditDrawer={handleOpenEditDrawer}
-                onItemNotFound={(cartItem) => handleAddUnlinkedItemToInventory(cartItem as PurchaseItem)}
+                onItemNotFound={(cartItem) => setUnlinkedChoiceItem(cartItem as PurchaseItem)}
                 onDeleteItem={handleDeleteItem}
                 onDiscountChange={handleDiscountChange}
                 onDiscount2Change={handleDiscount2Change}

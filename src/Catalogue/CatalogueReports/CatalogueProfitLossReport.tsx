@@ -10,6 +10,7 @@ import {
   CalendarDays,
   ChevronDown,
   ChevronLeft,
+  ExternalLink,
   Eye,
   EyeOff,
   FileText,
@@ -51,6 +52,10 @@ import DetailPanel, {
   DetailSection,
 } from '../../Pages/Reports/SalesReportComponents/DetailPanel';
 import { Modal } from '../../constants/Modal';
+import { useCatalogueData } from '../../context/CatalogueDataContext';
+import { OrderActionSheet, PrintSubMenuModal, QrCodeModal } from '../Orders/components';
+import { useOrderCommunication } from '../Orders/hooks';
+import type { Order } from '../Orders/orders.types';
 import { resolveCompanyLogoBase64 } from '../hooks/useCompanyLogo';
 import { useAuth } from '../../context/auth-context';
 import { doc, getDoc } from 'firebase/firestore';
@@ -136,6 +141,49 @@ const CatalogueProfitLossReport: React.FC = () => {
     isOpen: false,
     type: State.INFO,
     message: '',
+  });
+
+  /* ---------- BILL ACTION SHEET (WhatsApp / Download / Print / QR), same as Orders page ---------- */
+  const { items: catalogueItems } = useCatalogueData();
+  const [actionModal, setActionModal] = useState<{ message: string; type: State } | null>(null);
+  const [companyInfo, setCompanyInfo] = useState<any>(null);
+  const [billSettings, setBillSettings] = useState<any>(null);
+  const [catalogueWhatsappExtra, setCatalogueWhatsappExtra] = useState<string>('');
+
+  useEffect(() => {
+    const cid = currentUser?.companyId;
+    if (!cid) return;
+    (async () => {
+      try {
+        const companySnap = await getDoc(doc(db, 'companies', cid));
+        if (companySnap.exists()) setCompanyInfo(companySnap.data());
+        const billSnap = await getDoc(doc(db, 'companies', cid, 'settings', 'bill'));
+        const data = billSnap.exists() ? billSnap.data() : {};
+        setBillSettings(data);
+        setCatalogueWhatsappExtra(data.catalogueWhatsappExtraMessage || '');
+      } catch (err) {
+        console.error('Bill settings fetch error:', err);
+        setBillSettings({});
+      }
+    })();
+  }, [currentUser?.companyId]);
+
+  const {
+    selectedOrderForAction, setSelectedOrderForAction,
+    pdfLoadingOrderId, setPdfLoadingOrderId,
+    showQrModal, setShowQrModal,
+    sendingPdf,
+    showPrintSubMenu, setShowPrintSubMenu,
+    billType, setBillType,
+    handlePdfAction,
+    handleSendWhatsapp,
+    handleSendWhatsappSnapto,
+  } = useOrderCommunication({
+    currentUser,
+    companyInfo,
+    availableItems: catalogueItems,
+    catalogueWhatsappExtra,
+    setModal: setActionModal,
   });
 
   // Re-render every minute so the "Updated x min ago" label stays accurate.
@@ -603,6 +651,21 @@ const CatalogueProfitLossReport: React.FC = () => {
     }
   };
 
+  /* ---------- VIEW BILL → ORDER ACTION SHEET ---------- */
+  const openBillActions = async (orderId: string) => {
+    if (!currentUser?.companyId) return;
+    setSelectedId(null); // close the detail panel
+    try {
+      // Full order document, so the PDF gets the same fields as on the Orders page
+      const snap = await getDoc(doc(db, 'companies', currentUser.companyId, 'Orders', orderId));
+      if (!snap.exists()) throw new Error('Order not found.');
+      setSelectedOrderForAction({ ...snap.data(), id: orderId } as unknown as Order);
+    } catch (err) {
+      console.error('Open bill failed:', err);
+      setActionModal({ message: 'Could not load the bill. Please try again.', type: State.ERROR });
+    }
+  };
+
   /* ---------- DOWNLOAD / SHARE ---------- */
   const runDownload = (action: () => void) => {
     if (filteredBills.length === 0) {
@@ -630,9 +693,8 @@ const CatalogueProfitLossReport: React.FC = () => {
       <th className={`px-4 py-3 font-semibold ${align === 'right' ? 'text-right' : 'text-left'}`}>
         <button
           onClick={() => handleSort(sortKey)}
-          className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-orange-900 ${
-            align === 'right' ? 'flex-row-reverse' : ''
-          }`}
+          className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-orange-900 ${align === 'right' ? 'flex-row-reverse' : ''
+            }`}
         >
           {label}
           <Icon size={11} className={isActive ? 'opacity-100' : 'opacity-40'} />
@@ -662,6 +724,17 @@ const CatalogueProfitLossReport: React.FC = () => {
           ) : undefined
         }
         subtitle={`${formatFullDate(bill.createdAt)}, ${time} · ${walkIn ? 'Walk-in' : bill.partyName}`}
+        footer={
+          currentUser?.companyId ? (
+            <button
+              type="button"
+              onClick={() => openBillActions(bill.id)}
+              className="flex w-full items-center justify-center gap-1.5 rounded-sm bg-orange-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-800"
+            >
+              <ExternalLink size={15} /> View bill
+            </button>
+          ) : undefined
+        }
       >
         <DetailSection title="Profit on this bill">
           <DetailRows
@@ -726,9 +799,8 @@ const CatalogueProfitLossReport: React.FC = () => {
     },
     {
       label: '− Expenses',
-      hint: `${plural(rangeExpenses.length, 'entry', 'entries')}${
-        expenseTitles.length ? ` · ${expenseTitles.slice(0, 2).join(', ')}${expenseTitles.length > 2 ? '…' : ''}` : ''
-      }`,
+      hint: `${plural(rangeExpenses.length, 'entry', 'entries')}${expenseTitles.length ? ` · ${expenseTitles.slice(0, 2).join(', ')}${expenseTitles.length > 2 ? '…' : ''}` : ''
+        }`,
       value: -totals.expenses,
       display: `− ${formatCurrency(Math.round(totals.expenses))}`,
       bar: {
@@ -837,10 +909,9 @@ const CatalogueProfitLossReport: React.FC = () => {
   const fetchingClass = isFetching ? 'pointer-events-none opacity-50' : '';
 
   const chipClass = (active: boolean) =>
-    `shrink-0 whitespace-nowrap rounded-sm border px-3.5 py-1.5 text-sm font-medium transition ${
-      active
-        ? 'border-orange-700 bg-orange-700 text-white'
-        : 'border-slate-300 bg-white text-slate-700 hover:border-orange-300'
+    `shrink-0 whitespace-nowrap rounded-sm border px-3.5 py-1.5 text-sm font-medium transition ${active
+      ? 'border-orange-700 bg-orange-700 text-white'
+      : 'border-slate-300 bg-white text-slate-700 hover:border-orange-300'
     }`;
 
   const showNetRows = billFilter === 'all';
@@ -853,6 +924,7 @@ const CatalogueProfitLossReport: React.FC = () => {
           message={feedbackModal.message}
           onClose={() => setFeedbackModal((p) => ({ ...p, isOpen: false }))}
           showConfirmButton={false}
+          theme="catalogue"
         />
       )}
 
@@ -973,9 +1045,8 @@ const CatalogueProfitLossReport: React.FC = () => {
 
         <button
           onClick={() => setIsRangeOpen((o) => !o)}
-          className={`hidden shrink-0 items-center gap-2 rounded-sm border bg-white px-3 py-1.5 text-sm font-medium text-slate-800 transition hover:border-orange-300 md:inline-flex ${
-            datePreset === 'custom' ? 'border-orange-700' : 'border-slate-300'
-          }`}
+          className={`hidden shrink-0 items-center gap-2 rounded-sm border bg-white px-3 py-1.5 text-sm font-medium text-slate-800 transition hover:border-orange-300 md:inline-flex ${datePreset === 'custom' ? 'border-orange-700' : 'border-slate-300'
+            }`}
         >
           <CalendarDays size={15} className="text-slate-500" />
           {rangeLabel}
@@ -1152,21 +1223,19 @@ const CatalogueProfitLossReport: React.FC = () => {
                     <tr
                       key={bill.id}
                       onClick={() => setSelectedId(bill.id)}
-                      className={`cursor-pointer border-t border-orange-100 transition ${
-                        selectedId === bill.id
+                      className={`cursor-pointer border-t border-orange-100 transition ${selectedId === bill.id
                           ? 'bg-orange-100'
                           : bill.costMissing
                             ? 'bg-yellow-50/70 hover:bg-yellow-50'
                             : 'hover:bg-orange-50'
-                      }`}
+                        }`}
                     >
                       <td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatFullDate(bill.createdAt)}</td>
                       <td className="whitespace-nowrap px-4 py-3 font-semibold text-orange-700">{bill.invoiceNumber}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-right text-slate-700">{formatCurrency(bill.sales)}</td>
                       <td
-                        className={`whitespace-nowrap px-4 py-3 text-right ${
-                          bill.costMissing ? 'font-medium text-yellow-700' : 'text-slate-700'
-                        }`}
+                        className={`whitespace-nowrap px-4 py-3 text-right ${bill.costMissing ? 'font-medium text-yellow-700' : 'text-slate-700'
+                          }`}
                       >
                         {formatCurrency(bill.cost)}
                         {bill.costMissing && ' · cost missing'}
@@ -1175,9 +1244,8 @@ const CatalogueProfitLossReport: React.FC = () => {
                         {signedCurrency(bill.profit)}
                       </td>
                       <td
-                        className={`whitespace-nowrap px-4 py-3 text-right text-xs font-semibold ${
-                          bill.margin === null ? 'text-slate-400' : profitClass(bill.margin)
-                        }`}
+                        className={`whitespace-nowrap px-4 py-3 text-right text-xs font-semibold ${bill.margin === null ? 'text-slate-400' : profitClass(bill.margin)
+                          }`}
                       >
                         {bill.margin === null ? '—' : formatPercent(bill.margin)}
                       </td>
@@ -1232,9 +1300,8 @@ const CatalogueProfitLossReport: React.FC = () => {
               <li
                 key={bill.id}
                 onClick={() => setSelectedId(bill.id)}
-                className={`cursor-pointer border-t border-orange-100 px-4 py-3 ${
-                  bill.costMissing ? 'bg-yellow-50/70' : 'active:bg-orange-50'
-                }`}
+                className={`cursor-pointer border-t border-orange-100 px-4 py-3 ${bill.costMissing ? 'bg-yellow-50/70' : 'active:bg-orange-50'
+                  }`}
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-2">
@@ -1281,6 +1348,44 @@ const CatalogueProfitLossReport: React.FC = () => {
         const selected = selectedId ? filteredBills.find((b) => b.id === selectedId) : undefined;
         return selected ? renderBillPanel(selected) : null;
       })()}
+
+      {selectedOrderForAction && (
+        <OrderActionSheet
+          selectedOrderForAction={selectedOrderForAction}
+          setSelectedOrderForAction={setSelectedOrderForAction}
+          setShowPrintSubMenu={setShowPrintSubMenu}
+          billType={billType}
+          setBillType={setBillType}
+          handleSendWhatsapp={handleSendWhatsapp}
+          handleSendWhatsappSnapto={handleSendWhatsappSnapto}
+          companyId={currentUser?.companyId}
+          sendingPdf={sendingPdf}
+          pdfLoadingOrderId={pdfLoadingOrderId}
+          setPdfLoadingOrderId={setPdfLoadingOrderId}
+          handlePdfAction={handlePdfAction}
+          setShowQrModal={setShowQrModal}
+        />
+      )}
+      {showPrintSubMenu && selectedOrderForAction && (
+        <PrintSubMenuModal
+          selectedOrderForAction={selectedOrderForAction}
+          setSelectedOrderForAction={setSelectedOrderForAction}
+          setShowPrintSubMenu={setShowPrintSubMenu}
+          setPdfLoadingOrderId={setPdfLoadingOrderId}
+          handlePdfAction={handlePdfAction}
+          _billSettings={billSettings}
+        />
+      )}
+      {showQrModal && (
+        <QrCodeModal
+          showQrModal={showQrModal}
+          setShowQrModal={setShowQrModal}
+          companyId={currentUser?.companyId}
+        />
+      )}
+      {actionModal && (
+        <Modal message={actionModal.message} type={actionModal.type} onClose={() => setActionModal(null)} theme="catalogue" />
+      )}
     </div>
   );
 };

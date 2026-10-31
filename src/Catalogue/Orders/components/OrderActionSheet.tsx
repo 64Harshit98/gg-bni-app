@@ -110,7 +110,7 @@ export const OrderActionSheet: React.FC<OrderActionSheetProps> = ({
                                 handlePdfAction(order, ACTION.DOWNLOAD);
                             }, 50);
                         }}
-                        className="w-full bg-blue-600 text-white py-2.5 rounded-sm font-bold flex items-center justify-center"
+                        className="w-full bg-[#c2410c] hover:bg-[#9a3412] text-white py-2.5 rounded-sm font-bold flex items-center justify-center transition active:scale-[0.97]"
                     >
                         Download PDF
                     </button>

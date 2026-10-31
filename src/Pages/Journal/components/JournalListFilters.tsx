@@ -126,9 +126,9 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
   hasPermission,
   summary,
 }) => {
-    const navigate = useNavigate();
-    const { currentUser } = useAuth();
-    const isOwner = currentUser?.role === ROLES.OWNER;
+  const navigate = useNavigate();
+  const { currentUser } = useAuth();
+  const isOwner = currentUser?.role === ROLES.OWNER;
   const isSales = activeType === 'Credit';
 
   // Custom range: edit as a draft, commit only on Apply
@@ -294,9 +294,8 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
                 type="button"
                 aria-pressed={activeType === 'Credit'}
                 onClick={() => setActiveType('Credit')}
-                className={`flex-1 h-9 rounded-sm text-sm font-medium transition-colors ${
-                  activeType === 'Credit' ? 'bg-[#0f172b] text-white' : 'text-[#45556c] hover:bg-white'
-                }`}
+                className={`flex-1 h-9 rounded-sm text-sm font-medium transition-colors ${activeType === 'Credit' ? 'bg-[#0f172b] text-white' : 'text-[#45556c] hover:bg-white'
+                  }`}
               >
                 Sales
               </button>
@@ -305,9 +304,8 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
                 aria-pressed={activeType === 'Debit'}
                 onClick={() => setActiveType('Debit')}
                 disabled={!hasPermission(Permissions.HiddenProFeatures)}
-                className={`flex-1 h-9 rounded-sm text-sm font-medium transition-colors disabled:opacity-45 disabled:cursor-not-allowed ${
-                  activeType === 'Debit' ? 'bg-[#0f172b] text-white' : 'text-[#45556c] hover:bg-white'
-                }`}
+                className={`flex-1 h-9 rounded-sm text-sm font-medium transition-colors disabled:opacity-45 disabled:cursor-not-allowed ${activeType === 'Debit' ? 'bg-[#0f172b] text-white' : 'text-[#45556c] hover:bg-white'
+                  }`}
               >
                 {hasPermission(Permissions.HiddenProFeatures) ? 'Purchase' : '🔒 Purchase'}
               </button>
@@ -337,7 +335,7 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
             onNext={() => next(3)}
             onSkip={skip}
           >
-                        <div
+            <div
               ref={(el) => { dateWrapRef.current = el; setTutorialRef(2)(el); }}
               className="relative"
             >
@@ -353,7 +351,7 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
                 <ChevronGlyph open={showCustomPicker} />
               </button>
 
-                            {showCustomPicker && (
+              {showCustomPicker && (
                 <div className="absolute top-full left-0 z-50 mt-1.5 w-[328px] max-w-[calc(100vw-2rem)] rounded-sm border border-[#dfe6fb] bg-white p-4 shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)] cursor-default">
                   <div className="grid grid-cols-2 gap-3">
                     <label className="grid gap-1.5 text-[13px] font-medium text-[#45556c]">
@@ -423,23 +421,23 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
 
       {/* ── Summary strip: total · received · unpaid (owner only) ── */}
       {isOwner && (
-      <div className="mx-4 lg:mx-6 mt-4 grid grid-cols-3 bg-white border border-[#dfe6fb] rounded-sm shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] overflow-hidden">
-        <div className="flex flex-col gap-0.5 px-3 py-2.5 lg:px-5 lg:py-3.5 border-r border-[#dfe6fb] min-w-0">
-          <span className="text-xs text-[#45556c]">{isSales ? 'Total sales' : 'Total purchases'}</span>
-          <b className="text-[15px] lg:text-xl leading-[22px] lg:leading-7 font-semibold text-[#0f172b] tabular-nums truncate">{inr0(summary.total)}</b>
-          <span className="text-xs text-[#5b6b86]">{summary.count} {summary.count === 1 ? 'bill' : 'bills'}</span>
+        <div className="mx-4 lg:mx-6 mt-4 grid grid-cols-3 bg-white border border-[#dfe6fb] rounded-sm shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] overflow-hidden">
+          <div className="flex flex-col gap-0.5 px-3 py-2.5 lg:px-5 lg:py-3.5 border-r border-[#dfe6fb] min-w-0">
+            <span className="text-xs text-[#45556c]">{isSales ? 'Total sales' : 'Total purchases'}</span>
+            <b className="text-[15px] lg:text-xl leading-[22px] lg:leading-7 font-semibold text-[#0f172b] tabular-nums truncate">{inr0(summary.total)}</b>
+            <span className="text-xs text-[#5b6b86]">{summary.count} {summary.count === 1 ? 'bill' : 'bills'}</span>
+          </div>
+          <div className="flex flex-col gap-0.5 px-3 py-2.5 lg:px-5 lg:py-3.5 border-r border-[#dfe6fb] min-w-0">
+            <span className="text-xs text-[#45556c]">{isSales ? 'Received' : 'Paid'}</span>
+            <b className="text-[15px] lg:text-xl leading-[22px] lg:leading-7 font-semibold text-[#008236] tabular-nums truncate">{inr0(summary.received)}</b>
+            <span className="text-xs text-[#5b6b86]">{summary.count - summary.unpaidCount} {summary.count - summary.unpaidCount === 1 ? 'bill' : 'bills'}</span>
+          </div>
+          <div className="flex flex-col gap-0.5 px-3 py-2.5 lg:px-5 lg:py-3.5 min-w-0">
+            <span className="text-xs text-[#45556c]">Unpaid</span>
+            <b className="text-[15px] lg:text-xl leading-[22px] lg:leading-7 font-semibold text-[#bb4d00] tabular-nums truncate">{inr0(summary.unpaid)}</b>
+            <span className="text-xs text-[#5b6b86]">{summary.unpaidCount} {summary.unpaidCount === 1 ? 'bill' : 'bills'}</span>
+          </div>
         </div>
-        <div className="flex flex-col gap-0.5 px-3 py-2.5 lg:px-5 lg:py-3.5 border-r border-[#dfe6fb] min-w-0">
-          <span className="text-xs text-[#45556c]">{isSales ? 'Received' : 'Paid'}</span>
-          <b className="text-[15px] lg:text-xl leading-[22px] lg:leading-7 font-semibold text-[#008236] tabular-nums truncate">{inr0(summary.received)}</b>
-          <span className="text-xs text-[#5b6b86]">{summary.count - summary.unpaidCount} {summary.count - summary.unpaidCount === 1 ? 'bill' : 'bills'}</span>
-        </div>
-        <div className="flex flex-col gap-0.5 px-3 py-2.5 lg:px-5 lg:py-3.5 min-w-0">
-          <span className="text-xs text-[#45556c]">Unpaid</span>
-          <b className="text-[15px] lg:text-xl leading-[22px] lg:leading-7 font-semibold text-[#bb4d00] tabular-nums truncate">{inr0(summary.unpaid)}</b>
-          <span className="text-xs text-[#5b6b86]">{summary.unpaidCount} {summary.unpaidCount === 1 ? 'bill' : 'bills'}</span>
-        </div>
-      </div>
       )}
     </>
   );

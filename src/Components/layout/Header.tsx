@@ -53,7 +53,7 @@ export function Header({
   return (
     <>
       {/* Flush bar, same height as the sidebar's logo row (60px + 1px border) so the two dividers line up */}
-      <header className="sticky top-0 z-30 hidden h-[61px] shrink-0 items-center gap-3 border-b border-slate-200/70 bg-white/80 px-5 backdrop-blur-md md:flex">
+      <header className="sticky top-0 z-50 hidden h-[61px] shrink-0 items-center gap-3 border-b border-slate-200/70 bg-white/80 px-5 backdrop-blur-md md:flex">
         <p className="min-w-0 truncate text-sm font-semibold text-slate-800">{pageLabel}</p>
 
         <button

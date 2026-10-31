@@ -3,7 +3,7 @@ import type { Item, PriceTier, AddOnOption } from '../../../../constants/models'
 import { getSlabForQty } from '../../../../constants/models';
 import { State } from '../../../../enums';
 import { findTierByBarcode, hasQuantitySlabs } from '../../../utils/pricingUtils';
-import { applyRounding } from '../sales.calculations';
+import { applyLineRounding } from '../sales.calculations';
 import type { SalesItem } from '../sales.types';
 
 // Same item + same add-on combo = same cart line (order of selection doesn't matter)
@@ -188,7 +188,7 @@ export const useSalesCart = ({
             net = mrp * (1 - presetDiscount / 100);
         }
 
-        net = applyRounding(net, isRoundingEnabled, roundingInterval);
+        net = applyLineRounding(net, isRoundingEnabled, roundingInterval, mrp);
         return { customPrice: net, discount: parseFloat(disc.toFixed(2)) };
     };
 
@@ -244,7 +244,7 @@ export const useSalesCart = ({
 
         const isRoundingEnabled = salesSettings?.enableRounding ?? true;
         const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
-        finalNetPrice = applyRounding(finalNetPrice, isRoundingEnabled, roundingInterval);
+        finalNetPrice = applyLineRounding(finalNetPrice, isRoundingEnabled, roundingInterval, mrp);
 
         const newSalesItem: SalesItem = {
             ...itemToAdd,
@@ -485,7 +485,7 @@ export const useSalesCart = ({
                 let newPrice = priceAfterFirstDiscount * (1 - safeDiscount2 / 100);
                 const isRoundingEnabled = salesSettings?.enableRounding ?? true;
                 const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
-                newPrice = applyRounding(newPrice, isRoundingEnabled, roundingInterval);
+                newPrice = applyLineRounding(newPrice, isRoundingEnabled, roundingInterval, Number(i.mrp) || 0);
                 return { ...i, discount: safeDiscount, customPrice: newPrice };
             }
             return i;
@@ -502,7 +502,7 @@ export const useSalesCart = ({
                 let newPrice = priceAfterFirstDiscount * (1 - safeDiscount2 / 100);
                 const isRoundingEnabled = salesSettings?.enableRounding ?? true;
                 const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
-                newPrice = applyRounding(newPrice, isRoundingEnabled, roundingInterval);
+                newPrice = applyLineRounding(newPrice, isRoundingEnabled, roundingInterval, Number(i.mrp) || 0);
                 return { ...i, discount2: safeDiscount2, customPrice: newPrice };
             }
             return i;
@@ -571,7 +571,7 @@ export const useSalesCart = ({
                 finalNetPrice = finalNetPrice * (1 - (existingDiscount2 / 100));
                 const isRoundingEnabled = salesSettings?.enableRounding ?? true;
                 const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
-                finalNetPrice = applyRounding(finalNetPrice, isRoundingEnabled, roundingInterval);
+                finalNetPrice = applyLineRounding(finalNetPrice, isRoundingEnabled, roundingInterval, mrp);
 
                 mergedItem.customPrice = finalNetPrice;
                 mergedItem.discount = parseFloat(calculatedDiscount.toFixed(2)); // Make sure discount updates!

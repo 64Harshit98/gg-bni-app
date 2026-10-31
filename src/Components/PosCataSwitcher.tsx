@@ -72,16 +72,16 @@ const PosCataSwitcher = ({ current, showCompany = false }: PosCataSwitcherProps)
         disabled={!hasCataloguePermission}
         onClick={() => setIsMenuOpen(!isMenuOpen)}
         title={label}
-        className={`flex h-[34px] items-center justify-between gap-2 whitespace-nowrap rounded-sm border px-2.5 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#155dfc] md:h-10 md:px-3 md:text-sm ${
-          // fixed width on mobile so POS / CATALOG take the same space and the header logo never resizes
-          showCompany ? 'w-full' : 'w-32'
-        } ${mode.button} ${!hasCataloguePermission ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+        className={`flex h-[34px] items-center gap-1 whitespace-nowrap rounded-sm border pl-2.5 pr-1.5 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#155dfc] md:h-10 md:px-3 md:text-sm ${
+          // desktop sidebar: full width, arrow pushed right. Mobile header: shrink to content so arrow sits right next to the label
+          showCompany ? 'w-full justify-between' : 'w-auto'
+          } ${mode.button} ${!hasCataloguePermission ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
       >
-        <span className="flex min-w-0 items-center gap-2">
+        <span className="flex min-w-0 items-center gap-1.5">
           <mode.Icon className="size-4 flex-shrink-0" />
           <span className="truncate">{label}</span>
         </span>
-        <IconChevronDown width={16} height={16} className={`flex-shrink-0 transition-transform ${isMenuOpen ? 'rotate-180' : 'rotate-0'}`} />
+        <IconChevronDown width={16} height={16} className={`flex-shrink-0 -mr-0.5 transition-transform ${isMenuOpen ? 'rotate-180' : 'rotate-0'}`} />
       </button>
       {isMenuOpen && hasCataloguePermission && (
         <div className="absolute left-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-sm border border-[#dfe6fb] bg-white shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]">
@@ -93,9 +93,8 @@ const PosCataSwitcher = ({ current, showCompany = false }: PosCataSwitcherProps)
                   <Link
                     to={to}
                     onClick={() => setIsMenuOpen(false)}
-                    className={`flex w-full items-center gap-3 rounded-sm px-3 py-2 text-sm font-medium ${
-                      itemLabel === current ? itemMode.item : 'text-[#45556c] hover:bg-[#f5f7ff] hover:text-[#0f172b]'
-                    }`}
+                    className={`flex w-full items-center gap-3 rounded-sm px-3 py-2 text-sm font-medium ${itemLabel === current ? itemMode.item : 'text-[#45556c] hover:bg-[#f5f7ff] hover:text-[#0f172b]'
+                      }`}
                   >
                     <itemMode.Icon className="size-4 flex-shrink-0" />
                     {itemLabel}

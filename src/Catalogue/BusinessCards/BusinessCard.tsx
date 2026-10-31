@@ -363,7 +363,7 @@ function BusinessCard({ theme = 'pos' }: { theme?: BusinessCardTheme }) {
             <div
                 ref={scrollRef}
                 onScroll={handleScroll}
-                className="-mx-4 flex flex-nowrap gap-3 overflow-x-auto px-4 pb-2 snap-x snap-mandatory scrollbar-hide md:-mx-5 md:px-5 lg:mx-0 lg:flex-wrap lg:gap-4 lg:overflow-visible lg:px-0 lg:pb-0 lg:snap-none"
+                className="-mx-4 flex flex-nowrap gap-3 overflow-x-auto px-4 pb-2 snap-x snap-mandatory scrollbar-hide md:-mx-5 md:px-5"
             >
                 {/* ================= DESIGN 1 — dark ================= */}
                 <div className="grid w-[260px] min-w-0 shrink-0 snap-center gap-2">
@@ -374,9 +374,9 @@ function BusinessCard({ theme = 'pos' }: { theme?: BusinessCardTheme }) {
                             <div className="truncate opacity-80">{data.role}</div>
                             <div className="mt-auto grid gap-[3px]">
                                 {data.address && (
-                                    <span className="flex min-w-0 items-center gap-[5px]">
-                                        <PinIco />
-                                        <span className="line-clamp-2">{data.address}</span>
+                                    <span className="flex min-w-0 items-start gap-[5px]">
+                                        <span className="mt-[2px]"><PinIco /></span>
+                                        <span className="line-clamp-3 break-words">{data.address}</span>
                                     </span>
                                 )}
                                 {data.phone && (
@@ -433,17 +433,17 @@ function BusinessCard({ theme = 'pos' }: { theme?: BusinessCardTheme }) {
                         </div>
 
                         {/* Bottom */}
-                        <div className="flex min-w-0 gap-3 text-[#45556c]">
+                        <div className="flex min-w-0 items-start gap-3 text-[#45556c]">
                             {data.phone && (
-                                <span className="flex shrink-0 items-center gap-[5px]">
-                                    <PhoneIco />
+                                <span className="flex shrink-0 items-start gap-[5px]">
+                                    <span className="mt-[2px]"><PhoneIco /></span>
                                     {data.phone}
                                 </span>
                             )}
                             {data.address && (
-                                <span className="flex min-w-0 items-center gap-[5px]">
-                                    <PinIco />
-                                    <span className="truncate">{data.address}</span>
+                                <span className="flex min-w-0 items-start gap-[5px]">
+                                    <span className="mt-[2px]"><PinIco /></span>
+                                    <span className="line-clamp-2 break-words">{data.address}</span>
                                 </span>
                             )}
                         </div>
@@ -502,8 +502,8 @@ function BusinessCard({ theme = 'pos' }: { theme?: BusinessCardTheme }) {
                 )}
             </div>
 
-            {/* Dots — only while the cards scroll sideways (phones/tablets); desktop wraps them */}
-            <div className="flex justify-center gap-1 pb-3 pt-1 pointer-events-none lg:hidden">
+            {/* Dots */}
+            <div className="flex justify-center gap-1 pb-3 pt-1 pointer-events-none">
                 {cards.map((_, i) => (
                     <div
                         key={i}

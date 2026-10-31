@@ -252,7 +252,7 @@ const MainLayout = () => {
   ];
 
   return (
-    <div className="relative h-dvh w-screen flex flex-col md:flex-row overflow-hidden bg-white">
+    <div className="relative h-dvh w-screen flex flex-col md:flex-row overflow-hidden bg-[#eef2ff]">
       {/* Closing Reminder Modal */}
       {showReminder && shopSettings && (
         <ShopClosingReminderModal
@@ -264,7 +264,7 @@ const MainLayout = () => {
 
       {/* MOBILE HEADER (unchanged) */}
       {/* Same structure as the Catalogue mobile header so the logo never shifts when switching */}
-      <header className="md:hidden flex items-center gap-2 px-3 py-2 bg-white border-b border-slate-200 z-[150]">
+      <header className="md:hidden relative flex items-center justify-between gap-2 px-3 py-2 bg-white border-b border-slate-200 z-[150]">
         <div className="shrink-0">
           <TutorialStep
             step={1}
@@ -279,11 +279,11 @@ const MainLayout = () => {
             </div>
           </TutorialStep>
         </div>
-        <div className="flex-1 min-w-0 flex justify-center">
+        <div className="pointer-events-none absolute inset-x-0 flex justify-center">
           <img
             src={sellarLogo}
             alt="Sellar Logo"
-            className="h-5 max-w-full object-contain"
+            className="h-5 object-contain"
           />
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -347,7 +347,8 @@ const MainLayout = () => {
       </main>
 
       {/* MOBILE BOTTOM NAV (unchanged) */}
-      <nav className="md:hidden fixed bottom-0 left-0 w-full bg-white z-40">
+{/* z-[150]: above the FAB overlay (z-[120]) so the nav stays crisp; below the Add popup (z-[160]). */}
+<nav className="md:hidden fixed bottom-0 left-0 w-full bg-white z-[150]">
         <div className="flex justify-around items-center gap-2 px-2 pt-2 pb-3">
           {mobileNavItems.slice(0, 2).map((item) => renderMobileNavLink(item))}
 

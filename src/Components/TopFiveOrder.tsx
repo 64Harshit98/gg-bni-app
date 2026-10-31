@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Spinner } from '../constants/Spinner';
 import { CatCard, CardHead, Seg, HiddenState, Ico, ICONS } from '../Components/ui/Catalogueui';
+import { splitAddOns } from '../UseComponents/addOnText';
 
 interface TopItem {
     id: string;
@@ -37,21 +38,27 @@ export const CatalogueTopItems: React.FC<CatalogueTopItemsProps> = ({
         return (
             <>
                 <ol className="m-0 list-none p-0">
-                    {visible.map((item, index) => (
-                        <li key={item.id} className="flex items-center gap-3 border-b border-[#f6e1d0] py-2.5 last:border-b-0">
-                            <span className="h-6 w-6 flex-none rounded-sm bg-orange-100 text-center text-xs font-semibold leading-6 text-orange-800">
-                                {index + 1}
-                            </span>
-                            <span className="min-w-0 flex-1 truncate text-sm text-slate-900" title={item.name}>
-                                {item.name}
-                            </span>
-                            <span className="text-sm font-medium tabular-nums text-slate-900">
-                                {viewMode === 'quantity'
-                                    ? <>{item.totalQuantity}<span className="ml-1 text-xs font-normal text-slate-500">sold</span></>
-                                    : item.totalAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}
-                            </span>
-                        </li>
-                    ))}
+                    {visible.map((item, index) => {
+                        const { baseName, addOnText } = splitAddOns(item);
+                        return (
+                            <li key={item.id} className="flex items-center gap-3 border-b border-[#f6e1d0] py-2.5 last:border-b-0">
+                                <span className="h-6 w-6 flex-none rounded-sm bg-orange-100 text-center text-xs font-semibold leading-6 text-orange-800">
+                                    {index + 1}
+                                </span>
+                                <div className="min-w-0 flex-1" title={item.name}>
+                                    <p className="truncate text-sm text-slate-900">{baseName}</p>
+                                    {addOnText && (
+                                        <p className="mt-0.5 truncate text-[11px] leading-tight text-slate-500">+ {addOnText}</p>
+                                    )}
+                                </div>
+                                <span className="text-sm font-medium tabular-nums text-slate-900">
+                                    {viewMode === 'quantity'
+                                        ? <>{item.totalQuantity}<span className="ml-1 text-xs font-normal text-slate-500">sold</span></>
+                                        : item.totalAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 })}
+                                </span>
+                            </li>
+                        );
+                    })}
                 </ol>
                 {items.length > 3 && (
                     <button

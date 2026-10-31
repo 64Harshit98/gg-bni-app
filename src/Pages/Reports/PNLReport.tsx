@@ -24,7 +24,12 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
-import { State } from '../../enums';
+import { State, PLANS } from '../../enums';
+import { useSalesSettings } from '../../context/SettingsContext';
+import { normalizePlan } from '../../context/Plan';
+import { useInvoiceCommunication } from '../Journal/hooks';
+import { InvoiceActionSheet, PrintSubMenuModal, QrCodeModal } from '../Journal/components';
+import type { Invoice } from '../Journal/journal.types';
 import { usePnlReport } from './PNLReportComponents/usePnlReport';
 import {
   formatDate,
@@ -116,6 +121,40 @@ const PnlReportPage: React.FC = () => {
     type: State.INFO,
     message: '',
   });
+
+  /* ---------- BILL ACTION SHEET (WhatsApp / Download / Print / QR) ---------- */
+  const { salesSettings } = useSalesSettings();
+  const [actionModal, setActionModal] = useState<{ message: string; type: State } | null>(null);
+  const [isPosBasicPlan, setIsPosBasicPlan] = useState(false);
+
+  useEffect(() => {
+    const fetchPlan = async () => {
+      if (!currentUser?.companyId) return;
+      try {
+        const snap = await getDoc(doc(db, 'companies', currentUser.companyId));
+        if (snap.exists()) {
+          const plan = normalizePlan(snap.data().pack);
+          setIsPosBasicPlan(plan === PLANS.POS_BASIC || plan === PLANS.CALC_CATALOG);
+        }
+      } catch (e) {
+        console.error('Failed to fetch plan', e);
+      }
+    };
+    fetchPlan();
+  }, [currentUser?.companyId]);
+
+  const {
+    invoiceToPrint, setInvoiceToPrint,
+    showQrModal, setShowQrModal,
+    sendingPdf,
+    showPrintSubMenu, setShowPrintSubMenu,
+    enableTriplicate,
+    billType, setBillType,
+    handlePdfAction,
+    handleSendWhatsapp,
+    handleSendWhatsappSnapto,
+    handleShowQr,
+  } = useInvoiceCommunication({ currentUser, salesSettings, isPosBasicPlan, setModal: setActionModal });
 
   // Re-render every minute so the "Updated x min ago" label stays accurate.
   const [now, setNow] = useState(() => Date.now());
@@ -707,6 +746,40 @@ const PnlReportPage: React.FC = () => {
     }
   };
 
+  /* ---------- VIEW BILL → ACTION SHEET ---------- */
+  const openBillActions = async (billId: string) => {
+    if (!currentUser?.companyId) return;
+    const sale = sales.find((s) => s.id === billId);
+    if (!sale) return;
+    setSelectedId(null); // close the detail panel
+    try {
+      // Full sale document so the PDF gets tax, discount, GST etc.
+      const snap = await getDoc(doc(db, 'companies', currentUser.companyId, 'sales', billId));
+      const data: any = snap.exists() ? snap.data() : {};
+      const dueAmount = Math.max(Number(sale.paymentMethods?.due ?? sale.dueAmount) || 0, 0);
+      setInvoiceToPrint({
+        ...data,
+        id: billId,
+        type: 'Credit', // Journal uses 'Credit' for sale bills
+        invoiceNumber: data.invoiceNumber ?? sale.invoiceNumber,
+        partyName: data.partyName || sale.partyName,
+        partyNumber: data.partyNumber || sale.partyNumber,
+        amount: data.totalAmount ?? sale.totalAmount,
+        dueAmount,
+        status: dueAmount > 0 ? 'Unpaid' : 'Paid',
+        items: data.items || sale.items || [],
+        paymentMethods: data.paymentMethods || sale.paymentMethods || {},
+        paymentHistory: data.paymentHistory || [],
+        time: new Date(sale.createdAt).toLocaleString('en-IN', {
+          day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit',
+        }),
+      } as unknown as Invoice);
+    } catch (err) {
+      console.error('Open bill failed:', err);
+      setActionModal({ message: 'Could not load the bill. Please try again.', type: State.ERROR });
+    }
+  };
+
   /* ---------- DOWNLOAD / SHARE ---------- */
   const runDownload = (action: () => void) => {
     if (filteredBills.length === 0) {
@@ -738,9 +811,8 @@ const PnlReportPage: React.FC = () => {
       <th className={`px-4 py-3 font-semibold ${align === 'right' ? 'text-right' : 'text-left'}`}>
         <button
           onClick={() => handleSort(sortKey)}
-          className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-blue-800 ${
-            align === 'right' ? 'flex-row-reverse' : ''
-          }`}
+          className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-blue-800 ${align === 'right' ? 'flex-row-reverse' : ''
+            }`}
         >
           {label}
           <Icon size={11} className={isActive ? 'opacity-100' : 'opacity-40'} />
@@ -770,14 +842,13 @@ const PnlReportPage: React.FC = () => {
         subtitle={`${formatFullDate(bill.createdAt)}, ${time} · ${walkIn ? 'Walk-in' : bill.partyName}`}
         footer={
           currentUser?.companyId ? (
-            <a
-              href={`/download-bill/${currentUser.companyId}/${bill.id}`}
-              target="_blank"
-              rel="noreferrer"
+            <button
+              type="button"
+              onClick={() => openBillActions(bill.id)}
               className="flex w-full items-center justify-center gap-1.5 rounded-sm bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
             >
               <ExternalLink size={15} /> View bill
-            </a>
+            </button>
           ) : undefined
         }
       >
@@ -844,9 +915,8 @@ const PnlReportPage: React.FC = () => {
     },
     {
       label: '− Expenses',
-      hint: `${plural(rangeExpenses.length, 'entry', 'entries')}${
-        expenseTitles.length ? ` · ${expenseTitles.slice(0, 2).join(', ')}${expenseTitles.length > 2 ? '…' : ''}` : ''
-      }`,
+      hint: `${plural(rangeExpenses.length, 'entry', 'entries')}${expenseTitles.length ? ` · ${expenseTitles.slice(0, 2).join(', ')}${expenseTitles.length > 2 ? '…' : ''}` : ''
+        }`,
       value: -totals.expenses,
       display: `− ${formatCurrency(Math.round(totals.expenses))}`,
       bar: {
@@ -956,10 +1026,9 @@ const PnlReportPage: React.FC = () => {
   const fetchingClass = isFetching ? 'pointer-events-none opacity-50' : '';
 
   const chipClass = (active: boolean) =>
-    `shrink-0 whitespace-nowrap rounded-sm border px-3.5 py-1.5 text-sm font-medium transition ${
-      active
-        ? 'border-slate-900 bg-slate-900 text-white'
-        : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+    `shrink-0 whitespace-nowrap rounded-sm border px-3.5 py-1.5 text-sm font-medium transition ${active
+      ? 'border-slate-900 bg-slate-900 text-white'
+      : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
     }`;
 
   const showNetRows = billFilter === 'all';
@@ -1092,9 +1161,8 @@ const PnlReportPage: React.FC = () => {
 
         <button
           onClick={() => setIsRangeOpen((o) => !o)}
-          className={`hidden shrink-0 items-center gap-2 rounded-sm border bg-white px-3 py-1.5 text-sm font-medium text-slate-800 transition hover:border-slate-400 md:inline-flex ${
-            datePreset === 'custom' ? 'border-slate-900' : 'border-slate-300'
-          }`}
+          className={`hidden shrink-0 items-center gap-2 rounded-sm border bg-white px-3 py-1.5 text-sm font-medium text-slate-800 transition hover:border-slate-400 md:inline-flex ${datePreset === 'custom' ? 'border-slate-900' : 'border-slate-300'
+            }`}
         >
           <CalendarDays size={15} className="text-slate-500" />
           {rangeLabel}
@@ -1271,17 +1339,15 @@ const PnlReportPage: React.FC = () => {
                     <React.Fragment key={bill.id}>
                       <tr
                         onClick={() => setSelectedId(bill.id)}
-                        className={`cursor-pointer border-t border-line transition ${
-                          selectedId === bill.id ? 'bg-blue-50' : bill.costMissing ? 'bg-amber-50/70 hover:bg-amber-50' : 'hover:bg-sunken'
-                        }`}
+                        className={`cursor-pointer border-t border-line transition ${selectedId === bill.id ? 'bg-blue-50' : bill.costMissing ? 'bg-amber-50/70 hover:bg-amber-50' : 'hover:bg-sunken'
+                          }`}
                       >
                         <td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatFullDate(bill.createdAt)}</td>
                         <td className="whitespace-nowrap px-4 py-3 font-semibold text-blue-600">{bill.invoiceNumber}</td>
                         <td className="whitespace-nowrap px-4 py-3 text-right text-slate-700">{formatCurrency(bill.sales)}</td>
                         <td
-                          className={`whitespace-nowrap px-4 py-3 text-right ${
-                            bill.costMissing ? 'font-medium text-amber-700' : 'text-slate-700'
-                          }`}
+                          className={`whitespace-nowrap px-4 py-3 text-right ${bill.costMissing ? 'font-medium text-amber-700' : 'text-slate-700'
+                            }`}
                         >
                           {formatCurrency(bill.cost)}
                           {bill.costMissing && ' · cost missing'}
@@ -1290,9 +1356,8 @@ const PnlReportPage: React.FC = () => {
                           {signedCurrency(bill.profit)}
                         </td>
                         <td
-                          className={`whitespace-nowrap px-4 py-3 text-right text-xs font-semibold ${
-                            bill.margin === null ? 'text-slate-400' : profitClass(bill.margin)
-                          }`}
+                          className={`whitespace-nowrap px-4 py-3 text-right text-xs font-semibold ${bill.margin === null ? 'text-slate-400' : profitClass(bill.margin)
+                            }`}
                         >
                           {bill.margin === null ? '—' : formatPercent(bill.margin)}
                         </td>
@@ -1348,9 +1413,8 @@ const PnlReportPage: React.FC = () => {
               <li
                 key={bill.id}
                 onClick={() => setSelectedId(bill.id)}
-                className={`cursor-pointer border-t border-line px-4 py-3 ${
-                  bill.costMissing ? 'bg-amber-50/70' : 'active:bg-sunken'
-                }`}
+                className={`cursor-pointer border-t border-line px-4 py-3 ${bill.costMissing ? 'bg-amber-50/70' : 'active:bg-sunken'
+                  }`}
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-2">
@@ -1397,6 +1461,49 @@ const PnlReportPage: React.FC = () => {
         const selected = selectedId ? filteredBills.find((b) => b.id === selectedId) : undefined;
         return selected ? renderBillPanel(selected) : null;
       })()}
+
+      {actionModal && (
+        <Modal
+          message={actionModal.message}
+          type={actionModal.type}
+          onClose={() => setActionModal(null)}
+          onConfirm={() => setActionModal(null)}
+          showConfirmButton={false}
+        />
+      )}
+      {invoiceToPrint && (
+        <InvoiceActionSheet
+          invoiceToPrint={invoiceToPrint}
+          setInvoiceToPrint={setInvoiceToPrint}
+          setShowPrintSubMenu={setShowPrintSubMenu}
+          isPosBasicPlan={isPosBasicPlan}
+          billType={billType}
+          setBillType={setBillType}
+          sendingPdf={sendingPdf}
+          companyId={currentUser?.companyId}
+          handleSendWhatsapp={handleSendWhatsapp}
+          handleSendWhatsappSnapto={handleSendWhatsappSnapto}
+          handlePdfAction={handlePdfAction}
+          handleShowQr={handleShowQr}
+        />
+      )}
+      {!isPosBasicPlan && showPrintSubMenu && invoiceToPrint && (
+        <PrintSubMenuModal
+          invoiceToPrint={invoiceToPrint}
+          setInvoiceToPrint={setInvoiceToPrint}
+          setShowPrintSubMenu={setShowPrintSubMenu}
+          billType={billType}
+          enableTriplicate={enableTriplicate}
+          handlePdfAction={handlePdfAction}
+        />
+      )}
+      {showQrModal && (
+        <QrCodeModal
+          showQrModal={showQrModal}
+          setShowQrModal={setShowQrModal}
+          companyId={currentUser?.companyId}
+        />
+      )}
     </div>
   );
 };

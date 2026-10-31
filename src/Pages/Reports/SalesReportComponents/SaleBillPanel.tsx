@@ -23,9 +23,11 @@ interface Props {
   onClose: () => void;
   /** Extra sections under the payment, e.g. profit on the P&L report. */
   extra?: ReactNode;
+  /** If given, "View bill" calls this (opens the action sheet) instead of the download-bill link. */
+  onViewBill?: (sale: SaleRecord) => void;
 }
 
-const SaleBillPanel = ({ sale, companyId, onClose, extra }: Props) => {
+const SaleBillPanel = ({ sale, companyId, onClose, extra, onViewBill }: Props) => {
   const navigate = useNavigate();
   if (!sale) return null;
 
@@ -50,7 +52,16 @@ const SaleBillPanel = ({ sale, companyId, onClose, extra }: Props) => {
       subtitle={`${formatFullDate(sale.createdAt)}, ${time}`}
       footer={
         <div className="flex gap-2">
-          {companyId && (
+          {companyId && onViewBill && (
+            <button
+              type="button"
+              onClick={() => onViewBill(sale)}
+              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              <ExternalLink size={15} /> View bill
+            </button>
+          )}
+          {companyId && !onViewBill && (
             <a
               href={`/download-bill/${companyId}/${sale.id}`}
               target="_blank"
@@ -78,11 +89,23 @@ const SaleBillPanel = ({ sale, companyId, onClose, extra }: Props) => {
 
       <DetailSection title={`Items · ${count}`}>
         <DetailItems
-          items={(sale.items || []).map((item) => ({
-            name: item.name,
-            quantity: Number(item.quantity) || 0,
-            unitPrice: Number(item.mrp) || 0,
-          }))}
+          items={(sale.items || []).map((item: any) => {
+            const qty = Number(item.quantity) || 0;
+            // Same logic as Journal: SP per unit
+            const sp =
+              item.taxableAmount && qty > 0
+                ? item.taxableAmount / qty
+                : item.effectiveUnitPrice
+                  ? Number(item.effectiveUnitPrice)
+                  : qty > 0
+                    ? (Number(item.finalPrice) || 0) / qty
+                    : 0;
+            return {
+              name: item.name,
+              quantity: qty,
+              unitPrice: sp || Number(item.mrp) || 0, // MRP sirf last fallback
+            };
+          })}
         />
       </DetailSection>
 

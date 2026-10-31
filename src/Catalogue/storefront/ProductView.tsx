@@ -133,7 +133,10 @@ export const ProductView: React.FC<Props> = (p) => {
 
     const buyButton = s.outOfStock
         ? (s.canNotify
-            ? <button type="button" disabled={p.notified} onClick={p.onNotify} className={btnClass('secondary', 'lg', true)}><Bell className="size-4" />{p.notified ? "We'll notify you" : 'Notify me when back'}</button>
+            ? <button type="button" disabled={p.notified} onClick={p.onNotify} className={cx(btnClass('secondary', 'lg', true), 'min-w-0')}>
+                <Bell className="size-4 shrink-0" />
+                <span className="min-w-0 truncate">{p.notified ? "You'll be notified" : 'Notify me when in stock'}</span>
+            </button>
             : <button type="button" disabled className={btnClass('secondary', 'lg', true)}>Out of stock</button>)
         : editsCart
             ? <button type="button" onClick={p.onViewCart} className={btnClass('primary', 'lg', true)}>
@@ -272,8 +275,8 @@ export const ProductView: React.FC<Props> = (p) => {
                     )}
 
                     {/* Buy row: sticky at the bottom on phones */}
-                    <div className={cx('inset-x-0 bottom-0 flex gap-3 border-t border-sf-line bg-white px-4 pb-5 pt-3 shadow-sf-float md:static md:z-auto md:grid md:grid-cols-[136px_minmax(0,1fr)] md:border-0 md:bg-transparent md:p-0 md:shadow-none',
-                        // In the builder it sticks to the bottom of the preview instead of covering the app's nav
+                    <div className={cx('inset-x-0 bottom-0 flex gap-3 border-t border-sf-line bg-white px-4 pb-5 pt-3 shadow-sf-float md:static md:z-auto md:grid md:border-0 md:bg-transparent md:p-0 md:shadow-none',
+                        s.outOfStock ? 'md:grid-cols-1' : 'md:grid-cols-[136px_minmax(0,1fr)]',
                         p.preview ? 'sticky z-10 -mx-4 md:mx-0' : 'fixed z-[66]')}>
                         {!s.outOfStock && (editsCart
                             ? <QtyStepper value={p.inCart} outline trashAtOne className="h-12 w-[128px] shrink-0 md:w-auto"

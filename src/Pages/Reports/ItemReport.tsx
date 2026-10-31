@@ -898,9 +898,8 @@ const ItemReport: React.FC = () => {
       <th className={`px-4 py-3 font-semibold ${align === 'right' ? 'text-right' : 'text-left'}`}>
         <button
           onClick={() => handleSort(key)}
-          className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-blue-800 ${
-            align === 'right' ? 'flex-row-reverse' : ''
-          }`}
+          className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-blue-800 ${align === 'right' ? 'flex-row-reverse' : ''
+            }`}
         >
           {label}
           <Icon size={11} className={isActive ? 'opacity-100' : 'opacity-40'} />
@@ -918,11 +917,10 @@ const ItemReport: React.FC = () => {
           key={value}
           onClick={() => setIssueFilter(active ? null : value)}
           title={`${count} ${count === 1 ? 'item' : 'items'}`}
-          className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-sm border px-2.5 py-1 text-xs font-medium transition ${
-            active
-              ? 'border-slate-900 bg-slate-900 text-white'
-              : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
-          }`}
+          className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-sm border px-2.5 py-1 text-xs font-medium transition ${active
+            ? 'border-slate-900 bg-slate-900 text-white'
+            : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+            }`}
         >
           {!compact && <AlertTriangle size={12} className={active ? 'text-amber-300' : 'text-amber-500'} />}
           {compact && value === 'noCost' ? 'No cost' : label}
@@ -947,9 +945,8 @@ const ItemReport: React.FC = () => {
       ? SHOP_NAME
       : godowns.find((g) => g.id === locationFilter)?.name || 'location'
     : '';
-  const scopeLabel = `${selectedGroupName ? `in ${selectedGroupName}` : 'in all groups'} · ${
-    selectedLocationName ? `at ${selectedLocationName}` : 'all locations'
-  }`;
+  const scopeLabel = `${selectedGroupName ? `in ${selectedGroupName}` : 'in all groups'} · ${selectedLocationName ? `at ${selectedLocationName}` : 'all locations'
+    }`;
   const rangeLabel = formatRangeLabel(parseInputDate(fromDate).getTime(), parseInputDate(toDate).getTime());
 
   const statCards = [
@@ -988,10 +985,9 @@ const ItemReport: React.FC = () => {
   ];
 
   const chipClass = (active: boolean) =>
-    `shrink-0 whitespace-nowrap rounded-sm border px-3.5 py-1.5 text-sm font-medium transition ${
-      active
-        ? 'border-slate-900 bg-slate-900 text-white'
-        : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+    `shrink-0 whitespace-nowrap rounded-sm border px-3.5 py-1.5 text-sm font-medium transition ${active
+      ? 'border-slate-900 bg-slate-900 text-white'
+      : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
     }`;
 
   const selectClass =
@@ -1139,9 +1135,8 @@ const ItemReport: React.FC = () => {
           <button
             onClick={() => setIsRangeOpen((o) => !o)}
             title="Period for stock in / out in the downloads"
-            className={`inline-flex shrink-0 items-center gap-2 rounded-sm border bg-white px-3 py-1.5 text-sm font-medium text-slate-800 transition hover:border-slate-400 ${
-              datePreset === 'custom' ? 'border-slate-900' : 'border-slate-300'
-            }`}
+            className={`inline-flex shrink-0 items-center gap-2 rounded-sm border bg-white px-3 py-1.5 text-sm font-medium text-slate-800 transition hover:border-slate-400 ${datePreset === 'custom' ? 'border-slate-900' : 'border-slate-300'
+              }`}
           >
             <CalendarDays size={15} className="text-slate-500" />
             {rangeLabel}
@@ -1275,13 +1270,18 @@ const ItemReport: React.FC = () => {
                       className={`border-t border-line transition hover:bg-sunken ${canEditItems ? 'cursor-pointer' : ''}`}
                     >
                       <td className="whitespace-nowrap px-4 py-3 text-slate-600">{item.barcode || '—'}</td>
-                      <td className="px-4 py-3 font-semibold text-slate-900">{item.name}</td>
+                      <td className="max-w-[320px] px-4 py-3 font-semibold text-slate-900">
+                        <span title={item.name} className="block truncate">{item.name}</span>
+                      </td>
                       <td className="whitespace-nowrap px-4 py-3 text-right">
                         <p className={stock < 0 ? 'font-semibold text-red-600' : 'text-slate-700'}>{stock.toLocaleString('en-IN')}</p>
                         {stock < 0 && <p className="text-[11px] text-red-600">Sold more than stock</p>}
                       </td>
                       <td className="px-4 py-3">
-                        <span className="inline-block whitespace-nowrap rounded-sm bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">
+                        <span
+                          title={getGroupName(item.itemGroupId)}
+                          className="inline-block max-w-[160px] truncate rounded-sm bg-slate-100 px-1.5 py-0.5 align-middle text-[11px] text-slate-600"
+                        >
                           {getGroupName(item.itemGroupId)}
                         </span>
                       </td>

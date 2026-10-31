@@ -48,6 +48,16 @@ import { clearOpeningBalanceCache } from './CustomerReportComponents/customerRep
 import { sendDueReminder } from '../Additional/Whatsapp/sendDueReminder';
 import { useWhatsappProvider, type WhatsappProvider } from '../Additional/Whatsapp/useWhatsappProvider';
 import { ROUTES } from '../../constants/routes.constants';
+import { doc as fsDocRef, getDoc as fsGetDoc } from 'firebase/firestore';
+import { db as firebaseDb } from '../../lib/Firebase';
+import { useAuth } from '../../context/auth-context';
+import { useSalesSettings } from '../../context/SettingsContext';
+import { State, PLANS } from '../../enums';
+import { normalizePlan } from '../../context/Plan';
+import { Modal } from '../../constants/Modal';
+import { useInvoiceCommunication } from '../Journal/hooks'
+import { InvoiceActionSheet, PrintSubMenuModal, QrCodeModal } from '../Journal/components';
+import type { Invoice } from '../Journal/journal.types';
 
 interface BulkOpeningBalanceRow {
     partyName: string;
@@ -110,6 +120,36 @@ const PartyLedger: React.FC = () => {
     const navigate = useNavigate();
     const { provider: whatsappProvider } = useWhatsappProvider(companyId);
     const [sendingReminderFor, setSendingReminderFor] = useState<string | null>(null);
+
+    // Bill action sheet (WhatsApp / Download / Print / QR), same as the Transactions page
+    const { currentUser } = useAuth();
+    const { salesSettings } = useSalesSettings();
+    const [actionModal, setActionModal] = useState<{ message: string; type: State } | null>(null);
+    const [isPosBasicPlan, setIsPosBasicPlan] = useState(false);
+    useEffect(() => {
+        const fetchPlan = async () => {
+            if (!currentUser?.companyId) return;
+            const snap = await fsGetDoc(fsDocRef(firebaseDb, 'companies', currentUser.companyId));
+            if (snap.exists()) {
+                const plan = normalizePlan(snap.data().pack);
+                setIsPosBasicPlan(plan === PLANS.POS_BASIC || plan === PLANS.CALC_CATALOG);
+            }
+        };
+        fetchPlan();
+    }, [currentUser?.companyId]);
+
+    const {
+        invoiceToPrint, setInvoiceToPrint,
+        showQrModal, setShowQrModal,
+        sendingPdf,
+        showPrintSubMenu, setShowPrintSubMenu,
+        enableTriplicate,
+        billType, setBillType,
+        handlePdfAction,
+        handleSendWhatsapp,
+        handleSendWhatsappSnapto,
+        handleShowQr,
+    } = useInvoiceCommunication({ currentUser, salesSettings, isPosBasicPlan, setModal: setActionModal });
 
     const [expandedBillId, setExpandedBillId] = useState<string | null>(null);
     const [isListVisible, setIsListVisible] = useState(true);
@@ -1157,6 +1197,34 @@ const PartyLedger: React.FC = () => {
     };
 
     const hasPhone = (party: PartySummary) => normalizePartyNumber(party.partyNumber).length === 10;
+
+    // Opens the same action sheet the Transactions page opens on "Print".
+        const openBillActions = async (party: PartySummary, t: LedgerTxn) => {
+        if (!companyId) return;
+        try {
+            // Full sale document, so the PDF gets tax, discount, expenses, GST etc. like on the Transactions page
+            const snap = await fsGetDoc(fsDocRef(firebaseDb, 'companies', companyId, 'sales', t.id));
+            const data: any = snap.exists() ? snap.data() : {};
+            setInvoiceToPrint({
+                ...data,
+                id: t.id,
+                type: 'Credit', // Journal uses 'Credit' for sale bills
+                invoiceNumber: data.invoiceNumber ?? t.invoiceNumber,
+                partyName: data.partyName || party.partyName,
+                partyNumber: data.partyNumber || party.partyNumber,
+                amount: data.totalAmount ?? t.totalAmount,
+                dueAmount: t.dueAmount,
+                status: t.dueAmount > 0 ? 'Unpaid' : 'Paid',
+                items: data.items || t.items || [],
+                paymentMethods: data.paymentMethods || t.paymentMethods || {},
+                paymentHistory: data.paymentHistory || t.paymentHistory || [],
+                time: new Date(t.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }),
+            } as unknown as Invoice);
+        } catch (err) {
+            console.error('Open bill failed:', err);
+            setActionModal({ message: 'Could not load the bill. Please try again.', type: State.ERROR });
+        }
+    };
     const hasRealName = (party: PartySummary) => !!party.partyName && party.partyName !== 'N/A' && party.partyName !== 'Unknown';
 
     const openEditParty = (party: PartySummary, focus: 'name' | 'gstNumber' | 'address' = 'name') => {
@@ -1427,6 +1495,43 @@ const PartyLedger: React.FC = () => {
                 </div>
             )}
 
+            {actionModal && (
+                <Modal message={actionModal.message} type={actionModal.type} onClose={() => setActionModal(null)} onConfirm={() => setActionModal(null)} showConfirmButton={false} />
+            )}
+            {invoiceToPrint && (
+                <InvoiceActionSheet
+                    invoiceToPrint={invoiceToPrint}
+                    setInvoiceToPrint={setInvoiceToPrint}
+                    setShowPrintSubMenu={setShowPrintSubMenu}
+                    isPosBasicPlan={isPosBasicPlan}
+                    billType={billType}
+                    setBillType={setBillType}
+                    sendingPdf={sendingPdf}
+                    companyId={currentUser?.companyId}
+                    handleSendWhatsapp={handleSendWhatsapp}
+                    handleSendWhatsappSnapto={handleSendWhatsappSnapto}
+                    handlePdfAction={handlePdfAction}
+                    handleShowQr={handleShowQr}
+                />
+            )}
+            {!isPosBasicPlan && showPrintSubMenu && invoiceToPrint && (
+                <PrintSubMenuModal
+                    invoiceToPrint={invoiceToPrint}
+                    setInvoiceToPrint={setInvoiceToPrint}
+                    setShowPrintSubMenu={setShowPrintSubMenu}
+                    billType={billType}
+                    enableTriplicate={enableTriplicate}
+                    handlePdfAction={handlePdfAction}
+                />
+            )}
+            {showQrModal && (
+                <QrCodeModal
+                    showQrModal={showQrModal}
+                    setShowQrModal={setShowQrModal}
+                    companyId={currentUser?.companyId}
+                />
+            )}
+
             <PaymentModal
                 isOpen={isPaymentModalOpen}
                 onClose={() => {
@@ -1484,10 +1589,14 @@ const PartyLedger: React.FC = () => {
                                 </button>
                             )}
                             {!t.isOpeningBalance && !purchase && companyId && (
-                                <a href={`/download-bill/${companyId}/${t.id}`} target="_blank" rel="noreferrer" className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:border-slate-400">
-                                    <ExternalLink size={15} /> View bill
-                                </a>
-                            )}
+    <button
+        type="button"
+        onClick={() => { setExpandedBillId(null); openBillActions(party, t); }}
+        className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:border-slate-400"
+    >
+        <ExternalLink size={15} /> View bill
+    </button>
+)}
                         </div>
                     ) : undefined}
                 >

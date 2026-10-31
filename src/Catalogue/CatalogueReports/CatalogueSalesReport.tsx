@@ -7,6 +7,7 @@ import {
   CalendarDays,
   ChevronDown,
   ChevronLeft,
+  ExternalLink,
   Eye,
   EyeOff,
   FileText,
@@ -25,7 +26,11 @@ import { db } from '../../lib/Firebase';
 import { useAuth } from '../../context/auth-context';
 import { State } from '../../enums';
 import { Modal } from '../../constants/Modal';
+import { useCatalogueData } from '../../context/CatalogueDataContext';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import { OrderActionSheet, PrintSubMenuModal, QrCodeModal } from '../Orders/components';
+import { useOrderCommunication } from '../Orders/hooks';
+import type { Order } from '../Orders/orders.types';
 import {
   DATE_PRESETS,
   formatCurrency,
@@ -42,6 +47,7 @@ import {
 import ReportByDayChart from '../../Pages/Reports/SalesReportComponents/ReportByDayChart';
 import DownloadMenu from '../../Pages/Reports/SalesReportComponents/DownloadMenu';
 import CustomRangePanel from '../../Pages/Reports/SalesReportComponents/CustomRangePanel';
+import DetailPanel, { DetailItems, DetailRows, DetailSection } from '../../Pages/Reports/SalesReportComponents/DetailPanel';
 import useCatalogueSalesReport from './useCatalogueSalesReport';
 
 const OrdersReport: React.FC = () => {
@@ -105,6 +111,51 @@ const OrdersReport: React.FC = () => {
     isOpen: false,
     type: State.SUCCESS,
     message: '',
+  });
+  // The order open in the detail panel (side panel on desktop, bottom sheet on mobile).
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  /* ---------- BILL ACTION SHEET (WhatsApp / Download / Print / QR), same as Orders page ---------- */
+  const { items: catalogueItems } = useCatalogueData();
+  const [actionModal, setActionModal] = useState<{ message: string; type: State } | null>(null);
+  const [companyInfo, setCompanyInfo] = useState<any>(null);
+  const [billSettings, setBillSettings] = useState<any>(null);
+  const [catalogueWhatsappExtra, setCatalogueWhatsappExtra] = useState<string>('');
+
+  useEffect(() => {
+    const cid = currentUser?.companyId;
+    if (!cid) return;
+    (async () => {
+      try {
+        const companySnap = await getDoc(doc(db, 'companies', cid));
+        if (companySnap.exists()) setCompanyInfo(companySnap.data());
+        const billSnap = await getDoc(doc(db, 'companies', cid, 'settings', 'bill'));
+        const data = billSnap.exists() ? billSnap.data() : {};
+        setBillSettings(data);
+        setCatalogueWhatsappExtra(data.catalogueWhatsappExtraMessage || '');
+      } catch (err) {
+        console.error('Bill settings fetch error:', err);
+        setBillSettings({});
+      }
+    })();
+  }, [currentUser?.companyId]);
+
+  const {
+    selectedOrderForAction, setSelectedOrderForAction,
+    pdfLoadingOrderId, setPdfLoadingOrderId,
+    showQrModal, setShowQrModal,
+    sendingPdf,
+    showPrintSubMenu, setShowPrintSubMenu,
+    billType, setBillType,
+    handlePdfAction,
+    handleSendWhatsapp,
+    handleSendWhatsappSnapto,
+  } = useOrderCommunication({
+    currentUser,
+    companyInfo,
+    availableItems: catalogueItems,
+    catalogueWhatsappExtra,
+    setModal: setActionModal,
   });
 
   const handleDatePresetChange = (preset: string) => {
@@ -554,6 +605,21 @@ const OrdersReport: React.FC = () => {
     }
   };
 
+  /* ---------- VIEW BILL → ORDER ACTION SHEET ---------- */
+  const openBillActions = async (orderId: string) => {
+    if (!currentUser?.companyId) return;
+    setSelectedId(null); // close the detail panel
+    try {
+      // Full order document, so the PDF gets the same fields as on the Orders page
+      const snap = await getDoc(doc(db, 'companies', currentUser.companyId, 'Orders', orderId));
+      if (!snap.exists()) throw new Error('Order not found.');
+      setSelectedOrderForAction({ ...snap.data(), id: orderId } as unknown as Order);
+    } catch (err) {
+      console.error('Open bill failed:', err);
+      setActionModal({ message: 'Could not load the bill. Please try again.', type: State.ERROR });
+    }
+  };
+
   /* ---------- DOWNLOAD / SHARE ---------- */
   const runDownload = (action: () => void) => {
     if (filteredSales.length === 0) {
@@ -586,9 +652,8 @@ const OrdersReport: React.FC = () => {
       <th className={`px-4 py-3 font-semibold ${align === 'right' ? 'text-right' : 'text-left'}`}>
         <button
           onClick={() => handleSort(sortKey)}
-          className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-orange-800 ${
-            align === 'right' ? 'flex-row-reverse' : ''
-          }`}
+          className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-orange-800 ${align === 'right' ? 'flex-row-reverse' : ''
+            }`}
         >
           {label}
           <Icon size={11} className={isActive ? 'opacity-100' : 'opacity-40'} />
@@ -610,6 +675,65 @@ const OrdersReport: React.FC = () => {
   const rangeLabelShort = appliedFilters ? formatRangeLabel(appliedFilters.start, appliedFilters.end, false) : '';
   const itemsLabel = (n: number) => `${n} ${n === 1 ? 'item' : 'items'}`;
   const fetchingClass = isFetching ? 'pointer-events-none opacity-50' : '';
+
+  // One order in the detail panel. Orange "View bill" opens the Orders action sheet.
+  const openSale = selectedId ? filteredSales.find((s) => s.id === selectedId) : undefined;
+  const orderPanel = openSale && (() => {
+    const t = openSale;
+    const time = new Date(t.createdAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+    const due = Math.max(Number(t.paymentMethods?.due ?? t.dueAmount) || 0, 0);
+    const paid = Math.max(t.totalAmount - due, 0);
+    return (
+      <DetailPanel
+        open
+        onClose={() => setSelectedId(null)}
+        title={t.invoiceNumber}
+        badge={due > 0
+          ? <span className="rounded-sm bg-yellow-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-yellow-700">Unpaid</span>
+          : undefined}
+        subtitle={`${formatFullDate(t.createdAt)}, ${time} · Order`}
+        footer={currentUser?.companyId ? (
+          <button
+            type="button"
+            onClick={() => openBillActions(t.id)}
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-sm bg-orange-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-800"
+          >
+            <ExternalLink size={15} /> View bill
+          </button>
+        ) : undefined}
+      >
+        <DetailSection title="Customer">
+          <p className="text-sm font-medium text-slate-900">{t.partyName}</p>
+          {t.partyNumber && <p className="text-xs text-slate-500">{t.partyNumber}</p>}
+        </DetailSection>
+
+        <DetailSection title={`Items · ${getSaleItemCount(t)}`}>
+          <DetailItems
+            items={(t.items || []).map((item: any) => {
+              const qty = Number(item.quantity) || 0;
+              // Net unit price, same rule as Catalogue Party Ledger.
+              const net = item.taxableAmount && qty > 0
+                ? item.taxableAmount / qty
+                : item.effectiveUnitPrice
+                  ? item.effectiveUnitPrice
+                  : qty > 0 ? (item.finalPrice || 0) / qty : 0;
+              return { name: String(item.name ?? ''), quantity: qty, unitPrice: Number(net) || Number(item.mrp) || 0 };
+            })}
+          />
+        </DetailSection>
+
+        <DetailSection title="Total">
+          <DetailRows
+            rows={[
+              { label: 'Order total', value: formatCurrency(t.totalAmount) },
+              { label: 'Received', value: formatCurrency(paid), tone: 'text-green-700' },
+              { label: 'Pending', value: due > 0 ? formatCurrency(due) : 'Settled ✓', tone: due > 0 ? 'text-yellow-700' : 'text-green-700', strong: true },
+            ]}
+          />
+        </DetailSection>
+      </DetailPanel>
+    );
+  })();
 
   const statCards = [
     {
@@ -634,9 +758,8 @@ const OrdersReport: React.FC = () => {
       label: 'Items sold',
       shortLabel: 'Items sold',
       value: summary.totalItemsSold.toLocaleString('en-IN'),
-      hint: `${
-        summary.totalTransactions > 0 ? (summary.totalItemsSold / summary.totalTransactions).toFixed(1) : '0'
-      } items per order`,
+      hint: `${summary.totalTransactions > 0 ? (summary.totalItemsSold / summary.totalTransactions).toFixed(1) : '0'
+        } items per order`,
       icon: Tag,
       iconClass: 'bg-blue-50 text-blue-600',
       valueClass: 'text-slate-900',
@@ -653,10 +776,9 @@ const OrdersReport: React.FC = () => {
   ];
 
   const chipClass = (active: boolean) =>
-    `shrink-0 whitespace-nowrap rounded-sm border px-3.5 py-1.5 text-sm font-medium transition ${
-      active
-        ? 'border-slate-900 bg-slate-900 text-white'
-        : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+    `shrink-0 whitespace-nowrap rounded-sm border px-3.5 py-1.5 text-sm font-medium transition ${active
+      ? 'border-slate-900 bg-slate-900 text-white'
+      : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
     }`;
 
   return (
@@ -667,6 +789,7 @@ const OrdersReport: React.FC = () => {
           message={feedbackModal.message}
           onClose={() => setFeedbackModal((p) => ({ ...p, isOpen: false }))}
           showConfirmButton={false}
+           theme="catalogue"
         />
       )}
 
@@ -787,9 +910,8 @@ const OrdersReport: React.FC = () => {
 
         <button
           onClick={() => setIsRangeOpen((o) => !o)}
-          className={`hidden shrink-0 items-center gap-2 rounded-sm border bg-white px-3 py-1.5 text-sm font-medium text-slate-800 transition hover:border-slate-400 md:inline-flex ${
-            datePreset === 'custom' ? 'border-slate-900' : 'border-slate-300'
-          }`}
+          className={`hidden shrink-0 items-center gap-2 rounded-sm border bg-white px-3 py-1.5 text-sm font-medium text-slate-800 transition hover:border-slate-400 md:inline-flex ${datePreset === 'custom' ? 'border-slate-900' : 'border-slate-300'
+            }`}
         >
           <CalendarDays size={15} className="text-slate-500" />
           {rangeLabel}
@@ -927,7 +1049,12 @@ const OrdersReport: React.FC = () => {
                   </tr>
                 )}
                 {filteredSales.map((sale) => (
-                  <tr key={sale.id} className="border-t border-[#f6e1d0] transition hover:bg-[#fff8f2]">
+                  <tr
+                    key={sale.id}
+                    onClick={() => setSelectedId(sale.id)}
+                    className={`cursor-pointer border-t border-[#f6e1d0] transition ${selectedId === sale.id ? 'bg-orange-100' : 'hover:bg-[#fff8f2]'
+                      }`}
+                  >
                     <td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatFullDate(sale.createdAt)}</td>
                     <td className="whitespace-nowrap px-4 py-3 font-semibold text-orange-700">{sale.invoiceNumber}</td>
                     <td className="px-4 py-3 text-slate-800">{sale.partyName}</td>
@@ -961,7 +1088,11 @@ const OrdersReport: React.FC = () => {
             </li>
           )}
           {filteredSales.map((sale) => (
-            <li key={sale.id} className="border-t border-[#f6e1d0] px-4 py-3">
+            <li
+              key={sale.id}
+              onClick={() => setSelectedId(sale.id)}
+              className="cursor-pointer border-t border-[#f6e1d0] px-4 py-3 active:bg-[#fff8f2]"
+            >
               <div className="flex items-center justify-between gap-3">
                 <span className="truncate font-semibold text-slate-900">{sale.invoiceNumber}</span>
                 <span className="shrink-0 font-semibold text-slate-900">{formatCurrency(sale.totalAmount)}</span>
@@ -984,6 +1115,46 @@ const OrdersReport: React.FC = () => {
           )}
         </ul>
       </section>
+
+      {orderPanel}
+
+      {selectedOrderForAction && (
+        <OrderActionSheet
+          selectedOrderForAction={selectedOrderForAction}
+          setSelectedOrderForAction={setSelectedOrderForAction}
+          setShowPrintSubMenu={setShowPrintSubMenu}
+          billType={billType}
+          setBillType={setBillType}
+          handleSendWhatsapp={handleSendWhatsapp}
+          handleSendWhatsappSnapto={handleSendWhatsappSnapto}
+          companyId={currentUser?.companyId}
+          sendingPdf={sendingPdf}
+          pdfLoadingOrderId={pdfLoadingOrderId}
+          setPdfLoadingOrderId={setPdfLoadingOrderId}
+          handlePdfAction={handlePdfAction}
+          setShowQrModal={setShowQrModal}
+        />
+      )}
+      {showPrintSubMenu && selectedOrderForAction && (
+        <PrintSubMenuModal
+          selectedOrderForAction={selectedOrderForAction}
+          setSelectedOrderForAction={setSelectedOrderForAction}
+          setShowPrintSubMenu={setShowPrintSubMenu}
+          setPdfLoadingOrderId={setPdfLoadingOrderId}
+          handlePdfAction={handlePdfAction}
+          _billSettings={billSettings}
+        />
+      )}
+      {showQrModal && (
+        <QrCodeModal
+          showQrModal={showQrModal}
+          setShowQrModal={setShowQrModal}
+          companyId={currentUser?.companyId}
+        />
+      )}
+      {actionModal && (
+        <Modal message={actionModal.message} type={actionModal.type} onClose={() => setActionModal(null)} theme="catalogue" />
+      )}
     </div>
   );
 };

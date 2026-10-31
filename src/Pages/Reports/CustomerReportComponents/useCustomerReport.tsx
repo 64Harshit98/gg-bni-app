@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../../context/auth-context';
-import { formatDateForInput } from '../SalesReportComponents/salesReport.utils';
+import { formatDateForInput, getPresetRange } from '../SalesReportComponents/salesReport.utils';
 import { loadSalesForRange } from '../SalesReportComponents/salesReportCache';
 import { useCachedRange } from '../useCachedRange';
 import {
@@ -16,22 +16,19 @@ export default function useCustomerReport() {
   const { currentUser, loading: authLoading } = useAuth();
   const companyId = currentUser?.companyId;
 
-  const [datePreset, setDatePreset] = useState('last30');
+  const [datePreset, setDatePreset] = useState('fy');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [appliedFilters, setAppliedFilters] = useState<{ start: number; end: number } | null>(null);
 
   useEffect(() => {
-    const start = new Date();
-    start.setDate(start.getDate() - 29);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date();
-    end.setHours(23, 59, 59, 999);
+  // Default: current financial year (1 Apr → today)
+  const range = getPresetRange('fy')!;
 
-    setStartDate(formatDateForInput(start));
-    setEndDate(formatDateForInput(end));
-    setAppliedFilters({ start: start.getTime(), end: end.getTime() });
-  }, []);
+  setStartDate(formatDateForInput(range.start));
+  setEndDate(formatDateForInput(range.end));
+  setAppliedFilters({ start: range.start.getTime(), end: range.end.getTime() });
+}, []);
 
   const salesState = useCachedRange(loadSalesForRange, companyId, appliedFilters, authLoading);
   const obState = useCachedRange(loadOpeningBalancesForRange, companyId, appliedFilters, authLoading);

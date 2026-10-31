@@ -1071,6 +1071,7 @@ function RequestPage() {
                         onClose={() => setModal(null)}
                         onConfirm={() => setModal(null)}
                         showConfirmButton={false}
+                        theme="catalogue"
                     />
                 )}
             </div>

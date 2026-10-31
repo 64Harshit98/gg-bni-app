@@ -843,6 +843,7 @@ const CatalogueCustomerReport: React.FC = () => {
           message={feedbackModal.message}
           onClose={() => setFeedbackModal((p) => ({ ...p, isOpen: false }))}
           showConfirmButton={false}
+          theme="catalogue"
         />
       )}
 

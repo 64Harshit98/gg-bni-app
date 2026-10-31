@@ -231,15 +231,15 @@ const PERMISSION_TAGS: Partial<Record<Cata_Permissions, string>> = {
     [Cata_Permissions.ViewPNLReport]: 'Shows profit',
 };
 
-// Rows drawn indented under "Open Reports & Settings tabs" (indent only, no logic attached)
-const NESTED_PERMISSIONS: Cata_Permissions[] = [
-    Cata_Permissions.ViewItemReport,
-    Cata_Permissions.ViewSalesReport,
-    Cata_Permissions.ViewItemSoldReport,
-    Cata_Permissions.ViewCustomerReport,
-    Cata_Permissions.ViewPNLReport,
-    Cata_Permissions.ViewExpenseReport,
-];
+// // Rows drawn indented under "Open Reports & Settings tabs" (indent only, no logic attached)
+// const NESTED_PERMISSIONS: Cata_Permissions[] = [
+//     Cata_Permissions.ViewItemReport,
+//     Cata_Permissions.ViewSalesReport,
+//     Cata_Permissions.ViewItemSoldReport,
+//     Cata_Permissions.ViewCustomerReport,
+//     Cata_Permissions.ViewPNLReport,
+//     Cata_Permissions.ViewExpenseReport,
+// ];
 
 type GroupMeta = { title: string; navLabel: string; subtitle: string; tint: [string, string]; icon: string[] };
 
@@ -690,12 +690,8 @@ const CataloguePermissionSetting: React.FC = () => {
     const renderName = (permission: Cata_Permissions) => {
         const tag = PERMISSION_TAGS[permission];
         const description = CATA_PERMISSION_DESCRIPTIONS[permission];
-        const nested = NESTED_PERMISSIONS.includes(permission);
         return (
-            <div className={nested ? 'relative pl-[22px]' : ''}>
-                {nested && (
-                    <span className="absolute left-1.5 -top-1 w-[9px] h-[13px] border-l-[1.5px] border-b-[1.5px] border-[#7a8aa3] rounded-bl" />
-                )}
+            <div>
                 <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium text-[#0f172b]">{CATA_PERMISSION_LABELS[permission] || permission}</span>
                     {tag && (
@@ -1024,6 +1020,7 @@ const CataloguePermissionSetting: React.FC = () => {
                     showConfirmButton={true}
                     onConfirm={handleResetPermissions}
                     onClose={() => setIsResetOpen(false)}
+                    theme="catalogue"
                 />
             )}
 

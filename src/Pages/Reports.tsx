@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { ROUTES } from '../constants/routes.constants';
 import { useAuth } from '../context/auth-context';
+import BackButton from '../Components/BackButton';
 import { Permissions } from '../enums';
 import { useReportsOverview } from './Reports/useReportsOverview';
 
@@ -118,10 +119,7 @@ const Reports = () => {
           title: 'Restock report',
           description: 'What to reorder, and how much',
           icon: History,
-          iconClass: 'bg-amber-50 text-amber-600',
-          to: ROUTES.RESTOCK_REPORT,
-          permission: Permissions.ViewItemReport,
-          stat: statIf(ready.items, `${plural(stats.toRestock, 'item')} to reorder`),
+          iconClass: 'bg-slate-100 text-slate-500',
         },
       ],
     },
@@ -221,125 +219,140 @@ const Reports = () => {
 
   if (!isDefaultReportsView) {
     return (
-      <div className="bg-white p-6 rounded-xl shadow-md mt-6 min-h-[200px] flex justify-center items-center text-gray-500 italic">
-        <Outlet />
+      <div className="flex flex-col w-full min-h-full bg-canvas">
+        <div className="sticky top-0 z-10 flex items-center px-2 h-14 bg-white border-b border-line flex-shrink-0">
+          <BackButton />
+        </div>
+        <div className="flex-1 p-4">
+          <div className="bg-white p-2 md:p-6 rounded-sm shadow-md min-h-[200px]">
+            <Outlet />
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-canvas px-3 pb-20 pt-4 md:px-6 md:pb-8 md:pt-5">
+    <div className="flex flex-col min-h-screen bg-canvas">
       {/* HEADER */}
-      <header className="mb-4 flex items-center gap-3">
-        <div className="flex min-w-0 flex-1 items-baseline gap-3">
-          <h1 className="text-xl font-bold text-slate-900">Reports</h1>
-          <span className="hidden text-xs text-slate-500 md:inline">Numbers below are for the last 30 days</span>
-          <span className="ml-auto text-xs text-slate-500 md:hidden">Last 30 days</span>
+      <div className="flex-shrink-0 sticky top-0 z-10 bg-white border-b border-line">
+        <div className="flex items-center gap-3 px-2 h-14 md:h-auto md:px-6 md:py-3.5">
+          <div className="flex-shrink-0">
+            <BackButton />
+          </div>
+          <div className="flex min-w-0 flex-1 items-baseline gap-3">
+            <h1 className="m-0 text-lg leading-6 md:text-[22px] md:leading-[30px] font-semibold text-slate-900">Reports</h1>
+            <span className="hidden text-xs text-slate-500 md:inline">Numbers below are for the last 30 days</span>
+            <span className="ml-auto text-xs text-slate-500 md:hidden">Last 30 days</span>
+          </div>
+          <div className="relative hidden w-72 md:block">
+            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Find a report"
+              className="w-full rounded-sm border border-slate-300 bg-white py-2 pl-9 pr-8 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            />
+            {query && (
+              <button
+                onClick={() => setQuery('')}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-0.5 text-slate-400 hover:text-slate-600"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
         </div>
-        <div className="relative hidden w-72 md:block">
-          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Find a report"
-            className="w-full rounded-sm border border-slate-300 bg-white py-2 pl-9 pr-8 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-          />
-          {query && (
-            <button
-              onClick={() => setQuery('')}
-              aria-label="Clear search"
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-0.5 text-slate-400 hover:text-slate-600"
-            >
-              <X size={14} />
-            </button>
-          )}
-        </div>
-      </header>
+      </div>
 
-      {/* HEADLINE NUMBERS */}
-      {kpis.length > 0 && (
-        <div className="mb-5 grid grid-cols-2 gap-2.5 md:grid-cols-4 md:gap-4">
-          {kpis.map(({ label, shortLabel, value, hint, icon: Icon, iconClass }) => (
-            <div key={label} className="min-w-0 rounded-sm border border-line bg-white shadow-card p-3 md:p-4">
-              <div className="flex items-center gap-2">
-                <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-sm md:h-7 md:w-7 ${iconClass}`}>
-                  <Icon size={14} />
-                </span>
-                <span className="truncate text-xs font-medium text-slate-700 md:text-sm">
-                  {shortLabel ? (
-                    <>
-                      <span className="md:hidden">{shortLabel}</span>
-                      <span className="hidden md:inline">{label}</span>
-                    </>
-                  ) : (
-                    label
-                  )}
-                </span>
+      {/* BODY (padding yahan shift hua hai, pehle outer div pe tha) */}
+      <div className="flex-1 px-3 pb-20 pt-4 md:px-6 md:pb-8 md:pt-5">
+        {/* HEADLINE NUMBERS */}
+        {kpis.length > 0 && (
+          <div className="mb-5 grid grid-cols-2 gap-2.5 md:grid-cols-4 md:gap-4">
+            {kpis.map(({ label, shortLabel, value, hint, icon: Icon, iconClass }) => (
+              <div key={label} className="min-w-0 rounded-sm border border-line bg-white shadow-card p-3 md:p-4">
+                <div className="flex items-center gap-2">
+                  <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-sm md:h-7 md:w-7 ${iconClass}`}>
+                    <Icon size={14} />
+                  </span>
+                  <span className="truncate text-xs font-medium text-slate-700 md:text-sm">
+                    {shortLabel ? (
+                      <>
+                        <span className="md:hidden">{shortLabel}</span>
+                        <span className="hidden md:inline">{label}</span>
+                      </>
+                    ) : (
+                      label
+                    )}
+                  </span>
+                </div>
+                <p className="mt-2 truncate text-xl font-bold text-slate-900 md:text-2xl">{value}</p>
+                <p className="mt-0.5 truncate text-[11px] text-slate-500 md:text-xs">{hint}</p>
               </div>
-              <p className="mt-2 truncate text-xl font-bold text-slate-900 md:text-2xl">{value}</p>
-              <p className="mt-0.5 truncate text-[11px] text-slate-500 md:text-xs">{hint}</p>
-            </div>
+            ))}
+          </div>
+        )}
+
+        {/* REPORT GROUPS */}
+        {visibleSections.length === 0 && (
+          <p className="py-10 text-center text-sm text-slate-500">No reports match “{query}”.</p>
+        )}
+        <div className="space-y-5">
+          {visibleSections.map((section) => (
+            <section key={section.title}>
+              <h2 className="mb-2 flex items-baseline gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 md:text-sm md:normal-case md:tracking-normal md:text-slate-900">
+                  {section.title}
+                </span>
+                <span className="hidden text-xs text-slate-400 md:inline">{plural(section.cards.length, 'report')}</span>
+              </h2>
+              <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 md:gap-4 lg:grid-cols-3">
+                {section.cards.map((card) => {
+                  const Icon = card.icon;
+                  const body = (
+                    <>
+                      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-sm ${card.iconClass}`}>
+                        <Icon size={18} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className={`block text-sm font-semibold ${card.to ? 'text-slate-900' : 'text-slate-500'}`}>
+                          {card.title}
+                        </span>
+                        <span className="block truncate text-xs text-slate-500">{card.description}</span>
+                        {card.stat && <span className="mt-1 block text-xs font-semibold text-blue-600">{card.stat}</span>}
+                      </span>
+                    </>
+                  );
+
+                  return card.to ? (
+                    <Link
+                      key={card.title}
+                      to={card.to}
+                      className="group flex items-center gap-3 rounded-sm border border-line bg-white shadow-card p-4 no-underline transition hover:border-slate-300"
+                    >
+                      {body}
+                      <ChevronRight size={18} className="shrink-0 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-slate-600" />
+                    </Link>
+                  ) : (
+                    <div
+                      key={card.title}
+                      aria-disabled="true"
+                      className="flex cursor-not-allowed items-center gap-3 rounded-sm border border-line bg-sunken p-4"
+                    >
+                      {body}
+                      <span className="shrink-0 rounded-sm bg-blue-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-700">
+                        Soon
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
           ))}
         </div>
-      )}
-
-      {/* REPORT GROUPS */}
-      {visibleSections.length === 0 && (
-        <p className="py-10 text-center text-sm text-slate-500">No reports match “{query}”.</p>
-      )}
-      <div className="space-y-5">
-        {visibleSections.map((section) => (
-          <section key={section.title}>
-            <h2 className="mb-2 flex items-baseline gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 md:text-sm md:normal-case md:tracking-normal md:text-slate-900">
-                {section.title}
-              </span>
-              <span className="hidden text-xs text-slate-400 md:inline">{plural(section.cards.length, 'report')}</span>
-            </h2>
-            <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 md:gap-4 lg:grid-cols-3">
-              {section.cards.map((card) => {
-                const Icon = card.icon;
-                const body = (
-                  <>
-                    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-sm ${card.iconClass}`}>
-                      <Icon size={18} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className={`block text-sm font-semibold ${card.to ? 'text-slate-900' : 'text-slate-500'}`}>
-                        {card.title}
-                      </span>
-                      <span className="block truncate text-xs text-slate-500">{card.description}</span>
-                      {card.stat && <span className="mt-1 block text-xs font-semibold text-blue-600">{card.stat}</span>}
-                    </span>
-                  </>
-                );
-
-                return card.to ? (
-                  <Link
-                    key={card.title}
-                    to={card.to}
-                    className="group flex items-center gap-3 rounded-sm border border-line bg-white shadow-card p-4 no-underline transition hover:border-slate-300"
-                  >
-                    {body}
-                    <ChevronRight size={18} className="shrink-0 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-slate-600" />
-                  </Link>
-                ) : (
-                  <div
-                    key={card.title}
-                    aria-disabled="true"
-                    className="flex cursor-not-allowed items-center gap-3 rounded-sm border border-line bg-sunken p-4"
-                  >
-                    {body}
-                    <span className="shrink-0 rounded-sm bg-blue-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-700">
-                      Soon
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        ))}
       </div>
     </div>
   );

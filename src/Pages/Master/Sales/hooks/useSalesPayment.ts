@@ -537,10 +537,12 @@ export const useSalesPayment = ({
                         shippingNumber: completionData.shippingNumber || '',
                         shippingAddress: completionData.shippingAddress || '',
                         shippingGST: completionData.shippingGST || '',
+                        narration: completionData.narration || '',
                         transportDetails: completionData.transportDetails || undefined,
                         gstScheme: finalGstScheme,   // ✅ ADDED
                         taxType: finalTaxType,       // ✅ ADDED
-                        placeOfSupply: completionData.placeOfSupply || ''   // ✅ ADDED (IGST calc ke liye bhi zaroori)
+                        placeOfSupply: completionData.placeOfSupply || '',  // ✅ ADDED (IGST calc ke liye bhi zaroori)
+                        shippingState: completionData.shippingState || ''
                     };
 
                     setAvailableItems(prev => prev.map(item => {

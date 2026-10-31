@@ -9,6 +9,7 @@ import { IconEdit } from '../../../constants/Icons';
 import { useWhatsappProvider } from '../../../Pages/Additional/Whatsapp/useWhatsappProvider';
 import type { Order, OrderStatus } from '../orders.types';
 import { formatAmount } from '../../../lib/format';
+import { splitAddOns } from '../../../UseComponents/addOnText';
 
 interface OrderCardProps {
     order: Order;
@@ -281,6 +282,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                     }
 
                     const displayLineTotal = displayUnitPrice * remainingQty;
+                    const { baseName, addOnText } = splitAddOns(item);
                     // --------------------------------------------------
 
                     return (
@@ -290,11 +292,14 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                                 <div className="flex justify-between items-start">
                                     <div className="flex-1 min-w-0">
                                         <p className="text-[13px] font-medium leading-tight text-slate-900">
-                                            {item.name}
+                                            {baseName}
                                             <span className="ml-1 text-[11px] font-normal text-slate-500">
                                                 {item.unit || "pcs"}
                                             </span>
                                         </p>
+                                        {addOnText && (
+                                            <p className="text-[11px] leading-tight text-slate-500 mt-0.5 break-words">+ {addOnText}</p>
+                                        )}
                                         {item.note && (
                                             <p className="text-[11px] leading-tight flex items-baseline gap-1.5 mt-1">
                                                 <span className="font-semibold uppercase tracking-wider text-slate-500">Note:</span>
@@ -328,11 +333,14 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                                     <div key={rIdx} className="flex justify-between items-start mt-1.5">
                                         <div className="flex-1 min-w-0">
                                             <p className="text-[13px] font-medium leading-tight line-through text-slate-400">
-                                                {item.name}
+                                                {baseName}
                                                 <span className="ml-1 text-[11px] font-normal">
                                                     {item.unit || "pcs"}
                                                 </span>
                                             </p>
+                                            {addOnText && (
+                                                <p className="text-[11px] leading-tight line-through text-slate-400 mt-0.5 break-words">+ {addOnText}</p>
+                                            )}
                                             <div className="flex flex-wrap items-center gap-1.5 mt-1">
                                                 {entry.modeOfReturn && (
                                                     <span className={`text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded-full border ${entry.modeOfReturn.toUpperCase() === 'EXCHANGE'

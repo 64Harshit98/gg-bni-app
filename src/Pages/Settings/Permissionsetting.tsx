@@ -930,13 +930,9 @@ const ManagePermissionsPage: React.FC = () => {
     const renderName = (permission: Permissions) => {
         const lockedByPlan = isBasicPlan && !BASIC_ALLOWED_PERMISSIONS.includes(permission);
         const tag = PERMISSION_TAGS[permission];
-        const description = PERMISSION_DESCRIPTIONS[permission];
-        const nested = NESTED_PERMISSIONS.includes(permission);
+                const description = PERMISSION_DESCRIPTIONS[permission];
         return (
-            <div className={nested ? 'relative pl-[22px]' : ''}>
-                {nested && (
-                    <span className="absolute left-1.5 -top-1 w-[9px] h-[13px] border-l-[1.5px] border-b-[1.5px] border-[#7a8aa3] rounded-bl" />
-                )}
+            <div>
                 <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium text-[#0f172b]">{PERMISSION_LABELS[permission] || permission}</span>
                     {tag && (

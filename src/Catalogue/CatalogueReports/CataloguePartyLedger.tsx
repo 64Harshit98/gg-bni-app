@@ -6,6 +6,7 @@ import {
     Check,
     ChevronDown,
     ChevronLeft,
+    ExternalLink,
     FileSpreadsheet,
     FileText,
     MessageCircle,
@@ -49,6 +50,13 @@ import useCataloguePartyLedger, {
 import { Spinner } from '../../constants/Spinner';
 import { PaymentModal } from '../../constants/Modal';
 import { db } from '../../lib/Firebase';
+import { useAuth } from '../../context/auth-context';
+import { useCatalogueData } from '../../context/CatalogueDataContext';
+import { Modal } from '../../constants/Modal';
+import { State } from '../../enums';
+import { OrderActionSheet, PrintSubMenuModal, QrCodeModal } from '../Orders/components';
+import { useOrderCommunication } from '../Orders/hooks';
+import type { Order } from '../Orders/orders.types';
 import { botMasterService } from '../../Pages/Additional/Whatsapp/WhatsappApi';
 import { ROUTES } from '../../constants/routes.constants';
 
@@ -89,6 +97,50 @@ const CataloguePartyLedger: React.FC = () => {
 
     const navigate = useNavigate();
     const [sendingReminderFor, setSendingReminderFor] = useState<string | null>(null);
+
+    // Bill action sheet (WhatsApp / Download / Print / QR), same as the Orders page
+    const { currentUser } = useAuth();
+    const { items: catalogueItems } = useCatalogueData();
+    const [actionModal, setActionModal] = useState<{ message: string; type: State } | null>(null);
+    const [companyInfo, setCompanyInfo] = useState<any>(null);
+    const [billSettings, setBillSettings] = useState<any>(null);
+    const [catalogueWhatsappExtra, setCatalogueWhatsappExtra] = useState<string>('');
+
+    useEffect(() => {
+        const cid = currentUser?.companyId;
+        if (!cid) return;
+        (async () => {
+            try {
+                const companySnap = await getDoc(doc(db, 'companies', cid));
+                if (companySnap.exists()) setCompanyInfo(companySnap.data());
+                const billSnap = await getDoc(doc(db, 'companies', cid, 'settings', 'bill'));
+                const data = billSnap.exists() ? billSnap.data() : {};
+                setBillSettings(data);
+                setCatalogueWhatsappExtra(data.catalogueWhatsappExtraMessage || '');
+            } catch (err) {
+                console.error('Bill settings fetch error:', err);
+                setBillSettings({});
+            }
+        })();
+    }, [currentUser?.companyId]);
+
+    const {
+        selectedOrderForAction, setSelectedOrderForAction,
+        pdfLoadingOrderId, setPdfLoadingOrderId,
+        showQrModal, setShowQrModal,
+        sendingPdf,
+        showPrintSubMenu, setShowPrintSubMenu,
+        billType, setBillType,
+        handlePdfAction,
+        handleSendWhatsapp,
+        handleSendWhatsappSnapto,
+    } = useOrderCommunication({
+        currentUser,
+        companyInfo,
+        availableItems: catalogueItems,
+        catalogueWhatsappExtra,
+        setModal: setActionModal,
+    });
 
     const [expandedBillId, setExpandedBillId] = useState<string | null>(null);
     const [isListVisible, setIsListVisible] = useState(true);
@@ -879,6 +931,20 @@ const CataloguePartyLedger: React.FC = () => {
     };
 
     const hasPhone = (party: PartySummary) => normalizePartyNumber(party.partyNumber).length === 10;
+
+    // Opens the same action sheet the Orders page opens for an order.
+    const openBillActions = async (t: LedgerTransaction) => {
+        if (!companyId) return;
+        try {
+            // Full order document, so the PDF gets the same fields as on the Orders page
+            const snap = await getDoc(doc(db, 'companies', companyId, 'Orders', t.id));
+            if (!snap.exists()) throw new Error('Order not found.');
+            setSelectedOrderForAction({ ...snap.data(), id: t.id } as unknown as Order);
+        } catch (err) {
+            console.error('Open bill failed:', err);
+            showToast('Could not load the bill. Please try again.', 'error');
+        }
+    };
     const hasRealName = (party: PartySummary) => !!party.partyName && party.partyName !== 'N/A' && party.partyName !== 'Unknown';
 
     const openEditParty = (party: PartySummary, focus: 'name' | 'gstNumber' | 'address' = 'name') => {
@@ -1130,6 +1196,44 @@ const CataloguePartyLedger: React.FC = () => {
                 </div>
             )}
 
+            {selectedOrderForAction && (
+                <OrderActionSheet
+                    selectedOrderForAction={selectedOrderForAction}
+                    setSelectedOrderForAction={setSelectedOrderForAction}
+                    setShowPrintSubMenu={setShowPrintSubMenu}
+                    billType={billType}
+                    setBillType={setBillType}
+                    handleSendWhatsapp={handleSendWhatsapp}
+                    handleSendWhatsappSnapto={handleSendWhatsappSnapto}
+                    companyId={companyId}
+                    sendingPdf={sendingPdf}
+                    pdfLoadingOrderId={pdfLoadingOrderId}
+                    setPdfLoadingOrderId={setPdfLoadingOrderId}
+                    handlePdfAction={handlePdfAction}
+                    setShowQrModal={setShowQrModal}
+                />
+            )}
+            {showPrintSubMenu && selectedOrderForAction && (
+                <PrintSubMenuModal
+                    selectedOrderForAction={selectedOrderForAction}
+                    setSelectedOrderForAction={setSelectedOrderForAction}
+                    setShowPrintSubMenu={setShowPrintSubMenu}
+                    setPdfLoadingOrderId={setPdfLoadingOrderId}
+                    handlePdfAction={handlePdfAction}
+                    _billSettings={billSettings}
+                />
+            )}
+            {showQrModal && (
+                <QrCodeModal
+                    showQrModal={showQrModal}
+                    setShowQrModal={setShowQrModal}
+                    companyId={companyId}
+                />
+            )}
+            {actionModal && (
+                <Modal message={actionModal.message} type={actionModal.type} onClose={() => setActionModal(null)} theme="catalogue" />
+            )}
+
             <PaymentModal
                 isOpen={isPaymentModalOpen}
                 onClose={() => {
@@ -1140,6 +1244,7 @@ const CataloguePartyLedger: React.FC = () => {
                 invoice={selectedInvoiceForPayment}
                 availableCredit={availableCredit}
                 onSubmit={selectedInvoiceForPayment?.isSettleAll ? handleSettleAllPayment : handleSettlePayment}
+                theme="catalogue"
             />
             {/* Hidden file input shared by every "Upload Excel" trigger */}
             <input type="file" ref={bulkFileInputRef} onChange={handleBulkFileSelected} className="hidden" accept=".xlsx, .xls" />
@@ -1176,10 +1281,23 @@ const CataloguePartyLedger: React.FC = () => {
                         ? <span className="rounded-sm bg-yellow-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-yellow-700">Unpaid</span>
                         : undefined}
                     subtitle={`${formatFullDate(t.createdAt)}, ${time} · ${t.isOpeningBalance ? 'Opening balance' : 'Order'}`}
-                    footer={canSettle ? (
-                        <button onClick={() => { setExpandedBillId(null); openSettleForTxn(party, t); }} className={`inline-flex w-full items-center justify-center gap-1.5 px-4 py-2.5 text-sm ${primaryBtn}`}>
-                            <Check size={15} /> Settle {inr(t.dueAmount)}
-                        </button>
+                    footer={(canSettle || !t.isOpeningBalance) ? (
+                        <div className="flex gap-2">
+                            {canSettle && (
+                                <button onClick={() => { setExpandedBillId(null); openSettleForTxn(party, t); }} className={`inline-flex flex-1 items-center justify-center gap-1.5 px-4 py-2.5 text-sm ${primaryBtn}`}>
+                                    <Check size={15} /> Settle {inr(t.dueAmount)}
+                                </button>
+                            )}
+                            {!t.isOpeningBalance && (
+                                <button
+                                    type="button"
+                                    onClick={() => { setExpandedBillId(null); openBillActions(t); }}
+                                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:border-orange-300"
+                                >
+                                    <ExternalLink size={15} /> View bill
+                                </button>
+                            )}
+                        </div>
                     ) : undefined}
                 >
                     {t.note && <p className="rounded-sm bg-orange-50 px-3 py-2.5 text-sm text-slate-600">Note: {t.note}</p>}

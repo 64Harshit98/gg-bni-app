@@ -513,7 +513,7 @@ const DashboardContent = () => {
                 </TutorialStep>
 
                 {/* Step 8 */}
-                <TutorialStep step={8} currentStep={tutorialStep} text="Track your top 5 performing salespeople ranked by total sales amount." onNext={() => next(9)} onSkip={skip}>
+                <TutorialStep step={8} currentStep={tutorialStep} text="Your top 5 salespeople, ranked by sales amount or number of bills." onNext={() => next(9)} onSkip={skip}>
                   <div ref={setTutorialRef(8)} className="h-full [&>*]:h-full">
                     <ShowWrapper requiredPermission={Permissions.ViewTopSalesperson}>
                       <TopSalespersonCard isDataVisible={effectiveDataVisible} salesmen={displayData?.topSalesmen || []} addUserRoute={ADD_USER_ROUTE} />
@@ -526,7 +526,7 @@ const DashboardContent = () => {
                   step={9}
                   currentStep={tutorialStep}
                   isLast={window.innerWidth >= 768}
-                  text="Your top 5 customers by purchase value. Great for identifying your most loyal buyers."
+                  text="Your top 5 customers, ranked by purchase value or number of bills."
                   onNext={async () => {
                     if (!currentUser?.companyId) return;
                     await setDoc(

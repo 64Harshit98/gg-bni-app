@@ -1323,19 +1323,34 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const transportSummary = [transportName, grRrNo && `GR/RR ${grRrNo}`, grRrDate, vehicleNo, stationFrom, pinCode].filter(Boolean).join(' · ') || 'Transport details added';
     const discountRowSummary = `₹${fmtShort(discount)} off · whole bill`;
 
+    // Locked = parent says so (Sales Settings) OR no handler given (card view: nothing can change it)
+    const toggleLocked = isTaxToggleLocked || !onTaxModeChange;
+
     // GST on prices — main control, lives in the drawer (not in a pop-up)
     const taxToggleBlock = (
         <div className="grid gap-1.5">
-            <div className={OVERLINE_CLS}>GST on prices</div>
-            <div className={SEG_WRAP} role="group">
+            <div className={`${OVERLINE_CLS} flex items-center gap-1.5`}>
+                GST on prices
+                {toggleLocked && lockIcon}
+            </div>
+            <div
+                className={toggleLocked
+                    ? 'flex p-[3px] gap-0.5 bg-[#eef0f4] border border-[#d5d9e0] rounded-sm cursor-not-allowed'
+                    : SEG_WRAP}
+                role="group"
+                title={toggleLocked ? 'Tax mode is locked' : undefined}
+            >
                 {(['exempt', 'inclusive', 'exclusive'] as const).map((m) => (
                     <button
                         key={m}
                         type="button"
                         onClick={() => onTaxModeChange && onTaxModeChange(m)}
-                        disabled={isTaxToggleLocked}
+                        disabled={toggleLocked}
                         aria-pressed={taxMode === m}
-                        className={`flex-1 h-9 rounded-sm text-sm font-medium transition-all ${taxMode === m ? SEG_ON : SEG_OFF} ${isTaxToggleLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                        className={`flex-1 h-9 rounded-sm text-sm font-medium transition-all ${toggleLocked
+                                ? `cursor-not-allowed ${taxMode === m ? 'bg-[#dde1e8] text-[#6b7280]' : 'text-[#9ca3af]'}`
+                                : `cursor-pointer ${taxMode === m ? SEG_ON : SEG_OFF}`
+                            }`}
                     >
                         {m.charAt(0).toUpperCase() + m.slice(1)}
                     </button>

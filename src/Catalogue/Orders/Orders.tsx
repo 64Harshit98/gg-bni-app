@@ -464,7 +464,7 @@ const OrdersPage: React.FC = () => {
 
     return (
         <div className="flex min-h-screen w-full flex-col bg-[#fff5ec] pb-10">
-            {modal && <Modal message={modal.message} type={modal.type} onClose={() => setModal(null)} />}
+            {modal && <Modal message={modal.message} type={modal.type} onClose={() => setModal(null)} theme="catalogue" />}
 
             {/* List stays mounted (filters/search state safe), just hidden while an order is open on mobile */}
             <div className="contents">
@@ -650,6 +650,7 @@ const OrdersPage: React.FC = () => {
                         createdAt: new Date(),
                     }}
                     onSubmit={handlePaymentSubmit}
+                    theme="catalogue"
                 />
             )}
 

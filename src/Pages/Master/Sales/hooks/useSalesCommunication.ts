@@ -92,7 +92,21 @@ export const useSalesCommunication = ({
                     }
                 }
             }
-            const { itemAmount, discount1Amount, discount2Amount, d1Pct, d2Pct, absoluteDiscount } = calculatePdfItemDiscounts(item);
+            // Journal ke preparePdfData jaisa pre-tax line amount (exclusive me finalPrice tax-inclusive hota hai)
+            const qtyForPdf = Number(item.quantity) || 1;
+            const resolvedTaxType = item.taxType || invoice.taxType || salesSettings?.taxType || '';
+            let pdfLineAmount: number;
+            if (resolvedTaxType === 'Exclusive' && item.taxableAmount) {
+                pdfLineAmount = item.taxableAmount;
+            } else if (item.effectiveUnitPrice && item.effectiveUnitPrice > 0) {
+                pdfLineAmount = item.effectiveUnitPrice * qtyForPdf;
+            } else if (item.finalPrice !== undefined && item.finalPrice !== null && item.finalPrice > 0) {
+                pdfLineAmount = item.finalPrice;
+            } else {
+                pdfLineAmount = (Number(item.mrp) || 0) * qtyForPdf;
+            }
+            const { itemAmount, discount1Amount, discount2Amount, d1Pct, d2Pct, absoluteDiscount } =
+                calculatePdfItemDiscounts({ ...item, finalPrice: pdfLineAmount });
             return {
                 sno: index + 1,
                 name: item.name,
@@ -131,6 +145,7 @@ export const useSalesCommunication = ({
             msmeNumber: billSettings.msmeNumber || '',
             panNumber: billSettings.panNumber || '',
             companyState: businessInfo?.state || '',
+            placeOfSupply: invoice.placeOfSupply || '',
             billDiscount: invoice.manualDiscount || 0,
             discountDisplayFormat: billSettings?.discountDisplayFormat || 'amount',
             billTo: { name: invoice.partyName, address: invoice.partyAddress || '', phone: invoice.partyNumber || '', gstin: invoice.partyGstin || '' },
@@ -140,6 +155,7 @@ export const useSalesCommunication = ({
                 phone: invoice.shippingNumber || '',
                 gstin: invoice.shippingGST || '',
             },
+            narration: invoice.narration || '',
             transportDetails: invoice.transportDetails || undefined,
             invoice: {
                 number: invoice.invoiceNumber,

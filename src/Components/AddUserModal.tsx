@@ -102,7 +102,7 @@ const Icon: React.FC<{ children: React.ReactNode; className?: string }> = ({ chi
 );
 
 const fieldInput =
-  'flex-1 min-w-0 bg-transparent outline-none text-sm text-slate-900 placeholder:text-slate-400 disabled:opacity-60';
+  'flex-1 min-w-0 bg-transparent outline-none text-[13px] sm:text-sm text-slate-900 placeholder:text-slate-400 placeholder:text-xs sm:placeholder:text-sm disabled:opacity-60';
 const labelCls = 'block text-xs font-medium text-slate-600 mb-1';
 
 interface AddUserModalProps {
@@ -182,7 +182,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onU
   const t = THEMES[theme];
   const roleOptions = ROLE_OPTIONS[theme];
   const selectedRole = roleOptions.find((r) => r.value === role);
-  const fieldWrap = `flex items-center gap-2 h-11 px-3 rounded-sm border border-[#7a8aa3] bg-white text-slate-500 transition focus-within:ring-4 ${t.focus}`;
+  const fieldWrap = `flex items-center gap-2 h-11 px-2.5 sm:px-3 rounded-sm border border-[#7a8aa3] bg-white text-slate-500 transition focus-within:ring-4 ${t.focus}`;
 
   return (
     <div className="fixed inset-0 z-[8000] flex items-center justify-center bg-black/40 px-4">
@@ -259,7 +259,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onU
                     id="modalEmail"
                     type="email"
                     className={fieldInput}
-                    placeholder="name@example.com"
+                    placeholder="name@mail.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required

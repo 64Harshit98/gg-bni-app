@@ -32,7 +32,7 @@ import { hasMultiplePricing } from '../../utils/pricingUtils';
 import type { Item, AddOnGroup } from '../../../constants/models';
 import { resolveAddOnGroups, addOnStockOf, extraChargeOf } from '../../../constants/models';
 import { useAddOnTemplates } from '../../../lib/addOnTemplates';
-import { applyRounding, calculateSaleTotals } from './sales.calculations';
+import { applyRounding, applyLineRounding, calculateSaleTotals } from './sales.calculations';
 import {
     useSalesCalculator,
     useSalesCart,
@@ -245,7 +245,7 @@ const Sales: React.FC = () => {
 
     const {
         salesSettings,
-        activeTaxMode, setActiveTaxMode,
+        activeTaxMode,
         invoiceNumber, setInvoiceNumber,
         isInvoiceNumberManuallyEdited,
         invoiceDate, setInvoiceDate,
@@ -413,7 +413,7 @@ const Sales: React.FC = () => {
         return true;
     };
 
-        const applyAddOnEdit = (lineId: string, picked: any[]) => {
+    const applyAddOnEdit = (lineId: string, picked: any[]) => {
         const amount = picked.reduce((s, o) => s + (Number(o.price) || 0), 0);
         const stock = addOnStockOf({ addOns: picked });
         setItems((prev: any[]) => prev.map(l => l.id !== lineId ? l : {
@@ -1515,13 +1515,13 @@ const Sales: React.FC = () => {
                                         baseDisplayPrice = allowItemDiscount ? mrp * (1 - presetDiscount / 100) : mrp; // Case 3
                                     }
 
-                                    baseDisplayPrice = applyRounding(baseDisplayPrice, isRoundingEnabled, roundingInterval);
+                                    baseDisplayPrice = applyLineRounding(baseDisplayPrice, isRoundingEnabled, roundingInterval, mrp);
 
                                     const effectiveSp = (lastAddedCartItem?.customPrice !== undefined && lastAddedCartItem?.customPrice !== null && lastAddedCartItem?.customPrice !== '')
                                         ? Number(lastAddedCartItem.customPrice)
                                         : baseDisplayPrice;
                                     const sp = effectiveSp;
-                                                                        const lineSubtotal = itemHasAddOns(item)
+                                    const lineSubtotal = itemHasAddOns(item)
                                         ? Math.round(matchingCartItems.reduce((s, i) => s + (Number(i.customPrice ?? 0) + (Number((i as any).addOnAmount) || 0)) * (i.quantity || 0), 0) * 100) / 100
                                         : Math.round((Number(sp) * quantity) * 100) / 100;
                                     const discPct = (!hideMrp && allowItemDiscount && mrp > 0 && Number(sp) < mrp && Number(sp) > 0)
@@ -2062,8 +2062,7 @@ ${colClass || ''}`}
                 enableNarration={salesSettings?.enableNarration}
                 enableTransportDetails={salesSettings?.enableTransportDetails ?? false}
                 taxMode={activeTaxMode}
-                onTaxModeChange={setActiveTaxMode}
-                isTaxToggleLocked={(salesSettings?.gstScheme !== 'regular' || salesSettings?.lockTaxToggle)}
+                isTaxToggleLocked={true}
                 totalMrp={totalMrp}
                 maxBillDiscountValue={salesSettings?.maxBillDiscountValue}
                 maxBillDiscountType={salesSettings?.maxBillDiscountType}

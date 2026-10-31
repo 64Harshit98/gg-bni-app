@@ -155,22 +155,64 @@ const FieldWrap: React.FC<{
     </div>
 );
 
-const ImagePreview: React.FC<{ imageUrl: string | null; alt: string }> = ({ imageUrl, alt }) => {
-    if (!imageUrl) {
-        return (
+// Renders the image, but swaps in `fallback` when there is no src or the image fails to load
+// "Broken image" icon: normal image icon with a slash through it
+const BrokenImageIcon: React.FC<{ size?: number }> = ({ size = 24 }) => (
+    <svg
+        viewBox="0 0 24 24"
+        width={size}
+        height={size}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+    >
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <circle cx="8.5" cy="8.5" r="1.5" />
+        <path d="M21 15l-5-5L5 21" />
+        <path d="M3 3l18 18" />
+    </svg>
+);
+
+// - no src            -> `fallback` (normal placeholder)
+// - src fails to load -> `brokenFallback` (falls back to `fallback` if not given)
+const SafeImage: React.FC<{
+    src: string | null | undefined;
+    alt?: string;
+    className?: string;
+    fallback: React.ReactNode;
+    brokenFallback?: React.ReactNode;
+}> = ({ src, alt = '', className, fallback, brokenFallback }) => {
+    const [failed, setFailed] = useState(false);
+
+    // New URL (user typing / picking another file) -> give it a fresh chance to load
+    useEffect(() => { setFailed(false); }, [src]);
+
+    if (!src) return <>{fallback}</>;
+    if (failed) return <>{brokenFallback ?? fallback}</>;
+    return <img src={src} alt={alt} className={className} onError={() => setFailed(true)} />;
+};
+
+const ImagePreview: React.FC<{ imageUrl: string | null; alt: string }> = ({ imageUrl, alt }) => (
+    <SafeImage
+        src={imageUrl}
+        alt={alt}
+        className="w-full h-[110px] md:h-44 object-cover block border-r md:border-r-0 md:border-b border-(--dr-line)"
+        fallback={
             <div className="w-full h-[110px] md:h-44 bg-(--dr-sunken) flex items-center justify-center text-[#5b6b86] border-r md:border-r-0 md:border-b border-(--dr-line)">
                 <FiPackage size={40} />
             </div>
-        );
-    }
-    return (
-        <img
-            src={imageUrl}
-            alt={alt}
-            className="w-full h-[110px] md:h-44 object-cover block border-r md:border-r-0 md:border-b border-(--dr-line)"
-        />
-    );
-};
+        }
+        brokenFallback={
+            <div className="w-full h-[110px] md:h-44 bg-(--dr-sunken) flex flex-col items-center justify-center gap-1.5 text-[#5b6b86] border-r md:border-r-0 md:border-b border-(--dr-line)">
+                <BrokenImageIcon size={32} />
+                <span className="text-[11px] font-medium">Broken image</span>
+            </div>
+        }
+    />
+);
 
 const UNIT_OPTIONS = [
     { value: '', label: 'Select Unit' },
@@ -185,7 +227,8 @@ const UNIT_OPTIONS = [
 export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, onClose, onSaveSuccess, itemGroupRoute = '/item-group', variant = 'drawer', onDraftChange, closeOnSave = true }) => {
     const isPanel = variant === 'panel';
     const { pathname } = useLocation();
-    const themeVars = THEME_VARS[pathname.startsWith(ROUTES.CHOME) ? 'orange' : 'blue'] as React.CSSProperties;
+    const isCatalogue = pathname.startsWith(ROUTES.CHOME);
+    const themeVars = THEME_VARS[isCatalogue ? 'orange' : 'blue'] as React.CSSProperties;
     const navigate = useNavigate();
     const cameraInputRef = useRef<HTMLInputElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null); // Added ref for the standard file input
@@ -287,6 +330,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                         unit: liveData.unit || '',
                         packetSize: (liveData as any).packetSize ?? undefined,
                         moq: (liveData as any).moq ?? 1,
+                        restockQuantity: (liveData as any).restockQuantity ?? undefined,
                     });
 
                     setPriceTiers(((liveData as any).priceTiers || []).map(toPriceTierForm));   // 👈 NEW
@@ -410,7 +454,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
         const isCheckbox = type === 'checkbox';
         const checked = (e.target as HTMLInputElement).checked;
 
-        const isNumericField = ['stock', 'tax', 'packetSize', 'moq'].includes(name);
+        const isNumericField = ['stock', 'tax', 'packetSize', 'moq', 'restockQuantity'].includes(name);
 
         setFormData(prev => ({
             ...prev,
@@ -573,6 +617,12 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
             return;
         }
 
+        if ((itemSettings as any)?.requireRestockQuantity &&
+            (formData.restockQuantity === undefined || String(formData.restockQuantity).trim() === '')) {
+            setModal({ message: 'Restock Level is required.', type: State.ERROR });
+            return;
+        }
+
         // 👇 NEW — same validation jaisi ItemAdd.tsx mein hai
         const activeTiers = enablePriceTiers ? priceTiers.map(fromPriceTierForm) : [];
         for (const tier of activeTiers) {
@@ -712,6 +762,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 unitMultiplier: currentMultiplier,
                 packetSize: formData.unit === 'pkt' ? parseInt(String(formData.packetSize), 10) : null,
                 moq: Number(formData.moq || 1),
+                restockQuantity: Number(formData.restockQuantity || 0),
                 variants: variantIds,
                 // When feature is disabled, don't touch existing tiers saved on the item
                 ...(enablePriceTiers ? { priceTiers: activeTiers } : {}),
@@ -827,7 +878,8 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
     const uiDiscount = Number(formData.discount || 0);
     const uiStock = Number(formData.stock ?? 0);
     const uiCustomerPays = uiSales - (uiSales * uiDiscount) / 100;
-    const uiProfit = uiPurchase > 0 ? uiCustomerPays - uiPurchase : null;
+    // Profit only makes sense when BOTH sale price and purchase price are entered
+    const uiProfit = uiSales > 0 && uiPurchase > 0 ? uiCustomerPays - uiPurchase : null;
     const GST_SLABS = [0, 0.25, 3, 5, 12, 18, 28];
 
     const mrpWarn = uiMrp > 0 && uiSales > uiMrp ? 'Sale price is above MRP — check the printed MRP' : uiMrp === 0 && uiSales > 0 ? 'Below sale price — enter the printed MRP' : '';
@@ -913,11 +965,12 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 {/* ---------- HEADER ---------- */}
                 <div className="flex items-center gap-3 md:gap-3.5 px-3 md:px-5 pb-3 md:py-4 pt-[max(12px,env(safe-area-inset-top))] md:pt-4 bg-white border-b border-(--dr-line)">
                     <div className="hidden md:grid h-[52px] w-[52px] shrink-0 place-items-center overflow-hidden rounded-[10px] bg-(--dr-sunken) text-[#5b6b86]">
-                        {imagePreview ? (
-                            <img src={imagePreview} alt="" className="h-full w-full object-cover" />
-                        ) : (
-                            <FiPackage size={22} />
-                        )}
+                        <SafeImage
+                            src={imagePreview}
+                            className="h-full w-full object-cover"
+                            fallback={<FiPackage size={22} />}
+                            brokenFallback={<BrokenImageIcon size={22} />}
+                        />
                     </div>
                     <div className="min-w-0 flex-1 order-2 md:order-none">
                         {/* Mobile title: "Edit item" + item name caption */}
@@ -966,7 +1019,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                         <>
                             {modal && (
                                 <div className="mb-4" onClick={(e) => e.stopPropagation()}>
-                                    <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />
+                                    <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} theme={isCatalogue ? 'catalogue' : 'pos'} />
                                 </div>
                             )}
 
@@ -1074,7 +1127,20 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                 <div className="flex gap-2 mt-3 flex-wrap">
                                                     {existingAdditionalUrls.map((url) => (
                                                         <div key={url} className="relative w-16 h-16">
-                                                            <img src={url} className="w-full h-full object-cover rounded-lg border border-(--dr-line)" />
+                                                            <SafeImage
+                                                                src={url}
+                                                                className="w-full h-full object-cover rounded-lg border border-(--dr-line)"
+                                                                fallback={
+                                                                    <div className="w-full h-full grid place-items-center rounded-lg border border-(--dr-line) bg-(--dr-sunken) text-[#5b6b86]">
+                                                                        <FiPackage size={20} />
+                                                                    </div>
+                                                                }
+                                                                brokenFallback={
+                                                                    <div className="w-full h-full grid place-items-center rounded-lg border border-(--dr-line) bg-(--dr-sunken) text-[#5b6b86]">
+                                                                        <BrokenImageIcon size={20} />
+                                                                    </div>
+                                                                }
+                                                            />
                                                             <button
                                                                 type="button"
                                                                 onClick={() => removeExistingAdditionalImage(url)}
@@ -1086,7 +1152,20 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                     ))}
                                                     {additionalImagePreviews.map((src, idx) => (
                                                         <div key={src + idx} className="relative w-16 h-16">
-                                                            <img src={src} className="w-full h-full object-cover rounded-lg border border-(--dr-line)" />
+                                                            <SafeImage
+                                                                src={src}
+                                                                className="w-full h-full object-cover rounded-lg border border-(--dr-line)"
+                                                                fallback={
+                                                                    <div className="w-full h-full grid place-items-center rounded-lg border border-(--dr-line) bg-(--dr-sunken) text-[#5b6b86]">
+                                                                        <FiPackage size={20} />
+                                                                    </div>
+                                                                }
+                                                                brokenFallback={
+                                                                    <div className="w-full h-full grid place-items-center rounded-lg border border-(--dr-line) bg-(--dr-sunken) text-[#5b6b86]">
+                                                                        <BrokenImageIcon size={20} />
+                                                                    </div>
+                                                                }
+                                                            />
                                                             <button
                                                                 type="button"
                                                                 onClick={() => removeNewAdditionalImage(idx)}
@@ -1398,7 +1477,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
 
                                             <FieldWrap label="Your profit">
                                                 <div className="flex h-10 items-center rounded-lg bg-(--dr-sunken) px-3 text-sm tabular-nums text-[#5b6b86]">
-                                                    {uiProfit === null ? 'Unknown' : fmtINR(uiProfit)}
+                                                    {uiProfit === null ? 'Add both price' : fmtINR(uiProfit)}
                                                 </div>
                                             </FieldWrap>
 
@@ -1432,7 +1511,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
 
                                     {/* ---------- STOCK ---------- */}
                                     <SectionCard icon={<FiBox size={16} />} tone="amber" title="Stock">
-                                        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-0">
                                             <FieldWrap label="In stock" htmlFor="edit-stock" warn={stockWarn}>
                                                 <div className="relative">
                                                     <input
@@ -1444,6 +1523,25 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                         onChange={handleChange}
                                                         onWheel={(e) => (e.target as HTMLInputElement).blur()}
                                                         className={`${INPUT_CLS} pr-10 font-semibold ${uiStock < 0 ? 'text-[#d5000c] ' + INPUT_WARN_CLS : ''}`}
+                                                        disabled={isSaving}
+                                                    />
+                                                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-[#5b6b86]">pcs</span>
+                                                </div>
+                                            </FieldWrap>
+                                            <FieldWrap
+                                                label={<>Restock level {(itemSettings as any)?.requireRestockQuantity && <em className="not-italic text-[#d5000c]">*</em>}</>}
+                                                htmlFor="edit-restockQuantity"
+                                                hint="Warn me when stock drops to this"
+                                            >
+                                                <div className="relative">
+                                                    <input
+                                                        id="edit-restockQuantity"
+                                                        type="number"
+                                                        name="restockQuantity"
+                                                        value={formData.restockQuantity ?? ''}
+                                                        onChange={handleChange}
+                                                        onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                                                        className={`${INPUT_CLS} pr-10`}
                                                         disabled={isSaving}
                                                     />
                                                     <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-[#5b6b86]">pcs</span>

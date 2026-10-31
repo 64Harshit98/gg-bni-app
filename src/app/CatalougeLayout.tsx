@@ -358,7 +358,7 @@ const CatalogueLayout = () => {
     );
 
     return (
-        <div className="relative h-dvh w-screen flex flex-col md:flex-row overflow-hidden bg-gray-100 md:bg-[#fff5ec]">
+        <div className="relative h-dvh w-screen flex flex-col md:flex-row overflow-hidden bg-[#fff5ec]">
             {showReminder && shopSettings && (
                 <ShopClosingReminderModal
                     closeTime={shopSettings.closeTime}
@@ -367,7 +367,7 @@ const CatalogueLayout = () => {
                 />
             )}
             {/* --- MOBILE TOP STRIP — Catalogue Home ka apna header hai, wahan hide --- */}
-            <header className="md:hidden flex items-center gap-2 px-3 py-2 bg-white border-b border-slate-200 z-[140]">
+            <header className="md:hidden relative flex items-center justify-between gap-2 px-3 py-2 bg-white border-b border-slate-200 z-[140]">
                 {/* Left: switcher */}
                 <div className="shrink-0">
                     <TutorialStep
@@ -384,12 +384,12 @@ const CatalogueLayout = () => {
                     </TutorialStep>
                 </div>
 
-                {/* Middle: logo takes remaining space, can shrink, never overlaps */}
-                <div className="flex-1 min-w-0 flex justify-center">
+                {/* Middle: logo absolutely centered on the screen, independent of side widths */}
+                <div className="pointer-events-none absolute inset-x-0 flex justify-center">
                     <img
                         src={sellarLogo}
                         alt="Sellar Logo"
-                        className="h-5 max-w-full object-contain"
+                        className="h-5 object-contain"
                     />
                 </div>
 
@@ -472,7 +472,8 @@ const CatalogueLayout = () => {
             </main>
 
             {/* --- MOBILE BOTTOM NAV --- */}
-            <nav className="md:hidden fixed bottom-0 left-0 w-full bg-white z-40">
+            {/* z-[150]: above the FAB overlay (z-[145]) so the nav stays crisp, below the Add popup (z-[160]) and order sheet (z-1500). */}
+            <nav className="md:hidden fixed bottom-0 left-0 w-full bg-white z-[150]">
                 <div className="flex justify-around items-center gap-2 px-2 pt-2 pb-3">
                     {CatMobileNavItems.slice(0, 2).map((item) => renderMobileNavLink(item))}
 

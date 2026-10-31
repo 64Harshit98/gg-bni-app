@@ -617,7 +617,7 @@ const CatalogueExpenseReportPage: React.FC = () => {
         <div className="min-h-screen bg-[#fff5ec] px-3 pb-20 pt-3 md:px-6 md:pb-8 md:pt-5">
             {feedbackModal.isOpen && (
                 <Modal type={feedbackModal.type} message={feedbackModal.message}
-                    onClose={() => setFeedbackModal(p => ({ ...p, isOpen: false }))} showConfirmButton={false} />
+                    onClose={() => setFeedbackModal(p => ({ ...p, isOpen: false }))} showConfirmButton={false} theme="catalogue" />
             )}
             <ExpenseModal
                 isOpen={isFormOpen}
@@ -634,6 +634,7 @@ const CatalogueExpenseReportPage: React.FC = () => {
                     onClose={() => setDeleteConfirm(null)}
                     showConfirmButton={true}
                     onConfirm={confirmDelete}
+                    theme="catalogue"
                 />
             )}
 

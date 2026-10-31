@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 
@@ -31,21 +31,80 @@ const toMinutes = (time: string): number => {
   const [h, m] = time.split(':').map(Number);
   return h * 60 + m;
 };
+interface ShopStatus {
+  isWithinShopHours: boolean;
+  isClosingSoon: boolean;
+  shouldAutoClose: boolean;
+  needsReset: boolean;
+}
 
+const computeShopStatus = (settings: ShopHoursSettings | null, now: Date): ShopStatus => {
+  const open: ShopStatus = {
+    isWithinShopHours: true,
+    isClosingSoon: false,
+    shouldAutoClose: false,
+    needsReset: false,
+  };
+
+  if (!settings || !settings.enabled) return open;
+
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const openMinutes = toMinutes(settings.openTime);
+  const closeMinutes = toMinutes(settings.closeTime);
+
+  // Overnight ranges (e.g. 20:00 -> 02:00): simple behaviour, no reminder flow.
+  if (openMinutes >= closeMinutes) {
+    return {
+      ...open,
+      isWithinShopHours: nowMinutes >= openMinutes || nowMinutes < closeMinutes,
+    };
+  }
+
+  if (nowMinutes < closeMinutes) {
+    // Before today's closing time - covers "before opening" and "currently open".
+    return {
+      ...open,
+      isWithinShopHours: nowMinutes >= openMinutes,
+      // Yesterday's close/snooze flags are stale once we're back before closing time.
+      needsReset: !!settings.forceClosed || !!settings.snoozeUntil,
+    };
+  }
+
+  // Past today's closing time.
+  if (settings.forceClosed) {
+    return { ...open, isWithinShopHours: false };
+  }
+
+  const closingTimestampToday = new Date(now);
+  closingTimestampToday.setHours(Math.floor(closeMinutes / 60), closeMinutes % 60, 0, 0);
+  const elapsedSinceClose = now.getTime() - closingTimestampToday.getTime();
+
+  if (elapsedSinceClose >= ONE_HOUR_MS) {
+    // 1hr grace period over, owner never confirmed - force it now.
+    return { ...open, isWithinShopHours: false, shouldAutoClose: true };
+  }
+
+  if (settings.snoozeUntil && now.getTime() < settings.snoozeUntil) {
+    // Snoozing - stay open, reminder hidden.
+    return open;
+  }
+
+  // Past closing time, not force-closed, no active snooze -> show the reminder.
+  return { ...open, isClosingSoon: true };
+};
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
 export const useShopHours = (companyId: string | undefined): UseShopHoursResult => {
-  const [settings, setSettings] = useState<ShopHoursSettings | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [isWithinShopHours, setIsWithinShopHours] = useState(true);
-  const [isClosingSoon, setIsClosingSoon] = useState(false);
-  const [shouldAutoClose, setShouldAutoClose] = useState(false);
-  const [needsReset, setNeedsReset] = useState(false);
+    const [settings, setSettings] = useState<ShopHoursSettings | null>(null);
+  // Track WHICH companyId the loaded settings belong to. Loading is derived
+  // from this, so there's never a render where companyId is set but loading
+  // is false and settings haven't arrived.
+  const [loadedFor, setLoadedFor] = useState<string | undefined>(undefined);
 
-  // Listen to the settings doc
-  useEffect(() => {
+    useEffect(() => {
     if (!companyId) {
-      setLoading(false);
+      setSettings(null);
+      setLoadedFor(undefined);
       return;
     }
 
@@ -65,98 +124,43 @@ export const useShopHours = (companyId: string | undefined): UseShopHoursResult 
         } else {
           setSettings(getDefaultShopHoursSettings());
         }
-        setLoading(false);
+        setLoadedFor(companyId);
       },
       (err) => {
         console.error('useShopHours: failed to listen to shop-hours doc', err);
         // Fail-open: if we can't read settings, don't lock people out
         setSettings(getDefaultShopHoursSettings());
-        setLoading(false);
+        setLoadedFor(companyId);
       }
     );
 
     return () => unsubscribe();
   }, [companyId]);
 
-  // Re-evaluate the current time check every 30s, and whenever settings change
+    // Ticks every 30s to force a re-render so the time check is re-run.
+  const [tick, setTick] = useState(0);
   useEffect(() => {
-    if (!settings) return;
-
-    const evaluate = () => {
-      if (!settings.enabled) {
-        setIsWithinShopHours(true);
-        setIsClosingSoon(false);
-        setShouldAutoClose(false);
-        setNeedsReset(false);
-        return;
-      }
-
-      const now = new Date();
-      const nowMinutes = now.getHours() * 60 + now.getMinutes();
-      const openMinutes = toMinutes(settings.openTime);
-      const closeMinutes = toMinutes(settings.closeTime);
-
-      // Overnight ranges (e.g. 20:00 -> 02:00): keep the old simple behaviour,
-      // no closing-reminder flow for these.
-      if (openMinutes >= closeMinutes) {
-        const within = nowMinutes >= openMinutes || nowMinutes < closeMinutes;
-        setIsWithinShopHours(within);
-        setIsClosingSoon(false);
-        setShouldAutoClose(false);
-        setNeedsReset(false);
-        return;
-      }
-
-      if (nowMinutes < closeMinutes) {
-        // Before today's closing time - covers "before opening" and "currently open".
-        setIsWithinShopHours(nowMinutes >= openMinutes);
-        setIsClosingSoon(false);
-        setShouldAutoClose(false);
-        // Yesterday's close/snooze flags are stale once we're back before closing time.
-        setNeedsReset(!!settings.forceClosed || !!settings.snoozeUntil);
-        return;
-      }
-
-      // Past today's closing time.
-      setNeedsReset(false);
-
-      if (settings.forceClosed) {
-        setIsWithinShopHours(false);
-        setIsClosingSoon(false);
-        setShouldAutoClose(false);
-        return;
-      }
-
-      const closingTimestampToday = new Date();
-      closingTimestampToday.setHours(Math.floor(closeMinutes / 60), closeMinutes % 60, 0, 0);
-      const elapsedSinceClose = now.getTime() - closingTimestampToday.getTime();
-
-      if (elapsedSinceClose >= ONE_HOUR_MS) {
-        // 1hr grace period over, owner never confirmed - force it now.
-        setIsWithinShopHours(false);
-        setIsClosingSoon(false);
-        setShouldAutoClose(true);
-        return;
-      }
-
-      setShouldAutoClose(false);
-
-      if (settings.snoozeUntil && now.getTime() < settings.snoozeUntil) {
-        // Snoozing - stay open, reminder hidden.
-        setIsWithinShopHours(true);
-        setIsClosingSoon(false);
-        return;
-      }
-
-      // Past closing time, not force-closed, no active snooze -> show the reminder.
-      setIsWithinShopHours(true);
-      setIsClosingSoon(true);
-    };
-
-    evaluate();
-    const interval = setInterval(evaluate, 30 * 1000);
+    const interval = setInterval(() => setTick((t) => t + 1), 30 * 1000);
     return () => clearInterval(interval);
-  }, [settings]);
+  }, []);
 
-  return { settings, isWithinShopHours, isClosingSoon, shouldAutoClose, needsReset, loading };
+  // Derived during render: no frame with stale "open" values.
+  // `tick` is read so the memo recomputes on every interval.
+  const status = useMemo(
+    () => computeShopStatus(settings, new Date()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [settings, tick]
+  );
+
+  // Loading until settings for THIS companyId have actually arrived.
+  const loading = !!companyId && loadedFor !== companyId;
+
+    return {
+    settings,
+    isWithinShopHours: status.isWithinShopHours,
+    isClosingSoon: status.isClosingSoon,
+    shouldAutoClose: status.shouldAutoClose,
+    needsReset: status.needsReset,
+    loading,
+  };
 };

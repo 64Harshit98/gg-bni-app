@@ -7,6 +7,8 @@ import { generateA5Invoice } from "../../UseComponents/A5PdfGenerator";
 import { ACTION } from "../../enums/index";
 import QRCode from 'qrcode';
 import { drawWatermark } from "../../Components/pdfWatermark";
+import { splitAddOns, reserveAddOnSpace, drawAddOnText } from "../../UseComponents/addOnText";
+import { needsImageText, textToImage, NAME_IMG_W, installUnicodeText } from "../../UseComponents/textToImage";
 
 export interface CatalogueInvoiceData {
   companyId?: string;
@@ -111,6 +113,7 @@ export const CatalogueBill = async (
       gstScheme: data.companyGstType,
       taxType: data.taxType,
       enableTriplicate: (data as any).enableTriplicate === true,
+      isCatalogue: true,
       msmeNumber: data.msmeNumber || "",
 
       billTo: {
@@ -232,6 +235,7 @@ export const CatalogueBill = async (
     format: "a4",
     compress: true
   });
+  installUnicodeText(doc);
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 10;
@@ -323,6 +327,8 @@ export const CatalogueBill = async (
   const hasBillDiscount = totalBillDiscount > 0;
   const sumPostDiscountAmounts = data.items.reduce((sum, item) => sum + ((item.price || item.mrp || 0) * (item.qty || 0)), 0);
 
+  const addOnTexts: string[] = [];
+  const nameImgs: ({ dataUrl: string; heightMm: number; widthMm: number } | null)[] = [];
   const tableBody = data.items.map((item, index) => {
     const qty = Number(item.qty) || 0;
     let mrp = Number(item.mrp || item.price || 0);
@@ -417,7 +423,13 @@ export const CatalogueBill = async (
       }
     }
 
-    const itemNameCell = `${item.name}\n(${(item.qty * (item.unitMultiplier ?? 1))} pcs)`;
+    const { baseName, addOnText } = splitAddOns(item);
+    addOnTexts[index] = addOnText;
+    const itemNameText = `${baseName}\n(${(item.qty * (item.unitMultiplier ?? 1))} pcs)`;
+    nameImgs[index] = needsImageText(itemNameText)
+      ? textToImage(itemNameText, NAME_IMG_W, 8, true)
+      : null;
+    const itemNameCell = nameImgs[index] ? "" : itemNameText;
     const unitText = item.unit || "PCS";
 
     // For Composition, tax cells exist but are visually empty ("-")
@@ -472,6 +484,16 @@ export const CatalogueBill = async (
   const hasPrevOrDue = prevBal > 0 || currentDue > 0;
   const wordsH = hasPrevOrDue ? 12 : 8;
   const leftColW = contentWidth - (hasPrevOrDue ? 70 : 0);
+
+  // Emoji / non-Latin special instruction -> pre-rendered once as an image
+  const noteImg = data.specialInstruction && needsImageText(data.specialInstruction)
+    ? textToImage(data.specialInstruction, contentWidth - 4)
+    : null;
+
+  // Terms box width is contentWidth * 0.50, minus 5mm padding (same as the text path)
+  const termsImg = data.termsAndConditions && needsImageText(data.termsAndConditions)
+    ? textToImage(data.termsAndConditions, contentWidth * 0.50 - 5, 8)
+    : null;
 
   // NEW: reusable header+meta+transport+parties+special-instruction block so it can be redrawn on every page
   const drawHeaderAndParties = (isDuplicate: boolean): number => {
@@ -619,13 +641,18 @@ export const CatalogueBill = async (
     cursorY += sectionHeight + 4;
 
     if (data.specialInstruction) {
-      const noteLines = doc.splitTextToSize(data.specialInstruction, contentWidth - 4);
-      const boxH = 5 + (noteLines.length * 4) + 4;
+      const noteLines = noteImg ? [] : doc.splitTextToSize(data.specialInstruction, contentWidth - 4);
+      const textH = noteImg ? noteImg.heightMm : noteLines.length * 4;
+      const boxH = 5 + textH + 4;
       drawBox(cursorY, boxH);
       doc.setFont("helvetica", "bold"); doc.setFontSize(9);
       doc.text("Special Instructions:", startX + 2, cursorY + 4);
       doc.setFont("helvetica", "normal");
-      doc.text(noteLines, startX + 2, cursorY + 9);
+      if (noteImg) {
+        doc.addImage(noteImg.dataUrl, "PNG", startX + 2, cursorY + 5.5, contentWidth - 4, noteImg.heightMm);
+      } else {
+        doc.text(noteLines, startX + 2, cursorY + 9);
+      }
       cursorY += boxH + 2;
     }
 
@@ -647,8 +674,8 @@ export const CatalogueBill = async (
     const amountColIndexNoTax = hasBillDiscount ? 8 : 7;
 
     const activeColumnStyles = showTaxColumns
-      ? { 0: { cellWidth: 8 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto', halign: 'left' }, [amountColIndexWithTax]: { cellWidth: 18, halign: 'right' } }
-      : { 0: { cellWidth: 8 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto', halign: 'left' }, [amountColIndexNoTax]: { cellWidth: 20, halign: 'right' } };
+      ? { 0: { cellWidth: 8 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto', minCellWidth: 45, halign: 'left' }, [amountColIndexWithTax]: { cellWidth: 18, halign: 'right' } }
+      : { 0: { cellWidth: 8 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto', minCellWidth: 45, halign: 'left' }, [amountColIndexNoTax]: { cellWidth: 20, halign: 'right' } };
 
     autoTable(doc, {
       startY: cursorY,
@@ -666,7 +693,26 @@ export const CatalogueBill = async (
           drawHeaderAndParties(isDuplicate);
         }
       },
+      didParseCell: (h: any) => {
+        if (h.section === "body" && h.column.index === 2 && nameImgs[h.row.index]) {
+          const img = nameImgs[h.row.index]!;
+          h.cell.styles.minCellWidth = img.widthMm + 4;
+          h.cell.styles.minCellHeight = Math.max(h.cell.styles.minCellHeight || 0, img.heightMm + 4);
+        }
+        reserveAddOnSpace(h, 2, addOnTexts);
+      },
       didDrawCell: (hookData) => {
+        if (hookData.section === "body" && hookData.column.index === 2) {
+          const img = nameImgs[hookData.row.index];
+          if (img) {
+            const hasAddOn = !!addOnTexts[hookData.row.index];
+            const imgY = hasAddOn
+              ? hookData.cell.y + 2
+              : hookData.cell.y + (hookData.cell.height - img.heightMm) / 2;
+            doc.addImage(img.dataUrl, "PNG", hookData.cell.x + 2, imgY, img.widthMm, img.heightMm);
+          }
+        }
+        drawAddOnText(doc, hookData, 2, addOnTexts);
         if (hookData.column.index === 1 && hookData.section === "body") {
           const item = data.items[hookData.row.index];
           const imgSize = 14;
@@ -839,7 +885,14 @@ export const CatalogueBill = async (
       doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.text('Terms & Condition', startX + 2, finalY + 4);
       doc.line(startX + 2, finalY + 5, startX + 2 + doc.getTextWidth('Terms & Condition'), finalY + 5);
       doc.setFont('helvetica', 'normal'); doc.text('E. & O. E.', startX + 2, finalY + 8);
-      doc.text(doc.splitTextToSize(data.termsAndConditions || '', tW - 5), startX + 2, finalY + 12);
+      if (termsImg) {
+        // box is 35mm tall, text starts at +11, keep 1mm bottom padding
+        const maxH = 35 - 11 - 1;
+        const scale = termsImg.heightMm > maxH ? maxH / termsImg.heightMm : 1;
+        doc.addImage(termsImg.dataUrl, "PNG", startX + 2, finalY + 11, termsImg.widthMm * scale, termsImg.heightMm * scale);
+      } else {
+        doc.text(doc.splitTextToSize(data.termsAndConditions || '', tW - 5), startX + 2, finalY + 12);
+      }
 
       doc.setFont('helvetica', 'bold'); doc.text("Receiver's Signature :", startX + tW + 2, finalY + 4);
       doc.setFontSize(7); doc.text(`for ${data.companyName}`, startX + tW + rW + (aW / 2), finalY + 4, { align: 'center' });

@@ -43,7 +43,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import XLSX from 'xlsx-js-style';
 
-import { State } from '../../enums';
+import { State, PLANS } from '../../enums';
 import ReportByDayChart from './SalesReportComponents/ReportByDayChart';
 import PaymentModeCard from './SalesReportComponents/PaymentModeCard';
 import DownloadMenu from './SalesReportComponents/DownloadMenu';
@@ -51,9 +51,14 @@ import CustomRangePanel from './SalesReportComponents/CustomRangePanel';
 import SaleBillPanel from './SalesReportComponents/SaleBillPanel';
 import { Modal } from '../../constants/Modal';
 import { useAuth } from '../../context/auth-context';
+import { useSalesSettings } from '../../context/SettingsContext';
+import { normalizePlan } from '../../context/Plan';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
+import { useInvoiceCommunication } from '../Journal/hooks';
+import { InvoiceActionSheet, PrintSubMenuModal, QrCodeModal } from '../Journal/components';
+import type { Invoice } from '../Journal/journal.types';
 
 const SalesReport: React.FC = () => {
   const { currentUser } = useAuth();
@@ -101,7 +106,41 @@ const SalesReport: React.FC = () => {
     authLoading,
   } = useSalesReport();
 
-  const navigate = useNavigate();
+    const navigate = useNavigate();
+
+  /* ---------- BILL ACTION SHEET (WhatsApp / Download / Print / QR) ---------- */
+  const { salesSettings } = useSalesSettings();
+  const [actionModal, setActionModal] = useState<{ message: string; type: State } | null>(null);
+  const [isPosBasicPlan, setIsPosBasicPlan] = useState(false);
+
+  useEffect(() => {
+    const fetchPlan = async () => {
+      if (!currentUser?.companyId) return;
+      try {
+        const snap = await getDoc(doc(db, 'companies', currentUser.companyId));
+        if (snap.exists()) {
+          const plan = normalizePlan(snap.data().pack);
+          setIsPosBasicPlan(plan === PLANS.POS_BASIC || plan === PLANS.CALC_CATALOG);
+        }
+      } catch (e) {
+        console.error('Failed to fetch plan', e);
+      }
+    };
+    fetchPlan();
+  }, [currentUser?.companyId]);
+
+  const {
+    invoiceToPrint, setInvoiceToPrint,
+    showQrModal, setShowQrModal,
+    sendingPdf,
+    showPrintSubMenu, setShowPrintSubMenu,
+    enableTriplicate,
+    billType, setBillType,
+    handlePdfAction,
+    handleSendWhatsapp,
+    handleSendWhatsappSnapto,
+    handleShowQr,
+  } = useInvoiceCommunication({ currentUser, salesSettings, isPosBasicPlan, setModal: setActionModal });
 
   // Re-render every minute so the "Updated x min ago" label stays accurate.
   const [now, setNow] = useState(() => Date.now());
@@ -673,6 +712,38 @@ const SalesReport: React.FC = () => {
     }
   };
 
+    /* ---------- VIEW BILL → ACTION SHEET ---------- */
+  const openBillActions = async (sale: SaleRecord) => {
+    if (!currentUser?.companyId) return;
+    setSelectedId(null); // close the detail panel
+    try {
+      // Full sale document so the PDF gets tax, discount, GST etc.
+      const snap = await getDoc(doc(db, 'companies', currentUser.companyId, 'sales', sale.id));
+      const data: any = snap.exists() ? snap.data() : {};
+      const dueAmount = Math.max(Number(sale.paymentMethods?.due ?? sale.dueAmount) || 0, 0);
+      setInvoiceToPrint({
+        ...data,
+        id: sale.id,
+        type: 'Credit', // Journal uses 'Credit' for sale bills
+        invoiceNumber: data.invoiceNumber ?? sale.invoiceNumber,
+        partyName: data.partyName || sale.partyName,
+        partyNumber: data.partyNumber || sale.partyNumber,
+        amount: data.totalAmount ?? sale.totalAmount,
+        dueAmount,
+        status: dueAmount > 0 ? 'Unpaid' : 'Paid',
+        items: data.items || sale.items || [],
+        paymentMethods: data.paymentMethods || sale.paymentMethods || {},
+        paymentHistory: data.paymentHistory || [],
+        time: new Date(sale.createdAt).toLocaleString('en-IN', {
+          day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit',
+        }),
+      } as unknown as Invoice);
+    } catch (err) {
+      console.error('Open bill failed:', err);
+      setActionModal({ message: 'Could not load the bill. Please try again.', type: State.ERROR });
+    }
+  };
+
   /* ---------- DOWNLOAD / SHARE ---------- */
   const runDownload = (action: () => void) => {
     if (filteredSales.length === 0) {
@@ -1174,11 +1245,55 @@ const SalesReport: React.FC = () => {
         </ul>
       </section>
 
-      <SaleBillPanel
+            <SaleBillPanel
         sale={selectedId ? filteredSales.find((s) => s.id === selectedId) ?? null : null}
         companyId={currentUser?.companyId}
         onClose={() => setSelectedId(null)}
+        onViewBill={openBillActions}
       />
+
+      {actionModal && (
+        <Modal
+          message={actionModal.message}
+          type={actionModal.type}
+          onClose={() => setActionModal(null)}
+          onConfirm={() => setActionModal(null)}
+          showConfirmButton={false}
+        />
+      )}
+      {invoiceToPrint && (
+        <InvoiceActionSheet
+          invoiceToPrint={invoiceToPrint}
+          setInvoiceToPrint={setInvoiceToPrint}
+          setShowPrintSubMenu={setShowPrintSubMenu}
+          isPosBasicPlan={isPosBasicPlan}
+          billType={billType}
+          setBillType={setBillType}
+          sendingPdf={sendingPdf}
+          companyId={currentUser?.companyId}
+          handleSendWhatsapp={handleSendWhatsapp}
+          handleSendWhatsappSnapto={handleSendWhatsappSnapto}
+          handlePdfAction={handlePdfAction}
+          handleShowQr={handleShowQr}
+        />
+      )}
+      {!isPosBasicPlan && showPrintSubMenu && invoiceToPrint && (
+        <PrintSubMenuModal
+          invoiceToPrint={invoiceToPrint}
+          setInvoiceToPrint={setInvoiceToPrint}
+          setShowPrintSubMenu={setShowPrintSubMenu}
+          billType={billType}
+          enableTriplicate={enableTriplicate}
+          handlePdfAction={handlePdfAction}
+        />
+      )}
+      {showQrModal && (
+        <QrCodeModal
+          showQrModal={showQrModal}
+          setShowQrModal={setShowQrModal}
+          companyId={currentUser?.companyId}
+        />
+      )}
     </div>
   );
 };

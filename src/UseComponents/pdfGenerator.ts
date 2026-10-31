@@ -7,6 +7,8 @@ import QRCode from 'qrcode';
 import { generateThermalReceipt } from './ThermalpdfGenerator';
 import { generateA5Invoice } from './A5PdfGenerator';
 import { drawWatermark } from '../Components/pdfWatermark';
+import { splitAddOns, reserveAddOnSpace, drawAddOnText } from './addOnText';
+import { needsImageText, textToImage, NAME_IMG_W, installUnicodeText } from './textToImage';
 
 export interface InvoiceData {
   printFormat?: 'A4' | 'THERMAL58' | 'THERMAL80' | 'A5';
@@ -76,6 +78,7 @@ export interface InvoiceData {
     amount?: number;
     gstAmount?: number;
     imageBase64?: string;
+    addOns?: { name: string; price?: number }[];
   }[];
   terms: string;
   transportDetails?: {
@@ -121,12 +124,13 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     );
   }
 
-  const doc = new jsPDF({
+    const doc = new jsPDF({
     orientation: 'p',
     unit: 'mm',
     format: 'a4',
     compress: true
   });
+  installUnicodeText(doc);
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
 
@@ -221,7 +225,9 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     return sum + (tAmt > 0 || txAmt > 0 ? tAmt + txAmt : fAmt);
   }, 0);
 
-  const tableBody = data.items.map(item => {
+  const addOnTexts: string[] = [];
+  const nameImgs: ({ dataUrl: string; heightMm: number; widthMm: number } | null)[] = [];
+  const tableBody = data.items.map((item, itemIdx) => {
     const qty = Number(item.quantity) || 0;
     let mrp = Number((item as any).mrp || item.listPrice || (item as any).salesPrice || (item as any).rate || 0);
 
@@ -304,24 +310,38 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       }
     }
 
+    // Item name + add-ons (neeche alag line me)
+    const { baseName, addOnText } = splitAddOns(item);
+    addOnTexts[itemIdx] = addOnText;
+    nameImgs[itemIdx] = needsImageText(baseName) ? textToImage(baseName, NAME_IMG_W, 8, true) : null;
+    const nameCell = nameImgs[itemIdx] ? '' : baseName;
+
     // Unified Columns
     if (!showTaxColumns) {
       const row: any[] = [
-        item.sno, item.name, item.hsn || (item as any).hsnSac || '', qty, item.unit || 'PCS',
+        item.sno, nameCell, item.hsn || (item as any).hsnSac || '', qty, item.unit || 'PCS',
         mrp.toFixed(2), itemDiscDisplay, billDisc.toFixed(2), finalAmount.toFixed(2)
       ];
-      if (showImages) row.splice(1, 0, ''); // NEW: blank cell — actual photo didDrawCell se draw hogi
+      if (showImages) row.splice(1, 0, '');
       return row;
     }
 
     const row: any[] = [
-      item.sno, item.name, item.hsn || (item as any).hsnSac || '', qty, item.unit || 'PCS',
+      item.sno, nameCell, item.hsn || (item as any).hsnSac || '', qty, item.unit || 'PCS',
       mrp.toFixed(2), itemDiscDisplay, billDisc.toFixed(2), taxableAmt.toFixed(2),
       isComposition ? '-' : `${taxRate}%`, isComposition ? '-' : taxAmt.toFixed(2), finalAmount.toFixed(2)
     ];
     if (showImages) row.splice(1, 0, ''); // NEW
     return row;
   });
+
+  // Emoji / non-Latin text -> pre-rendered once as an image (jsPDF fonts can't draw it)
+  const narrationImg = data.narration && data.narration.trim() !== '' && needsImageText(data.narration)
+    ? textToImage(data.narration, contentWidth - 18, 8)
+    : null;
+  const termsImg = data.terms && needsImageText(data.terms)
+    ? textToImage(data.terms, contentWidth * 0.50 - 5, 8)
+    : null;
 
   const advance = Number(data.advance) || 0;
 
@@ -553,21 +573,41 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
         }
       },
       // NEW: har item ki photo "Image" column (index 1) me draw karo
-      ...(showImages ? {
-        didDrawCell: (hookData: any) => {
-          if (hookData.column.index === 1 && hookData.section === 'body') {
-            const item = data.items[hookData.row.index];
-            const imgSize = 12;
-            const x = hookData.cell.x + (hookData.cell.width - imgSize) / 2;
-            const y = hookData.cell.y + (hookData.cell.height - imgSize) / 2;
-            if (item?.imageBase64 && item.imageBase64.startsWith('data:image')) {
-              try {
-                doc.addImage(item.imageBase64, item.imageBase64.includes('png') ? 'PNG' : 'JPEG', x, y, imgSize, imgSize, undefined, 'FAST');
-              } catch (e) { /* skip broken image */ }
-            }
+      didParseCell: (h: any) => {
+        const nameCol = showImages ? 2 : 1;
+        if (h.section === 'body' && h.column.index === nameCol && nameImgs[h.row.index]) {
+          const img = nameImgs[h.row.index]!;
+          h.cell.styles.minCellWidth = img.widthMm + 2;
+          h.cell.styles.minCellHeight = Math.max(h.cell.styles.minCellHeight || 0, img.heightMm + 3);
+        }
+        reserveAddOnSpace(h, nameCol, addOnTexts);
+      },
+      didDrawCell: (hookData: any) => {
+        const nameCol = showImages ? 2 : 1;
+        if (hookData.section === 'body' && hookData.column.index === nameCol) {
+          const img = nameImgs[hookData.row.index];
+          if (img) {
+            const hasAddOn = !!addOnTexts[hookData.row.index];
+            // add-on text neeche aata hai, isliye uske sath top-align; warna vertically center
+            const imgY = hasAddOn
+              ? hookData.cell.y + 1.5
+              : hookData.cell.y + (hookData.cell.height - img.heightMm) / 2;
+            doc.addImage(img.dataUrl, 'PNG', hookData.cell.x + 1, imgY, img.widthMm, img.heightMm);
           }
         }
-      } : {}),
+        drawAddOnText(doc, hookData, nameCol, addOnTexts);
+        if (showImages && hookData.column.index === 1 && hookData.section === 'body') {
+          const item = data.items[hookData.row.index];
+          const imgSize = 12;
+          const x = hookData.cell.x + (hookData.cell.width - imgSize) / 2;
+          const y = hookData.cell.y + (hookData.cell.height - imgSize) / 2;
+          if (item?.imageBase64 && item.imageBase64.startsWith('data:image')) {
+            try {
+              doc.addImage(item.imageBase64, item.imageBase64.includes('png') ? 'PNG' : 'JPEG', x, y, imgSize, imgSize, undefined, 'FAST');
+            } catch (e) { /* skip broken image */ }
+          }
+        }
+      },
     });
     // @ts-ignore
     let finalY = doc.lastAutoTable.finalY;
@@ -645,12 +685,17 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       finalY += 8;
     }
     if (data.narration && data.narration.trim() !== '') {
-      const nLines = doc.splitTextToSize(data.narration, contentWidth - 18);
-      const nH = (nLines.length * 4) + 4;
+      const nLines = narrationImg ? [] : doc.splitTextToSize(data.narration, contentWidth - 18);
+      const nH = narrationImg ? narrationImg.heightMm + 4 : (nLines.length * 4) + 4;
       if (finalY + nH > pageHeight - margin) { doc.addPage(); finalY = margin; }
       doc.rect(startX, finalY, contentWidth, nH);
       doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.text('Remarks:', startX + 2, finalY + 4);
-      doc.setFont('helvetica', 'normal'); doc.text(nLines, startX + 16, finalY + 4);
+      doc.setFont('helvetica', 'normal');
+      if (narrationImg) {
+        doc.addImage(narrationImg.dataUrl, 'PNG', startX + 16, finalY + 2, narrationImg.widthMm, narrationImg.heightMm);
+      } else {
+        doc.text(nLines, startX + 16, finalY + 4);
+      }
       finalY += nH;
     }
     if (showTaxColumns) {
@@ -733,7 +778,13 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.text('Terms & Condition', startX + 2, finalY + 4);
       doc.line(startX + 2, finalY + 5, startX + 2 + doc.getTextWidth('Terms & Condition'), finalY + 5);
       doc.setFont('helvetica', 'normal'); doc.text('E. & O. E.', startX + 2, finalY + 8);
-      doc.text(doc.splitTextToSize(data.terms, tW - 5), startX + 2, finalY + 12);
+      if (termsImg) {
+        const maxH = 35 - 11 - 1;
+        const scale = termsImg.heightMm > maxH ? maxH / termsImg.heightMm : 1;
+        doc.addImage(termsImg.dataUrl, 'PNG', startX + 2, finalY + 11, termsImg.widthMm * scale, termsImg.heightMm * scale);
+      } else {
+        doc.text(doc.splitTextToSize(data.terms || '', tW - 5), startX + 2, finalY + 12);
+      }
 
       doc.setFont('helvetica', 'bold'); doc.text("Receiver's Signature :", startX + tW + 2, finalY + 4);
       doc.setFontSize(7); doc.text(`for ${data.companyName}`, startX + tW + rW + (aW / 2), finalY + 4, { align: 'center' });

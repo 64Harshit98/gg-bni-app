@@ -48,6 +48,28 @@ interface ItemAddProps {
   onCancel?: () => void; // close button handler for modal mode
 }
 
+// SKU / barcode is used as the Firestore document ID, so it must follow these rules.
+// Returns an error message, or null when valid.
+const validateSkuFormat = (raw: string): string | null => {
+  const sku = raw.trim();
+  if (!sku) return null; // emptiness is handled separately
+  if (sku.length > 100) {
+    return 'SKU / Barcode is too long. Maximum 100 characters allowed.';
+  }
+  if (/\s/.test(sku)) {
+    return 'SKU / Barcode format is not valid: spaces are not allowed. Use letters, numbers, hyphen (-) or underscore (_) only.';
+  }
+  if (sku === '.' || sku === '..' || sku.startsWith('__')) {
+    return 'SKU / Barcode format is not valid: it cannot be "." or ".." or start with "__".';
+  }
+  const bad = sku.match(/[^A-Za-z0-9_-]/g);
+  if (bad) {
+    const unique = Array.from(new Set(bad)).join(' ');
+    return `SKU / Barcode format is not valid: the character(s) "${unique}" are not allowed. Use only letters, numbers, hyphen (-) and underscore (_).`;
+  }
+  return null;
+};
+
 const formatImageUrl = (url: string | null | undefined): string | null => {
   if (!url) return null;
   let cleanUrl = url.trim();
@@ -154,8 +176,8 @@ const ADD_ITEM_CSS = `
   .ai-bar .ai-seg{display:inline-flex}
   .ai-tabs{display:none}
 }
-.ai-seg{display:inline-flex;padding:3px;gap:2px;background:var(--surface-sunken);border:1px solid var(--border);border-radius:11px}
-.ai-seg button{height:28px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:var(--ink-muted);font-size:12px;font-weight:500;line-height:28px;font-family:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.ai-seg{display:inline-flex;padding:3px;gap:2px;background:var(--surface-sunken);border:1px solid var(--border);border-radius:2px}
+.ai-seg button{height:28px;padding:0 12px;border:0;border-radius:2px;background:transparent;color:var(--ink-muted);font-size:12px;font-weight:500;line-height:28px;font-family:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
 .ai-seg button[aria-pressed="true"]{background:var(--surface);color:var(--primary-text);box-shadow:var(--shadow-card)}
 .ai-count{min-width:22px;height:20px;padding:0 6px;border-radius:999px;background:var(--surface-sunken);color:var(--ink-muted);font-size:11px;line-height:20px;text-align:center}
 .ai-seg button[aria-pressed="true"] .ai-count{background:var(--primary-soft);color:var(--primary-soft-ink)}
@@ -300,7 +322,17 @@ const ADD_ITEM_CSS = `
 /* phone pinned bar (<768 only) */
 .ai-savebar{position:fixed;left:0;right:0;bottom:64px;z-index:20;background:var(--surface);border-top:1px solid var(--border);padding:12px 16px;display:grid;grid-template-columns:1fr 1.4fr;gap:8px}
 .ai-savepair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-@media(min-width:768px){.ai-savebar{display:none}}
+/* Tablet: bar sits at the bottom of the page, form scrolls above it */
+@media(min-width:768px) and (max-width:1279px){
+  .ai-savebar{
+    position:static;bottom:auto;z-index:auto;flex:none;
+    display:flex;justify-content:flex-end;gap:8px;
+    padding:12px 20px;box-shadow:0 -6px 16px rgba(21,48,140,.06)
+  }
+  .ai-savebar .ai-btn{min-width:160px}
+}
+/* Desktop: right panel already has the buttons */
+@media(min-width:1280px){.ai-savebar{display:none}}
 .ai-modalbar{border-top:1px solid var(--border);padding:12px 16px;display:flex;justify-content:flex-end;gap:8px;background:var(--surface)}
 
 /* overlays */
@@ -463,6 +495,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const additionalImagesInputRef = useRef<HTMLInputElement>(null);
   const successBannerRef = useRef<HTMLDivElement>(null);
   const keepForNextRef = useRef(false); // "+ Another": carry unit, tax and groups to the next item
 
@@ -831,9 +864,16 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       setModal({ message: 'Two pricing options cannot share the same barcode.', type: State.ERROR });
       return;
     }
-    if (allTierBarcodes.includes(itemBarcode.trim())) {
+        if (allTierBarcodes.includes(itemBarcode.trim())) {
       setModal({ message: 'A pricing option barcode cannot be the same as the item barcode.', type: State.ERROR });
       return;
+    }
+    for (const tier of activeTiers) {
+      const tierBarcodeError = tier.barcode ? validateSkuFormat(tier.barcode) : null;
+      if (tierBarcodeError) {
+        setModal({ message: `Pricing option "${tier.label}": ${tierBarcodeError}`, type: State.ERROR });
+        return;
+      }
     }
 
     // Quantity slabs (volume pricing) — only when enabled in settings
@@ -899,9 +939,16 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     // --- FIX: Fallback to auto-generated barcode if input is empty ---
     const finalBarcode = itemBarcode.trim() || fetchedAutoBarcode;
 
-    // --- STRICT BLOCK: Absolutely no empty strings allowed ---
+        // --- STRICT BLOCK: Absolutely no empty strings allowed ---
     if (!finalBarcode) {
       setModal({ message: 'Barcode is required and cannot be empty.', type: State.ERROR });
+      return;
+    }
+
+    // Format check: show a clear message instead of a generic save failure
+    const barcodeFormatError = validateSkuFormat(finalBarcode);
+    if (barcodeFormatError) {
+      setModal({ message: barcodeFormatError, type: State.ERROR });
       return;
     }
 
@@ -1077,7 +1124,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       // Breaks down WHY rows failed, since "missing prices or Name" was a
       // catch-all covering several unrelated validation rules — makes the
       // actual rejection reason visible instead of a single opaque count.
-      const failReasons = { missingPrice: 0, invalidPricing: 0, purchasePriceRequired: 0, unknownLocation: 0, negativeValue: 0, other: 0 };
+      const failReasons = { missingPrice: 0, invalidPricing: 0, purchasePriceRequired: 0, unknownLocation: 0, negativeValue: 0, invalidBarcode: 0, other: 0 };
 
       for (let r = dataStartRow; r <= worksheet.rowCount; r++) {
         const name = safeGetVal(worksheet.getRow(r), 1);
@@ -1172,7 +1219,8 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         if (rowMRP === 0 && rowSale === 0) { rowIsValid = false; failReasons.missingPrice++; } // Missing prices
         else if (rowMRP > 0 && rowSale > 0 && rowSale > rowMRP) { rowIsValid = false; failReasons.invalidPricing++; } // Invalid pricing
         else if (itemSettings.requirePurchasePrice && rowPurchase <= 0) { rowIsValid = false; failReasons.purchasePriceRequired++; }
-        else if (trimmedLocation && !isShopLocation && !targetGodownId) { rowIsValid = false; failReasons.unknownLocation++; } // Unknown Location name
+                else if (trimmedLocation && !isShopLocation && !targetGodownId) { rowIsValid = false; failReasons.unknownLocation++; } // Unknown Location name
+        else if (rowBarcodeStr && !existingItem && validateSkuFormat(rowBarcodeStr)) { rowIsValid = false; failReasons.invalidBarcode++; } // Bad SKU format on a NEW item
 
         // --- NEGATIVE VALUE GUARD ---
         // Only checks MRP/Sale/Purchase price and their discounts — the
@@ -1371,7 +1419,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         if (failReasons.invalidPricing > 0) reasonParts.push(`${failReasons.invalidPricing} Sales Price higher than MRP`);
         if (failReasons.purchasePriceRequired > 0) reasonParts.push(`${failReasons.purchasePriceRequired} missing Purchase Price`);
         if (failReasons.unknownLocation > 0) reasonParts.push(`${failReasons.unknownLocation} unknown Location`);
-        if (failReasons.negativeValue > 0) reasonParts.push(`${failReasons.negativeValue} negative values`);
+                if (failReasons.negativeValue > 0) reasonParts.push(`${failReasons.negativeValue} negative values`);
         if (failReasons.other > 0) reasonParts.push(`${failReasons.other} save errors`);
         setModal({ message: `Imported with errors. ${failedCount} rows failed: ${reasonParts.join(', ')}.`, type: State.ERROR });
       } else {
@@ -1610,7 +1658,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       <style>{ADD_ITEM_CSS}</style>
 
       <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
-      {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+      {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} theme={theme === 'orange' ? 'catalogue' : 'pos'} />}
 
       {/* hidden Excel input — single instance, used by the mobile card and the desktop panel */}
       {!isModal && (
@@ -1801,8 +1849,28 @@ const ItemAdd: React.FC<ItemAddProps> = ({
 
               <div className="ai-full">
                 <span className="ai-lab">Additional photos <span style={{ color: 'var(--ink-subtle)', fontWeight: 400 }}>(for catalogue slider)</span></span>
-                <div style={{ marginTop: 4 }}>
-                  <input type="file" accept="image/*" multiple onChange={handleAdditionalImagesChange} className="ai-file" />
+                <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="ai-btn ai-btn--secondary ai-btn--sm"
+                    onClick={() => additionalImagesInputRef.current?.click()}
+                    disabled={isImageCompressing}
+                  >
+                    <AiIcon name="upload" sm />Add photos
+                  </button>
+                  <span className="ai-hint">
+                    {additionalImageFiles.length > 0
+                      ? `${additionalImageFiles.length} photo${additionalImageFiles.length > 1 ? 's' : ''} selected`
+                      : 'No photos added'}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    ref={additionalImagesInputRef}
+                    onChange={(e) => { handleAdditionalImagesChange(e); e.target.value = ''; }}
+                    style={{ display: 'none' }}
+                  />
                 </div>
                 {additionalImagePreviews.length > 0 && (
                   <div className="ai-thumbs">
@@ -1823,7 +1891,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                     <IconScanCircle width={18} height={18} />
                   </button>
                 </div>,
-                { req: !!itemSettings?.requireBarcode, hint: 'Next free number — change it or scan the pack' })}
+                { req: !!itemSettings?.requireBarcode, hint: 'Letters, numbers, - and _ only. No spaces or / .' })}
 
               {fl('Unit',
                 <div style={{ display: 'grid', gap: 8 }}>
@@ -2011,43 +2079,43 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           {/* ---------- Add-ons: pick from the groups created in Item groups ---------- */}
           {addOnsActive && (
             <section className="rounded-xl border border-[#dfe6fb] bg-white p-3 shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]">
-  <div className="flex items-center gap-2.5">
-    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#e6eeff] text-base font-semibold text-[#155dfc]">+</span>
-    <div className="min-w-0">
-      <b className="block text-[15px] font-semibold leading-5 text-[#0f172b]">Add-ons</b>
-      <small className="block text-[11px] leading-4 text-[#5b6b86]">Pick groups created in Item groups, then choose which options this item shows</small>
-    </div>
-    <button
-      type="button"
-      onClick={() => navigate(routes.itemGroup)}
-      className={`ml-auto shrink-0 text-xs font-semibold hover:underline ${activeTheme.text}`}
-    >
-      Manage add-ons
-    </button>
-  </div>
+              <div className="flex items-center gap-2.5">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#e6eeff] text-base font-semibold text-[#155dfc]">+</span>
+                <div className="min-w-0">
+                  <b className="block text-[15px] font-semibold leading-5 text-[#0f172b]">Add-ons</b>
+                  <small className="block text-[11px] leading-4 text-[#5b6b86]">Pick groups created in Item groups, then choose which options this item shows</small>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate(routes.itemGroup)}
+                  className={`ml-auto shrink-0 text-xs font-semibold hover:underline ${activeTheme.text}`}
+                >
+                  Manage add-ons
+                </button>
+              </div>
 
-  <div className="mt-2.5">
-    {addOnTemplates.length === 0 ? (
-      <p className="m-0 text-xs text-[#5b6b86]">No add-on groups yet. Create them in Item groups → Add-ons.</p>
-    ) : (
-      <select
-        value=""
-        onChange={(e) => {
-          const id = e.target.value;
-          if (id) {
-            setAddOnGroupIds(prev => (prev.includes(id) ? prev : [...prev, id]));
-            setAddOnOpenId(id); // open its checklist right away
-          }
-        }}
-        className="h-9 w-full min-w-0 rounded-lg border border-[#7a8aa3] bg-white px-3 text-sm text-[#0f172b] outline-none focus:border-[#155dfc] focus:ring-2 focus:ring-[#155dfc]/40"
-      >
-        <option value="">Add an add-on group…</option>
-        {addOnTemplates.filter(t => !addOnGroupIds.includes(t.id)).map(t => (
-          <option key={t.id} value={t.id}>{t.name}</option>
-        ))}
-      </select>
-    )}
-  </div>
+              <div className="mt-2.5">
+                {addOnTemplates.length === 0 ? (
+                  <p className="m-0 text-xs text-[#5b6b86]">No add-on groups yet. Create them in Item groups → Add-ons.</p>
+                ) : (
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      if (id) {
+                        setAddOnGroupIds(prev => (prev.includes(id) ? prev : [...prev, id]));
+                        setAddOnOpenId(id); // open its checklist right away
+                      }
+                    }}
+                    className="h-9 w-full min-w-0 rounded-lg border border-[#7a8aa3] bg-white px-3 text-sm text-[#0f172b] outline-none focus:border-[#155dfc] focus:ring-2 focus:ring-[#155dfc]/40"
+                  >
+                    <option value="">Add an add-on group…</option>
+                    {addOnTemplates.filter(t => !addOnGroupIds.includes(t.id)).map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
 
               {addOnGroupIds.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1.5">

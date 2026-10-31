@@ -465,7 +465,7 @@ const CatalogueSalesSettings: React.FC = () => {
 
   return (
     <div className={`${ROOT_BASE} flex min-h-screen w-full flex-col`}>
-      {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+      {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} theme="catalogue" />}
 
       {showGstModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(15,23,43,.45)] p-4">

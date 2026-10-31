@@ -4,6 +4,8 @@ import QRCode from "qrcode";
 import { ACTION } from "../enums";
 import type { InvoiceData } from "./pdfGenerator";
 import { drawWatermark } from "../Components/pdfWatermark";
+import { splitAddOns, reserveAddOnSpace, drawAddOnText } from './addOnText';
+import { needsImageText, textToImage, NAME_IMG_W, installUnicodeText } from './textToImage';
 
 const compressBase64Image = (
     base64: string,
@@ -63,6 +65,7 @@ export const generateA5Invoice = async (
         format: "a5",
         compress: true
     }); // A5 Size
+    installUnicodeText(doc);
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const rightMargin = pageWidth - 10;
@@ -435,9 +438,12 @@ export const generateA5Invoice = async (
             totalTaxAmt += taxAmt;
             calculatedGrandTotal += finalRowTotal;
 
+            const { baseName, addOnText } = splitAddOns(item);
+
             return {
                 sno: item.sno || (index + 1).toString(),
-                name: item.name || "",
+                name: baseName,
+                addOnText,
                 totalPcs,
                 unit: item.unit || "pcs",
                 qty,
@@ -449,6 +455,11 @@ export const generateA5Invoice = async (
                 finalRowTotal,
                 imageBase64: item.imageBase64
             };
+        });
+
+        const nameImgs = processedItems.map(p => {
+            const t = `${p.name}\n(${p.totalPcs} ${p.unit})`;
+            return needsImageText(t) ? textToImage(t, NAME_IMG_W, 8, true) : null;
         });
 
         const billDiscount = Number(data.billDiscount) || 0;
@@ -498,10 +509,10 @@ export const generateA5Invoice = async (
             columnStyles: hasImages
                 ? {
                     1: { cellWidth: 18, halign: "center" },
-                    2: { halign: "left" }
+                    2: { cellWidth: 50, halign: "left" }
                 }
                 : {
-                    1: { halign: "left" }
+                    1: { cellWidth: 50, halign: "left" }
                 },
             head: [[
                 "S. No.",
@@ -513,10 +524,10 @@ export const generateA5Invoice = async (
                 "Discount",
                 "Amount"
             ]],
-            body: processedItems.map(item => [
+            body: processedItems.map((item, i) => [
                 item.sno,
                 ...(hasImages ? [""] : []),
-                `${item.name}\n(${item.totalPcs} ${item.unit})`,
+                nameImgs[i] ? "" : `${item.name}\n(${item.totalPcs} ${item.unit})`,
                 item.qty,
                 item.rawPrice.toFixed(2),
                 ...(resolvedIsEstimate ? [] : [
@@ -574,7 +585,29 @@ export const generateA5Invoice = async (
                 minCellHeight: 8
             },
 
+            didParseCell: (h: any) => {
+                const nameCol = hasImages ? 2 : 1;
+                if (h.section === "body" && h.column.index === nameCol && nameImgs[h.row.index]) {
+                    const img = nameImgs[h.row.index]!;
+                    h.cell.styles.minCellWidth = img.widthMm + 2;
+                    h.cell.styles.minCellHeight = Math.max(h.cell.styles.minCellHeight || 0, img.heightMm + 3);
+                }
+                reserveAddOnSpace(h, nameCol, processedItems.map(p => p.addOnText));
+            },
+
             didDrawCell: (hookData) => {
+                const nameCol = hasImages ? 2 : 1;
+                if (hookData.section === "body" && hookData.column.index === nameCol) {
+                    const img = nameImgs[hookData.row.index];
+                    if (img) {
+                        const hasAddOn = !!processedItems[hookData.row.index]?.addOnText;
+                        const imgY = hasAddOn
+                            ? hookData.cell.y + 1.5
+                            : hookData.cell.y + (hookData.cell.height - img.heightMm) / 2;
+                        doc.addImage(img.dataUrl, "PNG", hookData.cell.x + 1, imgY, img.widthMm, img.heightMm);
+                    }
+                }
+                drawAddOnText(doc, hookData, nameCol, processedItems.map(p => p.addOnText));
                 if (!hasImages) return;
                 const imageColumnIndex = 1;
 
@@ -788,12 +821,18 @@ export const generateA5Invoice = async (
 
             const footerY = pageHeight - footerHeight;
 
-            const splitTerms = doc.splitTextToSize(
+            const termsImg = data.terms && needsImageText(data.terms)
+                ? textToImage(data.terms, pageWidth - 45, 8)
+                : null;
+
+            const splitTerms = termsImg ? [] : doc.splitTextToSize(
                 data.terms || "",
                 pageWidth - 45
             );
 
-            const termsBlockHeight = 10 + (splitTerms.length * 3.5);
+            const termsBlockHeight = termsImg
+                ? 10 + termsImg.heightMm
+                : 10 + (splitTerms.length * 3.5);
             const signBlockHeight = 18; // space needed for signature image + label
 
             const blockHeight = Math.max(termsBlockHeight, signBlockHeight);
@@ -817,7 +856,11 @@ export const generateA5Invoice = async (
 
             doc.setFontSize(8);
             doc.setTextColor(80, 80, 80);
-            doc.text(splitTerms, 5, blockTopY + 6);
+            if (termsImg) {
+                doc.addImage(termsImg.dataUrl, "PNG", 5, blockTopY + 4.5, termsImg.widthMm, termsImg.heightMm);
+            } else {
+                doc.text(splitTerms, 5, blockTopY + 6);
+            }
 
             // Authorised Signature — right end, terms block gets full left-half width
             const signImageY = footerY - 14;

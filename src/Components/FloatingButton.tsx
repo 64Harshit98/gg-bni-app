@@ -84,13 +84,12 @@ const FloatingButton: React.FC<IFloatingButtonProps> = ({
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       {isOpen && createPortal(
-        <div
-          // Below the bottom nav's z-40 (and the FAB trigger inside it) so
-          // the nav stays crisp/on top of the blur instead of being sampled
-          // by it — only the ordinary page content behind it blurs.
-          className="fixed inset-0 z-30 bg-black/10 backdrop-blur-sm"
-          onClick={() => setIsOpen(false)}
-        />,
+       <div
+  // z-[120]: above sticky page headers (100/50) and the share FAB (50) so they blur,
+  // but below the top strip / app header (140) and bottom nav (150) so those stay crisp.
+  className="fixed inset-0 z-[120] bg-black/10 backdrop-blur-sm"
+  onClick={() => setIsOpen(false)}
+/>,
         document.body,
       )}
       <PopoverTrigger
@@ -121,7 +120,7 @@ const FloatingButton: React.FC<IFloatingButtonProps> = ({
           side="top"
           sideOffset={10}
           collisionPadding={8}
-          className="w-auto z-50 bg-slate-50 rounded-sm border border-gray-100 shadow-xl p-2 data-[state=open]:animate-none data-[state=closed]:animate-none"
+          className="w-auto z-[160] bg-slate-50 rounded-sm border border-gray-100 shadow-xl p-2 data-[state=open]:animate-none data-[state=closed]:animate-none"
         >
           <p className="text-center font-semibold text-gray-800 mb-3">Add</p>
           <div

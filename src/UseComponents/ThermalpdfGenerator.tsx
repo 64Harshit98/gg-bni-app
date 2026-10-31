@@ -2,6 +2,8 @@ import jsPDF from 'jspdf';
 import { ACTION } from '../enums';
 import type { InvoiceData } from './pdfGenerator';
 import { drawWatermark } from '../Components/pdfWatermark';
+import { splitAddOns } from './addOnText';
+import { needsImageText, textToImage, installUnicodeText } from './textToImage';
 
 export const generateThermalReceipt = (
     data: InvoiceData,
@@ -101,11 +103,19 @@ export const generateThermalReceipt = (
             }
         }
 
-        // Estimate line wrap for height
-        const lines = Math.max(1, Math.ceil(item.name.length / charsPerLine));
-        itemsAreaHeight += (lines * 3) + 2;
+        const { baseName, addOnText } = splitAddOns(item);
 
-        return { name: item.name, qty, rate: mrp, amount: finalAmount };
+        // Estimate line wrap for height (name + add-ons)
+        const lines = Math.max(1, Math.ceil(baseName.length / charsPerLine));
+        const addOnLinesEst = addOnText
+            ? Math.ceil((addOnText.length + 2) / charsPerLine)
+            : 0;
+        itemsAreaHeight += ((lines + addOnLinesEst) * 3) + 2;
+
+        const nameImg = needsImageText(baseName) ? textToImage(baseName, nameWrapWidth, 7) : null;
+        if (nameImg) itemsAreaHeight += nameImg.heightMm;
+
+        return { name: baseName, nameImg, addOnText, qty, rate: mrp, amount: finalAmount };
     });
 
     const billDiscount = Number(data.billDiscount) || 0;
@@ -134,7 +144,7 @@ export const generateThermalReceipt = (
         unit: 'mm',
         format: [paperWidth, calculatedHeight],
     });
-
+    installUnicodeText(doc);
     // Helper for dashed lines
     const drawDashedLine = (y: number) => {
         doc.setLineWidth(0.1);
@@ -219,13 +229,31 @@ export const generateThermalReceipt = (
 
     processedItems.forEach((item) => {
         const nameLines = doc.splitTextToSize(item.name, nameWrapWidth);
+        const addOnLines = item.addOnText
+            ? doc.splitTextToSize(`+ ${item.addOnText}`, nameWrapWidth)
+            : [];
 
         doc.text(item.qty.toString(), colQty, currentY, { align: 'right' });
         doc.text(item.rate.toFixed(2), colPrice, currentY, { align: 'right' });
         doc.text(item.amount.toFixed(2), colAmount, currentY, { align: 'right' });
 
-        doc.text(nameLines, margin, currentY);
-        currentY += (nameLines.length * 3) + 1;
+        let rowY: number;
+        if (item.nameImg) {
+            doc.addImage(item.nameImg.dataUrl, 'PNG', margin, currentY - 2.5, nameWrapWidth, item.nameImg.heightMm);
+            rowY = currentY - 2.5 + item.nameImg.heightMm;
+        } else {
+            doc.text(nameLines, margin, currentY);
+            rowY = currentY + (nameLines.length * 3);
+        }
+
+        if (addOnLines.length > 0) {
+            doc.setFontSize(6);
+            doc.text(addOnLines, margin + 1, rowY);
+            doc.setFontSize(7);
+            rowY += addOnLines.length * 3;
+        }
+
+        currentY = rowY + 1;
     });
 
     currentY += 1;
@@ -319,11 +347,14 @@ export const generateThermalReceipt = (
     doc.setFont('helvetica', 'normal');
     doc.text('Powered by SELLAR.IN', paperWidth / 2, currentY, { align: 'center' });
 
-     // --- STAMP WATERMARK ON EVERY PAGE (matches A4/A5 generators — unconditional, Estimate included) ---
+    // --- STAMP WATERMARK ON EVERY PAGE ---
+    // Thermal receipt is one continuous page, so center the watermark on the
+    // content actually printed (currentY) instead of the estimated page height.
+    const actualHeight = Math.min(calculatedHeight, currentY + 6);
     const totalPages = (doc as any).getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
         doc.setPage(i);
-        drawWatermark(doc, paperWidth, calculatedHeight);
+        drawWatermark(doc, paperWidth, actualHeight, "SELLAR.IN", { fitRatio: 0.5 });
     }
     // --- OUTPUT ROUTING ---
     if (action === ACTION.PRINT) {

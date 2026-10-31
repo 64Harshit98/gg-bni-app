@@ -7,7 +7,9 @@ import {
     serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../../../../lib/Firebase';
+import { clearSalesReportCache } from '../../../Reports/SalesReportComponents/salesReportCache';
 import type { Item } from '../../../../constants/models';
+import { addOnStockOf } from '../../../../constants/models';
 import type { User } from '../../../../Role/permission';
 import { State } from '../../../../enums';
 import { ROUTES } from '../../../../constants/routes.constants';
@@ -143,8 +145,8 @@ export const useSalesPayment = ({
                     effectiveUnitPrice = mrp * (1 - currentDiscount / 100);
                 }
 
-                // If the user's custom price is higher than the MRP, flag it
-                if (effectiveUnitPrice > mrp) {
+                // If the user's custom price is higher than the MRP, flag it (0.01 tolerance for float rounding)
+                if (effectiveUnitPrice - mrp > 0.01) {
                     invalidMrpItems.push(`${item.name} (Max: ₹${mrp})`);
                 }
             }
@@ -168,6 +170,8 @@ export const useSalesPayment = ({
                     const pid = oldItem.productId || oldItem.id;
                     const oldQty = (oldItem.quantity || 1) * (oldItem.tierQuantity || 1);
                     originalQuantities.set(pid, (originalQuantities.get(pid) || 0) + oldQty);
+                    addOnStockOf(oldItem).forEach((a) =>
+                        originalQuantities.set(a.itemId, (originalQuantities.get(a.itemId) || 0) + a.qty * (oldItem.quantity || 1)));
                 });
             }
             const stockNeeds = new Map<string, number>();
@@ -175,6 +179,8 @@ export const useSalesPayment = ({
                 const pid = i.productId;
                 const requiredStock = (i.quantity || 1) * (i.tierQuantity || 1);
                 stockNeeds.set(pid, (stockNeeds.get(pid) || 0) + requiredStock);
+                addOnStockOf(i).forEach((a) =>
+                    stockNeeds.set(a.itemId, (stockNeeds.get(a.itemId) || 0) + a.qty * (i.quantity || 1)));
             });
             const invalidItems: string[] = [];
             stockNeeds.forEach((needed, pid) => {
@@ -270,11 +276,15 @@ export const useSalesPayment = ({
         };
 
         const formatItemsForDB = (itemsToFormat: SalesItem[]) => {
-            const itemsWithTierNames = itemsToFormat.map(item =>
-                item.tierLabel
-                    ? { ...item, name: `${item.name} - ${item.tierLabel}` }
-                    : item
-            );
+            const itemsWithTierNames = itemsToFormat.map(item => {
+                // addOns / addOnKey / addOnGroups / addOnGroupIds are cart-only; the add-on text goes into the saved name
+                const { addOns, addOnKey, addOnGroups, addOnGroupIds, addOnPicks, ...rest } = item as any;
+                const baseName = item.tierLabel ? `${item.name} - ${item.tierLabel}` : item.name;
+                const addOnText = addOns?.length ? ` + ${addOns.map((a: { name: string }) => a.name).join(', ')}` : '';
+                // Remember which inventory items the add-ons took, so editing this bill can put their stock back
+                const addOnStock = addOnStockOf(item);
+                return { ...rest, name: `${baseName}${addOnText}`, ...(addOnStock.length > 0 ? { addOnStock } : {}) } as SalesItem;
+            });
 
             return calculateFinalizedSaleItems(itemsWithTierNames, {
                 isRoundingEnabled,
@@ -300,8 +310,14 @@ export const useSalesPayment = ({
             return obj;
         };
 
-        // 2. Generate finalized items WITH the proportional discount applied
-        const finalizedItems = formatItemsForDB(items);
+        const finalizedItemsRaw = formatItemsForDB(items);
+        // calculateFinalizedSaleItems nayi object banata hai, to addOnStock yahin wapas jodo (same order, isliye index se)
+        const finalizedItems = finalizedItemsRaw.length === items.length
+            ? finalizedItemsRaw.map((fi, idx) => {
+                const linked = addOnStockOf(items[idx] as any);
+                return linked.length > 0 && !(fi as any).addOnStock ? { ...fi, addOnStock: linked } : fi;
+            })
+            : finalizedItemsRaw;
 
         // 3. Re-calculate total Tax and Taxable Amount from the finalized items
         const newTaxableAmount = toCurrency(finalizedItems.reduce((acc, item) => acc + item.taxableAmount, 0));
@@ -429,6 +445,8 @@ export const useSalesPayment = ({
                         const pid = oldItem.productId || oldItem.id;
                         const oldQty = (oldItem.quantity || 1) * (oldItem.tierQuantity || 1);
                         oldQuantities.set(pid, (oldQuantities.get(pid) || 0) + oldQty);
+                        addOnStockOf(oldItem).forEach((a: { itemId: string; qty: number }) =>
+                            oldQuantities.set(a.itemId, (oldQuantities.get(a.itemId) || 0) + a.qty * (oldItem.quantity || 1)));
                     });
 
                     const newQuantities = new Map<string, number>();
@@ -437,6 +455,8 @@ export const useSalesPayment = ({
                         if (pid) {
                             const newQty = (newItem.quantity || 1) * (newItem.tierQuantity || 1);
                             newQuantities.set(pid, (newQuantities.get(pid) || 0) + newQty);
+                            addOnStockOf(newItem).forEach(a =>
+                                newQuantities.set(a.itemId, (newQuantities.get(a.itemId) || 0) + a.qty * (newItem.quantity || 1)));
                         }
                     });
 
@@ -468,6 +488,7 @@ export const useSalesPayment = ({
                     if (delta === 0) return item;
                     return { ...item, stock: Math.max(0, (item.stock || 0) - delta) };
                 }));
+                clearSalesReportCache(currentUser?.companyId);
                 showSuccessModal("Invoice Updated", ROUTES.JOURNAL);
 
             } else {
@@ -475,13 +496,19 @@ export const useSalesPayment = ({
                 await runTransaction(db, async (transaction) => {
                     result = await saveOperation(transaction, true);
 
+                    // One stock update per product: sold items + linked add-on items (e.g. a Coke sold with a burger)
+                    const deductions = new Map<string, number>();
                     items.forEach(i => {
                         const pid = i.productId || i.id;
                         if (pid && !i.isCustomAmount) {
-                            const itemRef = doc(db, "companies", resolvedCompanyId, "items", pid);
-                            const totalToDeduct = (i.quantity || 1) * (i.tierQuantity || 1);
-                            transaction.update(itemRef, { stock: firebaseIncrement(-totalToDeduct), updatedAt: serverTimestamp() });
+                            deductions.set(pid, (deductions.get(pid) || 0) + (i.quantity || 1) * (i.tierQuantity || 1));
+                            addOnStockOf(i).forEach(a =>
+                                deductions.set(a.itemId, (deductions.get(a.itemId) || 0) + a.qty * (i.quantity || 1)));
                         }
+                    });
+                    deductions.forEach((qty, pid) => {
+                        const itemRef = doc(db, "companies", resolvedCompanyId, "items", pid);
+                        transaction.update(itemRef, { stock: firebaseIncrement(-qty), updatedAt: serverTimestamp() });
                     });
 
                     if (settingsDocId) {
@@ -510,10 +537,12 @@ export const useSalesPayment = ({
                         shippingNumber: completionData.shippingNumber || '',
                         shippingAddress: completionData.shippingAddress || '',
                         shippingGST: completionData.shippingGST || '',
+                        narration: completionData.narration || '',
                         transportDetails: completionData.transportDetails || undefined,
                         gstScheme: finalGstScheme,   // ✅ ADDED
                         taxType: finalTaxType,       // ✅ ADDED
-                        placeOfSupply: completionData.placeOfSupply || ''   // ✅ ADDED (IGST calc ke liye bhi zaroori)
+                        placeOfSupply: completionData.placeOfSupply || '',  // ✅ ADDED (IGST calc ke liye bhi zaroori)
+                        shippingState: completionData.shippingState || ''
                     };
 
                     setAvailableItems(prev => prev.map(item => {
@@ -524,6 +553,7 @@ export const useSalesPayment = ({
                         return { ...item, stock: Math.max(0, (item.stock || 0) - stockDelta) };
                     }));
 
+                    clearSalesReportCache(currentUser?.companyId);
                     setIsDrawerOpen(false);
                     setSavedBillData({ id: result.id, number: result.number, invoiceData: invoiceData });
                     sessionStorage.removeItem('sales_cart_draft');

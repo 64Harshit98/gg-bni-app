@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { LogOut, UserCog, Sparkles } from 'lucide-react';
 
@@ -14,20 +15,20 @@ export const THEMES: Record<Theme, {
   avatar: string; searchHover: string;
 }> = {
   sky: {
-  navActive: 'bg-blue-600 text-white shadow-md shadow-blue-600/25',
-  qaActive: 'border-blue-200 bg-blue-50 text-slate-900',
-  qaIconActive: 'bg-blue-100 text-blue-600',
-  qaIconIdle: 'bg-slate-100 text-slate-600 group-hover:bg-blue-100 group-hover:text-blue-600',
-  avatar: 'bg-blue-600 ring-blue-600/20',
-  searchHover: 'hover:border-blue-300',
-},
+    navActive: 'bg-blue-600 text-white shadow-md shadow-blue-600/25',
+    qaActive: 'border-blue-200 bg-blue-50 text-slate-900',
+    qaIconActive: 'bg-blue-100 text-blue-600',
+    qaIconIdle: 'bg-slate-100 text-slate-600 group-hover:bg-blue-100 group-hover:text-blue-600',
+    avatar: 'bg-blue-600 ring-blue-600/20',
+    searchHover: 'hover:border-blue-300',
+  },
   orange: {
-    navActive: 'bg-orange-500 text-white shadow-md shadow-orange-500/25',
-    qaActive: 'border-orange-200 bg-orange-50 text-slate-900',
-    qaIconActive: 'bg-orange-100 text-orange-600',
-    qaIconIdle: 'bg-slate-100 text-slate-600 group-hover:bg-orange-100 group-hover:text-orange-600',
-    avatar: 'bg-orange-500 ring-orange-500/20',
-    searchHover: 'hover:border-orange-300',
+    navActive: 'bg-orange-700 text-white shadow-md shadow-orange-700/25',      // primary #c2410c
+    qaActive: 'border-orange-200 bg-orange-100 text-orange-800',               // primary-soft #ffedd5 + soft-ink #9a3412
+    qaIconActive: 'bg-orange-200 text-orange-800',
+    qaIconIdle: 'bg-slate-100 text-slate-600 group-hover:bg-orange-100 group-hover:text-orange-800',
+    avatar: 'bg-orange-700 ring-orange-700/20',
+    searchHover: 'hover:border-orange-600',                                     // focus-ring #ea580c
   },
 };
 
@@ -52,48 +53,94 @@ interface UserMenuProps {
   buttonClassName?: string;
   /** Where the menu opens relative to the button */
   placement?: 'top-left' | 'bottom-right';
+  /** 'sky' = POS, 'orange' = Catalogue */
+  theme?: Theme;
+  /** Optional overrides for the menu links */
+  accountTo?: string;
+  addonsTo?: string;
 }
 
 /** Small dependency-free dropdown (no shadcn dropdown-menu needed). */
-export function UserMenu({ userName, children, buttonClassName = '', placement = 'bottom-right' }: UserMenuProps) {
+export function UserMenu({
+  userName,
+  children,
+  buttonClassName = '',
+  placement = 'bottom-right',
+  theme = 'sky',
+  accountTo,
+  addonsTo,
+}: UserMenuProps) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+const ref = useRef<HTMLDivElement>(null);
+const btnRef = useRef<HTMLButtonElement>(null);
+const menuRef = useRef<HTMLDivElement>(null);
+const [coords, setCoords] = useState<{ top?: number; bottom?: number; left?: number; right?: number }>({});
+
+// Button ki position se menu ke fixed coordinates nikalo
+useLayoutEffect(() => {
+  if (!open || !btnRef.current) return;
+  const r = btnRef.current.getBoundingClientRect();
+  setCoords(
+    placement === 'top-left'
+      ? { bottom: window.innerHeight - r.top + 8, left: r.left }
+      : { top: r.bottom + 8, right: window.innerWidth - r.right }
+  );
+}, [open, placement]);
 
   useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
+  if (!open) return;
+  const onDown = (e: MouseEvent) => {
+    const t = e.target as Node;
+    if (ref.current?.contains(t) || menuRef.current?.contains(t)) return;
+    setOpen(false);
+  };
+  const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+  const close = () => setOpen(false);
+  document.addEventListener('mousedown', onDown);
+  document.addEventListener('keydown', onKey);
+  window.addEventListener('resize', close); // fixed menu resize pe stale na ho
+  return () => {
+    document.removeEventListener('mousedown', onDown);
+    document.removeEventListener('keydown', onKey);
+    window.removeEventListener('resize', close);
+  };
+}, [open]);
 
-  const pos = placement === 'top-left' ? 'bottom-full left-0 mb-2' : 'top-full right-0 mt-2';
+  //const pos = placement === 'top-left' ? 'bottom-full left-0 mb-2' : 'top-full right-0 mt-2';
   const item =
     'flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100';
 
+  const isCatalogue = theme === 'orange';
+  const accountPath =
+    accountTo ?? (isCatalogue ? ROUTES.CATALOGUE_ACCOUNTS : ROUTES.ACCOUNT);
+  const addonsPath =
+    addonsTo ??
+    (isCatalogue
+      ? `${ROUTES.CHOME}/${ROUTES.CATA_ADDITIONAL_SERVICES}`
+      : ROUTES.ADDITIONAL_FEATURES);
+
   return (
     <div ref={ref} className="relative">
-      <button type="button" onClick={() => setOpen((o) => !o)} className={buttonClassName}>
-        {children}
-      </button>
+  <button ref={btnRef} type="button" onClick={() => setOpen((o) => !o)} className={buttonClassName}>
+    {children}
+  </button>
 
-      {open && (
-        <div className={`absolute z-[300] w-56 rounded-sm border border-slate-200 bg-white p-1.5 shadow-xl ${pos}`}>
+  {open &&
+    createPortal(
+      <div
+        ref={menuRef}
+        style={{ position: 'fixed', ...coords }}
+        className="z-[1000] w-56 rounded-sm border border-slate-200 bg-white p-1.5 shadow-xl"
+      >
           <p className="truncate px-3 py-2 text-xs font-medium text-slate-500">
             Signed in as {userName || 'Account'}
           </p>
           <div className="my-1 border-t border-slate-100" />
-          <Link to={ROUTES.ACCOUNT} onClick={() => setOpen(false)} className={item}>
+          <Link to={accountPath} onClick={() => setOpen(false)} className={item}>
             <UserCog className="size-4" /> Account
           </Link>
           <ShowWrapper requiredPermission={Permissions.ViewAddons}>
-            <Link to={ROUTES.ADDITIONAL_FEATURES} onClick={() => setOpen(false)} className={item}>
+            <Link to={addonsPath} onClick={() => setOpen(false)} className={item}>
               <Sparkles className="size-4" /> Add-ons
             </Link>
           </ShowWrapper>
@@ -108,7 +155,8 @@ export function UserMenu({ userName, children, buttonClassName = '', placement =
           >
             <LogOut className="size-4" /> Sign out
           </button>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

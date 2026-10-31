@@ -27,11 +27,11 @@ const Loading: React.FC = () => {
       className="relative h-screen w-screen overflow-hidden bg-cover bg-center md:bg-[center_top_75%] pb-16"
       style={{ backgroundImage: `url(${bgMain})` }}
     >
-      <div className="absolute inset-0 bg-gradient-to-b from-white/35 via-white/25 to-white/35" />
+      <div className="absolute inset-0 bg-white/20" />
 
       <div className="relative z-10 flex h-full w-full items-center justify-center px-4">
         <div className="relative flex flex-col items-center justify-center">
-          <div className="pointer-events-none absolute -z-10 h-44 w-44 rounded-full bg-white/70 blur-2xl md:h-56 md:w-56" />
+          {/* removed: glow div was creating the box behind text */}
 
           <div className="relative h-22 w-[280px] md:h-24 md:w-[360px] flex items-center justify-center">
             <AnimatePresence mode="wait">
@@ -65,10 +65,10 @@ const Loading: React.FC = () => {
             <AnimatePresence mode="wait">
               <motion.p
                 key={LOADING_NAMES[activeNameIndex]}
-                className="text-[11px] font-semibold tracking-[0.12em] text-slate-700/80 uppercase"
-                initial={{ opacity: 0, y: 8, filter: 'blur(2px)' }}
-                animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-                exit={{ opacity: 0, y: -8, filter: 'blur(2px)' }}
+                className="text-[11px] font-semibold tracking-[0.12em] text-slate-800 uppercase [text-shadow:0_1px_8px_rgba(255,255,255,0.9)]"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.24, ease: 'easeOut' }}
               >
                 {LOADING_NAMES[activeNameIndex]}

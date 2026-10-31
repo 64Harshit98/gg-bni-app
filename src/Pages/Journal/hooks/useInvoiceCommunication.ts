@@ -23,7 +23,7 @@ interface UseInvoiceCommunicationParams {
 // Journal.tsx (was the pdfGenerating/invoiceToPrint/showQrModal/sendingPdf/
 // showPrintSubMenu/enableTriplicate/billType state, the bill-settings-fetch
 // effect that only fed enableTriplicate, and preparePdfData/handlePdfAction/
-// handleSendWhatsapp/handleSendReminder/handleShowQr/handlePrintQr).
+// handleSendWhatsapp/handleSendReminder/handleShowQr).
 export const useInvoiceCommunication = ({
   currentUser,
   salesSettings,
@@ -603,23 +603,6 @@ export const useInvoiceCommunication = ({
     setShowQrModal(invoice);
   };
 
-  const handlePrintQr = (invoice: Invoice) => {
-    if (!invoice.items || invoice.items.length === 0) {
-      setModal({ message: "No items found in this invoice to print.", type: State.ERROR });
-      return;
-    }
-    const cleanItems = invoice.items.map(item => ({
-      id: item.id,
-      name: item.name,
-      quantity: Number(item.quantity),
-      mrp: Number(item.mrp),
-      barcode: item.barcode || '',
-    }));
-    navigate(ROUTES.PRINTQR, {
-      state: { prefilledItems: cleanItems }
-    });
-  };
-
   return {
     pdfGenerating, setPdfGenerating,
     invoiceToPrint, setInvoiceToPrint,
@@ -635,6 +618,5 @@ export const useInvoiceCommunication = ({
     handleSendReminder,
     handleSendReminderSnapto,
     handleShowQr,
-    handlePrintQr,
   };
 };

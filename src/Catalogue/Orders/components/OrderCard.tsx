@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from "framer-motion";
 import { useNavigate } from 'react-router-dom';
+import { FiArrowLeft, FiChevronRight, FiMessageCircle, FiPhone } from 'react-icons/fi';
 import { ROUTES } from '../../../constants/routes.constants';
 import { CustomCard } from '../../../Components/CustomCard';
 import { Spinner } from '../../../constants/Spinner';
@@ -8,6 +9,7 @@ import { IconEdit } from '../../../constants/Icons';
 import { useWhatsappProvider } from '../../../Pages/Additional/Whatsapp/useWhatsappProvider';
 import type { Order, OrderStatus } from '../orders.types';
 import { formatAmount } from '../../../lib/format';
+import { splitAddOns } from '../../../UseComponents/addOnText';
 
 interface OrderCardProps {
     order: Order;
@@ -25,7 +27,29 @@ interface OrderCardProps {
     handlePreviousStatus: (orderId: string, currentStatus: OrderStatus) => void;
     handleUpdateStatus: (orderId: string, currentStatus: OrderStatus, manualNextStatus?: OrderStatus) => void;
     isUpdatingStatus: string | null;
+    // accordion → compact mobile card (tap opens the full-screen 'screen' view)
+    // row       → desktop list row
+    // detail    → desktop right pane
+    // screen    → mobile full-screen order view (header + cards + pinned actions)
+    variant?: 'accordion' | 'row' | 'detail' | 'screen';
 }
+
+// ─── UI-only style tokens (SELLAR orders design) ────────────────────────────
+const BTN = 'min-h-[40px] px-3 rounded-sm text-xs font-semibold transition active:scale-[0.97] flex items-center justify-center gap-1.5 flex-1 sm:flex-none sm:min-w-[96px] disabled:opacity-50';
+const BTN_PRIMARY = `${BTN} bg-[#c2410c] hover:bg-[#9a3412] text-white sm:min-w-[130px] sm:ml-auto`;
+const STAGES = ['Upcoming', 'Confirmed', 'Packed', 'Completed'] as const;
+const BTN_SECONDARY = `${BTN} bg-white border border-[#f6e1d0] text-slate-800 hover:bg-[#fff8f2]`;
+const BTN_DANGER = `${BTN} bg-white border border-red-200 text-red-600 hover:bg-red-50`;
+const BTN_SUCCESS = `${BTN} bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100`;
+const BTN_WARN = `${BTN} bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100`;
+const BTN_GHOST = `${BTN} bg-transparent text-slate-600 hover:bg-[#fff8f2]`;
+const OVERLINE = 'text-[10px] font-semibold uppercase tracking-wider text-[#9a3412]';
+// compact mobile card icon buttons (Call / WhatsApp)
+const ICON_BTN = 'w-10 h-10 rounded-sm grid place-items-center transition active:scale-[0.97]';
+const ICON_BTN_SECONDARY = `${ICON_BTN} bg-white border border-[#f6e1d0] text-slate-800 hover:bg-[#fff8f2]`;
+const ICON_BTN_SUCCESS = `${ICON_BTN} bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100`;
+// white surface card used on the mobile full-screen view
+const SCREEN_CARD = 'bg-white border border-[#f6e1d0] rounded-sm shadow-sm p-4';
 
 export const OrderCard: React.FC<OrderCardProps> = ({
     order: Order,
@@ -43,6 +67,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
     handlePreviousStatus,
     handleUpdateStatus,
     isUpdatingStatus,
+    variant = 'accordion',
 }) => {
     const navigate = useNavigate();
     const { provider: whatsappProvider } = useWhatsappProvider(companyId);
@@ -53,7 +78,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                 new Set(
                     Order.returnHistory.map(r => r.modeOfReturn)
                 )) : [];
-    const isExpanded = expandedorderId === Order.id;
+    const isSelected = expandedorderId === Order.id;
     const isUpcomingStatus = Order.status === 'Upcoming';
 
     // Total is read from the order document as saved at checkout/edit time —
@@ -84,7 +109,851 @@ export const OrderCard: React.FC<OrderCardProps> = ({
         paid = total;
     }
     // ------------------------------------------------
-    const cardContent = (
+
+    // UI-only derived values
+    const avatarLetter = String(Order.userName || '?').trim().charAt(0).toUpperCase() || '?';
+    const itemCount = Order.items?.length || 0;
+    const hasRefund = Number(Order.refundAmount || 0) > 0;
+    const stageIndex = isFinalStage ? 3 : Order.status === 'Packed' ? 2 : Order.status === 'Confirmed' ? 1 : 0;
+
+    // Payment-method labels (original payments + latest return payment) — used for the PAID · UPI badge
+    const paymentMethodLabels = (() => {
+        const seen = new Set<string>();
+
+        if (Order.paymentMethods) {
+            Object.entries(Order.paymentMethods).forEach(([method, amount]) => {
+                if (method.toLowerCase() !== 'due' && Number(amount) > 0) {
+                    seen.add(method.trim().toUpperCase());
+                }
+            });
+        }
+
+        const latestReturn = Order.returnHistory?.[Order.returnHistory.length - 1];
+        if (latestReturn?.paymentDetails) {
+            Object.entries(latestReturn.paymentDetails).forEach(([method, amount]) => {
+                if (method.toLowerCase() !== 'due' && Number(amount) > 0) {
+                    seen.add(method.trim().toUpperCase());
+                }
+            });
+        }
+
+        return Array.from(seen);
+    })();
+
+    const paidBadgeText = paymentMethodLabels.length > 0 ? `PAID · ${paymentMethodLabels.join(' + ')}` : 'PAID';
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // DESKTOP LIST ROW
+    // ─────────────────────────────────────────────────────────────────────────
+    if (variant === 'row') {
+        return (
+            <div
+                role="button"
+                tabIndex={0}
+                aria-selected={isSelected}
+                onClick={() => handleOrderClick(Order.id)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleOrderClick(Order.id); }}
+                className={`grid grid-cols-[auto_1fr_auto] gap-x-3 gap-y-1 items-center px-4 py-3.5 border-b border-[#f6e1d0] last:border-b-0 cursor-pointer transition ${isSelected
+                    ? 'bg-[#ffedd5] shadow-[inset_3px_0_0_#c2410c]'
+                    : 'hover:bg-[#fff8f2]'}`}
+            >
+                <span className="row-span-2 w-9 h-9 rounded-full grid place-items-center bg-[#fff8f2] text-slate-600 font-semibold text-[13px]">
+                    {avatarLetter}
+                </span>
+                <b className="text-sm font-semibold text-slate-900 truncate">{Order.userName}</b>
+                <span className="text-sm font-semibold text-slate-900 tabular-nums text-right">₹{formatAmount(total)}</span>
+                <span className="text-xs text-slate-500 truncate">
+                    {!isUpcomingStatus && `${Order.orderId} · `}{Order.time} · {itemCount} {itemCount === 1 ? 'item' : 'items'}
+                </span>
+                {isUpcomingStatus ? (
+                    <span className="text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-full bg-[#f97316] text-white justify-self-end">NEW</span>
+                ) : due > 0 ? (
+                    <span className="text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-full bg-[#fef6d7] text-[#a16207] justify-self-end">UNPAID</span>
+                ) : (
+                    <span className="text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 justify-self-end">PAID</span>
+                )}
+            </div>
+        );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // SHARED PIECES (used by 'detail' on desktop and 'screen' on mobile)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // Progress track: Upcoming → Confirmed → Packed → Completed
+    const trackEl = !isUpcomingStatus && (
+        <div className="grid grid-cols-4">
+            {STAGES.map((s, i) => {
+                const on = i <= stageIndex;
+                return (
+                    <div key={s} className="relative pt-[18px] text-[10px] sm:text-xs text-slate-500">
+                        <span className={`absolute top-1 left-0 right-0 h-[3px] ${on ? 'bg-[#c2410c]' : 'bg-[#f6e1d0]'}`} />
+                        <span className={`absolute top-0 left-0 w-[11px] h-[11px] rounded-full border-2 ${on ? 'bg-[#c2410c] border-[#c2410c]' : 'bg-white border-[#f6e1d0]'} ${i === stageIndex ? 'ring-4 ring-[#ffedd5]' : ''}`} />
+                        <b className="block text-xs sm:text-[13px] font-semibold text-slate-900">{s}</b>
+                        {i === 0 ? Order.time : i === stageIndex + 1 ? 'Next' : on ? '' : '—'}
+                    </div>
+                );
+            })}
+        </div>
+    );
+
+    // Billing + Shipping
+    const addressesEl = !isUpcomingStatus && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="p-3 border border-[#f6e1d0] rounded-sm space-y-0.5">
+                <p className={OVERLINE}>Billing address</p>
+                <p className="text-[13px] font-semibold text-slate-900">{Order.billingDetails?.name}</p>
+                <p className="text-xs text-slate-600 leading-snug">{Order.billingDetails?.address}</p>
+                {(Order.billingDetails?.city || Order.billingDetails?.state) && (
+                    <p className="text-xs text-slate-600 leading-snug">
+                        {[Order.billingDetails?.city, Order.billingDetails?.state].filter(Boolean).join(', ')}
+                    </p>
+                )}
+                <p className="text-xs text-slate-600">{Order.billingDetails?.phone}</p>
+            </div>
+            <div className="p-3 border border-[#f6e1d0] rounded-sm space-y-0.5">
+                <p className={OVERLINE}>Shipping address</p>
+                <p className="text-[13px] font-semibold text-slate-900">{Order.shippingDetails?.name || Order.billingDetails?.name}</p>
+                <p className="text-xs text-slate-600 leading-snug">{Order.shippingDetails?.address || Order.billingDetails?.address}</p>
+                {(Order.shippingDetails?.city || Order.shippingDetails?.state || Order.billingDetails?.city || Order.billingDetails?.state) && (
+                    <p className="text-xs text-slate-600 leading-snug">
+                        {[
+                            Order.shippingDetails?.city || Order.billingDetails?.city,
+                            Order.shippingDetails?.state || Order.billingDetails?.state
+                        ].filter(Boolean).join(', ')}
+                    </p>
+                )}
+                <p className="text-xs text-slate-600">{Order.shippingDetails?.phone}</p>
+            </div>
+        </div>
+    );
+
+    // Special instructions + Items list + Expenses / Tax / Bill discount
+    const itemsEl = (
+        <div>
+            {Order.specialInstruction && (
+                <div className="mb-3 bg-[#fef6d7] border border-[#f3e3a0] rounded-sm p-3">
+                    <p className="text-[10px] font-semibold text-[#a16207] uppercase tracking-wider mb-1">
+                        Special instructions
+                    </p>
+                    <p className="text-xs text-slate-800 font-medium leading-snug break-words">
+                        {Order.specialInstruction}
+                    </p>
+                </div>
+            )}
+
+            <p className={`${OVERLINE} mb-1`}>Items</p>
+            <div className="divide-y divide-[#f6e1d0] border-y border-[#f6e1d0]">
+                {Order.items?.map((item, idx) => {
+                    const returnedEntries: { qty: number; modeOfReturn: string; returnedAt: any; unitPrice: number }[] = [];
+                    (Order.returnHistory || []).forEach((h: any) => {
+                        (h.returnedItems || []).forEach((r: any) => {
+                            const matches =
+                                String(r.originalItemId) === String(item.itemId) ||
+                                String(r.originalItemId) === String(item.id) ||
+                                String(r.id) === String(item.itemId) ||
+                                String(r.id) === String(item.id);
+                            if (matches) {
+                                returnedEntries.push({
+                                    qty: Number(r.quantity || 0),
+                                    modeOfReturn: h.modeOfReturn || '',
+                                    returnedAt: h.returnedAt,
+                                    unitPrice: Number(r.effectiveUnitPrice ?? r.customPrice ?? r.salesPrice ?? r.mrp ?? 0),
+                                });
+                            }
+                        });
+                    });
+                    const totalReturnedFromHistory = returnedEntries.reduce((sum, e) => sum + e.qty, 0);
+                    const originalQty = Number(item.quantity || 0) + totalReturnedFromHistory;
+                    const remainingQty = originalQty - totalReturnedFromHistory;
+
+                    // Extract Base Price for UI Math
+                    const rawUnitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
+                    // Tax rate/type as saved on the item at checkout/edit time — not gated
+                    // by the company's current tax toggle, which may have changed since.
+                    const taxRate = Number(item.tax ?? item.taxRate ?? 0);
+                    const taxType = (item.taxType || '').toLowerCase();
+
+                    let displayUnitPrice = rawUnitPrice;
+
+                    // If tax is inclusive, reverse-calculate the base price so the UI math adds up with the "+Tax" row
+                    if (taxRate > 0 && taxType === 'inclusive') {
+                        displayUnitPrice = rawUnitPrice / (1 + (taxRate / 100));
+                    }
+
+                    const displayLineTotal = displayUnitPrice * remainingQty;
+                    const { baseName, addOnText } = splitAddOns(item);
+                    // --------------------------------------------------
+
+                    return (
+                        <div key={idx} className="py-2.5">
+                            {/* REMAINING QUANTITY ROW */}
+                            {remainingQty > 0 && (
+                                <div className="flex justify-between items-start">
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-[13px] font-medium leading-tight text-slate-900">
+                                            {baseName}
+                                            <span className="ml-1 text-[11px] font-normal text-slate-500">
+                                                {item.unit || "pcs"}
+                                            </span>
+                                        </p>
+                                        {addOnText && (
+                                            <p className="text-[11px] leading-tight text-slate-500 mt-0.5 break-words">+ {addOnText}</p>
+                                        )}
+                                        {item.note && (
+                                            <p className="text-[11px] leading-tight flex items-baseline gap-1.5 mt-1">
+                                                <span className="font-semibold uppercase tracking-wider text-slate-500">Note:</span>
+                                                <span className="italic text-slate-600">{item.note}</span>
+                                            </p>
+                                        )}
+                                        <p className="text-xs text-slate-500 mt-0.5">
+                                            ₹{formatAmount(displayUnitPrice)} per {item.unit || "pcs"}
+                                        </p>
+                                    </div>
+                                    <div className="text-right ml-4">
+                                        <p className="text-[13px] font-semibold text-slate-900 tabular-nums">
+                                            ₹{formatAmount(displayLineTotal)}
+                                        </p>
+                                        <p className="text-xs text-slate-500">
+                                            Qty: {remainingQty}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* RETURNED ENTRIES — one crossed-out row per return event */}
+                            {returnedEntries.map((entry, rIdx) => {
+                                let retDisplayUnitPrice = entry.unitPrice;
+                                if (taxRate > 0 && taxType === 'inclusive') {
+                                    retDisplayUnitPrice = entry.unitPrice / (1 + (taxRate / 100));
+                                }
+                                const retDisplayLineTotal = retDisplayUnitPrice * entry.qty;
+
+                                return entry.qty > 0 && (
+                                    <div key={rIdx} className="flex justify-between items-start mt-1.5">
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-[13px] font-medium leading-tight line-through text-slate-400">
+                                                {baseName}
+                                                <span className="ml-1 text-[11px] font-normal">
+                                                    {item.unit || "pcs"}
+                                                </span>
+                                            </p>
+                                            {addOnText && (
+                                                <p className="text-[11px] leading-tight line-through text-slate-400 mt-0.5 break-words">+ {addOnText}</p>
+                                            )}
+                                            <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                                {entry.modeOfReturn && (
+                                                    <span className={`text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded-full border ${entry.modeOfReturn.toUpperCase() === 'EXCHANGE'
+                                                        ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                                        : entry.modeOfReturn.toUpperCase().includes('CASH') || entry.modeOfReturn.toUpperCase().includes('REFUND')
+                                                            ? 'bg-green-50 text-green-700 border-green-200'
+                                                            : 'bg-orange-50 text-[#F97316] border-orange-200'
+                                                        }`}>
+                                                        {entry.modeOfReturn}
+                                                    </span>
+                                                )}
+                                                {entry.returnedAt && (
+                                                    <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
+                                                        {new Date(
+                                                            entry.returnedAt?.toDate
+                                                                ? entry.returnedAt.toDate()
+                                                                : entry.returnedAt
+                                                        ).toLocaleDateString('en-GB', {
+                                                            day: '2-digit', month: 'short', year: '2-digit'
+                                                        })}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="text-right ml-4">
+                                            <p className="text-[13px] font-semibold line-through text-slate-400 tabular-nums">
+                                                ₹{formatAmount(retDisplayLineTotal)}
+                                            </p>
+                                            <p className="text-xs text-slate-400">
+                                                Qty: {entry.qty}
+                                            </p>
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    );
+                })}
+
+                {/* Show fully removed returned items */}
+                {Order.returnHistory?.flatMap((h: any) => h.returnedItems || [])
+                    .filter((r: any) => !Order.items?.some(item =>
+                        String(item.itemId) === String(r.originalItemId) ||
+                        String(item.id) === String(r.originalItemId)
+                    ))
+                    .map((r: any, idx: number) => (
+                        <div key={`removed-${idx}`} className="py-2.5">
+                            <div className="flex justify-between items-start">
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-[13px] font-medium leading-tight line-through text-slate-400">
+                                        {r.name}
+                                        <span className="ml-1 text-[11px] font-normal">
+                                            {r.unit || "pcs"}
+                                        </span>
+                                    </p>
+                                    {/* Return mode badge + date */}
+                                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                        {(() => {
+                                            const matchedHistory = Order.returnHistory?.find((h: any) =>
+                                                h.returnedItems?.some((ri: any) =>
+                                                    String(ri.originalItemId) === String(r.originalItemId) ||
+                                                    String(ri.id) === String(r.originalItemId)
+                                                )
+                                            );
+                                            return (
+                                                <>
+                                                    {matchedHistory?.modeOfReturn && (
+                                                        <span className={`text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded-full border ${matchedHistory.modeOfReturn === 'EXCHANGE'
+                                                            ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                                            : matchedHistory.modeOfReturn === 'CASH REFUND'
+                                                                ? 'bg-green-50 text-green-700 border-green-200'
+                                                                : 'bg-orange-50 text-[#F97316] border-orange-200'
+                                                            }`}>
+                                                            {matchedHistory.modeOfReturn}
+                                                        </span>
+                                                    )}
+                                                    {matchedHistory?.returnedAt && (
+                                                        <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
+                                                            {new Date(
+                                                                (matchedHistory.returnedAt as any)?.toDate
+                                                                    ? (matchedHistory.returnedAt as any).toDate()
+                                                                    : matchedHistory.returnedAt
+                                                            ).toLocaleDateString('en-GB', {
+                                                                day: '2-digit', month: 'short', year: '2-digit'
+                                                            })}
+                                                        </span>
+                                                    )}
+                                                </>
+                                            );
+                                        })()}
+                                    </div>
+                                    {r.note && (
+                                        <p className="text-[11px] leading-tight flex items-baseline gap-1.5 mt-1">
+                                            <span className="font-semibold uppercase tracking-wider text-slate-400">Note:</span>
+                                            <span className="italic text-slate-400">{r.note}</span>
+                                        </p>
+                                    )}
+                                </div>
+                                <div className="text-right ml-4">
+                                    <p className="text-[13px] font-semibold line-through text-slate-400 tabular-nums">
+                                        ₹{formatAmount((r.effectiveUnitPrice ?? r.customPrice ?? r.salesPrice ?? r.mrp ?? 0)
+                                            * r.quantity)}
+                                    </p>
+                                    <p className="text-xs text-slate-400">Qty: {r.quantity}</p>
+                                </div>
+                            </div>
+                        </div>
+                    ))
+                }
+            </div>
+
+            {/* Expenses, tax & discount (saved on order) */}
+            {!isUpcomingStatus && (
+                <div className="pt-2 space-y-1">
+                    {Array.isArray(Order.expenses) && Order.expenses.length > 0 && (
+                        <>
+                            {Order.expenses.map((ex, idx) => (
+                                <div key={idx} className="flex justify-between items-center text-xs">
+                                    <span className="text-slate-500">{ex.name || 'Expense'}</span>
+                                    <span className="font-semibold text-slate-800 tabular-nums">
+                                        +₹{formatAmount(parseFloat(String(ex.amount)) || 0)}
+                                    </span>
+                                </div>
+                            ))}
+                        </>
+                    )}
+                    {showTaxRow && (
+                        <div className="flex justify-between items-center text-xs">
+                            <span className="text-slate-500">Tax</span>
+                            <span className="font-semibold text-slate-800 tabular-nums">
+                                +₹{formatAmount(Number(Order.totalTax))}
+                            </span>
+                        </div>
+                    )}
+                    {Number(Order.manualDiscount || 0) > 0 && (
+                        <div className="flex justify-between items-center text-xs">
+                            <span className="text-slate-500">Bill discount</span>
+                            <span className="font-semibold text-red-600 tabular-nums">
+                                -₹{formatAmount(Number(Order.manualDiscount))}
+                            </span>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+
+    // Payment chips + Paid / Credit note / Refund / Due grid
+    const totalsEl = !isUpcomingStatus && (
+        <div className="space-y-2">
+            {paid > 0 && (
+                <div className="flex flex-wrap gap-1.5 items-center empty:hidden">
+                    {(() => {
+                        // Merge all payment sources into one map
+                        const mergedMethods: Record<string, number> = {};
+
+                        if (Order.paymentMethods && Object.keys(Order.paymentMethods).length > 0) {
+                            Object.entries(Order.paymentMethods).forEach(([method, amount]) => {
+                                if (method.toLowerCase() !== 'due' && Number(amount) > 0) {
+                                    const key = method.trim().toUpperCase();
+                                    mergedMethods[key] = (mergedMethods[key] || 0) + Number(amount);
+                                }
+                            });
+                        } else if (Order.paymentMethod && paid > 0) {
+                            mergedMethods[Order.paymentMethod.trim().toUpperCase()] = paid;
+                        }
+                        return Object.entries(mergedMethods).map(([method, amount]) => (
+                            <div
+                                key={method}
+                                className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100"
+                            >
+                                <span className="text-[11px] font-semibold text-emerald-800 uppercase">
+                                    {method}
+                                </span>
+                                <span className="text-[11px] font-semibold text-emerald-700 tabular-nums">
+                                    ₹{Number(amount).toFixed(2)}
+                                </span>
+                            </div>
+                        ));
+                    })()}
+                </div>
+            )}
+
+            <div className={`grid ${hasRefund ? 'grid-cols-4' : 'grid-cols-3'} border border-[#f6e1d0] rounded-sm overflow-hidden`}>
+                <div className="px-3 py-2 border-r border-[#f6e1d0]">
+                    <p className="text-[11px] text-slate-500">Paid</p>
+                    <p className="text-sm font-semibold text-emerald-700 tabular-nums">₹{paid.toFixed(2)}</p>
+                </div>
+                <div className="px-3 py-2 border-r border-[#f6e1d0]">
+                    <p className="text-[11px] text-slate-500">Credit note</p>
+                    <p className="text-sm font-semibold text-slate-800 tabular-nums">
+                        ₹{Number(Order.creditNoteAmount || 0).toFixed(2)}
+                    </p>
+                </div>
+                {hasRefund && (
+                    <div className="px-3 py-2 border-r border-[#f6e1d0]">
+                        <p className="text-[11px] text-slate-500">Refund</p>
+                        <p className="text-sm font-semibold text-red-600 tabular-nums">
+                            ₹{Number(Order.refundAmount || 0).toFixed(2)}
+                        </p>
+                    </div>
+                )}
+                <div className={`px-3 py-2 ${due > 0 ? 'bg-[#fef6d7]' : ''}`}>
+                    <p className="text-[11px] text-slate-500">Due</p>
+                    <p className={`text-sm font-semibold tabular-nums ${due > 0 ? 'text-[#a16207]' : 'text-slate-800'}`}>₹{due.toFixed(2)}</p>
+                </div>
+            </div>
+        </div>
+    );
+
+    // ACTION BUTTONS (same buttons, same conditions)
+    const actionButtons = (
+        <>
+            {/* UPCOMING STAGE BUTTONS */}
+            {isUpcomingStatus && Order.userLoginPhone && (
+                <>
+                    <a
+                        href={`tel:${Order.userLoginPhone.replace(/\D/g, '')}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className={BTN_SECONDARY}
+                    >
+                        Call
+                    </a>
+
+                    <a
+                        href={`https://wa.me/${Order.userLoginPhone.replace(/\D/g, '')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className={BTN_SUCCESS}
+                    >
+                        WhatsApp
+                    </a>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedOrderForAction(Order);
+                        }}
+                        disabled={pdfLoadingOrderId === Order.id}
+                        className={BTN_SECONDARY}
+                    >
+                        {pdfLoadingOrderId === Order.id ? <Spinner /> : "Print"}
+                    </button>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteOrder(Order.id);
+                        }}
+                        className={BTN_DANGER}
+                    >
+                        Delete
+                    </button>
+                </>
+            )}
+            {/* Fallback for upcoming/lead orders that have no phone captured yet —
+                still let the seller print/download the bill */}
+            {isUpcomingStatus && !Order.userLoginPhone && (
+                <>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedOrderForAction(Order);
+                        }}
+                        disabled={pdfLoadingOrderId === Order.id}
+                        className={BTN_SECONDARY}
+                    >
+                        {pdfLoadingOrderId === Order.id ? <Spinner /> : "Print"}
+                    </button>
+
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteOrder(Order.id);
+                        }}
+                        className={BTN_DANGER}
+                    >
+                        Delete
+                    </button>
+                </>
+            )}
+            {!isUpcomingStatus && (isFinalStage ? (
+                <>
+                    {/* PRINT */}
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedOrderForAction(Order);
+                        }}
+                        disabled={pdfLoadingOrderId === Order.id}
+                        className={BTN_SECONDARY}
+                    >
+                        Print
+                    </button>
+
+                    {/* RETURN – both PAID and UNPAID */}
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(
+                                `${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`,
+                                { state: { selectedOrder: Order.orderId } }
+                            );
+                        }}
+                        className={BTN_SECONDARY}
+                    >
+                        Return
+                    </button>
+
+                    {/* REMIND – only UNPAID Completed orders */}
+                    {!isPaid && Order.status === 'Completed' && whatsappProvider === 'botmaster' && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleSendReminder(Order);
+                            }}
+                            disabled={sendingPdf}
+                            className={BTN_WARN}
+                        >
+                            {sendingPdf ? <Spinner /> : "Remind"}
+                        </button>
+                    )}
+                    {!isPaid && Order.status === 'Completed' && (whatsappProvider === 'snapto' || whatsappProvider === 'sellar') && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleSendReminderSnapto(Order);
+                            }}
+                            disabled={sendingPdf}
+                            className={BTN_WARN}
+                        >
+                            {sendingPdf ? <Spinner /> : "Remind"}
+                        </button>
+                    )}
+
+                    {/* DELETE */}
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteOrder(Order.id);
+                        }}
+                        className={BTN_DANGER}
+                    >
+                        Delete
+                    </button>
+
+                    {/* SETTLE – only UNPAID */}
+                    {!isPaid && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setShowPaymentModal(Order);
+                            }}
+                            className={BTN_PRIMARY}
+                        >
+                            Settle
+                        </button>
+                    )}
+                </>
+            ) : (
+                <>
+                    {Order.status === "Packed" && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handlePreviousStatus(Order.id, Order.status);
+                            }}
+                            className={BTN_GHOST}>
+                            ← Back
+                        </button>
+                    )}
+
+                    {/* DELETE */}
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteOrder(Order.id);
+                        }}
+                        className={BTN_DANGER}
+                    >
+                        Delete
+                    </button>
+
+                    {/* PRINT */}
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedOrderForAction(Order);
+                        }}
+                        className={BTN_SECONDARY}
+                    >
+                        {pdfLoadingOrderId === Order.id ? (
+                            <div className="flex items-center gap-2">
+                                <Spinner />
+                                <span>Printing…</span>
+                            </div>
+                        ) : (
+                            "Print"
+                        )}
+                    </button>
+
+                    {/* ADVANCE */}
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setShowPaymentModal(Order);
+                        }}
+                        className={BTN_SECONDARY}
+                    >
+                        Record advance
+                    </button>
+
+                    {/* NEXT STAGE (primary action) */}
+                    {(Order.status === "Confirmed" || Order.status === "Packed") && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleUpdateStatus(Order.id, Order.status);
+                            }}
+                            disabled={isUpdatingStatus === Order.id}
+                            className={BTN_PRIMARY}
+                        >
+                            {Order.status === "Confirmed" ? "Mark as packed" : "Mark as completed"} →
+                        </button>
+                    )}
+                </>
+            ))}
+        </>
+    );
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // MOBILE FULL-SCREEN ORDER VIEW
+    // Back header → [customer / addresses] → [timeline + payment] → [items] → pinned actions
+    // Must be rendered as a direct child of the page's flex-col root.
+    // ─────────────────────────────────────────────────────────────────────────
+    if (variant === 'screen') {
+        return (
+            <>
+                <header className="sticky top-0 z-[100] shrink-0 flex items-center gap-2 h-14 px-2 bg-white border-b border-[#f6e1d0]">
+                    <button
+                        type="button"
+                        onClick={() => handleOrderClick(Order.id)}
+                        aria-label="Back to orders"
+                        className="w-10 h-10 rounded-full grid place-items-center text-slate-700 hover:bg-[#fff5ec] active:scale-95 transition"
+                    >
+                        <FiArrowLeft className="w-5 h-5" />
+                    </button>
+                    <div className="flex-1 min-w-0">
+                        <h1 className="text-lg font-semibold text-slate-900 leading-tight truncate">
+                            {isUpcomingStatus ? Order.userName : Order.orderId}
+                        </h1>
+                        <span className="block text-xs text-slate-500 truncate">
+                            {isUpcomingStatus ? `Upcoming · ${Order.time}` : `${Order.userName} · ${Order.status}`}
+                        </span>
+                    </div>
+                    {!isUpcomingStatus && (
+                        <button
+                            type="button"
+                            onClick={() => openEditor(Order)}
+                            aria-label="Edit order"
+                            className="w-10 h-10 rounded-full grid place-items-center text-slate-600 hover:bg-[#fff5ec] hover:text-[#c2410c] active:scale-95 transition"
+                        >
+                            <IconEdit className="h-4 w-4" />
+                        </button>
+                    )}
+                </header>
+
+                <div className="grow shrink-0 px-4 pt-3 pb-4 space-y-3 bg-[#fff5ec]">
+                    {/* Customer: billing & shipping */}
+                    {!isUpcomingStatus && (
+                        <div className={SCREEN_CARD}>
+                            {addressesEl}
+                        </div>
+                    )}
+
+                    {/* Timeline + payment summary */}
+                    {!isUpcomingStatus && (
+                        <div className={`${SCREEN_CARD} space-y-4`}>
+                            {trackEl}
+                            {totalsEl}
+                        </div>
+                    )}
+
+                    {/* Items */}
+                    <div className={SCREEN_CARD}>
+                        {itemsEl}
+                    </div>
+                </div>
+
+                {/* Pinned actions */}
+                <div className="sticky bottom-0 z-[100] mt-auto shrink-0 flex flex-wrap gap-2 px-4 pt-3 pb-5 bg-white border-t border-[#f6e1d0]">
+                    {actionButtons}
+                </div>
+            </>
+        );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // MOBILE COMPACT CARD (tap → full-screen order view)
+    // ─────────────────────────────────────────────────────────────────────────
+    if (variant === 'accordion') {
+        const phone = Order.userLoginPhone;
+        const cleanPhone = phone ? phone.replace(/\D/g, '') : '';
+        // Upcoming orders open inline inside their own card (no full-screen view)
+        const isInlineOpen = isUpcomingStatus && isSelected;
+
+        return (
+            <motion.div
+                key={Order.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.25 }}
+            >
+                <CustomCard
+                    key={Order.id}
+                    onClick={() => handleOrderClick(Order.id)}
+                    className="p-0 mb-0 bg-white rounded-sm relative overflow-hidden border border-[#f6e1d0] shadow-sm hover:border-[#f9c9a8] cursor-pointer transition"
+                >
+                    <div className="p-3.5 grid gap-2.5">
+                        <div className="flex items-center gap-2.5">
+                            <span className="shrink-0 w-9 h-9 rounded-full grid place-items-center bg-[#fff8f2] text-slate-600 font-semibold text-[13px]">
+                                {avatarLetter}
+                            </span>
+
+                            <div className="flex-1 min-w-0">
+                                <b className="block text-sm font-semibold text-slate-900 truncate">{Order.userName}</b>
+                                <div className="text-xs text-slate-500 truncate">
+                                    {isUpcomingStatus
+                                        ? `${phone ? `${phone} · ` : ''}${Order.time}`
+                                        : `${Order.orderId} · ${Order.time} · ${itemCount} ${itemCount === 1 ? 'item' : 'items'}`}
+                                </div>
+                            </div>
+
+                            <div className="shrink-0 text-right">
+                                <b className="block text-[15px] font-semibold text-slate-900 tabular-nums">₹{formatAmount(total)}</b>
+                                {isUpcomingStatus ? (
+                                    <div className="text-xs text-slate-500">{itemCount} {itemCount === 1 ? 'item' : 'items'}</div>
+                                ) : due > 0 ? (
+                                    <>
+                                        <span className="inline-block text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-full bg-[#fef6d7] text-[#a16207]">UNPAID</span>
+                                        <div className="text-[11px] font-medium text-[#a16207] tabular-nums">₹{formatAmount(due)} due</div>
+                                    </>
+                                ) : (
+                                    <span className="inline-block text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">{paidBadgeText}</span>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Return-method chips (only when the order has returns) */}
+                        {returnMethods.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                                {returnMethods.map((method, index) => (
+                                    <span
+                                        key={`${method}-${index}`}
+                                        className={`text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full border ${method === 'EXCHANGE'
+                                            ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                            : method === 'CASH REFUND'
+                                                ? 'bg-green-50 text-green-700 border-green-200'
+                                                : 'bg-orange-50 text-[#F97316] border-orange-200'
+                                            }`}
+                                    >
+                                        {method}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* Upcoming: quick Call / WhatsApp on the card */}
+                        {isUpcomingStatus && cleanPhone && !isInlineOpen && (
+                            <div className="flex items-center gap-1.5">
+                                <a
+                                    href={`tel:${cleanPhone}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    aria-label="Call"
+                                    className={ICON_BTN_SECONDARY}
+                                >
+                                    <FiPhone className="w-4 h-4" />
+                                </a>
+                                <a
+                                    href={`https://wa.me/${cleanPhone}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    aria-label="WhatsApp"
+                                    className={ICON_BTN_SUCCESS}
+                                >
+                                    <FiMessageCircle className="w-4 h-4" />
+                                </a>
+                                <span className="ml-auto inline-flex items-center gap-0.5 text-xs font-semibold text-[#9a3412]">
+                                    Open order <FiChevronRight className="w-3.5 h-3.5" />
+                                </span>
+                            </div>
+                        )}
+
+                        {/* Inline expanded details (Upcoming only): items + Call / WhatsApp / Print / Delete */}
+                        {isInlineOpen && (
+                            <div className="border-t border-[#f6e1d0] pt-3 space-y-3">
+                                {itemsEl}
+                                <div className="flex flex-wrap gap-2">
+                                    {actionButtons}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </CustomCard>
+            </motion.div>
+        );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // DESKTOP DETAIL PANE (variant === 'detail')
+    // ─────────────────────────────────────────────────────────────────────────
+    return (
         <motion.div
             key={Order.id}
             initial={{ opacity: 0, y: 20 }}
@@ -92,687 +961,70 @@ export const OrderCard: React.FC<OrderCardProps> = ({
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.25 }}
         >
-            <CustomCard key={Order.id} onClick={() => handleOrderClick(Order.id)} className="p-4 mb-3 bg-white shadow-sm border border-gray-100 rounded-sm cursor-pointer relative">
-                {/* 🔁 RETURN METHOD BADGE - TOP LEFT */}
-                {returnMethods.length > 0 && (
-                    <div className="absolute -top-0.5 left-0 flex flex-wrap gap-1 p-1">
-                        {returnMethods.map((method, index) => (
-                            <span
-                                key={`${method}-${index}`}
-                                className={`text-[7px] uppercase font-bold px-2 py-0.5 rounded border ${method === 'EXCHANGE'
-                                    ? 'bg-purple-50 text-purple-700 border-purple-200'
-                                    : method === 'CASH REFUND'
-                                        ? 'bg-green-50 text-green-700 border-green-200'
-                                        : 'bg-orange-50 text-[#F97316] border-orange-200'
-                                    }`}
-                            >
-                                {method}
+            <CustomCard
+                key={Order.id}
+                onClick={undefined}
+                className="p-0 mb-0 bg-white rounded-sm relative overflow-hidden border border-[#f6e1d0] shadow-sm transition"
+            >
+                {/* ───────── DETAIL HEADER (desktop right pane) ───────── */}
+                <div className="flex items-start gap-3 px-5 py-4 border-b border-[#f6e1d0]">
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <h2 className="text-xl font-semibold text-slate-900">
+                                {isUpcomingStatus ? Order.userName : Order.orderId}
+                            </h2>
+                            <span className="text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 uppercase">
+                                {Order.status}
                             </span>
-                        ))}
-                    </div>
-                )}
-                {!isUpcomingStatus && (
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            openEditor(Order);
-                        }}
-                        className="absolute top-5 left-2 p-2 bg-white/90 backdrop-blur-sm text-slate-500 rounded-sm transition-all duration-300 z-20 group"
-                    >
-                        <div className="flex items-center cursor-pointer">
-                            <IconEdit className='h-3 w-3' />
-                        </div>
-                    </button>
-                )}
-                <div className="flex right-5 top-0 absolute justify-end gap-1 flex-wrap max-w-[50%] text-right pointer-events-auto">
-                    {(() => {
-                        const seen = new Set<string>();
-
-                        // Collect from original payment methods
-                        if (Order.paymentMethods) {
-                            Object.entries(Order.paymentMethods).forEach(([method, amount]) => {
-                                if (method.toLowerCase() !== 'due' && Number(amount) > 0) {
-                                    seen.add(method.trim().toUpperCase());
-                                }
-                            });
-                        }
-
-                        const latestReturn = Order.returnHistory?.[Order.returnHistory.length - 1];
-                        if (latestReturn?.paymentDetails) {
-                            Object.entries(latestReturn.paymentDetails).forEach(([method, amount]) => {
-                                if (method.toLowerCase() !== 'due' && Number(amount) > 0) {
-                                    seen.add(method.trim().toUpperCase());
-                                }
-                            });
-                        }
-
-                        return Array.from(seen).map((method) => (
-                            <span
-                                key={method}
-                                className="text-[8px] uppercase font-bold px-1.5 py-0.5 rounded-sm tracking-wider bg-blue-50 text-blue-600 border border-blue-100 whitespace-nowrap"
-                            >
-                                {method}
-                            </span>
-                        ));
-                    })()}
-                </div>
-
-                <div className="flex justify-between items-start pl-6 mt-1">
-                    <div>
-                        {!isUpcomingStatus && (
-                            <h3 className="text-base font-bold text-slate-800">
-                                {Order.orderId}
-                            </h3>
-                        )}
-                        <p className="text-black text-sm font-medium">
-                            {Order.userName}
-                            {Order.status === "Upcoming" && Order.userLoginPhone && (
-                                <span className="ml-2 text-[10px] text-black font-semibold border p-1 bg-gray-100">
-                                    {Order.userLoginPhone}
-                                </span>
-                            )}
-                        </p>
-                        <p className="text-[10px] text-gray-600 mt-1">{Order.time}</p>
-                    </div>
-                    <div className="text-right flex flex-col items-end">
-                        <div className="flex items-center gap-2">
-                            <p className="text-lg font-bold text-black">₹{formatAmount(total)}
-                            </p>
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}><path d="M19.5 8.25l-7.5 7.5-7.5-7.5" /></svg>
-                        </div>
-                        <p className="text-[10px] font-boldpx-2 py-0.5 mt-1 mr-6">Items: {Order.items?.length || 0}</p>
-                    </div>
-                </div>
-
-                {isExpanded && (
-                    <div className={`mt-1 border-t pt-4 ${isUpcomingStatus ? "pb-2" : ""}`}>
-                        {/* Addresses Section */}
-                        {!isUpcomingStatus && (
-                            <div className="grid grid-cols-2 gap-4 mb-1 pb-4">
-                                <div className="space-y-1">
-                                    <p className="text-[8px] font-black text-[#F97316] uppercase">Billing Address</p>
-                                    <p className="text-[11px] font-bold text-slate-800">{Order.billingDetails?.name}</p>
-                                    <p className="text-[10px] text-gray-500 leading-tight">{Order.billingDetails?.address}</p>
-                                    {(Order.billingDetails?.city || Order.billingDetails?.state) && (
-                                        <p className="text-[10px] text-gray-500 leading-tight">
-                                            {[Order.billingDetails?.city, Order.billingDetails?.state].filter(Boolean).join(', ')}
-                                        </p>
-                                    )}
-                                    <p className="text-[10px] text-gray-500">{Order.billingDetails?.phone}</p>
-                                </div>
-                                <div className="space-y-1 border-l pl-4">
-                                    <p className="text-[8px] font-black text-blue-500 uppercase">Shipping Address</p>
-                                    <p className="text-[11px] font-bold text-slate-800">{Order.shippingDetails?.name || Order.billingDetails?.name}</p>
-                                    <p className="text-[10px] text-gray-500 leading-tight">{Order.shippingDetails?.address || Order.billingDetails?.address}</p>
-                                    {(Order.shippingDetails?.city || Order.shippingDetails?.state || Order.billingDetails?.city || Order.billingDetails?.state) && (
-                                        <p className="text-[10px] text-gray-500 leading-tight">
-                                            {[
-                                                Order.shippingDetails?.city || Order.billingDetails?.city,
-                                                Order.shippingDetails?.state || Order.billingDetails?.state
-                                            ].filter(Boolean).join(', ')}
-                                        </p>
-                                    )}
-                                    <p className="text-[10px] text-gray-500">{Order.shippingDetails?.phone}</p>
-                                </div>
-                            </div>
-
-                        )}
-                        {/* Items Section */}
-                        <div>
-                            {isExpanded && Order.specialInstruction && (
-                                <div className="mb-1 bg-gray-50 border border-gray-200 rounded-sm p-2">
-
-                                    <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest mb-1">
-                                        Special Instructions
-                                    </p>
-
-                                    <p className="text-[11px] text-gray-700 font-medium leading-snug break-words">
-                                        {Order.specialInstruction}
-                                    </p>
-
-                                </div>
-                            )}
-                            {Order.items?.map((item, idx) => {
-                                const returnedEntries: { qty: number; modeOfReturn: string; returnedAt: any; unitPrice: number }[] = [];
-                                (Order.returnHistory || []).forEach((h: any) => {
-                                    (h.returnedItems || []).forEach((r: any) => {
-                                        const matches =
-                                            String(r.originalItemId) === String(item.itemId) ||
-                                            String(r.originalItemId) === String(item.id) ||
-                                            String(r.id) === String(item.itemId) ||
-                                            String(r.id) === String(item.id);
-                                        if (matches) {
-                                            returnedEntries.push({
-                                                qty: Number(r.quantity || 0),
-                                                modeOfReturn: h.modeOfReturn || '',
-                                                returnedAt: h.returnedAt,
-                                                unitPrice: Number(r.effectiveUnitPrice ?? r.customPrice ?? r.salesPrice ?? r.mrp ?? 0),
-                                            });
-                                        }
-                                    });
-                                });
-                                const totalReturnedFromHistory = returnedEntries.reduce((sum, e) => sum + e.qty, 0);
-                                const originalQty = Number(item.quantity || 0) + totalReturnedFromHistory;
-                                const remainingQty = originalQty - totalReturnedFromHistory;
-
-                                // 👇 1. NEW LOGIC: Extract Base Price for UI Math
-                                const rawUnitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
-                                // Tax rate/type as saved on the item at checkout/edit time — not gated
-                                // by the company's current tax toggle, which may have changed since.
-                                const taxRate = Number(item.tax ?? item.taxRate ?? 0);
-                                const taxType = (item.taxType || '').toLowerCase();
-
-                                let displayUnitPrice = rawUnitPrice;
-
-                                // If tax is inclusive, reverse-calculate the base price so the UI math adds up with the "+Tax" row
-                                if (taxRate > 0 && taxType === 'inclusive') {
-                                    displayUnitPrice = rawUnitPrice / (1 + (taxRate / 100));
-                                }
-
-                                const displayLineTotal = displayUnitPrice * remainingQty;
-                                // --------------------------------------------------
-
-                                return (
-                                    <div key={idx} className="p-2 cursor-pointer">
-                                        {/* REMAINING QUANTITY ROW */}
-                                        {remainingQty > 0 && (
-                                            <div className="flex justify-between items-start -mb-1">
-                                                <div className="flex-1">
-                                                    <p className="text-[11px] font-extrabold leading-tight mb-1" style={{ color: '#1e293b' }}>
-                                                        {item.name}
-                                                        <span className="ml-1 text-[9px] font-semibold text-gray-500">
-                                                            {item.unit || "pcs"}
-                                                        </span>
-                                                    </p>
-                                                    {item.note && (
-                                                        <p className="text-[9px] leading-tight flex items-baseline gap-1.5 mt-1 opacity-80">
-                                                            <span className="font-black uppercase tracking-widest font-xs">Note:</span>
-                                                            <span className="font-xs italic text-slate-600">{item.note}</span>
-                                                        </p>
-                                                    )}
-                                                    <p className="text-[10px] text-gray-400">
-                                                        {/* 👇 2. Use displayUnitPrice here */}
-                                                        ₹{formatAmount(displayUnitPrice)} per {item.unit || "pcs"}
-                                                    </p>
-                                                </div>
-                                                <div className="text-right ml-4">
-                                                    <p className="text-[13px] font-black text-slate-900">
-                                                        {/* 👇 3. Use displayLineTotal here */}
-                                                        ₹{formatAmount(displayLineTotal)}
-                                                    </p>
-                                                    <p className="text-[9px] font-bold text-slate-500 bg-white">
-                                                        Qty: {remainingQty}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* RETURNED ENTRIES — one crossed-out row per return event */}
-                                        {returnedEntries.map((entry, rIdx) => {
-                                            // 👇 4. Also fix the math for returned items crossed out on the UI
-                                            let retDisplayUnitPrice = entry.unitPrice;
-                                            if (taxRate > 0 && taxType === 'inclusive') {
-                                                retDisplayUnitPrice = entry.unitPrice / (1 + (taxRate / 100));
-                                            }
-                                            const retDisplayLineTotal = retDisplayUnitPrice * entry.qty;
-
-                                            return entry.qty > 0 && (
-                                                <div key={rIdx} className="flex justify-between items-start mt-1 -mb-1">
-                                                    <div className="flex-1">
-                                                        <p className="text-[11px] font-extrabold leading-tight mb-1"
-                                                            style={{ textDecoration: 'line-through', color: '#94a3b8' }}>
-                                                            {item.name}
-                                                            <span className="ml-1 text-[9px] font-semibold text-gray-400">
-                                                                {item.unit || "pcs"}
-                                                            </span>
-                                                        </p>
-                                                        <div className="flex flex-wrap items-center gap-1.5 mt-0.5 mb-1">
-                                                            {entry.modeOfReturn && (
-                                                                <span className={`text-[7px] uppercase font-bold px-1.5 py-0.5 rounded border ${entry.modeOfReturn.toUpperCase() === 'EXCHANGE'
-                                                                    ? 'bg-purple-50 text-purple-700 border-purple-200'
-                                                                    : entry.modeOfReturn.toUpperCase().includes('CASH') || entry.modeOfReturn.toUpperCase().includes('REFUND')
-                                                                        ? 'bg-green-50 text-green-700 border-green-200'
-                                                                        : 'bg-orange-50 text-[#F97316] border-orange-200'
-                                                                    }`}>
-                                                                    {entry.modeOfReturn}
-                                                                </span>
-                                                            )}
-                                                            {entry.returnedAt && (
-                                                                <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wide">
-                                                                    {new Date(
-                                                                        entry.returnedAt?.toDate
-                                                                            ? entry.returnedAt.toDate()
-                                                                            : entry.returnedAt
-                                                                    ).toLocaleDateString('en-GB', {
-                                                                        day: '2-digit', month: 'short', year: '2-digit'
-                                                                    })}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                    <div className="text-right ml-4">
-                                                        <p className="text-[13px] font-black" style={{ color: '#94a3b8', textDecoration: 'line-through' }}>
-                                                            {/* 👇 5. Use retDisplayLineTotal here */}
-                                                            ₹{formatAmount(retDisplayLineTotal)}
-                                                        </p>
-                                                        <p className="text-[9px] font-bold text-slate-400">
-                                                            Qty: {entry.qty}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            )
-                                        })}
-                                    </div>
-                                );
-                            })}
-                            {/* Show fully removed returned items */}
-                            {Order.returnHistory?.flatMap((h: any) => h.returnedItems || [])
-                                .filter((r: any) => !Order.items?.some(item =>
-                                    String(item.itemId) === String(r.originalItemId) ||
-                                    String(item.id) === String(r.originalItemId)
-                                ))
-                                .map((r: any, idx: number) => (
-                                    <div key={`removed-${idx}`} className="p-2">
-                                        <div className="flex justify-between items-start -mb-1">
-                                            <div className="flex-1">
-                                                <p className="text-[11px] font-extrabold leading-tight mb-1"
-                                                    style={{ textDecoration: 'line-through', color: '#94a3b8' }}>
-                                                    {r.name}
-                                                    <span className="ml-1 text-[9px] font-semibold text-gray-400">
-                                                        {r.unit || "pcs"}
-                                                    </span>
-                                                </p>
-                                                {/* Return mode badge + date */}
-                                                <div className="flex flex-wrap items-center gap-1.5 mt-1 mb-1">
-                                                    {(() => {
-                                                        const matchedHistory = Order.returnHistory?.find((h: any) =>
-                                                            h.returnedItems?.some((ri: any) =>
-                                                                String(ri.originalItemId) === String(r.originalItemId) ||
-                                                                String(ri.id) === String(r.originalItemId)
-                                                            )
-                                                        );
-                                                        return (
-                                                            <>
-                                                                {matchedHistory?.modeOfReturn && (
-                                                                    <span className={`text-[7px] uppercase font-bold px-1.5 py-0.5 rounded border ${matchedHistory.modeOfReturn === 'EXCHANGE'
-                                                                        ? 'bg-purple-50 text-purple-700 border-purple-200'
-                                                                        : matchedHistory.modeOfReturn === 'CASH REFUND'
-                                                                            ? 'bg-green-50 text-green-700 border-green-200'
-                                                                            : 'bg-orange-50 text-[#F97316] border-orange-200'
-                                                                        }`}>
-                                                                        {matchedHistory.modeOfReturn}
-                                                                    </span>
-                                                                )}
-                                                                {matchedHistory?.returnedAt && (
-                                                                    <span className="text-[7px] font-bold text-slate-400 uppercase tracking-wide">
-                                                                        {new Date(
-                                                                            (matchedHistory.returnedAt as any)?.toDate
-                                                                                ? (matchedHistory.returnedAt as any).toDate()
-                                                                                : matchedHistory.returnedAt
-                                                                        ).toLocaleDateString('en-GB', {
-                                                                            day: '2-digit', month: 'short', year: '2-digit'
-                                                                        })}
-                                                                    </span>
-                                                                )}
-                                                            </>
-                                                        );
-                                                    })()}
-                                                </div>
-                                                {r.note && (
-                                                    <p className="text-[9px] leading-tight flex items-baseline gap-1.5 mt-1 opacity-80">
-                                                        <span className="font-black uppercase tracking-widest">Note:</span>
-                                                        <span className="italic text-slate-400">{r.note}</span>
-                                                    </p>
-                                                )}
-
-                                            </div>
-                                            <div className="text-right ml-4">
-                                                <p className="text-[13px] font-black" style={{ color: '#94a3b8', textDecoration: 'line-through' }}>
-                                                    ₹{formatAmount((r.effectiveUnitPrice ?? r.customPrice ?? r.salesPrice ?? r.mrp ?? 0)
-                                                        * r.quantity)}                                                                        </p>
-                                                <p className="text-[9px] font-bold text-slate-400">Qty: {r.quantity}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))
-                            }
-                            {/* Expenses & Discount display (saved on order) */}
                             {!isUpcomingStatus && (
-                                <>
-                                    {Array.isArray(Order.expenses) && Order.expenses.length > 0 && (
-                                        <div className="px-2 pt-1 space-y-0.5">
-                                            {Order.expenses.map((ex, idx) => (
-                                                <div key={idx} className="flex justify-between items-center">
-                                                    <span className="text-[8px] font-bold text-orange-500 uppercase tracking-wide">
-                                                        {ex.name || 'Expense'}
-                                                    </span>
-                                                    <span className="text-[9px] font-black text-orange-600">
-                                                        +₹{formatAmount(parseFloat(String(ex.amount)) || 0)}
-                                                    </span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                    {showTaxRow && (
-                                        <div className="px-2 pt-0.5 flex justify-between items-center border-t">
-                                            <span className="text-[8px] font-bold text-slate-500 uppercase tracking-wide">
-                                                Tax
-                                            </span>
-                                            <span className="text-[9px] font-black text-orange-500">
-                                                +₹{formatAmount(Number(Order.totalTax))}
-                                            </span>
-                                        </div>
-                                    )}
-                                    {Number(Order.manualDiscount || 0) > 0 && (
-                                        <div className="px-2 pt-0.5 flex justify-between items-center border-t">
-                                            <span className="text-[8px] font-bold text-red-500 uppercase tracking-wide">Bill Discount</span>
-                                            <span className="text-[9px] font-black text-red-600">
-                                                -₹{formatAmount(Number(Order.manualDiscount))}
-                                            </span>
-                                        </div>
-                                    )}
-                                </>
-                            )}
-                            {/* Totals Section */}
-                            {!isUpcomingStatus && (
-                                <div className="border-t mt-1 p-2 flex items-center justify-between">
-                                    <div className="flex flex-wrap gap-1.5 items-center">
-                                        {paid > 0 && (
-                                            (() => {
-                                                // Merge all payment sources into one map
-                                                const mergedMethods: Record<string, number> = {};
-
-                                                if (Order.paymentMethods && Object.keys(Order.paymentMethods).length > 0) {
-                                                    Object.entries(Order.paymentMethods).forEach(([method, amount]) => {
-                                                        if (method.toLowerCase() !== 'due' && Number(amount) > 0) {
-                                                            const key = method.trim().toUpperCase();
-                                                            mergedMethods[key] = (mergedMethods[key] || 0) + Number(amount);
-                                                        }
-                                                    });
-                                                } else if (Order.paymentMethod && paid > 0) {
-                                                    mergedMethods[Order.paymentMethod.trim().toUpperCase()] = paid;
-                                                }
-                                                return Object.entries(mergedMethods).map(([method, amount]) => (
-                                                    <div
-                                                        key={method}
-                                                        className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-green-100"
-                                                    >
-                                                        <span className="text-[10px] font-bold text-green-800 uppercase">
-                                                            {method}
-                                                        </span>
-                                                        <span className="text-[10px] font-black text-green-600">
-                                                            ₹{Number(amount).toFixed(2)}
-                                                        </span>
-                                                    </div>
-                                                ));
-                                            })()
-                                        )}
-                                    </div>
-
-                                    <div className='flex gap-3 items-center'>
-                                        <div className="text-right border-r border-slate-200 pr-3">
-                                            <p className="text-[7px] font-bold text-green-600 uppercase tracking-tighter leading-none mb-0.5">Paid</p>
-                                            <p className="text-[11px] font-black text-green-700 leading-none">₹{paid.toFixed(2)}</p>
-                                        </div>
-
-                                        <div className="text-right border-r border-slate-200 pr-3">
-                                            <p className="text-[7px] font-bold text-blue-600 uppercase tracking-tighter leading-none mb-0.5">C.Note</p>
-                                            <p className="text-[11px] font-black text-blue-700 leading-none">
-                                                ₹{Number(Order.creditNoteAmount || 0).toFixed(2)}
-                                            </p>
-                                        </div>
-
-                                        {Number(Order.refundAmount || 0) > 0 && (
-                                            <div className="text-right border-r border-slate-200 pr-3">
-                                                <p className="text-[7px] font-bold text-red-600  uppercase tracking-tighter leading-none mb-0.5">Refund</p>
-                                                <p className="text-[11px] font-black text-red-600 leading-none">
-                                                    ₹{Number(Order.refundAmount || 0).toFixed(2)}
-                                                </p>
-                                            </div>
-                                        )}
-                                        <div className="text-right">
-                                            <p className="text-[7px] font-bold text-red-600 uppercase tracking-tighter leading-none mb-0.5">Due</p>
-                                            <p className="text-[11px] font-black text-red-700 leading-none">₹{due.toFixed(2)}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                        {/* Buttons Section - Updated Grid & Logic */}
-                        {(
-                            <div
-                                className={`grid ${isUpcomingStatus
-                                    ? Order.userLoginPhone ? 'grid-cols-4' : 'grid-cols-2'
-                                    : Order.status === "Packed"
-                                        ? 'grid-cols-5 md:grid-cols-5'
-                                        : Order.status === "Paid"
-                                            ? 'grid-cols-3'
-                                            : Order.status === "Completed"
-                                                ? (!isPaid ? 'grid-cols-5' : 'grid-cols-4')
-                                                : 'grid-cols-4'
-                                    } gap-3 pt-6 border-t`}
-                            >
-                                {/* UPCOMING STAGE BUTTONS */}
-                                {isUpcomingStatus && Order.userLoginPhone && (
-                                    <>
-                                        <a
-                                            href={`tel:${Order.userLoginPhone.replace(/\D/g, '')}`}
-                                            onClick={(e) => e.stopPropagation()}
-                                            className="min-h-[44px] py-2.5 bg-blue-600 text-white text-xs font-bold rounded-sm text-center"
-                                        >
-                                            Call
-                                        </a>
-
-                                        <a
-                                            href={`https://wa.me/${Order.userLoginPhone.replace(/\D/g, '')}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            onClick={(e) => e.stopPropagation()}
-                                            className="min-h-[44px] py-2.5 bg-emerald-500 text-white text-xs font-bold rounded-sm text-center"
-                                        >
-                                            WhatsApp
-                                        </a>
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setSelectedOrderForAction(Order);
-                                            }}
-                                            disabled={pdfLoadingOrderId === Order.id}
-                                            className="min-h-[44px] py-2.5 bg-black text-white text-xs font-bold rounded-sm flex items-center justify-center"
-                                        >
-                                            {pdfLoadingOrderId === Order.id ? <Spinner /> : "Print"}
-                                        </button>
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleDeleteOrder(Order.id);
-                                            }}
-                                            className="min-h-[44px] py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm cursor-pointer"
-                                        >
-                                            Delete
-                                        </button>
-                                    </>
-                                )}
-                                {/* NEW: fallback for upcoming/lead orders that have no phone captured yet —
-    still let the seller print/download the bill */}
-                                {isUpcomingStatus && !Order.userLoginPhone && (
-                                    <>
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setSelectedOrderForAction(Order);
-                                            }}
-                                            disabled={pdfLoadingOrderId === Order.id}
-                                            className="py-2.5 bg-blue-600 text-white text-xs font-bold rounded-sm flex items-center justify-center"
-                                        >
-                                            {pdfLoadingOrderId === Order.id ? <Spinner /> : "Print"}
-                                        </button>
-
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleDeleteOrder(Order.id);
-                                            }}
-                                            className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm cursor-pointer"
-                                        >
-                                            Delete
-                                        </button>
-                                    </>
-                                )}
-                                {!isUpcomingStatus && (isFinalStage ? (
-                                    <>
-
-                                        {/* DELETE */}
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleDeleteOrder(Order.id);
-                                            }}
-                                            className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm cursor-pointer"
-                                        >
-                                            Delete
-                                        </button>
-
-                                        {/* SETTLE – only UNPAID */}
-                                        {!isPaid && (
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setShowPaymentModal(Order);
-                                                }}
-                                                className="py-2.5 bg-emerald-500 text-white text-xs font-bold rounded-sm"
-                                            >
-                                                Settle
-                                            </button>
-                                        )}
-                                        {/* REMIND – only UNPAID Completed orders */}
-                                        {!isPaid && Order.status === 'Completed' && whatsappProvider === 'botmaster' && (
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleSendReminder(Order);
-                                                }}
-                                                disabled={sendingPdf}
-                                                className="py-2.5 bg-amber-500 text-white text-xs font-bold rounded-sm disabled:opacity-50 flex items-center justify-center"
-                                            >
-                                                {sendingPdf ? <Spinner /> : "Remind"}
-                                            </button>
-                                        )}
-                                        {!isPaid && Order.status === 'Completed' && (whatsappProvider === 'snapto' || whatsappProvider === 'sellar') && (
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleSendReminderSnapto(Order);
-                                                }}
-                                                disabled={sendingPdf}
-                                                className="py-2.5 bg-amber-500 text-white text-xs font-bold rounded-sm disabled:opacity-50 flex items-center justify-center"
-                                            >
-                                                {sendingPdf ? <Spinner /> : "Remind"}
-                                            </button>
-                                        )}
-
-                                        {/* RETURN – PAID + UNPAID dono me */}
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                navigate(
-                                                    `${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`,
-                                                    { state: { selectedOrder: Order.orderId } }
-                                                );
-                                            }}
-                                            className="py-2.5 bg-sky-500 text-white text-xs font-bold rounded-sm"
-                                        >
-                                            Return
-                                        </button>
-
-                                        {/* PRINT */}
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setSelectedOrderForAction(Order);
-                                            }}
-                                            disabled={pdfLoadingOrderId === Order.id}
-                                            className="py-2.5 bg-black text-white text-xs font-bold rounded-sm flex items-center justify-center"
-                                        >
-                                            Print
-                                        </button>
-                                    </>
+                                due > 0 ? (
+                                    <span className="text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-full bg-[#fef6d7] text-[#a16207]">UNPAID</span>
                                 ) : (
-                                    <>
-                                        {Order.status === "Packed" && (
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handlePreviousStatus(Order.id, Order.status);
-                                                }}
-                                                className="w-full py-2.5 bg-gray-200 text-black text-sm font-bold rounded-sm flex items-center justify-center flex-col">
-                                                ←
-                                                <span className='text-[10px]'>back</span>
-                                            </button>
-                                        )}
-                                        {/* DELETE */}
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleDeleteOrder(Order.id);
-                                            }}
-                                            className="py-2.5 bg-[#FF3B30] text-white text-xs font-bold rounded-sm"
-                                        >
-                                            Delete
-                                        </button>
-
-                                        {/* ADVANCE */}
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setShowPaymentModal(Order);
-                                            }}
-                                            className="py-2.5 bg-emerald-500 text-white text-xs font-bold rounded-sm"
-                                        >
-                                            Advance
-                                        </button>
-
-                                        {/* PRINT */}
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setSelectedOrderForAction(Order);
-                                            }}
-                                            className="py-2.5 bg-black text-white text-xs font-bold rounded-sm"
-                                        >
-                                            {pdfLoadingOrderId === Order.id ? (
-                                                <div className="flex items-center gap-2">
-                                                    <Spinner />
-                                                    <span>...Printing</span>
-                                                </div>
-                                            ) : (
-                                                "Print"
-                                            )}
-                                        </button>
-
-                                        {/* PREVIOUS ARROW (only Packed stage) */}
-                                        {(Order.status === "Confirmed" || Order.status === "Packed") && (
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleUpdateStatus(Order.id, Order.status);
-                                                }}
-                                                disabled={isUpdatingStatus === Order.id}
-                                                className="py-2.5 bg-[#00A2FF] text-white text-xs font-bold rounded-sm flex items-center justify-center flex-col"
-                                            >
-                                                →
-                                                <span className='text-[10px]'>Next</span>
-                                            </button>
-                                        )}
-                                    </>
-                                ))}
-                            </div>
+                                    <span className="text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">PAID</span>
+                                )
+                            )}
+                            {!isUpcomingStatus && (
+                                <button
+                                    onClick={() => openEditor(Order)}
+                                    aria-label="Edit order"
+                                    className="w-7 h-7 rounded-sm grid place-items-center text-slate-500 hover:bg-[#fff5ec] hover:text-[#c2410c] transition"
+                                >
+                                    <IconEdit className="h-3.5 w-3.5" />
+                                </button>
+                            )}
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1">
+                            {Order.userName} · {itemCount} {itemCount === 1 ? 'item' : 'items'} · placed {Order.time}
+                        </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                        <p className="text-2xl font-semibold text-slate-900 tabular-nums">₹{formatAmount(total)}</p>
+                        {!isUpcomingStatus && due > 0 && (
+                            <p className="text-xs font-medium text-[#a16207] tabular-nums">₹{formatAmount(due)} due</p>
                         )}
                     </div>
-                )}
+                </div>
+
+                {/* ───────── DETAILS ───────── */}
+                <div className="px-5 pb-4 bg-white">
+                    {/* Progress track */}
+                    {trackEl && <div className="pt-4">{trackEl}</div>}
+
+                    {/* Addresses Section */}
+                    {addressesEl && <div className="pt-4">{addressesEl}</div>}
+
+                    {/* Items + Totals */}
+                    <div className="mt-4">
+                        {itemsEl}
+                        {totalsEl && <div className="mt-3">{totalsEl}</div>}
+                    </div>
+
+                    {/* ───────── ACTION BUTTONS (same buttons, same conditions) ───────── */}
+                    <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-[#f6e1d0] -mx-5 -mb-4 px-5 pb-4 bg-[#fff8f2]">
+                        {actionButtons}
+                    </div>
+                </div>
             </CustomCard>
         </motion.div>
     );
-
-    return cardContent;
 };

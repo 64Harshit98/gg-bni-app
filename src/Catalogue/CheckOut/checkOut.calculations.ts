@@ -1,4 +1,14 @@
 import type { CartItem, CatalogueSalesSettings } from './checkOut.types';
+import { addOnStockOf } from '../../constants/models';
+
+/** Identifies one checkout line (item + pack + add-ons). Same format as the storefront cart's line key. */
+export const lineKeyOf = (i: { id: string | number; lineKey?: string }) => i.lineKey ?? String(i.id);
+
+/** " + Extra cheese, Thin crust" for lines that have add-ons, otherwise "" (same text as POS invoices). */
+export const addOnSuffix = (i: object) => {
+    const a = (i as { addOns?: { name: string }[] }).addOns;
+    return a?.length ? ` + ${a.map((o) => o.name).join(', ')}` : '';
+};
 
 // ─────────────────────────────────────────────────────────────────────────
 // This file holds calculation functions moved verbatim out of CheckOut.tsx
@@ -166,6 +176,7 @@ export interface OrderLineItem {
     image: string;
     unit: string;
     unitMultiplier: number;
+    addOnStock?: { itemId: string; qty: number }[]; // linked inventory items per 1 unit (used when the order is returned)
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -187,7 +198,7 @@ export const buildOrderLineItems = (
         const qty = Number(i.quantity);
         const taxRate = Number(i.tax || 0);
         const tierLabel = (i as any).tierLabel;
-        const displayName = tierLabel ? `${i.name} - ${tierLabel}` : i.name;
+        const displayName = `${tierLabel ? `${i.name} - ${tierLabel}` : i.name}${addOnSuffix(i)}`;
 
         let lineBaseAmount = originalUnitPrice * qty;
         let lineTaxAmount = 0;
@@ -240,7 +251,8 @@ export const buildOrderLineItems = (
             note: i.note,
             image: i.imageUrl || "",
             unit: i.unit || "pcs",
-            unitMultiplier: i.unitMultiplier || 1
+            unitMultiplier: i.unitMultiplier || 1,
+            ...(addOnStockOf(i as any).length > 0 ? { addOnStock: addOnStockOf(i as any) } : {})
         };
     });
 };
@@ -340,7 +352,7 @@ export const buildUpcomingSyncPayload = (
         return {
             id: String(item.id),
             docId: String(item.id),
-            name: item.name,
+            name: item.name + addOnSuffix(item),
             quantity: item.quantity,
             mrp: item.mrp,
             salesPrice: item.salesPrice,

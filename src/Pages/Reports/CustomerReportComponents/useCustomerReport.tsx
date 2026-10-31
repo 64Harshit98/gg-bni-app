@@ -1,195 +1,84 @@
-import { useNavigate } from 'react-router';
+import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../../context/auth-context';
-import { useState, useEffect } from 'react';
-import { State } from '../../../enums';
-import { formatDateForInput } from '../SalesReportComponents/salesReport.utils';
-import { collection, onSnapshot, query, Timestamp, limit } from 'firebase/firestore';
-import { db } from '../../../lib/Firebase';
-import { type Sale } from './customerReport.utils';
+import { formatDateForInput, getPresetRange } from '../SalesReportComponents/salesReport.utils';
+import { loadSalesForRange } from '../SalesReportComponents/salesReportCache';
+import { useCachedRange } from '../useCachedRange';
+import {
+  loadCustomerCredits,
+  loadCustomersCreatedForRange,
+  loadOpeningBalancesForRange,
+} from './customerReportCache';
 
+// Sales come from the shared per-range sales cache; opening balances and newly
+// added customers are cached per range too. This report used to keep live
+// listeners on sales (5,000 docs), openingBalances (5,000) and every customer.
 export default function useCustomerReport() {
-  const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
+  const companyId = currentUser?.companyId;
 
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const [datePreset, setDatePreset] = useState('last30');
+  const [datePreset, setDatePreset] = useState('fy');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [appliedFilters, setAppliedFilters] = useState({ start: '', end: '' });
-
-  const [isListVisible, setIsListVisible] = useState(false);
-  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
-  const [feedbackModal, setFeedbackModal] = useState({
-    isOpen: false,
-    type: State.INFO,
-    message: '',
-  });
-  const [sortConfig, setSortConfig] = useState<{
-    key: string; // Changed from keyof Sale to string
-    direction: 'asc' | 'desc';
-  }>({ key: 'partyName', direction: 'asc' });
-
-  // Update handleSort to accept a string key
-  const handleSort = (key: string) => {
-    let direction: 'asc' | 'desc' = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
-    setSortConfig({ key, direction });
-  };
+  const [appliedFilters, setAppliedFilters] = useState<{ start: number; end: number } | null>(null);
 
   useEffect(() => {
-    const today = new Date();
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+  // Default: current financial year (1 Apr → today)
+  const range = getPresetRange('fy')!;
 
-    const formattedStart = formatDateForInput(thirtyDaysAgo);
-    const formattedEnd = formatDateForInput(today);
+  setStartDate(formatDateForInput(range.start));
+  setEndDate(formatDateForInput(range.end));
+  setAppliedFilters({ start: range.start.getTime(), end: range.end.getTime() });
+}, []);
 
-    const start = new Date(formattedStart);
-    start.setHours(0, 0, 0, 0);
+  const salesState = useCachedRange(loadSalesForRange, companyId, appliedFilters, authLoading);
+  const obState = useCachedRange(loadOpeningBalancesForRange, companyId, appliedFilters, authLoading);
+  const newCustomersState = useCachedRange(loadCustomersCreatedForRange, companyId, appliedFilters, authLoading);
 
-    const end = new Date(formattedEnd);
-    end.setHours(23, 59, 59, 999);
-
-    setStartDate(formattedStart);
-    setEndDate(formattedEnd);
-    setAppliedFilters({
-      start: start.toISOString(),
-      end: end.toISOString(),
-    });
-  }, []);
-
+  // Credit balances aren't date based: read once per visit / refresh.
+  const [credits, setCredits] = useState<Awaited<ReturnType<typeof loadCustomerCredits>>>([]);
+  const [creditsToken, setCreditsToken] = useState(0);
   useEffect(() => {
-    if (!currentUser?.companyId) {
-      setLoading(false);
-      return;
-    }
+    if (!companyId) return;
+    let cancelled = false;
+    loadCustomerCredits(companyId)
+      .then((list) => { if (!cancelled) setCredits(list); })
+      .catch((err) => console.error('Failed to load customer credits', err));
+    return () => { cancelled = true; };
+  }, [companyId, creditsToken]);
 
-    const salesRef = collection(db, 'companies', currentUser.companyId, 'sales');
-    const obRef = collection(db, 'companies', currentUser.companyId, 'openingBalances');
+  const parts = [salesState, obState, newCustomersState];
+  const updatedTimes = parts.map((p) => p.lastUpdated).filter((t): t is number => t !== null);
 
-    // Safety caps — this report filters client-side by the selected date range,
-    // so without a limit a company with years of sales would re-download the
-    // entire collection on every live update.
-    const q = query(salesRef, limit(5000));
-    const obQ = query(obRef, limit(5000));
+  const { refresh: refreshSales } = salesState;
+  const { refresh: refreshOb } = obState;
+  const { refresh: refreshNew } = newCustomersState;
+  const refresh = useCallback(() => {
+    refreshSales();
+    refreshOb();
+    refreshNew();
+    setCreditsToken((t) => t + 1);
+  }, [refreshSales, refreshOb, refreshNew]);
 
-    const unsubscribeSales = onSnapshot(
-      q,
-      (snapshot) => {
-        setSales(prev => {
-          // Keep existing OB entries, replace sales entries
-          const obEntries = prev.filter((s: any) => s.isOpeningBalance === true);
-          const salesEntries = snapshot.docs.map((doc) => {
-            const data = doc.data();
-            const paymentMethods = (data.paymentMethods || {}) as Record<string, unknown>;
-
-            const sumMethodAmounts = (matcher: (key: string) => boolean) =>
-              Object.entries(paymentMethods).reduce((sum, [key, value]) => {
-                if (!matcher(key)) return sum;
-                const num = Number(value || 0);
-                return sum + (Number.isFinite(num) ? num : 0);
-              }, 0);
-
-            const dueFromMethods = sumMethodAmounts((key) =>
-              key.toLowerCase().includes('due'),
-            );
-            const creditFromMethods = sumMethodAmounts(
-              (key) => key.toLowerCase() === 'credit note',
-            );
-
-            const dueAmount = Number(data.paymentMethods?.due ?? data.dueAmount ?? dueFromMethods ?? 0);
-            const creditNoteAmount = Number(data.creditNoteAmount ?? creditFromMethods ?? 0);
-
-            return {
-              id: doc.id,
-              partyName: data.partyName || 'N/A',
-              partyNumber: data.partyNumber || 'N/A',
-              totalAmount: Number(data.totalAmount || 0),
-              dueAmount: Number.isFinite(dueAmount) ? dueAmount : 0,
-              creditNoteAmount: Number.isFinite(creditNoteAmount) ? creditNoteAmount : 0,
-              createdAt:
-                data.createdAt instanceof Timestamp
-                  ? data.createdAt.toDate()
-                  : new Date(),
-              isOpeningBalance: false,
-            };
-          });
-          return [...salesEntries, ...obEntries];
-        });
-        setLoading(false);
-      },
-      () => {
-        setError('Failed to fetch customer data.');
-        setLoading(false);
-      },
-    );
-
-    const unsubscribeOB = onSnapshot(
-      obQ,
-      (snapshot) => {
-        setSales(prev => {
-          // Keep existing sales entries, replace OB entries
-          const salesEntries = prev.filter((s: any) => s.isOpeningBalance !== true);
-          const obEntries = snapshot.docs
-            .filter(doc => {
-              const data = doc.data();
-              // ✅ Sirf 'due' type OB include karo, 'advance' nahi
-              return (data.balanceType ?? 'due') === 'due';
-            })
-            .map(doc => {
-              const data = doc.data();
-              return {
-                id: doc.id,
-                partyName: data.partyName || 'N/A',
-                partyNumber: data.partyNumber || 'N/A',
-                totalAmount: Number(data.amount || 0),
-                dueAmount: Number(data.dueAmount ?? data.amount ?? 0),
-                creditNoteAmount: 0,
-                createdAt:
-                  data.createdAt instanceof Timestamp
-                    ? data.createdAt.toDate()
-                    : new Date(),
-                isOpeningBalance: true,
-              };
-            });
-          return [...salesEntries, ...obEntries];
-        });
-      },
-      () => {} // OB fetch fail hone pe silently ignore
-    );
-
-    return () => {
-      unsubscribeSales();
-      unsubscribeOB();
-    };
-  }, [currentUser?.companyId]);
   return {
-    navigate,
-    sales,
-    sortConfig,
-    handleSort,
-    loading,
-    error,
+    currentUser,
     authLoading,
     datePreset,
     setDatePreset,
     startDate,
     endDate,
-    appliedFilters,
-    setAppliedFilters,
-    isListVisible,
-    setIsListVisible,
-    isDownloadModalOpen,
-    setIsDownloadModalOpen,
-    feedbackModal,
-    setFeedbackModal,
-    currentUser,
     setStartDate,
     setEndDate,
+    appliedFilters,
+    setAppliedFilters,
+    sales: salesState.records,
+    openingBalances: obState.records,
+    newCustomers: newCustomersState.records,
+    credits,
+    isLoading: parts.some((p) => p.isLoading),
+    isFetching: parts.some((p) => p.isFetching),
+    // The oldest part decides how fresh the page is.
+    lastUpdated: updatedTimes.length ? Math.min(...updatedTimes) : null,
+    error: parts.map((p) => p.error).find(Boolean) ?? null,
+    refresh,
   };
 }

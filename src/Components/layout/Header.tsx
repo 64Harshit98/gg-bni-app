@@ -21,7 +21,6 @@ interface HeaderProps {
   destinations?: Destination[];
   /** Permission that shows the notification bell */
   notificationPermission?: any;
-  joinedBelow?: boolean; 
 }
 
 export function Header({
@@ -53,7 +52,8 @@ export function Header({
 
   return (
     <>
-      <header className="sticky top-0 z-30 mx-3 mt-3 hidden shrink-0 items-center gap-3 ${joinedBelow ? 'rounded-t-sm' : 'rounded-sm'} border border-slate-200/80 bg-white/80 px-4 py-3 shadow-sm backdrop-blur-md md:flex">
+      {/* Flush bar, same height as the sidebar's logo row (60px + 1px border) so the two dividers line up */}
+      <header className="sticky top-0 z-50 hidden h-[61px] shrink-0 items-center gap-3 border-b border-slate-200/70 bg-white/80 px-5 backdrop-blur-md md:flex">
         <p className="min-w-0 truncate text-sm font-semibold text-slate-800">{pageLabel}</p>
 
         <button
@@ -73,7 +73,7 @@ export function Header({
             <NotificationBell />
           </ShowWrapper>
 
-          <UserMenu userName={userName} placement="bottom-right" buttonClassName="flex items-center rounded-sm">
+          <UserMenu userName={userName} theme={theme} placement="bottom-right" buttonClassName="flex items-center rounded-sm">
             <Avatar name={userName} theme={theme} />
           </UserMenu>
         </div>

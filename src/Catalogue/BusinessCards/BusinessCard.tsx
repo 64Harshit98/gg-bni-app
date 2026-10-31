@@ -2,7 +2,6 @@ import { useAuth } from "../../context/auth-context";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../../lib/Firebase";
 import { useEffect, useState, useRef } from "react";
-import { FiShare2, FiDownload } from "react-icons/fi"; // Download icon add kiya
 import { toPng } from 'html-to-image'; // Install this: npm install html-to-image
 import { sanitizeName } from "../utils/stringUtils";
 
@@ -44,8 +43,110 @@ const compressImage = (file: File): Promise<string> => {
     });
 };
 
+/* ---------- Theme (POS = blue, Catalogue = orange) ---------- */
+
+export type BusinessCardTheme = 'pos' | 'catalogue';
+
+// NOTE: full class strings only (Tailwind can't see dynamically built class names)
+const THEMES = {
+    pos: {
+        btnSecondary: "border border-[#7a8aa3] bg-white text-[#0f172b] hover:bg-[#f5f7ff]",
+        btnPrimary: "border border-transparent bg-[#155dfc] text-white hover:bg-[#1447e6]",
+        btnDanger: "border border-transparent text-[#d5000c] hover:bg-[#ffeef0]",
+        frame: "border-[#dfe6fb]",      // card face border
+        divider: "border-[#dfe6fb]",    // line under company row (design 2)
+        monogram: "border-[#155dfc] text-[#155dfc]",
+        dotActive: "bg-[#155dfc]",
+    },
+    catalogue: {
+        btnSecondary: "border border-[#7a8aa3] bg-white text-[#0f172b] hover:bg-[#fff8f2]",
+        btnPrimary: "border border-transparent bg-[#c2410c] text-white hover:bg-[#9a3412]",
+        btnDanger: "border border-transparent text-[#d5000c] hover:bg-[#ffeef0]",
+        frame: "border-[#f6e1d0]",
+        divider: "border-[#f6e1d0]",
+        monogram: "border-[#c2410c] text-[#c2410c]",
+        dotActive: "bg-[#c2410c]",
+    },
+} as const;
+
+type ThemeTokens = (typeof THEMES)[BusinessCardTheme];
+
+/* ---------- UI-only helpers (no logic) ---------- */
+
+const Ico = ({ className = "w-4 h-4", children }: { className?: string; children: React.ReactNode }) => (
+    <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.75}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={`shrink-0 ${className}`}
+        aria-hidden="true"
+    >
+        {children}
+    </svg>
+);
+
+const PinIco = () => (
+    <Ico className="w-[11px] h-[11px]">
+        <path d="M12 21s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z" />
+        <circle cx="12" cy="9" r="2.5" />
+    </Ico>
+);
+const PhoneIco = () => (
+    <Ico className="w-[11px] h-[11px]">
+        <path d="M5 3h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 12l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 5a2 2 0 0 1 2-2" />
+    </Ico>
+);
+const MailIco = () => (
+    <Ico className="w-[11px] h-[11px]">
+        <rect x="3" y="5" width="18" height="14" rx="2" />
+        <path d="m3 7 9 6 9-6" />
+    </Ico>
+);
+
+const BTN =
+    "inline-flex h-8 items-center justify-center gap-2 rounded-sm px-3 text-[13px] font-medium leading-5 whitespace-nowrap transition-colors cursor-pointer";
+
+const DownloadShare = ({
+    onDownload,
+    onShare,
+    t,
+    children,
+}: {
+    onDownload: () => void;
+    onShare: () => void;
+    t: ThemeTokens;
+    children?: React.ReactNode;
+}) => (
+    <div className="flex flex-wrap gap-1.5">
+        <button onClick={onDownload} className={`${BTN} ${t.btnSecondary}`}>
+            <Ico>
+                <path d="M12 3v12M7 10l5 5 5-5M4 21h16" />
+            </Ico>
+            Download
+        </button>
+        <button onClick={onShare} className={`${BTN} ${t.btnPrimary}`}>
+            <Ico>
+                <circle cx="18" cy="5" r="3" />
+                <circle cx="6" cy="12" r="3" />
+                <circle cx="18" cy="19" r="3" />
+                <path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4" />
+            </Ico>
+            Share
+        </button>
+        {children}
+    </div>
+);
+
 // const STORAGE_KEY = "businessCard_uploadedCard";
-function BusinessCard() {
+// theme defaults to "pos" so the existing POS usage (<BusinessCard />) keeps working unchanged
+function BusinessCard({ theme = 'pos' }: { theme?: BusinessCardTheme }) {
+    const t = THEMES[theme];
+    // Card face frame (same as .bc in the design)
+    const BC = `aspect-[1.75] overflow-hidden rounded-sm border ${t.frame} text-[10px] leading-[14px]`;
+
     const { currentUser } = useAuth();
     const [data, setData] = useState<any>(null);
     const [activeIndex, setActiveIndex] = useState(0);
@@ -75,7 +176,7 @@ function BusinessCard() {
     const handleScroll = () => {
         if (scrollRef.current) {
             const scrollLeft = scrollRef.current.scrollLeft;
-            const index = Math.round(scrollLeft / 296);
+            const index = Math.round(scrollLeft / 272); // 260px card + 12px gap
             setActiveIndex(index);
         }
     };
@@ -254,144 +355,118 @@ function BusinessCard() {
         return `${parts[0]} ${parts[parts.length - 1]}`;
     };
 
+    const shownName = formatName(data.personName);
+    const companyInitial = String(data.companyName || "S").trim().charAt(0).toUpperCase();
+
     return (
-        <div className="relative w-full">
+        <div className="relative w-full min-w-0">
             <div
                 ref={scrollRef}
                 onScroll={handleScroll}
-                className="flex flex-nowrap overflow-x-auto gap-4 p-4 pb-8 md:pb-4 snap-x snap-mandatory md:snap-none scrollbar-hide"
+                className="-mx-4 flex flex-nowrap gap-3 overflow-x-auto px-4 pb-2 snap-x snap-mandatory scrollbar-hide md:-mx-5 md:px-5"
             >
-                {/* ================= DESIGN 1 (FIXED) ================= */}
-                <div ref={cardRef1} className="relative flex-shrink-0 w-[280px] h-[155px] flex rounded shadow-md overflow-hidden bg-white border border-gray-200 snap-center">
-                    <div className="absolute top-1.5 right-1.5 flex gap-1 z-20 no-export">
-                        <button onClick={() => downloadCard(cardRef1, formatName(data.personName))} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
-                            <FiDownload size={10} />
-                        </button>
-                        <button onClick={() => handleShare(cardRef1, formatName(data.personName))} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
-                            <FiShare2 size={10} />
-                        </button>
-                    </div>
-
-                    {/* Left panel */}
-                    <div className="w-[58%] bg-[#00425A] text-white p-3 flex flex-col justify-between h-full">
-                        <div>
-                            <h2 className="text-[11px] font-bold uppercase tracking-wide truncate leading-tight">
-                                {formatName(data.personName)}
-                            </h2>
-                            <p className="text-[8px] opacity-75 mt-0.5 truncate">{data.role}</p>
-                        </div>
-                        <div className="space-y-[3px] text-[8px] opacity-90 font-light">
-                            {/* Address */}
-                            <div className="flex items-center gap-1 overflow-hidden">
-                                <svg className="shrink-0" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
-                                    <circle cx="12" cy="9" r="2.5" />
-                                </svg>
-                                <span className="line-clamp-2 leading-tight">{data.address}</span>
-                            </div>
-                            {/* Phone */}
-                            <div className="flex items-center gap-1">
-                                <svg className="shrink-0" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                    <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.12 1.18 2 2 0 012.1 0h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 14.92v2z" />
-                                </svg>
-                                <span>{data.phone}</span>
-                            </div>
-                            {/* Email */}
-                            <div className="flex items-center gap-1 overflow-hidden">
-                                <svg className="shrink-0" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                                    <polyline points="22,6 12,13 2,6" />
-                                </svg>
-                                <span className="truncate">{data.email}</span>
+                {/* ================= DESIGN 1 — dark ================= */}
+                <div className="grid w-[260px] min-w-0 shrink-0 snap-center gap-2">
+                    <div ref={cardRef1} className={`${BC} grid grid-cols-[1.4fr_1fr] bg-white`}>
+                        {/* Left panel */}
+                        <div className="flex min-w-0 flex-col bg-[#0f172b] p-3 text-white">
+                            <div className="truncate text-[13px] font-semibold uppercase leading-[18px]">{shownName}</div>
+                            <div className="truncate opacity-80">{data.role}</div>
+                            <div className="mt-auto grid gap-[3px]">
+                                {data.address && (
+                                    <span className="flex min-w-0 items-start gap-[5px]">
+                                        <span className="mt-[2px]"><PinIco /></span>
+                                        <span className="line-clamp-3 break-words">{data.address}</span>
+                                    </span>
+                                )}
+                                {data.phone && (
+                                    <span className="flex min-w-0 items-center gap-[5px]">
+                                        <PhoneIco />
+                                        <span className="truncate">{data.phone}</span>
+                                    </span>
+                                )}
+                                {data.email && (
+                                    <span className="flex min-w-0 items-center gap-[5px]">
+                                        <MailIco />
+                                        <span className="truncate">{data.email}</span>
+                                    </span>
+                                )}
                             </div>
                         </div>
-                    </div>
 
-                    {/* Right panel */}
-                    <div className="w-[42%] flex flex-col items-center justify-center p-3 text-center bg-white">
-                        <div className="w-7 h-7 border border-blue-900 rounded-full flex items-center justify-center mb-1 text-[10px]">✈️</div>
-                        <h3 className="font-bold text-[8px] text-[#00425A] uppercase leading-tight line-clamp-2 px-1">
-                            {data.companyName}
-                        </h3>
-                        <p className="text-[6.5px] text-gray-400 uppercase leading-tight mt-0.5 truncate w-full px-1">
-                            {data.tagline}
-                        </p>
+                        {/* Right panel */}
+                        <div className="grid min-w-0 place-content-center justify-items-center gap-1.5 px-2 text-center text-[10px] tracking-[0.06em] text-[#0f172b]">
+                            <span className={`grid h-8 w-8 place-items-center rounded-sm border-2 text-sm font-bold ${t.monogram}`}>
+                                {companyInitial}
+                            </span>
+                            <b className="line-clamp-2 break-words uppercase">{data.companyName}</b>
+                        </div>
                     </div>
+                    <DownloadShare
+                        t={t}
+                        onDownload={() => downloadCard(cardRef1, shownName)}
+                        onShare={() => handleShare(cardRef1, shownName)}
+                    />
                 </div>
 
-                {/* ================= DESIGN 2 (FIXED) ================= */}
-                <div ref={cardRef2} className="relative flex-shrink-0 w-[280px] h-[155px] flex flex-col rounded-sm shadow-lg overflow-hidden bg-white border border-gray-100 snap-center p-3">
-                    <div className="absolute top-1.5 right-1.5 flex gap-1 z-20 no-export">
-                        <button onClick={() => downloadCard(cardRef2, formatName(data.personName))} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
-                            <FiDownload size={10} />
-                        </button>
-                        <button onClick={() => handleShare(cardRef2, formatName(data.personName))} className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100">
-                            <FiShare2 size={10} />
-                        </button>
-                    </div>
-
-                    {/* Header row */}
-                    <div className="flex justify-between items-start w-full mb-1">
-                        <div className="flex flex-col min-w-0 flex-1 pr-2">
-                            <h3 className="font-extrabold text-[8.5px] uppercase tracking-wider text-gray-800 leading-none truncate">
-                                {data.companyName}
-                            </h3>
-                            <p className="text-[6.5px] text-gray-400 font-medium uppercase tracking-tighter mt-0.5 truncate">
-                                {data.tagline}
-                            </p>
+                {/* ================= DESIGN 2 — light ================= */}
+                <div className="grid w-[260px] min-w-0 shrink-0 snap-center gap-2">
+                    <div ref={cardRef2} className={`${BC} flex flex-col bg-white p-3 text-[#0f172b]`}>
+                        {/* Top */}
+                        <div className={`flex items-center justify-between gap-2 border-b ${t.divider} pb-2 tracking-[0.06em]`}>
+                            <b className="min-w-0 truncate uppercase">{data.companyName}</b>
+                            <span className="inline-flex h-[18px] shrink-0 items-center whitespace-nowrap rounded-sm bg-[#0f172b] px-2 text-[9px] font-semibold uppercase leading-[18px] tracking-[0.03em] text-white">
+                                {data.role.length > 12 ? data.role.slice(0, 12) + "…" : data.role}
+                            </span>
                         </div>
-                        {/* Role badge — flex-shrink-0 prevents overlap with buttons */}
-                        <span className="flex-shrink-0 text-[7px] font-black bg-[#00425A] text-white px-2 py-0.5 rounded-full uppercase tracking-widest mr-14 whitespace-nowrap">
-                            {data.role.length > 12 ? data.role.slice(0, 12) + "…" : data.role}
-                        </span>
-                    </div>
 
-                    {/* Center — name */}
-                    <div className="flex-1 flex flex-col items-center justify-center border-y border-gray-50 py-1.5 min-h-0">
-                        <h2 className="text-[14px] font-black uppercase italic tracking-tight text-gray-900 leading-none truncate max-w-full px-2">
-                            {formatName(data.personName)}
-                        </h2>
-                        <div className="h-0.5 w-7 bg-orange-400 mt-1.5 rounded-sm"></div>
-                        <div className="flex items-center gap-1 mt-1 overflow-hidden max-w-full px-2">
-                            <svg className="shrink-0" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2">
-                                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                                <polyline points="22,6 12,13 2,6" />
-                            </svg>
-                            <span className="text-[8px] text-gray-600 truncate">{data.email}</span>
+                        {/* Middle */}
+                        <div className="grid min-h-0 min-w-0 flex-1 place-content-center justify-items-center gap-1 text-[15px] font-semibold italic">
+                            <span className="max-w-full truncate">{shownName}</span>
+                            <i className="h-0.5 w-6 bg-[#ff3a36]" />
+                            {data.email && (
+                                <span className="flex max-w-full items-center gap-[5px] text-[10px] font-normal not-italic text-[#45556c]">
+                                    <MailIco />
+                                    <span className="truncate">{data.email}</span>
+                                </span>
+                            )}
+                        </div>
+
+                        {/* Bottom */}
+                        <div className="flex min-w-0 items-start gap-3 text-[#45556c]">
+                            {data.phone && (
+                                <span className="flex shrink-0 items-start gap-[5px]">
+                                    <span className="mt-[2px]"><PhoneIco /></span>
+                                    {data.phone}
+                                </span>
+                            )}
+                            {data.address && (
+                                <span className="flex min-w-0 items-start gap-[5px]">
+                                    <span className="mt-[2px]"><PinIco /></span>
+                                    <span className="line-clamp-2 break-words">{data.address}</span>
+                                </span>
+                            )}
                         </div>
                     </div>
-
-                    {/* Footer row */}
-                    <div className="mt-auto pt-1.5">
-                        <div className="flex items-start gap-2 text-[8px] font-medium text-gray-600 overflow-hidden">
-                            <svg className="shrink-0" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2.5">
-                                <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81 19.79 19.79 0 01.12 1.18 2 2 0 012.1 0h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 14.92v2z" />
-                            </svg>
-                            <span className="whitespace-nowrap">{data.phone}</span>
-                            <div className="h-3 w-[1px] bg-gray-200 shrink-0"></div>
-                            <svg className="shrink-0" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2.5">
-                                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
-                                <circle cx="12" cy="9" r="2.5" />
-                            </svg>
-                            <span className="line-clamp-2 leading-tight">{data.address}</span>
-                        </div>
-                    </div>
+                    <DownloadShare
+                        t={t}
+                        onDownload={() => downloadCard(cardRef2, shownName)}
+                        onShare={() => handleShare(cardRef2, shownName)}
+                    />
                 </div>
 
-                {/* ================= DESIGN 3 (UPLOAD CARD) ================= */}
-                <div
-                    ref={uploadedCardRef}
-                    className="relative flex-shrink-0 w-[280px] h-[155px] flex flex-col items-center justify-center rounded-sm shadow-lg overflow-hidden bg-white border border-dashed border-gray-300 snap-center p-4"
-                >
-
-                    {!uploadedCard ? (
-                        <label className="flex flex-col items-center justify-center cursor-pointer text-center">
-                            <div className="text-gray-400 text-xs font-semibold mb-2">
-                                Upload Your Business Card
-                            </div>
-                            <div className="px-3 py-1 bg-blue-600 text-white text-[10px] rounded">
-                                Upload Card
-                            </div>
+                {/* ================= DESIGN 3 — upload ================= */}
+                {!uploadedCard ? (
+                    <div
+                        ref={uploadedCardRef}
+                        className="flex aspect-[1.75] w-[260px] min-w-0 shrink-0 snap-center flex-col items-center justify-center gap-1.5 rounded-sm border-[1.5px] border-dashed border-[#7a8aa3] p-2 text-center text-xs leading-[18px] text-[#45556c]"
+                    >
+                        <Ico className="h-5 w-5">
+                            <path d="M12 21V9M7 14l5-5 5 5M4 3h16" />
+                        </Ico>
+                        <span>Have your own printed card? Upload a photo and share it from here.</span>
+                        <label className={`${BTN} ${t.btnSecondary}`}>
+                            Upload card
                             <input
                                 type="file"
                                 accept="image/png, image/jpeg, image/jpg, image/webp"
@@ -399,58 +474,41 @@ function BusinessCard() {
                                 onChange={handleUploadCard}
                             />
                         </label>
-                    ) : (
-                        <>
+                    </div>
+                ) : (
+                    <div className="grid w-[260px] min-w-0 shrink-0 snap-center gap-2">
+                        <div ref={uploadedCardRef} className={`${BC} bg-white`}>
                             {/* Preview */}
                             <img
                                 src={uploadedCard}
                                 alt="Uploaded card"
-                                className="w-full h-full object-contain rounded"
+                                className="h-full w-full object-contain"
                             />
-
-                            {/* Action buttons — same layout as Design 1 & 2 */}
-                            <div className="absolute top-1.5 right-1.5 flex gap-1 z-20 no-export">
-                                {/* Download */}
-                                <button
-                                    onClick={downloadUploadedCard}
-                                    className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100"
-                                >
-                                    <FiDownload size={10} />
-                                </button>
-
-                                {/* Share */}
-                                <button
-                                    onClick={handleShareUploadedCard}
-                                    className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100"
-                                >
-                                    <FiShare2 size={10} />
-                                </button>
-                                {/* Remove / Replace */}
-                                <button
-                                    onClick={removeUploadedCard}
-                                    className="p-1.5 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-600 border border-gray-100"
-                                >
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        className="w-[10px] h-[10px]"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="3"
-                                    >
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M18 6L6 18M6 6l12 12" />
-                                    </svg>
-                                </button>
-                            </div>
-                        </>
-                    )}
-                </div>
+                        </div>
+                        <DownloadShare t={t} onDownload={downloadUploadedCard} onShare={handleShareUploadedCard}>
+                            {/* Remove (icon-only so all 3 buttons fit in 260px) */}
+                            <button
+                                onClick={removeUploadedCard}
+                                aria-label="Remove uploaded card"
+                                title="Remove"
+                                className={`${BTN} ${t.btnDanger} px-2`}
+                            >
+                                <Ico>
+                                    <path d="M18 6L6 18M6 6l12 12" />
+                                </Ico>
+                            </button>
+                        </DownloadShare>
+                    </div>
+                )}
             </div>
 
             {/* Dots */}
-            <div className="absolute bottom-2 left-0 right-0 flex md:hidden justify-center gap-1.5 pointer-events-none">
+            <div className="flex justify-center gap-1 pb-3 pt-1 pointer-events-none">
                 {cards.map((_, i) => (
-                    <div key={i} className={`h-1 rounded-full transition-all duration-300 ${activeIndex === i ? "bg-blue-600 w-3" : "bg-gray-300 w-1"}`} />
+                    <div
+                        key={i}
+                        className={`h-1.5 rounded-sm transition-all duration-300 ${activeIndex === i ? `w-4 ${t.dotActive}` : "w-1.5 bg-[#7a8aa3]"}`}
+                    />
                 ))}
             </div>
         </div>

@@ -3,33 +3,45 @@ import { createPortal } from 'react-dom';
 import { State } from "../enums";
 import { FiAlertTriangle } from 'react-icons/fi';
 
+export type PaymentTheme = 'pos' | 'catalogue';   // ← Modal ke upar move karo (neeche wala hata do)
+
+const MODAL_THEME_STYLES = {
+    pos: {
+        infoBg: 'bg-blue-100',
+        infoIcon: 'text-blue-600',
+        primaryBtn: 'bg-blue-600 hover:bg-blue-700',
+    },
+    catalogue: {
+        infoBg: 'bg-orange-100',
+        infoIcon: 'text-[#c2410c]',
+        primaryBtn: 'bg-[#c2410c] hover:bg-[#9a3412]',
+    },
+} as const;
+
 interface ModalProps {
     message: string;
     onClose: () => void;
     onConfirm?: () => void;
     showConfirmButton?: boolean;
     type: State;
+    theme?: PaymentTheme;   // default 'pos'
 }
 
 export const Modal: React.FC<ModalProps> = ({
-    message,
-    onClose,
-    onConfirm,
-    // Set a default value for showConfirmButton to make it optional
-    showConfirmButton = false,
-    type,
+    message, onClose, onConfirm, showConfirmButton = false, type, theme = 'pos',
 }) => {
+    const t = MODAL_THEME_STYLES[theme];
     const modalContent = (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[2000] p-4">
             <div className="bg-white rounded-sm shadow-2xl p-6 w-full max-w-sm text-center">
                 {/* Icon based on type */}
                 <div className={`mx-auto mb-4 w-12 h-12 rounded-sm flex items-center justify-center ${type === State.SUCCESS ? 'bg-green-100' :
-                    type === State.WARNING ? 'bg-red-100' :
-                        'bg-blue-100'
-                    }`}>
+    type === State.WARNING ? 'bg-red-100' :
+        t.infoBg
+    }`}>
                     {type === State.SUCCESS && <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>}
                     {type === State.ERROR && <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>}
-                    {type === State.INFO && <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>}
+                    {type === State.INFO && <svg className={`w-6 h-6 ${t.infoIcon}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>}
                     {type === State.WARNING && <FiAlertTriangle className="w-8 h-8 text-red-600" />}
                 </div>
 
@@ -46,8 +58,8 @@ export const Modal: React.FC<ModalProps> = ({
                         </button>
                         <button
                             onClick={onConfirm}
-                            className={`flex-1 text-white py-2 px-4 rounded-sm transition-colors ${type === State.ERROR || type === State.INFO ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
-                                }`}
+                            className={`flex-1 text-white py-2 px-4 rounded-sm transition-colors ${type === State.ERROR || type === State.INFO ? 'bg-red-600 hover:bg-red-700' : t.primaryBtn
+    }`}
                         >
                             Confirm
                         </button>
@@ -55,7 +67,7 @@ export const Modal: React.FC<ModalProps> = ({
                 ) : (
                     <button
                         onClick={onClose}
-                        className="w-full bg-blue-600 text-white py-2 px-4 rounded-sm hover:bg-blue-700 transition-colors"
+                        className={`w-full text-white py-2 px-4 rounded-sm transition-colors ${t.primaryBtn}`}
                     >
                         OK
                     </button>
@@ -67,6 +79,23 @@ export const Modal: React.FC<ModalProps> = ({
     if (typeof document === 'undefined') return modalContent;
     return createPortal(modalContent, document.body);
 };
+
+const PAYMENT_THEME_STYLES = {
+    pos: {
+        primaryBtn: 'bg-blue-600 hover:bg-blue-700',
+        focus: 'focus:border-blue-500 focus:ring-blue-500',
+        creditBox: 'bg-blue-50 border-blue-100',
+        creditLabel: 'text-blue-800',
+        creditAmount: 'text-blue-600',
+    },
+    catalogue: {
+        primaryBtn: 'bg-[#c2410c] hover:bg-[#9a3412]',
+        focus: 'focus:border-[#F97316] focus:ring-[#F97316]',
+        creditBox: 'bg-orange-50 border-orange-100',
+        creditLabel: 'text-[#9a3412]',
+        creditAmount: 'text-[#c2410c]',
+    },
+} as const;
 
 export interface ModalInvoice {
     id: string;
@@ -88,11 +117,13 @@ interface PaymentModalProps {
     invoice: ModalInvoice | null;
     onSubmit: (invoice: ModalInvoice, amount: number, method: string, paymentDate: string, chequeNumber?: string, chequeDate?: string) => Promise<void>;
     onConfirm?: (amountToAdd: number) => Promise<void>;
-    availableCredit?: number; // Added to receive credit from OrdersPage
+        availableCredit?: number; // Added to receive credit from OrdersPage
     isDebitNote?: boolean;
+    theme?: PaymentTheme; // 'pos' (blue, default) | 'catalogue' (orange)
 }
 
-export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, invoice, onSubmit, availableCredit = 0, isDebitNote = false }) => {
+export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, invoice, onSubmit, availableCredit = 0, isDebitNote = false, theme = 'pos' }) => {
+    const t = PAYMENT_THEME_STYLES[theme];
     const [amount, setAmount] = useState('');
     const [method, setMethod] = useState('cash');
     const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -190,7 +221,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
         }
     };
 
-    return (
+    // Portaled like Modal so it always sits above page sheets/drawers that opened it
+    return createPortal(
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex justify-center items-center z-[2000]">
             <div className="bg-white rounded-sm shadow-xl p-6 w-full max-w-md">
                 <h2 className="text-2xl font-bold mb-2 text-slate-800">Settle Payment</h2>
@@ -200,12 +232,12 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
 
                 {/* --- NEW: Display Available Credit Balance --- */}
                 {availableCredit > 0 && (
-                    <div className="mb-5 p-3 bg-blue-50 border border-blue-100 rounded-sm flex items-center justify-between">
-                        <span className="text-xs font-bold text-blue-800 uppercase tracking-widest">
-                            {isDebitNote ? 'Available Debit' : 'Available Credit'}
-                        </span>
-                        <span className="text-sm font-black text-blue-600">₹{availableCredit.toLocaleString('en-IN')}</span>
-                    </div>
+                    <div className={`mb-5 p-3 border rounded-sm flex items-center justify-between ${t.creditBox}`}>
+    <span className={`text-xs font-bold uppercase tracking-widest ${t.creditLabel}`}>
+        {isDebitNote ? 'Available Debit' : 'Available Credit'}
+    </span>
+    <span className={`text-sm font-black ${t.creditAmount}`}>₹{availableCredit.toLocaleString('en-IN')}</span>
+</div>
                 )}
                 {/* ------------------------------------------- */}
 
@@ -217,7 +249,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                             id="amount"
                             value={amount}
                             onChange={(e) => setAmount(e.target.value)}
-                            className="mt-1 block w-full rounded-sm border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border"
+                            className={`mt-1 block w-full rounded-sm border-slate-300 shadow-sm p-2 border ${t.focus}`}
                             required
                         />
                     </div>
@@ -262,7 +294,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                                     type="text"
                                     value={chequeNumber}
                                     onChange={(e) => setChequeNumber(e.target.value)}
-                                    className="mt-1 block w-full rounded-sm border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border text-sm"
+                                    className={`mt-1 block w-full rounded-sm border-slate-300 shadow-sm p-2 border text-sm ${t.focus}`}
                                     placeholder="Enter cheque number"
                                     required
                                 />
@@ -273,7 +305,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                                     type="date"
                                     value={chequeDate}
                                     onChange={(e) => setChequeDate(e.target.value)}
-                                    className="mt-1 block w-full rounded-sm border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border text-sm"
+                                    className={`mt-1 block w-full rounded-sm border-slate-300 shadow-sm p-2 border text-sm ${t.focus}`}
                                     required
                                 />
                             </div>
@@ -283,13 +315,14 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
 
                     <div className="flex justify-end gap-3 mt-2">
                         <button type="button" onClick={onClose} className="px-4 py-2.5 rounded-sm bg-slate-200 text-slate-800 font-bold hover:bg-slate-300 text-sm">Cancel</button>
-                        <button type="submit" disabled={isSubmitting} className="px-4 py-2.5 rounded-sm bg-blue-600 text-white font-bold hover:bg-blue-700 disabled:opacity-50 text-sm"
-                        >
+                        <button type="submit" disabled={isSubmitting} className={`px-4 py-2.5 rounded-sm text-white font-bold disabled:opacity-50 text-sm ${t.primaryBtn}`}
+>
                             {isSubmitting ? 'Processing...' : 'Submit Payment'}
                         </button>
                     </div>
                 </form>
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 };

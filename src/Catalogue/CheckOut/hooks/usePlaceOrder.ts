@@ -64,7 +64,19 @@ export const usePlaceOrder = ({
                 const settingsSnap = await transaction.get(settingsRef);
 
                 // 1. READ ALL ITEMS FIRST (Firestore Transaction Rule)
-                const itemRefs = cartItems.map(item => doc(db, 'companies', effectiveCompanyId!, 'items', String(item.id)));
+                // One read/write per product: lines of the same item (e.g. different add-ons) share the same stock
+                const qtyByItem = new Map<string, number>();
+                cartItems.forEach(item => {
+                    const key = String(item.id);
+                    // Same as POS: stock is in base pieces, so a pack/box line deducts quantity × pieces per pack
+                    const piecesPerUnit = Number(item.unitMultiplier) || 1;
+                    qtyByItem.set(key, (qtyByItem.get(key) || 0) + Number(item.quantity) * piecesPerUnit);
+                    // Linked add-on items (e.g. a Coke sold with a burger) take their own stock
+                    ((item as any).addOns || []).forEach((a: { itemId?: string; itemQty?: number }) => {
+                        if (a.itemId) qtyByItem.set(a.itemId, (qtyByItem.get(a.itemId) || 0) + Number(item.quantity) * (Number(a.itemQty) || 1));
+                    });
+                });
+                const itemRefs = Array.from(qtyByItem.keys()).map(id => doc(db, 'companies', effectiveCompanyId!, 'items', id));
                 const itemSnaps = await Promise.all(itemRefs.map(ref => transaction.get(ref)));
 
                 let prefix = "SLS-";
@@ -114,6 +126,7 @@ export const usePlaceOrder = ({
                     if (!customerSnap.exists() || !customerSnap.data()?.createdAt) {
                         customerData.createdAt = serverTimestamp();
                     }
+                    if (!customerSnap.exists()) customerData.source = 'catalogue';
                     Object.keys(customerData).forEach(key => {
                         if (customerData[key] === undefined) delete customerData[key];
                     });
@@ -151,10 +164,10 @@ export const usePlaceOrder = ({
                 });
 
                 // 4. WRITE: Deduct the stock for each item (Using raw quantity)
-                itemSnaps.forEach((snap, index) => {
+                itemSnaps.forEach((snap) => {
                     if (snap.exists()) {
                         const currentStock = Number(snap.data().stock || 0);
-                        const deductQty = Number(cartItems[index].quantity);
+                        const deductQty = qtyByItem.get(snap.id) || 0;
 
                         transaction.update(snap.ref, {
                             // 👇 FIX: Allow negative stock numbers
@@ -190,9 +203,16 @@ export const usePlaceOrder = ({
                 window.dispatchEvent(new CustomEvent('local_stock_update', {
                     detail: {
                         itemId: String(item.id),
-                        delta: -Number(item.quantity)
+                        delta: -Number(item.quantity) * (Number(item.unitMultiplier) || 1)
                     }
                 }));
+                ((item as any).addOns || []).forEach((a: { itemId?: string; itemQty?: number }) => {
+                    if (a.itemId) {
+                        window.dispatchEvent(new CustomEvent('local_stock_update', {
+                            detail: { itemId: String(a.itemId), delta: -Number(item.quantity) * (Number(a.itemQty) || 1) }
+                        }));
+                    }
+                });
             });
 
             setCartItems([]);

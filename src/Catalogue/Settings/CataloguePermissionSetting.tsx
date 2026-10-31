@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../../lib/Firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, getDocs, setDoc, collection } from 'firebase/firestore';
 import { useAuth } from '../../context/auth-context';
 import { ROLES, State } from '../../enums';
 import { Cata_Permissions, migrateCataPermissions } from '../../Catalogue/enum/cata_permissions.enum';
@@ -124,7 +124,7 @@ const cataPermissionGroups = {
     },
 };
 
-// --- DESCRIPTIONS (Tooltips) ---
+// --- DESCRIPTIONS (shown under each row) ---
 const CATA_PERMISSION_DESCRIPTIONS: Partial<Record<Cata_Permissions, string>> = {
     // Dashboard & Widgets
     [Cata_Permissions.ViewCatalogueDashboard]: 'Access the main catalogue dashboard.',
@@ -173,9 +173,40 @@ const CATA_PERMISSION_DESCRIPTIONS: Partial<Record<Cata_Permissions, string>> = 
 };
 // --- DISPLAY LABELS (UI text override, enum value stays same for DB) ---
 const CATA_PERMISSION_LABELS: Partial<Record<Cata_Permissions, string>> = {
-    [Cata_Permissions.ViewReports]: 'ViewReports & Settings',
-    [Cata_Permissions.ViewShop]: 'View Catalog',
-    [Cata_Permissions.ViewShopItems]: 'View Catalog Item',
+    // Dashboard & widgets
+    [Cata_Permissions.ViewCatalogueDashboard]: 'Open Catalogue dashboard',
+    [Cata_Permissions.ViewCatalogueFilter]: 'Use dashboard filters',
+    [Cata_Permissions.ViewCatalogueHidebutton]: 'Hide / show figures',
+    [Cata_Permissions.ViewCatalogueSalesbarchart]: 'Sales chart',
+    [Cata_Permissions.ViewTopSoldItems]: 'Top selling items',
+    [Cata_Permissions.ViewNotification]: 'Notifications',
+    // Orders, shop & requests
+    [Cata_Permissions.ViewCatalogueOrders]: 'View orders',
+    [Cata_Permissions.ViewOrdersReturn]: 'Order returns',
+    [Cata_Permissions.ViewCatalogueRequests]: 'Customer requests',
+    [Cata_Permissions.ViewShop]: 'View catalogue',
+    [Cata_Permissions.ViewShopItems]: 'View catalogue items',
+    [Cata_Permissions.ViewEditButton]: 'Edit orders',
+    // Reports & insights
+    [Cata_Permissions.ViewReports]: 'Open Reports & Settings tabs',
+    [Cata_Permissions.ViewItemReport]: 'Item report',
+    [Cata_Permissions.ViewSalesReport]: 'Sales report',
+    [Cata_Permissions.ViewItemSoldReport]: 'Items sold report',
+    [Cata_Permissions.ViewCustomerReport]: 'Customer report',
+    [Cata_Permissions.ViewPNLReport]: 'Profit & loss',
+    [Cata_Permissions.ViewExpenseReport]: 'Expense report',
+    // Accounts & finance
+    [Cata_Permissions.ViewCatalogueAccounts]: 'Accounts',
+    [Cata_Permissions.ViewPartyLedger]: 'Party ledger',
+    // Item & master management
+    [Cata_Permissions.ManageItems]: 'Add, edit and delete items',
+    [Cata_Permissions.ManageItemSettings]: 'Item settings',
+    [Cata_Permissions.ManageMasters]: 'Masters',
+    // Sales & billing settings
+    [Cata_Permissions.ManageSalesSettings]: 'Sales settings',
+    [Cata_Permissions.ManageBillSettings]: 'Bill settings',
+    // User, profile & access
+    [Cata_Permissions.ManageEditProfile]: 'Edit profile',
 };
 // Yeh permissions kabhi bhi UI me nahi dikhani (na kisi group me, na "Other Permissions" me)
 const HIDDEN_CATA_PERMISSIONS = new Set<Cata_Permissions>([
@@ -193,14 +224,198 @@ const getUngroupedPermissions = (allPermissions: Cata_Permissions[]): Cata_Permi
     return allPermissions.filter(perm => !grouped.has(perm) && !HIDDEN_CATA_PERMISSIONS.has(perm));
 };
 
+// ---------- UI-only helpers (Catalogue orange tokens) ----------
+// primary #c2410c · hover #9a3412 · soft #ffedd5 · canvas #fff5ec · sunken #fff8f2 · border #f6e1d0 · warning #a16207
+
+const PERMISSION_TAGS: Partial<Record<Cata_Permissions, string>> = {
+    [Cata_Permissions.ViewPNLReport]: 'Shows profit',
+};
+
+// // Rows drawn indented under "Open Reports & Settings tabs" (indent only, no logic attached)
+// const NESTED_PERMISSIONS: Cata_Permissions[] = [
+//     Cata_Permissions.ViewItemReport,
+//     Cata_Permissions.ViewSalesReport,
+//     Cata_Permissions.ViewItemSoldReport,
+//     Cata_Permissions.ViewCustomerReport,
+//     Cata_Permissions.ViewPNLReport,
+//     Cata_Permissions.ViewExpenseReport,
+// ];
+
+type GroupMeta = { title: string; navLabel: string; subtitle: string; tint: [string, string]; icon: string[] };
+
+const TINT_ORANGE: [string, string] = ['bg-[#ffedd5]', 'text-[#9a3412]'];
+const TINT_GREEN: [string, string] = ['bg-[#e9faef]', 'text-[#008236]'];
+const TINT_AMBER: [string, string] = ['bg-[#fef6d7]', 'text-[#a16207]'];
+const TINT_MAGENTA: [string, string] = ['bg-[#ffe8f8]', 'text-[#c4009a]'];
+
+const GROUP_META: Record<string, GroupMeta> = {
+    dashboard: {
+        title: 'Dashboard & widgets',
+        navLabel: 'Dashboard',
+        subtitle: 'Cards and widgets on the dashboard',
+        tint: TINT_ORANGE,
+        icon: ['M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z'],
+    },
+    orders: {
+        title: 'Orders, shop & requests',
+        navLabel: 'Orders & shop',
+        subtitle: 'Orders, returns, requests and the shop',
+        tint: TINT_ORANGE,
+        icon: [
+            'M2 3h3l2.7 12.4a1 1 0 0 0 1 .8h9.6a1 1 0 0 0 1-.8L21 7H6',
+            'M9 18.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z',
+            'M18 18.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z',
+        ],
+    },
+    reports: {
+        title: 'Reports & insights',
+        navLabel: 'Reports',
+        subtitle: 'Figures about the business',
+        tint: TINT_GREEN,
+        icon: ['M3 3v18h18', 'M8 16v-4M13 16V8M18 16v-6'],
+    },
+    accounts: {
+        title: 'Accounts & finance',
+        navLabel: 'Accounts',
+        subtitle: 'Company accounts and party ledger',
+        tint: TINT_AMBER,
+        icon: ['M19 7V5a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a2 2 0 0 1-2-2V6'],
+    },
+    itemMaster: {
+        title: 'Item & master management',
+        navLabel: 'Items & masters',
+        subtitle: 'Items, item settings and masters',
+        tint: TINT_AMBER,
+        icon: ['M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z', 'M7.5 6a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z'],
+    },
+    salesBilling: {
+        title: 'Sales & billing settings',
+        navLabel: 'Billing settings',
+        subtitle: 'Sales defaults and bill format',
+        tint: TINT_MAGENTA,
+        icon: [
+            'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12',
+            'M16 4a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
+            'M10 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
+            'M18 16a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
+        ],
+    },
+    userAccess: {
+        title: 'User, profile & access',
+        navLabel: 'Profile',
+        subtitle: 'Their own profile',
+        tint: TINT_MAGENTA,
+        icon: ['M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8z', 'M4 21a8 8 0 0 1 16 0'],
+    },
+};
+
+const OTHER_GROUP_META: GroupMeta = {
+    title: 'Other',
+    navLabel: 'Other',
+    subtitle: 'Additional permissions',
+    tint: TINT_ORANGE,
+    icon: ['M5 12h.01M12 12h.01M19 12h.01'],
+};
+
+// Staff shown in the right panel (Manager / Salesman lists)
+interface StaffMember {
+    id: string;
+    name: string;
+    role: string;
+    lastActive?: string;
+}
+
+const toDate = (v: any): Date | null => {
+    if (!v) return null;
+    if (typeof v.toDate === 'function') return v.toDate();
+    const d = new Date(v);
+    return isNaN(d.getTime()) ? null : d;
+};
+
+const formatLastActive = (d?: Date | null, isSelf?: boolean): string | null => {
+    if (isSelf) return 'Now';
+    if (!d) return null;
+    const mins = Math.floor((Date.now() - d.getTime()) / 60000);
+    if (mins < 1) return 'Just now';
+    if (mins < 60) return `${mins} min ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs} h ago`;
+    if (hrs < 48) return 'Yesterday';
+    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+};
+
+const sameRole = (a?: string, b?: string) => (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase();
+
+const getInitials = (name: string) =>
+    name.trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() || '').join('') || '?';
+
+const Ico: React.FC<{ paths: string[]; size?: number; strokeWidth?: number }> = ({ paths, size = 18, strokeWidth = 1.8 }) => (
+    <svg
+        viewBox="0 0 24 24"
+        width={size}
+        height={size}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+    >
+        {paths.map((d, i) => <path key={i} d={d} />)}
+    </svg>
+);
+
+const ICON_SEARCH = ['M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14z', 'm20 20-3.5-3.5'];
+const ICON_CHECK = ['M5 12.5l4.5 4.5L19 7'];
+const ICON_SHIELD = ['M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z', 'm9 12 2 2 4-4'];
+const ICON_USERS = ['M9 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8z', 'M2 21a7 7 0 0 1 14 0M16 3.5a4 4 0 0 1 0 8M22 21a7 7 0 0 0-4-6.3'];
+
+const CARD_CLASS =
+    'bg-white border border-[#f6e1d0] rounded-sm shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]';
+
+interface CbProps {
+    checked: boolean;
+    label: string;
+    onToggle: () => void;
+}
+
+// Custom checkbox (SELLAR .cb, Catalogue orange)
+const Cb: React.FC<CbProps> = ({ checked, label, onToggle }) => (
+    <button
+        type="button"
+        role="checkbox"
+        aria-checked={checked}
+        aria-label={label}
+        onClick={onToggle}
+        className={`w-5 h-5 shrink-0 p-0 inline-grid place-items-center rounded-sm border-[1.5px] text-white transition-colors
+            focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ea580c]
+            ${checked ? 'bg-[#c2410c] border-[#c2410c]' : 'bg-white border-[#7a8aa3]'}`}
+    >
+        {checked && <Ico paths={ICON_CHECK} size={13} strokeWidth={3} />}
+    </button>
+);
+
+// Catalogue roles managed on this screen
+const VISIBLE_ROLES: string[] = [ROLES.SALESMAN, ROLES.MANAGER];
+
 const CataloguePermissionSetting: React.FC = () => {
     const { currentUser } = useAuth();
     const [rolePermissions, setRolePermissions] = useState<Record<string, Cata_Permissions[]>>({});
+    // Last saved copy, used to show "Changed" cells and unsaved-change counts
+    const [savedPermissions, setSavedPermissions] = useState<Record<string, Cata_Permissions[]>>({});
     const [loading, setLoading] = useState(true);
     const [selectedRole, setSelectedRole] = useState<string>(ROLES.SALESMAN);
 
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
     const [isResetOpen, setIsResetOpen] = useState(false);
+    const [resetRoles, setResetRoles] = useState<string[]>([]);
+
+    const [searchQuery, setSearchQuery] = useState('');
+    const [showMobileSearch, setShowMobileSearch] = useState(false);
+    const [activeSection, setActiveSection] = useState<string | null>(null);
+
+    // Staff list (same source as Manage Users: companies/{companyId}/users)
+    const [staff, setStaff] = useState<StaffMember[]>([]);
 
     const ungroupedPermissions = useMemo(() => getUngroupedPermissions(CATA_PERM_VALUES as Cata_Permissions[]), []);
 
@@ -231,17 +446,20 @@ const CataloguePermissionSetting: React.FC = () => {
                 const snap = await getDoc(docRef);
 
                 if (snap.exists()) {
-                    const { permissions: migrated, changed: renamed } = migrateCataPermissions(snap.data().allowedPermissions);
-                    // Auto-merge in any default permission for this role that
-                    // isn't saved yet, so new default capabilities reach
-                    // existing companies without a manual Reset click.
+                    const data = snap.data();
+                    const { permissions: migrated, changed: renamed } = migrateCataPermissions(data.allowedPermissions);
                     const roleDefaults = getDefaultCataPermissions(role);
-                    const merged = Array.from(new Set([...migrated, ...roleDefaults]));
-                    const changed = renamed || merged.length !== migrated.length;
+                    // Purane docs (jisme syncedDefaults nahi hai) ke liye current defaults ko already-synced maano,
+                    // taaki unki disable ki hui permissions wapas on na ho
+                    const hasStamp = Array.isArray(data.syncedDefaults);
+                    const alreadySynced: string[] = hasStamp ? data.syncedDefaults : roleDefaults;
+                    const newDefaults = roleDefaults.filter(p => !alreadySynced.includes(p));
+                    const merged = Array.from(new Set([...migrated, ...newDefaults]));
+                    const changed = renamed || newDefaults.length > 0 || !hasStamp;
                     newMap[role] = merged;
                     if (changed) {
                         try {
-                            await setDoc(docRef, { allowedPermissions: merged }, { merge: true });
+                            await setDoc(docRef, { allowedPermissions: merged, syncedDefaults: roleDefaults }, { merge: true });
                         } catch (err) {
                             console.error(`Failed to persist synced catalogue permissions for ${role}`, err);
                         }
@@ -266,11 +484,57 @@ const CataloguePermissionSetting: React.FC = () => {
             }
 
             setRolePermissions(newMap);
+            setSavedPermissions(newMap);
             setLoading(false);
         };
 
         initializeAndFetchPermissions();
     }, [currentUser?.companyId]);
+
+    // Read-only fetch of company users for the right panel / role counts
+    useEffect(() => {
+        if (!currentUser?.companyId) return;
+        const companyId = currentUser.companyId;
+        const fetchStaff = async () => {
+            try {
+                const snap = await getDocs(collection(db, 'companies', companyId, 'users'));
+                const list: StaffMember[] = [];
+                snap.forEach((d) => {
+                    const data = d.data();
+                    list.push({
+                        id: d.id,
+                        name: data.name || data.email || 'No Name',
+                        role: data.role || '',
+                        lastActive:
+                            formatLastActive(toDate(data.lastLoginAt ?? data.lastActive), d.id === currentUser?.uid) ?? 'Never',
+                    });
+                });
+                setStaff(list);
+            } catch (err) {
+                console.error('Error fetching staff:', err);
+            }
+        };
+        fetchStaff();
+    }, [currentUser?.companyId, currentUser?.uid]);
+
+    // Highlight the left-nav item of the section being read
+    useEffect(() => {
+        if (loading) return;
+        const els = Array.from(document.querySelectorAll('[data-perm-section]'));
+        if (!els.length) return;
+        const observer = new IntersectionObserver(
+            (entries) => {
+                entries.forEach((entry) => {
+                    if (entry.isIntersecting) {
+                        setActiveSection((entry.target as HTMLElement).dataset.permSection || null);
+                    }
+                });
+            },
+            { rootMargin: '-15% 0px -75% 0px' }
+        );
+        els.forEach(el => observer.observe(el));
+        return () => observer.disconnect();
+    }, [loading, searchQuery]);
 
     // --- LOCAL STATE UPDATE (No longer auto-saves) ---
     const handlePermissionChange = (role: string, perm: Cata_Permissions, checked: boolean) => {
@@ -282,19 +546,38 @@ const CataloguePermissionSetting: React.FC = () => {
         setRolePermissions(prev => ({ ...prev, [role]: newCataloguePerms }));
     };
 
-    // --- MANUAL SAVE LOGIC ---
-    const handleSaveChanges = async (role: string) => {
+    // Select all / Clear all for one group of one role
+    const handleToggleGroup = (role: string, perms: Cata_Permissions[], select: boolean) => {
+        setRolePermissions(prev => {
+            const current = prev[role] || [];
+            return {
+                ...prev,
+                [role]: select
+                    ? [...new Set([...current, ...perms])]
+                    : current.filter(p => !perms.includes(p)),
+            };
+        });
+    };
+
+    // --- MANUAL SAVE LOGIC (one or more roles) ---
+    const handleSaveChanges = async (roles: string | string[]) => {
         if (!currentUser?.companyId) return;
+        const roleList = Array.isArray(roles) ? roles : [roles];
         setSaveStatus('saving');
 
         try {
-            const docRef = doc(db, 'companies', currentUser.companyId, 'cata_permissions', role);
+            const nextSaved: Record<string, Cata_Permissions[]> = {};
+            for (const role of roleList) {
+                const docRef = doc(db, 'companies', currentUser.companyId, 'cata_permissions', role);
 
-            await setDoc(docRef, {
-                allowedPermissions: rolePermissions[role] || [],
-                role: role,
-                companyId: currentUser.companyId
-            }, { merge: true });
+                await setDoc(docRef, {
+                    allowedPermissions: rolePermissions[role] || [],
+                    role: role,
+                    companyId: currentUser.companyId
+                }, { merge: true });
+                nextSaved[role] = rolePermissions[role] || [];
+            }
+            setSavedPermissions(prev => ({ ...prev, ...nextSaved }));
 
             setSaveStatus('saved');
             setTimeout(() => setSaveStatus('idle'), 3000);
@@ -305,25 +588,43 @@ const CataloguePermissionSetting: React.FC = () => {
         }
     };
 
+    const handleDiscard = (roles: string[]) => {
+        setRolePermissions(prev => {
+            const next = { ...prev };
+            roles.forEach(role => { next[role] = savedPermissions[role] || []; });
+            return next;
+        });
+    };
+
+    const openReset = (roles: string[]) => {
+        setResetRoles(roles);
+        setIsResetOpen(true);
+    };
+
     // --- RESET LOGIC ---
     const handleResetPermissions = async () => {
         if (!currentUser?.companyId) return;
 
-        const defaults = getDefaultCataPermissions(selectedRole);
+        const roles = resetRoles;
+        const defaultsByRole: Record<string, Cata_Permissions[]> = {};
+        roles.forEach(role => { defaultsByRole[role] = getDefaultCataPermissions(role); });
 
         // Update Local State
-        setRolePermissions(prev => ({ ...prev, [selectedRole]: defaults }));
+        setRolePermissions(prev => ({ ...prev, ...defaultsByRole }));
         setIsResetOpen(false);
         setSaveStatus('saving');
 
         // Save Defaults to Firebase Immediately
         try {
-            const docRef = doc(db, 'companies', currentUser.companyId, 'cata_permissions', selectedRole);
-            await setDoc(docRef, {
-                allowedPermissions: defaults,
-                role: selectedRole,
-                companyId: currentUser.companyId
-            }, { merge: true });
+            for (const role of roles) {
+                const docRef = doc(db, 'companies', currentUser.companyId, 'cata_permissions', role);
+                await setDoc(docRef, {
+                    allowedPermissions: defaultsByRole[role],
+                    role: role,
+                    companyId: currentUser.companyId
+                }, { merge: true });
+            }
+            setSavedPermissions(prev => ({ ...prev, ...defaultsByRole }));
 
             setSaveStatus('saved');
             setTimeout(() => setSaveStatus('idle'), 3000);
@@ -335,161 +636,457 @@ const CataloguePermissionSetting: React.FC = () => {
 
     if (loading) return <div className="p-4">Loading permissions...</div>;
 
+    // ---------- derived UI values ----------
+    const has = (role: string, p: Cata_Permissions) => (rolePermissions[role] || []).includes(p);
+    const wasSaved = (role: string, p: Cata_Permissions) => (savedPermissions[role] || []).includes(p);
+    const isChanged = (role: string, p: Cata_Permissions) => has(role, p) !== wasSaved(role, p);
+    const countOn = (role: string, perms: Cata_Permissions[]) => perms.filter(p => has(role, p)).length;
+    const roleUserCount = (role: string) => staff.filter(s => sameRole(s.role, role)).length;
+
+    const query = searchQuery.trim().toLowerCase();
+    const matchesSearch = (p: Cata_Permissions) =>
+        !query ||
+        (CATA_PERMISSION_LABELS[p] || String(p)).toLowerCase().includes(query) ||
+        (CATA_PERMISSION_DESCRIPTIONS[p] || '').toLowerCase().includes(query);
+
+    const allGroupsFull: { key: string; meta: GroupMeta; perms: Cata_Permissions[] }[] = [
+        ...Object.entries(cataPermissionGroups).map(([key, g]) => ({
+            key,
+            meta: GROUP_META[key] || { ...OTHER_GROUP_META, title: g.title },
+            perms: g.permissions as Cata_Permissions[],
+        })).filter(g => g.perms.length > 0),
+        ...(ungroupedPermissions.length > 0
+            ? [{ key: 'other', meta: OTHER_GROUP_META, perms: ungroupedPermissions }]
+            : []),
+    ];
+    const visibleAllPermissions = allGroupsFull.reduce<Cata_Permissions[]>((acc, g) => acc.concat(g.perms), []);
+    const totalPermissions = visibleAllPermissions.length;
+
+    const groupsView = allGroupsFull
+        .map(g => ({ ...g, perms: g.perms.filter(matchesSearch) }))
+        .filter(g => g.perms.length > 0);
+
+    // Unsaved changes
+    type Change = { role: string; permission: Cata_Permissions; added: boolean };
+    const changes: Change[] = [];
+    VISIBLE_ROLES.forEach(role => {
+        visibleAllPermissions.forEach(p => {
+            if (isChanged(role, p)) changes.push({ role, permission: p, added: has(role, p) });
+        });
+    });
+    const changedRoles = VISIBLE_ROLES.filter(r => changes.some(c => c.role === r));
+    const selectedChanges = changes.filter(c => c.role === selectedRole);
+    const changeSummary = changedRoles
+        .map(role =>
+            `${role}: ` +
+            changes
+                .filter(c => c.role === role)
+                .map(c => `${c.added ? '+' : '−'} ${CATA_PERMISSION_LABELS[c.permission] || c.permission}`)
+                .join(' · ')
+        )
+        .join('   |   ');
+
+    // ---------- shared row pieces ----------
+    const renderName = (permission: Cata_Permissions) => {
+        const tag = PERMISSION_TAGS[permission];
+        const description = CATA_PERMISSION_DESCRIPTIONS[permission];
+        return (
+            <div>
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-[#0f172b]">{CATA_PERMISSION_LABELS[permission] || permission}</span>
+                    {tag && (
+                        <span className="text-[10px] font-medium px-2 py-px rounded-full bg-[#fef6d7] text-[#a16207]">{tag}</span>
+                    )}
+                </div>
+                {description && <p className="text-xs text-[#5b6b86] mt-px">{description}</p>}
+            </div>
+        );
+    };
+
+    const renderCb = (role: string, permission: Cata_Permissions) => {
+        const checked = has(role, permission);
+        return (
+            <Cb
+                checked={checked}
+                label={`${role}: ${CATA_PERMISSION_LABELS[permission] || permission}`}
+                onToggle={() => handlePermissionChange(role, permission, !checked)}
+            />
+        );
+    };
+
+    const groupToggleLabel = (role: string, perms: Cata_Permissions[]) =>
+        countOn(role, perms) === perms.length ? 'Clear all' : 'Select all';
+
+    const searchField = (extra = '') => (
+        <label className={`flex items-center gap-2 h-[38px] px-3 border border-[#7a8aa3] rounded-sm bg-white text-[#5b6b86] focus-within:ring-2 focus-within:ring-[#ea580c] ${extra}`}>
+            <Ico paths={ICON_SEARCH} size={16} />
+            <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Find a permission"
+                className="flex-1 min-w-0 bg-transparent outline-none text-sm text-[#0f172b] placeholder:text-[#5b6b86]"
+            />
+        </label>
+    );
+
+    const statusPill = (
+        <>
+            {saveStatus === 'saving' && <span className="text-sm font-medium text-[#c2410c] animate-pulse whitespace-nowrap">Saving changes...</span>}
+            {saveStatus === 'saved' && <span className="text-sm font-medium text-[#008236] whitespace-nowrap">All changes saved</span>}
+            {saveStatus === 'error' && <span className="text-sm font-medium text-[#d5000c] whitespace-nowrap">Error saving</span>}
+        </>
+    );
+
+    const emptySearch = groupsView.length === 0 && (
+        <div className={`${CARD_CLASS} px-4 py-8 text-center text-sm text-[#5b6b86]`}>
+            No permission matches “{searchQuery}”. Try a shorter word.
+        </div>
+    );
+
     return (
-        <div className="p-4 bg-gray-50 min-h-screen pb-24">
-            <div className="flex items-center justify-between mb-6 bg-white p-4 rounded shadow-sm sticky top-0 z-30">
-                <div className="flex items-center gap-4">
+        <div className="bg-[#fff5ec] min-h-screen pb-44 md:pb-24 xl:pb-0">
+            {/* ============ HEADER ============ */}
+            <div className="bg-white border-b border-[#f6e1d0] sticky top-0 z-30">
+                <div className="flex items-center gap-3 px-3 py-3 xl:px-6 xl:py-4">
                     <BackButton />
-                    <h1 className="text-2xl font-bold text-gray-800">Catalogue Permissions</h1>
-                </div>
-
-                <div className="text-sm font-medium">
-                    {saveStatus === 'saving' && <span className="text-[#F97316] animate-pulse">Saving changes...</span>}
-                    {saveStatus === 'saved' && <span className="text-green-600">✓ All changes saved</span>}
-                    {saveStatus === 'error' && <span className="text-red-500">❌ Error saving</span>}
-                </div>
-            </div>
-
-            <div className="flex gap-2 mb-6 justify-center">
-                <div className="bg-gray-200 p-1 rounded-lg inline-flex">
-                    {[ROLES.SALESMAN, ROLES.MANAGER].map(role => (
-                        <button
-                            key={role}
-                            onClick={() => setSelectedRole(role)}
-                            className={`px-6 py-2 font-medium rounded transition-colors ${selectedRole === role
-                                ? 'bg-white text-[#F97316] shadow-sm'
-                                : 'text-gray-600 hover:text-gray-900'
-                                }`}
-                        >
-                            {role}
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 max-w-7xl mx-auto">
-                <div className="flex justify-between items-center border-b pb-4 mb-6">
-                    <h2 className="text-xl font-semibold capitalize text-gray-800">
-                        {selectedRole} Access
-                    </h2>
-                    <div className="flex items-center gap-3">
-                        <span className="px-3 py-2 text-xs font-semibold tracking-wide text-orange-800 bg-orange-100 rounded-sm">
-                            {rolePermissions[selectedRole]?.length || 0} Active
-                        </span>
+                    <div className="min-w-0">
+                        <div className="hidden xl:block whitespace-nowrap text-xs text-[#5b6b86]">Catalogue / Settings /</div>
+                        <h1 className="text-xl xl:text-[22px] font-semibold text-[#0f172b] leading-tight">Catalogue permissions</h1>
+                        <div className="xl:hidden text-xs text-[#5b6b86]">Settings</div>
+                    </div>
+                    <span className="hidden xl:block self-end pb-1 text-xs text-[#5b6b86]">
+                        What managers and salesmen can see and do in the Catalogue
+                    </span>
+                    <div className="ml-auto flex items-center gap-3">
+                        {statusPill}
+                        {searchField('hidden xl:flex w-[260px]')}
                         <button
                             type="button"
-                            onClick={() => setIsResetOpen(true)}
-                            className="text-xs text-red-600 hover:text-red-800 font-bold px-3.5 py-1 rounded-sm bg-red-50 hover:bg-red-100 transition-colors border border-red-100"
+                            aria-label="Search permissions"
+                            onClick={() => setShowMobileSearch(v => !v)}
+                            className="xl:hidden w-10 h-10 inline-grid place-items-center rounded-sm text-[#0f172b] hover:bg-[#fff8f2]"
                         >
-                            Reset to Default
+                            <Ico paths={ICON_SEARCH} />
                         </button>
                     </div>
                 </div>
+                {showMobileSearch && <div className="xl:hidden px-4 pb-3">{searchField()}</div>}
+            </div>
 
-                {isResetOpen && (
-                    <Modal
-                        message={`Are you sure you want to reset ${selectedRole} permissions to default? This cannot be undone.`}
-                        type={State.ERROR}
-                        showConfirmButton={true}
-                        onConfirm={handleResetPermissions}
-                        onClose={() => setIsResetOpen(false)}
-                    />
-                )}
+            {/* ============ MOBILE / TABLET ============ */}
+            <div className="xl:hidden max-w-2xl mx-auto">
+                <div className="px-4 py-2.5 bg-white border-b border-[#f6e1d0]">
+                    <div
+                        role="group"
+                        className="bg-[#fff8f2] border border-[#f6e1d0] p-[3px] rounded-sm grid gap-0.5"
+                        style={{ gridTemplateColumns: `repeat(${VISIBLE_ROLES.length || 1}, minmax(0, 1fr))` }}
+                    >
+                        {VISIBLE_ROLES.map(role => (
+                            <button
+                                key={role}
+                                type="button"
+                                aria-pressed={selectedRole === role}
+                                onClick={() => setSelectedRole(role)}
+                                className={`py-2 rounded-sm text-sm font-medium capitalize transition-all ${selectedRole === role ? 'bg-white text-[#c2410c] shadow-sm' : 'text-[#45556c]'}`}
+                            >
+                                {role}{staff.length > 0 ? ` · ${roleUserCount(role)}` : ''}
+                            </button>
+                        ))}
+                    </div>
+                </div>
 
-                <div className="space-y-6">
-                    {/* Render Grouped Permissions */}
-                    {Object.values(cataPermissionGroups).map((group, index) => {
-                        if (group.permissions.length === 0) return null;
-                        return (
-                            <fieldset key={group.title} className={`p-4 border border-gray-200 rounded-lg bg-gray-50/50 ${index > 0 ? 'pt-4' : ''}`}>
-                                <legend className="text-md font-bold text-gray-700 px-2 bg-white">{group.title}</legend>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
-                                    {group.permissions.map((permission) => (
-                                        <PermissionCheckbox
-                                            key={permission}
-                                            permission={permission as Cata_Permissions}
-                                            isChecked={rolePermissions[selectedRole]?.includes(permission as Cata_Permissions) || false}
-                                            onChange={(checked) => handlePermissionChange(selectedRole, permission as Cata_Permissions, checked)}
-                                        />
-                                    ))}
-                                </div>
-                            </fieldset>
-                        );
-                    })}
-
-                    {/* Render Ungrouped Permissions */}
-                    {ungroupedPermissions.length > 0 && (
-                        <fieldset className="p-4 border border-gray-200 rounded-lg bg-gray-50/50">
-                            <legend className="text-md font-bold text-gray-700 px-2 bg-white border border-gray-200 rounded shadow-sm">Other Permissions</legend>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
-                                {ungroupedPermissions.map((permission) => (
-                                    <PermissionCheckbox
-                                        key={permission}
-                                        permission={permission}
-                                        isChecked={rolePermissions[selectedRole]?.includes(permission) || false}
-                                        onChange={(checked) => handlePermissionChange(selectedRole, permission, checked)}
-                                    />
-                                ))}
+                <div className="px-4 pt-3 grid gap-3">
+                    {/* Progress card with Reset on the same row */}
+                    <div className={`${CARD_CLASS} px-3.5 py-3 flex items-center gap-2.5`}>
+                        <div className="flex-1 min-w-0">
+                            <b className="text-sm font-semibold text-[#0f172b] capitalize">
+                                {selectedRole} can do {countOn(selectedRole, visibleAllPermissions)} of {totalPermissions}
+                            </b>
+                            <div className="h-1.5 rounded-full bg-[#fff8f2] overflow-hidden mt-1.5">
+                                <div
+                                    className="h-full bg-[#c2410c] rounded-full"
+                                    style={{ width: `${totalPermissions ? (countOn(selectedRole, visibleAllPermissions) / totalPermissions) * 100 : 0}%` }}
+                                />
                             </div>
-                        </fieldset>
-                    )}
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => openReset([selectedRole])}
+                            className="h-8 px-3 rounded-sm text-[13px] font-medium text-[#5b6b86] hover:bg-[#fff8f2]"
+                        >
+                            Reset
+                        </button>
+                    </div>
+
+                    {groupsView.map(({ key, meta, perms }) => (
+                        <section key={key} data-perm-section={key} className={`${CARD_CLASS} overflow-hidden`}>
+                            <div className="flex items-center gap-3 px-3.5 py-3">
+                                <span className={`w-8 h-8 shrink-0 inline-grid place-items-center rounded-sm ${meta.tint[0]} ${meta.tint[1]}`}>
+                                    <Ico paths={meta.icon} />
+                                </span>
+                                <b className="flex-1 min-w-0 text-[15px] font-semibold text-[#0f172b]">{meta.title}</b>
+                                <div className="text-right">
+                                    <span className="block text-xs text-[#5b6b86] tabular-nums">{countOn(selectedRole, perms)} of {perms.length}</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleToggleGroup(selectedRole, perms, countOn(selectedRole, perms) !== perms.length)}
+                                        className="text-[11px] font-medium text-[#c2410c]"
+                                    >
+                                        {groupToggleLabel(selectedRole, perms)}
+                                    </button>
+                                </div>
+                            </div>
+                            {perms.map(p => (
+                                <div
+                                    key={p}
+                                    className={`grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 items-start px-3.5 py-2.5 border-t border-[#f6e1d0]
+                                        ${isChanged(selectedRole, p) ? 'bg-[#ffedd5]' : p === Cata_Permissions.ViewReports ? 'bg-[#fff8f2]' : ''}`}
+                                >
+                                    {renderName(p)}
+                                    <div className="pt-0.5">{renderCb(selectedRole, p)}</div>
+                                </div>
+                            ))}
+                        </section>
+                    ))}
+                    {emptySearch}
                 </div>
             </div>
 
-            {/* FLOATING SAVE BUTTON */}
-            <div className="fixed inset-x-0 bottom-16 md:bottom-0 z-40 bg-transparent px-4 pb-2 md:p-4 pointer-events-none">
-                <div className="max-w-2xl mx-auto flex justify-center gap-4 pointer-events-auto">
+            {/* ============ DESKTOP ============ */}
+            {/* lg (1024–1279): table full width, side cards below it. xl (1280+): 3 columns. */}
+            <div className="hidden xl:grid grid-cols-1 xl:grid-cols-[184px_minmax(0,1fr)_264px] gap-5 px-4 xl:px-6 py-5 items-start">
+                {/* Left: section nav (xl only) */}
+                <nav className="hidden xl:grid sticky top-24 gap-0.5">
+                    {groupsView.map(({ key, meta, perms }) => (
+                        <a
+                            key={key}
+                            href={`#perm-sec-${key}`}
+                            aria-current={activeSection === key ? 'true' : 'false'}
+                            onClick={(e) => {
+                                e.preventDefault();
+                                setActiveSection(key);
+                                document.getElementById(`perm-sec-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }}
+                            className={`flex items-center gap-2.5 px-3 py-2 rounded-sm text-[13px] font-medium no-underline transition-colors
+                                ${activeSection === key ? 'bg-[#ffedd5] text-[#9a3412]' : 'text-[#45556c] hover:bg-white'}`}
+                        >
+                            <Ico paths={meta.icon} size={16} />
+                            {meta.navLabel}
+                            <small className="ml-auto text-[11px] text-[#5b6b86]">{perms.length}</small>
+                        </a>
+                    ))}
+                </nav>
+
+                {/* Center: info + table */}
+                <div className="grid gap-4 min-w-0">
+                    <div className="flex items-center gap-2 px-3 py-2.5 rounded-sm bg-[#ffedd5] text-[#9a3412] text-[13px] leading-[19px]">
+                        <span className="shrink-0"><Ico paths={ICON_SHIELD} size={16} /></span>
+                        <span>Tick what each role can do in the Catalogue. Changes apply to everyone with that role the next time they open the app. The <b>Owner</b> always has everything.</span>
+                    </div>
+
+                    <div className={`${CARD_CLASS} overflow-x-auto`}>
+                        <table className="w-full min-w-[520px] border-collapse">
+                            <thead>
+                                <tr>
+                                    <th className="text-left text-[11px] font-semibold tracking-[0.06em] uppercase text-[#5b6b86] px-3.5 py-2.5 bg-[#fff8f2] border-b border-[#f6e1d0]">Permission</th>
+                                    {VISIBLE_ROLES.map((role, i) => (
+                                        <th key={role} className="w-28 text-center px-3.5 py-2.5 bg-[#fff8f2] border-b border-[#f6e1d0]">
+                                            <div className="grid gap-0.5 justify-items-center">
+                                                <span className={`inline-flex items-center h-[22px] px-2 rounded-full text-[11px] font-semibold tracking-[0.03em] uppercase ${i === 0 ? 'bg-[#ffedd5] text-[#9a3412]' : 'bg-white text-[#45556c] border border-[#f6e1d0]'}`}>
+                                                    {role}
+                                                </span>
+                                                {staff.length > 0 && (
+                                                    <span className="text-xs font-normal normal-case tracking-normal text-[#5b6b86]">
+                                                        {roleUserCount(role)} users
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {groupsView.map(({ key, meta, perms }) => (
+                                    <React.Fragment key={key}>
+                                        <tr id={`perm-sec-${key}`} data-perm-section={key} className="scroll-mt-24">
+                                            <td className="bg-white px-3.5 pt-3.5 pb-2.5 border-b border-[#f6e1d0]">
+                                                <div className="flex items-center gap-3">
+                                                    <span className={`w-8 h-8 shrink-0 inline-grid place-items-center rounded-sm ${meta.tint[0]} ${meta.tint[1]}`}>
+                                                        <Ico paths={meta.icon} />
+                                                    </span>
+                                                    <div>
+                                                        <b className="text-[15px] font-semibold text-[#0f172b]">{meta.title}</b>
+                                                        <small className="block text-xs text-[#5b6b86]">{meta.subtitle}</small>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            {VISIBLE_ROLES.map(role => (
+                                                <td key={role} className="bg-white text-center px-3.5 pt-3.5 pb-2.5 border-b border-[#f6e1d0]">
+                                                    <span className="block text-xs text-[#5b6b86] tabular-nums mb-1">
+                                                        {countOn(role, perms)} of {perms.length}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleToggleGroup(role, perms, countOn(role, perms) !== perms.length)}
+                                                        className="text-[11px] font-medium text-[#c2410c] whitespace-nowrap"
+                                                    >
+                                                        {groupToggleLabel(role, perms)}
+                                                    </button>
+                                                </td>
+                                            ))}
+                                        </tr>
+                                        {perms.map(p => (
+                                            <tr key={p} className={p === Cata_Permissions.ViewReports ? '[&>td]:bg-[#fff8f2]' : ''}>
+                                                <td className="px-3.5 py-2.5 border-b border-[#f6e1d0] align-middle">{renderName(p)}</td>
+                                                {VISIBLE_ROLES.map(role => (
+                                                    <td
+                                                        key={role}
+                                                        className={`text-center px-3.5 py-2.5 border-b border-[#f6e1d0] align-middle ${isChanged(role, p) ? '!bg-[#ffedd5]' : ''}`}
+                                                    >
+                                                        <div className="flex justify-center">{renderCb(role, p)}</div>
+                                                        {isChanged(role, p) && (
+                                                            <span className="block mt-[3px] text-[9px] font-semibold tracking-[0.06em] uppercase text-[#9a3412]">Changed</span>
+                                                        )}
+                                                    </td>
+                                                ))}
+                                            </tr>
+                                        ))}
+                                    </React.Fragment>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    {emptySearch}
+                </div>
+
+                {/* Right: access at a glance, staff (below table on lg, sidebar on xl) */}
+                <aside className="grid gap-3 grid-cols-2 xl:grid-cols-1 items-start xl:sticky xl:top-24">
+                    <div className={`${CARD_CLASS} px-4 py-3.5 grid gap-2.5`}>
+                        <b className="text-sm font-semibold text-[#0f172b]">Access at a glance</b>
+                        {VISIBLE_ROLES.map(role => {
+                            const on = countOn(role, visibleAllPermissions);
+                            return (
+                                <div key={role}>
+                                    <div className="flex justify-between text-[13px] text-[#0f172b]">
+                                        <span className="capitalize">{role}</span>
+                                        <span className="tabular-nums"><b>{on}</b> of {totalPermissions}</span>
+                                    </div>
+                                    <div className="h-1.5 rounded-full bg-[#fff8f2] overflow-hidden mt-1">
+                                        <div className="h-full bg-[#c2410c] rounded-full" style={{ width: `${totalPermissions ? (on / totalPermissions) * 100 : 0}%` }} />
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        <p className="text-xs text-[#5b6b86]">Owner always has everything.</p>
+                    </div>
+
+                    <div className={`${CARD_CLASS} px-4 py-3.5 grid gap-2.5`}>
+                        {VISIBLE_ROLES.map((role, i) => {
+                            const members = staff.filter(s => sameRole(s.role, role));
+                            return (
+                                <div key={role} className="grid gap-2">
+                                    <b className={`text-sm font-semibold text-[#0f172b] capitalize ${i > 0 ? 'mt-1' : ''}`}>
+                                        {role}s <span className="text-xs font-normal text-[#5b6b86]">· {members.length}</span>
+                                    </b>
+                                    {members.length === 0 && (
+                                        <span className="text-xs text-[#5b6b86]">No {role.toLowerCase()}s added yet.</span>
+                                    )}
+                                    {members.map(m => (
+                                        <div key={m.id} className="flex items-center gap-2.5 text-[13px] text-[#0f172b]">
+                                            <span
+                                                className={`w-7 h-7 shrink-0 inline-grid place-items-center rounded-full text-[11px] font-semibold ${i === 0 ? 'bg-[#ffedd5] text-[#9a3412]' : 'bg-[#fff8f2] text-[#45556c]'}`}
+                                            >
+                                                {getInitials(m.name)}
+                                            </span>
+                                            <span className="truncate">{m.name}</span>
+                                            {m.lastActive && <span className="ml-auto text-xs text-[#5b6b86] whitespace-nowrap">{m.lastActive}</span>}
+                                        </div>
+                                    ))}
+                                </div>
+                            );
+                        })}
+                        <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#c2410c]">
+                            <Ico paths={ICON_USERS} size={16} /> Manage users →
+                        </span>
+                    </div>
+                </aside>
+            </div>
+
+            {/* ============ MODAL ============ */}
+            {isResetOpen && (
+                <Modal
+                    message={`Are you sure you want to reset ${resetRoles.join(' & ')} permissions to default? This cannot be undone.`}
+                    type={State.ERROR}
+                    showConfirmButton={true}
+                    onConfirm={handleResetPermissions}
+                    onClose={() => setIsResetOpen(false)}
+                    theme="catalogue"
+                />
+            )}
+
+            {/* ============ SAVE BAR ============ */}
+            <div className="fixed inset-x-0 bottom-16 md:bottom-0 xl:sticky xl:bottom-0 z-40 bg-white border-t border-[#f6e1d0] shadow-[0_-6px_16px_rgba(21,48,140,0.06)] px-4 py-2.5 xl:px-6 xl:py-3">
+                {/* Mobile */}
+                <div className="xl:hidden max-w-2xl mx-auto flex items-center gap-3">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${selectedChanges.length ? 'bg-[#c2410c]' : 'bg-[#f6e1d0]'}`} />
+                    <span className="text-[13px] text-[#0f172b] flex-1 min-w-0 truncate">
+                        <b>{selectedChanges.length ? `${selectedChanges.length} change${selectedChanges.length > 1 ? 's' : ''}` : 'No changes'}</b>{' '}
+                        <span className="text-xs text-[#5b6b86] capitalize">for {selectedRole}</span>
+                    </span>
                     <button
-                        onClick={() => handleSaveChanges(selectedRole)}
-                        className="w-auto bg-[#F97316] text-white font-bold py-3 px-6 rounded-sm hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 shadow-lg transition-transform active:scale-95"
+                        type="button"
+                        disabled={!selectedChanges.length}
+                        onClick={() => handleDiscard([selectedRole])}
+                        className="h-9 px-3 rounded-sm text-[13px] font-medium text-[#45556c] hover:bg-[#fff8f2] disabled:opacity-40"
                     >
-                        Save Changes for {selectedRole}
+                        Discard
                     </button>
+                    <button
+                        type="button"
+                        disabled={!selectedChanges.length}
+                        onClick={() => handleSaveChanges(selectedRole)}
+                        className="h-9 px-4 rounded-sm bg-[#c2410c] text-white text-[13px] font-medium hover:bg-[#9a3412] disabled:opacity-40 active:scale-95 transition-transform"
+                    >
+                        Save
+                    </button>
+                </div>
+
+                {/* Desktop */}
+                <div className="hidden xl:flex items-center gap-3">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${changes.length ? 'bg-[#c2410c]' : 'bg-[#f6e1d0]'}`} />
+                    <b className="text-sm text-[#0f172b] whitespace-nowrap">
+                        {changes.length ? `${changes.length} unsaved change${changes.length > 1 ? 's' : ''}` : 'No unsaved changes'}
+                    </b>
+                    {changes.length > 0 && <span className="text-xs text-[#5b6b86] truncate">{changeSummary}</span>}
+                    <div className="ml-auto flex items-center gap-2 shrink-0">
+                        <button
+                            type="button"
+                            onClick={() => openReset(VISIBLE_ROLES)}
+                            className="h-10 px-4 rounded-sm text-sm font-medium text-[#45556c] hover:bg-[#fff8f2]"
+                        >
+                            Reset to default
+                        </button>
+                        <button
+                            type="button"
+                            disabled={!changes.length}
+                            onClick={() => handleDiscard(changedRoles)}
+                            className="h-10 px-4 rounded-sm text-sm font-medium text-[#45556c] hover:bg-[#fff8f2] disabled:opacity-40"
+                        >
+                            Discard
+                        </button>
+                        <button
+                            type="button"
+                            disabled={!changes.length}
+                            onClick={() => handleSaveChanges(changedRoles)}
+                            className="h-10 px-5 inline-flex items-center gap-2 rounded-sm bg-[#c2410c] text-white text-sm font-medium hover:bg-[#9a3412] disabled:opacity-40 active:scale-95 transition-transform focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ea580c]"
+                        >
+                            <Ico paths={ICON_CHECK} size={16} strokeWidth={2.5} />
+                            Save changes
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
-    );
-};
-
-// --- EXTRACTED CHECKBOX COMPONENT ---
-const PermissionCheckbox = ({
-    permission,
-    isChecked,
-    onChange
-}: {
-    permission: Cata_Permissions;
-    isChecked: boolean;
-    onChange: (checked: boolean) => void;
-}) => {
-    return (
-        <label className="flex items-center space-x-3 p-2 rounded transition hover:bg-white hover:shadow-sm cursor-pointer">
-            <div className="relative flex items-center">
-                <input
-                    type="checkbox"
-                    className="peer h-5 w-5 appearance-none rounded border border-gray-300 transition-all checked:border-[#F97316] checked:bg-[#F97316] hover:shadow-sm"
-                    checked={isChecked}
-                    onChange={(e) => onChange(e.target.checked)}
-                />
-                <svg className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 peer-checked:opacity-100" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" width="12" height="12">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
-            </div>
-            <div className="flex items-center gap-1.5">
-                <span className="text-sm text-gray-600 select-none font-medium">
-                    {CATA_PERMISSION_LABELS[permission] || permission}
-                </span>
-                {CATA_PERMISSION_DESCRIPTIONS[permission] && (
-                    <div className="relative group">
-                        <span className="flex items-center justify-center w-3 h-3 rounded-full border border-gray-500 text-gray-500 text-[8px] cursor-default select-none">
-                            i
-                        </span>
-                        <div className="absolute left-5 top-1/2 -translate-y-1/2 z-50 hidden group-hover:block w-52 bg-white border border-gray-400 rounded-md shadow-md px-3 py-2 text-[11px] text-gray-500 leading-snug pointer-events-none">
-                            {CATA_PERMISSION_DESCRIPTIONS[permission]}
-                        </div>
-                    </div>
-                )}
-            </div>
-        </label>
     );
 };
 

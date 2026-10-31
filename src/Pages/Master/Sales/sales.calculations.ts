@@ -25,7 +25,22 @@ export const applyRounding = (amount: number, isRoundingEnabled: boolean, interv
     const rounded = Math.round(amount / interval) * interval;
     return parseFloat(rounded.toFixed(2));
 };
+// Line unit price rounding with guards:
+//  - rounding kabhi price ko 0 nahi banayegi (paise wale items)
+//  - rounding kabhi price ko MRP ke upar nahi le jayegi
+export const applyLineRounding = (
+    amount: number,
+    isRoundingEnabled: boolean,
+    interval: number = 1,
+    mrp: number = 0
+): number => {
+    const exact = parseFloat(amount.toFixed(2));
+    const rounded = applyRounding(amount, isRoundingEnabled, interval);
 
+    if (exact > 0 && rounded <= 0) return exact;
+    if (mrp > 0 && rounded > mrp) return Math.min(exact, mrp);
+    return rounded;
+};
 // Moved verbatim from Sales.tsx (was a module-level helper above the
 // component). Used by both calculateSaleTotals and
 // calculateFinalizedSaleItems below, plus by a couple of leftover call
@@ -98,7 +113,13 @@ export const calculateSaleTotals = (
             baseForSubtotal = baseForSubtotal / (1 + (itemSpecificTaxRate / 100));
         }
 
-        accumulatorSubtotal += baseForSubtotal * currentQuantity;
+        // Add-ons carry no MRP/discount: they go into the undiscounted subtotal as they are
+        const addOnUnit = Number((cartItem as any).addOnAmount) || 0;
+        const addOnBase = effectiveTaxMode === 'inclusive' && itemSpecificTaxRate > 0
+            ? addOnUnit / (1 + (itemSpecificTaxRate / 100))
+            : addOnUnit;
+        accumulatorSubtotal += (baseForSubtotal + addOnBase) * currentQuantity;
+        accumulatorMrp += addOnUnit * currentQuantity;
 
         const baseForDiscount = (cartItem.mrp > 0) ? cartItem.mrp : (cartItem.salesPrice || 0);
         let effectiveUnitPrice = 0;
@@ -109,8 +130,8 @@ export const calculateSaleTotals = (
             effectiveUnitPrice = priceAfterDiscount1 * (1 - (cartItem.discount2 || 0) / 100);
         }
 
-        effectiveUnitPrice = applyRounding(effectiveUnitPrice, isRoundingEnabled, roundingInterval);
-        const lineTotal = toCurrency(effectiveUnitPrice * currentQuantity);
+                effectiveUnitPrice = applyLineRounding(effectiveUnitPrice, isRoundingEnabled, roundingInterval, Number(cartItem.mrp) || 0);
+        const lineTotal = toCurrency((effectiveUnitPrice + addOnUnit) * currentQuantity);
 
         // 3. Tax Calculation
         let lineBaseAmount = 0;
@@ -200,8 +221,10 @@ export const calculateFinalizedSaleItems = (
             effectiveUnitPrice = priceAfterDiscount1 * (1 - currentDiscount2 / 100);
         }
 
-        effectiveUnitPrice = applyRounding(effectiveUnitPrice, isRoundingEnabled, roundingInterval);
-        effectiveUnitPrice = toCurrency(effectiveUnitPrice);
+                effectiveUnitPrice = applyLineRounding(effectiveUnitPrice, isRoundingEnabled, roundingInterval, Number(item.mrp) || 0);
+        // Add-ons are added after rounding and carry no discount. Saved unit price includes them (returns refund correctly)
+        const addOnUnit = Number((item as any).addOnAmount) || 0;
+        effectiveUnitPrice = toCurrency(effectiveUnitPrice + addOnUnit);
 
         const lineTotal = toCurrency(effectiveUnitPrice * currentQuantity);
 

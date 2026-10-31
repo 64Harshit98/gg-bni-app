@@ -34,7 +34,7 @@ export const CompletedSalesCard: React.FC<CompletedSalesCardProps> = ({
     }, [filters.startDate, filters.endDate]);
 
     return (
-        <Card>
+        <Card className="rounded-sm border-[#f6e1d0] shadow-sm">
             <CardHeader className='-mb-4'>
                 <CardTitle>Completed Sales</CardTitle>
                 <CardDescription>
@@ -48,10 +48,10 @@ export const CompletedSalesCard: React.FC<CompletedSalesCardProps> = ({
                     </div>
                 ) : (
                     <div className="text-center">
-                        <p className="text-4xl font-bold text-[#F97316]">
+                        <p className="text-4xl font-semibold tracking-tight tabular-nums text-orange-700">
                             {isDataVisible ? `₹${totalSalesAmount.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '₹ ******'}
                         </p>
-                        <p className="text-md text-gray-500 mt-2">
+                        <p className="text-sm text-slate-600 mt-2">
                             from {isDataVisible ? <strong>{totalSalesCount}</strong> : '**'} orders
                         </p>
                     </div>

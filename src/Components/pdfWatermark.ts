@@ -5,10 +5,12 @@ export const drawWatermark = (
     pageWidth: number,
     pageHeight: number,
     text: string = "SELLAR.IN",
-    options?: { fontSize?: number; centerYOffset?: number }
+    options?: { fontSize?: number; centerYOffset?: number; fitToPage?: boolean; fitRatio?: number }
 ) => {
-    const fontSize = options?.fontSize ?? 70;
+    const requestedFontSize = options?.fontSize ?? 70;
     const centerYOffset = options?.centerYOffset ?? 0;
+    const fitToPage = options?.fitToPage ?? true;
+    const fitRatio = options?.fitRatio ?? 0.85; // how much of page width the rotated text may use
 
     // @ts-ignore
     doc.saveGraphicsState();
@@ -16,8 +18,22 @@ export const drawWatermark = (
     doc.setGState(new (doc as any).GState({ opacity: 0.15 }));
 
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(fontSize);
     doc.setTextColor(120, 120, 120);
+
+    // --- AUTO-FIT: shrink font so the 45° rotated text stays inside the page ---
+    let fontSize = requestedFontSize;
+    doc.setFontSize(fontSize);
+
+    if (fitToPage) {
+        const rad = (45 * Math.PI) / 180;
+        // Rotated text's horizontal/vertical footprint ≈ textWidth * cos/sin(45°)
+        const maxTextWidth = (Math.min(pageWidth, pageHeight) * fitRatio) / Math.cos(rad);
+        const currentWidth = doc.getTextWidth(text);
+        if (currentWidth > maxTextWidth) {
+            fontSize = fontSize * (maxTextWidth / currentWidth);
+            doc.setFontSize(fontSize);
+        }
+    }
 
     // Manual centering — do NOT rely on jsPDF's align+baseline+angle combo,
     // it miscalculates the rotated bounding box (especially at large font sizes).

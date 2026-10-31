@@ -4,19 +4,21 @@ import { useCatalogueData } from '../context/CatalogueDataContext';
 import type { Item, ItemGroup } from '../constants/models';
 import { Modal } from '../constants/Modal';
 import { State } from '../enums';
-import { FiX, FiPackage, FiPlus } from 'react-icons/fi';
-import { Trash2, X, Send, Pin, Download, Loader2 } from 'lucide-react';
-import { Spinner } from '../constants/Spinner';
+import { Trash2, Send, Pin, Download, Loader2, Copy, Share2, Plus, Pencil, ChevronDown, Link2 } from 'lucide-react';
 import { db } from '../lib/Firebase';
 import { addDoc, collection, serverTimestamp, doc, getDoc, setDoc } from 'firebase/firestore';
 import { OrderInvoiceNumber } from '../UseComponents/InvoiceCounter';
 import { useNavigate } from 'react-router';
-import Footer from './Footer';
 import { useBusinessName } from './hooks/BusinessName';
 import SubdomainClaimModal from '../Components/SubDomainModal';
 import SearchableItemInput from '../UseComponents/SearchIteminput';
 import ShowWrapper from '../context/ShowWrapper';
 import { Cata_Permissions } from './enum/cata_permissions.enum';
+import { ROUTES } from '../constants/routes.constants';
+import { Photo, Sheet, Tag, btnClass, toneClass } from './storefront/StoreUI';
+import { initialsOf } from './storefront/storefront.utils';
+
+const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 
 
 // 1. Updated normalizer: Converts ANY image format (WebP, AVIF, PNG) into a jsPDF-safe JPEG
@@ -133,7 +135,6 @@ const OrderingPage: React.FC = () => {
     const [highlightedId, _setHighlightedId] = useState<string | null>(null);
     const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A'>('A-Z');
     const [isSortOpen, setIsSortOpen] = useState(false);
-    const [socialLinks, setSocialLinks] = useState<any>({});
     const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
     // --- YOUR NEW STATES ---
@@ -141,6 +142,7 @@ const OrderingPage: React.FC = () => {
     const [tempName, setTempName] = useState('');
     const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
     const [isSubdomainModalOpen, setIsSubdomainModalOpen] = useState(false); // <-- NEW STATE
+    const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
     // --- GLOBAL "LIVE ENTIRE CATALOGUE" STATES ---
     const [isAllCatalogueLive, setIsAllCatalogueLive] = useState(false);
@@ -177,33 +179,6 @@ const OrderingPage: React.FC = () => {
         };
         loadPins();
     }, [companyId]);
-    // --- Fetch business info (page-specific; items/itemGroups come from
-    // CatalogueDataContext, mirrored into local state above) ---
-    useEffect(() => {
-        if (!companyId) return;
-
-        const fetchBusinessInfo = async () => {
-            try {
-                const businessRef = doc(
-                    db,
-                    "companies",
-                    companyId,
-                    "business_info",
-                    companyId
-                );
-
-                const businessSnap = await getDoc(businessRef);
-
-                if (businessSnap.exists()) {
-                    setSocialLinks(businessSnap.data());
-                }
-            } catch (err) {
-                console.error("Error fetching business info:", err);
-            }
-        };
-        fetchBusinessInfo();
-    }, [companyId]);
-
     // --- HANDLERS ---
     const handleEdit = (group: any) => {
         setEditingId(group.id!);
@@ -317,6 +292,40 @@ const OrderingPage: React.FC = () => {
             setModal({ message: 'Failed to update name', type: State.ERROR });
         }
     };
+
+    // Same steps the old inline "Delete product group" did: move its items out, then delete the group
+    const handleDeleteGroup = async (groupId: string) => {
+        if (!dbOperations) return;
+        try {
+            const itemsToUpdate = items.filter(item => item.itemGroupId === groupId);
+            await Promise.all(itemsToUpdate.map(item => dbOperations.updateItem(item.id!, { itemGroupId: "" })));
+            await dbOperations.deleteItemGroup(groupId);
+            setItemGroups(prev => prev.filter(p => p.id !== groupId));
+            setEditingId(null);
+            setConfirmDeleteId(null);
+            setModal({ message: 'Deleted successfully', type: State.SUCCESS });
+        } catch (err) {
+            console.error(err);
+            setModal({ message: 'Delete failed', type: State.ERROR });
+        }
+    };
+
+    const handleCopyStoreLink = async () => {
+        if (!companyId) return;
+        let url = `${window.location.origin}/catalogue/${companyId}`;
+        try {
+            const snap = await getDoc(doc(db, 'companies', companyId));
+            if (snap.exists() && snap.data().subdomain) url = `https://${snap.data().subdomain}.sellar.in`;
+            await navigator.clipboard.writeText(url);
+            setModal({ message: 'Store link copied to clipboard!', type: State.SUCCESS });
+        } catch (err) {
+            console.error('Copy store link failed:', err);
+            setIsSubdomainModalOpen(true);
+        }
+    };
+
+    // Opens the same Share card as the sidebar's Share action
+    const handleShareCatalogue = () => window.dispatchEvent(new CustomEvent('open-catalogue-share'));
 
     // --- Memos ---
     const cartValue = useMemo(() => cart.reduce((acc, item) => acc + (item.mrp * item.quantity), 0), [cart]);
@@ -590,13 +599,35 @@ const OrderingPage: React.FC = () => {
         }
     };
 
-    if (pageIsLoading) return <div className="flex items-center justify-center h-screen bg-[#E9F0F7]"><Spinner /></div>;
+    if (pageIsLoading) {
+        return (
+            <div className="min-h-full bg-sf-canvas px-4 py-5 md:px-6" aria-busy="true" aria-label="Loading your catalogue">
+                <div className="h-8 w-48 animate-pulse rounded-sm bg-white motion-reduce:animate-none" />
+                <div className="mt-5 h-20 animate-pulse rounded-sm bg-white motion-reduce:animate-none" />
+                <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-5 xl:grid-cols-5">
+                    {Array.from({ length: 10 }).map((_, i) => <div key={i} className="aspect-[3/4] animate-pulse rounded-sm bg-white motion-reduce:animate-none" />)}
+                </div>
+            </div>
+        );
+    }
+
+    const validGroupIds = new Set(itemGroups.map(g => g.id));
+    const groupItemsOf = (groupId: string) => items.filter(item => {
+        const allIds = [
+            ...(item.itemGroupId ? [item.itemGroupId] : []),
+            ...(item.itemGroupIds || []),
+        ];
+        if (groupId === 'uncategorized') return allIds.length === 0 || allIds.every(id => !validGroupIds.has(id));
+        return allIds.includes(groupId);
+    });
+    const liveTotal = items.filter(i => i.isListed === true).length;
+    const realCategoryCount = filteredItems.filter(g => g.id !== 'uncategorized').length;
+    const editingGroup = itemGroups.find(g => g.id === editingId) || null;
 
     return (
-        <div className="bg-[#E9F0F7] min-h-screen font-sans text-[#333] flex flex-col relative">
+        <div className="min-h-full bg-sf-canvas pb-10 font-sans text-slate-900">
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
-            {/* --- UPDATED ONBOARDING MODAL --- */}
             {companyId && (
                 <SubdomainClaimModal
                     companyId={companyId}
@@ -605,50 +636,61 @@ const OrderingPage: React.FC = () => {
                 />
             )}
 
-            <header className="sticky top-0 z-[100] bg-white border-b border-gray-100 shadow-sm w-full">
-                <div className="max-w-7xl mx-auto px-4 py-4 relative flex items-center justify-between h-16">
-
-                    {/* Left Spacer (matches width of right button to help balance if you ever switch from absolute positioning) */}
-                    <div className="w-[88px] hidden sm:block"></div>
-
-                    {/* Company Name - Now perfectly centered on all devices */}
-                    <h1 className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-sm sm:text-lg md:text-lg font-black text-[#1A3B5D] uppercase tracking-tighter text-center leading-tight whitespace-nowrap truncate max-w-[55%] sm:max-w-[70%]">
-                        {companyName}
-                    </h1>
-
-                    {/* Store Link Button */}
-                    <button
-                        onClick={() => setIsSubdomainModalOpen(true)}
-                        className="bg-blue-50 text-blue-600 px-3 py-2 rounded-sm text-[10px] font-black uppercase tracking-wider border border-blue-100 hover:bg-blue-100 transition-colors z-10 shrink-0 ml-auto"
-                    >
-                        Store Link
+            {/* --- Page header --- */}
+            <header className="flex flex-wrap items-center gap-3 px-4 pb-4 pt-5 md:gap-4 md:px-6">
+                <div className="min-w-0 flex-1">
+                    <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Edit catalogue</h1>
+                    <p className="truncate text-[13px] text-slate-600">What customers see when they open {companyName ? `${companyName}'s` : 'your'} store link</p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <button type="button" onClick={handleDownloadFullCatalogPDF} disabled={items.length === 0 || isGeneratingPDF}
+                        aria-label="Download catalogue PDF" className={cx(btnClass('secondary'), 'w-10 px-0! md:w-auto md:px-4!')}>
+                        {isGeneratingPDF ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+                        <span className="hidden md:inline">{isGeneratingPDF ? 'Making PDF…' : 'PDF'}</span>
+                    </button>
+                    <button type="button" onClick={() => setIsSubdomainModalOpen(true)} aria-label="Store link"
+                        className={cx(btnClass('secondary'), 'w-10 px-0! md:w-auto md:px-4!')}>
+                        <Link2 className="size-4" /><span className="hidden md:inline">Store link</span>
+                    </button>
+                    <button type="button" onClick={handleCopyStoreLink} className={cx(btnClass('secondary'), 'max-lg:hidden')}>
+                        <Copy className="size-4" />Copy store link
+                    </button>
+                    <button type="button" onClick={handleShareCatalogue} className={btnClass('primary')}>
+                        <Share2 className="size-4" />Share<span className="hidden md:inline"> catalogue</span>
                     </button>
                 </div>
             </header>
-            <main className="p-4 space-y-4 flex-1 max-w-7xl mx-auto w-full pb-20">
-                <div className='relative flex items-center justify-center w-full py-2'>
-                    <h1 className="text-sm md:text-xl font-extrabold text-[#F97316] uppercase tracking-tighter">
-                        Categories
-                    </h1>
-                    <button
-                        onClick={handleDownloadFullCatalogPDF}
-                        disabled={items.length === 0 || isGeneratingPDF}
-                        className="absolute right-0 flex items-center gap-1.5 bg-white border border-gray-100 px-3 py-1.5 rounded-sm shadow-sm active:scale-95 transition-all text-[#1A3B5D] hover:text-[#F97316] disabled:opacity-50"
-                        title="Download Master PDF"
-                    >
-                        {isGeneratingPDF ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-                        <span className="text-[10px] font-black uppercase hidden sm:inline">
-                            {isGeneratingPDF ? 'Generating...' : 'PDF'}
-                        </span>
-                    </button>
-                </div>
 
-                {/* --- STICKY SEARCH BAR --- */}
-                <div className="sticky top-[68px] z-50 flex justify-center">
-                    <div className="relative group max-w-md mx-auto w-full">
+            <div className="grid gap-4 px-4 md:px-6">
+                {/* --- Live entire catalogue --- */}
+                <ShowWrapper requiredPermission={Cata_Permissions.ViewEditButton}>
+                    <div className="flex items-center gap-3 rounded-sm border border-sf-line bg-white p-4 shadow-sf-card md:gap-4 md:px-5">
+                        <span className={cx('size-2.5 shrink-0 rounded-full', isAllCatalogueLive ? 'bg-green-600' : 'bg-slate-400')} aria-hidden />
+                        <div className="min-w-0 flex-1">
+                            <b className="block text-[15px] font-semibold">{isAllCatalogueLive ? 'Catalogue is live' : liveTotal > 0 ? 'Part of the catalogue is live' : 'Catalogue is hidden'}</b>
+                            <p className="text-xs leading-[18px] text-slate-500">
+                                {isAllCatalogueLive
+                                    ? 'Customers can browse and order everything from your store link. Turn off to hide all products.'
+                                    : `${liveTotal} of ${items.length} products are live. Turn on to show every product.`}
+                            </p>
+                        </div>
+                        <span className="hidden text-xs text-slate-600 sm:inline">{realCategoryCount} categor{realCategoryCount === 1 ? 'y' : 'ies'}</span>
+                        <button type="button" role="switch" aria-checked={isAllCatalogueLive} aria-label="Live entire catalogue"
+                            onClick={handleToggleAllCatalogueLive} disabled={isTogglingCatalogue || items.length === 0}
+                            className={cx('relative h-6 w-11 shrink-0 rounded-sm transition-colors disabled:opacity-45', isAllCatalogueLive ? 'bg-sf-primary' : 'bg-sf-control')}>
+                            {isTogglingCatalogue
+                                ? <Loader2 className="absolute inset-0 m-auto size-4 animate-spin text-white" />
+                                : <span className={cx('absolute top-[3px] size-[18px] rounded-[2px] bg-white shadow-sm transition-transform', isAllCatalogueLive ? 'left-[23px]' : 'left-[3px]')} />}
+                        </button>
+                    </div>
+                </ShowWrapper>
+
+                {/* --- Search, sort, new category --- */}
+                <div className="flex flex-wrap items-center gap-2 md:gap-3">
+                    <div className="w-full sm:max-w-[460px] sm:flex-1">
                         <SearchableItemInput
                             items={items}
-                            placeholder="Search products..."
+                            placeholder="Search products"
                             itemGroupMap={itemGroupMap}
                             onItemSelected={(item) => {
                                 if (!item.id) return;
@@ -665,327 +707,189 @@ const OrderingPage: React.FC = () => {
                             }}
                         />
                     </div>
-                </div>
-                {/* --- CATALOGUE COUNT & FILTER --- */}
-                <div className="max-w-7xl mx-auto px-1 flex items-center justify-between relative">
-                    <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">
-                            Total Catalogues:
-                        </span>
-                        <span className="bg-[#F97316]/10 text-[#F97316] px-2.5 py-0.5 rounded-sm text-[10px] font-black">
-                            {filteredItems.length}
-                        </span>
-                    </div>
-
+                    <span className="hidden flex-1 sm:block" />
                     <div className="relative">
-                        <button
-                            onClick={() => setIsSortOpen(!isSortOpen)}
-                            className="flex items-center gap-2 bg-white border border-gray-100 px-3 py-1.5 rounded-sm shadow-sm active:scale-95 transition-all"
-                        >
-                            <span className="text-[10px] font-black uppercase text-[#1A3B5D]">Sort: {sortOrder}</span>
-                            <FiPlus className={`transition-transform duration-300 ${isSortOpen ? 'rotate-45' : ''}`} size={12} />
+                        <button type="button" onClick={() => setIsSortOpen(!isSortOpen)} aria-expanded={isSortOpen}
+                            className="inline-flex h-9 items-center gap-2 rounded-sm border border-sf-control bg-white px-3 text-[13px] font-medium">
+                            Sort: {sortOrder === 'A-Z' ? 'A–Z' : 'Z–A'}<ChevronDown className="size-4 text-slate-500" />
                         </button>
-
                         {isSortOpen && (
-                            <div className="absolute right-0 mt-2 w-32 bg-white rounded-sm shadow-xl border border-gray-50 z-[70] overflow-hidden">
-                                <button
-                                    onClick={() => { setSortOrder('A-Z'); setIsSortOpen(false); }}
-                                    className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 ${sortOrder === 'A-Z' ? 'text-[#F97316]' : 'text-[#1A3B5D]'}`}
-                                >
-                                    A to Z
-                                </button>
-                                <button
-                                    onClick={() => { setSortOrder('Z-A'); setIsSortOpen(false); }}
-                                    className={`w-full text-left px-4 py-3 text-[10px] font-black uppercase hover:bg-gray-50 border-t border-gray-50 ${sortOrder === 'Z-A' ? 'text-[#F97316]' : 'text-[#1A3B5D]'}`}
-                                >
-                                    Z to A
-                                </button>
+                            <div className="absolute right-0 z-30 mt-1 w-36 overflow-hidden rounded-sm border border-sf-line bg-white py-1 shadow-sf-float">
+                                {(['A-Z', 'Z-A'] as const).map(opt => (
+                                    <button key={opt} type="button" onClick={() => { setSortOrder(opt); setIsSortOpen(false); }}
+                                        className={cx('block w-full px-3 py-2 text-left text-sm hover:bg-sf-sunken', sortOrder === opt && 'font-medium text-sf-primary')}>
+                                        {opt === 'A-Z' ? 'Name A–Z' : 'Name Z–A'}
+                                    </button>
+                                ))}
                             </div>
                         )}
                     </div>
-                </div>
-
-                {/* --- GLOBAL LIVE TOGGLE (ALL CATEGORIES) --- */}
-                <div>
-                    <ShowWrapper requiredPermission={Cata_Permissions.ViewEditButton}>
-                        <div>
-                            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">
-                                Live Entire Catalogue
-                            </span>
-
-                            <button
-                                onClick={handleToggleAllCatalogueLive}
-                                disabled={isTogglingCatalogue || items.length === 0}
-                                className={`w-11 h-4 flex items-center rounded-sm p-1 transition-all duration-300 disabled:opacity-50 ${isAllCatalogueLive ? 'bg-[#F97316]' : 'bg-gray-300'}`}
-                            >
-                                <div
-                                    className={`bg-white w-3 h-3 rounded-sm shadow-md transform transition-all duration-300 ${isAllCatalogueLive ? 'translate-x-6' : 'translate-x-0'
-                                        }`}
-                                />
-                            </button>
-                        </div>
+                    <ShowWrapper requiredPermission={Cata_Permissions.ManageItems}>
+                        <button type="button" onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`)} className={btnClass('secondary', 'md')}>
+                            <Plus className="size-4" />New category
+                        </button>
                     </ShowWrapper>
                 </div>
 
-                {/* --- PRODUCT GRID --- */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-1">
-                    {filteredItems.map(group => {
-                        const validGroupIds = new Set(itemGroups.map(g => g.id));
-                        const isVirtual = group.id === 'uncategorized';
-                        const itemCount = items.filter(item => {
-                            const allIds = [
-                                ...(item.itemGroupId ? [item.itemGroupId] : []),
-                                ...(item.itemGroupIds || []),
-                            ];
-                            if (isVirtual) {
-                                return allIds.length === 0 || allIds.every(id => !validGroupIds.has(id));
-                            }
-                            return allIds.includes(group.id!);
-                        }).length;
-                        const collageImages = getGroupImages(group.id!);
+                <p className="text-xs text-slate-500">
+                    {filteredItems.length} categor{filteredItems.length === 1 ? 'y' : 'ies'} · pinned ones show first, here and on your store
+                </p>
 
-                        return (
-                            <div
-                                id={group.id}
-                                key={group.id}
-                                onClick={() => navigate(`/catalogue-home/my-shop/${group.id}`)}
-                                className={`bg-white rounded-sm overflow-hidden shadow-sm border flex flex-col transition-all group cursor-pointer active:scale-95 ${highlightedId === group.id ? 'ring-1 ring-[#F97316] shadow-lg scale-[1.02]' : pinnedIds.has(group.id!) ? 'ring-1 ring-[#F97316] shadow-lg border-[#F97316]' : 'border-gray-100'
-                                    } ${isVirtual ? 'border-dashed border-gray-300' : ''}`}
-                            >
-                                {/* --- IMAGE SECTION WITH TOP BADGE --- */}
-                                <div className="aspect-square bg-[#F8FAFC] relative overflow-hidden">
-                                    {pinnedIds.has(group.id!) && (
-                                        <div className="absolute top-1.5 right-1.5 z-10 bg-white text-[#F97316] rounded-sm px-1 py-1 flex items-center gap-0.5 shadow-md border border-[#F97316]">
-                                            <Pin size={12} className="fill-[#F97316]" />
-                                        </div>
-                                    )}
-                                    {collageImages.length > 0 ? (
-                                        <div
-                                            className={`w-full h-full gap-[2px] p-[2px] ${collageImages.length === 1
-                                                ? 'grid grid-cols-1 grid-rows-1'
-                                                : collageImages.length === 2
-                                                    ? 'grid grid-cols-2 grid-rows-1'
-                                                    : collageImages.length === 3
-                                                        ? 'grid grid-cols-2 grid-rows-2'
-                                                        : 'grid grid-cols-2 grid-rows-2'
-                                                }`}
-                                        >
-                                            {collageImages.map((img, index) => {
-                                                const isThreeImagesLayout = collageImages.length === 3;
-                                                const isLastImage = index === 2;
-
-                                                return (
-                                                    <div
-                                                        key={index}
-                                                        className={`w-full h-full overflow-hidden rounded-[2px] ${isThreeImagesLayout && isLastImage
-                                                            ? 'col-span-2'
-                                                            : ''
-                                                            }`}
-                                                    >
-                                                        <img
-                                                            src={img}
-                                                            alt={`product-${index}`}
-                                                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                                                        />
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    ) : (
-                                        <div className="w-full h-full flex items-center justify-center">
-                                            <FiPackage className="h-10 w-10 text-gray-200" />
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* --- CONTENT SECTION --- */}
-                                <div className="p-3 flex flex-col flex-1">
-                                    {editingId === group.id ? (
-                                        <div className="space-y-2 py-1" onClick={(e) => e.stopPropagation()}>
-                                            <input
-                                                autoFocus
-                                                type="text"
-                                                value={tempName}
-                                                onChange={(e) => setTempName(e.target.value)}
-                                                className="w-full bg-gray-50 border border-gray-100 rounded-sm py-1 px-2 text-[14px] font-bold outline-none focus:ring-1 focus:ring-[#F97316]"
-                                            />
-                                            <div className="flex gap-1">
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); handleSaveEdit(group.id!); }}
-                                                    className="flex-1 bg-[#F97316] text-white py-1.5 rounded-sm text-[12px] font-black uppercase hover:bg-[#ea580c] transition-colors"
-                                                >
-                                                    Save
-                                                </button>
-                                                <button
-                                                    onClick={async (e) => {
-                                                        e.stopPropagation();
-
-                                                        if (window.confirm("Delete product group?") && dbOperations) {
-                                                            try {
-                                                                const itemsToUpdate = items.filter(
-                                                                    item => item.itemGroupId === group.id
-                                                                );
-
-                                                                await Promise.all(
-                                                                    itemsToUpdate.map(item =>
-                                                                        dbOperations.updateItem(item.id!, {
-                                                                            itemGroupId: ""
-                                                                        })
-                                                                    )
-                                                                );
-
-                                                                await dbOperations.deleteItemGroup(group.id!);
-
-                                                                setItemGroups(itemGroups.filter(p => p.id !== group.id));
-                                                                setModal({ message: 'Deleted successfully', type: State.SUCCESS });
-                                                            } catch (err) {
-                                                                console.error(err);
-                                                                setModal({ message: 'Delete failed', type: State.ERROR });
-                                                            }
-                                                        }
-                                                    }}
-                                                    className="p-3 bg-red-100 text-red-700 rounded-sm hover:bg-red-200 transition-colors"
-                                                >
-                                                    <Trash2 size={12} />
-                                                </button>
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); setEditingId(null); }}
-                                                    className="p-3 bg-gray-200 text-gray-500 rounded-sm hover:bg-gray-300 transition-colors"
-                                                >
-                                                    <X size={12} />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <div className="flex items-center justify-between mb-1.5">
-                                                <h3 className="text-[14px] font-bold text-[#1A3B5D] uppercase leading-tight break-words overflow-hidden max-h-[2.5em]">
-                                                    {isVirtual
-                                                        ? <i className="text-gray-500">{group.name}</i>
-                                                        : group.name
-                                                    }
-                                                </h3>
-                                                <div className="flex items-center gap-1 shrink-0">
-                                                    {/* Pin button — always visible for all non-virtual groups */}
-                                                    {!isVirtual && (
-                                                        <button
-                                                            onClick={(e) => handleTogglePin(e, group.id!)}
-                                                            className={`p-1.5 rounded-sm transition-all ${pinnedIds.has(group.id!)
-                                                                ? 'bg-[#F97316]/10 text-[#F97316]'
-                                                                : 'bg-gray-100 text-gray-400 hover:bg-[#F97316] hover:text-white'
-                                                                }`}
-                                                            title={pinnedIds.has(group.id!) ? 'Unpin' : 'Pin to top'}
-                                                        >
-                                                            <Pin size={12} className={pinnedIds.has(group.id!) ? 'fill-[#F97316]' : ''} />
-                                                        </button>
-                                                    )}
-
-                                                    {/* Share button */}
-                                                    {!isVirtual && (
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleShareCategory(group);
-                                                            }}
-                                                            className="p-1.5 rounded-sm bg-[#F97316]/10 text-[#F97316] hover:bg-[#F97316] hover:text-white transition-all"
-                                                            title="Share Category"
-                                                        >
-                                                            <Send size={14} />
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            {/* Centered Item Count Badge UI */}
-                                            <div className="flex items-center justify-center gap-1.5 bg-blue-50 px-2 py-0.5 rounded-sm border border-blue-100 w-fit mx-auto mb-2">
-                                                <span className="text-[12px] font-black text-[#F97316] leading-none">
-                                                    {itemCount}
-                                                </span>
-                                                <span className="text-[10px] font-black uppercase tracking-widest text-[#1A3B5D]/60 leading-none">
-                                                    Items
-                                                </span>
-                                            </div>
-
-                                            {/* Actions Logic */}
-                                            {!isVirtual ? (
-                                                <div
-                                                    className="mt-auto w-full py-1.5 rounded-sm text-[12px] font-black uppercase text-center tracking-wider transition-all bg-[#F97316] text-white hover:bg-[#ea580c]"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleEdit(group);
-                                                    }}
-                                                >
-                                                    Edit Group
-                                                </div>
-                                            ) : (
-                                                <div className="mt-auto w-full py-1.5 rounded-sm text-[12px] font-black uppercase text-center tracking-wider bg-gray-100 text-gray-400 cursor-not-allowed">
-                                                    Default
-                                                </div>
-                                            )}
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            </main>
-
-            {showCatalogueConfirmPopup && (
-                <div className="fixed inset-0 z-[200] flex items-center justify-center">
-                    <div
-                        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-                        onClick={() => setShowCatalogueConfirmPopup(false)}
-                    />
-                    <div className="relative bg-white w-[90%] max-w-sm rounded-lg shadow-xl p-5 z-10 animate-in fade-in zoom-in duration-200">
-                        <h2 className="text-sm font-black text-[#1A3B5D] uppercase mb-2">
-                            Confirmation
-                        </h2>
-                        <p className="text-lg font-bold text-gray-600 mb-4">
-                            Do you want to make the ENTIRE catalogue {pendingCatalogueLiveState ? "LIVE" : "UNLIVE"}? This affects all categories.
-                        </p>
-                        <div className="flex gap-2">
-                            <button
-                                onClick={confirmToggleAllCatalogueLive}
-                                className="flex-1 bg-green-500 text-white py-2 rounded-sm text-xs font-black uppercase"
-                            >
-                                Yes
-                            </button>
-                            <button
-                                onClick={() => setShowCatalogueConfirmPopup(false)}
-                                className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-sm text-xs font-black uppercase"
-                            >
-                                No
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {isCustomerModalOpen && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-[#1A3B5D]/60 backdrop-blur-md p-4">
-                    <div className="bg-white rounded-sm p-8 w-full max-w-sm shadow-2xl text-center relative">
-                        <button onClick={() => setIsCustomerModalOpen(false)} className="absolute top-6 right-6 text-gray-400"><FiX size={20} /></button>
-                        <h3 className="text-sm font-black text-[#1A3B5D] uppercase mb-6">Customer Details</h3>
-                        <div className="space-y-4">
-                            <input type="text" placeholder="Customer Name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="w-full bg-gray-50 border-none rounded-sm p-4 text-xs font-bold outline-none focus:ring-2 focus:ring-[#F97316]/20" />
-                            <input type="tel" placeholder="Phone Number" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className="w-full bg-gray-50 border-none rounded-sm p-4 text-xs font-bold outline-none focus:ring-2 focus:ring-[#F97316]/20" />
-                        </div>
-                        <button disabled={isPlacingOrder} onClick={handleConfirmAndSaveOrder} className="w-full mt-6 bg-[#F97316] text-white py-4 rounded-sm font-black text-[10px] uppercase shadow-lg tracking-widest active:scale-95 disabled:opacity-50 transition-all">
-                            {isPlacingOrder ? 'Placing Order...' : 'Confirm Order'}
+                {/* --- Category grid --- */}
+                {filteredItems.length === 0 ? (
+                    <div className="grid place-items-center gap-2 rounded-sm border border-sf-line bg-white px-4 py-14 text-center text-[13px] text-slate-500">
+                        <b className="text-[15px] font-semibold text-slate-900">No categories yet</b>
+                        Add a category, then add products to it so customers can browse them.
+                        <button type="button" onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`)} className={cx(btnClass('secondary', 'sm'), 'mt-2')}>
+                            <Plus className="size-4" />New category
                         </button>
                     </div>
-                </div>
-            )}
-            <div className="w-full m-0 p-0">
-                <Footer
-                    companyName={companyName}
-                    instagram={socialLinks.instagram}
-                    facebook={socialLinks.facebook}
-                    twitter={socialLinks.twitter}
-                    gmail={socialLinks.gmail}
-                />
+                ) : (
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-5 lg:grid-cols-4 xl:grid-cols-5">
+                        {filteredItems.map((group, gi) => {
+                            const isVirtual = group.id === 'uncategorized';
+                            const groupItems = groupItemsOf(group.id!);
+                            const itemCount = groupItems.length;
+                            const liveCount = groupItems.filter(i => i.isListed === true).length;
+                            const collageImages = getGroupImages(group.id!);
+                            const pinned = pinnedIds.has(group.id!);
+                            const liveText = itemCount === 0 ? 'No products yet' : liveCount === itemCount ? 'all live' : liveCount === 0 ? 'none live' : `${liveCount} live`;
+
+                            return (
+                                <article
+                                    id={group.id}
+                                    key={group.id}
+                                    onClick={() => navigate(`/catalogue-home/my-shop/${group.id}`)}
+                                    className={cx('group flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border bg-white shadow-sf-card transition-shadow hover:shadow-sf-float',
+                                        highlightedId === group.id ? 'border-sf-primary outline-2 outline-offset-2 outline-sf-primary' : pinned ? 'border-sf-primary' : 'border-sf-line',
+                                        isVirtual && 'border-dashed border-sf-control shadow-none')}
+                                >
+                                    {/* Photo: the category's products as a collage, or its first letter */}
+                                    <div className="relative aspect-[4/3] overflow-hidden bg-sf-sunken">
+                                        {collageImages.length > 0 ? (
+                                            <div className={cx('grid h-full w-full gap-0.5',
+                                                collageImages.length === 1 ? 'grid-cols-1' : 'grid-cols-2',
+                                                collageImages.length > 2 && 'grid-rows-2')}>
+                                                {collageImages.map((img, index) => (
+                                                    <Photo key={index} src={img} alt="" fit="contain"
+                                                        className={cx('h-full rounded-none', collageImages.length === 3 && index === 2 && 'col-span-2')} />
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className={cx('grid h-full w-full place-items-center text-3xl font-semibold text-slate-500/70', toneClass(gi))}>
+                                                {isVirtual ? '?' : initialsOf(group.name).slice(0, 1) || '?'}
+                                            </div>
+                                        )}
+                                        {pinned && <span className="absolute left-2 top-2"><Tag tone="soft"><Pin className="size-3 fill-current" />Pinned</Tag></span>}
+                                    </div>
+
+                                    <div className="flex flex-1 flex-col gap-1 p-3 md:p-4">
+                                        <div className="flex items-start gap-1.5">
+                                            <h3 className={cx('line-clamp-2 min-w-0 flex-1 text-[15px] font-semibold leading-[21px]', isVirtual && 'italic text-slate-500')}>{group.name}</h3>
+                                            {!isVirtual && (
+                                                <span className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
+                                                    <button type="button" onClick={(e) => handleTogglePin(e, group.id!)} aria-label={pinned ? `Unpin ${group.name}` : `Pin ${group.name} to the top`}
+                                                        title={pinned ? 'Unpin' : 'Pin to top'}
+                                                        className={cx('grid size-8 place-items-center rounded-sm transition-colors',
+                                                            pinned
+                                                                ? 'bg-sf-soft text-sf-primary hover:brightness-95'
+                                                                : 'bg-sf-sunken text-slate-600 hover:bg-sf-line hover:text-slate-900')}>
+                                                        <Pin className={cx('size-4', pinned && 'fill-current')} />
+                                                    </button>
+                                                    <button type="button" onClick={() => handleShareCategory(group)} aria-label={`Share ${group.name}`} title="Share category"
+                                                        className="grid size-8 place-items-center rounded-sm bg-sf-sunken text-slate-600 transition-colors hover:bg-sf-line hover:text-slate-900">
+                                                        <Send className="size-4" />
+                                                    </button>
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-slate-500">
+                                            {itemCount} item{itemCount === 1 ? '' : 's'}{itemCount > 0 && <> · <span className={liveCount === itemCount ? 'text-green-700' : liveCount === 0 ? 'text-slate-500' : 'text-yellow-800'}>{liveText}</span></>}
+                                        </p>
+                                        <div className="mt-auto pt-2.5">
+                                            {isVirtual ? (
+                                                <p className="text-xs leading-[18px] text-slate-500">Products without a category. Give them one so customers can find them.</p>
+                                            ) : (
+                                                <button type="button" onClick={(e) => { e.stopPropagation(); handleEdit(group); setConfirmDeleteId(null); }}
+                                                    className={btnClass('secondary', 'sm', true)}>
+                                                    <Pencil className="size-4" />Edit category
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </article>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
+
+            {/* --- Edit category: rename or delete --- */}
+            <Sheet open={!!editingGroup} title={confirmDeleteId ? 'Delete this category?' : 'Edit category'} onClose={() => { setEditingId(null); setConfirmDeleteId(null); }}
+                footer={confirmDeleteId ? (
+                    <>
+                        <button type="button" onClick={() => setConfirmDeleteId(null)} className={btnClass('ghost')}>Cancel</button>
+                        <button type="button" onClick={() => handleDeleteGroup(confirmDeleteId)}
+                            className="inline-flex h-10 items-center gap-2 rounded-sm bg-red-700 px-4 text-sm font-medium text-white hover:bg-red-800">
+                            <Trash2 className="size-4" />Delete category
+                        </button>
+                    </>
+                ) : (
+                    <>
+                        <button type="button" onClick={() => editingGroup && setConfirmDeleteId(editingGroup.id!)} className={cx(btnClass('danger'), 'mr-auto')}>
+                            <Trash2 className="size-4" />Delete
+                        </button>
+                        <button type="button" onClick={() => setEditingId(null)} className={btnClass('ghost')}>Cancel</button>
+                        <button type="button" disabled={!tempName.trim() || tempName.trim() === editingGroup?.name} onClick={() => editingGroup && handleSaveEdit(editingGroup.id!)}
+                            className={btnClass('primary')}>Save</button>
+                    </>
+                )}>
+                {editingGroup && (confirmDeleteId ? (
+                    <p className="text-sm text-slate-600">
+                        <b className="font-semibold text-slate-900">{editingGroup.name}</b> will be removed. Its {groupItemsOf(editingGroup.id!).length} product{groupItemsOf(editingGroup.id!).length === 1 ? '' : 's'} stay in your catalogue without a category.
+                    </p>
+                ) : (
+                    <form onSubmit={(e) => { e.preventDefault(); if (tempName.trim() && tempName.trim() !== editingGroup.name) handleSaveEdit(editingGroup.id!); }}>
+                        <label htmlFor="cat-name" className="mb-1.5 block text-[13px] font-medium">Category name</label>
+                        <input id="cat-name" autoFocus value={tempName} maxLength={60} onChange={(e) => setTempName(e.target.value)}
+                            className="h-10 w-full rounded-sm border border-sf-control px-3 text-sm focus:outline-2 focus:outline-offset-1 focus:outline-sf-primary" />
+                        <p className="mt-1.5 text-xs text-slate-500">Customers see this name on your store. Changing it also changes the category's link.</p>
+                    </form>
+                ))}
+            </Sheet>
+
+            {/* --- Live entire catalogue: confirm --- */}
+            <Sheet open={showCatalogueConfirmPopup} title={pendingCatalogueLiveState ? 'Make the whole catalogue live?' : 'Hide the whole catalogue?'}
+                onClose={() => setShowCatalogueConfirmPopup(false)}
+                footer={<>
+                    <button type="button" onClick={() => setShowCatalogueConfirmPopup(false)} className={btnClass('ghost')}>Cancel</button>
+                    <button type="button" onClick={confirmToggleAllCatalogueLive} className={btnClass('primary')}>
+                        {pendingCatalogueLiveState ? 'Make all live' : 'Hide all'}
+                    </button>
+                </>}>
+                <p className="text-sm text-slate-600">
+                    {pendingCatalogueLiveState
+                        ? `All ${items.length} products in every category will show on your store link.`
+                        : `All ${items.length} products in every category will be hidden from your store link. Customers won't be able to order until you turn it back on.`}
+                </p>
+            </Sheet>
+
+            {/* --- Customer details (manual order) --- */}
+            <Sheet open={isCustomerModalOpen} title="Customer details" onClose={() => setIsCustomerModalOpen(false)}
+                footer={<button type="button" disabled={isPlacingOrder} onClick={handleConfirmAndSaveOrder} className={btnClass('primary', 'md', true)}>
+                    {isPlacingOrder ? 'Placing order…' : 'Confirm order'}
+                </button>}>
+                <div className="grid gap-4">
+                    <div>
+                        <label htmlFor="cust-name" className="mb-1.5 block text-[13px] font-medium">Customer name</label>
+                        <input id="cust-name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="h-10 w-full rounded-sm border border-sf-control px-3 text-sm focus:outline-2 focus:outline-sf-primary" />
+                    </div>
+                    <div>
+                        <label htmlFor="cust-phone" className="mb-1.5 block text-[13px] font-medium">Phone number</label>
+                        <input id="cust-phone" type="tel" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} className="h-10 w-full rounded-sm border border-sf-control px-3 text-sm focus:outline-2 focus:outline-sf-primary" />
+                    </div>
+                </div>
+            </Sheet>
         </div>
     );
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import { db } from '../../lib/Firebase';
 import {
     doc,
@@ -32,6 +32,9 @@ import {
     User,
     Phone,
     ArrowUpDown,
+    FileText,
+    Clock,
+    Search,
 } from 'lucide-react';
 
 export interface SalesSettings {
@@ -120,26 +123,10 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     enableCustomerInfoToggle: true, // ✅ ON by default so POS & CALC both show it consistently
 });
 
-interface CardProps {
-    title: string;
-    icon?: React.ReactNode;
-    children: React.ReactNode;
-    action?: React.ReactNode;
-}
-
-const SettingsCard: React.FC<CardProps> = ({ title, icon, children, action }) => (
-    <section className="bg-white rounded-sm border border-gray-200 shadow-sm p-5 md:p-6 space-y-5 transition-shadow">
-        <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-                {icon && <span className="text-blue-600">{icon}</span>}
-                <h2 className="text-base md:text-lg font-semibold text-gray-800">{title}</h2>
-            </div>
-            {action}
-        </div>
-        {children}
-    </section>
-);
-
+/* ────────────────────────────────────────────────────────────────────────────
+   ToggleRow is exported and may be used by other settings pages, so it is left
+   exactly as it was. The Sales Settings page below uses its own <Opt> row.
+   ──────────────────────────────────────────────────────────────────────────── */
 export interface ToggleRowProps {
     id: string;
     label: string;
@@ -176,6 +163,198 @@ export const ToggleRow: React.FC<ToggleRowProps> = ({ id, label, description, ch
     </div>
 );
 
+/* ────────────────────────────────────────────────────────────────────────────
+   SELLAR design tokens (POS blue accent) as Tailwind class strings.
+   No embedded <style> / CSS string any more — everything is Tailwind utilities.
+
+   canvas #eef2ff · surface #fff · sunken #f5f7ff · inverse/ink #0f172b
+   muted #45556c · subtle #5b6b86 · border #dfe6fb · control border #7a8aa3
+   primary #155dfc (hover #1447e6) · primary soft #e6eeff
+   ──────────────────────────────────────────────────────────────────────────── */
+const ROOT_BASE =
+    "bg-[#eef2ff] font-['Poppins',system-ui,-apple-system,'Segoe_UI',sans-serif] text-sm leading-[22px] text-[#0f172b] antialiased";
+
+const CARD_SHADOW = 'shadow-[0_1px_2px_rgba(21,48,140,.05),0_2px_6px_rgba(21,48,140,.06)]';
+const FLOAT_SHADOW = 'shadow-[0_10px_28px_rgba(21,48,140,.14),0_2px_6px_rgba(21,48,140,.08)]';
+const FOCUS_RING =
+    'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#155dfc]';
+
+const FIELD =
+    'flex h-10 items-center gap-2 border border-[#7a8aa3] bg-white px-3 rounded-sm focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-[#155dfc]';
+const FIELD_INPUT =
+    'min-w-0 flex-1 border-0 bg-transparent text-sm text-[#0f172b] outline-none placeholder:text-[#5b6b86]';
+const FIELD_LABEL = 'mb-1 flex items-center gap-2 text-xs font-medium text-[#45556c]';
+
+const BTN_BASE =
+    'inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-sm border border-transparent px-4 text-sm font-medium leading-5 transition-colors';
+const BTN_PRIMARY = `${BTN_BASE} bg-[#155dfc] text-white hover:bg-[#1447e6] disabled:cursor-not-allowed disabled:opacity-[.45] disabled:hover:bg-[#155dfc] ${FOCUS_RING}`;
+const BTN_SECONDARY = `${BTN_BASE} border-[#7a8aa3] bg-white text-[#0f172b] hover:bg-[#f5f7ff] ${FOCUS_RING}`;
+
+// Small "example / preview" pill. <b> inside is bold + tabular numbers.
+const PREVIEW =
+    'mt-2 inline-flex flex-wrap items-center gap-1.5 bg-[#f5f7ff] px-3 py-2 text-xs leading-[18px] text-[#45556c] rounded-sm [&_b]:font-semibold [&_b]:tabular-nums [&_b]:text-[#0f172b]';
+
+/* ── Presentational building blocks ────────────────────────────────────────── */
+// UI-only: the search box filters which option rows are shown on screen.
+const SettingsSearchContext = React.createContext<string>('');
+const SectionTextContext = React.createContext<string>('');
+
+type Tint = 'blue' | 'green' | 'amber' | 'magenta';
+
+const TINTS: Record<Tint, string> = {
+    blue: 'bg-[#e6eeff] text-[#155dfc]',
+    green: 'bg-[#e9faef] text-[#008236]',
+    amber: 'bg-[#fff3dd] text-[#bb4d00]',
+    magenta: 'bg-[#ffe8f8] text-[#c4009a]',
+};
+
+interface SectionProps {
+    id: string;
+    title: string;
+    subtitle: string;
+    icon: React.ReactNode;
+    tint?: Tint;
+    action?: React.ReactNode;
+    children: React.ReactNode;
+}
+
+const Section: React.FC<SectionProps> = ({ id, title, subtitle, icon, tint = 'blue', action, children }) => (
+    <section
+        id={id}
+        className={`min-w-0 scroll-mt-[132px] overflow-hidden border border-[#dfe6fb] bg-white p-0 rounded-sm lg:scroll-mt-[88px] ${CARD_SHADOW}`}
+    >
+        <div className="flex items-center gap-3 border-b border-[#dfe6fb] px-3.5 py-3 lg:px-[18px] lg:py-3.5">
+            <span className={`inline-grid h-8 w-8 flex-none place-items-center rounded-sm ${TINTS[tint]}`}>{icon}</span>
+            <div className="min-w-0">
+                <b className="block text-[15px] font-semibold leading-[22px] lg:text-base">{title}</b>
+                <small className="block text-xs font-normal leading-[18px] text-[#5b6b86]">{subtitle}</small>
+            </div>
+            {action && <div className="ml-auto flex-none">{action}</div>}
+        </div>
+        <SectionTextContext.Provider value={`${title} ${subtitle}`}>{children}</SectionTextContext.Provider>
+    </section>
+);
+
+interface OptProps {
+    id?: string;
+    label: string;
+    description?: string;
+    icon?: React.ReactNode;
+    checked?: boolean;
+    onChange?: (checked: boolean) => void;
+    disabled?: boolean;
+    children?: React.ReactNode;
+}
+
+const Opt: React.FC<OptProps> = ({ id, label, description, icon, checked, onChange, disabled = false, children }) => {
+    const query = useContext(SettingsSearchContext).trim().toLowerCase();
+    const sectionText = useContext(SectionTextContext);
+    if (query && !`${label} ${description ?? ''} ${sectionText}`.toLowerCase().includes(query)) return null;
+    const hasSwitch = Boolean(id && onChange);
+    return (
+        <div
+            data-opt
+            className={`grid items-center gap-x-4 gap-y-1.5 border-b border-[#dfe6fb] px-3.5 py-3 last:border-b-0 lg:px-[18px] lg:py-3.5 ${
+                hasSwitch ? 'grid-cols-[minmax(0,1fr)_auto]' : 'grid-cols-[minmax(0,1fr)]'
+            } ${disabled ? 'pointer-events-none opacity-[.45]' : ''}`}
+        >
+            <div className="min-w-0">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                    {icon && <span className="inline-grid text-[#45556c]">{icon}</span>}
+                    {hasSwitch ? <label htmlFor={id} className="cursor-pointer">{label}</label> : <span>{label}</span>}
+                </div>
+                {description && <p className="mb-0 mt-0.5 text-xs leading-[18px] text-[#5b6b86]">{description}</p>}
+            </div>
+            {hasSwitch && (
+                <label className="relative inline-flex flex-none cursor-pointer" htmlFor={id}>
+                    <input
+                        id={id}
+                        type="checkbox"
+                        className="peer absolute inset-0 m-0 h-full w-full cursor-pointer opacity-0"
+                        checked={checked ?? false}
+                        onChange={(e) => onChange!(e.target.checked)}
+                    />
+                    <span
+                        aria-hidden="true"
+                        className="relative block h-[22px] w-10 rounded-full bg-[#7a8aa3] transition-colors after:absolute after:left-[3px] after:top-[3px] after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow-[0_1px_2px_rgba(0,0,0,.2)] after:transition-transform after:content-[''] peer-checked:bg-[#155dfc] peer-checked:after:translate-x-[18px] peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[#155dfc]"
+                    />
+                </label>
+            )}
+            {children && <div className="col-span-full">{children}</div>}
+        </div>
+    );
+};
+
+/* Segmented control */
+const SegGroup: React.FC<{ large?: boolean; children: React.ReactNode }> = ({ large, children }) => (
+    <div
+        role="group"
+        className={`max-w-full gap-0.5 border border-[#dfe6fb] bg-[#f5f7ff] p-[3px] rounded-sm ${large ? 'flex' : 'inline-flex'}`}
+    >
+        {children}
+    </div>
+);
+
+const SegBtn: React.FC<{ active: boolean; large?: boolean; onClick: () => void; children: React.ReactNode }> = ({
+    active, large, onClick, children,
+}) => (
+    <button
+        type="button"
+        aria-pressed={active}
+        onClick={onClick}
+        className={`cursor-pointer border-0 font-medium rounded-sm ${FOCUS_RING} ${
+            large ? 'h-9 min-w-0 flex-1 px-1.5 text-xs leading-4 sm:px-3 sm:text-sm' : 'h-7 px-3 text-xs'
+        } ${
+            active
+                ? large
+                    ? 'bg-[#0f172b] text-white'
+                    : `bg-white text-[#155dfc] ${CARD_SHADOW}`
+                : 'bg-transparent text-[#45556c]'
+        }`}
+    >
+        {children}
+    </button>
+);
+
+/* View picker mock-up bars */
+const Bar: React.FC<{ width?: string; tall?: boolean }> = ({ width, tall }) => (
+    <i
+        className={`block rounded-[3px] bg-[#dfe6fb] ${tall ? 'h-4' : 'h-1.5'}`}
+        style={width ? { width } : undefined}
+    />
+);
+
+const ViewTick: React.FC<{ size?: number }> = ({ size = 12 }) => (
+    <span className="absolute right-2.5 top-2.5 grid h-5 w-5 place-items-center rounded-sm bg-[#155dfc] text-white">
+        <FiCheck size={size} strokeWidth={3} />
+    </span>
+);
+
+const viewBtnClass = (active: boolean) =>
+    `relative grid cursor-pointer gap-2 bg-white text-left rounded-sm ${FOCUS_RING} ${
+        active
+            ? 'border-2 border-[#155dfc] bg-[#e6eeff] p-[11px]'
+            : 'border border-[#7a8aa3] p-3'
+    }`;
+
+const NAV_SECTIONS: { id: string; label: string; icon: React.ReactNode }[] = [
+    { id: 'display', label: 'Display', icon: <Monitor size={16} strokeWidth={1.75} /> },
+    { id: 'tax', label: 'Tax & rounding', icon: <FileText size={16} strokeWidth={1.75} /> },
+    { id: 'discounts', label: 'Discounts', icon: <Percent size={16} strokeWidth={1.75} /> },
+    { id: 'order', label: 'Order & delivery', icon: <Truck size={16} strokeWidth={1.75} /> },
+    { id: 'due', label: 'Due billing', icon: <Clock size={16} strokeWidth={1.75} /> },
+    { id: 'customer', label: 'Customer', icon: <ShieldCheck size={16} strokeWidth={1.75} /> },
+    { id: 'voucher', label: 'Bill numbering', icon: <Hash size={16} strokeWidth={1.75} /> },
+];
+
+const ico = (Icon: React.ComponentType<{ size?: number; strokeWidth?: number }>) => <Icon size={16} strokeWidth={1.75} />;
+
+// Display-only helper for the rounding example line.
+const formatRupees = (n: number) =>
+    `₹${Number.isInteger(n)
+        ? n.toLocaleString('en-IN')
+        : n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 const SalesSettingsPage: React.FC = () => {
     const { currentUser } = useAuth();
 
@@ -188,6 +367,16 @@ const SalesSettingsPage: React.FC = () => {
     const [showGstModal, setShowGstModal] = useState<boolean>(false);
     const [gstNumberInput, setGstNumberInput] = useState<string>('');
     const [pendingGstScheme, setPendingGstScheme] = useState<'regular' | 'composition' | null>(null);
+
+    // UI only: which section nav item is highlighted
+    const [activeSection, setActiveSection] = useState<string>('display');
+
+    // UI only: search box
+    const [query, setQuery] = useState<string>('');
+    const [noMatch, setNoMatch] = useState<boolean>(false);
+    const formRef = useRef<HTMLFormElement>(null);
+    const [searchOpen, setSearchOpen] = useState<boolean>(false); // phone only: search row open/closed
+
 
     const activePlan = currentUser?.Subscription?.pack?.toLowerCase() || 'basic';
     // Added safe fallback for basic plan keying to prevent undefined errors
@@ -428,11 +617,27 @@ const SalesSettingsPage: React.FC = () => {
             setModal({ message: 'Failed to save GST number.', type: State.ERROR });
         }
     };
+
+    // UI only: show an empty message when the search matches no option row
+    useEffect(() => {
+        const hasQuery = query.trim().length > 0;
+        const none = hasQuery && !formRef.current?.querySelector('[data-opt]');
+        setNoMatch((prev) => (prev === none ? prev : none));
+    });
+
+    // UI only: smooth-scroll to a section and highlight its nav item
+    const goToSection = (id: string) => {
+        setActiveSection(id);
+        document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+
     if (isLoading || !settings) {
         return (
-            <div className="flex flex-col min-h-screen items-center justify-center">
-                <Spinner />
-                <p className="mt-4 text-gray-600">Loading settings...</p>
+            <div className={ROOT_BASE}>
+                <div className="flex min-h-screen flex-col items-center justify-center text-[#45556c]">
+                    <Spinner />
+                    <p className="mt-4">Loading settings...</p>
+                </div>
             </div>
         );
     }
@@ -440,235 +645,362 @@ const SalesSettingsPage: React.FC = () => {
     // 👇 true for pos_basic (catalog-forced calc) OR any plan where user manually picked calc view
     const isCalcPlan = activePlan === 'pos_basic' || settings.salesViewType === 'calculator';
 
+    // Display-only previews
+    const roundingStep = Number(settings.roundingInterval ?? 1) || 1;
+    const roundedExample = Math.round(1357.6 / roundingStep) * roundingStep;
+    const nextBillLabel = `${settings.voucherPrefix ? `${settings.voucherPrefix}-` : ''}${settings.currentVoucherNumber ?? 1}`;
+
     return (
-        <div className="flex flex-col min-h-screen bg-white w-full">
+        <div className={`${ROOT_BASE} flex min-h-screen w-full flex-col`}>
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
             {showGstModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-                    <div className="bg-white rounded-sm shadow-lg w-full max-w-sm p-5 space-y-4">
-                        <h3 className="text-base font-semibold text-gray-800">Enter GST Number</h3>
-                        <p className="text-xs text-gray-500">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(15,23,43,.45)] p-4">
+                    <div
+                        className={`grid w-full max-w-[400px] gap-3.5 bg-white p-5 rounded-sm ${FLOAT_SHADOW}`}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="gst-title"
+                    >
+                        <h3 id="gst-title" className="m-0 text-lg font-semibold leading-[26px]">Enter GST number</h3>
+                        <p className="m-0 text-[13px] leading-5 text-[#45556c]">
                             GST number is required to enable this tax scheme. This will be saved to your business profile.
                         </p>
-                        <input
-                            type="text"
-                            value={gstNumberInput}
-                            onChange={(e) => setGstNumberInput(e.target.value.toUpperCase().slice(0, 15))}
-                            placeholder="e.g., 22AAAAA0000A1Z5"
-                            maxLength={15}
-                            className="w-full p-2.5 text-sm border border-gray-300 rounded-sm focus:ring-blue-500 focus:border-blue-500 outline-none"
-                            autoFocus
-                        />
-                        <div className="flex justify-end gap-2 pt-1">
+                        <div>
+                            <label htmlFor="gst-number" className={FIELD_LABEL}>GST number</label>
+                            <div className={FIELD}>
+                                <input
+                                    id="gst-number"
+                                    type="text"
+                                    className={FIELD_INPUT}
+                                    value={gstNumberInput}
+                                    onChange={(e) => setGstNumberInput(e.target.value.toUpperCase().slice(0, 15))}
+                                    placeholder="e.g., 22AAAAA0000A1Z5"
+                                    maxLength={15}
+                                    autoFocus
+                                />
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-0.5">
                             <button
                                 type="button"
                                 onClick={() => { setShowGstModal(false); setPendingGstScheme(null); }}
-                                className="px-4 py-2 text-sm font-semibold text-gray-600 rounded-sm hover:bg-gray-100"
+                                className={BTN_SECONDARY}
                             >
                                 Cancel
                             </button>
                             <button
                                 type="button"
                                 onClick={handleGstNumberSave}
-                                className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-sm hover:bg-blue-700"
+                                className={BTN_PRIMARY}
                             >
-                                Save & Continue
+                                Save & continue
                             </button>
                         </div>
                     </div>
                 </div>
             )}
 
-            <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
-                <BackButton />
-                <h1 className="text-base md:text-lg font-semibold text-gray-800">Sales Settings</h1>
-                <div className="w-6"></div>
+            {/* Header + (mobile) section chips */}
+            <div className="sticky top-0 z-30 border-b border-[#dfe6fb] bg-white">
+                <div className="flex h-14 items-center gap-3 px-2 md:h-auto md:px-6 md:py-3.5">
+                    <div className="flex-shrink-0">
+                        <BackButton />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                        <div className="hidden text-xs leading-[18px] text-[#5b6b86] md:block">Settings /</div>
+                        <h1 className="m-0 text-lg font-semibold leading-6 text-[#0f172b] md:text-[22px] md:leading-[30px]">
+                            Sales settings
+                        </h1>
+                    </div>
+
+                    <span className="hidden text-xs leading-[18px] text-[#5b6b86] lg:block">Applies to every sale bill in your shop</span>
+
+                    {/* Desktop search field */}
+                    <label className="hidden h-[38px] w-[300px] items-center gap-2 rounded-sm border border-[#7a8aa3] bg-white px-3 text-[#5b6b86] focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-[#155dfc] md:flex">
+                        <Search size={16} strokeWidth={1.75} aria-hidden="true" className="flex-none" />
+                        <input
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Escape') setQuery(''); }}
+                            placeholder="Find a setting — e.g. rounding, GST, prefix"
+                            aria-label="Find a setting"
+                            className="min-w-0 flex-1 border-0 bg-transparent text-sm text-[#0f172b] outline-none placeholder:text-[#5b6b86]"
+                        />
+                    </label>
+
+                    {/* Mobile search toggle */}
+                    <button
+                        type="button"
+                        aria-label="Search"
+                        onClick={() => {
+                            setSearchOpen((o) => !o);
+                            if (searchOpen) setQuery('');
+                        }}
+                        className="inline-grid h-10 w-10 place-items-center rounded-sm text-[#45556c] hover:bg-[#f5f7ff] md:hidden"
+                    >
+                        <Search size={20} strokeWidth={1.75} />
+                    </button>
+                </div>
+
+                {/* Mobile search field */}
+                {searchOpen && (
+                    <div className="px-4 pb-3 md:hidden">
+                        <label className="flex h-10 items-center gap-2 rounded-sm border border-[#7a8aa3] bg-white px-3 text-[#5b6b86]">
+                            <Search size={16} strokeWidth={1.75} aria-hidden="true" className="flex-none" />
+                            <input
+                                autoFocus
+                                value={query}
+                                onChange={(e) => setQuery(e.target.value)}
+                                placeholder="Find a setting"
+                                aria-label="Find a setting"
+                                className="min-w-0 flex-1 border-0 bg-transparent text-sm text-[#0f172b] outline-none placeholder:text-[#5b6b86]"
+                            />
+                        </label>
+                    </div>
+                )}
+
+                <div
+                    className="flex gap-1.5 overflow-x-auto border-t border-[#dfe6fb] px-4 py-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:hidden"
+                    role="group"
+                    aria-label="Jump to section"
+                >
+                    {NAV_SECTIONS.map((s) => (
+                        <button
+                            key={s.id}
+                            type="button"
+                            aria-pressed={activeSection === s.id}
+                            onClick={() => goToSection(s.id)}
+                            className={`inline-flex h-[30px] flex-none cursor-pointer items-center whitespace-nowrap border px-3 text-xs font-medium rounded-sm ${FOCUS_RING} ${
+                                activeSection === s.id
+                                    ? 'border-[#0f172b] bg-[#0f172b] text-white'
+                                    : 'border-[#7a8aa3] bg-white text-[#45556c]'
+                            }`}
+                        >
+                            {s.label}
+                        </button>
+                    ))}
+                </div>
             </div>
 
-            <main className="flex-grow min-h-0 p-3 sm:p-4 md:p-5 bg-gray-50 w-full overflow-y-auto box-border pb-44 md:pb-24">
-                <form onSubmit={handleSave} className="max-w-5xl mx-auto space-y-5">
+            <main className="min-h-0 w-full flex-grow box-border px-3 pb-44 pt-3 sm:px-4 sm:pt-4 md:pb-6 lg:px-6 lg:pt-6">
+                <SettingsSearchContext.Provider value={query}>
+                    <div className="mx-auto grid max-w-[1120px] grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
+                        {/* Left section navigation (desktop) */}
+                        <nav className="sticky top-24 hidden gap-0.5 self-start rounded-sm lg:grid" aria-label="Sales settings sections">
+                            {NAV_SECTIONS.map((s) => (
+                                <button
+                                    key={s.id}
+                                    type="button"
+                                    aria-current={activeSection === s.id}
+                                    onClick={() => goToSection(s.id)}
+                                    className={`flex w-full cursor-pointer items-center gap-2.5 border-0 px-3 py-2 text-left text-[13px] font-medium rounded-sm ${
+                                        activeSection === s.id
+                                            ? 'bg-[#e6eeff] text-[#155dfc]'
+                                            : 'bg-transparent text-[#45556c] hover:bg-white hover:text-[#0f172b]'
+                                    }`}
+                                >
+                                    {s.icon}
+                                    {s.label}
+                                </button>
+                            ))}
+                            <div className="p-3 text-xs leading-[18px] text-[#5b6b86]">Changes save only when you press Save.</div>
+                        </nav>
 
-                    <div className="space-y-5">
-                        <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-                            {/* Display & Team — full width */}
-                            <SettingsCard
-                                title="Display Settings"
-                                icon={<Monitor size={18} />}
-                                action={
-                                    <ResetSettingsButton<SalesSettings>
-                                        defaults={getDefaultSalesSettings(currentUser?.companyId ?? '')}
-                                        onReset={(defaults) =>
-                                            setSettings((prev) =>
-                                                prev
-                                                    ? {
-                                                        ...defaults,
-                                                        // Preserve tax/GST settings — Reset to Default should NOT touch these
-                                                        gstScheme: prev.gstScheme,
-                                                        taxType: prev.taxType,
-                                                        lockTaxToggle: prev.lockTaxToggle,
-                                                        enableRounding: prev.enableRounding,
-                                                        roundingInterval: prev.roundingInterval,
-                                                    }
-                                                    : defaults
-                                            )
-                                        }
-                                    />
-                                }
-                            >
-                                <div className="grid grid-cols-2 gap-3">
-                                    {/* List View */}
-                                    <div
-                                        onClick={() => handleChange('salesViewType', 'list')}
-                                        className={`cursor-pointer relative rounded-sm border-2 p-3 flex flex-col items-center gap-3 transition-all ${settings.salesViewType === 'list' ? 'border-blue-600 bg-blue-50 shadow-sm' : 'border-gray-200 bg-white hover:border-blue-300'}`}
-                                    >
-                                        {settings.salesViewType === 'list' && (
-                                            <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-0.5">
-                                                <FiCheck size={12} />
-                                            </div>
-                                        )}
-                                        <div className="w-full h-20 bg-white border border-gray-200 rounded-sm p-2 flex flex-col gap-1.5 justify-center">
-                                            <div className="h-1.5 w-3/4 bg-gray-300 rounded-sm"></div>
-                                            <div className="h-1.5 w-full bg-gray-200 rounded-sm"></div>
-                                            <div className="h-1.5 w-5/6 bg-gray-200 rounded-sm"></div>
-                                            <div className="h-1.5 w-full bg-gray-200 rounded-sm"></div>
+                        <form
+                            ref={formRef}
+                            onSubmit={handleSave}
+                            className={`grid min-w-0 content-start gap-3 lg:gap-4 ${
+                                query.trim() ? '[&_section:not(:has([data-opt]))]:hidden' : ''
+                            }`}
+                        >
+                            {noMatch && (
+                                <div className={`min-w-0 border border-[#dfe6fb] bg-white px-4 py-10 text-center text-[#45556c] rounded-sm ${CARD_SHADOW}`}>
+                                    <b className="mb-1 block text-[15px] font-semibold text-[#0f172b]">No setting found</b>
+                                    Try a different word — for example “discount”, “GST” or “customer”.
+                                </div>
+                            )}
+                            <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+                                {/* Display */}
+                                <Section
+                                    id="display"
+                                    title="Display"
+                                    subtitle="How the billing screen looks"
+                                    icon={<Monitor size={18} strokeWidth={1.75} />}
+                                    action={
+                                        <ResetSettingsButton<SalesSettings>
+                                            defaults={getDefaultSalesSettings(currentUser?.companyId ?? '')}
+                                            onReset={(defaults) =>
+                                                setSettings((prev) =>
+                                                    prev
+                                                        ? {
+                                                            ...defaults,
+                                                            // Preserve tax/GST settings — Reset to Default should NOT touch these
+                                                            gstScheme: prev.gstScheme,
+                                                            taxType: prev.taxType,
+                                                            lockTaxToggle: prev.lockTaxToggle,
+                                                            enableRounding: prev.enableRounding,
+                                                            roundingInterval: prev.roundingInterval,
+                                                        }
+                                                        : defaults
+                                                )
+                                            }
+                                        />
+                                    }
+                                >
+                                    <Opt label="Billing screen">
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <button
+                                                type="button"
+                                                className={viewBtnClass(settings.salesViewType === 'list')}
+                                                aria-pressed={settings.salesViewType === 'list'}
+                                                onClick={() => handleChange('salesViewType', 'list')}
+                                            >
+                                                {settings.salesViewType === 'list' && <ViewTick />}
+                                                <div className="grid h-[62px] content-start gap-1.5 border border-[#dfe6fb] bg-white p-2.5 rounded-sm">
+                                                    <Bar width="70%" />
+                                                    <Bar />
+                                                    <Bar width="85%" />
+                                                    <Bar />
+                                                </div>
+                                                <div>
+                                                    <div className="text-sm font-semibold">List view</div>
+                                                    <div className="text-xs leading-[18px] text-[#5b6b86]">Desktop & barcode scanners</div>
+                                                </div>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className={viewBtnClass(settings.salesViewType === 'card')}
+                                                aria-pressed={settings.salesViewType === 'card'}
+                                                onClick={() => handleChange('salesViewType', 'card')}
+                                            >
+                                                {settings.salesViewType === 'card' && <ViewTick />}
+                                                <div className="grid h-[62px] grid-cols-3 content-start gap-1.5 border border-[#dfe6fb] bg-white p-2.5 rounded-sm">
+                                                    {[...Array(6)].map((_, i) => <Bar key={i} tall />)}
+                                                </div>
+                                                <div>
+                                                    <div className="text-sm font-semibold">Card view</div>
+                                                    <div className="text-xs leading-[18px] text-[#5b6b86]">Touchscreens & tablets</div>
+                                                </div>
+                                            </button>
                                         </div>
-                                        <div className="text-center">
-                                            <p className="font-bold text-gray-800 text-sm">List View</p>
-                                            <p className="text-xs text-gray-500 mt-0.5">Desktop & Barcodes</p>
-                                        </div>
-                                    </div>
 
-                                    {/* Card View */}
-                                    <div
-                                        onClick={() => handleChange('salesViewType', 'card')}
-                                        className={`cursor-pointer relative rounded-sm border-2 p-3 flex flex-col items-center gap-3 transition-all ${settings.salesViewType === 'card' ? 'border-blue-600 bg-blue-50 shadow-sm' : 'border-gray-200 bg-white hover:border-blue-300'}`}
-                                    >
+                                        {/* Card image display — only when card view is selected */}
                                         {settings.salesViewType === 'card' && (
-                                            <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-0.5">
-                                                <FiCheck size={12} />
+                                            <div className="mt-3 rounded-sm bg-[#f5f7ff] p-3">
+                                                <p className="mb-2 text-xs font-semibold text-[#45556c]">Card image display</p>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    {/* With Photo */}
+                                                    <button
+                                                        type="button"
+                                                        aria-pressed={!!settings.cardViewWithPhoto}
+                                                        onClick={() => handleCheckboxChange('cardViewWithPhoto', true)}
+                                                        className={`relative flex flex-col items-center gap-2 rounded-sm p-2 text-left transition-colors sm:flex-row sm:gap-3 sm:p-3 ${settings.cardViewWithPhoto
+                                                            ? 'border-2 border-[#155dfc] bg-white p-[7px] sm:p-[11px]'
+                                                            : 'border border-[#7a8aa3] bg-white hover:bg-[#f5f7ff]'
+                                                            }`}
+                                                    >
+                                                        {settings.cardViewWithPhoto && <ViewTick size={10} />}
+                                                        <div className="grid h-10 w-full grid-cols-3 gap-1 rounded-sm border border-[#dfe6fb] bg-[#f5f7ff] p-1 sm:h-12 sm:w-[6.5rem] sm:shrink-0">
+                                                            {[...Array(3)].map((_, i) => (
+                                                                <div key={i} className="flex flex-col items-center gap-0.5">
+                                                                    <div className="aspect-square w-full rounded-[3px] bg-[#b9ccff]" />
+                                                                    <div className="h-1 w-full rounded-[3px] bg-[#dfe6fb]" />
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                        <div className="w-full">
+                                                            <p className="text-xs font-semibold text-[#0f172b] sm:text-sm">With photo</p>
+                                                            <p className="hidden text-xs text-[#5b6b86] sm:block">Shows product image</p>
+                                                        </div>
+                                                    </button>
+
+                                                    {/* Without Photo */}
+                                                    <button
+                                                        type="button"
+                                                        aria-pressed={!settings.cardViewWithPhoto}
+                                                        onClick={() => handleCheckboxChange('cardViewWithPhoto', false)}
+                                                        className={`relative flex flex-col items-center gap-2 rounded-sm p-2 text-left transition-colors sm:flex-row sm:gap-3 sm:p-3 ${!settings.cardViewWithPhoto
+                                                            ? 'border-2 border-[#155dfc] bg-white p-[7px] sm:p-[11px]'
+                                                            : 'border border-[#7a8aa3] bg-white hover:bg-[#f5f7ff]'
+                                                            }`}
+                                                    >
+                                                        {!settings.cardViewWithPhoto && <ViewTick size={10} />}
+                                                        <div className="grid h-10 w-full grid-cols-3 gap-1 rounded-sm border border-[#dfe6fb] bg-[#f5f7ff] p-1 sm:h-12 sm:w-[6.5rem] sm:shrink-0">
+                                                            {[...Array(3)].map((_, i) => (
+                                                                <div key={i} className="flex flex-col items-center justify-center gap-0.5 rounded-[3px] border border-[#dfe6fb] bg-white p-1">
+                                                                    <div className="h-1 w-3/4 rounded-[3px] bg-[#dfe6fb]" />
+                                                                    <div className="h-1 w-full rounded-[3px] bg-[#dfe6fb]" />
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                        <div className="w-full">
+                                                            <p className="text-xs font-semibold text-[#0f172b] sm:text-sm">Without photo</p>
+                                                            <p className="hidden text-xs text-[#5b6b86] sm:block">Text-only, compact</p>
+                                                        </div>
+                                                    </button>
+                                                </div>
                                             </div>
                                         )}
-                                        <div className="w-full h-20 bg-white border border-gray-200 rounded-sm p-2 grid grid-cols-3 gap-1.5">
-                                            {[...Array(6)].map((_, i) => (
-                                                <div key={i} className="bg-gray-200 rounded-sm"></div>
-                                            ))}
-                                        </div>
-                                        <div className="text-center">
-                                            <p className="font-bold text-gray-800 text-sm">Card View</p>
-                                            <p className="text-xs text-gray-500 mt-0.5">Touchscreens & Tablets</p>
-                                        </div>
-                                    </div>
-                                </div>
+                                    </Opt>
 
-                                {/* Card photo sub-options — shown only when card view is selected */}
-                                {settings.salesViewType === 'card' && (
-                                    <div className="pl-4 pr-4 py-3 border-l-2 border-r-2 border-gray-200">
-                                        <p className="text-xs font-semibold text-gray-600 mb-2">Card Image Display</p>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            {/* With Photo */}
-                                            <div
-                                                onClick={() => handleCheckboxChange('cardViewWithPhoto', true)}
-                                                className={`cursor-pointer relative rounded-sm border p-2 sm:p-3 flex flex-col sm:flex-row items-center gap-2 sm:gap-3 transition-all ${settings.cardViewWithPhoto ? 'border-blue-500 bg-white shadow-sm' : 'border-gray-200 bg-gray-50 hover:border-gray-300'}`}
+                                    <Opt
+                                        id="salesman-billing"
+                                        label="Salesman-wise billing"
+                                        description="Track which salesman handled each bill."
+                                        icon={ico(User)}
+                                        checked={settings.enableSalesmanSelection ?? false}
+                                        onChange={(checked) => handleCheckboxChange('enableSalesmanSelection', checked)}
+                                    />
+
+                                    <Opt
+                                        label="Cart item sorting"
+                                        description="Where a newly scanned or added item appears in the cart."
+                                        icon={ico(ArrowUpDown)}
+                                    >
+                                        <SegGroup large>
+                                            <SegBtn
+                                                large
+                                                active={settings.cartInsertionOrder === 'top'}
+                                                onClick={() => handleChange('cartInsertionOrder', 'top')}
                                             >
-                                                {settings.cardViewWithPhoto && (
-                                                    <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-0.5">
-                                                        <FiCheck size={10} />
-                                                    </div>
-                                                )}
-                                                <div className="w-full sm:w-[6.5rem] sm:shrink-0 h-10 sm:h-12 bg-gray-100 border border-gray-200 rounded-sm p-1 grid grid-cols-3 gap-1">
-                                                    {[...Array(3)].map((_, i) => (
-                                                        <div key={i} className="flex flex-col items-center gap-0.5">
-                                                            <div className="w-full aspect-square bg-blue-200 rounded-sm"></div>
-                                                            <div className="h-1 w-full bg-gray-300 rounded-sm"></div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                                <div className="text-left">
-                                                    <p className="text-xs sm:text-sm font-semibold text-gray-700">With Photo</p>
-                                                    <p className="text-xs text-gray-500 hidden sm:block">Shows product image</p>
-                                                </div>
-                                            </div>
-
-                                            {/* Without Photo */}
-                                            <div
-                                                onClick={() => handleCheckboxChange('cardViewWithPhoto', false)}
-                                                className={`cursor-pointer relative rounded-sm border p-2 sm:p-3 flex flex-col sm:flex-row items-center gap-2 sm:gap-3 transition-all ${!settings.cardViewWithPhoto ? 'border-blue-500 bg-white shadow-sm' : 'border-gray-200 bg-gray-50 hover:border-gray-300'}`}
+                                                Newest first
+                                            </SegBtn>
+                                            <SegBtn
+                                                large
+                                                active={settings.cartInsertionOrder === 'bottom'}
+                                                onClick={() => handleChange('cartInsertionOrder', 'bottom')}
                                             >
-                                                {!settings.cardViewWithPhoto && (
-                                                    <div className="absolute top-2 right-2 bg-blue-600 text-white rounded-full p-0.5">
-                                                        <FiCheck size={10} />
-                                                    </div>
-                                                )}
-                                                <div className="w-full sm:w-[6.5rem] sm:shrink-0 h-10 sm:h-12 bg-gray-100 border border-gray-200 rounded-sm p-1 grid grid-cols-3 gap-1">
-                                                    {[...Array(3)].map((_, i) => (
-                                                        <div key={i} className="flex flex-col items-center justify-center gap-0.5 bg-white rounded-sm border border-gray-200 p-1">
-                                                            <div className="h-1 w-3/4 bg-gray-300 rounded-sm"></div>
-                                                            <div className="h-1 w-full bg-gray-200 rounded-sm"></div>
-                                                            <div className="h-1 w-1/2 bg-gray-200 rounded-sm"></div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                                <div className="text-left">
-                                                    <p className="text-xs sm:text-sm font-semibold text-gray-700">Without Photo</p>
-                                                    <p className="text-xs text-gray-500 hidden sm:block">Text-only compact</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
+                                                Oldest first
+                                            </SegBtn>
+                                        </SegGroup>
+                                    </Opt>
+                                </Section>
 
-                                <ToggleRow
-                                    id="salesman-billing"
-                                    label="Enable Salesman-wise Billing"
-                                    description="Track which salesman handled each bill."
-                                    checked={settings.enableSalesmanSelection ?? false}
-                                    onChange={(checked) => handleCheckboxChange('enableSalesmanSelection', checked)}
-                                    tooltip="Track which salesman handled each specific sale invoice."
-                                    icon={<Monitor size={18} />}
-                                />
-                                <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <ArrowUpDown size={16} className="text-blue-600" />
-                                        <p className="text-sm font-semibold text-gray-800 leading-5">Cart Item Sorting</p>
-                                        <InfoTooltip text="Choose where newly scanned items appear in the cart." />
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => handleChange('cartInsertionOrder', 'top')}
-                                            className={`px-3 py-2 rounded-sm border text-sm font-semibold ${settings.cartInsertionOrder === 'top' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}
-                                        >
-                                            Newest First
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleChange('cartInsertionOrder', 'bottom')}
-                                            className={`px-3 py-2 rounded-sm border text-sm font-semibold ${settings.cartInsertionOrder === 'bottom' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}
-                                        >
-                                            Oldest First
-                                        </button>
-                                    </div>
-                                </div>
-                            </SettingsCard>
-
-                            {/* Pricing & Tax — full width */}
-                            <SettingsCard title="Pricing & Tax" icon={<Percent size={18} />}>
-                                <div className="space-y-3">
-                                    <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <p className="text-sm font-semibold text-gray-800 leading-5">GST Scheme</p>
-                                            <InfoTooltip text="Select the applicable GST tax scheme for your business." />
-                                        </div>
-                                        <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+                                {/* Tax & rounding */}
+                                <Section
+                                    id="tax"
+                                    title="Tax & rounding"
+                                    subtitle="GST scheme and how prices are calculated"
+                                    icon={<FileText size={18} strokeWidth={1.75} />}
+                                    tint="green"
+                                >
+                                    <Opt
+                                        label="GST scheme"
+                                        description="Pick the GST scheme that applies to your business."
+                                        icon={ico(FileText)}
+                                    >
+                                        <SegGroup large>
                                             {[
                                                 { label: 'None', value: 'none' },
                                                 { label: 'Regular GST', value: 'regular' },
                                                 { label: 'Composition', value: 'composition' },
                                             ].map((opt) => (
-                                                <button
+                                                <SegBtn
                                                     key={opt.value}
-                                                    type="button"
+                                                    large
+                                                    active={settings.gstScheme === opt.value}
                                                     onClick={() => {
                                                         if (opt.value !== 'none' && settings.gstScheme === 'none') {
                                                             checkAndPromptGst(opt.value as 'regular' | 'composition');
@@ -676,288 +1008,362 @@ const SalesSettingsPage: React.FC = () => {
                                                             handleChange('gstScheme', opt.value);
                                                         }
                                                     }}
-                                                    className={`min-w-0 min-h-[42px] px-2 py-2 rounded-sm text-[11px] sm:text-sm font-semibold border leading-tight text-center whitespace-normal break-words ${settings.gstScheme === opt.value ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}
                                                 >
                                                     {opt.label}
-                                                </button>
+                                                </SegBtn>
                                             ))}
-                                        </div>
-                                    </div>
+                                        </SegGroup>
+                                    </Opt>
 
                                     {settings.gstScheme === 'regular' && (
-                                        <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">
-                                            <div className="flex items-center gap-2 mb-2">
-                                                <p className="text-sm font-semibold text-gray-800 leading-5">Tax Calculation</p>
-                                                <InfoTooltip text="Choose if your item prices include or exclude GST." />
+                                        <Opt
+                                            label="Tax calculation"
+                                            description="Whether the sale price you enter already includes GST."
+                                            icon={ico(Percent)}
+                                        >
+                                            <SegGroup large>
+                                                <SegBtn
+                                                    large
+                                                    active={(settings.taxType || 'exclusive') === 'inclusive'}
+                                                    onClick={() => handleChange('taxType', 'inclusive')}
+                                                >
+                                                    Inclusive — price includes GST
+                                                </SegBtn>
+                                                <SegBtn
+                                                    large
+                                                    active={(settings.taxType || 'exclusive') === 'exclusive'}
+                                                    onClick={() => handleChange('taxType', 'exclusive')}
+                                                >
+                                                    Exclusive — GST added on top
+                                                </SegBtn>
+                                            </SegGroup>
+                                            <div className={PREVIEW}>
+                                                {(settings.taxType || 'exclusive') === 'inclusive'
+                                                    ? <>Example: item ₹112 at 12% → <b>₹100 + ₹12 GST = ₹112</b></>
+                                                    : <>Example: item ₹100 at 12% → <b>₹100 + ₹12 GST = ₹112</b></>}
                                             </div>
-                                            <select
-                                                value={settings.taxType || 'exclusive'}
-                                                onChange={(e) => handleChange('taxType', e.target.value)}
-                                                className="w-full p-2.5 text-sm border border-gray-300 rounded-sm bg-white"
-                                            >
-                                                <option value="exclusive">Tax Exclusive (Sales Price excludes GST)</option>
-                                                <option value="inclusive">Tax Inclusive (Sales Price includes GST)</option>
-                                            </select>
-                                        </div>
+                                        </Opt>
                                     )}
 
-                                    <ToggleRow
+                                    <Opt
                                         id="lock-tax"
-                                        label="Lock Tax Mode"
-                                        description="Prevent cashiers from changing the tax mode (view only)."
+                                        label="Lock tax mode"
+                                        description="Cashiers can't change the tax mode while billing (Regular scheme only)."
+                                        icon={ico(Lock)}
                                         checked={settings.lockTaxToggle ?? false}
                                         onChange={(checked) => handleCheckboxChange('lockTaxToggle', checked)}
-                                        tooltip="Prevent cashiers from modifying tax settings during checkout (Regular Scheme only)."
-                                        icon={<Lock size={18} />}
                                     />
 
-                                    <ToggleRow
+                                    <Opt
                                         id="enable-rounding"
-                                        label="Enable Rounding Off"
+                                        label="Round off"
                                         description="Automatically round the individual item net price in the bill."
+                                        icon={ico(ArrowDownUp)}
                                         checked={settings.enableRounding ?? false}
                                         onChange={(checked) => handleCheckboxChange('enableRounding', checked)}
-                                        tooltip="Round bill totals to selected precision."
-                                        icon={<ArrowDownUp size={18} />}
-                                    />
+                                    >
+                                        {settings.enableRounding && (
+                                            <>
+                                                <div className="mb-1.5 text-xs leading-[18px] text-[#5b6b86]">Round to the nearest</div>
+                                                <SegGroup>
+                                                    {[0.01, 0.1, 0.5, 1, 5, 10].map((value) => (
+                                                        <SegBtn
+                                                            key={value}
+                                                            active={Number(settings.roundingInterval ?? 1) === value}
+                                                            onClick={() => handleChange('roundingInterval', value)}
+                                                        >
+                                                            {value.toFixed(2)}
+                                                        </SegBtn>
+                                                    ))}
+                                                </SegGroup>
+                                                <div className={PREVIEW}>
+                                                    {formatRupees(1357.6)} → <b>{formatRupees(roundedExample)}</b>
+                                                </div>
+                                            </>
+                                        )}
+                                    </Opt>
+                                </Section>
 
-                                    {settings.enableRounding && (
-                                        <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">
-                                            <p className="text-xs font-semibold text-gray-700 mb-2">Rounding Precision</p>
-                                            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                                                {[0.01, 0.1, 0.5, 1, 5, 10].map((value) => (
-                                                    <button
-                                                        key={value}
-                                                        type="button"
-                                                        onClick={() => handleChange('roundingInterval', value)}
-                                                        className={`px-2 py-1.5 rounded-sm border text-xs font-semibold ${Number(settings.roundingInterval ?? 1) === value ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'}`}
-                                                    >
-                                                        {value.toFixed(value < 1 ? 2 : 2)}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    <ToggleRow
+                                {/* Discounts & price control */}
+                                <Section
+                                    id="discounts"
+                                    title="Discounts & price control"
+                                    subtitle="What cashiers can change on a bill"
+                                    icon={<Percent size={18} strokeWidth={1.75} />}
+                                    tint="amber"
+                                >
+                                    <Opt
                                         id="item-discount"
-                                        label="Enable Item-wise Discount"
-                                        description="Allow discount per item."
+                                        label="Item-wise discount"
+                                        description="Show a discount field on each cart line."
+                                        icon={ico(Percent)}
                                         checked={settings.enableItemWiseDiscount ?? false}
                                         onChange={(checked) => handleCheckboxChange('enableItemWiseDiscount', checked)}
-                                        tooltip="Allow discounts to be applied to individual cart items."
-                                        icon={<Percent size={18} />}
                                     />
-                                    <ToggleRow
+                                    <Opt
                                         id="item-discount-2"
-                                        label="Enable Second Discount (Disc2)"
-                                        description="Show a second discount field, applied on top of Disc1."
+                                        label="Second discount (Disc2)"
+                                        description="A second discount applied on top of Disc1 — e.g. a 10% + 5% scheme."
+                                        icon={ico(Percent)}
                                         checked={settings.enableDiscount2 ?? false}
                                         onChange={(checked) => handleCheckboxChange('enableDiscount2', checked)}
-                                        tooltip="Adds a compounding second discount field (Disc2%) in the cart, on top of the existing item discount."
-                                        icon={<Percent size={18} />}
                                         disabled={!settings.enableItemWiseDiscount}
                                     />
-                                    <ToggleRow
+                                    <Opt
                                         id="lock-discount"
-                                        label="Lock Discount Entry"
-                                        description="Prevent editing discount in billing screen."
+                                        label="Lock discount entry"
+                                        description="Stop staff from changing discounts on the billing screen."
+                                        icon={ico(Lock)}
                                         checked={settings.lockDiscountEntry ?? false}
                                         onChange={(checked) => handleCheckboxChange('lockDiscountEntry', checked)}
-                                        tooltip="Stop staff from manually changing discounts during a sale."
-                                        icon={<Lock size={18} />}
                                     />
-                                    <ToggleRow
+                                    <Opt
                                         id="lock-price"
-                                        label="Lock Sale Price"
-                                        description="Prevent editing sale price in billing screen."
+                                        label="Lock sale price"
+                                        description="Stop staff from editing the selling price on the billing screen."
+                                        icon={ico(Lock)}
                                         checked={settings.lockSalePriceEntry ?? false}
                                         onChange={(checked) => handleCheckboxChange('lockSalePriceEntry', checked)}
-                                        tooltip="Stop staff from manually altering item selling price."
-                                        icon={<Lock size={18} />}
                                     />
+                                    <Opt
+                                        label="Max bill discount"
+                                        description="Cap the Bill Discount field on the payment drawer. Leave empty for no limit."
+                                        icon={ico(Percent)}
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <div className={`${FIELD} flex-1`}>
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    className={FIELD_INPUT}
+                                                    value={settings.maxBillDiscountValue || ''}
+                                                    onChange={(e) => handleChange('maxBillDiscountValue', e.target.value)}
+                                                    placeholder="No limit"
+                                                />
+                                            </div>
+                                            <SegGroup>
+                                                <SegBtn
+                                                    active={(settings.maxBillDiscountType || 'percent') === 'percent'}
+                                                    onClick={() => handleChange('maxBillDiscountType', 'percent')}
+                                                >
+                                                    %
+                                                </SegBtn>
+                                                <SegBtn
+                                                    active={settings.maxBillDiscountType === 'amount'}
+                                                    onClick={() => handleChange('maxBillDiscountType', 'amount')}
+                                                >
+                                                    ₹
+                                                </SegBtn>
+                                            </SegGroup>
+                                        </div>
+                                    </Opt>
+                                    <Opt
+                                        id="hide-mrp"
+                                        label="Hide MRP in sales list"
+                                        description="Hide the MRP column from the item list while billing."
+                                        icon={ico(EyeOff)}
+                                        checked={settings.hideMrp ?? false}
+                                        onChange={(checked) => handleCheckboxChange('hideMrp', checked)}
+                                    />
+                                </Section>
+                            </ShowWrapper>
 
-                                    <div className="rounded-sm bg-gray-50 border border-gray-100 p-3">
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <Percent size={18} className="text-gray-500 flex-shrink-0" />
-                                            <div>
-                                                <p className="text-xs font-semibold text-gray-700">Max Bill Discount</p>
-                                                <p className="text-[11px] text-gray-500">Cap the Bill Discount a cashier can apply in Payment Drawer. Leave at 0 for no limit.</p>
+                            {/* Order & delivery / Due billing / Customer — two columns on wide screens */}
+                            <div className="xl:columns-2 xl:gap-x-4 [&>*]:mb-3 xl:[&>*]:mb-4 xl:[&>*]:break-inside-avoid">
+                                <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+                                    <Section
+                                        id="order"
+                                        title="Order & delivery"
+                                        subtitle="Extra fields on the bill and payment drawer"
+                                        icon={<Truck size={18} strokeWidth={1.75} />}
+                                        tint="magenta"
+                                    >
+                                        <Opt
+                                            id="allow-negative"
+                                            label="Allow negative inventory billing"
+                                            description="Sell items even when stock shows 0 — stock will go below zero."
+                                            icon={ico(PackageX)}
+                                            checked={settings.allowNegativeStock ?? false}
+                                            onChange={(checked) => handleCheckboxChange('allowNegativeStock', checked)}
+                                        />
+                                        <Opt
+                                            id="enable-shipping"
+                                            label="Shipping details"
+                                            description="Capture a separate shipping address and GST for customers."
+                                            icon={ico(MapPin)}
+                                            checked={settings.enableShippingDetails ?? false}
+                                            onChange={(checked) => handleCheckboxChange('enableShippingDetails', checked)}
+                                        />
+                                        <Opt
+                                            id="enable-expense"
+                                            label="Extra expense"
+                                            description="Add extra charges like freight or packing to the final bill."
+                                            icon={ico(Receipt)}
+                                            checked={settings.enableExtraExpense ?? false}
+                                            onChange={(checked) => handleCheckboxChange('enableExtraExpense', checked)}
+                                        />
+                                        <Opt
+                                            id="enable-narration"
+                                            label="Narration / remarks"
+                                            description="Add a custom note on the bill."
+                                            icon={ico(MessageSquare)}
+                                            checked={settings.enableNarration ?? false}
+                                            onChange={(checked) => handleCheckboxChange('enableNarration', checked)}
+                                        />
+                                        <Opt
+                                            id="enable-transport"
+                                            label="Transport details"
+                                            description="Capture GR/RR no., vehicle number and other transport info in the payment drawer."
+                                            icon={ico(Truck)}
+                                            checked={settings.enableTransportDetails ?? false}
+                                            onChange={(checked) => handleCheckboxChange('enableTransportDetails', checked)}
+                                        />
+                                    </Section>
+                                </ShowWrapper>
+
+                                {/* Due billing — kept out of the HiddenProFeatures-gated
+                                card above so it's available on every plan (incl. Calc +
+                                Catalogue), not just Pro/Enterprise. */}
+                                <ShowWrapper requiredPermission={Permissions.AllowDueBilling}>
+                                    <Section
+                                        id="due"
+                                        title="Due billing (udhaar)"
+                                        subtitle="Selling on credit"
+                                        icon={<Wallet size={18} strokeWidth={1.75} />}
+                                        tint="amber"
+                                    >
+                                        <Opt
+                                            id="allow-due"
+                                            label="Allow due billing"
+                                            description="Allow partial or no payment on a bill (credit). Customer info is switched on with it."
+                                            icon={ico(Wallet)}
+                                            checked={settings.allowDueBilling ?? false}
+                                            onChange={(checked) => handleCheckboxChange('allowDueBilling', checked)}
+                                        />
+                                    </Section>
+                                </ShowWrapper>
+
+                                {/* Customer access (outside ShowWrapper to display for all plans) */}
+                                <Section
+                                    id="customer"
+                                    title="Customer details"
+                                    subtitle="What must be filled before a sale"
+                                    icon={<ShieldCheck size={18} strokeWidth={1.75} />}
+                                >
+                                    {isCalcPlan && (
+                                        <Opt
+                                            id="req-customer-info"
+                                            label="Customer info"
+                                            description="Show the customer details section during payment."
+                                            icon={ico(ShieldCheck)}
+                                            checked={settings.enableCustomerInfoToggle ?? false}
+                                            onChange={(checked) => handleCheckboxChange('enableCustomerInfoToggle', checked)}
+                                        />
+                                    )}
+                                    <Opt
+                                        id="req-customer"
+                                        label="Require customer name"
+                                        description="Block saving the bill until a name is entered."
+                                        icon={ico(User)}
+                                        checked={settings.requireCustomerName ?? false}
+                                        onChange={(checked) => handleCheckboxChange('requireCustomerName', checked)}
+                                    />
+                                    <Opt
+                                        id="req-mobile"
+                                        label="Require customer mobile"
+                                        description="Block saving the bill until a mobile number is entered."
+                                        icon={ico(Phone)}
+                                        checked={settings.requireCustomerMobile ?? false}
+                                        onChange={(checked) => handleCheckboxChange('requireCustomerMobile', checked)}
+                                    />
+                                </Section>
+                            </div>
+
+                            {/* Bill numbering (outside ShowWrapper) */}
+                            <Section
+                                id="voucher"
+                                title="Bill numbering"
+                                subtitle="How sale bills are numbered"
+                                icon={<Hash size={18} strokeWidth={1.75} />}
+                                action={
+                                    <button
+                                        type="button"
+                                        onClick={handleResetVoucher}
+                                        className="cursor-pointer border-0 bg-transparent px-1.5 py-1 text-xs font-medium text-[#5b6b86] rounded-sm hover:bg-[#f5f7ff] hover:text-[#0f172b]"
+                                    >
+                                        Reset to default
+                                    </button>
+                                }
+                            >
+                                <Opt label="Numbering">
+                                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                                        <div>
+                                            <label htmlFor="voucher-name" className={FIELD_LABEL}>
+                                                Voucher name
+                                                <span className="inline-flex h-[18px] items-center gap-1 bg-[#f5f7ff] px-2 text-[9px] font-semibold tracking-[.06em] text-[#45556c] rounded-sm">
+                                                    <Lock size={10} strokeWidth={2.25} />LOCKED
+                                                </span>
+                                            </label>
+                                            <div className={`${FIELD} bg-[#f5f7ff]`}>
+                                                <input
+                                                    type="text"
+                                                    id="voucher-name"
+                                                    className={`${FIELD_INPUT} cursor-not-allowed text-[#5b6b86]`}
+                                                    value={settings.voucherName || 'Invoice'}
+                                                    disabled
+                                                />
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                            <input
-                                                type="number"
-                                                min={0}
-                                                value={settings.maxBillDiscountValue || ''}
-                                                onChange={(e) => handleChange('maxBillDiscountValue', e.target.value)}
-                                                placeholder="No limit"
-                                                className="flex-1 min-w-0 px-2 py-1.5 border border-gray-300 rounded-sm text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                            />
-                                            <div className="flex bg-white border border-gray-300 rounded-sm overflow-hidden flex-shrink-0">
-                                                {(['percent', 'amount'] as const).map((type) => (
-                                                    <button
-                                                        key={type}
-                                                        type="button"
-                                                        onClick={() => handleChange('maxBillDiscountType', type)}
-                                                        className={`px-3 py-1.5 text-xs font-semibold ${(settings.maxBillDiscountType ?? 'percent') === type ? 'bg-blue-600 text-white' : 'text-gray-600'}`}
-                                                    >
-                                                        {type === 'percent' ? '%' : '₹'}
-                                                    </button>
-                                                ))}
+                                        <div>
+                                            <label htmlFor="voucher-prefix" className={FIELD_LABEL}>Prefix</label>
+                                            <div className={FIELD}>
+                                                <input
+                                                    type="text"
+                                                    id="voucher-prefix"
+                                                    className={FIELD_INPUT}
+                                                    value={settings.voucherPrefix || ''}
+                                                    onChange={(e) => handleChange('voucherPrefix', e.target.value)}
+                                                    placeholder="e.g., INV"
+                                                    style={{ fontWeight: 600 }}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label htmlFor="current-number" className={FIELD_LABEL}>Next number</label>
+                                            <div className={FIELD}>
+                                                <input
+                                                    type="number"
+                                                    id="current-number"
+                                                    className={FIELD_INPUT}
+                                                    value={settings.currentVoucherNumber ?? 1}
+                                                    onChange={(e) => handleChange('currentVoucherNumber', e.target.value)}
+                                                    min="1"
+                                                    step="1"
+                                                    style={{ fontWeight: 600 }}
+                                                />
                                             </div>
                                         </div>
                                     </div>
-
-                                    <ToggleRow
-                                        id="hide-mrp"
-                                        label="Hide MRP in Sales List"
-                                        description="Hide the MRP column from POS item list."
-                                        checked={settings.hideMrp ?? false}
-                                        onChange={(checked) => handleCheckboxChange('hideMrp', checked)}
-                                        tooltip="Hide Maximum Retail Price column on sales screen."
-                                        icon={<EyeOff size={18} />}
-                                    />
-                                </div>
-                            </SettingsCard>
-                        </ShowWrapper>
-
-                        {/* Smaller cards in a 2x2 grid */}
-                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-                            <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-                                {/* Order & Delivery */}
-                                <SettingsCard title="Order & Delivery" icon={<Truck size={18} />}>
-                                    <ToggleRow
-                                        id="allow-negative"
-                                        label="Allow Negative Inventory Billing"
-                                        description="Allow billing items even when stock is zero."
-                                        checked={settings.allowNegativeStock ?? false}
-                                        onChange={(checked) => handleCheckboxChange('allowNegativeStock', checked)}
-                                        tooltip="Allow selling items even if recorded stock is zero."
-                                        icon={<PackageX size={18} />}
-                                    />
-                                    <ToggleRow id="enable-shipping" label="Enable Shipping Details" description="Allow shipping address and GST capture." checked={settings.enableShippingDetails ?? false} onChange={(checked) => handleCheckboxChange('enableShippingDetails', checked)} tooltip="Allow capturing separate shipping address and GST for customers." icon={<MapPin size={18} />} />
-                                    <ToggleRow id="enable-expense" label="Enable Extra Expense" description="Allow additional charges like freight/packing." checked={settings.enableExtraExpense ?? false} onChange={(checked) => handleCheckboxChange('enableExtraExpense', checked)} tooltip="Add extra charge to final bill." icon={<Receipt size={18} />} />
-                                    <ToggleRow id="enable-narration" label="Enable Narration / Remarks" description="Allow adding custom note in invoice." checked={settings.enableNarration ?? false} onChange={(checked) => handleCheckboxChange('enableNarration', checked)} tooltip="Allow custom remarks on invoice." icon={<MessageSquare size={18} />} />
-                                    <ToggleRow
-                                        id="enable-transport"
-                                        label="Enable Transport Details"
-                                        description="Allow capturing transport info like GR/RR No, vehicle number etc."
-                                        checked={settings.enableTransportDetails ?? false}
-                                        onChange={(checked) => handleCheckboxChange('enableTransportDetails', checked)}
-                                        tooltip="Show transport details option in payment drawer."
-                                        icon={<Truck size={18} />}
-                                    />
-                                </SettingsCard>
-                            </ShowWrapper>
-
-                            {/* Allow Due Billing — kept out of the HiddenProFeatures-gated
-                                card above so it's available on every plan (incl. Calc +
-                                Catalogue), not just Pro/Enterprise. */}
-                            <ShowWrapper requiredPermission={Permissions.AllowDueBilling}>
-                                <SettingsCard title="Due Billing" icon={<Wallet size={18} />}>
-                                    <ToggleRow
-                                        id="allow-due"
-                                        label="Allow Due Billing"
-                                        description="Allow partial or no payment billing (credit)."
-                                        checked={settings.allowDueBilling ?? false}
-                                        onChange={(checked) => handleCheckboxChange('allowDueBilling', checked)}
-                                        tooltip="Allow finalizing sales with pending amount."
-                                        icon={<Wallet size={18} />}
-                                    />
-                                </SettingsCard>
-                            </ShowWrapper>
-                            {/* Customer Access (Outside ShowWrapper to display for all plans) */}
-                            <SettingsCard title="Customer Access" icon={<ShieldCheck size={18} />}>
-                                {isCalcPlan && (
-                                    <ToggleRow
-                                        id="req-customer-info"
-                                        label="Enable Customer Info"
-                                        description="Enable and disable customer info during payment."
-                                        checked={settings.enableCustomerInfoToggle ?? false}
-                                        onChange={(checked) => handleCheckboxChange('enableCustomerInfoToggle', checked)}
-                                        tooltip="Toggles the customer information capture section during checkout."
-                                        icon={<ShieldCheck size={18} />}
-                                    />
-                                )}
-                                <ToggleRow id="req-customer" label="Require Customer Name" description="Force customer name before save." checked={settings.requireCustomerName ?? false} onChange={(checked) => handleCheckboxChange('requireCustomerName', checked)} tooltip="Force entering customer name before saving invoice." icon={<User size={18} />} />
-                                <ToggleRow id="req-mobile" label="Require Customer Mobile" description="Force customer mobile before save." checked={settings.requireCustomerMobile ?? false} onChange={(checked) => handleCheckboxChange('requireCustomerMobile', checked)} tooltip="Force entering customer mobile before saving invoice." icon={<Phone size={18} />} />
-                            </SettingsCard>
-                        </div>
+                                    <div className={PREVIEW}>
+                                        Next bill will be <b>{nextBillLabel}</b>
+                                    </div>
+                                </Opt>
+                            </Section>
+                        </form>
                     </div>
-
-
-                    {/* Voucher Numbering (Outside ShowWrapper) */}
-                    <SettingsCard
-                        title="Voucher Numbering"
-                        icon={<Hash size={18} />}
-                        action={
-                            <button
-                                type="button"
-                                onClick={handleResetVoucher}
-                                className="text-xs text-red-600 hover:text-red-800 font-bold px-3 py-1.5 rounded-sm bg-red-50 hover:bg-red-100 transition-colors border border-red-100"
-                            >
-                                Reset to Default
-                            </button>
-                        }
-                    >
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                                <div className="flex items-center mb-1 gap-2">
-                                    <label htmlFor="voucher-name" className="text-sm font-medium text-gray-700">Voucher Name</label>
-                                    <span className="text-[10px] text-red-500 font-bold bg-red-50 px-1.5 py-0.5 rounded-sm">LOCKED</span>
-                                    <InfoTooltip text="Internal document name for this transaction type." />
-                                </div>
-                                <input
-                                    type="text"
-                                    id="voucher-name"
-                                    value={settings.voucherName || 'Invoice'}
-                                    disabled
-                                    className="w-full p-2.5 text-sm border border-gray-200 rounded-sm bg-gray-100 text-gray-500 cursor-not-allowed select-none"
-                                />
-                            </div>
-                            <div>
-                                <div className="flex items-center mb-1 gap-2">
-                                    <label htmlFor="voucher-prefix" className="text-sm font-medium text-gray-700">Voucher Prefix</label>
-                                    <InfoTooltip text="Letters added before invoice number (e.g., INV-1)." />
-                                </div>
-                                <input
-                                    type="text"
-                                    id="voucher-prefix"
-                                    value={settings.voucherPrefix || ''}
-                                    onChange={(e) => handleChange('voucherPrefix', e.target.value)}
-                                    className="w-full p-2.5 text-sm border border-gray-300 rounded-sm focus:ring-blue-500 focus:border-blue-500 outline-none"
-                                    placeholder="e.g., INV"
-                                />
-                            </div>
-                            <div>
-                                <div className="flex items-center mb-1 gap-2">
-                                    <label htmlFor="current-number" className="text-sm font-medium text-gray-700">Next Voucher Number</label>
-                                    <InfoTooltip text="Sequence number for next generated invoice." />
-                                </div>
-                                <input
-                                    type="number"
-                                    id="current-number"
-                                    value={settings.currentVoucherNumber ?? 1}
-                                    onChange={(e) => handleChange('currentVoucherNumber', e.target.value)}
-                                    className="w-full p-2.5 text-sm border border-gray-300 rounded-sm focus:ring-blue-500 focus:border-blue-500 outline-none"
-                                    min="1"
-                                    step="1"
-                                />
-                            </div>
-                        </div>
-                    </SettingsCard>
-                </form>
+                </SettingsSearchContext.Provider>
             </main>
 
-            <div className="fixed inset-x-0 bottom-16 md:bottom-0 z-40 bg-transparent px-4 pb-2 md:p-4 pointer-events-none">
-                <div className="max-w-2xl mx-auto flex justify-center gap-4 pointer-events-auto">
+            {/* Save bar: floating card on phone, sticky full-width bar on desktop */}
+            <div className="pointer-events-none fixed inset-x-0 bottom-16 z-40 px-3 pb-2 md:pointer-events-auto md:sticky md:inset-x-auto md:bottom-0 md:border-t md:border-[#dfe6fb] md:bg-white md:p-0 md:shadow-[0_-6px_16px_rgba(21,48,140,.06)] md:after:absolute md:after:inset-x-0 md:after:top-full md:after:h-8 md:after:bg-white md:after:content-['']">
+                <div className={`pointer-events-auto mx-auto flex max-w-[640px] items-center justify-between gap-3 border border-[#dfe6fb] bg-white py-2.5 pl-4 pr-2.5 rounded-sm ${FLOAT_SHADOW} md:mx-0 md:max-w-none md:rounded-none md:border-0 md:bg-transparent md:px-6 md:py-3 md:shadow-none`}>
+                    <span className="min-w-0 text-xs leading-[18px] text-[#5b6b86]">Changes save only when you press Save.</span>
                     <button
                         onClick={handleSave}
                         disabled={isSaving || isLoading}
-                        className="w-auto min-w-[150px] flex items-center justify-center bg-blue-600 text-white font-bold py-3 px-6 rounded-sm hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed shadow-lg"
+                        className={`${BTN_PRIMARY} min-w-[140px]`}
                     >
-                        {isSaving ? <Spinner /> : 'Save Settings'}
+                        {isSaving ? <Spinner /> : (<><FiCheck size={16} />Save settings</>)}
                     </button>
                 </div>
             </div>

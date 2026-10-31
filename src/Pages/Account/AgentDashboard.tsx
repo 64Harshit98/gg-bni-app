@@ -4,7 +4,7 @@ import { collection, doc, getDocs, increment, orderBy, query, serverTimestamp, T
 import { Pencil, X } from 'lucide-react';
 import { db } from '../../lib/Firebase';
 import { ROUTES } from '../../constants/routes.constants';
-import Loading from '../Loading/Loading';
+import PageLoader from '../../Components/PageLoader';
 import { MAX_EXPIRY_YEARS_AHEAD } from './superAdminExpiryGuard';
 import type { AdminCompany, RangeKey } from './superAdmin/data';
 import {
@@ -235,7 +235,7 @@ const SuperAdminDashboard: React.FC = () => {
     }
   };
 
-  if (loading) return <Loading />;
+  if (loading) return <PageLoader />;
 
   const previewExpiry = preview ? addMonths(extensionBase(preview.company.expiry), preview.months) : null;
   const previewTooFar = previewExpiry ? (daysUntil(previewExpiry) ?? 0) > 365 * MAX_EXPIRY_YEARS_AHEAD : false;

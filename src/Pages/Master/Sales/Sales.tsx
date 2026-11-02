@@ -968,7 +968,7 @@ const Sales: React.FC = () => {
     );
     const renderMoreSheet = () =>
         !isMoreOpen ? null : (
-            <div className="md:hidden fixed inset-0 z-[60] flex items-end bg-[#020618]/45" onClick={() => setIsMoreOpen(false)}>
+            <div className="md:hidden fixed inset-0 z-[2000] flex items-end bg-[#020618]/45" onClick={() => setIsMoreOpen(false)}>
                 <div className={`w-full bg-white rounded-t-sm p-4 pb-6 flex flex-col gap-4 ${SHADOW_FLOAT}`} onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-between">
                         <h3 className="m-0 text-base font-semibold text-[#0f172b]">More</h3>
@@ -1022,7 +1022,7 @@ const Sales: React.FC = () => {
     // Phone: filter button sheet — only Photos/Compact + Sort
     const renderFilterSheet = () =>
         !isFilterOpen ? null : (
-            <div className="md:hidden fixed inset-0 z-[60] flex items-end bg-[#020618]/45" onClick={() => setIsFilterOpen(false)}>
+            <div className="md:hidden fixed inset-0 z-[2000] flex items-end bg-[#020618]/45" onClick={() => setIsFilterOpen(false)}>
                 <div className={`w-full bg-white rounded-t-sm p-4 pb-6 flex flex-col gap-4 ${SHADOW_FLOAT}`} onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-between">
                         <h3 className="m-0 text-base font-semibold text-[#0f172b]">View options</h3>
@@ -1381,7 +1381,7 @@ const Sales: React.FC = () => {
             </div>
 
             {/* Pinned footer: grand total + pay button on one row */}
-            <div className="flex-shrink-0 flex items-center gap-3 px-5 py-3 bg-white border-t border-[#dfe6fb]">
+<div className="flex-shrink-0 flex items-center gap-3 px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-white border-t border-[#dfe6fb]">
                 <div className="min-w-0">
                     <span className="block text-xs text-[#45556c]">Grand total</span>
                     <b className="block text-[24px] leading-[30px] font-semibold tracking-tight tabular-nums text-[#0f172b] truncate">₹{fmtINR(finalAmount)}</b>
@@ -1396,8 +1396,8 @@ const Sales: React.FC = () => {
 
     // Phone/tablet bill sheet: shared by card view and list view
     const renderBillSheet = () =>
-        isBillOpen && items.length > 0 ? (
-            <div className="xl:hidden fixed inset-0 z-[60] flex items-end justify-center bg-[#020618]/45" onClick={() => setIsBillOpen(false)}>
+    isBillOpen && items.length > 0 ? (
+        <div className="xl:hidden fixed inset-0 z-[2000] flex items-end justify-center bg-[#020618]/45" onClick={() => setIsBillOpen(false)}>
                 <div className={`w-full md:max-w-lg h-[88dvh] flex flex-col bg-white rounded-t-sm pt-2 ${SHADOW_FLOAT}`} onClick={(e) => e.stopPropagation()}>
                     {renderBillPanel(() => { setIsBillOpen(false); handleProceedToPayment(); }, () => setIsBillOpen(false))}
                 </div>

@@ -2,13 +2,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import XLSX from 'xlsx-js-style';
+import BackButton from '../../Components/BackButton';
 import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
   CalendarDays,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   Eye,
   EyeOff,
@@ -671,9 +671,8 @@ const CatalogueCustomerReport: React.FC = () => {
       <th className={`px-4 py-3 font-semibold ${align === 'right' ? 'text-right' : 'text-left'}`}>
         <button
           onClick={() => handleSort(key)}
-          className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-orange-800 ${
-            align === 'right' ? 'flex-row-reverse' : ''
-          } ${isActive ? 'text-orange-800' : ''}`}
+          className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-orange-800 ${align === 'right' ? 'flex-row-reverse' : ''
+            } ${isActive ? 'text-orange-800' : ''}`}
         >
           {label}
           <Icon size={11} className={isActive ? 'opacity-100' : 'opacity-40'} />
@@ -829,10 +828,9 @@ const CatalogueCustomerReport: React.FC = () => {
   const otherDebtors = summary.debtors.length - 1;
 
   const chipClass = (active: boolean) =>
-    `shrink-0 whitespace-nowrap rounded-sm border px-3.5 py-1.5 text-sm font-medium transition ${
-      active
-        ? 'border-slate-900 bg-slate-900 text-white'
-        : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+    `shrink-0 whitespace-nowrap rounded-sm border px-3.5 py-1.5 text-sm font-medium transition ${active
+      ? 'border-slate-900 bg-slate-900 text-white'
+      : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
     }`;
 
   return (
@@ -849,13 +847,9 @@ const CatalogueCustomerReport: React.FC = () => {
 
       {/* HEADER */}
       <header className="mb-4 flex items-center gap-2 md:gap-3">
-        <button
-          onClick={() => navigate(-1)}
-          aria-label="Back"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-slate-700 transition hover:bg-slate-200 md:border md:border-slate-300 md:bg-white"
-        >
-          <ChevronLeft size={20} />
-        </button>
+        <div className="flex-shrink-0">
+          <BackButton />
+        </div>
 
         <div className="min-w-0 flex-1">
           <p className="hidden text-xs text-slate-500 md:block">Reports /</p>
@@ -946,9 +940,8 @@ const CatalogueCustomerReport: React.FC = () => {
 
         <button
           onClick={() => setIsRangeOpen((o) => !o)}
-          className={`hidden shrink-0 items-center gap-2 rounded-sm border bg-white px-3 py-1.5 text-sm font-medium text-slate-800 transition hover:border-slate-400 md:inline-flex ${
-            datePreset === 'custom' ? 'border-slate-900' : 'border-slate-300'
-          }`}
+          className={`hidden shrink-0 items-center gap-2 rounded-sm border bg-white px-3 py-1.5 text-sm font-medium text-slate-800 transition hover:border-slate-400 md:inline-flex ${datePreset === 'custom' ? 'border-slate-900' : 'border-slate-300'
+            }`}
         >
           <CalendarDays size={15} className="text-slate-500" />
           {rangeLabel}
@@ -1149,9 +1142,8 @@ const CatalogueCustomerReport: React.FC = () => {
                     <tr
                       key={row.key}
                       onClick={() => setExpandedKey(row.key)}
-                      className={`cursor-pointer border-t border-[#f6e1d0] transition ${
-                        isOpen ? 'bg-orange-100' : 'hover:bg-[#fff8f2]'
-                      }`}
+                      className={`cursor-pointer border-t border-[#f6e1d0] transition ${isOpen ? 'bg-orange-100' : 'hover:bg-[#fff8f2]'
+                        }`}
                     >
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">

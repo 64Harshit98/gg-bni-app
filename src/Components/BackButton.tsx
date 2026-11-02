@@ -1,12 +1,14 @@
-import { useNavigate } from "react-router";
+import { useNavigate } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 
 interface BackButtonProps {
   className?: string;
-  to?: string; // optional route (like ORDERDETAILS)
+  /** Optional route to go to; defaults to browser history back. */
+  to?: string;
   onClick?: () => void;
 }
 
-const BackButton: React.FC<BackButtonProps> = ({ className = "", to, onClick }) => {
+const BackButton = ({ className = '', to, onClick }: BackButtonProps) => {
   const navigate = useNavigate();
 
   const handleClick = () => {
@@ -23,23 +25,13 @@ const BackButton: React.FC<BackButtonProps> = ({ className = "", to, onClick }) 
 
   return (
     <button
+      type="button"
       onClick={handleClick}
       title="Back"
-      className={`p-2 text-slate-700 cursor-pointer hover:bg-slate-200 transition-colors ${className}`}>
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="24"
-        height="24"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <line x1="19" y1="12" x2="5" y2="12" />
-        <polyline points="12 19 5 12 12 5" />
-      </svg>
+      aria-label="Back"
+      className={`flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-sm text-slate-700 transition-colors hover:bg-slate-200 ${className}`}
+    >
+      <ArrowLeft size={22} strokeWidth={2.5} />
     </button>
   );
 };

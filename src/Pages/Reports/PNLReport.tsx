@@ -1,5 +1,4 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import XLSX from 'xlsx-js-style';
@@ -9,7 +8,6 @@ import {
   ArrowUpDown,
   CalendarDays,
   ChevronDown,
-  ChevronLeft,
   ExternalLink,
   Eye,
   EyeOff,
@@ -54,6 +52,7 @@ import DetailPanel, { DetailItems, DetailRows, DetailSection } from './SalesRepo
 import { Modal } from '../../constants/Modal';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import { useAuth } from '../../context/auth-context';
+import BackButton from '../../Components/BackButton';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 
@@ -84,7 +83,6 @@ const PnlReportPage: React.FC = () => {
     refresh,
   } = usePnlReport();
 
-  const navigate = useNavigate();
   const [companyName, setCompanyName] = useState<string>('');
 
   useEffect(() => {
@@ -1046,13 +1044,9 @@ const PnlReportPage: React.FC = () => {
 
       {/* HEADER */}
       <header className="mb-4 flex items-center gap-2 md:gap-3">
-        <button
-          onClick={() => navigate(-1)}
-          aria-label="Back"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-slate-700 transition hover:bg-slate-200 md:border md:border-slate-300 md:bg-white"
-        >
-          <ChevronLeft size={20} />
-        </button>
+        <div className="flex-shrink-0">
+          <BackButton />
+        </div>
 
         <div className="min-w-0 flex-1">
           <p className="hidden text-xs text-slate-500 md:block">Reports /</p>

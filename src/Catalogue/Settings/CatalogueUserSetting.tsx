@@ -10,7 +10,7 @@ import { Modal } from '../../constants/Modal';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { AddUserModal } from '../../Components/AddUserModal';
 import { ROUTES } from '../../constants/routes.constants';
-
+import BackButton from '../../Components/BackButton';
 
 const ROLE_PERMISSIONS_ROUTE = `${ROUTES.CHOME}/${ROUTES.CATA_PERMISSION_SETTING}`;
 
@@ -134,7 +134,7 @@ const Icon: React.FC<{ children: React.ReactNode; className?: string }> = ({ chi
         {children}
     </svg>
 );
-const IconBack = ({ className }: { className?: string }) => <Icon className={className ?? 'w-5 h-5'}><path d="M15 18l-6-6 6-6" /></Icon>;
+
 const IconSearch = ({ className }: { className?: string }) => <Icon className={className}><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></Icon>;
 const IconUsers = ({ className }: { className?: string }) => <Icon className={className}><circle cx="9" cy="8" r="4" /><path d="M2 21a7 7 0 0 1 14 0M16 3.5a4 4 0 0 1 0 8M22 21a7 7 0 0 0-4-6.3" /></Icon>;
 const IconAddUser = ({ className }: { className?: string }) => <Icon className={className}><circle cx="9" cy="8" r="4" /><path d="M2 21a7 7 0 0 1 14 0M19 8v6M16 11h6" /></Icon>;
@@ -743,10 +743,9 @@ const CatalogueUserSetting: React.FC = () => {
 
             {/* ================= MOBILE HEADER ================= */}
             <header className="lg:hidden flex items-center gap-2 h-14 px-2 bg-white border-b border-[#f3e1d2] sticky top-0 z-10">
-                <button aria-label="Back" onClick={() => navigate(-1)}
-                    className="inline-grid place-items-center w-10 h-10 rounded-sm text-[#45556c] hover:bg-[#fff7f0]">
-                    <IconBack />
-                </button>
+                <div className="flex-shrink-0">
+                    <BackButton />
+                </div>
                 <div className="flex-1 min-w-0">
                     <h1 className="text-lg font-semibold leading-6 truncate">Manage users</h1>
                     <p className="text-xs leading-4 text-[#5b6b86]">{counts.all} {counts.all === 1 ? 'user' : 'users'}</p>
@@ -764,10 +763,9 @@ const CatalogueUserSetting: React.FC = () => {
 
             {/* ================= DESKTOP HEADER ================= */}
             <header className="hidden lg:flex items-center gap-3 px-6 py-3.5 bg-white border-b border-[#f3e1d2] sticky top-0 z-10">
-                <button aria-label="Back" onClick={() => navigate(-1)}
-                    className="inline-grid place-items-center w-10 h-10 rounded-sm border border-[#7a8aa3] bg-white text-[#45556c] hover:bg-[#fff7f0]">
-                    <IconBack />
-                </button>
+                <div className="flex-shrink-0">
+                    <BackButton />
+                </div>
                 <div>
                     <div className="text-xs leading-[18px] text-[#5b6b86]">Settings /</div>
                     <h1 className="text-[22px] leading-[30px] font-semibold">Manage users</h1>

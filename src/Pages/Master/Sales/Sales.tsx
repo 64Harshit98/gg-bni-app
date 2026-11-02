@@ -15,10 +15,11 @@ import { CustomButton } from '../../../Components';
 import { useSalesSettings, useItemSettings } from '../../../context/SettingsContext';
 import { Spinner } from '../../../constants/Spinner';
 import { ItemEditDrawer } from '../../../Components/ItemDrawer';
+import BackButton from '../../../Components/BackButton';
 import { GenericCartList } from '../../../Components/CartItem';
 import BarcodeLinkModal from '../../../Components/BarcodeLinkModal';
 import { AddUserModal } from '../../../Components/AddUserModal';
-import { FiTrash2, FiX, FiEdit, FiCamera, FiDelete, FiSearch, FiChevronLeft, FiMoreVertical, FiCalendar, FiCheck, FiChevronUp, FiChevronRight, FiMinus, FiSliders } from 'react-icons/fi';
+import { FiTrash2, FiX, FiEdit, FiCamera, FiDelete, FiSearch, FiMoreVertical, FiCalendar, FiCheck, FiChevronUp, FiChevronRight, FiMinus, FiSliders } from 'react-icons/fi';
 import { GenericBillFooter } from '../../../Components/Footer';
 import { CartLinesCompact } from '../../../Components/CartLinesCompact';
 import { IconScanCircle, IconPrint } from '../../../constants/Icons';
@@ -619,9 +620,9 @@ const Sales: React.FC = () => {
         <header className="md:hidden flex-shrink-0 bg-white border-b border-[#dfe6fb]">
             {/* Row 1: back + centered title */}
             <div className="flex items-center gap-1 h-14 px-2">
-                <button type="button" onClick={() => navigate(-1)} aria-label="Back" className={ICON_BTN_CLS}>
-                    <FiChevronLeft size={20} />
-                </button>
+                <div className="flex-shrink-0">
+                    <BackButton />
+                </div>
                 <div className="flex-1 min-w-0 flex items-baseline gap-2">
                     <h1 className="m-0 text-lg font-semibold leading-tight text-[#0f172b] whitespace-nowrap">
                         {isEditMode ? 'Edit sale' : 'New sale'}
@@ -1742,9 +1743,9 @@ const Sales: React.FC = () => {
 
                 {/* Header */}
                 <div className="shrink-0 bg-white border-b border-[#dfe6fb] flex items-center gap-1 h-14 px-2 md:px-6 md:h-auto md:py-4">
-                    <button type="button" onClick={() => navigate(-1)} aria-label="Back" className={`${ICON_BTN_CLS} md:hidden`}>
-                        <FiChevronLeft size={20} />
-                    </button>
+                    <div className="flex-shrink-0 md:hidden">
+                        <BackButton />
+                    </div>
                     <h1 className="m-0 text-lg md:text-[22px] md:leading-[30px] font-semibold text-[#0f172b] flex items-baseline gap-2">
                         New sale
                         <span className="text-xs font-normal text-[#5b6b86]">

@@ -24,6 +24,7 @@ import 'react-image-crop/dist/ReactCrop.css';
 //import { InfoTooltip } from '../../Components/InfoToolTip';
 import { VariantPicker } from '../../Components/VariantPicker';
 import { useAddOnTemplates } from '../../lib/addOnTemplates';
+import BackButton from '../../Components/BackButton';
 
 interface ItemAddProps {
   theme?: 'blue' | 'orange';
@@ -120,7 +121,6 @@ const AI_ICONS = {
   check: (<path d="M5 12.5l4.5 4.5L19 7" />),
   x: (<path d="M6 6l12 12M18 6 6 18" />),
   plus: (<path d="M12 5v14M5 12h14" />),
-  back: (<path d="M15 18l-6-6 6-6" />),
 };
 
 const AiIcon: React.FC<{ name: keyof typeof AI_ICONS; sm?: boolean }> = ({ name, sm }) => (
@@ -153,7 +153,7 @@ const ADD_ITEM_CSS = `
 .ai-bar__cap{display:block;font-size:12px;line-height:16px;font-weight:400;color:var(--ink-subtle)}
 .ai-bar__meta{display:none;margin-left:auto;font-size:12px;color:var(--ink-subtle)}
 .ai-bar--modal{justify-content:space-between}
-.ai-bar .ai-bar__back{margin-left:-8px;flex:none}
+.ai-bar .ai-bar__back{flex:none}
 .ai-bar .ai-seg{display:none}
 .ai-bar__save{display:none;gap:8px;flex:none}
 .ai-tabs{padding:10px 16px 0}
@@ -161,7 +161,6 @@ const ADD_ITEM_CSS = `
 .ai-tabs .ai-seg button{flex:1;height:34px;font-size:13px;justify-content:center}
 @media(min-width:768px){
   .ai-bar{padding:12px 20px}
-  .ai-bar .ai-bar__back{display:none}
   .ai-bar h1{font-size:20px;line-height:28px}
   .ai-tabs{padding:12px 20px 0}
 }
@@ -170,7 +169,7 @@ const ADD_ITEM_CSS = `
 }
 @media(min-width:1280px){
   .ai-bar{padding:16px 24px}
-  .ai-bar h1{font-size:22px;line-height:30px;flex:none}
+  .ai-bar h1{font-size:22px;line-height:30px;flex:none;min-width:168px}
   .ai-bar__cap{display:none}
   .ai-bar__meta{display:block}
   .ai-bar .ai-seg{display:inline-flex}
@@ -864,7 +863,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       setModal({ message: 'Two pricing options cannot share the same barcode.', type: State.ERROR });
       return;
     }
-        if (allTierBarcodes.includes(itemBarcode.trim())) {
+    if (allTierBarcodes.includes(itemBarcode.trim())) {
       setModal({ message: 'A pricing option barcode cannot be the same as the item barcode.', type: State.ERROR });
       return;
     }
@@ -939,7 +938,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     // --- FIX: Fallback to auto-generated barcode if input is empty ---
     const finalBarcode = itemBarcode.trim() || fetchedAutoBarcode;
 
-        // --- STRICT BLOCK: Absolutely no empty strings allowed ---
+    // --- STRICT BLOCK: Absolutely no empty strings allowed ---
     if (!finalBarcode) {
       setModal({ message: 'Barcode is required and cannot be empty.', type: State.ERROR });
       return;
@@ -1219,7 +1218,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         if (rowMRP === 0 && rowSale === 0) { rowIsValid = false; failReasons.missingPrice++; } // Missing prices
         else if (rowMRP > 0 && rowSale > 0 && rowSale > rowMRP) { rowIsValid = false; failReasons.invalidPricing++; } // Invalid pricing
         else if (itemSettings.requirePurchasePrice && rowPurchase <= 0) { rowIsValid = false; failReasons.purchasePriceRequired++; }
-                else if (trimmedLocation && !isShopLocation && !targetGodownId) { rowIsValid = false; failReasons.unknownLocation++; } // Unknown Location name
+        else if (trimmedLocation && !isShopLocation && !targetGodownId) { rowIsValid = false; failReasons.unknownLocation++; } // Unknown Location name
         else if (rowBarcodeStr && !existingItem && validateSkuFormat(rowBarcodeStr)) { rowIsValid = false; failReasons.invalidBarcode++; } // Bad SKU format on a NEW item
 
         // --- NEGATIVE VALUE GUARD ---
@@ -1419,7 +1418,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         if (failReasons.invalidPricing > 0) reasonParts.push(`${failReasons.invalidPricing} Sales Price higher than MRP`);
         if (failReasons.purchasePriceRequired > 0) reasonParts.push(`${failReasons.purchasePriceRequired} missing Purchase Price`);
         if (failReasons.unknownLocation > 0) reasonParts.push(`${failReasons.unknownLocation} unknown Location`);
-                if (failReasons.negativeValue > 0) reasonParts.push(`${failReasons.negativeValue} negative values`);
+        if (failReasons.negativeValue > 0) reasonParts.push(`${failReasons.negativeValue} negative values`);
         if (failReasons.other > 0) reasonParts.push(`${failReasons.other} save errors`);
         setModal({ message: `Imported with errors. ${failedCount} rows failed: ${reasonParts.join(', ')}.`, type: State.ERROR });
       } else {
@@ -1638,9 +1637,9 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     ) : (
       <>
         <div className="ai-bar">
-          <button type="button" className="ai-iconbtn ai-bar__back" onClick={() => navigate(-1)} aria-label="Back">
-            <AiIcon name="back" />
-          </button>
+          <div className="ai-bar__back">
+            <BackButton />
+          </div>
           <h1>
             Add item
             <span className="ai-bar__cap">{allItems.length.toLocaleString('en-IN')} items in catalogue</span>

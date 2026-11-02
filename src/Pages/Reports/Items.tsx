@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
-  ChevronLeft,
   ChevronRight,
   Pencil,
   ShoppingCart,
@@ -12,6 +11,7 @@ import {
 import { ROUTES } from '../../constants/routes.constants';
 import { useAuth } from '../../context/auth-context';
 import { useCatalogueData } from '../../context/CatalogueDataContext';
+import BackButton from '../../Components/BackButton';
 import { Permissions } from '../../enums';
 import {
   ITEM_ISSUES,
@@ -56,38 +56,38 @@ const ItemReportsHub = () => {
 
   const reportCards: HubCard[] = canViewReports
     ? [
-        {
-          title: 'Item report',
-          description: 'Stock, MRP, cost and margin for every item',
-          stat: itemsLoading
-            ? '…'
-            : `${items.length.toLocaleString('en-IN')} ${items.length === 1 ? 'item' : 'items'} · ${Math.round(avgMargin)}% avg margin`,
-          icon: Tag,
-          iconClass: 'bg-blue-50 text-blue-600',
-          to: ROUTES.ITEM_REPORT,
-        },
-        {
-          title: 'Item sold report',
-          description: 'What sold, how many and for how much',
-          stat: 'By period, best sellers first',
-          icon: ShoppingCart,
-          iconClass: 'bg-green-50 text-green-600',
-          to: ROUTES.ITEM_SOLD_REPORT,
-        },
-      ]
+      {
+        title: 'Item report',
+        description: 'Stock, MRP, cost and margin for every item',
+        stat: itemsLoading
+          ? '…'
+          : `${items.length.toLocaleString('en-IN')} ${items.length === 1 ? 'item' : 'items'} · ${Math.round(avgMargin)}% avg margin`,
+        icon: Tag,
+        iconClass: 'bg-blue-50 text-blue-600',
+        to: ROUTES.ITEM_REPORT,
+      },
+      {
+        title: 'Item sold report',
+        description: 'What sold, how many and for how much',
+        stat: 'By period, best sellers first',
+        icon: ShoppingCart,
+        iconClass: 'bg-green-50 text-green-600',
+        to: ROUTES.ITEM_SOLD_REPORT,
+      },
+    ]
     : [];
 
   const manageCard: HubCard | null = canManage
     ? {
-        title: 'Manage items',
-        description: 'Add, edit or delete items · not a report',
-        mobileDescription: 'Add, edit or delete items',
-        stat: 'Opens your item list',
-        icon: Pencil,
-        iconClass: 'bg-orange-50 text-orange-600',
-        to: ROUTES.MANAGE_ITEMS,
-        isShortcut: true,
-      }
+      title: 'Manage items',
+      description: 'Add, edit or delete items · not a report',
+      mobileDescription: 'Add, edit or delete items',
+      stat: 'Opens your item list',
+      icon: Pencil,
+      iconClass: 'bg-orange-50 text-orange-600',
+      to: ROUTES.MANAGE_ITEMS,
+      isShortcut: true,
+    }
     : null;
 
   const renderCard = (card: HubCard, className = '') => {
@@ -96,11 +96,10 @@ const ItemReportsHub = () => {
       <Link
         key={card.title}
         to={card.to}
-        className={`group flex items-center gap-3 rounded-sm border p-4 no-underline transition ${
-          card.isShortcut
+        className={`group flex items-center gap-3 rounded-sm border p-4 no-underline transition ${card.isShortcut
             ? 'border-line bg-sunken/80 hover:border-slate-300'
             : 'border-line bg-white shadow-card hover:border-slate-300'
-        } ${className}`}
+          } ${className}`}
       >
         <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-sm ${card.iconClass}`}>
           <Icon size={18} />
@@ -134,13 +133,9 @@ const ItemReportsHub = () => {
     <div className="min-h-screen bg-canvas px-3 pb-20 pt-3 md:px-6 md:pb-8 md:pt-5">
       {/* HEADER */}
       <header className="mb-4 flex items-center gap-2 md:gap-3">
-        <button
-          onClick={() => navigate(-1)}
-          aria-label="Back"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-slate-700 transition hover:bg-slate-200 md:border md:border-slate-300 md:bg-white"
-        >
-          <ChevronLeft size={20} />
-        </button>
+        <div className="flex-shrink-0">
+          <BackButton />
+        </div>
         <div className="min-w-0 flex-1">
           <p className="hidden text-xs text-slate-500 md:block">Reports /</p>
           <div className="flex items-baseline gap-3">
@@ -187,11 +182,10 @@ const ItemReportsHub = () => {
                   onClick={() => navigate(ROUTES.ITEM_REPORT, { state: { issue: value } })}
                   disabled={count === 0}
                   title={count === 0 ? `No items with ${label.toLowerCase()}` : `Show the ${count} items in the Item report`}
-                  className={`inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-medium transition ${
-                    count > 0
+                  className={`inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-medium transition ${count > 0
                       ? 'border-amber-300 bg-amber-50 text-amber-800 hover:border-amber-400'
                       : 'cursor-default border-line bg-white text-slate-400'
-                  }`}
+                    }`}
                 >
                   {label}
                   <span className={`rounded-sm px-1 text-[11px] font-semibold ${count > 0 ? 'bg-white text-amber-800' : 'text-slate-400'}`}>

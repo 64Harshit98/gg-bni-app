@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import BackButton from '../../Components/BackButton';
 import { db } from '../../lib/Firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { Spinner } from '../../constants/Spinner';
@@ -9,7 +9,6 @@ import { useAuth } from '../../context/auth-context';
 import {
     FiCheck,
     FiX,
-    FiChevronLeft,
     FiGrid,
     FiList,
     FiHome,
@@ -304,7 +303,6 @@ const SectionHeader: React.FC<{ icon: React.ReactNode; tone: 'blue' | 'green'; t
 // ─── Main Component ────────────────────────────────────────────────────────────
 
 const BarcodeSetting: React.FC = () => {
-    const navigate = useNavigate();
     const { currentUser } = useAuth();
 
     const [settings, setSettings] = useState<BarcodeSettings | null>(null);
@@ -422,15 +420,10 @@ const BarcodeSetting: React.FC = () => {
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
             {/* ── Top Bar ── */}
-            <header className="flex items-center gap-3 px-4 py-3 bg-white border-b border-[#dfe6fb] sticky top-0 z-30">
-                <button
-                    type="button"
-                    onClick={() => navigate(-1)}
-                    aria-label="Back"
-                    className="w-10 h-10 grid place-items-center rounded-sm border border-[#7a8aa3] bg-white text-[#45556c] cursor-pointer hover:bg-[#f5f7ff] transition-colors"
-                >
-                    <FiChevronLeft size={20} />
-                </button>
+            <header className="flex items-center gap-3 px-2 md:px-6 h-14 md:h-auto md:py-3.5 bg-white border-b border-[#dfe6fb] sticky top-0 z-30">
+                <div className="flex-shrink-0">
+                    <BackButton />
+                </div>
                 <div className="min-w-0 flex-1">
                     <p className="m-0 text-xs text-[#5b6b86] leading-[18px]">Settings</p>
                     <h1 className="m-0 text-lg font-semibold text-[#0f172b] leading-6 truncate">Barcode &amp; label settings</h1>

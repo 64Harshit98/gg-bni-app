@@ -104,12 +104,24 @@ export const useInvoiceCommunication = ({
       } catch { return 0; }
     })();
 
-    const [businessInfo, fetchedItems, billSettingsSnap, companyLogoBase64, previousBalance] = await Promise.all([
+    // Credit note balance (informational row on A4 bill) — sirf sales bills ke liye
+    const creditNotePromise = (async (): Promise<number> => {
+      if (isPurchase || !currentUser?.companyId || !invoice.partyNumber) return 0;
+      try {
+        const phone = String(invoice.partyNumber).replace(/\D/g, '').slice(-10);
+        if (!phone) return 0;
+        const snap = await getDoc(doc(db, 'companies', currentUser.companyId, 'customers', phone));
+        return snap.exists() ? Number(snap.data().creditBalance || 0) : 0;
+      } catch { return 0; }
+    })();
+
+    const [businessInfo, fetchedItems, billSettingsSnap, companyLogoBase64, previousBalance, creditNoteBalance] = await Promise.all([
       dbOps.getBusinessInfo(),
       dbOps.syncItems(),
       getDoc(doc(db, 'companies', currentUser.companyId, 'settings', 'bill')),
       resolveCompanyLogoBase64(currentUser.companyId),
       previousBalancePromise,
+      creditNotePromise,
     ]);
 
     const billSettings = billSettingsSnap.exists() ? billSettingsSnap.data() : {};
@@ -268,6 +280,7 @@ export const useInvoiceCommunication = ({
       })(),
       due: invoice.dueAmount || 0,
       previousBalance,
+      creditNoteBalance,
       items: populatedItems,
       // Strictly from Bill Settings — billSettings.termsAndConditions isn't a
       // real field in the persisted doc (posTermsAndConditions/

@@ -7,7 +7,6 @@ import {
   ArrowUpDown,
   CalendarDays,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   Eye,
   EyeOff,
@@ -55,6 +54,7 @@ import CustomRangePanel from './SalesReportComponents/CustomRangePanel';
 import DetailPanel, { DetailItems, DetailRows, DetailSection } from './SalesReportComponents/DetailPanel';
 import { Modal } from '../../constants/Modal';
 import { useAuth } from '../../context/auth-context';
+import BackButton from '../../Components/BackButton';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
@@ -745,9 +745,8 @@ const PurchaseReport: React.FC = () => {
       <th className={`px-4 py-3 font-semibold ${align === 'right' ? 'text-right' : 'text-left'}`}>
         <button
           onClick={() => handleSort(sortKey)}
-          className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-blue-800 ${
-            align === 'right' ? 'flex-row-reverse' : ''
-          }`}
+          className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-blue-800 ${align === 'right' ? 'flex-row-reverse' : ''
+            }`}
         >
           {label}
           <Icon size={11} className={isActive ? 'opacity-100' : 'opacity-40'} />
@@ -762,9 +761,8 @@ const PurchaseReport: React.FC = () => {
     const isDue = due > 0;
     return (
       <span
-        className={`inline-flex items-center gap-1 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-[11px] font-semibold ${
-          isDue ? 'bg-amber-50 text-amber-700' : 'bg-green-50 text-green-700'
-        }`}
+        className={`inline-flex items-center gap-1 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-[11px] font-semibold ${isDue ? 'bg-amber-50 text-amber-700' : 'bg-green-50 text-green-700'
+          }`}
       >
         <span className={`h-1.5 w-1.5 rounded-full ${isDue ? 'bg-amber-500' : 'bg-green-600'}`} />
         {isDue ? `Due${withAmount ? ` ${formatCurrency(due)}` : ''}` : 'Paid'}
@@ -919,10 +917,9 @@ const PurchaseReport: React.FC = () => {
   const fetchingClass = isFetching ? 'pointer-events-none opacity-50' : '';
 
   const chipClass = (active: boolean) =>
-    `shrink-0 whitespace-nowrap rounded-sm border px-3.5 py-1.5 text-sm font-medium transition ${
-      active
-        ? 'border-slate-900 bg-slate-900 text-white'
-        : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+    `shrink-0 whitespace-nowrap rounded-sm border px-3.5 py-1.5 text-sm font-medium transition ${active
+      ? 'border-slate-900 bg-slate-900 text-white'
+      : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
     }`;
 
   return (
@@ -938,13 +935,9 @@ const PurchaseReport: React.FC = () => {
 
       {/* HEADER */}
       <header className="mb-4 flex items-center gap-2 md:gap-3">
-        <button
-          onClick={() => navigate(-1)}
-          aria-label="Back"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-slate-700 transition hover:bg-slate-200 md:border md:border-slate-300 md:bg-white"
-        >
-          <ChevronLeft size={20} />
-        </button>
+        <div className="flex-shrink-0">
+          <BackButton />
+        </div>
 
         <div className="min-w-0 flex-1">
           <p className="hidden text-xs text-slate-500 md:block">Reports /</p>
@@ -1053,9 +1046,8 @@ const PurchaseReport: React.FC = () => {
 
         <button
           onClick={() => setIsRangeOpen((o) => !o)}
-          className={`hidden shrink-0 items-center gap-2 rounded-sm border bg-white px-3 py-1.5 text-sm font-medium text-slate-800 transition hover:border-slate-400 md:inline-flex ${
-            datePreset === 'custom' ? 'border-slate-900' : 'border-slate-300'
-          }`}
+          className={`hidden shrink-0 items-center gap-2 rounded-sm border bg-white px-3 py-1.5 text-sm font-medium text-slate-800 transition hover:border-slate-400 md:inline-flex ${datePreset === 'custom' ? 'border-slate-900' : 'border-slate-300'
+            }`}
         >
           <CalendarDays size={15} className="text-slate-500" />
           {rangeLabel}

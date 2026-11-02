@@ -14,6 +14,7 @@ import { applyRounding, type SalesItem } from '../Sales';
 import { ItemEditDrawer } from '../../../Components/ItemDrawer';
 import { useAuth, useDatabase } from '../../../context/auth-context';
 import { useExchangeItems, useSalesReturnLookup, useSaveSalesReturn } from './hooks';
+import BackButton from '../../../Components/BackButton';
 
 /* ------------------------------------------------------------------ */
 /* SELLAR design tokens (as Tailwind classes) — UI only                */
@@ -232,7 +233,10 @@ const SalesReturnPage: React.FC = () => {
   );
 
   const renderHeader = () => (
-    <div className="flex flex-shrink-0 items-center gap-3 border-b border-[#dfe6fb] bg-white px-4 py-3 md:px-6 md:py-4">
+        <div className="flex flex-shrink-0 items-center gap-3 border-b border-[#dfe6fb] bg-white px-2 py-3 md:px-6 md:py-4">
+      <div className="flex-shrink-0">
+        <BackButton />
+      </div>
       <h1 className="text-xl font-semibold text-[#0f172b] md:text-[22px] md:leading-[30px]">Sales return</h1>
     </div>
   );

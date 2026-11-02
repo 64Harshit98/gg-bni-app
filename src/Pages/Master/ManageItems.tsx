@@ -6,7 +6,6 @@ import {
   ArrowUp,
   ArrowUpDown,
   ChevronDown,
-  ChevronLeft,
   Copy,
   FileSpreadsheet,
   LayoutGrid,
@@ -26,6 +25,7 @@ import { Modal } from '../../constants/Modal';
 import { Permissions, State } from '../../enums';
 import { ROUTES } from '../../constants/routes.constants';
 import { useAuth } from '../../context/auth-context';
+import BackButton from '../../Components/BackButton';
 import { ITEM_ISSUES, hasItemIssue, totalStock, type ItemIssue } from '../Reports/ItemReportComponents/itemIssues';
 
 import type { Item } from '../../constants/models';
@@ -337,9 +337,8 @@ const ManageItems: React.FC = () => {
       <button
         key={value}
         onClick={() => setActiveFilter(active ? null : value)}
-        className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-sm border px-2.5 py-1.5 text-xs font-medium transition ${
-          active ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
-        }`}
+        className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-sm border px-2.5 py-1.5 text-xs font-medium transition ${active ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+          }`}
       >
         {isIssue && <AlertTriangle size={12} className={active ? 'text-amber-300' : 'text-amber-500'} />}
         {label}
@@ -355,13 +354,9 @@ const ManageItems: React.FC = () => {
 
       {/* -------------------- HEADER -------------------- */}
       <header className="mb-4 flex items-center gap-2 md:gap-3">
-        <button
-          onClick={() => navigate(-1)}
-          aria-label="Back"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-slate-700 transition hover:bg-slate-200 md:border md:border-slate-300 md:bg-white"
-        >
-          <ChevronLeft size={20} />
-        </button>
+        <div className="flex-shrink-0">
+          <BackButton />
+        </div>
         <div className="min-w-0 flex-1">
           <p className="hidden text-xs text-slate-500 md:block">Item reports /</p>
           <div className="flex items-baseline gap-3">

@@ -12,11 +12,12 @@ import { State } from '../../../enums';
 import SearchableItemInput from '../../../UseComponents/SearchIteminput';
 import { Spinner } from '../../../constants/Spinner';
 import {
-  FiTrash2, FiEdit, FiCamera, FiX, FiSearch, FiChevronLeft, FiMoreHorizontal,
+  FiTrash2, FiEdit, FiCamera, FiX, FiSearch, FiMoreHorizontal,
   FiFileText, FiMaximize, FiAlertTriangle, FiCheckCircle, FiInfo, FiPackage, FiPlus,
   FiChevronUp, FiChevronRight, FiMinus, FiSliders,
 } from 'react-icons/fi';
 import { ItemEditDrawer } from '../../../Components/ItemDrawer';
+import BackButton from '../../../Components/BackButton';
 import ItemAdd from '../ItemAdd';
 import { TierPickerModal } from '../../../Components/TierPickerModal';
 import { hasMultiplePricing } from '../../utils/pricingUtils';
@@ -275,7 +276,7 @@ const PurchasePage: React.FC = () => {
   const [linkTargetId, setLinkTargetId] = useState<string | null>(null);
   const [linkSearch, setLinkSearch] = useState('');
   const [linkPicked, setLinkPicked] = useState<Item | null>(null);
-    const [linkNameChoice, setLinkNameChoice] = useState<'inventory' | 'supplier'>('inventory');
+  const [linkNameChoice, setLinkNameChoice] = useState<'inventory' | 'supplier'>('inventory');
   const [linkPriceChoice, setLinkPriceChoice] = useState<'bill' | 'inventory'>('bill');
   // Edit clicked on a "Not in DB" row → ask: link to existing or add as new
   const [unlinkedChoiceItem, setUnlinkedChoiceItem] = useState<PurchaseItem | null>(null);
@@ -457,7 +458,7 @@ const PurchasePage: React.FC = () => {
   const stripUnlinkedFlag = (name: string) =>
     name.replace(/^⚠️\s*/, '').replace(/\s*\(Not in DB\)\s*$/, '');
 
-    const handleOpenLinkModal = (cartItem: PurchaseItem) => {
+  const handleOpenLinkModal = (cartItem: PurchaseItem) => {
     setLinkTargetId(cartItem.id);
     setLinkSearch('');
     setLinkPicked(null);
@@ -490,7 +491,7 @@ const PurchasePage: React.FC = () => {
     if (!linkTargetId || !linkPicked) return;
     const picked = linkPicked as any; // remove `as any` if barcode/tax/stock are typed on Item
 
-            setItems(prev => prev.map(ci => {
+    setItems(prev => prev.map(ci => {
       if (ci.id !== linkTargetId) return ci;
 
       const invMrp = Number(picked.mrp) || 0;
@@ -789,9 +790,9 @@ const PurchasePage: React.FC = () => {
     <header className="flex-shrink-0 bg-[#ffffff] border-b border-[#dfe6fb]">
       {/* MOBILE */}
       <div className="md:hidden flex items-center gap-2 h-14 px-2">
-        <button type="button" onClick={() => navigate(-1)} aria-label="Back" className={ICON_BTN_CLS}>
-          <FiChevronLeft size={20} />
-        </button>
+        <div className="flex-shrink-0">
+          <BackButton />
+        </div>
         <h1 className="m-0 flex-1 min-w-0 text-lg font-semibold leading-tight text-[#0f172b]">
           <span className="block truncate">{pageTitle}</span>
           <span className="block text-xs font-normal text-[#5b6b86] truncate">
@@ -1207,7 +1208,7 @@ const PurchasePage: React.FC = () => {
       {linkTargetId && (() => {
         const target = items.find(i => i.id === linkTargetId);
         const q = linkSearch.trim().toLowerCase();
-                const results = q.length >= 1
+        const results = q.length >= 1
           ? availableItems.filter(a => a.name?.toLowerCase().includes(q)).slice(0, 8)
           : [];
         const mismatch = target && linkPicked ? getLinkMismatch(target, linkPicked) : null;
@@ -1264,7 +1265,7 @@ const PurchasePage: React.FC = () => {
                         <span className="block text-sm font-medium text-[#0f172b]">{label}</span>
                         <span className="block text-xs text-[#5b6b86] truncate">{sub}</span>
                       </span>
-                                       </label>
+                    </label>
                   ))}
 
                   <span className={`block mt-3 ${OVERLINE}`}>Which pricing to use?</span>

@@ -85,6 +85,7 @@ const cataPermissionGroups = {
             Cata_Permissions.ViewCustomerReport,
             Cata_Permissions.ViewPNLReport,
             Cata_Permissions.ViewExpenseReport,
+            Cata_Permissions.ViewStockTransferReport,
             //Cata_Permissions.ViewUserReport,
             //Cata_Permissions.ViewTaxReport,
         ].filter(Boolean),
@@ -152,6 +153,7 @@ const CATA_PERMISSION_DESCRIPTIONS: Partial<Record<Cata_Permissions, string>> = 
     [Cata_Permissions.ViewExpenseReport]: 'View reports on business expenses.',
     [Cata_Permissions.ViewUserReport]: 'View reports on user/staff activity.',
     [Cata_Permissions.ViewTaxReport]: 'View tax collected and payable reports.',
+       [Cata_Permissions.ViewStockTransferReport]: 'Moves between godowns.',
 
     // Accounts & Finance
     [Cata_Permissions.ViewCatalogueAccounts]: 'View company account details linked to the catalogue.',
@@ -195,6 +197,7 @@ const CATA_PERMISSION_LABELS: Partial<Record<Cata_Permissions, string>> = {
     [Cata_Permissions.ViewCustomerReport]: 'Customer report',
     [Cata_Permissions.ViewPNLReport]: 'Profit & loss',
     [Cata_Permissions.ViewExpenseReport]: 'Expense report',
+    [Cata_Permissions.ViewStockTransferReport]: 'Stock transfer report',
     // Accounts & finance
     [Cata_Permissions.ViewCatalogueAccounts]: 'Accounts',
     [Cata_Permissions.ViewPartyLedger]: 'Party ledger',

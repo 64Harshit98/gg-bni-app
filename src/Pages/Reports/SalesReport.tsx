@@ -1,12 +1,10 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { useNavigate } from 'react-router';
 import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
   CalendarDays,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   Eye,
   EyeOff,
@@ -51,6 +49,7 @@ import CustomRangePanel from './SalesReportComponents/CustomRangePanel';
 import SaleBillPanel from './SalesReportComponents/SaleBillPanel';
 import { Modal } from '../../constants/Modal';
 import { useAuth } from '../../context/auth-context';
+import BackButton from '../../Components/BackButton';
 import { useSalesSettings } from '../../context/SettingsContext';
 import { normalizePlan } from '../../context/Plan';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
@@ -105,8 +104,6 @@ const SalesReport: React.FC = () => {
     datePreset,
     authLoading,
   } = useSalesReport();
-
-    const navigate = useNavigate();
 
   /* ---------- BILL ACTION SHEET (WhatsApp / Download / Print / QR) ---------- */
   const { salesSettings } = useSalesSettings();
@@ -712,7 +709,7 @@ const SalesReport: React.FC = () => {
     }
   };
 
-    /* ---------- VIEW BILL → ACTION SHEET ---------- */
+  /* ---------- VIEW BILL → ACTION SHEET ---------- */
   const openBillActions = async (sale: SaleRecord) => {
     if (!currentUser?.companyId) return;
     setSelectedId(null); // close the detail panel
@@ -786,9 +783,8 @@ const SalesReport: React.FC = () => {
       <th className={`px-4 py-3 font-semibold ${align === 'right' ? 'text-right' : 'text-left'}`}>
         <button
           onClick={() => handleSort(sortKey)}
-          className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-blue-800 ${
-            align === 'right' ? 'flex-row-reverse' : ''
-          }`}
+          className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-blue-800 ${align === 'right' ? 'flex-row-reverse' : ''
+            }`}
         >
           {label}
           <Icon size={11} className={isActive ? 'opacity-100' : 'opacity-40'} />
@@ -806,9 +802,8 @@ const SalesReport: React.FC = () => {
     return (
       <span
         title={isSplit ? modes.map((m) => PAY_MODE_META[m].label).join(' + ') : undefined}
-        className={`inline-block rounded-sm px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-          meta ? meta.badge : 'bg-indigo-50 text-indigo-700'
-        }`}
+        className={`inline-block rounded-sm px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${meta ? meta.badge : 'bg-indigo-50 text-indigo-700'
+          }`}
       >
         {meta ? meta.label : 'Split'}
       </span>
@@ -846,9 +841,8 @@ const SalesReport: React.FC = () => {
       label: 'Total sales',
       shortLabel: 'Total sales',
       value: `₹${Math.round(rangeSummary.totalSales).toLocaleString('en-IN')}`,
-      hint: `${rangeSummary.totalTransactions} bills · ${partyStats.customers} ${
-        partyStats.customers === 1 ? 'customer' : 'customers'
-      } + ${partyStats.walkIns} walk-in`,
+      hint: `${rangeSummary.totalTransactions} bills · ${partyStats.customers} ${partyStats.customers === 1 ? 'customer' : 'customers'
+        } + ${partyStats.walkIns} walk-in`,
       icon: FileText,
       iconClass: 'bg-blue-50 text-blue-600',
       valueClass: 'text-blue-600',
@@ -866,11 +860,10 @@ const SalesReport: React.FC = () => {
       label: 'Items sold',
       shortLabel: 'Items sold',
       value: rangeSummary.totalItemsSold.toLocaleString('en-IN'),
-      hint: `${
-        rangeSummary.totalTransactions > 0
+      hint: `${rangeSummary.totalTransactions > 0
           ? (rangeSummary.totalItemsSold / rangeSummary.totalTransactions).toFixed(1)
           : '0'
-      } items per bill`,
+        } items per bill`,
       icon: Tag,
       iconClass: 'bg-orange-50 text-orange-600',
       valueClass: 'text-slate-900',
@@ -890,10 +883,9 @@ const SalesReport: React.FC = () => {
   const fetchingClass = isFetching ? 'pointer-events-none opacity-50' : '';
 
   const chipClass = (active: boolean) =>
-    `shrink-0 whitespace-nowrap rounded-sm border px-3.5 py-1.5 text-sm font-medium transition ${
-      active
-        ? 'border-slate-900 bg-slate-900 text-white'
-        : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+    `shrink-0 whitespace-nowrap rounded-sm border px-3.5 py-1.5 text-sm font-medium transition ${active
+      ? 'border-slate-900 bg-slate-900 text-white'
+      : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
     }`;
 
   return (
@@ -909,13 +901,9 @@ const SalesReport: React.FC = () => {
 
       {/* HEADER */}
       <header className="mb-4 flex items-center gap-2 md:gap-3">
-        <button
-          onClick={() => navigate(-1)}
-          aria-label="Back"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-slate-700 transition hover:bg-slate-200 md:border md:border-slate-300 md:bg-white"
-        >
-          <ChevronLeft size={20} />
-        </button>
+        <div className="flex-shrink-0">
+          <BackButton />
+        </div>
 
         <div className="min-w-0 flex-1">
           <p className="hidden text-xs text-slate-500 md:block">Reports /</p>
@@ -1024,9 +1012,8 @@ const SalesReport: React.FC = () => {
 
         <button
           onClick={() => setIsRangeOpen((o) => !o)}
-          className={`hidden shrink-0 items-center gap-2 rounded-sm border bg-white px-3 py-1.5 text-sm font-medium text-slate-800 transition hover:border-slate-400 md:inline-flex ${
-            datePreset === 'custom' ? 'border-slate-900' : 'border-slate-300'
-          }`}
+          className={`hidden shrink-0 items-center gap-2 rounded-sm border bg-white px-3 py-1.5 text-sm font-medium text-slate-800 transition hover:border-slate-400 md:inline-flex ${datePreset === 'custom' ? 'border-slate-900' : 'border-slate-300'
+            }`}
         >
           <CalendarDays size={15} className="text-slate-500" />
           {rangeLabel}
@@ -1245,7 +1232,7 @@ const SalesReport: React.FC = () => {
         </ul>
       </section>
 
-            <SaleBillPanel
+      <SaleBillPanel
         sale={selectedId ? filteredSales.find((s) => s.id === selectedId) ?? null : null}
         companyId={currentUser?.companyId}
         onClose={() => setSelectedId(null)}

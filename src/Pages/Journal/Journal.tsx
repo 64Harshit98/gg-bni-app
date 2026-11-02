@@ -52,6 +52,14 @@ const getActiveModes = (invoice: Invoice) =>
 
 const modeLabel = (mode: string) => (mode === 'upi' ? 'UPI' : mode.replace(/_/g, ' '));
 
+// Firebase UID jaisi random string (20-28 chars, no spaces) ko naam nahi maante
+const isRealSalesmanName = (name?: string | null) => {
+  const n = (name || '').trim();
+  if (!n) return false;
+  const looksLikeId = /^[A-Za-z0-9_-]{20,}$/.test(n); // no space, long, alphanumeric
+  return !looksLikeId;
+};
+
 const BADGE = 'inline-flex items-center gap-1 h-[22px] px-2 rounded-full text-[11px] font-semibold tracking-[0.03em] leading-[22px] whitespace-nowrap';
 const modeBadgeClass = (mode: string) =>
   mode === 'upi' ? 'bg-[#e6eeff] text-[#155dfc]' : 'bg-[#f5f7ff] text-[#45556c]';
@@ -424,8 +432,8 @@ const Journal: React.FC = () => {
             </h2>
             <p className="text-xs leading-4 text-[#45556c]">
               {invoice.time}
-              {salesSettings?.enableSalesmanSelection && invoice.salesmanName
-                ? ` · Billed by ${invoice.salesmanName.slice(0, 15)}`
+              {salesSettings?.enableSalesmanSelection && isRealSalesmanName(invoice.salesmanName)
+                ? ` · Billed by ${invoice.salesmanName!.slice(0, 15)}`
                 : ''}
             </p>
           </div>

@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import {
-    ChevronLeft, ChevronRight, X, Check, Bell, Package, MessageSquare, Inbox, Search, Phone,
+    ChevronRight, X, Check, Bell, Package, MessageSquare, Inbox, Search, Phone,
     Filter, Reply, Trash2, MoreHorizontal, UserPlus,
 } from 'lucide-react'
 import { collection, doc, updateDoc, deleteDoc, onSnapshot, getDoc, query, limit } from "firebase/firestore";
@@ -14,6 +14,7 @@ import { botMasterService } from '../Pages/Additional/Whatsapp/WhatsappApi';
 import { sendCompanyWhatsappMessage } from '../Pages/Additional/Whatsapp/sendCompanyWhatsappMessage';
 import { useWhatsappProvider } from '../Pages/Additional/Whatsapp/useWhatsappProvider';
 import { ROUTES } from '../constants/routes.constants'
+import BackButton from '../Components/BackButton'
 
 type RequestType = {
     id: string;
@@ -936,9 +937,9 @@ function RequestPage() {
             <div className="flex flex-col flex-1 min-h-0">
                 {/* header */}
                 <div className="flex items-center xl:items-start gap-3 px-4 pb-3 pt-[calc(12px+env(safe-area-inset-top,0px))] xl:px-5 xl:py-4 bg-white border-b border-[#f6e1d0]">
-                    <button onClick={() => setSelectedKey(null)} className={cx(BTN, BTN_ICON, GHOST, 'xl:hidden -ml-2')} aria-label="Back">
-                        <ChevronLeft size={20} />
-                    </button>
+                    <div className="xl:hidden flex-shrink-0">
+                        <BackButton onClick={() => setSelectedKey(null)} />
+                    </div>
                     <span className="hidden xl:block"><Avatar name={row.name} size="lg" /></span>
                     <div className="flex-1 min-w-0">
                         <h2 className="m-0 text-lg xl:text-xl font-semibold leading-7 truncate">{row.name}</h2>
@@ -1080,9 +1081,9 @@ function RequestPage() {
                 Wraps instead of squeezing: title keeps its own space, the actions drop to a second
                 line when the content area is narrow (e.g. tablet with the sidebar open). */}
             <header className="flex flex-wrap items-center gap-x-3 gap-y-3 px-4 pt-4 pb-3 lg:px-6 lg:pt-5 lg:pb-4">
-                <button onClick={() => navigate(-1)} className={cx(BTN, BTN_ICON, GHOST, 'lg:hidden -ml-2')} aria-label="Back">
-                    <ChevronLeft size={20} />
-                </button>
+                <div className="lg:hidden flex-shrink-0">
+                    <BackButton />
+                </div>
                 <div className="flex-1 min-w-[150px]">
                     <h1 className="m-0 text-xl lg:text-2xl font-semibold leading-8 tracking-tight">Requests</h1>
                     <p className="m-0 text-[13px] text-slate-600">

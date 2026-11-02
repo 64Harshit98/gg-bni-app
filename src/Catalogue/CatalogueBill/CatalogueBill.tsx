@@ -81,6 +81,7 @@ export interface CatalogueInvoiceData {
   grandTotal: number;
   advancePaid?: number;
   previousBalance?: number;
+   creditNoteBalance?: number;
   billDiscount?: number;
   transportDetails?: {
     transportName?: string;
@@ -480,9 +481,11 @@ export const CatalogueBill = async (
   const settledAmount = invoiceTotal - advance;
   const prevBal = Number(data.previousBalance) || 0;
   const currentDue = Math.max(0, invoiceTotal - advance);
+  const creditNoteBal = Number(data.creditNoteBalance) || 0;
+  const hasCreditNote = creditNoteBal > 0;
   const totalDue = prevBal + currentDue;
   const hasPrevOrDue = prevBal > 0 || currentDue > 0;
-  const wordsH = hasPrevOrDue ? 12 : 8;
+   const wordsH = hasPrevOrDue ? (hasCreditNote ? 18 : 12) : 8;
   const leftColW = contentWidth - (hasPrevOrDue ? 70 : 0);
 
   // Emoji / non-Latin special instruction -> pre-rendered once as an image
@@ -858,13 +861,19 @@ export const CatalogueBill = async (
     doc.rect(startX, finalY, contentWidth, wordsH);
     doc.setFontSize(8); doc.setFont('helvetica', 'bold');
     doc.text(`Rs. ${convertNumberToWords(invoiceTotal)}`, startX + 2, finalY + (hasPrevOrDue ? 7 : 5.5));
-    if (hasPrevOrDue) {
+        if (hasPrevOrDue) {
       const divX = startX + leftColW;
+      const totalRowY = hasCreditNote ? 16.5 : 10;
       doc.line(divX, finalY, divX, finalY + wordsH); doc.line(divX, finalY + 6, endX, finalY + 6);
+      if (hasCreditNote) doc.line(divX, finalY + 12, endX, finalY + 12);
       doc.setFont('helvetica', 'normal'); doc.text('Previous Balance :', divX + 2, finalY + 4.5);
       doc.text(prevBal.toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + 4.5, { align: 'right' });
-      doc.setFont('helvetica', 'bold'); doc.text('Total Balance Due :', divX + 2, finalY + 10);
-      doc.text(totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + 10, { align: 'right' });
+      if (hasCreditNote) {
+        doc.text('Credit Note :', divX + 2, finalY + 10.5);
+        doc.text(creditNoteBal.toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + 10.5, { align: 'right' });
+      }
+      doc.setFont('helvetica', 'bold'); doc.text('Total Balance Due :', divX + 2, finalY + totalRowY);
+      doc.text(totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + totalRowY, { align: 'right' });
     }
     finalY += wordsH;
 

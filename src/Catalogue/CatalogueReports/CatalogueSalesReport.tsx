@@ -1,12 +1,10 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { useNavigate } from 'react-router';
 import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
   CalendarDays,
   ChevronDown,
-  ChevronLeft,
   ExternalLink,
   Eye,
   EyeOff,
@@ -24,6 +22,7 @@ import XLSX from 'xlsx-js-style';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 import { useAuth } from '../../context/auth-context';
+import BackButton from '../../Components/BackButton';
 import { State } from '../../enums';
 import { Modal } from '../../constants/Modal';
 import { useCatalogueData } from '../../context/CatalogueDataContext';
@@ -52,7 +51,6 @@ import useCatalogueSalesReport from './useCatalogueSalesReport';
 
 const OrdersReport: React.FC = () => {
   const { currentUser } = useAuth();
-  const navigate = useNavigate();
   const [companyName, setCompanyName] = useState('');
 
   useEffect(() => {
@@ -789,19 +787,15 @@ const OrdersReport: React.FC = () => {
           message={feedbackModal.message}
           onClose={() => setFeedbackModal((p) => ({ ...p, isOpen: false }))}
           showConfirmButton={false}
-           theme="catalogue"
+          theme="catalogue"
         />
       )}
 
       {/* HEADER */}
       <header className="mb-4 flex items-center gap-2 md:gap-3">
-        <button
-          onClick={() => navigate(-1)}
-          aria-label="Back"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-slate-700 transition hover:bg-slate-200 md:border md:border-slate-300 md:bg-white"
-        >
-          <ChevronLeft size={20} />
-        </button>
+        <div className="flex-shrink-0">
+          <BackButton />
+        </div>
 
         <div className="min-w-0 flex-1">
           <p className="hidden text-xs text-slate-500 md:block">Reports /</p>

@@ -58,6 +58,7 @@ export interface InvoiceData {
   };
   finalAmount?: number;
   previousBalance?: number;
+  creditNoteBalance?: number;
   advance?: number;
   due?: number;
   items: {
@@ -99,8 +100,16 @@ export interface InvoiceData {
   };
 }
 
+// Firebase UID jaisi random string (20+ chars, no spaces) ko salesman ka naam nahi maante
+const looksLikeUid = (name?: string | null) =>
+  /^[A-Za-z0-9_-]{20,}$/.test((name || '').trim());
+
 export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | ACTION.PRINT | ACTION.BLOB = ACTION.DOWNLOAD, withDuplicate: boolean = false): Promise<Blob | void> => {
   const isEstimate = (data as any).isEstimate === true;
+  // UID aaya ho to "Billed by" hide (A4 / Thermal / A5 sab ke liye)
+  if (data.invoice && looksLikeUid(data.invoice.billedBy)) {
+    data.invoice = { ...data.invoice, billedBy: '' };
+  }
   if (data.printFormat !== 'A4') {
     data.items = data.items.map(item => {
       const { imageBase64, ...rest } = item as any;
@@ -124,7 +133,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     );
   }
 
-    const doc = new jsPDF({
+  const doc = new jsPDF({
     orientation: 'p',
     unit: 'mm',
     format: 'a4',
@@ -369,10 +378,11 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
 
   // Calculate currentDue based on the PDF's internal invoiceTotal minus payments.
   const currentDue = settledAmount;
-
+  const creditNoteBal = Number(data.creditNoteBalance) || 0;
+  const hasCreditNote = creditNoteBal > 0;
   const totalDue = prevBal + currentDue;
   const hasPrevOrDue = prevBal > 0 || currentDue > 0;
-  const wordsH = hasPrevOrDue ? 12 : 8;
+  const wordsH = hasPrevOrDue ? (hasCreditNote ? 18 : 12) : 8;
   const leftColW = contentWidth - (hasPrevOrDue ? 70 : 0);
 
   // ==========================================
@@ -753,11 +763,17 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     doc.text(`Rs. ${convertNumberToWords(invoiceTotal)}`, startX + 2, finalY + (hasPrevOrDue ? 7 : 5.5));
     if (hasPrevOrDue) {
       const divX = startX + leftColW;
+      const totalRowY = hasCreditNote ? 16.5 : 10;
       doc.line(divX, finalY, divX, finalY + wordsH); doc.line(divX, finalY + 6, endX, finalY + 6);
+      if (hasCreditNote) doc.line(divX, finalY + 12, endX, finalY + 12);
       doc.setFont('helvetica', 'normal'); doc.text('Previous Balance :', divX + 2, finalY + 4.5);
       doc.text(prevBal.toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + 4.5, { align: 'right' });
-      doc.setFont('helvetica', 'bold'); doc.text('Total Balance Due :', divX + 2, finalY + 10);
-      doc.text(totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + 10, { align: 'right' });
+      if (hasCreditNote) {
+        doc.text('Credit Note :', divX + 2, finalY + 10.5);
+        doc.text(creditNoteBal.toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + 10.5, { align: 'right' });
+      }
+      doc.setFont('helvetica', 'bold'); doc.text('Total Balance Due :', divX + 2, finalY + totalRowY);
+      doc.text(totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + totalRowY, { align: 'right' });
     }
     finalY += wordsH;
 

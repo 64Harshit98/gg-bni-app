@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import {
   AlertTriangle,
   ArrowDown,
@@ -7,7 +7,6 @@ import {
   ArrowUpDown,
   CalendarDays,
   ChevronDown,
-  ChevronLeft,
   Eye,
   EyeOff,
   FileText,
@@ -42,6 +41,7 @@ import {
 import DownloadMenu from '../../Pages/Reports/SalesReportComponents/DownloadMenu';
 import CustomRangePanel from '../../Pages/Reports/SalesReportComponents/CustomRangePanel';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
+import BackButton from '../../Components/BackButton';
 
 const UNASSIGNED_GROUP_NAME = 'Uncategorized';
 const PAGE_SIZE = 100;
@@ -72,7 +72,6 @@ const inrRound = (n: number) => {
 
 const CatalogueItemReport: React.FC = () => {
   const { currentUser, hasPermission } = useAuth();
-  const navigate = useNavigate();
   const canEditItems = hasPermission(Permissions.ManageItems);
   const [showSearch, setShowSearch] = useState(false);
   const [companyName, setCompanyName] = useState<string>('');
@@ -821,13 +820,9 @@ const CatalogueItemReport: React.FC = () => {
 
       {/* HEADER */}
       <header className="mb-4 flex items-center gap-2 md:gap-3">
-        <button
-          onClick={() => navigate(-1)}
-          aria-label="Back"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-slate-700 transition hover:bg-orange-100 md:border md:border-slate-300 md:bg-white"
-        >
-          <ChevronLeft size={20} />
-        </button>
+        <div className="flex-shrink-0">
+          <BackButton />
+        </div>
 
         <div className="min-w-0 flex-1">
           <p className="hidden text-xs text-slate-500 md:block">Reports /</p>

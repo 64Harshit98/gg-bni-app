@@ -14,6 +14,7 @@ export enum Cata_Permissions {
     ViewCustomerReport = 'ViewCatalogueCustomerReport',
     ViewUserReport = 'ViewUserReport',
     ViewTaxReport = 'ViewCatalogueTaxReport',
+    ViewStockTransferReport = 'ViewCatalogueStockTransferReport',
     ManageEditProfile = 'ManageCatalogueEditProfile',
     ManageMasters = 'ManageMasters',
     ManageSalesSettings = 'ManageSalesSettings',

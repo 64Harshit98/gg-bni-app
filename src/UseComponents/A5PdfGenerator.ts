@@ -520,8 +520,8 @@ export const generateA5Invoice = async (
                 "Product",
                 "Qty.",
                 "Price",
-                ...(resolvedIsEstimate ? [] : [isIgst ? "IGST (%)" : "GST (%)", isIgst ? "IGST Amt" : "GST Amt"]),
                 "Discount",
+                ...(resolvedIsEstimate ? [] : [isIgst ? "IGST (%)" : "GST (%)", isIgst ? "IGST Amt" : "GST Amt"]),
                 "Amount"
             ]],
             body: processedItems.map((item, i) => [
@@ -530,17 +530,17 @@ export const generateA5Invoice = async (
                 nameImgs[i] ? "" : `${item.name}\n(${item.totalPcs} ${item.unit})`,
                 item.qty,
                 item.rawPrice.toFixed(2),
-                ...(resolvedIsEstimate ? [] : [
-                    `${item.effectiveTaxRate}%`,
-                    item.taxAmt.toLocaleString("en-IN", {   // renamed field + Indian format
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2
-                    })
-                ]),
                 item.discountAmt.toLocaleString("en-IN", {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2
                 }),
+                ...(resolvedIsEstimate ? [] : [
+                    `${item.effectiveTaxRate}%`,
+                    item.taxAmt.toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    })
+                ]),
                 item.finalRowTotal.toLocaleString("en-IN", {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2

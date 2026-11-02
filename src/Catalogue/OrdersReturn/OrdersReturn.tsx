@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import { useAuth } from '../../context/auth-context';
-
+import BackButton from '../../Components/BackButton';
 import { ROUTES } from '../../constants/routes.constants';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
@@ -60,7 +60,6 @@ const Ico: React.FC<{ d: string | string[]; size?: number; className?: string }>
 );
 
 const ICON = {
-  back: 'M15 18l-6-6 6-6',
   search: ['M11 4a7 7 0 1 0 0 14a7 7 0 0 0 0-14z', 'm20 20-3.5-3.5'],
   order: ['M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z', 'M14 3v5h5M9 13h6M9 17h4'],
   ret: ['M9 14 4 9l5-5', 'M4 9h11a5 5 0 0 1 0 10h-3'],
@@ -73,9 +72,8 @@ const ICON = {
 /** Round tinted icon chip used in card headers */
 const Tint: React.FC<{ tone?: 'orange' | 'green'; children: React.ReactNode }> = ({ tone = 'orange', children }) => (
   <span
-    className={`inline-grid h-8 w-8 flex-none place-items-center rounded-sm ${
-      tone === 'green' ? 'bg-[#e9faef] text-[#008236]' : 'bg-[#ffedd5] text-[#9a3412]'
-    }`}
+    className={`inline-grid h-8 w-8 flex-none place-items-center rounded-sm ${tone === 'green' ? 'bg-[#e9faef] text-[#008236]' : 'bg-[#ffedd5] text-[#9a3412]'
+      }`}
   >
     {children}
   </span>
@@ -146,11 +144,10 @@ const TypeCards: React.FC<{
             disabled={o.disabled}
             aria-pressed={on}
             onClick={() => onChange(o.v)}
-            className={`grid min-w-0 gap-0.5 rounded-sm border text-left transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
-              on
+            className={`grid min-w-0 gap-0.5 rounded-sm border text-left transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${on
                 ? 'border-2 border-[#c2410c] bg-[#ffedd5] px-[9px] py-[7px]'
                 : 'border-[#7a8aa3] bg-white px-2.5 py-2 hover:bg-[#fff8f2]'
-            }`}
+              }`}
           >
             <b className={`truncate text-sm font-semibold ${on ? 'text-[#9a3412]' : 'text-[#0f172b]'}`}>{o.t}</b>
             <small className="truncate text-[11px] leading-[15px] text-[#5b6b86]">{o.s}</small>
@@ -330,9 +327,9 @@ const OrdersReturnPage: React.FC = () => {
     list.length === 0
       ? '—'
       : list
-          .slice(0, 2)
-          .map((i: any) => `${sign}${Number(i.quantity || 0)} ${i.name ?? ''}`.trim())
-          .join(', ') + (list.length > 2 ? ` +${list.length - 2} more` : '');
+        .slice(0, 2)
+        .map((i: any) => `${sign}${Number(i.quantity || 0)} ${i.name ?? ''}`.trim())
+        .join(', ') + (list.length > 2 ? ` +${list.length - 2} more` : '');
 
   /** Balance row: "Credit due ₹x" with the existing action <select> when exchange leaves a positive balance */
   const renderBalance = (big?: boolean) => (
@@ -362,14 +359,9 @@ const OrdersReturnPage: React.FC = () => {
 
       {/* === HEADER === */}
       <header className="flex flex-shrink-0 items-center gap-3 border-b border-[#f6e1d0] bg-white px-3 py-2.5 md:px-6 md:py-3.5">
-        <button
-          onClick={() => navigate(ROUTES.ORDERDETAILS)}
-          className="grid h-10 w-10 place-items-center rounded-lg border border-[#7a8aa3] bg-white text-[#45556c] transition-colors hover:bg-[#fff8f2] hover:text-[#0f172b]"
-          title="Back"
-          aria-label="Back"
-        >
-          <Ico d={ICON.back} size={20} />
-        </button>
+        <div className="flex-shrink-0">
+          <BackButton to={ROUTES.ORDERDETAILS} />
+        </div>
         <div className="min-w-0">
           <h1 className="truncate text-lg font-semibold leading-6 md:text-[22px] md:leading-[30px]">Order return</h1>
           <p className="text-xs leading-4 text-[#5b6b86]">Process refunds &amp; exchanges</p>
@@ -381,258 +373,171 @@ const OrdersReturnPage: React.FC = () => {
 
         {/* --- LEFT PANEL --- */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div className="relative min-h-0 w-full flex-1 space-y-3.5 overflow-y-auto bg-[#fff5ec] p-3 sm:p-4 xl:p-5">
+          <div className="relative min-h-0 w-full flex-1 space-y-3.5 overflow-y-auto bg-[#fff5ec] p-3 sm:p-4 xl:p-5">
 
-          {/* Original order */}
-          <Section
-            icon={<Tint><Ico d={ICON.order} /></Tint>}
-            title="Original order"
-            caption={selectedSale ? `Order found · ${selectedSale.orderId}` : undefined}
-          >
-            <div className="relative" ref={salesDropdownRef}>
-              <label htmlFor="search-sale" className="sr-only">Search original sale</label>
-              <div className="flex gap-2">
-                <div className={`${fieldBase} flex-1`}>
-                  <Ico d={ICON.search} size={16} />
-                  <input
-                    id="search-sale"
-                    type="text"
-                    value={searchSaleQuery}
-                    onChange={(e) => {
-                      let value = e.target.value;
+            {/* Original order */}
+            <Section
+              icon={<Tint><Ico d={ICON.order} /></Tint>}
+              title="Original order"
+              caption={selectedSale ? `Order found · ${selectedSale.orderId}` : undefined}
+            >
+              <div className="relative" ref={salesDropdownRef}>
+                <label htmlFor="search-sale" className="sr-only">Search original sale</label>
+                <div className="flex gap-2">
+                  <div className={`${fieldBase} flex-1`}>
+                    <Ico d={ICON.search} size={16} />
+                    <input
+                      id="search-sale"
+                      type="text"
+                      value={searchSaleQuery}
+                      onChange={(e) => {
+                        let value = e.target.value;
 
-                      // Agar input sirf numbers hai, toh use 10 digits tak limit karo
-                      if (/^\d*$/.test(value)) {
-                        value = value.slice(0, 10);
+                        // Agar input sirf numbers hai, toh use 10 digits tak limit karo
+                        if (/^\d*$/.test(value)) {
+                          value = value.slice(0, 10);
+                        }
+
+                        setSearchSaleQuery(value);
+                        setIsSalesDropdownOpen(true);
+                      }}
+                      onFocus={() => setIsSalesDropdownOpen(true)}
+                      placeholder={
+                        selectedSale
+                          ? `(${selectedSale.orderId})`
+                          : "Search order no., customer name or phone"
                       }
-
-                      setSearchSaleQuery(value);
-                      setIsSalesDropdownOpen(true);
-                    }}
-                    onFocus={() => setIsSalesDropdownOpen(true)}
-                    placeholder={
-                      selectedSale
-                        ? `(${selectedSale.orderId})`
-                        : "Search order no., customer name or phone"
-                    }
-                    className="min-w-0 flex-1 border-0 bg-transparent text-sm font-medium text-[#0f172b] outline-none placeholder:font-normal placeholder:text-[#5b6b86]"
-                    autoComplete="off"
-                    readOnly={!!selectedSale}
-                  />
-                </div>
-                {selectedSale && (
-                  <button
-                    onClick={handleClear}
-                    className="h-10 whitespace-nowrap rounded-sm px-3 text-sm font-medium text-[#45556c] transition-colors hover:bg-[#fff8f2] hover:text-[#0f172b]"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-
-              {isSalesDropdownOpen && !selectedSale && (
-                <div className="absolute top-full z-20 mt-1.5 max-h-60 w-full overflow-y-auto rounded-sm border border-[#f6e1d0] bg-white shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]">
-                  {filteredSales.map((sale) => {
-                    // Calculate total from items instead of using static totalAmount
-                    const calculatedAmount = (sale.items || []).reduce(
-                      (sum: number, item: any) =>
-                        sum +
-                        Number(
-                          item.finalPrice ??
-                          item.amount ??
-                          (item.salesPrice || item.mrp || 0) * (item.quantity || 0)
-                        ),
-                      0
-                    );
-
-                    return (
-                      <div
-                        key={sale.id}
-                        className="cursor-pointer border-b border-[#f6e1d0] px-3 py-2.5 transition-colors last:border-0 hover:bg-[#fff8f2]"
-                        onClick={() => handleSelectSale(sale)}
-                      >
-                        <div className="flex items-baseline justify-between gap-3">
-                          <p className="truncate text-sm font-semibold">
-                            {sale.userName}{' '}
-                            <span className="font-normal text-[#5b6b86]">({sale.orderId || 'N/A'})</span>
-                          </p>
-                          <p className="flex-none text-sm font-semibold tabular-nums text-[#9a3412]">₹{calculatedAmount.toFixed(2)}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {selectedSale && (
-              <div className="grid grid-cols-2 gap-px rounded-sm border border-[#f6e1d0] bg-[#f6e1d0] lg:grid-cols-4">
-                <Fact label="Order">
-                  <b className="block truncate text-[13px] font-semibold tabular-nums">{selectedSale.orderId}</b>
-                </Fact>
-                <Fact label="Customer">
-                  <input type="text" value={partyName} readOnly className={factInput} />
-                </Fact>
-
-                {/* Phone (with customer dropdown, unchanged behaviour) */}
-                <div className="relative min-w-0 bg-white px-3 py-2" ref={customerDropdownRef}>
-                  <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]">Phone</span>
-                  <input
-                    type="text"
-                    value={partyNumber}
-                    readOnly
-                    className={factInput}
-                    autoComplete="off"
-                    placeholder="Search customer by number or name..."
-                    maxLength={10}
-                  />
-                  {isCustomerDropdownOpen && filteredCustomers.length > 0 && (
-                    <div className="absolute left-0 top-full z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-sm border border-[#f6e1d0] bg-white shadow-[0_10px_28px_rgba(21,48,140,0.14)]">
-                      {filteredCustomers.map((customer) => (
-                        <div
-                          key={customer.id}
-                          className="cursor-pointer border-b border-[#f6e1d0] p-2.5 last:border-0 hover:bg-[#fff8f2]"
-                          onClick={() => handleSelectCustomer(customer)}
-                        >
-                          <p className="text-sm font-semibold">{customer.name}</p>
-                          <p className="text-xs text-[#5b6b86]">{customer.number}</p>
-                        </div>
-                      ))}
-                    </div>
+                      className="min-w-0 flex-1 border-0 bg-transparent text-sm font-medium text-[#0f172b] outline-none placeholder:font-normal placeholder:text-[#5b6b86]"
+                      autoComplete="off"
+                      readOnly={!!selectedSale}
+                    />
+                  </div>
+                  {selectedSale && (
+                    <button
+                      onClick={handleClear}
+                      className="h-10 whitespace-nowrap rounded-sm px-3 text-sm font-medium text-[#45556c] transition-colors hover:bg-[#fff8f2] hover:text-[#0f172b]"
+                    >
+                      Clear
+                    </button>
                   )}
                 </div>
 
-                <Fact label="From">
-                  <b className="block truncate text-[13px] font-semibold">Catalogue order</b>
-                </Fact>
-                <Fact label="Paid">
-                  <b className="block text-[13px] font-semibold tabular-nums text-[#008236]">₹{paidAmountOnSale.toFixed(2)}</b>
-                </Fact>
-                <Fact label="Due on order">
-                  <b className="block text-[13px] font-semibold tabular-nums">₹{dueOnOrder.toFixed(2)}</b>
-                </Fact>
-                <Fact label="Earlier returns">
-                  <b className="block text-[13px] font-semibold">
-                    {earlierReturnsCount === 0 ? 'None' : `${earlierReturnsCount} ${earlierReturnsCount === 1 ? 'return' : 'returns'}`}
-                  </b>
-                </Fact>
-                <Fact label="Return date">
-                  <input
-                    type="date"
-                    value={returnDate}
-                    onChange={(e) => setReturnDate(e.target.value)}
-                    className={factInput}
-                  />
-                </Fact>
-              </div>
-            )}
-          </Section>
+                {isSalesDropdownOpen && !selectedSale && (
+                  <div className="absolute top-full z-20 mt-1.5 max-h-60 w-full overflow-y-auto rounded-sm border border-[#f6e1d0] bg-white shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]">
+                    {filteredSales.map((sale) => {
+                      // Calculate total from items instead of using static totalAmount
+                      const calculatedAmount = (sale.items || []).reduce(
+                        (sum: number, item: any) =>
+                          sum +
+                          Number(
+                            item.finalPrice ??
+                            item.amount ??
+                            (item.salesPrice || item.mrp || 0) * (item.quantity || 0)
+                          ),
+                        0
+                      );
 
-          {selectedSale && (
-            <>
-              {/* Select return items */}
-              <Section
-                flush
-                icon={<Tint><Ico d={ICON.ret} /></Tint>}
-                title="Select return items"
-                right={
-                  <div className="flex items-center gap-2">
-                    <div className={`${fieldSm} flex-1 sm:w-60 sm:flex-none`}>
-                      <Ico d={ICON.search} size={16} />
-                      <input
-                        type="text"
-                        value={returnItemSearchQuery}
-                        onChange={(e) => setReturnItemSearchQuery(e.target.value)}
-                        placeholder="Search items in this order"
-                        className="min-w-0 flex-1 border-0 bg-transparent text-sm text-[#0f172b] outline-none placeholder:text-[#5b6b86]"
-                        autoComplete="off"
-                      />
-                    </div>
-                    <button onClick={() => setScannerPurpose('item')} className={scanSm} aria-label="Scan item">
-                      <IconScanCircle width={18} height={18} />
-                    </button>
+                      return (
+                        <div
+                          key={sale.id}
+                          className="cursor-pointer border-b border-[#f6e1d0] px-3 py-2.5 transition-colors last:border-0 hover:bg-[#fff8f2]"
+                          onClick={() => handleSelectSale(sale)}
+                        >
+                          <div className="flex items-baseline justify-between gap-3">
+                            <p className="truncate text-sm font-semibold">
+                              {sale.userName}{' '}
+                              <span className="font-normal text-[#5b6b86]">({sale.orderId || 'N/A'})</span>
+                            </p>
+                            <p className="flex-none text-sm font-semibold tabular-nums text-[#9a3412]">₹{calculatedAmount.toFixed(2)}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                }
-              >
-                {originalSaleItems.length === 0 ? (
-                  <p className="m-3 rounded-sm bg-[#fff8f2] px-3 py-4 text-center text-sm text-[#5b6b86]">
-                    No returnable items found for this order.
-                  </p>
-                ) : (
-                  <>
-                    {/* Desktop table header (matches ReturnListItem grid) */}
-                    <div className={`hidden 2xl:grid ${RETURN_ITEM_GRID_BOUGHT} gap-x-3 border-b border-[#f6e1d0] bg-[#fff8f2] px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]`}>
-                      <span />
-                      <span>Item</span>
-                      <span className="text-right">Bought</span>
-                      <span>Return qty</span>
-                      <span className="text-right">Price</span>
-                      <span className="text-right">Subtotal</span>
-                    </div>
-
-                    <div className="flex flex-col gap-2 p-3 2xl:gap-0 2xl:p-0">
-                      {filteredReturnItems.map((item) => (
-                        <ReturnListItem
-                          key={item.id}
-                          item={item}
-                          isSelected={selectedReturnIds.has(item.id)}
-                          onToggle={handleToggleReturnItem}
-                          onQuantityChange={(id, val) => {
-                            const item = originalSaleItems.find(i => i.id === id);
-                            if (!item) return;
-                            const safeQty = Math.min(Math.max(1, val), (item as any).originalQuantity);
-                            handleListChange(setOriginalSaleItems, id, 'quantity', safeQty);
-                          }}
-                          showMrp={true}
-                          theme="orange"
-                          showBought
-                        />
-                      ))}
-                    </div>
-
-                    <div className="flex flex-wrap justify-end gap-x-6 gap-y-1 rounded-sm border-t border-[#f6e1d0] bg-[#fff8f2] px-4 py-2.5 text-[13px] text-[#45556c]">
-                      <span>Selected <b className="tabular-nums text-[#0f172b]">{selectedReturnIds.size} of {originalSaleItems.length}</b> items</span>
-                      <span>Return qty <b className="tabular-nums text-[#0f172b]">{returnQty}</b></span>
-                      <span>Return value <b className="tabular-nums text-[#0f172b]">₹{totalReturnGross.toFixed(2)}</b></span>
-                    </div>
-                  </>
                 )}
-              </Section>
+              </div>
 
-              {/* Transaction type (below xl only; wide screens have it in the summary panel) */}
-              <Section
-                className="xl:hidden"
-                icon={<Tint><Ico d={ICON.swap} /></Tint>}
-                title="Transaction type"
-              >
-                <TypeCards
-                  value={modeOfReturn}
-                  onChange={setModeOfReturn}
-                  refundValue="Refund"
-                  disableCredit={isDueSale}
-                />
-              </Section>
+              {selectedSale && (
+                <div className="grid grid-cols-2 gap-px rounded-sm border border-[#f6e1d0] bg-[#f6e1d0] lg:grid-cols-4">
+                  <Fact label="Order">
+                    <b className="block truncate text-[13px] font-semibold tabular-nums">{selectedSale.orderId}</b>
+                  </Fact>
+                  <Fact label="Customer">
+                    <input type="text" value={partyName} readOnly className={factInput} />
+                  </Fact>
 
-              {/* Exchange section */}
-              {isExchange && (
+                  {/* Phone (with customer dropdown, unchanged behaviour) */}
+                  <div className="relative min-w-0 bg-white px-3 py-2" ref={customerDropdownRef}>
+                    <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]">Phone</span>
+                    <input
+                      type="text"
+                      value={partyNumber}
+                      readOnly
+                      className={factInput}
+                      autoComplete="off"
+                      placeholder="Search customer by number or name..."
+                      maxLength={10}
+                    />
+                    {isCustomerDropdownOpen && filteredCustomers.length > 0 && (
+                      <div className="absolute left-0 top-full z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-sm border border-[#f6e1d0] bg-white shadow-[0_10px_28px_rgba(21,48,140,0.14)]">
+                        {filteredCustomers.map((customer) => (
+                          <div
+                            key={customer.id}
+                            className="cursor-pointer border-b border-[#f6e1d0] p-2.5 last:border-0 hover:bg-[#fff8f2]"
+                            onClick={() => handleSelectCustomer(customer)}
+                          >
+                            <p className="text-sm font-semibold">{customer.name}</p>
+                            <p className="text-xs text-[#5b6b86]">{customer.number}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <Fact label="From">
+                    <b className="block truncate text-[13px] font-semibold">Catalogue order</b>
+                  </Fact>
+                  <Fact label="Paid">
+                    <b className="block text-[13px] font-semibold tabular-nums text-[#008236]">₹{paidAmountOnSale.toFixed(2)}</b>
+                  </Fact>
+                  <Fact label="Due on order">
+                    <b className="block text-[13px] font-semibold tabular-nums">₹{dueOnOrder.toFixed(2)}</b>
+                  </Fact>
+                  <Fact label="Earlier returns">
+                    <b className="block text-[13px] font-semibold">
+                      {earlierReturnsCount === 0 ? 'None' : `${earlierReturnsCount} ${earlierReturnsCount === 1 ? 'return' : 'returns'}`}
+                    </b>
+                  </Fact>
+                  <Fact label="Return date">
+                    <input
+                      type="date"
+                      value={returnDate}
+                      onChange={(e) => setReturnDate(e.target.value)}
+                      className={factInput}
+                    />
+                  </Fact>
+                </div>
+              )}
+            </Section>
+
+            {selectedSale && (
+              <>
+                {/* Select return items */}
                 <Section
-                  icon={<Tint tone="green"><Ico d={ICON.box} /></Tint>}
-                  title="Exchange items"
+                  flush
+                  icon={<Tint><Ico d={ICON.ret} /></Tint>}
+                  title="Select return items"
                   right={
                     <div className="flex items-center gap-2">
-                      <div className="min-w-0 flex-1 sm:w-72 sm:flex-none">
-                        <SearchableItemInput
-                          label=""
-                          placeholder="Search inventory..."
-                          // FIX: availableItems ko map karke purchasePrice ensure karein
-                          items={availableItems.map((item: any) => ({
-                            ...item,
-                            purchasePrice: item.purchasePrice ?? 0 // Agar undefined hai toh 0 set kar do
-                          }))}
-                          onItemSelected={handleExchangeItemSelected}
-                          isLoading={isLoading}
-                          error={error}
-                          onSearchChange={setExchangeSearchQuery}
+                      <div className={`${fieldSm} flex-1 sm:w-60 sm:flex-none`}>
+                        <Ico d={ICON.search} size={16} />
+                        <input
+                          type="text"
+                          value={returnItemSearchQuery}
+                          onChange={(e) => setReturnItemSearchQuery(e.target.value)}
+                          placeholder="Search items in this order"
+                          className="min-w-0 flex-1 border-0 bg-transparent text-sm text-[#0f172b] outline-none placeholder:text-[#5b6b86]"
+                          autoComplete="off"
                         />
                       </div>
                       <button onClick={() => setScannerPurpose('item')} className={scanSm} aria-label="Scan item">
@@ -641,107 +546,194 @@ const OrdersReturnPage: React.FC = () => {
                     </div>
                   }
                 >
-                  {exchangeItems.length > 0 && (
-                    <div className="overflow-hidden rounded-sm border border-[#f6e1d0]">
-                      <div className="border-b border-[#f6e1d0] bg-[#fff8f2] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]">
-                        Exchange cart · {exchangeItems.length} {exchangeItems.length === 1 ? 'item' : 'items'}
+                  {originalSaleItems.length === 0 ? (
+                    <p className="m-3 rounded-sm bg-[#fff8f2] px-3 py-4 text-center text-sm text-[#5b6b86]">
+                      No returnable items found for this order.
+                    </p>
+                  ) : (
+                    <>
+                      {/* Desktop table header (matches ReturnListItem grid) */}
+                      <div className={`hidden 2xl:grid ${RETURN_ITEM_GRID_BOUGHT} gap-x-3 border-b border-[#f6e1d0] bg-[#fff8f2] px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]`}>
+                        <span />
+                        <span>Item</span>
+                        <span className="text-right">Bought</span>
+                        <span>Return qty</span>
+                        <span className="text-right">Price</span>
+                        <span className="text-right">Subtotal</span>
                       </div>
 
-                      <div className="max-h-60 overflow-y-auto bg-[#fff8f2]">
-                        <GenericCartList<any>
-                          items={mappedExchangeItems}
-                          availableItems={availableItems as any}
-                          basePriceKey="mrp"
-                          priceLabel="MRP"
-                          settings={{
-                            enableRounding: false,
-                            roundingInterval: 1,
-                            enableItemWiseDiscount: catalogueSettings?.enableItemWiseDiscount ?? false,
-                            enableDiscount2: false,
-                            lockDiscount: false,
-                            lockPrice: false,
-                            hideMrp: false
-                          }}
-                          applyRounding={applyRounding}
-                          State={State}
-                          setModal={setModal}
-
-                          onOpenEditDrawer={(item: any) => {
-                            const realItem = availableItems.find(i => i.id === item.id);
-                            if (!realItem) {
-                              console.error("Original item not found");
-                              return;
-                            }
-
-                            setSelectedItemForEdit(realItem as any);
-                            setIsItemDrawerOpen(true);
-                          }}
-
-                          onDeleteItem={(id: any) => handleRemoveFromList(setExchangeItems, id)}
-                          onDiscountChange={handleDiscountChange}
-                          onDiscount2Change={() => { }}
-                          onCustomPriceChange={handleCustomPriceChange}
-                          onCustomPriceBlur={handleCustomPriceBlur}
-                          onQuantityChange={handleQuantityChange}
-                        />
+                      <div className="flex flex-col gap-2 p-3 2xl:gap-0 2xl:p-0">
+                        {filteredReturnItems.map((item) => (
+                          <ReturnListItem
+                            key={item.id}
+                            item={item}
+                            isSelected={selectedReturnIds.has(item.id)}
+                            onToggle={handleToggleReturnItem}
+                            onQuantityChange={(id, val) => {
+                              const item = originalSaleItems.find(i => i.id === id);
+                              if (!item) return;
+                              const safeQty = Math.min(Math.max(1, val), (item as any).originalQuantity);
+                              handleListChange(setOriginalSaleItems, id, 'quantity', safeQty);
+                            }}
+                            showMrp={true}
+                            theme="orange"
+                            showBought
+                          />
+                        ))}
                       </div>
-                    </div>
-                  )}
 
-                  {isItemDrawerOpen && selectedItemForEdit && (
-                    <ItemEditDrawer
-                      item={selectedItemForEdit}
-                      isOpen={isItemDrawerOpen}
-                      onClose={handleCloseEditDrawer}
-                      onSaveSuccess={handleSaveSuccess}
-                      itemGroupRoute={`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`}
-                    />
+                      <div className="flex flex-wrap justify-end gap-x-6 gap-y-1 rounded-sm border-t border-[#f6e1d0] bg-[#fff8f2] px-4 py-2.5 text-[13px] text-[#45556c]">
+                        <span>Selected <b className="tabular-nums text-[#0f172b]">{selectedReturnIds.size} of {originalSaleItems.length}</b> items</span>
+                        <span>Return qty <b className="tabular-nums text-[#0f172b]">{returnQty}</b></span>
+                        <span>Return value <b className="tabular-nums text-[#0f172b]">₹{totalReturnGross.toFixed(2)}</b></span>
+                      </div>
+                    </>
                   )}
                 </Section>
-              )}
 
-              {/* Below xl: inline summary (above the sticky action bar) */}
-              <Section className="xl:hidden" title="Return summary">
-                <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 text-sm">
-                  <dt className="text-[#45556c]">Return value</dt>
-                  <dd className="text-right tabular-nums">₹{totalReturnGross.toFixed(2)}</dd>
-                  {discountDeducted > 0 && (
-                    <>
-                      <dt className="text-xs text-[#d5000c]">Less bill discount</dt>
-                      <dd className="text-right text-xs tabular-nums text-[#d5000c]">- ₹{discountDeducted.toFixed(2)}</dd>
-                    </>
-                  )}
-                  {isExchange && (
-                    <>
-                      <dt className="text-[#45556c]">Exchange value</dt>
-                      <dd className="text-right tabular-nums text-[#9a3412]">₹{totalExchangeValue.toFixed(2)}</dd>
-                    </>
-                  )}
-                </dl>
-                {renderBalance()}
-              </Section>
-            </>
-          )}
+                {/* Transaction type (below xl only; wide screens have it in the summary panel) */}
+                <Section
+                  className="xl:hidden"
+                  icon={<Tint><Ico d={ICON.swap} /></Tint>}
+                  title="Transaction type"
+                >
+                  <TypeCards
+                    value={modeOfReturn}
+                    onChange={setModeOfReturn}
+                    refundValue="Refund"
+                    disableCredit={isDueSale}
+                  />
+                </Section>
 
-        </div>
+                {/* Exchange section */}
+                {isExchange && (
+                  <Section
+                    icon={<Tint tone="green"><Ico d={ICON.box} /></Tint>}
+                    title="Exchange items"
+                    right={
+                      <div className="flex items-center gap-2">
+                        <div className="min-w-0 flex-1 sm:w-72 sm:flex-none">
+                          <SearchableItemInput
+                            label=""
+                            placeholder="Search inventory..."
+                            // FIX: availableItems ko map karke purchasePrice ensure karein
+                            items={availableItems.map((item: any) => ({
+                              ...item,
+                              purchasePrice: item.purchasePrice ?? 0 // Agar undefined hai toh 0 set kar do
+                            }))}
+                            onItemSelected={handleExchangeItemSelected}
+                            isLoading={isLoading}
+                            error={error}
+                            onSearchChange={setExchangeSearchQuery}
+                          />
+                        </div>
+                        <button onClick={() => setScannerPurpose('item')} className={scanSm} aria-label="Scan item">
+                          <IconScanCircle width={18} height={18} />
+                        </button>
+                      </div>
+                    }
+                  >
+                    {exchangeItems.length > 0 && (
+                      <div className="overflow-hidden rounded-sm border border-[#f6e1d0]">
+                        <div className="border-b border-[#f6e1d0] bg-[#fff8f2] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]">
+                          Exchange cart · {exchangeItems.length} {exchangeItems.length === 1 ? 'item' : 'items'}
+                        </div>
 
-        {/* --- PINNED ACTION BAR (below xl) --- same as the artifact's mobile "checkout" bar:
-            a flex sibling under the scroll area, so it always sits at the bottom of the page. */}
-        {selectedSale && (
-          <div className="flex flex-none items-center gap-3 border-t border-[#f6e1d0] bg-white px-4 py-3 xl:hidden">
-            <div className="min-w-0">
-              <span className={`block text-xs ${balanceTone}`}>{getBalanceLabel()}</span>
-              <b className={`block text-xl leading-[26px] tabular-nums ${balanceTone}`}>₹{Math.abs(finalBalance).toFixed(2)}</b>
-            </div>
-            <button
-              onClick={handleProcessReturn}
-              disabled={exchangeBlocked || (isExchange && itemsToReturn.length === 0)}
-              className="ml-auto h-[52px] min-w-0 flex-1 rounded-sm bg-[#c2410c] px-4 text-[15px] font-semibold text-white transition-colors hover:bg-[#9a3412] disabled:cursor-not-allowed disabled:bg-[#c2410c]/45 sm:max-w-sm"
-            >
-              <span className="block truncate">{actionLabel}</span>
-            </button>
+                        <div className="max-h-60 overflow-y-auto bg-[#fff8f2]">
+                          <GenericCartList<any>
+                            items={mappedExchangeItems}
+                            availableItems={availableItems as any}
+                            basePriceKey="mrp"
+                            priceLabel="MRP"
+                            settings={{
+                              enableRounding: false,
+                              roundingInterval: 1,
+                              enableItemWiseDiscount: catalogueSettings?.enableItemWiseDiscount ?? false,
+                              enableDiscount2: false,
+                              lockDiscount: false,
+                              lockPrice: false,
+                              hideMrp: false
+                            }}
+                            applyRounding={applyRounding}
+                            State={State}
+                            setModal={setModal}
+
+                            onOpenEditDrawer={(item: any) => {
+                              const realItem = availableItems.find(i => i.id === item.id);
+                              if (!realItem) {
+                                console.error("Original item not found");
+                                return;
+                              }
+
+                              setSelectedItemForEdit(realItem as any);
+                              setIsItemDrawerOpen(true);
+                            }}
+
+                            onDeleteItem={(id: any) => handleRemoveFromList(setExchangeItems, id)}
+                            onDiscountChange={handleDiscountChange}
+                            onDiscount2Change={() => { }}
+                            onCustomPriceChange={handleCustomPriceChange}
+                            onCustomPriceBlur={handleCustomPriceBlur}
+                            onQuantityChange={handleQuantityChange}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {isItemDrawerOpen && selectedItemForEdit && (
+                      <ItemEditDrawer
+                        item={selectedItemForEdit}
+                        isOpen={isItemDrawerOpen}
+                        onClose={handleCloseEditDrawer}
+                        onSaveSuccess={handleSaveSuccess}
+                        itemGroupRoute={`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`}
+                      />
+                    )}
+                  </Section>
+                )}
+
+                {/* Below xl: inline summary (above the sticky action bar) */}
+                <Section className="xl:hidden" title="Return summary">
+                  <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 text-sm">
+                    <dt className="text-[#45556c]">Return value</dt>
+                    <dd className="text-right tabular-nums">₹{totalReturnGross.toFixed(2)}</dd>
+                    {discountDeducted > 0 && (
+                      <>
+                        <dt className="text-xs text-[#d5000c]">Less bill discount</dt>
+                        <dd className="text-right text-xs tabular-nums text-[#d5000c]">- ₹{discountDeducted.toFixed(2)}</dd>
+                      </>
+                    )}
+                    {isExchange && (
+                      <>
+                        <dt className="text-[#45556c]">Exchange value</dt>
+                        <dd className="text-right tabular-nums text-[#9a3412]">₹{totalExchangeValue.toFixed(2)}</dd>
+                      </>
+                    )}
+                  </dl>
+                  {renderBalance()}
+                </Section>
+              </>
+            )}
+
           </div>
-        )}
+
+          {/* --- PINNED ACTION BAR (below xl) --- same as the artifact's mobile "checkout" bar:
+            a flex sibling under the scroll area, so it always sits at the bottom of the page. */}
+          {selectedSale && (
+            <div className="flex flex-none items-center gap-3 border-t border-[#f6e1d0] bg-white px-4 py-3 xl:hidden">
+              <div className="min-w-0">
+                <span className={`block text-xs ${balanceTone}`}>{getBalanceLabel()}</span>
+                <b className={`block text-xl leading-[26px] tabular-nums ${balanceTone}`}>₹{Math.abs(finalBalance).toFixed(2)}</b>
+              </div>
+              <button
+                onClick={handleProcessReturn}
+                disabled={exchangeBlocked || (isExchange && itemsToReturn.length === 0)}
+                className="ml-auto h-[52px] min-w-0 flex-1 rounded-sm bg-[#c2410c] px-4 text-[15px] font-semibold text-white transition-colors hover:bg-[#9a3412] disabled:cursor-not-allowed disabled:bg-[#c2410c]/45 sm:max-w-sm"
+              >
+                <span className="block truncate">{actionLabel}</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* --- RIGHT PANEL (wide screens only, xl+) --- */}
@@ -805,11 +797,10 @@ const OrdersReturnPage: React.FC = () => {
 
               <button
                 onClick={handleProcessReturn}
-                className={`mt-auto h-[54px] w-full rounded-sm px-4 text-[15px] font-semibold transition-colors ${
-                  exchangeBlocked
+                className={`mt-auto h-[54px] w-full rounded-sm px-4 text-[15px] font-semibold transition-colors ${exchangeBlocked
                     ? 'cursor-not-allowed bg-[#c2410c]/45 text-white'
                     : 'bg-[#c2410c] text-white hover:bg-[#9a3412]'
-                }`}
+                  }`}
               >
                 {actionLabel}
               </button>

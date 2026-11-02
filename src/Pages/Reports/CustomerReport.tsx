@@ -9,7 +9,6 @@ import {
   ArrowUpDown,
   CalendarDays,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   Eye,
   EyeOff,
@@ -25,6 +24,7 @@ import {
   X,
 } from 'lucide-react';
 import { Modal } from '../../constants/Modal';
+import BackButton from '../../Components/BackButton';
 import { State } from '../../enums';
 import { ROUTES } from '../../constants/routes.constants';
 import useCustomerReport from './CustomerReportComponents/useCustomerReport';
@@ -755,9 +755,8 @@ const CustomerReport: React.FC = () => {
       <th className={`px-4 py-3 font-semibold ${align === 'right' ? 'text-right' : 'text-left'}`}>
         <button
           onClick={() => handleSort(key)}
-          className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-blue-800 ${
-            align === 'right' ? 'flex-row-reverse' : ''
-          } ${isActive ? 'text-blue-700' : ''}`}
+          className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-blue-800 ${align === 'right' ? 'flex-row-reverse' : ''
+            } ${isActive ? 'text-blue-700' : ''}`}
         >
           {label}
           <Icon size={11} className={isActive ? 'opacity-100' : 'opacity-40'} />
@@ -780,9 +779,8 @@ const CustomerReport: React.FC = () => {
       }}
       disabled={sendingFor === row.key || !row.phone}
       title={row.phone ? 'Send a payment reminder on WhatsApp' : 'No phone number'}
-      className={`inline-flex items-center gap-1.5 rounded-sm border border-slate-300 bg-white font-medium text-slate-700 transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-50 ${
-        compact ? 'px-2.5 py-1 text-xs' : 'px-3 py-1.5 text-sm'
-      }`}
+      className={`inline-flex items-center gap-1.5 rounded-sm border border-slate-300 bg-white font-medium text-slate-700 transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-50 ${compact ? 'px-2.5 py-1 text-xs' : 'px-3 py-1.5 text-sm'
+        }`}
     >
       <MessageCircle size={compact ? 12 : 14} className="text-green-600" />
       {sendingFor === row.key ? 'Sending…' : 'Remind'}
@@ -936,10 +934,9 @@ const CustomerReport: React.FC = () => {
   const fetchingClass = isFetching ? 'pointer-events-none opacity-50' : '';
 
   const chipClass = (active: boolean) =>
-    `shrink-0 whitespace-nowrap rounded-sm border px-3.5 py-1.5 text-sm font-medium transition ${
-      active
-        ? 'border-slate-900 bg-slate-900 text-white'
-        : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+    `shrink-0 whitespace-nowrap rounded-sm border px-3.5 py-1.5 text-sm font-medium transition ${active
+      ? 'border-slate-900 bg-slate-900 text-white'
+      : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
     }`;
 
   const mobileSortValue = sortConfig.key;
@@ -1003,13 +1000,9 @@ const CustomerReport: React.FC = () => {
 
       {/* HEADER */}
       <header className="mb-4 flex items-center gap-2 md:gap-3">
-        <button
-          onClick={() => navigate(-1)}
-          aria-label="Back"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-slate-700 transition hover:bg-slate-200 md:border md:border-slate-300 md:bg-white"
-        >
-          <ChevronLeft size={20} />
-        </button>
+        <div className="flex-shrink-0">
+          <BackButton />
+        </div>
 
         <div className="min-w-0 flex-1">
           <p className="hidden text-xs text-slate-500 md:block">Reports /</p>
@@ -1111,9 +1104,8 @@ const CustomerReport: React.FC = () => {
 
         <button
           onClick={() => setIsRangeOpen((o) => !o)}
-          className={`hidden shrink-0 items-center gap-2 rounded-sm border bg-white px-3 py-1.5 text-sm font-medium text-slate-800 transition hover:border-slate-400 md:inline-flex ${
-            datePreset === 'custom' ? 'border-slate-900' : 'border-slate-300'
-          }`}
+          className={`hidden shrink-0 items-center gap-2 rounded-sm border bg-white px-3 py-1.5 text-sm font-medium text-slate-800 transition hover:border-slate-400 md:inline-flex ${datePreset === 'custom' ? 'border-slate-900' : 'border-slate-300'
+            }`}
         >
           <CalendarDays size={15} className="text-slate-500" />
           {rangeLabel}
@@ -1214,21 +1206,21 @@ const CustomerReport: React.FC = () => {
             </dl>
             {topDebtor && (
               <div className="mt-auto pt-4">
-              <div className="flex items-center gap-3 rounded-sm border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
-                <MessageCircle size={14} className="shrink-0 text-green-600" />
-                <p className="min-w-0 flex-1">
-                  <span className="font-medium">{displayCustomerName(topDebtor)}</span> owes{' '}
-                  {formatCurrency(Math.round(topDebtor.due))} since {formatDayMonth(topDebtorSince)}.
-                  {otherDebtors > 0 && ` ${plural(otherDebtors, 'more customer')} ${otherDebtors === 1 ? 'owes' : 'owe'} too.`}
-                </p>
-                <button
-                  onClick={() => sendReminder(topDebtor)}
-                  disabled={sendingFor === topDebtor.key || !topDebtor.phone}
-                  className="shrink-0 rounded-sm border border-amber-300 bg-white px-3 py-1.5 font-semibold text-slate-800 transition hover:border-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {sendingFor === topDebtor.key ? 'Sending…' : 'Send reminder'}
-                </button>
-              </div>
+                <div className="flex items-center gap-3 rounded-sm border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
+                  <MessageCircle size={14} className="shrink-0 text-green-600" />
+                  <p className="min-w-0 flex-1">
+                    <span className="font-medium">{displayCustomerName(topDebtor)}</span> owes{' '}
+                    {formatCurrency(Math.round(topDebtor.due))} since {formatDayMonth(topDebtorSince)}.
+                    {otherDebtors > 0 && ` ${plural(otherDebtors, 'more customer')} ${otherDebtors === 1 ? 'owes' : 'owe'} too.`}
+                  </p>
+                  <button
+                    onClick={() => sendReminder(topDebtor)}
+                    disabled={sendingFor === topDebtor.key || !topDebtor.phone}
+                    className="shrink-0 rounded-sm border border-amber-300 bg-white px-3 py-1.5 font-semibold text-slate-800 transition hover:border-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {sendingFor === topDebtor.key ? 'Sending…' : 'Send reminder'}
+                  </button>
+                </div>
               </div>
             )}
           </div>

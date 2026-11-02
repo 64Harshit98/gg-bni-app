@@ -1,5 +1,4 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import XLSX from 'xlsx-js-style';
@@ -9,7 +8,6 @@ import {
   ArrowUpDown,
   CalendarDays,
   ChevronDown,
-  ChevronLeft,
   ExternalLink,
   Eye,
   EyeOff,
@@ -60,6 +58,7 @@ import { resolveCompanyLogoBase64 } from '../hooks/useCompanyLogo';
 import { useAuth } from '../../context/auth-context';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
+import BackButton from '../../Components/BackButton';
 
 type BillFilter = 'all' | 'missing' | 'loss';
 
@@ -93,8 +92,6 @@ const CatalogueProfitLossReport: React.FC = () => {
     error,
     refresh,
   } = useCataloguePnlReport();
-
-  const navigate = useNavigate();
 
   // Company name is cached locally so we don't pay a Firestore read on every visit.
   const [companyName, setCompanyName] = useState<string>('');
@@ -930,17 +927,14 @@ const CatalogueProfitLossReport: React.FC = () => {
 
       {/* HEADER */}
       <header className="mb-4 flex items-center gap-2 md:gap-3">
-        <button
-          onClick={() => navigate(-1)}
-          aria-label="Back"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-slate-700 transition hover:bg-orange-100 md:border md:border-slate-300 md:bg-white"
-        >
-          <ChevronLeft size={20} />
-        </button>
+               <div className="flex-shrink-0">
+          <BackButton />
+        </div>
 
         <div className="min-w-0 flex-1">
           <p className="hidden text-xs text-slate-500 md:block">Reports /</p>
           <div className="flex items-baseline gap-3">
+            <h1 className="text-lg font-bold text-slate-900 md:text-xl">Profit & loss</h1>
             <h1 className="text-lg font-bold text-slate-900 md:text-xl">Profit & loss</h1>
             <span className="hidden text-xs text-slate-500 md:inline">
               {plural(rangeBills.length, 'bill')} · {rangeLabelShort}

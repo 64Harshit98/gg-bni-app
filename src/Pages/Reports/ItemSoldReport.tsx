@@ -1,5 +1,4 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { useNavigate } from 'react-router';
 import {
     AlertTriangle,
     ArrowDown,
@@ -7,7 +6,6 @@ import {
     ArrowUpDown,
     CalendarDays,
     ChevronDown,
-    ChevronLeft,
     ChevronRight,
     Eye,
     EyeOff,
@@ -33,6 +31,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 import { useAuth } from '../../context/auth-context';
 import { useCatalogueData } from '../../context/CatalogueDataContext';
+import BackButton from '../../Components/BackButton';
 import useSalesReport from './SalesReportComponents/useSalesReport';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -77,8 +76,6 @@ const ItemsSoldReport: React.FC = () => {
         datePreset,
         authLoading,
     } = useSalesReport();
-
-    const navigate = useNavigate();
 
     /* ---------- LOCAL STATES ---------- */
     const [showSearch, setShowSearch] = useState(false);
@@ -817,13 +814,9 @@ const ItemsSoldReport: React.FC = () => {
 
             {/* HEADER */}
             <header className="mb-4 flex items-center gap-2 md:gap-3">
-                <button
-                    onClick={() => navigate(-1)}
-                    aria-label="Back"
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-slate-700 transition hover:bg-slate-200 md:border md:border-slate-300 md:bg-white"
-                >
-                    <ChevronLeft size={20} />
-                </button>
+                <div className="flex-shrink-0">
+                    <BackButton />
+                </div>
 
                 <div className="min-w-0 flex-1">
                     <p className="hidden text-xs text-slate-500 md:block">Reports / Item reports /</p>

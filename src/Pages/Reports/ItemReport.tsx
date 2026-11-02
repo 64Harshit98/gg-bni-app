@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router';
+import { useLocation } from 'react-router';
 import {
   AlertTriangle,
   ArrowDown,
@@ -7,7 +7,6 @@ import {
   ArrowUpDown,
   CalendarDays,
   ChevronDown,
-  ChevronLeft,
   Eye,
   EyeOff,
   FileText,
@@ -26,6 +25,7 @@ import XLSX from 'xlsx-js-style';
 import { Spinner } from '../../constants/Spinner';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import { useAuth } from '../../context/auth-context';
+import BackButton from '../../Components/BackButton';
 import { useGodowns, useGodownStock, SHOP_ID, SHOP_NAME } from '../hooks/useStockTransfer';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
@@ -72,7 +72,6 @@ const inrRound = (n: number) => {
 
 const ItemReport: React.FC = () => {
   const { currentUser, hasPermission } = useAuth();
-  const navigate = useNavigate();
   const canEditItems = hasPermission(Permissions.ManageItems);
   const [showSearch, setShowSearch] = useState(false);
   const [companyName, setCompanyName] = useState<string>('');
@@ -1019,13 +1018,9 @@ const ItemReport: React.FC = () => {
 
       {/* HEADER */}
       <header className="mb-4 flex items-center gap-2 md:gap-3">
-        <button
-          onClick={() => navigate(-1)}
-          aria-label="Back"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-slate-700 transition hover:bg-slate-200 md:border md:border-slate-300 md:bg-white"
-        >
-          <ChevronLeft size={20} />
-        </button>
+        <div className="flex-shrink-0">
+          <BackButton />
+        </div>
 
         <div className="min-w-0 flex-1">
           <p className="hidden text-xs text-slate-500 md:block">Reports / Item reports /</p>

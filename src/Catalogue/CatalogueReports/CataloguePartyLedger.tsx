@@ -5,7 +5,6 @@ import {
     CalendarDays,
     Check,
     ChevronDown,
-    ChevronLeft,
     ExternalLink,
     FileSpreadsheet,
     FileText,
@@ -59,6 +58,7 @@ import { useOrderCommunication } from '../Orders/hooks';
 import type { Order } from '../Orders/orders.types';
 import { botMasterService } from '../../Pages/Additional/Whatsapp/WhatsappApi';
 import { ROUTES } from '../../constants/routes.constants';
+import BackButton from '../../Components/BackButton';
 
 /*
   Catalogue palette (SELLAR artifact `.cat`): primary #c2410c = orange-700, accent #f97316 = orange-500,
@@ -1375,9 +1375,9 @@ const CataloguePartyLedger: React.FC = () => {
 
                 {/* HEADER */}
                 <header className="mb-4 flex items-center gap-2 md:gap-3">
-                    <button onClick={() => { setSelectedPartyName(null); setExpandedBillId(null); }} aria-label="Back to party list" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-slate-700 transition hover:bg-orange-100 md:border md:border-slate-300 md:bg-white">
-                        <ChevronLeft size={20} />
-                    </button>
+                    <div className="flex-shrink-0">
+                        <BackButton onClick={() => { setSelectedPartyName(null); setExpandedBillId(null); }} />
+                    </div>
                     <span className="hidden md:block">{avatar(party.partyName)}</span>
                     <div className="min-w-0 flex-1">
                         <p className="hidden text-xs text-slate-500 md:block">Party ledger /</p>
@@ -1686,9 +1686,9 @@ const CataloguePartyLedger: React.FC = () => {
 
             {/* HEADER */}
             <header className="mb-4 flex items-center gap-2 md:gap-3">
-                <button onClick={() => navigate(-1)} aria-label="Back" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-slate-700 transition hover:bg-orange-100 md:border md:border-slate-300 md:bg-white">
-                    <ChevronLeft size={20} />
-                </button>
+                <div className="flex-shrink-0">
+                    <BackButton />
+                </div>
                 <div className="min-w-0 flex-1">
                     <p className="hidden text-xs text-slate-500 md:block">Reports /</p>
                     <div className="flex items-baseline gap-3">

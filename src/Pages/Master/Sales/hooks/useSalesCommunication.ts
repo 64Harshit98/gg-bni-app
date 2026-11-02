@@ -202,6 +202,16 @@ export const useSalesCommunication = ({
                     return total;
                 } catch { return 0; }
             })(),
+             // Credit note balance (informational row on A4 bill)
+            creditNoteBalance: await (async () => {
+                if (!currentUser?.companyId || !invoice.partyNumber) return 0;
+                try {
+                    const phone = String(invoice.partyNumber).replace(/\D/g, '').slice(-10);
+                    if (!phone) return 0;
+                    const snap = await getDoc(doc(db, 'companies', currentUser.companyId, 'customers', phone));
+                    return snap.exists() ? Number(snap.data().creditBalance || 0) : 0;
+                } catch { return 0; }
+            })(),
             bankDetails: {
                 accountName: billSettings.accountName || businessInfo?.accountHolderName,
                 accountNumber: billSettings.accountNumber || businessInfo?.accountNumber,

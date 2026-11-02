@@ -23,6 +23,7 @@ import type { QuantitySlab, AddOnGroup } from '../constants/models';
 import { type PriceTierForm, toPriceTierForm, fromPriceTierForm, emptyPriceTierForm } from '../lib/priceTiers';
 import { validateQuantitySlabs, buildAddOnPicks } from '../constants/models';
 import { useAddOnTemplates } from '../lib/addOnTemplates';
+import { ItemStockLocations } from './ItemStockLocation';
 
 interface ItemEditDrawerProps {
     item: Item | null;
@@ -246,6 +247,33 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
     const [isSaving, setIsSaving] = useState(false);
 
     const [isFetching, setIsFetching] = useState(false);
+
+    // Desktop shows the stock-locations card in the left column; phones show it inside the Stock card.
+    // Only one is mounted at a time so listeners aren't duplicated.
+    const [isDesktop, setIsDesktop] = useState(
+        () => typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches
+    );
+    useEffect(() => {
+        const mq = window.matchMedia('(min-width: 768px)');
+        const onChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+        mq.addEventListener('change', onChange);
+        return () => mq.removeEventListener('change', onChange);
+    }, []);
+
+    // After a transfer the item's shop stock changes in Firestore. Pull it into the form,
+    // otherwise "Save changes" would overwrite it with the old value.
+    const refreshStockAfterTransfer = async () => {
+        const cid = item?.companyId || currentUser?.companyId;
+        if (!item?.id || !cid) return;
+        try {
+            const snap = await getDoc(doc(db, 'companies', cid, 'items', item.id));
+            if (snap.exists()) {
+                setFormData(prev => ({ ...prev, stock: (snap.data() as any).stock ?? 0 }));
+            }
+        } catch (e) {
+            console.error('Failed to refresh stock after transfer', e);
+        }
+    };
 
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
     const firstInputRef = useRef<HTMLInputElement>(null);
@@ -877,9 +905,12 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
     const uiPurchase = Number(formData.purchasePrice || 0);
     const uiDiscount = Number(formData.discount || 0);
     const uiStock = Number(formData.stock ?? 0);
-    const uiCustomerPays = uiSales - (uiSales * uiDiscount) / 100;
-    // Profit only makes sense when BOTH sale price and purchase price are entered
-    const uiProfit = uiSales > 0 && uiPurchase > 0 ? uiCustomerPays - uiPurchase : null;
+    // If Sale price is empty/0, the item sells at MRP
+    const uiBase = uiSales > 0 ? uiSales : uiMrp;
+    const uiDiscountAmt = (uiBase * uiDiscount) / 100;
+    const uiCustomerPays = uiBase - uiDiscountAmt;
+    // Profit only makes sense when BOTH an effective price and purchase price are entered
+    const uiProfit = uiBase > 0 && uiPurchase > 0 ? uiCustomerPays - uiPurchase : null;
     const GST_SLABS = [0, 0.25, 3, 5, 12, 18, 28];
 
     const mrpWarn = uiMrp > 0 && uiSales > uiMrp ? 'Sale price is above MRP — check the printed MRP' : uiMrp === 0 && uiSales > 0 ? 'Below sale price — enter the printed MRP' : '';
@@ -1184,14 +1215,14 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                     <div className="hidden md:grid rounded-xl border border-(--dr-line) bg-white p-3.5 gap-2 shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]">
                                         <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]">At the counter</div>
                                         <div>
-                                            <span className="text-2xl font-semibold tabular-nums text-[#0f172b]">{fmtINR(uiCustomerPays)}</span>{' '}
+                                            <span className="text-2xl font-semibold tabular-nums text-[#0f172b]">{fmtINR(uiBase)}</span>{' '}
                                             <span className="text-xs text-[#5b6b86]">per {getUnitLabel()}</span>
                                         </div>
                                         <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 text-[13px]">
-                                            <dt className="text-[#45556c]">Sale price</dt>
-                                            <dd className="m-0 text-right font-semibold tabular-nums">{fmtINR(uiSales)}</dd>
+                                            <dt className="text-[#45556c]">{uiSales > 0 ? 'Sale price' : 'MRP (no sale price)'}</dt>
+                                            <dd className="m-0 text-right font-semibold tabular-nums">{fmtINR(uiBase)}</dd>
                                             <dt className="text-[#45556c]">Discount {uiDiscount}%</dt>
-                                            <dd className="m-0 text-right font-semibold tabular-nums">− {fmtINR((uiSales * uiDiscount) / 100)}</dd>
+                                            <dd className="m-0 text-right font-semibold tabular-nums">{fmtINR(uiDiscountAmt)}</dd>
                                             <dt className="text-[#45556c]">Profit</dt>
                                             <dd className={`m-0 text-right font-semibold tabular-nums ${uiProfit === null ? 'text-[#5b6b86] font-normal' : uiProfit < 0 ? 'text-[#d5000c]' : 'text-[#008236]'}`}>
                                                 {uiProfit === null ? 'needs cost' : fmtINR(uiProfit)}
@@ -1200,6 +1231,18 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                             <dd className={`m-0 text-right font-semibold tabular-nums ${uiStock < 0 ? 'text-[#d5000c]' : ''}`}>{uiStock} pcs</dd>
                                         </dl>
                                     </div>
+
+                                    {/* STOCK LOCATIONS + TRANSFER (desktop) */}
+                                    {isDesktop && isOpen && item?.id && (
+                                        <ItemStockLocations
+                                            itemId={item.id}
+                                            itemName={String(formData.name || item.name || '')}
+                                            unit={formData.unit}
+                                            barcode={formData.barcode}
+                                            theme={isCatalogue ? 'orange' : 'blue'}
+                                            onTransferred={refreshStockAfterTransfer}
+                                        />
+                                    )}
 
                                     {uiIssueCount > 0 && (
                                         <div className="flex items-start gap-2 rounded-lg bg-[#fff3dd] px-3 py-2 text-xs text-[#bb4d00]">
@@ -1430,7 +1473,11 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                             <FieldWrap
                                                 label="Sale price"
                                                 htmlFor="edit-salesPrice"
-                                                hint={uiSales > 0 ? `Customer pays ${fmtINR(uiCustomerPays)} after ${uiDiscount}% off` : undefined}
+                                                hint={uiSales === 0 && uiMrp > 0
+                                                    ? `Sale price blank — MRP ${fmtINR(uiMrp)} will be used`
+                                                    : uiDiscount > 0
+                                                        ? `${uiDiscount}% discount is applied separately at billing`
+                                                        : undefined}
                                             >
                                                 <div className="relative">
                                                     <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] text-[#5b6b86]">₹</span>
@@ -1477,7 +1524,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
 
                                             <FieldWrap label="Your profit">
                                                 <div className="flex h-10 items-center rounded-lg bg-(--dr-sunken) px-3 text-sm tabular-nums text-[#5b6b86]">
-                                                    {uiProfit === null ? 'Add both price' : fmtINR(uiProfit)}
+                                                    {uiProfit === null ? 'Add purchase price' : fmtINR(uiProfit)}
                                                 </div>
                                             </FieldWrap>
 
@@ -1563,6 +1610,21 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                 </div>
                                             </FieldWrap>
                                         </div>
+
+                                        {/* STOCK LOCATIONS + TRANSFER (phone) */}
+                                        {!isDesktop && isOpen && item?.id && (
+                                            <div className="mt-3 border-t border-(--dr-line) pt-3">
+                                                <ItemStockLocations
+                                                    compact
+                                                    itemId={item.id}
+                                                    itemName={String(formData.name || item.name || '')}
+                                                    unit={formData.unit}
+                                                    barcode={formData.barcode}
+                                                    theme={isCatalogue ? 'orange' : 'blue'}
+                                                    onTransferred={refreshStockAfterTransfer}
+                                                />
+                                            </div>
+                                        )}
                                     </SectionCard>
 
                                     {/* ---------- VARIANTS & CATALOGUE ---------- */}
@@ -1979,8 +2041,8 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 {/* ---------- STICKY FOOTER ---------- */}
                 <div className="flex items-center gap-2.5 px-3 md:px-5 pt-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-white border-t border-(--dr-line) shadow-[0_-6px_16px_rgba(21,48,140,0.06)]">
                     <div className="md:hidden mr-auto grid">
-                        <span className="text-xs text-[#45556c]">Customer pays</span>
-                        <b className="text-xl leading-6 font-semibold tabular-nums text-[#0f172b]">{fmtINR(uiCustomerPays)}</b>
+                        <span className="text-xs text-[#45556c]">Sale price</span>
+                        <b className="text-xl leading-6 font-semibold tabular-nums text-[#0f172b]">{fmtINR(uiBase)}</b>
                     </div>
                     <span className="hidden md:block mr-auto" />
                     <button

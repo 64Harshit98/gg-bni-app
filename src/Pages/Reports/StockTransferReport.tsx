@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   ArrowDown,
   ArrowLeftRight,
@@ -8,7 +7,6 @@ import {
   Boxes,
   CalendarDays,
   ChevronDown,
-  ChevronLeft,
   Eye,
   EyeOff,
   FileText,
@@ -33,6 +31,7 @@ import { doc, getDoc } from 'firebase/firestore';
 
 import { db } from '../../lib/Firebase';
 import { useAuth } from '../../context/auth-context';
+import BackButton from '../../Components/BackButton';
 import {
   useGodowns, useStockTransfers, useGodownStock, SHOP_ID, SHOP_NAME,
   type GodownStockRow, type StockTransfer,
@@ -75,7 +74,6 @@ interface StockTransferReportPageProps {
 }
 
 const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme = 'blue' }) => {
-  const navigate = useNavigate();
   const { currentUser } = useAuth();
   const companyId = currentUser?.companyId;
   const [companyName, setCompanyName] = useState('');
@@ -98,49 +96,49 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
   const cat = theme === 'orange';
   const T = cat
     ? {
-        canvas: 'bg-[#fff5ec]',
-        line: 'border-[#f6e1d0]',
-        sunken: 'bg-[#fff8f2]',
-        sunkenHover: 'hover:bg-[#fff8f2]',
-        sunkenActive: 'active:bg-[#fff8f2]',
-        btn: 'bg-orange-700 hover:bg-orange-800',
-        tab: 'border-orange-700 text-orange-800',
-        text: 'text-orange-700',
-        ink: 'text-orange-800',
-        head: 'text-orange-800/80',
-        headHover: 'hover:text-orange-800',
-        soft: 'bg-orange-100',
-        softPill: 'bg-orange-100 text-orange-800',
-        softHover: 'hover:bg-orange-100',
-        bar: 'bg-orange-500',
-        focusBorder: 'focus:border-orange-600',
-        focusRing: 'focus:ring-orange-100',
-        selected: 'border-orange-700 ring-2 ring-orange-100',
-        note: 'bg-orange-100 text-orange-900',
-        noteBtn: 'border-orange-200 hover:border-orange-300',
-      }
+      canvas: 'bg-[#fff5ec]',
+      line: 'border-[#f6e1d0]',
+      sunken: 'bg-[#fff8f2]',
+      sunkenHover: 'hover:bg-[#fff8f2]',
+      sunkenActive: 'active:bg-[#fff8f2]',
+      btn: 'bg-orange-700 hover:bg-orange-800',
+      tab: 'border-orange-700 text-orange-800',
+      text: 'text-orange-700',
+      ink: 'text-orange-800',
+      head: 'text-orange-800/80',
+      headHover: 'hover:text-orange-800',
+      soft: 'bg-orange-100',
+      softPill: 'bg-orange-100 text-orange-800',
+      softHover: 'hover:bg-orange-100',
+      bar: 'bg-orange-500',
+      focusBorder: 'focus:border-orange-600',
+      focusRing: 'focus:ring-orange-100',
+      selected: 'border-orange-700 ring-2 ring-orange-100',
+      note: 'bg-orange-100 text-orange-900',
+      noteBtn: 'border-orange-200 hover:border-orange-300',
+    }
     : {
-        canvas: 'bg-canvas',
-        line: 'border-line',
-        sunken: 'bg-sunken',
-        sunkenHover: 'hover:bg-sunken',
-        sunkenActive: 'active:bg-sunken',
-        btn: 'bg-blue-600 hover:bg-blue-700',
-        tab: 'border-blue-600 text-blue-700',
-        text: 'text-blue-600',
-        ink: 'text-blue-700',
-        head: 'text-blue-700/80',
-        headHover: 'hover:text-blue-800',
-        soft: 'bg-blue-50',
-        softPill: 'bg-blue-50 text-blue-700',
-        softHover: 'hover:bg-blue-50',
-        bar: 'bg-blue-600',
-        focusBorder: 'focus:border-blue-500',
-        focusRing: 'focus:ring-blue-100',
-        selected: 'border-blue-600 ring-2 ring-blue-100',
-        note: 'bg-blue-50 text-blue-900',
-        noteBtn: 'border-blue-200 hover:border-blue-300',
-      };
+      canvas: 'bg-canvas',
+      line: 'border-line',
+      sunken: 'bg-sunken',
+      sunkenHover: 'hover:bg-sunken',
+      sunkenActive: 'active:bg-sunken',
+      btn: 'bg-blue-600 hover:bg-blue-700',
+      tab: 'border-blue-600 text-blue-700',
+      text: 'text-blue-600',
+      ink: 'text-blue-700',
+      head: 'text-blue-700/80',
+      headHover: 'hover:text-blue-800',
+      soft: 'bg-blue-50',
+      softPill: 'bg-blue-50 text-blue-700',
+      softHover: 'hover:bg-blue-50',
+      bar: 'bg-blue-600',
+      focusBorder: 'focus:border-blue-500',
+      focusRing: 'focus:ring-blue-100',
+      selected: 'border-blue-600 ring-2 ring-blue-100',
+      note: 'bg-blue-50 text-blue-900',
+      noteBtn: 'border-blue-200 hover:border-blue-300',
+    };
   const accentBtn = T.btn;
   const accentTab = T.tab;
 
@@ -459,7 +457,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
       const border = { style: 'thin', color: { rgb: 'DFE6FB' } };
       const cellStyle = (opts: { bold?: boolean; color?: string; fill?: string; align?: string; size?: number }) => ({
         font: { name: 'Arial', sz: opts.size ?? 9, bold: !!opts.bold, color: { rgb: opts.color ?? '0F172B' } },
-        fill: opts.fill ? { patternType: 'solid', fgColor: { rgb: opts.fill } } : {},
+        fill: { patternType: 'solid', fgColor: { rgb: opts.fill ?? 'FFFFFF' } },
         alignment: { horizontal: opts.align ?? 'left', vertical: 'center', wrapText: true },
         border: { top: border, bottom: border, left: border, right: border },
       });
@@ -640,13 +638,9 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
       {/* HEADER */}
       <header className="mb-4">
         <div className="flex items-center gap-2 md:gap-3">
-          <button
-            onClick={() => navigate(-1)}
-            aria-label="Back"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-slate-700 transition hover:bg-slate-200 md:border md:border-slate-300 md:bg-white"
-          >
-            <ChevronLeft size={20} />
-          </button>
+          <div className="flex-shrink-0">
+            <BackButton />
+          </div>
           <div className="min-w-0 flex-1">
             <p className="hidden text-xs text-slate-500 md:block">Reports /</p>
             <h1 className="text-lg font-bold text-slate-900 md:text-xl">Stock transfer</h1>
@@ -997,14 +991,14 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <span className="w-10 font-semibold text-slate-900">{qty(r.quantity)}</span>
-                          <div className="h-1.5 w-24 overflow-hidden rounded-sm bg-slate-100">
+                        <div className="flex items-center gap-3">
+                          <span className="min-w-[5.5rem] shrink-0 text-right font-semibold tabular-nums text-slate-900">{qty(r.quantity)}</span>
+                          <div className="h-1.5 w-24 shrink-0 overflow-hidden rounded-sm bg-slate-100">
                             <div className={`h-full rounded-sm ${T.bar}`} style={{ width: `${(r.quantity / filteredStockTotals.max) * 100}%` }} />
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="whitespace-nowrap px-4 py-3">
                         {r.unit?.trim() ? <span className="text-slate-700">{r.unit}</span> : <span className="text-xs font-medium text-amber-700">Not set</span>}
                       </td>
                       <td className="px-3 py-3 text-right">
@@ -1121,7 +1115,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
                 const isPurchase = t.type === 'purchase-in';
                 return (
                   <li key={t.id} className={`flex items-center gap-3 px-4 py-3 ${idx > 0 ? `border-t ${T.line}` : ''}`}>
-                   <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-sm ${isPurchase ? 'bg-green-50 text-green-600' : `${T.soft} ${T.text}`}`}>
+                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-sm ${isPurchase ? 'bg-green-50 text-green-600' : `${T.soft} ${T.text}`}`}>
                       {isPurchase ? <FileText size={16} /> : <ArrowLeftRight size={16} />}
                     </span>
                     <div className="min-w-0 flex-1">

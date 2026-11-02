@@ -12,6 +12,7 @@ import JsBarcode from 'jsbarcode';
 import SearchableItemInput from '../../UseComponents/SearchIteminput';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
 import { IconClose } from '../../constants/Icons';
+import BackButton from '../../Components/BackButton';
 import { db } from '../../lib/Firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import type { BarcodeSettings, BarcodeFormat } from '../Settings/BarcodeSetting';
@@ -48,9 +49,6 @@ const IconPrinter = () => (
 );
 const IconChevron = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
-);
-const IconBack = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
 );
 const IconBarcodeEmpty = () => (
   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 5v14M8 5v14M11 5v10M14 5v14M17 5v10M20 5v14" /></svg>
@@ -806,14 +804,10 @@ const QRCodeGeneratorPage: React.FC = () => {
       style={{ fontFamily: FONT_STACK }}
     >
       {/* Header: flush to the very top, full width */}
-      <div className="flex items-center gap-3 border-b border-[#dfe6fb] bg-white px-3 py-3 sm:px-6 sm:py-4">
-        <button
-          onClick={() => navigate(-1)}
-          className="shrink-0 rounded-sm w-10 h-10 flex items-center justify-center border border-[#dfe6fb] bg-white text-[#0f172b] hover:bg-[#f5f7ff]"
-          aria-label="Back"
-        >
-          <IconBack />
-        </button>
+      <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-[#dfe6fb] bg-white px-2 h-14 sm:px-6 sm:h-auto sm:py-4">
+        <div className="flex-shrink-0">
+          <BackButton />
+        </div>
         <div className="min-w-0 flex-1 text-left">
           <h1 className="m-0 text-lg sm:text-xl font-semibold tracking-tight text-[#0f172b] leading-tight truncate">Print labels</h1>
           <p className="hidden sm:block m-0 text-xs text-[#5b6b86]">Barcode &amp; QR stickers for your items</p>

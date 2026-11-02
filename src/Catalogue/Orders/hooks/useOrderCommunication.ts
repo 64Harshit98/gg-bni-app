@@ -136,7 +136,23 @@ const fetchPreviousBalance = async (
 
     return previousBalance;
 };
-
+// Customer's unused credit note balance (informational row on A4 bill).
+// Same source as Sales/Journal: customers/{last 10 digits of phone}.creditBalance
+const fetchCreditNoteBalance = async (
+    companyId: string | undefined,
+    customerPhone: string
+): Promise<number> => {
+    if (!companyId || !customerPhone) return 0;
+    try {
+        const phone = String(customerPhone).replace(/\D/g, '').slice(-10);
+        if (!phone) return 0;
+        const snap = await getDoc(doc(db, 'companies', companyId, 'customers', phone));
+        return snap.exists() ? Number(snap.data().creditBalance || 0) : 0;
+    } catch (e) {
+        console.error('Credit note balance fetch error:', e);
+        return 0;
+    }
+};
 // The order-total/paid/due formula used for the generated bill and (as of
 // this consolidation) the reminder message too. Treats a 'Paid' order as
 // fully settled (dueAmount forced to 0) even if the stored paidAmount field
@@ -165,6 +181,7 @@ interface BuildRawBillDataParams {
     advancePaid: number;
     dueAmount: number;
     previousBalance?: number;
+     creditNoteBalance?: number;
     billingExtras?: {
         billDiscount: number;
         extraExpenseName: string;
@@ -188,6 +205,7 @@ const buildRawBillData = ({
     advancePaid,
     dueAmount,
     previousBalance,
+    creditNoteBalance,
     billingExtras,
 }: BuildRawBillDataParams): Record<string, any> => {
     const data: Record<string, any> = {
@@ -249,6 +267,9 @@ const buildRawBillData = ({
 
     if (previousBalance !== undefined) {
         data.previousBalance = previousBalance;
+    }
+    if (creditNoteBalance !== undefined) {
+        data.creditNoteBalance = creditNoteBalance;
     }
     if (billingExtras) {
         data.billDiscount = billingExtras.billDiscount;
@@ -334,7 +355,8 @@ export const useOrderCommunication = ({
             const itemsWithBase64 = await buildBillItems(Order.items, convertImageUrlToBase64, availableItems);
 
             const customerPhone = (Order.billingDetails?.phone || Order.userLoginPhone || '').toString().trim();
-            const previousBalance = await fetchPreviousBalance(currentUser?.companyId, customerPhone, Order.id);
+                        const previousBalance = await fetchPreviousBalance(currentUser?.companyId, customerPhone, Order.id);
+            const creditNoteBalance = await fetchCreditNoteBalance(currentUser?.companyId, customerPhone);
 
             const { paidAmount, advancePaid, dueAmount } = computeStatusAwareAmounts(Order);
 
@@ -349,6 +371,7 @@ export const useOrderCommunication = ({
                 advancePaid,
                 dueAmount,
                 previousBalance,
+                creditNoteBalance,
                 billingExtras: {
                     billDiscount: Number(Order.manualDiscount || 0),
                     extraExpenseName: (Order.expenses || []).map(e => e.name).join(', '),

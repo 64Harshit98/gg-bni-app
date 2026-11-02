@@ -355,7 +355,7 @@ const SubscriptionPage: React.FC = () => {
         };
         fetchEmail();
     }, [currentUser]);
-    const showActiveView = isPlanActive;
+    //const showActiveView = isPlanActive;
     const currentTiers: Tier[] = activeTab === 'pos' ? POS_TIERS : activeTab === 'catalogue' ? CATALOGUE_TIERS : BOTH_TIERS;
 
     const [isContactModalOpen, setIsContactModalOpen] = useState(false);
@@ -520,35 +520,36 @@ const SubscriptionPage: React.FC = () => {
             </div>
 
             <div className="max-w-[1000px] mx-auto px-4 pt-3 pb-6 grid grid-cols-1 gap-3 md:px-6 md:pt-5 md:pb-8 md:gap-4">
-                {showActiveView && (
-                    <div className={`${card} flex items-start gap-3 p-3.5 md:items-center md:gap-4 md:px-5 md:py-[18px]`}>
-                        <span className={`shrink-0 w-10 h-10 rounded-sm grid place-items-center ${T.chipBg} ${T.chipText}`}><IconCrown /></span>
-                        <div className="flex-1 min-w-0">
-                            <div className={caption}>Your plan</div>
-                            <div className="flex items-center flex-wrap gap-x-2.5 gap-y-1">
-                                <b className="text-[17px] leading-[26px] font-semibold md:text-[22px] md:leading-[30px]">{currentSplit.title}</b>
-                                {currentSplit.code && <span className={caption}>{currentSplit.code}</span>}
-                                <span className="inline-flex items-center h-[22px] px-2 rounded-full text-[11px] font-semibold tracking-[.03em] leading-[22px] whitespace-nowrap bg-[#0f172b] text-white">CURRENT</span>
+
+                <div className={`${card} flex items-start gap-3 p-3.5 md:items-center md:gap-4 md:px-5 md:py-[18px]`}>
+                    <span className={`shrink-0 w-10 h-10 rounded-sm grid place-items-center ${T.chipBg} ${T.chipText}`}><IconCrown /></span>
+                    <div className="flex-1 min-w-0">
+                        <div className={caption}>Your plan</div>
+                        <div className="flex items-center flex-wrap gap-x-2.5 gap-y-1">
+                            <b className="text-[17px] leading-[26px] font-semibold md:text-[22px] md:leading-[30px]">{currentSplit.title}</b>
+                            {currentSplit.code && <span className={caption}>{currentSplit.code}</span>}
+                            <span className={`inline-flex items-center h-[22px] px-2 rounded-full text-[11px] font-semibold tracking-[.03em] leading-[22px] whitespace-nowrap text-white ${isPlanActive ? 'bg-[#0f172b]' : 'bg-[#d5000c]'}`}>
+                                {isPlanActive ? 'CURRENT' : 'EXPIRED'}
+                            </span>
+                        </div>
+                        <div className="flex flex-wrap gap-x-7 gap-y-2.5 mt-2.5 md:mt-2">
+                            <div className="flex flex-col gap-0.5 text-[13px] leading-5 min-w-0">
+                                <small className="text-[11px] leading-4 font-semibold tracking-[.06em] uppercase text-[#5b6b86]">Status</small>
+                                <span className={`inline-flex items-center gap-1.5 font-semibold ${isPlanActive ? 'text-[#008236]' : 'text-[#d5000c]'}`}>
+                                    <i className={`inline-block w-2 h-2 rounded-full ${isPlanActive ? 'bg-[#008236]' : 'bg-[#d5000c]'}`} />{isPlanActive ? 'Active' : 'Expired'}
+                                </span>
                             </div>
-                            <div className="flex flex-wrap gap-x-7 gap-y-2.5 mt-2.5 md:mt-2">
-                                <div className="flex flex-col gap-0.5 text-[13px] leading-5 min-w-0">
-                                    <small className="text-[11px] leading-4 font-semibold tracking-[.06em] uppercase text-[#5b6b86]">Status</small>
-                                    <span className="inline-flex items-center gap-1.5 text-[#008236] font-semibold">
-                                        <i className="inline-block w-2 h-2 rounded-full bg-[#008236]" />Active
-                                    </span>
-                                </div>
-                                <div className="flex flex-col gap-0.5 text-[13px] leading-5 min-w-0">
-                                    <small className="text-[11px] leading-4 font-semibold tracking-[.06em] uppercase text-[#5b6b86]">Expires on</small>
-                                    <b className="tabular-nums">{expiryText}</b>
-                                </div>
-                                <div className="flex flex-col gap-0.5 text-[13px] leading-5 min-w-0">
-                                    <small className="text-[11px] leading-4 font-semibold tracking-[.06em] uppercase text-[#5b6b86]">Account</small>
-                                    <span className="break-all">{accountName}{userEmail ? ` · ${userEmail}` : ''}</span>
-                                </div>
+                            <div className="flex flex-col gap-0.5 text-[13px] leading-5 min-w-0">
+                                <small className="text-[11px] leading-4 font-semibold tracking-[.06em] uppercase text-[#5b6b86]">{isPlanActive ? 'Expires on' : 'Expired on'}</small>
+                                <b className="tabular-nums">{expiryText}</b>
+                            </div>
+                            <div className="flex flex-col gap-0.5 text-[13px] leading-5 min-w-0">
+                                <small className="text-[11px] leading-4 font-semibold tracking-[.06em] uppercase text-[#5b6b86]">Account</small>
+                                <span className="break-all">{accountName}{userEmail ? ` · ${userEmail}` : ''}</span>
                             </div>
                         </div>
                     </div>
-                )}
+                </div>
 
                 {showEnterpriseNote && (
                     <div className={`flex gap-2 items-start px-3 py-2.5 rounded-sm text-xs leading-[19px] ${T.soft} ${T.primaryText} md:text-[13px] md:items-center`}>

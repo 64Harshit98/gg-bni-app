@@ -5,7 +5,6 @@ import {
     CalendarDays,
     Check,
     ChevronDown,
-    ChevronLeft,
     ExternalLink,
     FileSpreadsheet,
     FileText,
@@ -51,6 +50,7 @@ import { ROUTES } from '../../constants/routes.constants';
 import { doc as fsDocRef, getDoc as fsGetDoc } from 'firebase/firestore';
 import { db as firebaseDb } from '../../lib/Firebase';
 import { useAuth } from '../../context/auth-context';
+import BackButton from '../../Components/BackButton';
 import { useSalesSettings } from '../../context/SettingsContext';
 import { State, PLANS } from '../../enums';
 import { normalizePlan } from '../../context/Plan';
@@ -1664,10 +1664,10 @@ const PartyLedger: React.FC = () => {
                 {billPanel}
 
                 {/* HEADER */}
-                <header className="mb-4 flex items-center gap-2 md:gap-3">
-                    <button onClick={() => { setSelectedPartyName(null); setExpandedBillId(null); }} aria-label="Back to party list" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-slate-700 transition hover:bg-slate-200 md:border md:border-slate-300 md:bg-white">
-                        <ChevronLeft size={20} />
-                    </button>
+                                <header className="mb-4 flex items-center gap-2 md:gap-3">
+                    <div className="flex-shrink-0">
+                        <BackButton onClick={() => { setSelectedPartyName(null); setExpandedBillId(null); }} />
+                    </div>
                     <span className="hidden md:block">{avatar(party.partyName)}</span>
                     <div className="min-w-0 flex-1">
                         <p className="hidden text-xs text-slate-500 md:block">Party ledger /</p>
@@ -1998,10 +1998,10 @@ const PartyLedger: React.FC = () => {
             {modals}
 
             {/* HEADER */}
-            <header className="mb-4 flex items-center gap-2 md:gap-3">
-                <button onClick={() => navigate(-1)} aria-label="Back" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-slate-700 transition hover:bg-slate-200 md:border md:border-slate-300 md:bg-white">
-                    <ChevronLeft size={20} />
-                </button>
+                       <header className="mb-4 flex items-center gap-2 md:gap-3">
+                <div className="flex-shrink-0">
+                    <BackButton />
+                </div>
                 <div className="min-w-0 flex-1">
                     <p className="hidden text-xs text-slate-500 md:block">Reports /</p>
                     <div className="flex items-baseline gap-3">

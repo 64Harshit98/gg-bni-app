@@ -132,6 +132,7 @@ export interface PdfData {
   advance?: number;
   due?: number;
   previousBalance?: number;
+  creditNoteBalance?: number;
   isEstimate?: boolean;
   bankDetails: {
     accountName: string;

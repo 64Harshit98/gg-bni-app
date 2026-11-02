@@ -5,11 +5,12 @@ import { useAuth, useDatabase } from '../../context/auth-context';
 import { useItemSettings } from '../../context/SettingsContext';
 import { AddOnManager } from '../../Components/AddonManager';
 import { Spinner } from '../../constants/Spinner';
-import { FiTrash2, FiSearch, FiPackage, FiTag, FiGift, FiShoppingBag, FiGrid, FiList, FiPlus, FiMoreHorizontal, FiChevronDown, FiCopy, FiSliders, FiCheck, FiImage, FiX, FiArrowLeft } from 'react-icons/fi';
+import { FiTrash2, FiSearch, FiPackage, FiTag, FiGift, FiShoppingBag, FiGrid, FiList, FiPlus, FiMoreHorizontal, FiChevronDown, FiCopy, FiSliders, FiCheck, FiImage, FiX } from 'react-icons/fi';
 import { IconEdit } from '../../constants/Icons';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
+import BackButton from '../../Components/BackButton';
 import { ItemGroupViewModal } from '../../Components/ItemGroupViewModal';
 
 // --- UI only: colour chips for group cards (cycled by index) ---
@@ -711,7 +712,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
         type="button"
         onClick={() => navigate(routes.addItem)}
         aria-pressed={isActive(routes.addItem)}
-        className={`${full ? 'flex-1 h-[34px] text-[13px]' : 'h-8 px-4 text-sm'} whitespace-nowrap inline-flex items-center justify-center rounded-sm font-medium transition-colors ${isActive(routes.addItem) ? `bg-white shadow-sm ${theme.primaryText}` : 'text-slate-600 hover:text-slate-900'}`}
+        className={`${full ? 'flex-1 h-[34px] text-[13px]' : 'h-7 px-3 text-xs'} whitespace-nowrap inline-flex items-center justify-center rounded-sm font-medium transition-colors ${isActive(routes.addItem) ? `bg-white shadow-sm ${theme.primaryText}` : 'text-slate-600 hover:text-slate-900'}`}
       >
         Add item
       </button>
@@ -722,31 +723,31 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
         className={`${full ? 'flex-1 h-[34px] text-[13px]' : 'h-8 px-4 text-sm'} whitespace-nowrap inline-flex items-center justify-center gap-1.5 rounded-sm font-medium transition-colors ${isActive(routes.itemGroups) ? `bg-white shadow-sm ${theme.primaryText}` : 'text-slate-600 hover:text-slate-900'}`}
       >
         Item groups
-        <span className="text-[11px] font-semibold min-w-[22px] h-5 leading-5 px-1.5 rounded-sm bg-gray-100 text-slate-600 tabular-nums">{itemGroups.length}</span>
+        <span className="text-[11px] min-w-[22px] h-5 leading-5 px-1.5 rounded-full bg-gray-100 text-slate-600 tabular-nums text-center">{itemGroups.length}</span>
       </button>
     </div>
   );
 
   const renderHeader = () => (
     <div className="flex-shrink-0">
-      <div className="flex items-center gap-2 bg-white border-b border-gray-200 px-4 py-2 lg:px-6 lg:py-4 lg:gap-4">
-        <button
-          type="button"
-          aria-label="Go back"
-          onClick={() => navigate(-1)}
-          className="-ml-2 w-10 h-10 flex-shrink-0 inline-flex items-center justify-center rounded-sm text-slate-700 hover:bg-gray-100 hover:text-slate-900 transition-colors"
-        >
-          <FiArrowLeft size={20} />
-        </button>
-        <div className="flex-1 min-w-0 text-left">
-          <div className="flex items-center gap-3">
-            <h1 className="text-lg lg:text-2xl font-semibold tracking-tight text-slate-900 leading-tight whitespace-nowrap">Item groups</h1>
-            <div className="hidden lg:block">{renderTabs(false)}</div>
-          </div>
-          <p className="text-xs text-slate-500 mt-0.5 truncate">
-            {itemGroups.length} {itemGroups.length === 1 ? 'group' : 'groups'} · {uncategorizedCount} {uncategorizedCount === 1 ? 'item' : 'items'} not in any group
-          </p>
+      <div className="flex items-center gap-x-3 gap-y-2 min-h-[56px] bg-white border-b border-gray-200 px-4 py-2 md:px-5 md:py-3 xl:px-6 xl:py-4">
+        <div className="flex-none">
+          <BackButton />
         </div>
+        <div className="flex-1 min-w-0 text-left xl:flex-none">
+  <div className="flex items-center gap-3">
+    <h1 className="text-lg md:text-xl xl:text-[22px] font-semibold text-slate-900 leading-6 md:leading-7 xl:leading-[30px] xl:min-w-[168px] whitespace-nowrap">Item groups</h1>
+    <div className="hidden xl:block">{renderTabs(false)}</div>
+  </div>
+  <p className="xl:hidden text-xs leading-4 text-slate-500 truncate">
+    {itemGroups.length} {itemGroups.length === 1 ? 'group' : 'groups'} · {uncategorizedCount} {uncategorizedCount === 1 ? 'item' : 'items'} not in any group
+  </p>
+</div>
+
+{/* Desktop (>=1280): caption right side me, Add page ke "Items in catalogue" jaisa */}
+<div className="hidden xl:block ml-auto text-xs text-slate-500 whitespace-nowrap">
+  {itemGroups.length} {itemGroups.length === 1 ? 'group' : 'groups'} · {uncategorizedCount} {uncategorizedCount === 1 ? 'item' : 'items'} not in any group
+</div>
 
         {/* Phone: sort lives in the header as an icon (native picker opens on tap) */}
         <div className="relative lg:hidden flex-shrink-0">
@@ -806,7 +807,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
       </div>
 
       {/* Phone: full-width tabs under the title bar */}
-      <div className="lg:hidden px-4 pt-2.5">{renderTabs(true)}</div>
+      <div className="xl:hidden px-4 pt-2.5 md:px-5 md:pt-3">{renderTabs(true)}</div>
     </div>
   );
 

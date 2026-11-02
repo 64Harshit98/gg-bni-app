@@ -632,7 +632,14 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                         disabled={pdfLoadingOrderId === Order.id}
                         className={BTN_SECONDARY}
                     >
-                        Print
+                        {pdfLoadingOrderId === Order.id ? (
+                            <div className="flex items-center gap-2">
+                                <Spinner />
+                                <span>Printing…</span>
+                            </div>
+                        ) : (
+                            "Print"
+                        )}
                     </button>
 
                     {/* RETURN – both PAID and UNPAID */}

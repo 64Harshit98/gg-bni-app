@@ -2,8 +2,11 @@ import React, { useState } from 'react';
 import { ROLES, Variant } from '../../enums';
 import { useAuth } from '../../context/auth-context';
 import { inviteUser } from '../../lib/AuthOperations';
+import { newEmailError } from '../../lib/email';
+import { useEmailCheck } from '../../lib/useEmailCheck';
 import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';
 import { CustomButton } from '../../Components/CustomButton';
+import { EmailSuggestion } from '../../Components/EmailSuggestion';
 import { ReusableDropdown, type Option } from '../../Components/Dropdown';
 import BackButton from '../../Components/BackButton';
 
@@ -22,6 +25,7 @@ const UserAdd: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const emailCheck = useEmailCheck(email, { newAccount: true });
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,6 +38,12 @@ const UserAdd: React.FC = () => {
 
     if (!fullName.trim() || !email.trim() || !password.trim() || !phoneNumber.trim()) {
       setError("Please fill out all user details.");
+      return;
+    }
+
+    emailCheck.reveal();
+    if (newEmailError(email) || emailCheck.holdForTypo()) {
+      document.getElementById('email')?.focus();
       return;
     }
 
@@ -121,15 +131,26 @@ const UserAdd: React.FC = () => {
             />
           </div>
 
-          <FloatingLabelInput
-            id="email"
-            type="email"
-            label="Email Address"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            disabled={isSubmitting}
-          />
+          <div>
+            <FloatingLabelInput
+              id="email"
+              type="email"
+              label="Email Address"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onBlur={emailCheck.onBlur}
+              aria-invalid={Boolean(emailCheck.error) || undefined}
+              aria-describedby="email-msg"
+              required
+              disabled={isSubmitting}
+              className={emailCheck.error ? 'border-red-600' : ''}
+            />
+            <p id="email-msg" aria-live="polite" className="mt-1 text-xs leading-[17px] text-red-600 empty:hidden">
+              {emailCheck.error}
+              {emailCheck.error && emailCheck.suggestion && ' '}
+              <EmailSuggestion check={emailCheck} onUse={setEmail} />
+            </p>
+          </div>
 
           <FloatingLabelInput
             id="password"

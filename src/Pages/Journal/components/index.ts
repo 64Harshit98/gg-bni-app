@@ -1,3 +1,4 @@
+export { BillDetail } from './BillDetail';
 export { InvoiceActionSheet } from './InvoiceActionSheet';
 export { JournalListFilters } from './JournalListFilters';
 export { PrintSubMenuModal } from './PrintSubMenuModal';

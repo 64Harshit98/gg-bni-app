@@ -8,6 +8,34 @@ import { TutorialStep } from '../../../Components/TutorialStep';
 import type { OrderStatus } from '../orders.types';
 import CustomRangePopover from './CustomRangePopover'; // path apne hisaab se
 
+type PaymentFilter = 'all' | 'unpaid' | 'paid';
+
+interface PaymentSwitchProps {
+    value: PaymentFilter;
+    onChange: (f: PaymentFilter) => void;
+    counts: Record<PaymentFilter, number>;
+    className?: string;
+}
+
+// All / Unpaid n / Paid n
+export const PaymentSwitch: React.FC<PaymentSwitchProps> = ({ value, onChange, counts, className = '' }) => (
+    <div role="group" aria-label="Filter by payment" className={`grid grid-cols-3 gap-0.5 p-[3px] bg-[#fff8f2] rounded-sm border border-[#f6e1d0] ${className}`}>
+        {(['all', 'unpaid', 'paid'] as const).map((f) => (
+            <button
+                key={f}
+                type="button"
+                aria-pressed={value === f}
+                onClick={() => onChange(f)}
+                className={`h-7 px-2 text-xs font-medium capitalize whitespace-nowrap rounded-sm transition ${value === f
+                    ? 'bg-[#c2410c] text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-white'}`}
+            >
+                {f} {counts[f]}
+            </button>
+        ))}
+    </div>
+);
+
 interface OrderListFiltersProps {
     // tutorial
     tutorialStep: number;
@@ -43,9 +71,10 @@ interface OrderListFiltersProps {
     setActiveStatusTab: (status: OrderStatus) => void;
     statusCounts: Record<string, number>;
 
-    // payment filter (Completed tab only)
-    paymentFilter: 'paid' | 'unpaid';
-    setPaymentFilter: (f: 'paid' | 'unpaid') => void;
+    // payment filter (Completed tab only on mobile; desktop shows it on the list card)
+    paymentFilter: PaymentFilter;
+    setPaymentFilter: (f: PaymentFilter) => void;
+    paymentCounts: Record<PaymentFilter, number>;
 
     // desktop (>=1024px) uses the SELLAR left-aligned page header
     isDesktop: boolean;
@@ -89,6 +118,7 @@ export const OrderListFilters: React.FC<OrderListFiltersProps> = ({
     statusCounts,
     paymentFilter,
     setPaymentFilter,
+    paymentCounts,
     isDesktop,
 }) => {
     // Shared by mobile + desktop headers
@@ -123,8 +153,8 @@ export const OrderListFilters: React.FC<OrderListFiltersProps> = ({
     return (
         <>
             {isDesktop ? (
-                /* ───────── DESKTOP PAGE HEADER (SELLAR: title left, search + date range + Filter right) ───────── */
-                <div className="bg-[#fff5ec] sticky top-0 z-[100] px-6 h-[72px] flex items-center">
+                /* ───────── DESKTOP PAGE HEADER (SELLAR: title left, search + date range + Filter right); scrolls away with the page ───────── */
+                <div className="bg-[#fff5ec] relative z-[100] px-6 h-[72px] flex items-center">
                     <div className="flex items-center gap-4 w-full">
                         <div className="min-w-0">
                             <h1 className="text-2xl font-semibold tracking-tight text-slate-900 leading-8">Orders</h1>
@@ -305,8 +335,8 @@ export const OrderListFilters: React.FC<OrderListFiltersProps> = ({
                 </div>
             </div>
 
-            {/* ───────── STAGE TABS (sticky under the header) ───────── */}
-            <div className="sticky top-[72px] z-[50] bg-[#fff5ec] px-3 md:px-6 pt-3 pb-2">
+            {/* ───────── STAGE TABS (sticky under the header on mobile) ───────── */}
+            <div className="sticky top-[72px] z-[50] bg-[#fff5ec] px-3 md:px-6 pt-3 pb-2 lg:static">
                 <TutorialStep
                     step={4}
                     currentStep={tutorialStep}
@@ -358,20 +388,13 @@ export const OrderListFilters: React.FC<OrderListFiltersProps> = ({
                 </TutorialStep>
 
                 {/* Payment filter — sits inside the sticky block so no magic top offset is needed */}
-                {activeStatusTab === 'Completed' && (
-                    <div className="mt-2 flex p-1 bg-white rounded-sm border border-[#f6e1d0] w-full max-w-xs md:max-w-sm">
-                        {(['unpaid', 'paid'] as const).map((f) => (
-                            <button
-                                key={f}
-                                onClick={() => setPaymentFilter(f)}
-                                className={`flex-1 py-1.5 text-xs font-semibold capitalize rounded-sm transition ${paymentFilter === f
-                                    ? 'bg-[#c2410c] text-white shadow-sm'
-                                    : 'text-slate-600 hover:bg-[#fff8f2]'}`}
-                            >
-                                {f}
-                            </button>
-                        ))}
-                    </div>
+                {!isDesktop && activeStatusTab === 'Completed' && (
+                    <PaymentSwitch
+                        value={paymentFilter}
+                        onChange={setPaymentFilter}
+                        counts={paymentCounts}
+                        className="mt-2 w-full bg-white md:max-w-sm"
+                    />
                 )}
             </div>
         </>

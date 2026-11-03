@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import sellarLogo from '../../assets/sellar-logo-heading.png';
 import sellarMark from '../../assets/sellar-logo.png';
-import bgMain from '../../assets/bg-main.png';
+import { CANVAS_DOTS } from '../../Components/StatusShell';
 
 const LOADING_NAMES = ['LOADING', 'SYNCING', 'PREPARING', 'OPENING'];
 type ActiveLogo = 'main' | 'mark';
@@ -23,11 +23,8 @@ const Loading: React.FC = () => {
   }, []);
 
   return (
-    <div
-      className="relative h-screen w-screen overflow-hidden bg-cover bg-center md:bg-[center_top_75%] pb-16"
-      style={{ backgroundImage: `url(${bgMain})` }}
-    >
-      <div className="absolute inset-0 bg-white/20" />
+    <div className="relative h-screen w-screen overflow-hidden bg-canvas pb-16">
+      <div aria-hidden="true" className={`pointer-events-none absolute inset-0 ${CANVAS_DOTS}`} />
 
       <div className="relative z-10 flex h-full w-full items-center justify-center px-4">
         <div className="relative flex flex-col items-center justify-center">

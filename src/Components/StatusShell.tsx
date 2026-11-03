@@ -35,6 +35,9 @@ export const STATUS_THEMES = {
   },
 } as const;
 
+/** Faint blue dot grid fading out from the centre, for full-screen loading / payment screens on `bg-canvas`. */
+export const CANVAS_DOTS = `${STATUS_THEMES.pos.dots} [background-size:22px_22px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_70%)]`;
+
 const BTN_BASE =
   'inline-flex h-10 items-center justify-center gap-2 rounded-sm px-4 text-sm font-medium no-underline transition active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2';
 

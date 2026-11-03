@@ -9,6 +9,9 @@ import {
   RecaptchaVerifier,
   signInWithPhoneNumber,
   createUserWithEmailAndPassword,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
   type ConfirmationResult,
 } from 'firebase/auth';
 import type { User } from 'firebase/auth';
@@ -88,13 +91,12 @@ export const inviteUser = async (fullName: string, phoneNumber: string, email: s
   }
 };
 
-export const loginUser = async (email: string, password: string): Promise<User> => {
-  try {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    return userCredential.user;
-  } catch (error: any) {
-    throw new Error(error.message || 'Login failed.');
-  }
+// `remember` false keeps the session only until the tab closes ("Keep me logged in" unticked).
+// Errors are rethrown as-is so callers can read the Firebase `code`.
+export const loginUser = async (email: string, password: string, remember = true): Promise<User> => {
+  await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
+  const userCredential = await signInWithEmailAndPassword(auth, email, password);
+  return userCredential.user;
 };
 export const generateCompanyReferralCode = async (companyId: string): Promise<string> => {
   try {

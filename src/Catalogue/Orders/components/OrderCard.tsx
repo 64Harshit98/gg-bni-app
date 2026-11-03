@@ -1,14 +1,14 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion } from "framer-motion";
 import { useNavigate } from 'react-router-dom';
-import { FiArrowLeft, FiChevronRight, FiMessageCircle, FiPhone } from 'react-icons/fi';
+import { FiArrowLeft, FiMessageCircle, FiMoreHorizontal, FiPhone, FiPrinter } from 'react-icons/fi';
 import { ROUTES } from '../../../constants/routes.constants';
 import { CustomCard } from '../../../Components/CustomCard';
 import { Spinner } from '../../../constants/Spinner';
-import { IconEdit } from '../../../constants/Icons';
+import { ItemsHeader, PinnedDetail } from '../../../Components/PinnedDetail';
 import { useWhatsappProvider } from '../../../Pages/Additional/Whatsapp/useWhatsappProvider';
 import type { Order, OrderStatus } from '../orders.types';
-import { formatAmount } from '../../../lib/format';
+import { formatDayTime } from '../../../lib/format';
 import { splitAddOns } from '../../../UseComponents/addOnText';
 
 interface OrderCardProps {
@@ -35,21 +35,98 @@ interface OrderCardProps {
 }
 
 // ─── UI-only style tokens (SELLAR orders design) ────────────────────────────
-const BTN = 'min-h-[40px] px-3 rounded-sm text-xs font-semibold transition active:scale-[0.97] flex items-center justify-center gap-1.5 flex-1 sm:flex-none sm:min-w-[96px] disabled:opacity-50';
-const BTN_PRIMARY = `${BTN} bg-[#c2410c] hover:bg-[#9a3412] text-white sm:min-w-[130px] sm:ml-auto`;
-const STAGES = ['Upcoming', 'Confirmed', 'Packed', 'Completed'] as const;
+const BTN = 'min-h-[40px] px-3 rounded-sm text-sm font-medium whitespace-nowrap transition active:scale-[0.97] flex items-center justify-center gap-1.5 flex-1 sm:flex-none disabled:opacity-50';
+const BTN_PRIMARY = `${BTN} bg-[#c2410c] hover:bg-[#9a3412] text-white`;
+const STAGES = ['Placed', 'Confirmed', 'Packed', 'Completed'] as const;
 const BTN_SECONDARY = `${BTN} bg-white border border-[#f6e1d0] text-slate-800 hover:bg-[#fff8f2]`;
 const BTN_DANGER = `${BTN} bg-white border border-red-200 text-red-600 hover:bg-red-50`;
 const BTN_SUCCESS = `${BTN} bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100`;
 const BTN_WARN = `${BTN} bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100`;
-const BTN_GHOST = `${BTN} bg-transparent text-slate-600 hover:bg-[#fff8f2]`;
+const BTN_SMALL = 'h-8 px-2.5 rounded-sm text-[13px] font-medium whitespace-nowrap inline-flex items-center gap-1.5 bg-white border border-[#f6e1d0] text-slate-800 hover:bg-[#fff8f2] transition';
 const OVERLINE = 'text-[10px] font-semibold uppercase tracking-wider text-[#9a3412]';
+const BADGE = 'text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-sm whitespace-nowrap';
+const BADGE_STATUS = `${BADGE} bg-[#ffedd5] text-[#9a3412] uppercase`;
+const BADGE_UNPAID = `${BADGE} bg-[#fef6d7] text-[#a16207]`;
+const BADGE_PAID = `${BADGE} bg-emerald-50 text-emerald-700`;
 // compact mobile card icon buttons (Call / WhatsApp)
-const ICON_BTN = 'w-10 h-10 rounded-sm grid place-items-center transition active:scale-[0.97]';
+const ICON_BTN = 'w-10 h-10 shrink-0 rounded-sm grid place-items-center transition active:scale-[0.97]';
 const ICON_BTN_SECONDARY = `${ICON_BTN} bg-white border border-[#f6e1d0] text-slate-800 hover:bg-[#fff8f2]`;
 const ICON_BTN_SUCCESS = `${ICON_BTN} bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100`;
 // white surface card used on the mobile full-screen view
 const SCREEN_CARD = 'bg-white border border-[#f6e1d0] rounded-sm shadow-sm p-4';
+const ITEM_GRID = 'grid grid-cols-[minmax(0,1fr)_36px_92px] gap-x-3';
+
+// Summary figures: "₹6,471", at most 2 decimals. Line prices: always 2 ("₹533.90")
+const money = (n: number) => Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+const money2 = (n: number) => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const returnBadgeClass = (mode: string) => {
+    const m = (mode || '').toUpperCase();
+    if (m === 'EXCHANGE') return 'bg-purple-50 text-purple-700 border-purple-200';
+    if (m.includes('CASH') || m.includes('REFUND')) return 'bg-green-50 text-green-700 border-green-200';
+    return 'bg-orange-50 text-[#c2410c] border-orange-200';
+};
+
+const fmtReturnedAt = (v: any) =>
+    new Date(v?.toDate ? v.toDate() : v).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
+
+const sameText = (a?: string, b?: string) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+
+interface MoreMenuItem {
+    label: string;
+    onSelect: () => void;
+    danger?: boolean;
+}
+
+// ⋯ menu: the actions you rarely need (edit, move back, delete)
+const MoreMenu: React.FC<{ items: MoreMenuItem[]; opensUp?: boolean }> = ({ items, opensUp }) => {
+    const [open, setOpen] = useState(false);
+    const wrapRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!open) return;
+        const onDown = (e: PointerEvent) => {
+            if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+        };
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+        document.addEventListener('pointerdown', onDown);
+        document.addEventListener('keydown', onKey);
+        return () => {
+            document.removeEventListener('pointerdown', onDown);
+            document.removeEventListener('keydown', onKey);
+        };
+    }, [open]);
+
+    return (
+        <div ref={wrapRef} className="relative shrink-0">
+            <button
+                type="button"
+                aria-label={`More actions: ${items.map(i => i.label.toLowerCase()).join(', ')}`}
+                aria-haspopup="menu"
+                aria-expanded={open}
+                onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
+                className="w-10 h-10 rounded-sm grid place-items-center text-slate-600 hover:bg-[#fff5ec] hover:text-[#c2410c] transition"
+            >
+                <FiMoreHorizontal className="w-5 h-5" />
+            </button>
+            {open && (
+                <div role="menu" className={`absolute right-0 z-20 w-56 rounded-sm border border-[#f6e1d0] bg-white p-1 shadow-xl ${opensUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
+                    {items.map((item) => (
+                        <button
+                            key={item.label}
+                            type="button"
+                            role="menuitem"
+                            onClick={(e) => { e.stopPropagation(); setOpen(false); item.onSelect(); }}
+                            className={`w-full h-10 px-3 rounded-sm text-left text-sm ${item.danger ? 'text-red-600 hover:bg-red-50' : 'text-slate-800 hover:bg-[#fff8f2]'}`}
+                        >
+                            {item.label}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
 
 export const OrderCard: React.FC<OrderCardProps> = ({
     order: Order,
@@ -71,6 +148,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
 }) => {
     const navigate = useNavigate();
     const { provider: whatsappProvider } = useWhatsappProvider(companyId);
+    const [itemQuery, setItemQuery] = useState('');
 
     const returnMethods =
         Order.returnHistory && Order.returnHistory.length > 0
@@ -114,7 +192,14 @@ export const OrderCard: React.FC<OrderCardProps> = ({
     const avatarLetter = String(Order.userName || '?').trim().charAt(0).toUpperCase() || '?';
     const itemCount = Order.items?.length || 0;
     const hasRefund = Number(Order.refundAmount || 0) > 0;
+    const pieces = (Order.items || []).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
     const stageIndex = isFinalStage ? 3 : Order.status === 'Packed' ? 2 : Order.status === 'Confirmed' ? 1 : 0;
+    const placedAt = Order.createdAt ? formatDayTime(new Date(Order.createdAt)) : Order.time;
+    const contactPhone = Order.userLoginPhone || Order.billingDetails?.phone || '';
+    const cleanContactPhone = contactPhone.replace(/\D/g, '');
+    const inDetailPane = variant === 'detail';
+    // A settled order sits in the Completed stage; the PAID badge says the rest
+    const stageLabel = Order.status === 'Paid' ? 'Completed' : Order.status;
 
     // Payment-method labels (original payments + latest return payment) — used for the PAID · UPI badge
     const paymentMethodLabels = (() => {
@@ -161,16 +246,16 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                     {avatarLetter}
                 </span>
                 <b className="text-sm font-semibold text-slate-900 truncate">{Order.userName}</b>
-                <span className="text-sm font-semibold text-slate-900 tabular-nums text-right">₹{formatAmount(total)}</span>
+                <span className="text-sm font-semibold text-slate-900 tabular-nums text-right">₹{money(total)}</span>
                 <span className="text-xs text-slate-500 truncate">
-                    {!isUpcomingStatus && `${Order.orderId} · `}{Order.time} · {itemCount} {itemCount === 1 ? 'item' : 'items'}
+                    {!isUpcomingStatus && `${Order.orderId} · `}{placedAt} · {itemCount} {itemCount === 1 ? 'item' : 'items'}
                 </span>
                 {isUpcomingStatus ? (
-                    <span className="text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-full bg-[#f97316] text-white justify-self-end">NEW</span>
+                    <span className={`${BADGE} bg-[#f97316] text-white justify-self-end`}>NEW</span>
                 ) : due > 0 ? (
-                    <span className="text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-full bg-[#fef6d7] text-[#a16207] justify-self-end">UNPAID</span>
+                    <span className={`${BADGE_UNPAID} justify-self-end`}>UNPAID</span>
                 ) : (
-                    <span className="text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 justify-self-end">PAID</span>
+                    <span className={`${BADGE_PAID} justify-self-end`}>PAID</span>
                 )}
             </div>
         );
@@ -180,7 +265,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
     // SHARED PIECES (used by 'detail' on desktop and 'screen' on mobile)
     // ─────────────────────────────────────────────────────────────────────────
 
-    // Progress track: Upcoming → Confirmed → Packed → Completed
+    // Progress track: Placed → Confirmed → Packed → Completed
     const trackEl = !isUpcomingStatus && (
         <div className="grid grid-cols-4">
             {STAGES.map((s, i) => {
@@ -190,49 +275,128 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                         <span className={`absolute top-1 left-0 right-0 h-[3px] ${on ? 'bg-[#c2410c]' : 'bg-[#f6e1d0]'}`} />
                         <span className={`absolute top-0 left-0 w-[11px] h-[11px] rounded-full border-2 ${on ? 'bg-[#c2410c] border-[#c2410c]' : 'bg-white border-[#f6e1d0]'} ${i === stageIndex ? 'ring-4 ring-[#ffedd5]' : ''}`} />
                         <b className="block text-xs sm:text-[13px] font-semibold text-slate-900">{s}</b>
-                        {i === 0 ? Order.time : i === stageIndex + 1 ? 'Next' : on ? '' : '—'}
+                        {i === 0 ? placedAt : i === stageIndex + 1 ? 'Next' : on ? '' : '—'}
                     </div>
                 );
             })}
         </div>
     );
 
-    // Billing + Shipping
+    // Billing + Shipping: merged into one when they're the same address
+    const billing = Order.billingDetails;
+    const shipping = Order.shippingDetails;
+    const hasSameAddress = !shipping?.address || (
+        (!shipping.name || sameText(shipping.name, billing?.name)) &&
+        sameText(shipping.address, billing?.address) &&
+        (!shipping.city || sameText(shipping.city, billing?.city)) &&
+        (!shipping.state || sameText(shipping.state, billing?.state)) &&
+        (!shipping.phone || sameText(shipping.phone, billing?.phone))
+    );
+    const billingPlace = [billing?.address, billing?.city, billing?.state].filter(Boolean).join(', ');
+
     const addressesEl = !isUpcomingStatus && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="p-3 border border-[#f6e1d0] rounded-sm space-y-0.5">
-                <p className={OVERLINE}>Billing address</p>
-                <p className="text-[13px] font-semibold text-slate-900">{Order.billingDetails?.name}</p>
-                <p className="text-xs text-slate-600 leading-snug">{Order.billingDetails?.address}</p>
-                {(Order.billingDetails?.city || Order.billingDetails?.state) && (
-                    <p className="text-xs text-slate-600 leading-snug">
-                        {[Order.billingDetails?.city, Order.billingDetails?.state].filter(Boolean).join(', ')}
-                    </p>
-                )}
-                <p className="text-xs text-slate-600">{Order.billingDetails?.phone}</p>
+        hasSameAddress ? (
+            <div className="p-3 border border-[#f6e1d0] rounded-sm lg:flex lg:flex-wrap lg:items-center lg:gap-x-2.5">
+                <p className={OVERLINE}>Billing & shipping</p>
+                <p className="text-[13px] leading-snug text-slate-600 break-words">
+                    <b className="font-semibold text-slate-900">{billing?.name}</b>
+                    {[billingPlace, billing?.phone].filter(Boolean).map((part) => ` · ${part}`).join('')}
+                </p>
+                <p className="text-xs text-slate-500 mt-0.5 lg:mt-0 lg:ml-auto">Same address for both</p>
             </div>
-            <div className="p-3 border border-[#f6e1d0] rounded-sm space-y-0.5">
-                <p className={OVERLINE}>Shipping address</p>
-                <p className="text-[13px] font-semibold text-slate-900">{Order.shippingDetails?.name || Order.billingDetails?.name}</p>
-                <p className="text-xs text-slate-600 leading-snug">{Order.shippingDetails?.address || Order.billingDetails?.address}</p>
-                {(Order.shippingDetails?.city || Order.shippingDetails?.state || Order.billingDetails?.city || Order.billingDetails?.state) && (
-                    <p className="text-xs text-slate-600 leading-snug">
-                        {[
-                            Order.shippingDetails?.city || Order.billingDetails?.city,
-                            Order.shippingDetails?.state || Order.billingDetails?.state
-                        ].filter(Boolean).join(', ')}
-                    </p>
-                )}
-                <p className="text-xs text-slate-600">{Order.shippingDetails?.phone}</p>
+        ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-3 border border-[#f6e1d0] rounded-sm space-y-0.5">
+                    <p className={OVERLINE}>Billing address</p>
+                    <p className="text-[13px] font-semibold text-slate-900">{billing?.name}</p>
+                    <p className="text-xs text-slate-600 leading-snug">{billing?.address}</p>
+                    {(billing?.city || billing?.state) && (
+                        <p className="text-xs text-slate-600 leading-snug">
+                            {[billing?.city, billing?.state].filter(Boolean).join(', ')}
+                        </p>
+                    )}
+                    <p className="text-xs text-slate-600">{billing?.phone}</p>
+                </div>
+                <div className="p-3 border border-[#f6e1d0] rounded-sm space-y-0.5">
+                    <p className={OVERLINE}>Shipping address</p>
+                    <p className="text-[13px] font-semibold text-slate-900">{shipping?.name || billing?.name}</p>
+                    <p className="text-xs text-slate-600 leading-snug">{shipping?.address || billing?.address}</p>
+                    {(shipping?.city || shipping?.state || billing?.city || billing?.state) && (
+                        <p className="text-xs text-slate-600 leading-snug">
+                            {[
+                                shipping?.city || billing?.city,
+                                shipping?.state || billing?.state
+                            ].filter(Boolean).join(', ')}
+                        </p>
+                    )}
+                    <p className="text-xs text-slate-600">{shipping?.phone}</p>
+                </div>
             </div>
+        )
+    );
+
+    const callWhatsappEl = cleanContactPhone && (
+        <div className="flex shrink-0 gap-1.5">
+            <a href={`tel:${cleanContactPhone}`} onClick={(e) => e.stopPropagation()} className={BTN_SMALL}>
+                <FiPhone className="w-3.5 h-3.5" /> Call
+            </a>
+            <a href={`https://wa.me/${cleanContactPhone}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className={BTN_SMALL}>
+                <FiMessageCircle className="w-3.5 h-3.5" /> WhatsApp
+            </a>
         </div>
     );
+
+    // Price shown on an item line. If tax is inclusive, reverse-calculate the base
+    // price so the UI math adds up with the "+Tax" row. Tax rate/type as saved on the
+    // item at checkout/edit time — not gated by the company's current tax toggle.
+    const displayPrice = (item: any, unitPrice: number) => {
+        const taxRate = Number(item.tax ?? item.taxRate ?? 0);
+        const taxType = (item.taxType || '').toLowerCase();
+        return taxRate > 0 && taxType === 'inclusive' ? unitPrice / (1 + (taxRate / 100)) : unitPrice;
+    };
+    const rawUnitPrice = (item: any) => Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
+    const itemsSubtotal = (Order.items || []).reduce(
+        (sum, item) => sum + displayPrice(item, rawUnitPrice(item)) * (Number(item.quantity) || 0),
+        0
+    );
+
+    const query = itemQuery.trim().toLowerCase();
+    const matchesQuery = (name?: string) => !query || (name || '').toLowerCase().includes(query);
+    const visibleItems = (Order.items || [])
+        .map((item, index) => ({ item, index }))
+        .filter(({ item }) => matchesQuery(item.name));
+    const removedItems = (Order.returnHistory || []).flatMap((h: any) => h.returnedItems || [])
+        .filter((r: any) => !Order.items?.some(item =>
+            String(item.itemId) === String(r.originalItemId) ||
+            String(item.id) === String(r.originalItemId)
+        ))
+        .filter((r: any) => matchesQuery(r.name));
+
+    // Mode badge + date under a returned line
+    const returnMetaEl = (modeOfReturn?: string, returnedAt?: any) => (
+        <div className="flex flex-wrap items-center gap-1.5 mt-1">
+            {modeOfReturn && (
+                <span className={`text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded-sm border ${returnBadgeClass(modeOfReturn)}`}>
+                    {modeOfReturn}
+                </span>
+            )}
+            {returnedAt && (
+                <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
+                    {fmtReturnedAt(returnedAt)}
+                </span>
+            )}
+        </div>
+    );
+
+    const rowPad = inDetailPane ? 'px-5' : '';
+    // Rows are numbered in the desktop pane; returned rows line up under the item names
+    const returnedIndent = inDetailPane ? 'pl-[22px]' : '';
 
     // Special instructions + Items list + Expenses / Tax / Bill discount
     const itemsEl = (
         <div>
             {Order.specialInstruction && (
-                <div className="mb-3 bg-[#fef6d7] border border-[#f3e3a0] rounded-sm p-3">
+                <div className={`mb-3 bg-[#fef6d7] border border-[#f3e3a0] rounded-sm p-3 ${inDetailPane ? 'mx-5' : ''}`}>
                     <p className="text-[10px] font-semibold text-[#a16207] uppercase tracking-wider mb-1">
                         Special instructions
                     </p>
@@ -242,226 +406,150 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                 </div>
             )}
 
-            <p className={`${OVERLINE} mb-1`}>Items</p>
-            <div className="divide-y divide-[#f6e1d0] border-y border-[#f6e1d0]">
-                {Order.items?.map((item, idx) => {
-                    const returnedEntries: { qty: number; modeOfReturn: string; returnedAt: any; unitPrice: number }[] = [];
-                    (Order.returnHistory || []).forEach((h: any) => {
-                        (h.returnedItems || []).forEach((r: any) => {
-                            const matches =
-                                String(r.originalItemId) === String(item.itemId) ||
-                                String(r.originalItemId) === String(item.id) ||
-                                String(r.id) === String(item.itemId) ||
-                                String(r.id) === String(item.id);
-                            if (matches) {
-                                returnedEntries.push({
-                                    qty: Number(r.quantity || 0),
-                                    modeOfReturn: h.modeOfReturn || '',
-                                    returnedAt: h.returnedAt,
-                                    unitPrice: Number(r.effectiveUnitPrice ?? r.customPrice ?? r.salesPrice ?? r.mrp ?? 0),
-                                });
-                            }
-                        });
-                    });
-                    const totalReturnedFromHistory = returnedEntries.reduce((sum, e) => sum + e.qty, 0);
-                    const originalQty = Number(item.quantity || 0) + totalReturnedFromHistory;
-                    const remainingQty = originalQty - totalReturnedFromHistory;
+            <div>
+                <ItemsHeader
+                    theme="orange"
+                    lineCount={itemCount}
+                    pieces={pieces}
+                    query={itemQuery}
+                    onQueryChange={setItemQuery}
+                    gridClassName={ITEM_GRID}
+                    sticky={inDetailPane}
+                    className={inDetailPane ? 'border-t px-5' : ''}
+                >
+                    <span className="text-right">Qty</span>
+                    <span className="text-right">Amount</span>
+                </ItemsHeader>
 
-                    // Extract Base Price for UI Math
-                    const rawUnitPrice = Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
-                    // Tax rate/type as saved on the item at checkout/edit time — not gated
-                    // by the company's current tax toggle, which may have changed since.
-                    const taxRate = Number(item.tax ?? item.taxRate ?? 0);
-                    const taxType = (item.taxType || '').toLowerCase();
-
-                    let displayUnitPrice = rawUnitPrice;
-
-                    // If tax is inclusive, reverse-calculate the base price so the UI math adds up with the "+Tax" row
-                    if (taxRate > 0 && taxType === 'inclusive') {
-                        displayUnitPrice = rawUnitPrice / (1 + (taxRate / 100));
-                    }
-
-                    const displayLineTotal = displayUnitPrice * remainingQty;
-                    const { baseName, addOnText } = splitAddOns(item);
-                    // --------------------------------------------------
-
-                    return (
-                        <div key={idx} className="py-2.5">
-                            {/* REMAINING QUANTITY ROW */}
-                            {remainingQty > 0 && (
-                                <div className="flex justify-between items-start">
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-[13px] font-medium leading-tight text-slate-900">
-                                            {baseName}
-                                            <span className="ml-1 text-[11px] font-normal text-slate-500">
-                                                {item.unit || "pcs"}
-                                            </span>
-                                        </p>
-                                        {addOnText && (
-                                            <p className="text-[11px] leading-tight text-slate-500 mt-0.5 break-words">+ {addOnText}</p>
-                                        )}
-                                        {item.note && (
-                                            <p className="text-[11px] leading-tight flex items-baseline gap-1.5 mt-1">
-                                                <span className="font-semibold uppercase tracking-wider text-slate-500">Note:</span>
-                                                <span className="italic text-slate-600">{item.note}</span>
-                                            </p>
-                                        )}
-                                        <p className="text-xs text-slate-500 mt-0.5">
-                                            ₹{formatAmount(displayUnitPrice)} per {item.unit || "pcs"}
-                                        </p>
-                                    </div>
-                                    <div className="text-right ml-4">
-                                        <p className="text-[13px] font-semibold text-slate-900 tabular-nums">
-                                            ₹{formatAmount(displayLineTotal)}
-                                        </p>
-                                        <p className="text-xs text-slate-500">
-                                            Qty: {remainingQty}
-                                        </p>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* RETURNED ENTRIES — one crossed-out row per return event */}
-                            {returnedEntries.map((entry, rIdx) => {
-                                let retDisplayUnitPrice = entry.unitPrice;
-                                if (taxRate > 0 && taxType === 'inclusive') {
-                                    retDisplayUnitPrice = entry.unitPrice / (1 + (taxRate / 100));
+                <div className="divide-y divide-[#f6e1d0] border-b border-[#f6e1d0]">
+                    {visibleItems.map(({ item, index }) => {
+                        const returnedEntries: { qty: number; modeOfReturn: string; returnedAt: any; unitPrice: number }[] = [];
+                        (Order.returnHistory || []).forEach((h: any) => {
+                            (h.returnedItems || []).forEach((r: any) => {
+                                const matches =
+                                    String(r.originalItemId) === String(item.itemId) ||
+                                    String(r.originalItemId) === String(item.id) ||
+                                    String(r.id) === String(item.itemId) ||
+                                    String(r.id) === String(item.id);
+                                if (matches) {
+                                    returnedEntries.push({
+                                        qty: Number(r.quantity || 0),
+                                        modeOfReturn: h.modeOfReturn || '',
+                                        returnedAt: h.returnedAt,
+                                        unitPrice: Number(r.effectiveUnitPrice ?? r.customPrice ?? r.salesPrice ?? r.mrp ?? 0),
+                                    });
                                 }
-                                const retDisplayLineTotal = retDisplayUnitPrice * entry.qty;
+                            });
+                        });
+                        const totalReturnedFromHistory = returnedEntries.reduce((sum, e) => sum + e.qty, 0);
+                        const originalQty = Number(item.quantity || 0) + totalReturnedFromHistory;
+                        const remainingQty = originalQty - totalReturnedFromHistory;
 
-                                return entry.qty > 0 && (
-                                    <div key={rIdx} className="flex justify-between items-start mt-1.5">
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-[13px] font-medium leading-tight line-through text-slate-400">
-                                                {baseName}
-                                                <span className="ml-1 text-[11px] font-normal">
-                                                    {item.unit || "pcs"}
-                                                </span>
-                                            </p>
-                                            {addOnText && (
-                                                <p className="text-[11px] leading-tight line-through text-slate-400 mt-0.5 break-words">+ {addOnText}</p>
+                        const displayUnitPrice = displayPrice(item, rawUnitPrice(item));
+                        const { baseName, addOnText } = splitAddOns(item);
+
+                        return (
+                            <div key={index} className={`${rowPad} py-2.5`}>
+                                {/* REMAINING QUANTITY ROW */}
+                                {remainingQty > 0 && (
+                                    <div className={ITEM_GRID}>
+                                        <div className="flex min-w-0">
+                                            {inDetailPane && (
+                                                <span className="w-[22px] shrink-0 text-xs leading-[18px] tabular-nums text-slate-500">{index + 1}</span>
                                             )}
-                                            <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                                                {entry.modeOfReturn && (
-                                                    <span className={`text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded-full border ${entry.modeOfReturn.toUpperCase() === 'EXCHANGE'
-                                                        ? 'bg-purple-50 text-purple-700 border-purple-200'
-                                                        : entry.modeOfReturn.toUpperCase().includes('CASH') || entry.modeOfReturn.toUpperCase().includes('REFUND')
-                                                            ? 'bg-green-50 text-green-700 border-green-200'
-                                                            : 'bg-orange-50 text-[#F97316] border-orange-200'
-                                                        }`}>
-                                                        {entry.modeOfReturn}
-                                                    </span>
+                                            <div className="min-w-0">
+                                                <p className="text-[13px] font-medium leading-tight text-slate-900 break-words">{baseName}</p>
+                                                {addOnText && (
+                                                    <p className="text-[11px] leading-tight text-slate-500 mt-0.5 break-words">+ {addOnText}</p>
                                                 )}
-                                                {entry.returnedAt && (
-                                                    <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
-                                                        {new Date(
-                                                            entry.returnedAt?.toDate
-                                                                ? entry.returnedAt.toDate()
-                                                                : entry.returnedAt
-                                                        ).toLocaleDateString('en-GB', {
-                                                            day: '2-digit', month: 'short', year: '2-digit'
-                                                        })}
-                                                    </span>
+                                                {item.note && (
+                                                    <p className="text-[11px] leading-tight flex items-baseline gap-1.5 mt-1">
+                                                        <span className="font-semibold uppercase tracking-wider text-slate-500">Note:</span>
+                                                        <span className="italic text-slate-600">{item.note}</span>
+                                                    </p>
                                                 )}
+                                                <p className="text-xs text-slate-500 mt-0.5">
+                                                    ₹{money2(displayUnitPrice)} per {item.unit || "pcs"}
+                                                </p>
                                             </div>
                                         </div>
-                                        <div className="text-right ml-4">
-                                            <p className="text-[13px] font-semibold line-through text-slate-400 tabular-nums">
-                                                ₹{formatAmount(retDisplayLineTotal)}
-                                            </p>
-                                            <p className="text-xs text-slate-400">
-                                                Qty: {entry.qty}
+                                        <p className="text-right text-[13px] tabular-nums text-slate-900">{remainingQty}</p>
+                                        <p className="text-right text-[13px] font-semibold tabular-nums text-slate-900">₹{money2(displayUnitPrice * remainingQty)}</p>
+                                    </div>
+                                )}
+
+                                {/* RETURNED ENTRIES — one crossed-out row per return event */}
+                                {returnedEntries.map((entry, rIdx) => (
+                                    entry.qty > 0 && (
+                                        <div key={rIdx} className={`${ITEM_GRID} mt-1.5`}>
+                                            <div className={`min-w-0 ${returnedIndent}`}>
+                                                <p className="text-[13px] font-medium leading-tight line-through text-slate-400 break-words">{baseName}</p>
+                                                {addOnText && (
+                                                    <p className="text-[11px] leading-tight line-through text-slate-400 mt-0.5 break-words">+ {addOnText}</p>
+                                                )}
+                                                {returnMetaEl(entry.modeOfReturn, entry.returnedAt)}
+                                            </div>
+                                            <p className="text-right text-[13px] line-through tabular-nums text-slate-400">{entry.qty}</p>
+                                            <p className="text-right text-[13px] font-semibold line-through tabular-nums text-slate-400">
+                                                ₹{money2(displayPrice(item, entry.unitPrice) * entry.qty)}
                                             </p>
                                         </div>
-                                    </div>
-                                )
-                            })}
-                        </div>
-                    );
-                })}
+                                    )
+                                ))}
+                            </div>
+                        );
+                    })}
 
-                {/* Show fully removed returned items */}
-                {Order.returnHistory?.flatMap((h: any) => h.returnedItems || [])
-                    .filter((r: any) => !Order.items?.some(item =>
-                        String(item.itemId) === String(r.originalItemId) ||
-                        String(item.id) === String(r.originalItemId)
-                    ))
-                    .map((r: any, idx: number) => (
-                        <div key={`removed-${idx}`} className="py-2.5">
-                            <div className="flex justify-between items-start">
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-[13px] font-medium leading-tight line-through text-slate-400">
-                                        {r.name}
-                                        <span className="ml-1 text-[11px] font-normal">
-                                            {r.unit || "pcs"}
-                                        </span>
-                                    </p>
-                                    {/* Return mode badge + date */}
-                                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                                        {(() => {
-                                            const matchedHistory = Order.returnHistory?.find((h: any) =>
-                                                h.returnedItems?.some((ri: any) =>
-                                                    String(ri.originalItemId) === String(r.originalItemId) ||
-                                                    String(ri.id) === String(r.originalItemId)
-                                                )
-                                            );
-                                            return (
-                                                <>
-                                                    {matchedHistory?.modeOfReturn && (
-                                                        <span className={`text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded-full border ${matchedHistory.modeOfReturn === 'EXCHANGE'
-                                                            ? 'bg-purple-50 text-purple-700 border-purple-200'
-                                                            : matchedHistory.modeOfReturn === 'CASH REFUND'
-                                                                ? 'bg-green-50 text-green-700 border-green-200'
-                                                                : 'bg-orange-50 text-[#F97316] border-orange-200'
-                                                            }`}>
-                                                            {matchedHistory.modeOfReturn}
-                                                        </span>
-                                                    )}
-                                                    {matchedHistory?.returnedAt && (
-                                                        <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
-                                                            {new Date(
-                                                                (matchedHistory.returnedAt as any)?.toDate
-                                                                    ? (matchedHistory.returnedAt as any).toDate()
-                                                                    : matchedHistory.returnedAt
-                                                            ).toLocaleDateString('en-GB', {
-                                                                day: '2-digit', month: 'short', year: '2-digit'
-                                                            })}
-                                                        </span>
-                                                    )}
-                                                </>
-                                            );
-                                        })()}
+                    {/* Show fully removed returned items */}
+                    {removedItems.map((r: any, idx: number) => {
+                        const matchedHistory = Order.returnHistory?.find((h: any) =>
+                            h.returnedItems?.some((ri: any) =>
+                                String(ri.originalItemId) === String(r.originalItemId) ||
+                                String(ri.id) === String(r.originalItemId)
+                            )
+                        );
+                        return (
+                            <div key={`removed-${idx}`} className={`${rowPad} py-2.5`}>
+                                <div className={ITEM_GRID}>
+                                    <div className={`min-w-0 ${returnedIndent}`}>
+                                        <p className="text-[13px] font-medium leading-tight line-through text-slate-400 break-words">{r.name}</p>
+                                        {returnMetaEl(matchedHistory?.modeOfReturn, matchedHistory?.returnedAt)}
+                                        {r.note && (
+                                            <p className="text-[11px] leading-tight flex items-baseline gap-1.5 mt-1">
+                                                <span className="font-semibold uppercase tracking-wider text-slate-400">Note:</span>
+                                                <span className="italic text-slate-400">{r.note}</span>
+                                            </p>
+                                        )}
                                     </div>
-                                    {r.note && (
-                                        <p className="text-[11px] leading-tight flex items-baseline gap-1.5 mt-1">
-                                            <span className="font-semibold uppercase tracking-wider text-slate-400">Note:</span>
-                                            <span className="italic text-slate-400">{r.note}</span>
-                                        </p>
-                                    )}
-                                </div>
-                                <div className="text-right ml-4">
-                                    <p className="text-[13px] font-semibold line-through text-slate-400 tabular-nums">
-                                        ₹{formatAmount((r.effectiveUnitPrice ?? r.customPrice ?? r.salesPrice ?? r.mrp ?? 0)
-                                            * r.quantity)}
+                                    <p className="text-right text-[13px] line-through tabular-nums text-slate-400">{r.quantity}</p>
+                                    <p className="text-right text-[13px] font-semibold line-through tabular-nums text-slate-400">
+                                        ₹{money2((r.effectiveUnitPrice ?? r.customPrice ?? r.salesPrice ?? r.mrp ?? 0) * r.quantity)}
                                     </p>
-                                    <p className="text-xs text-slate-400">Qty: {r.quantity}</p>
                                 </div>
                             </div>
-                        </div>
-                    ))
-                }
+                        );
+                    })}
+
+                    {query && visibleItems.length === 0 && removedItems.length === 0 && (
+                        <p className={`${rowPad} py-3 text-xs text-slate-500`}>No item on this order matches "{itemQuery.trim()}".</p>
+                    )}
+                </div>
             </div>
 
-            {/* Expenses, tax & discount (saved on order) */}
+            {/* Items total, expenses, tax & discount (saved on order), order total */}
             {!isUpcomingStatus && (
-                <div className="pt-2 space-y-1">
+                <div className={`${rowPad} pt-2 space-y-1`}>
+                    <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-500">Items ({itemCount})</span>
+                        <span className="font-semibold text-slate-800 tabular-nums">₹{money2(itemsSubtotal)}</span>
+                    </div>
                     {Array.isArray(Order.expenses) && Order.expenses.length > 0 && (
                         <>
                             {Order.expenses.map((ex, idx) => (
                                 <div key={idx} className="flex justify-between items-center text-xs">
                                     <span className="text-slate-500">{ex.name || 'Expense'}</span>
                                     <span className="font-semibold text-slate-800 tabular-nums">
-                                        +₹{formatAmount(parseFloat(String(ex.amount)) || 0)}
+                                        +₹{money2(parseFloat(String(ex.amount)) || 0)}
                                     </span>
                                 </div>
                             ))}
@@ -471,7 +559,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                         <div className="flex justify-between items-center text-xs">
                             <span className="text-slate-500">Tax</span>
                             <span className="font-semibold text-slate-800 tabular-nums">
-                                +₹{formatAmount(Number(Order.totalTax))}
+                                +₹{money2(Number(Order.totalTax))}
                             </span>
                         </div>
                     )}
@@ -479,10 +567,14 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                         <div className="flex justify-between items-center text-xs">
                             <span className="text-slate-500">Bill discount</span>
                             <span className="font-semibold text-red-600 tabular-nums">
-                                -₹{formatAmount(Number(Order.manualDiscount))}
+                                -₹{money2(Number(Order.manualDiscount))}
                             </span>
                         </div>
                     )}
+                    <div className="flex justify-between items-center border-t border-[#f6e1d0] pt-2 mt-1 text-[15px] font-semibold text-slate-900">
+                        <span>Order total</span>
+                        <span className="tabular-nums">₹{money2(total)}</span>
+                    </div>
                 </div>
             )}
         </div>
@@ -510,13 +602,13 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                         return Object.entries(mergedMethods).map(([method, amount]) => (
                             <div
                                 key={method}
-                                className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100"
+                                className="flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-emerald-50 border border-emerald-100"
                             >
                                 <span className="text-[11px] font-semibold text-emerald-800 uppercase">
                                     {method}
                                 </span>
                                 <span className="text-[11px] font-semibold text-emerald-700 tabular-nums">
-                                    ₹{Number(amount).toFixed(2)}
+                                    ₹{money2(Number(amount))}
                                 </span>
                             </div>
                         ));
@@ -527,46 +619,60 @@ export const OrderCard: React.FC<OrderCardProps> = ({
             <div className={`grid ${hasRefund ? 'grid-cols-4' : 'grid-cols-3'} border border-[#f6e1d0] rounded-sm overflow-hidden`}>
                 <div className="px-3 py-2 border-r border-[#f6e1d0]">
                     <p className="text-[11px] text-slate-500">Paid</p>
-                    <p className="text-sm font-semibold text-emerald-700 tabular-nums">₹{paid.toFixed(2)}</p>
+                    <p className="text-sm font-semibold text-emerald-700 tabular-nums">₹{money2(paid)}</p>
                 </div>
                 <div className="px-3 py-2 border-r border-[#f6e1d0]">
                     <p className="text-[11px] text-slate-500">Credit note</p>
                     <p className="text-sm font-semibold text-slate-800 tabular-nums">
-                        ₹{Number(Order.creditNoteAmount || 0).toFixed(2)}
+                        ₹{money2(Number(Order.creditNoteAmount || 0))}
                     </p>
                 </div>
                 {hasRefund && (
                     <div className="px-3 py-2 border-r border-[#f6e1d0]">
                         <p className="text-[11px] text-slate-500">Refund</p>
                         <p className="text-sm font-semibold text-red-600 tabular-nums">
-                            ₹{Number(Order.refundAmount || 0).toFixed(2)}
+                            ₹{money2(Number(Order.refundAmount || 0))}
                         </p>
                     </div>
                 )}
                 <div className={`px-3 py-2 ${due > 0 ? 'bg-[#fef6d7]' : ''}`}>
                     <p className="text-[11px] text-slate-500">Due</p>
-                    <p className={`text-sm font-semibold tabular-nums ${due > 0 ? 'text-[#a16207]' : 'text-slate-800'}`}>₹{due.toFixed(2)}</p>
+                    <p className={`text-sm font-semibold tabular-nums ${due > 0 ? 'text-[#a16207]' : 'text-slate-800'}`}>₹{money2(due)}</p>
                 </div>
             </div>
         </div>
     );
 
-    // ACTION BUTTONS (same buttons, same conditions)
-    const actionButtons = (
+    // Rarely-needed actions behind ⋯ (same conditions as before)
+    const moreItems: MoreMenuItem[] = [
+        ...(!isUpcomingStatus ? [{ label: 'Edit order', onSelect: () => openEditor(Order) }] : []),
+        ...(Order.status === 'Packed' ? [{ label: 'Move back to Confirmed', onSelect: () => handlePreviousStatus(Order.id, Order.status) }] : []),
+        { label: 'Delete order', danger: true, onSelect: () => handleDeleteOrder(Order.id) },
+    ];
+
+    const confirmButton = (
+        <button
+            onClick={(e) => {
+                e.stopPropagation();
+                handleUpdateStatus(Order.id, Order.status);
+            }}
+            disabled={isUpdatingStatus === Order.id}
+            className={BTN_PRIMARY}
+        >
+            {isUpdatingStatus === Order.id ? <Spinner /> : 'Confirm order'}
+        </button>
+    );
+
+    // Upcoming order opened inline on its mobile card
+    const inlineUpcomingActions = (
         <>
-            {/* UPCOMING STAGE BUTTONS */}
-            {isUpcomingStatus && Order.userLoginPhone && (
+            {cleanContactPhone && (
                 <>
-                    <a
-                        href={`tel:${Order.userLoginPhone.replace(/\D/g, '')}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className={BTN_SECONDARY}
-                    >
+                    <a href={`tel:${cleanContactPhone}`} onClick={(e) => e.stopPropagation()} className={BTN_SECONDARY}>
                         Call
                     </a>
-
                     <a
-                        href={`https://wa.me/${Order.userLoginPhone.replace(/\D/g, '')}`}
+                        href={`https://wa.me/${cleanContactPhone}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
@@ -574,74 +680,50 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                     >
                         WhatsApp
                     </a>
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedOrderForAction(Order);
-                        }}
-                        disabled={pdfLoadingOrderId === Order.id}
-                        className={BTN_SECONDARY}
-                    >
-                        {pdfLoadingOrderId === Order.id ? <Spinner /> : "Print"}
-                    </button>
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteOrder(Order.id);
-                        }}
-                        className={BTN_DANGER}
-                    >
-                        Delete
-                    </button>
                 </>
             )}
-            {/* Fallback for upcoming/lead orders that have no phone captured yet —
-                still let the seller print/download the bill */}
-            {isUpcomingStatus && !Order.userLoginPhone && (
-                <>
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedOrderForAction(Order);
-                        }}
-                        disabled={pdfLoadingOrderId === Order.id}
-                        className={BTN_SECONDARY}
-                    >
-                        {pdfLoadingOrderId === Order.id ? <Spinner /> : "Print"}
-                    </button>
+            <button
+                onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedOrderForAction(Order);
+                }}
+                disabled={pdfLoadingOrderId === Order.id}
+                className={BTN_SECONDARY}
+            >
+                {pdfLoadingOrderId === Order.id ? <Spinner /> : "Print"}
+            </button>
+            <button
+                onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteOrder(Order.id);
+                }}
+                className={BTN_DANGER}
+            >
+                Delete
+            </button>
+            {confirmButton}
+        </>
+    );
 
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteOrder(Order.id);
-                        }}
-                        className={BTN_DANGER}
-                    >
-                        Delete
-                    </button>
-                </>
-            )}
-            {!isUpcomingStatus && (isFinalStage ? (
-                <>
-                    {/* PRINT */}
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedOrderForAction(Order);
-                        }}
-                        disabled={pdfLoadingOrderId === Order.id}
-                        className={BTN_SECONDARY}
-                    >
-                        {pdfLoadingOrderId === Order.id ? (
-                            <div className="flex items-center gap-2">
-                                <Spinner />
-                                <span>Printing…</span>
-                            </div>
-                        ) : (
-                            "Print"
-                        )}
-                    </button>
+    // Pinned actions. compact = mobile bar: icon-only Print, shorter labels.
+    const pinnedActions = (compact: boolean) => (
+        <>
+            <button
+                onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedOrderForAction(Order);
+                }}
+                disabled={pdfLoadingOrderId === Order.id}
+                aria-label="Print"
+                className={compact ? ICON_BTN_SECONDARY : BTN_SECONDARY}
+            >
+                {pdfLoadingOrderId === Order.id ? <Spinner /> : compact ? <FiPrinter className="w-4 h-4" /> : 'Print'}
+            </button>
 
+            {isUpcomingStatus && confirmButton}
+
+            {!isUpcomingStatus && isFinalStage && (
+                <>
                     {/* RETURN – both PAID and UNPAID */}
                     <button
                         onClick={(e) => {
@@ -682,17 +764,6 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                         </button>
                     )}
 
-                    {/* DELETE */}
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteOrder(Order.id);
-                        }}
-                        className={BTN_DANGER}
-                    >
-                        Delete
-                    </button>
-
                     {/* SETTLE – only UNPAID */}
                     {!isPaid && (
                         <button
@@ -706,48 +777,10 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                         </button>
                     )}
                 </>
-            ) : (
+            )}
+
+            {!isUpcomingStatus && !isFinalStage && (
                 <>
-                    {Order.status === "Packed" && (
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handlePreviousStatus(Order.id, Order.status);
-                            }}
-                            className={BTN_GHOST}>
-                            ← Back
-                        </button>
-                    )}
-
-                    {/* DELETE */}
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteOrder(Order.id);
-                        }}
-                        className={BTN_DANGER}
-                    >
-                        Delete
-                    </button>
-
-                    {/* PRINT */}
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedOrderForAction(Order);
-                        }}
-                        className={BTN_SECONDARY}
-                    >
-                        {pdfLoadingOrderId === Order.id ? (
-                            <div className="flex items-center gap-2">
-                                <Spinner />
-                                <span>Printing…</span>
-                            </div>
-                        ) : (
-                            "Print"
-                        )}
-                    </button>
-
                     {/* ADVANCE */}
                     <button
                         onClick={(e) => {
@@ -756,7 +789,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                         }}
                         className={BTN_SECONDARY}
                     >
-                        Record advance
+                        {compact ? 'Advance' : 'Record advance'}
                     </button>
 
                     {/* NEXT STAGE (primary action) */}
@@ -769,17 +802,17 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                             disabled={isUpdatingStatus === Order.id}
                             className={BTN_PRIMARY}
                         >
-                            {Order.status === "Confirmed" ? "Mark as packed" : "Mark as completed"} →
+                            {Order.status === "Confirmed" ? "Mark as packed" : "Mark as completed"}
                         </button>
                     )}
                 </>
-            ))}
+            )}
         </>
     );
 
     // ─────────────────────────────────────────────────────────────────────────
     // MOBILE FULL-SCREEN ORDER VIEW
-    // Back header → [customer / addresses] → [timeline + payment] → [items] → pinned actions
+    // Back header → [timeline + payment] → [items] → [addresses + contact] → pinned actions
     // Must be rendered as a direct child of the page's flex-col root.
     // ─────────────────────────────────────────────────────────────────────────
     if (variant === 'screen') {
@@ -790,7 +823,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                         type="button"
                         onClick={() => handleOrderClick(Order.id)}
                         aria-label="Back to orders"
-                        className="w-10 h-10 rounded-full grid place-items-center text-slate-700 hover:bg-[#fff5ec] active:scale-95 transition"
+                        className="w-10 h-10 rounded-sm grid place-items-center text-slate-700 hover:bg-[#fff5ec] active:scale-95 transition"
                     >
                         <FiArrowLeft className="w-5 h-5" />
                     </button>
@@ -799,29 +832,13 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                             {isUpcomingStatus ? Order.userName : Order.orderId}
                         </h1>
                         <span className="block text-xs text-slate-500 truncate">
-                            {isUpcomingStatus ? `Upcoming · ${Order.time}` : `${Order.userName} · ${Order.status}`}
+                            {isUpcomingStatus ? `Upcoming · ${placedAt}` : `${Order.userName} · ${stageLabel}`}
                         </span>
                     </div>
-                    {!isUpcomingStatus && (
-                        <button
-                            type="button"
-                            onClick={() => openEditor(Order)}
-                            aria-label="Edit order"
-                            className="w-10 h-10 rounded-full grid place-items-center text-slate-600 hover:bg-[#fff5ec] hover:text-[#c2410c] active:scale-95 transition"
-                        >
-                            <IconEdit className="h-4 w-4" />
-                        </button>
-                    )}
+                    <MoreMenu items={moreItems} />
                 </header>
 
                 <div className="grow shrink-0 px-4 pt-3 pb-4 space-y-3 bg-[#fff5ec]">
-                    {/* Customer: billing & shipping */}
-                    {!isUpcomingStatus && (
-                        <div className={SCREEN_CARD}>
-                            {addressesEl}
-                        </div>
-                    )}
-
                     {/* Timeline + payment summary */}
                     {!isUpcomingStatus && (
                         <div className={`${SCREEN_CARD} space-y-4`}>
@@ -834,11 +851,19 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                     <div className={SCREEN_CARD}>
                         {itemsEl}
                     </div>
+
+                    {/* Customer: billing & shipping + contact */}
+                    {!isUpcomingStatus && (
+                        <div className={`${SCREEN_CARD} space-y-3`}>
+                            {addressesEl}
+                            {callWhatsappEl}
+                        </div>
+                    )}
                 </div>
 
                 {/* Pinned actions */}
                 <div className="sticky bottom-0 z-[100] mt-auto shrink-0 flex flex-wrap gap-2 px-4 pt-3 pb-5 bg-white border-t border-[#f6e1d0]">
-                    {actionButtons}
+                    {pinnedActions(true)}
                 </div>
             </>
         );
@@ -848,8 +873,6 @@ export const OrderCard: React.FC<OrderCardProps> = ({
     // MOBILE COMPACT CARD (tap → full-screen order view)
     // ─────────────────────────────────────────────────────────────────────────
     if (variant === 'accordion') {
-        const phone = Order.userLoginPhone;
-        const cleanPhone = phone ? phone.replace(/\D/g, '') : '';
         // Upcoming orders open inline inside their own card (no full-screen view)
         const isInlineOpen = isUpcomingStatus && isSelected;
 
@@ -876,22 +899,22 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                                 <b className="block text-sm font-semibold text-slate-900 truncate">{Order.userName}</b>
                                 <div className="text-xs text-slate-500 truncate">
                                     {isUpcomingStatus
-                                        ? `${phone ? `${phone} · ` : ''}${Order.time}`
-                                        : `${Order.orderId} · ${Order.time} · ${itemCount} ${itemCount === 1 ? 'item' : 'items'}`}
+                                        ? `${contactPhone ? `${contactPhone} · ` : ''}${placedAt}`
+                                        : `${Order.orderId} · ${placedAt} · ${itemCount} ${itemCount === 1 ? 'item' : 'items'}`}
                                 </div>
                             </div>
 
                             <div className="shrink-0 text-right">
-                                <b className="block text-[15px] font-semibold text-slate-900 tabular-nums">₹{formatAmount(total)}</b>
+                                <b className="block text-[15px] font-semibold text-slate-900 tabular-nums">₹{money(total)}</b>
                                 {isUpcomingStatus ? (
                                     <div className="text-xs text-slate-500">{itemCount} {itemCount === 1 ? 'item' : 'items'}</div>
                                 ) : due > 0 ? (
                                     <>
-                                        <span className="inline-block text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-full bg-[#fef6d7] text-[#a16207]">UNPAID</span>
-                                        <div className="text-[11px] font-medium text-[#a16207] tabular-nums">₹{formatAmount(due)} due</div>
+                                        <span className={`inline-block ${BADGE_UNPAID}`}>UNPAID</span>
+                                        <div className="text-[11px] font-medium text-[#a16207] tabular-nums">₹{money(due)} due</div>
                                     </>
                                 ) : (
-                                    <span className="inline-block text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">{paidBadgeText}</span>
+                                    <span className={`inline-block ${BADGE_PAID}`}>{paidBadgeText}</span>
                                 )}
                             </div>
                         </div>
@@ -902,12 +925,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                                 {returnMethods.map((method, index) => (
                                     <span
                                         key={`${method}-${index}`}
-                                        className={`text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full border ${method === 'EXCHANGE'
-                                            ? 'bg-purple-50 text-purple-700 border-purple-200'
-                                            : method === 'CASH REFUND'
-                                                ? 'bg-green-50 text-green-700 border-green-200'
-                                                : 'bg-orange-50 text-[#F97316] border-orange-200'
-                                            }`}
+                                        className={`text-[10px] uppercase font-semibold px-2 py-0.5 rounded-sm border ${returnBadgeClass(method)}`}
                                     >
                                         {method}
                                     </span>
@@ -915,39 +933,41 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                             </div>
                         )}
 
-                        {/* Upcoming: quick Call / WhatsApp on the card */}
-                        {isUpcomingStatus && cleanPhone && !isInlineOpen && (
+                        {/* Upcoming: Call / WhatsApp / Confirm right on the card */}
+                        {isUpcomingStatus && !isInlineOpen && (
                             <div className="flex items-center gap-1.5">
-                                <a
-                                    href={`tel:${cleanPhone}`}
-                                    onClick={(e) => e.stopPropagation()}
-                                    aria-label="Call"
-                                    className={ICON_BTN_SECONDARY}
-                                >
-                                    <FiPhone className="w-4 h-4" />
-                                </a>
-                                <a
-                                    href={`https://wa.me/${cleanPhone}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    onClick={(e) => e.stopPropagation()}
-                                    aria-label="WhatsApp"
-                                    className={ICON_BTN_SUCCESS}
-                                >
-                                    <FiMessageCircle className="w-4 h-4" />
-                                </a>
-                                <span className="ml-auto inline-flex items-center gap-0.5 text-xs font-semibold text-[#9a3412]">
-                                    Open order <FiChevronRight className="w-3.5 h-3.5" />
-                                </span>
+                                {cleanContactPhone && (
+                                    <>
+                                        <a
+                                            href={`tel:${cleanContactPhone}`}
+                                            onClick={(e) => e.stopPropagation()}
+                                            aria-label="Call"
+                                            className={ICON_BTN_SECONDARY}
+                                        >
+                                            <FiPhone className="w-4 h-4" />
+                                        </a>
+                                        <a
+                                            href={`https://wa.me/${cleanContactPhone}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            onClick={(e) => e.stopPropagation()}
+                                            aria-label="WhatsApp"
+                                            className={ICON_BTN_SUCCESS}
+                                        >
+                                            <FiMessageCircle className="w-4 h-4" />
+                                        </a>
+                                    </>
+                                )}
+                                {confirmButton}
                             </div>
                         )}
 
-                        {/* Inline expanded details (Upcoming only): items + Call / WhatsApp / Print / Delete */}
+                        {/* Inline expanded details (Upcoming only): items + Call / WhatsApp / Print / Delete / Confirm */}
                         {isInlineOpen && (
                             <div className="border-t border-[#f6e1d0] pt-3 space-y-3">
                                 {itemsEl}
                                 <div className="flex flex-wrap gap-2">
-                                    {actionButtons}
+                                    {inlineUpcomingActions}
                                 </div>
                             </div>
                         )}
@@ -959,6 +979,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
 
     // ─────────────────────────────────────────────────────────────────────────
     // DESKTOP DETAIL PANE (variant === 'detail')
+    // Pinned top (who + contact) → scrolling middle → pinned bottom (total + actions)
     // ─────────────────────────────────────────────────────────────────────────
     return (
         <motion.div
@@ -967,71 +988,57 @@ export const OrderCard: React.FC<OrderCardProps> = ({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.25 }}
+            className="h-full min-h-0"
         >
-            <CustomCard
-                key={Order.id}
-                onClick={undefined}
-                className="p-0 mb-0 bg-white rounded-sm relative overflow-hidden border border-[#f6e1d0] shadow-sm transition"
-            >
-                {/* ───────── DETAIL HEADER (desktop right pane) ───────── */}
-                <div className="flex items-start gap-3 px-5 py-4 border-b border-[#f6e1d0]">
-                    <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <h2 className="text-xl font-semibold text-slate-900">
-                                {isUpcomingStatus ? Order.userName : Order.orderId}
-                            </h2>
-                            <span className="text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 uppercase">
-                                {Order.status}
-                            </span>
-                            {!isUpcomingStatus && (
-                                due > 0 ? (
-                                    <span className="text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-full bg-[#fef6d7] text-[#a16207]">UNPAID</span>
-                                ) : (
-                                    <span className="text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">PAID</span>
-                                )
-                            )}
-                            {!isUpcomingStatus && (
-                                <button
-                                    onClick={() => openEditor(Order)}
-                                    aria-label="Edit order"
-                                    className="w-7 h-7 rounded-sm grid place-items-center text-slate-500 hover:bg-[#fff5ec] hover:text-[#c2410c] transition"
-                                >
-                                    <IconEdit className="h-3.5 w-3.5" />
-                                </button>
+            <PinnedDetail
+                theme="orange"
+                moreHint="Scroll for more items and payment"
+                className="h-full bg-white rounded-sm border border-[#f6e1d0] shadow-sm"
+                header={
+                    <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 px-5 py-4">
+                        <div className="flex-1 min-w-[180px]">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <h2 className="text-xl font-semibold text-slate-900">
+                                    {isUpcomingStatus ? Order.userName : Order.orderId}
+                                </h2>
+                                <span className={BADGE_STATUS}>{stageLabel}</span>
+                                {!isUpcomingStatus && (
+                                    due > 0
+                                        ? <span className={BADGE_UNPAID}>UNPAID</span>
+                                        : <span className={BADGE_PAID}>PAID</span>
+                                )}
+                            </div>
+                            <p className="text-xs text-slate-500 mt-1">
+                                {!isUpcomingStatus && `${Order.userName} · `}{contactPhone && `${contactPhone} · `}placed {placedAt}
+                            </p>
+                        </div>
+                        {callWhatsappEl}
+                    </div>
+                }
+                footer={
+                    <div className="flex flex-wrap items-center gap-2 px-5 py-3.5">
+                        <div className="mr-auto grid min-w-[120px] leading-tight whitespace-nowrap">
+                            <span className="text-xs text-slate-600">Order total · {itemCount} {itemCount === 1 ? 'item' : 'items'}</span>
+                            <b className="text-[22px] leading-7 font-semibold text-slate-900 tabular-nums">₹{money(total)}</b>
+                            {!isUpcomingStatus && due > 0 && (
+                                <span className="text-xs font-medium text-[#a16207] tabular-nums">₹{money(due)} due</span>
                             )}
                         </div>
-                        <p className="text-xs text-slate-500 mt-1">
-                            {Order.userName} · {itemCount} {itemCount === 1 ? 'item' : 'items'} · placed {Order.time}
-                        </p>
+                        <MoreMenu items={moreItems} opensUp />
+                        {pinnedActions(false)}
                     </div>
-                    <div className="text-right shrink-0">
-                        <p className="text-2xl font-semibold text-slate-900 tabular-nums">₹{formatAmount(total)}</p>
-                        {!isUpcomingStatus && due > 0 && (
-                            <p className="text-xs font-medium text-[#a16207] tabular-nums">₹{formatAmount(due)} due</p>
-                        )}
-                    </div>
-                </div>
+                }
+            >
+                {/* Progress track */}
+                {trackEl && <div className="px-5 pt-4">{trackEl}</div>}
 
-                {/* ───────── DETAILS ───────── */}
-                <div className="px-5 pb-4 bg-white">
-                    {/* Progress track */}
-                    {trackEl && <div className="pt-4">{trackEl}</div>}
+                {/* Addresses Section */}
+                {addressesEl && <div className="px-5 py-3.5">{addressesEl}</div>}
 
-                    {/* Addresses Section */}
-                    {addressesEl && <div className="pt-4">{addressesEl}</div>}
-
-                    {/* Items + Totals */}
-                    <div className="mt-4">
-                        {itemsEl}
-                        {totalsEl && <div className="mt-3">{totalsEl}</div>}
-                    </div>
-
-                    {/* ───────── ACTION BUTTONS (same buttons, same conditions) ───────── */}
-                    <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-[#f6e1d0] -mx-5 -mb-4 px-5 pb-4 bg-[#fff8f2]">
-                        {actionButtons}
-                    </div>
-                </div>
-            </CustomCard>
+                {/* Items + Totals */}
+                {itemsEl}
+                {totalsEl && <div className="px-5 pb-5 pt-3">{totalsEl}</div>}
+            </PinnedDetail>
         </motion.div>
     );
 };

@@ -94,7 +94,7 @@ const inr0 = (n: number) =>
 const FOCUS = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#155dfc]';
 // Phone: pill chip · Desktop: 40px outlined button
 const CHIP =
-  `inline-flex items-center gap-2 whitespace-nowrap border font-medium transition-colors h-[34px] px-3.5 text-[13px] rounded-full lg:h-10 lg:px-3 lg:text-sm lg:rounded-lg ${FOCUS}`;
+  `inline-flex items-center gap-2 whitespace-nowrap border font-medium transition-colors h-[34px] px-3.5 text-[13px] rounded-sm lg:h-10 lg:px-3 lg:text-sm ${FOCUS}`;
 const CHIP_LIGHT = `${CHIP} border-[#7a8aa3] bg-white text-[#45556c] lg:text-[#0f172b] hover:bg-[#f5f7ff]`;
 const CHIP_DARK_ON_PHONE = `${CHIP} border-[#0f172b] bg-[#0f172b] text-white lg:border-[#7a8aa3] lg:bg-white lg:text-[#0f172b] lg:hover:bg-[#f5f7ff]`;
 
@@ -289,7 +289,7 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
             onNext={() => next(5)}
             onSkip={skip}
           >
-            <div role="group" className="flex gap-0.5 p-[3px] bg-[#f5f7ff] border border-[#dfe6fb] rounded-[11px] w-full lg:w-[240px]">
+            <div role="group" className="flex gap-0.5 p-[3px] bg-[#f5f7ff] border border-[#dfe6fb] rounded-sm w-full lg:w-[240px]">
               <button
                 type="button"
                 aria-pressed={activeType === 'Credit'}

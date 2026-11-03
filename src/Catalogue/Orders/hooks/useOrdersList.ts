@@ -13,6 +13,23 @@ const DATE_FILTERS = [
     { label: 'Custom Range', value: 'custom' },
 ];
 
+// Completed splits on status (Completed = still owed, Paid = settled); earlier stages on the money received
+const isOrderPaid = (order: Order) =>
+    order.status === 'Paid' ||
+    (order.status !== 'Completed' && Number(order.totalAmount || 0) - Number(order.paidAmount || 0) <= 0);
+
+const isInStage = (order: Order, stage: OrderStatus) => {
+    if (stage === 'Upcoming') {
+        if (order.status !== 'Upcoming') return false;
+        // For lead/upcoming orders, only show if they have items
+        // For confirmed cart orders (isLead: false), always show
+        return order.isLead ? (order.items?.length || 0) > 0 : true;
+    }
+    //  Completed = Completed + Paid
+    if (stage === 'Completed') return order.status === 'Completed' || order.status === 'Paid';
+    return order.status === stage;
+};
+
 interface UseOrdersListParams {
     companyId?: string;
     isTutorialActive: boolean;
@@ -28,14 +45,14 @@ export const useOrdersList = ({ companyId, isTutorialActive, tutorialStep }: Use
     const filterRef = useRef<HTMLDivElement>(null);
     const [isFilterOpen, setIsFilterOpen] = useState(false);
 
-    const [activeStatusTab, setActiveStatusTab] = useState<OrderStatus>(
+    const [activeStatusTab, setActiveStage] = useState<OrderStatus>(
         (location.state?.defaultStatus as OrderStatus) || 'Confirmed'
     );
     const [activeDateFilter, setActiveDateFilter] = useState<string>('today');
     const [searchQuery, setSearchQuery] = useState('');
     const [showSearch, setShowSearch] = useState(false);
     const [expandedorderId, setExpandedorderId] = useState<string | null>(null);
-    const [paymentFilter, setPaymentFilter] = useState<'paid' | 'unpaid'>('unpaid');
+    const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'unpaid'>('all');
     const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
     const [dateRange, setDateRange] = useState<{ start: Date | null, end: Date | null }>(() => {
 
@@ -55,6 +72,12 @@ export const useOrdersList = ({ companyId, isTutorialActive, tutorialStep }: Use
             end: new Date(new Date().setHours(23, 59, 59, 999))
         };
     });
+
+    // Every stage opens on All, so a filter picked in one stage can't hide orders in the next
+    const setActiveStatusTab = (stage: OrderStatus) => {
+        setActiveStage(stage);
+        setPaymentFilter('all');
+    };
 
     const { Orders, loading: dataLoading, error } = useOrdersData(
         companyId,
@@ -129,45 +152,27 @@ export const useOrdersList = ({ companyId, isTutorialActive, tutorialStep }: Use
         }, {} as Record<string, number>);
     }, [Orders]);
 
+    const paymentCounts = useMemo(() => {
+        const inStage = (isTutorialActive ? SAMPLE_ORDERS : Orders).filter(o => isInStage(o, activeStatusTab));
+        const paid = inStage.filter(isOrderPaid).length;
+        return { all: inStage.length, paid, unpaid: inStage.length - paid };
+    }, [Orders, activeStatusTab, isTutorialActive]);
+
     // 3. Simplified Filter (No toggle dependency)
     const filteredOrders = useMemo(() => {
 
         // While the tutorial is active, always show the sample orders filtered
         // by the current status tab, so every tutorial step has real-looking
         // cards to point at.
+        const matchesPayment = (order: Order) =>
+            paymentFilter === 'all' || (paymentFilter === 'paid') === isOrderPaid(order);
+
         if (isTutorialActive) {
-            if (activeStatusTab === 'Completed') {
-                return SAMPLE_ORDERS.filter((o) =>
-                    paymentFilter === 'unpaid' ? o.status === 'Completed' : o.status === 'Paid'
-                );
-            }
-            return SAMPLE_ORDERS.filter((o) => o.status === activeStatusTab);
+            return SAMPLE_ORDERS.filter(o => isInStage(o, activeStatusTab) && matchesPayment(o));
         }
 
         let result = Orders
-            .filter(order => {
-
-                if (activeStatusTab === "Upcoming") {
-                    if (order.status !== "Upcoming") return false;
-                    // For lead/upcoming orders, only show if they have items
-                    // For confirmed cart orders (isLead: false), always show
-                    if (order.isLead) {
-                        return (order.items?.length || 0) > 0;
-                    }
-                    return true;
-                }
-
-                //  COMPLETED TAB
-                if (activeStatusTab === 'Completed') {
-                    if (paymentFilter === 'unpaid') {
-                        return order.status === 'Completed';
-                    }
-                    return order.status === 'Paid';
-                }
-
-                //  NORMAL TABS (Confirmed, Packed)
-                return order.status === activeStatusTab;
-            })
+            .filter(order => isInStage(order, activeStatusTab) && matchesPayment(order))
 
             .filter(order => {
                 const q = searchQuery.toLowerCase();
@@ -228,6 +233,7 @@ export const useOrdersList = ({ companyId, isTutorialActive, tutorialStep }: Use
         activeStatusTab,
         setActiveStatusTab,
         statusCounts,
+        paymentCounts,
 
         activeDateFilter,
         dateRange,

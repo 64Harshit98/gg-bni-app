@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import bgMain from '../../assets/bg-main.png';
+import { CANVAS_DOTS } from '../../Components/StatusShell';
 import sellarLogo from '../../assets/sellar-logo-heading.png';
 import { ROUTES } from '../../constants/routes.constants';
 
@@ -16,14 +16,11 @@ const PaymentReturnPage: React.FC = () => {
     const isPending = status === 'pending';
 
     return (
-        <div
-            className="fixed inset-0 z-[100] h-screen w-screen overflow-hidden bg-cover bg-center md:bg-[center_top_75%]"
-            style={{ backgroundImage: `url(${bgMain})` }}
-        >
-            <div className="absolute inset-0 bg-gradient-to-b from-white/35 via-white/25 to-white/35" />
+        <div className="fixed inset-0 z-[100] h-screen w-screen overflow-hidden bg-canvas">
+            <div aria-hidden="true" className={`pointer-events-none absolute inset-0 ${CANVAS_DOTS}`} />
 
             <div className="relative z-10 flex h-full w-full items-center justify-center px-4">
-                <div className="flex w-full max-w-sm flex-col items-center rounded-lg bg-white/90 p-8 text-center shadow-2xl">
+                <div className="flex w-full max-w-sm flex-col items-center rounded-sm border border-line bg-white p-8 text-center shadow-float">
                     <img src={sellarLogo} alt="Sellar" className="mb-6 w-40" />
 
                     {isSuccess ? (
@@ -60,7 +57,7 @@ const PaymentReturnPage: React.FC = () => {
 
                     <button
                         onClick={() => navigate(ROUTES.SUBSCRIPTION_PAGE)}
-                        className="mt-6 w-full rounded-md bg-blue-600 py-2.5 font-semibold text-white transition-colors hover:bg-blue-700"
+                        className="mt-6 w-full rounded-sm bg-blue-600 py-2.5 font-semibold text-white transition-colors hover:bg-blue-700"
                     >
                         Back to Subscription
                     </button>

@@ -19,9 +19,10 @@ import type { Item } from '../../constants/models';
 import { TutorialStep } from '../../Components/TutorialStep';
 import useTutorial from '../../Catalogue/hooks/useTutorial';
 import { completeTutorial } from '../../Catalogue/hooks/useCompleteTutorial';
+import { useCollapsingPageHeader } from '../../lib/useCollapsingPageHeader';
 import { ORDER_STATUSES } from './orders.types';
 import { useOrdersList, useOrderEditor, useOrderStatus, useOrderPayment, useOrderDeletion, usePendingRequestCount, useOrderCommunication } from './hooks';
-import { OrderListFilters, OrderEditModal, TransportDetailsModal, ZeroAmountConfirmModal, AdjustmentConfirmModal, StatusConfirmModal, DeleteConfirmModal, OrderActionSheet, PrintSubMenuModal, QrCodeModal, OrderCard, DuplicateItemPromptModal } from './components';
+import { OrderListFilters, PaymentSwitch, OrderEditModal,TransportDetailsModal, ZeroAmountConfirmModal, AdjustmentConfirmModal, StatusConfirmModal, DeleteConfirmModal, OrderActionSheet, PrintSubMenuModal, QrCodeModal, OrderCard, DuplicateItemPromptModal } from './components';
 
 // ─── Total tutorial steps for Orders ────────────────────────────────────────
 const TOTAL_STEPS = 5;
@@ -37,6 +38,8 @@ const OrdersPage: React.FC = () => {
     const setTutorialRef = (index: number) => (el: HTMLElement | null) => {
         tutorialRefs.current[index] = el;
     };
+    const paneHostRef = useRef<HTMLDivElement | null>(null);
+    useCollapsingPageHeader(paneHostRef, 1024); // lg: where the list + detail split starts
     const seenOrdersRef = useRef<Set<string>>(
         new Set(JSON.parse(localStorage.getItem(NOTIFICATION_SEEN_ORDERS_KEY) || "[]"))
     );
@@ -111,6 +114,7 @@ const OrdersPage: React.FC = () => {
         setShowSearch,
         paymentFilter,
         setPaymentFilter,
+        paymentCounts,
         expandedorderId,
         handleOrderClick,
         filteredOrders,
@@ -463,7 +467,7 @@ const OrdersPage: React.FC = () => {
     );
 
     return (
-        <div className="flex min-h-screen w-full flex-col bg-[#fff5ec] pb-10">
+        <div className="flex min-h-screen w-full flex-col bg-[#fff5ec] pb-10 lg:block lg:h-full lg:min-h-0 lg:pb-0">
             {modal && <Modal message={modal.message} type={modal.type} onClose={() => setModal(null)} theme="catalogue" />}
 
             {/* List stays mounted (filters/search state safe), just hidden while an order is open on mobile */}
@@ -502,31 +506,61 @@ const OrdersPage: React.FC = () => {
                     statusCounts={statusCounts}
                     paymentFilter={paymentFilter}
                     setPaymentFilter={setPaymentFilter}
+                    paymentCounts={paymentCounts}
                     isDesktop={isDesktop}
                 />
 
                 {/* --- 7. ORDERS LIST --- */}
 
-                <div ref={setTutorialRef(5) as any} className="flex-grow overflow-y-hidden bg-[#fff5ec] space-y-3 px-3 pb-4 pt-1 md:px-6">
+                <div
+                    ref={(el) => { setTutorialRef(5)(el); paneHostRef.current = el; }}
+                    className="flex-grow overflow-y-hidden bg-[#fff5ec] space-y-3 px-3 pb-4 pt-1 md:px-6 lg:h-[calc(100%+1rem)] lg:space-y-0 lg:overflow-visible lg:pb-6 lg:pt-3"
+                >
                     {dataLoading ? (
                         <div className="flex justify-center py-16"><Spinner /></div>
                     ) : error ? (
                         <p className="p-6 text-center text-sm text-red-700 bg-red-50 border border-red-200 rounded-sm">{error}</p>
-                    ) : filteredOrders.length > 0 && isDesktop ? (
-                        <div className="grid grid-cols-[380px_minmax(0,1fr)] gap-5 items-start">
-                            <div className="bg-white border border-[#f6e1d0] rounded-sm overflow-hidden shadow-sm">
-                                {filteredOrders.map((order) => (
-                                    <OrderCard
-                                        key={order.id}
-                                        {...cardProps}
-                                        order={order}
-                                        variant="row"
-                                        expandedorderId={selectedId}
-                                        handleOrderClick={handleSelectOrder}
-                                    />
-                                ))}
+                    ) : isDesktop ? (
+                        /* The order list and the order each scroll inside their own card */
+                        <div className="grid h-[calc(100%-var(--pane-offset,0px))] min-h-[320px] grid-cols-[320px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)] gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
+                            <div className="flex min-h-0 flex-col bg-white border border-[#f6e1d0] rounded-sm overflow-hidden shadow-sm">
+                                <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[#f6e1d0] px-4 py-2.5">
+                                    <b className="flex-1 whitespace-nowrap text-sm font-semibold text-slate-900">
+                                        {activeStatusTab} · {statusCounts[activeStatusTab] || 0}
+                                    </b>
+                                    {activeStatusTab !== 'Upcoming' && (
+                                        <PaymentSwitch value={paymentFilter} onChange={setPaymentFilter} counts={paymentCounts} />
+                                    )}
+                                </div>
+                                <div className="min-h-0 flex-1 overflow-y-auto">
+                                    {filteredOrders.length > 0 ? filteredOrders.map((order) => (
+                                        <OrderCard
+                                            key={order.id}
+                                            {...cardProps}
+                                            order={order}
+                                            variant="row"
+                                            expandedorderId={selectedId}
+                                            handleOrderClick={handleSelectOrder}
+                                        />
+                                    )) : (
+                                        <div className="py-12 px-6 text-center">
+                                            <p className="text-sm font-semibold text-slate-800">
+                                                {isTutorialActive ? 'Sample orders will appear here' : 'No orders found'}
+                                            </p>
+                                            <p className="text-xs text-slate-500 mt-1">
+                                                {isTutorialActive
+                                                    ? 'Switch to a matching status to see them.'
+                                                    : 'Try another stage or a wider date range.'}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                            {isTutorialActive && tutorialStep === 5 && detailCard ? (
+                            {!detailCard ? (
+                                <div className="grid place-items-center bg-white border border-[#f6e1d0] rounded-sm shadow-sm px-6 text-center text-sm text-slate-600">
+                                    Pick an order from the list to see its items, payment and next step.
+                                </div>
+                            ) : isTutorialActive && tutorialStep === 5 ? (
                                 <TutorialStep
                                     step={5}
                                     currentStep={tutorialStep}
@@ -581,6 +615,11 @@ const OrdersPage: React.FC = () => {
 
                                 return card;
                             })}
+                            {activeStatusTab === 'Upcoming' && (
+                                <p key="upcoming-hint" className="text-center text-xs text-slate-500">
+                                    Tap an order for items, print or delete
+                                </p>
+                            )}
                         </AnimatePresence>
                     ) : (
                         <div className="py-12 px-6 text-center bg-white border border-[#f6e1d0] rounded-sm">

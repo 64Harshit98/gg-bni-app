@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import type { ItemGroup, QuantitySlab, AddOnGroup } from '../../constants/models';
 import { type PriceTierForm, toPriceTierForm, fromPriceTierForm, emptyPriceTierForm } from '../../lib/priceTiers';
@@ -335,7 +336,7 @@ const ADD_ITEM_CSS = `
 .ai-modalbar{border-top:1px solid var(--border);padding:12px 16px;display:flex;justify-content:flex-end;gap:8px;background:var(--surface)}
 
 /* overlays */
-.ai-overlay{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:rgba(2,6,24,.5);padding:16px}
+.ai-overlay{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(2,6,24,.5);padding:16px}
 .ai-dialog{background:var(--surface);border-radius:12px;box-shadow:var(--shadow-float);width:100%;max-width:512px;padding:20px;display:flex;flex-direction:column;gap:16px;max-height:90vh;overflow:auto}
 .ai-dialog--sm{max-width:340px;text-align:center}
 .ai-dialog h2,.ai-dialog h3{margin:0;font-size:18px;line-height:26px;font-weight:600}
@@ -355,6 +356,16 @@ const ADD_ITEM_CSS = `
 .ai-fields__g label{display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:capitalize}
 .ai-fields__g input{accent-color:var(--primary)}
 .ai-cropwrap{display:flex;justify-content:center;max-height:60vh;overflow:auto}
+.ai-dialog--wide{max-width:720px}
+.ai-chips{display:flex;flex-wrap:wrap;gap:6px}
+.ai-chip{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:999px;background:var(--danger-soft);color:var(--danger);font-size:12px;font-weight:500}
+.ai-failwrap{border:1px solid var(--border);border-radius:8px;max-height:45vh;overflow:auto}
+.ai-failtable{width:100%;border-collapse:collapse;font-size:12px;line-height:18px}
+.ai-failtable th{position:sticky;top:0;background:var(--surface-sunken);text-align:left;font-weight:600;color:var(--ink-muted);padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+.ai-failtable td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top;word-break:break-word}
+.ai-failtable tr:last-child td{border-bottom:0}
+.ai-failtable td:first-child{font-variant-numeric:tabular-nums;color:var(--ink-subtle);white-space:nowrap}
+.ai-failtable td:last-child{color:var(--danger)}
 `;
 const DRAFT_STORAGE_KEY = 'sellar_item_add_draft';
 const SAVE_AND_NEW_SEEN_KEY = 'sellar_save_and_new_explained';
@@ -457,6 +468,9 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   const pendingRawFile = useRef<File | null>(null);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
+  const [importFailures, setImportFailures] = useState<{ row: number; name: string; barcode: string; reason: string }[]>([]);
+  const [importReasonSummary, setImportReasonSummary] = useState<string[]>([]);
+  const [showFailureDialog, setShowFailureDialog] = useState<boolean>(false);
   const [priceTiers, setPriceTiers] = useState<PriceTierForm[]>([]);
   const [quantitySlabs, setQuantitySlabs] = useState<QuantitySlab[]>([]);
   const [addOnGroupIds, setAddOnGroupIds] = useState<string[]>([]);
@@ -1081,6 +1095,9 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     setShowImportModal(false);
     setIsUploading(true);
     setUploadProgress(null);
+    setImportFailures([]);
+    setImportReasonSummary([]);
+    setShowFailureDialog(false);
     setError(null); setSuccess(null); setModal(null);
 
     try {
@@ -1124,6 +1141,8 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       // catch-all covering several unrelated validation rules — makes the
       // actual rejection reason visible instead of a single opaque count.
       const failReasons = { missingPrice: 0, invalidPricing: 0, purchasePriceRequired: 0, unknownLocation: 0, negativeValue: 0, invalidBarcode: 0, other: 0 };
+      // Details of every failed row (Excel row number, item name, barcode, reason)
+      const failedRows: { row: number; name: string; barcode: string; reason: string }[] = [];
 
       for (let r = dataStartRow; r <= worksheet.rowCount; r++) {
         const name = safeGetVal(worksheet.getRow(r), 1);
@@ -1215,11 +1234,12 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         // --- STRICT VALIDATION FIX ---
         // Catches bad data early and increments fail count properly
         let rowIsValid = true;
-        if (rowMRP === 0 && rowSale === 0) { rowIsValid = false; failReasons.missingPrice++; } // Missing prices
-        else if (rowMRP > 0 && rowSale > 0 && rowSale > rowMRP) { rowIsValid = false; failReasons.invalidPricing++; } // Invalid pricing
-        else if (itemSettings.requirePurchasePrice && rowPurchase <= 0) { rowIsValid = false; failReasons.purchasePriceRequired++; }
-        else if (trimmedLocation && !isShopLocation && !targetGodownId) { rowIsValid = false; failReasons.unknownLocation++; } // Unknown Location name
-        else if (rowBarcodeStr && !existingItem && validateSkuFormat(rowBarcodeStr)) { rowIsValid = false; failReasons.invalidBarcode++; } // Bad SKU format on a NEW item
+        let rowFailMsg = '';
+        if (rowMRP === 0 && rowSale === 0) { rowIsValid = false; failReasons.missingPrice++; rowFailMsg = 'MRP & Sales Price missing'; }
+        else if (rowMRP > 0 && rowSale > 0 && rowSale > rowMRP) { rowIsValid = false; failReasons.invalidPricing++; rowFailMsg = `Sales Price ${rowSale} > MRP ${rowMRP}`; }
+        else if (itemSettings.requirePurchasePrice && rowPurchase <= 0) { rowIsValid = false; failReasons.purchasePriceRequired++; rowFailMsg = 'Purchase Price required'; }
+        else if (trimmedLocation && !isShopLocation && !targetGodownId) { rowIsValid = false; failReasons.unknownLocation++; rowFailMsg = `Unknown location "${rowLocationStr}"`; }
+        else if (rowBarcodeStr && !existingItem && validateSkuFormat(rowBarcodeStr)) { rowIsValid = false; failReasons.invalidBarcode++; rowFailMsg = 'Invalid barcode (letters, numbers, - and _ only, max 100)'; }
 
         // --- NEGATIVE VALUE GUARD ---
         // Only checks MRP/Sale/Purchase price and their discounts — the
@@ -1240,11 +1260,13 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         ) {
           rowIsValid = false;
           failReasons.negativeValue++;
+          rowFailMsg = 'Negative price or discount';
         }
 
         if (!rowIsValid) {
           failedCount++;
           processedCount++;
+          failedRows.push({ row: rowNum, name: rawName, barcode: rowBarcodeStr, reason: rowFailMsg });
           continue;
         }
 
@@ -1318,9 +1340,10 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           try {
             await dbOperations.updateItem(existingItem.id, updates);
             updatedCount++;
-          } catch (e) {
+          } catch (e: any) {
             failedCount++;
             failReasons.other++;
+            failedRows.push({ row: rowNum, name: rawName, barcode: existingItem.barcode || rowBarcodeStr, reason: `Save error: ${e?.message || 'unknown error'}` });
           }
 
         } else {
@@ -1394,9 +1417,10 @@ const ItemAdd: React.FC<ItemAddProps> = ({
               itemMapByBarcode.set(finalRowBarcode, newItemObj);
               itemMapByName.set(rawName.toLowerCase(), newItemObj);
             }
-          } catch (e) {
+          } catch (e: any) {
             failedCount++;
             failReasons.other++;
+            failedRows.push({ row: rowNum, name: rawName, barcode: finalRowBarcode, reason: `Save error: ${e?.message || 'unknown error'}` });
           }
         }
         processedCount++;
@@ -1420,7 +1444,9 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         if (failReasons.unknownLocation > 0) reasonParts.push(`${failReasons.unknownLocation} unknown Location`);
         if (failReasons.negativeValue > 0) reasonParts.push(`${failReasons.negativeValue} negative values`);
         if (failReasons.other > 0) reasonParts.push(`${failReasons.other} save errors`);
-        setModal({ message: `Imported with errors. ${failedCount} rows failed: ${reasonParts.join(', ')}.`, type: State.ERROR });
+        setImportFailures(failedRows);
+        setImportReasonSummary(reasonParts);
+        setShowFailureDialog(true);
       } else {
         setSuccess(`Completed: ${createdCount} New, ${updatedCount} Updated, ${skippedCount} Skipped.`);
       }
@@ -1439,6 +1465,19 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   const handleBarcodeScanned = (barcode: string) => {
     setItemBarcode(barcode);
     setIsScannerOpen(false);
+  };
+
+  const handleDownloadFailedRows = () => {
+    if (!importFailures.length) return;
+    const aoa = [
+      ['Excel Row', 'Item Name', 'Barcode', 'Reason'],
+      ...importFailures.map(f => [f.row, f.name, f.barcode, f.reason]),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{ wch: 10 }, { wch: 32 }, { wch: 18 }, { wch: 60 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Failed Rows');
+    XLSX.writeFile(wb, 'Sellar_Import_Failed_Rows.xlsx');
   };
 
   const handleDownloadSample = () => {
@@ -1628,6 +1667,20 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     </div>
   );
 
+  // Overlays render on document.body so the bottom nav / save bar can never cover them.
+  // The wrapper re-applies .ai-root so CSS variables and button styles still work.
+  const portalOverlay = (node: React.ReactNode) =>
+    createPortal(
+      <div
+        className={`ai-root${theme === 'orange' ? ' ai-orange' : ''}`}
+        style={{ position: 'static', height: 'auto', overflow: 'visible', background: 'transparent', display: 'block' }}
+      >
+        <style>{ADD_ITEM_CSS}</style>
+        {node}
+      </div>,
+      document.body
+    );
+
   const renderHeader = () => (
     isModal ? (
       <div className="ai-bar ai-bar--modal">
@@ -1665,7 +1718,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       )}
 
       {/* ---------- Upload progress ---------- */}
-      {uploadProgress && (
+      {uploadProgress && portalOverlay(
         <div className="ai-overlay">
           <div className="ai-dialog ai-dialog--sm">
             <h3>Uploading items…</h3>
@@ -1678,7 +1731,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       )}
 
       {/* ---------- Crop ---------- */}
-      {showCropModal && rawImageSrc && (
+      {showCropModal && rawImageSrc && portalOverlay(
         <div className="ai-overlay">
           <div className="ai-dialog">
             <h2>Crop image</h2>
@@ -1719,7 +1772,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       )}
 
       {/* ---------- Bulk import settings ---------- */}
-      {showImportModal && (
+      {showImportModal && portalOverlay(
         <div className="ai-overlay">
           <div className="ai-dialog">
             <h2>Bulk import settings</h2>
@@ -1772,6 +1825,48 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         </div>
       )}
 
+      {/* ---------- Import errors (compact table) ---------- */}
+      {showFailureDialog && importFailures.length > 0 && (
+        <div className="ai-overlay">
+          <div className="ai-dialog ai-dialog--wide">
+            <h2>Import finished with errors</h2>
+            <p>{importFailures.length} rows were not imported. Fix them in your Excel file and upload again.</p>
+
+            <div className="ai-chips">
+              {importReasonSummary.map(r => <span key={r} className="ai-chip">{r}</span>)}
+            </div>
+
+            <div className="ai-failwrap">
+              <table className="ai-failtable">
+                <thead>
+                  <tr><th>Row</th><th>Item</th><th>Barcode</th><th>Reason</th></tr>
+                </thead>
+                <tbody>
+                  {importFailures.slice(0, 50).map((f, i) => (
+                    <tr key={`${f.row}-${i}`}>
+                      <td>{f.row}</td>
+                      <td>{f.name}</td>
+                      <td>{f.barcode || '-'}</td>
+                      <td>{f.reason}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {importFailures.length > 50 && (
+              <p>Showing first 50 of {importFailures.length}. Download the file for the full list.</p>
+            )}
+
+            <div className="ai-dialog__f">
+              <button className="ai-btn ai-btn--ghost" onClick={() => setShowFailureDialog(false)}>Close</button>
+              <button className="ai-btn ai-btn--primary" onClick={handleDownloadFailedRows}>
+                <AiIcon name="download" sm />Download failed rows
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {renderHeader()}
 
       <div className="ai-work">
@@ -1780,6 +1875,16 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         <div className="ai-left">
 
           {error && <div className="ai-alert ai-alert--danger"><span>{error}</span></div>}
+
+          {importFailures.length > 0 && (
+            <div className="ai-alert ai-alert--danger">
+              <span>{importFailures.length} rows could not be imported</span>
+              <button type="button" onClick={handleDownloadFailedRows} className="ai-btn ai-btn--secondary ai-btn--sm">
+                <AiIcon name="download" sm />Download failed rows
+              </button>
+              <button type="button" onClick={() => setImportFailures([])} aria-label="Dismiss"><AiIcon name="x" sm /></button>
+            </div>
+          )}
 
           {success && (
             <div ref={successBannerRef} className="ai-alert ai-alert--success">

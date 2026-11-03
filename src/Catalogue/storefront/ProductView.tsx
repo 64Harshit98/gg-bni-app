@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Bell, Check, ChevronRight, FileText, MessageCircle, Share2, ShieldCheck, ShoppingCart, X } from 'lucide-react';
+import { Bell, Check, ChevronRight, FileText, Share2, ShieldCheck, ShoppingCart, X } from 'lucide-react';
 import type { Item, ItemGroup, PriceTier, AddOnGroup, AddOnOption } from '../../constants/models';
 import { getSlabForQty, extraChargeOf } from '../../constants/models';
 import type { CatalogueSalesSettings } from '../Settings/CatalogueSalesSetting';
@@ -298,7 +298,6 @@ export const ProductView: React.FC<Props> = (p) => {
                     )}
 
                     <div className="-mt-1 flex flex-wrap gap-2">
-                        {p.whatsappHref && <a href={p.whatsappHref} target="_blank" rel="noopener noreferrer" className={btnClass('whatsapp')}><MessageCircle className="size-4" />Ask on WhatsApp</a>}
                         <button type="button" onClick={p.onAsk} className={btnClass('ghost')}>Ask a question</button>
                         {p.shareUrl !== null && <button type="button" onClick={share} className={btnClass('ghost')}><Share2 className="size-4" />Share</button>}
                     </div>

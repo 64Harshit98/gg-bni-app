@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import BackButton from '../../Components/BackButton';
 import { db } from '../../lib/Firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { getFirestoreOperations } from '../../lib/ItemsFirebase';
 import { Spinner } from '../../constants/Spinner';
 import { Modal } from '../../constants/Modal';
 import { State } from '../../enums';
@@ -333,25 +334,33 @@ const BarcodeSetting: React.FC = () => {
             } catch (err) {
                 console.error('Failed to fetch barcode settings:', err);
                 setModal({ message: 'Failed to load settings.', type: State.ERROR });
-            } finally {
+                        } finally {
                 setIsLoading(false);
-            }
-
-            // Company name for the preview (read-only; failure should not block settings)
-            try {
-                const companySnap = await getDoc(doc(db, 'companies', companyId));
-                if (companySnap.exists()) {
-                    const c = companySnap.data() as Record<string, any>;
-                    setCompanyName(c.companyName ?? c.name ?? c.shopName ?? c.businessName ?? '');
-                }
-            } catch (err) {
-                console.error('Failed to fetch company name:', err);
             }
         };
 
         fetchOrCreate();
-    }, [currentUser?.companyId]);
+        }, [currentUser?.companyId]);
 
+    // ── Company name (same source as PrintQR: getBusinessInfo) ─────────────────
+    useEffect(() => {
+        const companyId = currentUser?.companyId;
+        if (!companyId) return;
+
+        let cancelled = false;
+        const loadCompanyName = async () => {
+            try {
+                const businessInfo = await getFirestoreOperations(companyId).getBusinessInfo();
+                if (!cancelled) setCompanyName(businessInfo.name || '');
+            } catch (err) {
+                // Read-only preview data; failure should not block settings
+                console.error('Failed to fetch company name:', err);
+            }
+        };
+        loadCompanyName();
+
+        return () => { cancelled = true; };
+    }, [currentUser?.companyId]);
     // ── Save ───────────────────────────────────────────────────────────────────
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();

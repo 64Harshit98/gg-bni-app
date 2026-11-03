@@ -29,12 +29,13 @@ export const getFirestoreOperations = (companyId: string) => {
   const itemRef = collection(companyRef, 'items');
   const usersRef = collection(companyRef, 'users');
 
-  const STORE_KEY = `pos_items_${companyId}`;
-  const TIME_KEY = `pos_sync_time_${companyId}`;
+  const STORE_KEY = `pos_items_v2_${companyId}`;
+const TIME_KEY = `pos_sync_time_v2_${companyId}`;
 
   return {
     listenToItems: (onData: (items: Item[]) => void) => {
-      let unsubscribe = () => { };
+  let unsubscribe = () => { };
+  let unsubscribeDeleted = () => { };
 
       (async () => {
         try {
@@ -78,12 +79,36 @@ export const getFirestoreOperations = (companyId: string) => {
           console.log(`[Listener] Synced ${snapshot.size} changes. Total items: ${mergedItems.length}`);
 
           onData(mergedItems.filter(i => !i.isDeleted));
-        }, (error) => {
+                }, (error) => {
           console.error("Live Sync Error:", error);
+        });
+
+        // Listen for hard-deleted items (tombstones) and purge them from the cache
+        const since = lastSyncTime ? new Date(lastSyncTime) : new Date();
+        since.setMinutes(since.getMinutes() - 1); // small buffer for clock skew
+        const deletedQuery = query(
+          collection(companyRef, 'deletedItems'),
+          where('deletedAt', '>', since)
+        );
+
+        unsubscribeDeleted = onSnapshot(deletedQuery, async (snap) => {
+          if (snap.empty) return;
+
+          const deletedIds = new Set(snap.docs.map(d => d.id));
+          const currentLocal: Item[] = (await get(STORE_KEY)) || [];
+          const remaining = currentLocal.filter(i => !i.id || !deletedIds.has(i.id));
+
+          await set(STORE_KEY, remaining);
+          onData(remaining.filter(i => !i.isDeleted));
+        }, (error) => {
+          console.error("Deleted-items listener error:", error);
         });
       })();
 
-      return () => unsubscribe();
+      return () => {
+        unsubscribe();
+        unsubscribeDeleted();
+      };
     },
 
 

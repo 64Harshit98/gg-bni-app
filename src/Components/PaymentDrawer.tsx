@@ -115,9 +115,11 @@ interface PaymentDrawerProps {
     totalMrp?: number;
     showBillOptions?: boolean;
     // Sales Setting cap on the Bill Discount field below — 0/undefined means no cap.
-    maxBillDiscountValue?: number;
+        maxBillDiscountValue?: number;
     maxBillDiscountType?: 'percent' | 'amount';
     onPartyChange?: (name: string, number: string) => void;
+    // Tax se pehle ka asli amount (round off ke bina) — Sub total row isi se banta hai
+    taxableSubtotal?: number;
 }
 
 // --- SESSION STORAGE KEYS ---
@@ -381,8 +383,9 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     totalMrp = 0,
     showBillOptions = true,
     maxBillDiscountValue = 0,
-    maxBillDiscountType = 'percent',
+        maxBillDiscountType = 'percent',
     onPartyChange,
+    taxableSubtotal,
 }) => {
     const { currentUser } = useAuth();
 
@@ -1255,7 +1258,10 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     ) : null;
 
     const taxModeLabel = taxMode.charAt(0).toUpperCase() + taxMode.slice(1);
-    const subTotalValue = Math.max(0, netPayable - liveTax);
+        // Asli taxable amount se banao (round off nahi judta). Bill discount lage to usi ratio me ghatao.
+    const subTotalValue = taxableSubtotal !== undefined
+        ? Math.max(0, taxableSubtotal * (billTotal > 0 ? Math.max(0, (billTotal - discount) / billTotal) : 1))
+        : Math.max(0, netPayable - liveTax);
 
     const summaryRows = [
         { label: <>MRP total{totalQuantity > 0 ? ` (${totalQuantity} ${totalQuantity === 1 ? 'item' : 'items'})` : ''}</>, value: `₹${fmt(totalMrp)}` },
@@ -1731,7 +1737,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     ) : null;
     return createPortal(
         <div
-            className="fixed inset-0 z-[99] flex items-end justify-center md:items-stretch md:justify-end overscroll-none"
+            className="fixed inset-0 z-[2000] flex items-end justify-center md:items-stretch md:justify-end overscroll-none"
             onClick={onClose}
             onTouchMove={(e) => e.preventDefault()}
         >
@@ -1893,7 +1899,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 </div>
 
                 {/* MOBILE FOOTER: total + confirm (single row) */}
-                <div className="md:hidden flex items-center gap-3 px-4 py-2.5 bg-white border-t border-[#dfe6fb] shadow-[0_-4px_15px_rgba(21,48,140,0.06)] z-20">
+                <div className="md:hidden flex items-center gap-3 px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] bg-white border-t border-[#dfe6fb] shadow-[0_-4px_15px_rgba(21,48,140,0.06)] z-20">
                     <div className="flex flex-col flex-none min-w-0">
                         <span className="text-[10px] leading-3 font-semibold text-[#5b6b86] uppercase tracking-wide">Total</span>
                         <b className="text-lg leading-6 font-semibold tracking-tight text-[#0f172b] tabular-nums truncate">₹{fmt(netPayable)}</b>

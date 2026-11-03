@@ -114,8 +114,9 @@ export const CatalogueBill = async (
       gstScheme: data.companyGstType,
       taxType: data.taxType,
       enableTriplicate: (data as any).enableTriplicate === true,
-      isCatalogue: true,
+            isCatalogue: true,
       msmeNumber: data.msmeNumber || "",
+      discountDisplayFormat: data.discountDisplayMode || 'amount',
 
       billTo: {
         name: data.customer?.billing?.name || data.customer?.shipping?.name || "",
@@ -194,7 +195,9 @@ export const CatalogueBill = async (
           imageBase64: item.imageBase64 || "",
           gstPercent: effectiveTaxRate,
           gstAmount: gstAmount,
-          discountAmount: discountAmt,
+                    discountAmount: discountAmt,
+          // % of MRP (not sales price) so it matches the Catalogue A4 / settings preview
+          discountPercent: (mrp * qty) > 0 ? (discountAmt / (mrp * qty)) * 100 : 0,
           amount: finalRowTotal
         };
       }),

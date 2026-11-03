@@ -15,6 +15,7 @@ import { ProductCard, Sheet, btnClass } from '../storefront/StoreUI';
 import { deleteStoreImages } from '../storefront/uploadStoreImage';
 import { getItemGroupIds, getItemImages, initialsOf } from '../storefront/storefront.utils';
 import { productState } from '../storefront/productState';
+import BackButton from '../../Components/BackButton';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 
@@ -263,9 +264,10 @@ const StoreBuilder: React.FC = () => {
 
     return (
         <div className="min-h-full bg-sf-canvas font-sans text-slate-900" onClick={() => setMenuFor(null)}>
-            <header className="flex flex-wrap items-center gap-4 px-4 pb-4 pt-5 md:px-6">
-                <div className="min-w-0 flex-1">
-                    <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Store page</h1>
+            <header className="flex flex-wrap items-center gap-3 px-4 pb-4 pt-5 md:gap-4 md:px-6">
+    <BackButton className="-ml-2" />
+    <div className="min-w-0 flex-1">
+        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Store page</h1>
                     <p className="text-[13px] text-slate-600">The home customers see at {storeUrl.replace(/^https?:\/\//, '')}</p>
                 </div>
                 <div className="flex min-w-0 flex-wrap gap-2">

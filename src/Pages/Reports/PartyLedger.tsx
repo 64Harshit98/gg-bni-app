@@ -93,6 +93,16 @@ const balanceOf = (party: PartySummary) => {
     return { receivable, payable, net: receivable - payable };
 };
 
+// DISPLAY ONLY: "You owe them" opening balances are saved with dueAmount 0,
+// so show their amount (minus any payments) instead of "Settled".
+const advanceOwedOf = (party: PartySummary) =>
+    (party.transactions as LedgerTxn[])
+        .filter((t) => isAdvance(t))
+        .reduce(
+            (s, t) => s + Math.max(0, t.totalAmount - (t.paymentHistory || []).reduce((x, p) => x + (Number(p.amount) || 0), 0)),
+            0,
+        );
+
 const partyKey = (party: Pick<PartySummary, 'partyNumber' | 'partyName'>) =>
     normalizePartyNumber(party.partyNumber) || party.partyName.trim().toLowerCase();
 
@@ -1119,7 +1129,7 @@ const PartyLedger: React.FC = () => {
 
     const balanceWords = (net: number) =>
         net > 0 ? { label: 'They owe you', value: inr(net), cls: 'text-amber-700' }
-            : net < 0 ? { label: 'You owe', value: inr(net), cls: 'text-slate-900' }
+            : net < 0 ? { label: 'You owe them', value: inr(net), cls: 'text-slate-900' }
                 : { label: 'Balance', value: 'Settled ✓', cls: 'text-green-700' };
 
     const daysSince = (t: number) => Math.max(0, Math.floor((Date.now() - t) / 86_400_000));
@@ -1199,7 +1209,7 @@ const PartyLedger: React.FC = () => {
     const hasPhone = (party: PartySummary) => normalizePartyNumber(party.partyNumber).length === 10;
 
     // Opens the same action sheet the Transactions page opens on "Print".
-        const openBillActions = async (party: PartySummary, t: LedgerTxn) => {
+    const openBillActions = async (party: PartySummary, t: LedgerTxn) => {
         if (!companyId) return;
         try {
             // Full sale document, so the PDF gets tax, discount, expenses, GST etc. like on the Transactions page
@@ -1262,7 +1272,13 @@ const PartyLedger: React.FC = () => {
             : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
         }`;
     const segClass = (active: boolean) =>
-        `whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition ${active ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-white'}`;
+        `inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition ${active ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-white'}`;
+
+    const segCount = (count: number, active: boolean) => (
+        <span className={`ml-1 tabular-nums ${active ? 'text-white/80' : 'text-slate-400'}`}>
+            ({count})
+        </span>
+    );
 
     const rowMenu = (party: PartySummary, key: string) => (
         <div className="relative">
@@ -1589,14 +1605,14 @@ const PartyLedger: React.FC = () => {
                                 </button>
                             )}
                             {!t.isOpeningBalance && !purchase && companyId && (
-    <button
-        type="button"
-        onClick={() => { setExpandedBillId(null); openBillActions(party, t); }}
-        className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:border-slate-400"
-    >
-        <ExternalLink size={15} /> View bill
-    </button>
-)}
+                                <button
+                                    type="button"
+                                    onClick={() => { setExpandedBillId(null); openBillActions(party, t); }}
+                                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:border-slate-400"
+                                >
+                                    <ExternalLink size={15} /> View bill
+                                </button>
+                            )}
                         </div>
                     ) : undefined}
                 >
@@ -1664,7 +1680,7 @@ const PartyLedger: React.FC = () => {
                 {billPanel}
 
                 {/* HEADER */}
-                                <header className="mb-4 flex items-center gap-2 md:gap-3">
+                <header className="mb-4 flex items-center gap-2 md:gap-3">
                     <div className="flex-shrink-0">
                         <BackButton onClick={() => { setSelectedPartyName(null); setExpandedBillId(null); }} />
                     </div>
@@ -1998,7 +2014,7 @@ const PartyLedger: React.FC = () => {
             {modals}
 
             {/* HEADER */}
-                       <header className="mb-4 flex items-center gap-2 md:gap-3">
+            <header className="mb-4 flex items-center gap-2 md:gap-3">
                 <div className="flex-shrink-0">
                     <BackButton />
                 </div>
@@ -2092,25 +2108,34 @@ const PartyLedger: React.FC = () => {
                         <div className="hidden flex-wrap gap-3 md:flex">
                             <div className="flex gap-1 rounded-sm bg-sunken p-1">
                                 {typeSegments.map((s) => (
-                                    <button key={s.value} onClick={() => setPartyTypeFilter(s.value)} className={segClass(partyTypeFilter === s.value)}>{s.label} {s.count}</button>
+                                    <button key={s.value} onClick={() => setPartyTypeFilter(s.value)} className={segClass(partyTypeFilter === s.value)}>
+                                        {s.label}
+                                        {segCount(s.count, partyTypeFilter === s.value)}
+                                    </button>
                                 ))}
                             </div>
                             <div className="flex gap-1 rounded-sm bg-sunken p-1">
                                 {statusSegments.map((s) => (
-                                    <button key={s.value} onClick={() => setStatusFilter(s.value)} className={segClass(statusFilter === s.value)}>{s.label}{s.count !== undefined ? ` ${s.count}` : ''}</button>
+                                    <button key={s.value} onClick={() => setStatusFilter(s.value)} className={segClass(statusFilter === s.value)}>
+                                        {s.label}
+                                        {s.count !== undefined && segCount(s.count, statusFilter === s.value)}
+                                    </button>
                                 ))}
                             </div>
                         </div>
                         {/* Mobile chips */}
                         <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden">
-                            <button onClick={() => { setPartyTypeFilter('all'); setStatusFilter('all'); }} className={chipClass(partyTypeFilter === 'all' && statusFilter === 'all')}>All {parties.length}</button>
-                            <button onClick={() => setStatusFilter(statusFilter === 'due' ? 'all' : 'due')} className={chipClass(statusFilter === 'due')}>Due {totals.due}</button>
-                            <button onClick={() => setStatusFilter(statusFilter === 'settled' ? 'all' : 'settled')} className={chipClass(statusFilter === 'settled')}>Settled {totals.settled}</button>
-                            {(['Customer', 'Supplier', 'Both'] as const).map((t) => (
-                                <button key={t} onClick={() => setPartyTypeFilter(partyTypeFilter === t ? 'all' : t)} className={chipClass(partyTypeFilter === t)}>
-                                    {t === 'Both' ? 'Both' : `${t}s`}
-                                </button>
-                            ))}
+                            <button onClick={() => { setPartyTypeFilter('all'); setStatusFilter('all'); }} className={chipClass(partyTypeFilter === 'all' && statusFilter === 'all')}>All ({parties.length})</button>
+                            <button onClick={() => setStatusFilter(statusFilter === 'due' ? 'all' : 'due')} className={chipClass(statusFilter === 'due')}>Due ({totals.due})</button>
+                            <button onClick={() => setStatusFilter(statusFilter === 'settled' ? 'all' : 'settled')} className={chipClass(statusFilter === 'settled')}>Settled ({totals.settled})</button>
+                            {(['Customer', 'Supplier', 'Both'] as const).map((t) => {
+                                const count = t === 'Customer' ? totals.customers : t === 'Supplier' ? totals.suppliers : totals.both;
+                                return (
+                                    <button key={t} onClick={() => setPartyTypeFilter(partyTypeFilter === t ? 'all' : t)} className={chipClass(partyTypeFilter === t)}>
+                                        {t === 'Both' ? 'Both' : `${t}s`} ({count})
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
 
@@ -2132,7 +2157,10 @@ const PartyLedger: React.FC = () => {
                             <ul className={isListVisible ? '' : 'md:hidden'}>
                                 {filteredParties.map((p, idx) => {
                                     const { party } = p;
-                                    const words = balanceWords(p.net);
+                                    const advanceOwed = p.net === 0 ? advanceOwedOf(party) : 0;
+                                    const words = advanceOwed > 0
+                                        ? { label: 'You owe them', value: inr(advanceOwed), cls: 'text-slate-900' }
+                                        : balanceWords(p.net);
                                     const meta = [
                                         party.partyNumber && party.partyNumber !== 'N/A' ? formatPhone(party.partyNumber) : '',
                                         `${party.totalTransactions} ${party.totalTransactions === 1 ? 'bill' : 'bills'}`,

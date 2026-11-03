@@ -398,7 +398,7 @@ export const useOrderCommunication = ({
         }
     };
 
-    const handleSendWhatsapp = async (Order: Order) => {
+        const handleSendWhatsapp = async (Order: Order, extraMessage?: string) => {
         const phone = Order.userLoginPhone || Order.billingDetails?.phone || '';
         const name = Order.userName || Order.billingDetails?.name || 'Customer';
 
@@ -456,8 +456,9 @@ export const useOrderCommunication = ({
             const fileUrl = await getDownloadURL(storageRef);
 
             const amount = Order.totalAmount;
-            const extraMsg = catalogueWhatsappExtra ? `\n\n${catalogueWhatsappExtra}` : '';
-            const message = `Hello ${name},\n\nHere is your order bill #${Order.orderId}.\nAmount: ${Number(amount).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}\n\nThank you!${extraMsg}`;
+                       const extraMsg = catalogueWhatsappExtra ? `\n\n${catalogueWhatsappExtra}` : '';
+            const creditPart = extraMessage ? `\n\n${extraMessage}` : '';
+            const message = `Hello ${name},\n\nHere is your order bill #${Order.orderId}.\nAmount: ${Number(amount).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}${creditPart}\n\nThank you!${extraMsg}`;
 
             const response = await botMasterService.sendPdfFromUrl(
                 botMasterToken,

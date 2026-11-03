@@ -84,6 +84,8 @@ export const generateA5Invoice = async (
     const safeCompanyState = (data.companyState || '').trim().toLowerCase();
     const safePos = (data.placeOfSupply || '').trim().toLowerCase();
     const isIgst = Boolean(safeCompanyState && safePos && safeCompanyState !== safePos);
+    // Discount column: 'percentage' => "10%", otherwise amount (default)
+    const isPctDiscount = (data as any).discountDisplayFormat === 'percentage';
 
     const hasImages = data.items.some(
         (item: any) =>
@@ -438,6 +440,11 @@ export const generateA5Invoice = async (
             totalTaxAmt += taxAmt;
             calculatedGrandTotal += finalRowTotal;
 
+            const grossAmt = rawPrice * qty;
+            const discountPct = item.discountPercent !== undefined && item.discountPercent !== null
+                ? Number(item.discountPercent)
+                : (grossAmt > 0 ? (rowDiscountAmt / grossAmt) * 100 : 0);
+
             const { baseName, addOnText } = splitAddOns(item);
 
             return {
@@ -452,6 +459,7 @@ export const generateA5Invoice = async (
                 taxAmt,
                 taxableValue,
                 discountAmt: rowDiscountAmt,
+                discountPct,
                 finalRowTotal,
                 imageBase64: item.imageBase64
             };
@@ -494,7 +502,8 @@ export const generateA5Invoice = async (
                 halign: 'center',
                 valign: 'middle',
                 fontSize: 8,
-                fontStyle: 'normal'
+                fontStyle: 'normal',
+                cellPadding: 1.5
             },
             bodyStyles: {
                 fillColor: false,
@@ -502,17 +511,20 @@ export const generateA5Invoice = async (
                 lineWidth: 0.2,
                 textColor: [0, 0, 0],
                 fontSize: 8,
+                cellPadding: 1.5,
                 halign: 'center',
                 valign: 'middle',
                 minCellHeight: hasImages ? 18 : 10
             },
             columnStyles: hasImages
                 ? {
-                    1: { cellWidth: 18, halign: "center" },
-                    2: { cellWidth: 50, halign: "left" }
+                    0: { cellWidth: 11 },
+                    1: { cellWidth: 14, halign: "center" },
+                    2: { cellWidth: 36, halign: "left" }
                 }
                 : {
-                    1: { cellWidth: 50, halign: "left" }
+                    0: { cellWidth: 11 },
+                    1: { cellWidth: 42, halign: "left" }
                 },
             head: [[
                 "S. No.",
@@ -530,10 +542,12 @@ export const generateA5Invoice = async (
                 nameImgs[i] ? "" : `${item.name}\n(${item.totalPcs} ${item.unit})`,
                 item.qty,
                 item.rawPrice.toFixed(2),
-                item.discountAmt.toLocaleString("en-IN", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
-                }),
+                isPctDiscount
+                    ? `${Number(item.discountPct.toFixed(2))}%`
+                    : item.discountAmt.toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    }),
                 ...(resolvedIsEstimate ? [] : [
                     `${item.effectiveTaxRate}%`,
                     item.taxAmt.toLocaleString("en-IN", {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import BarcodeScanner from '../../../UseComponents/BarcodeScanner';
 import { Modal } from '../../../constants/Modal';
@@ -15,6 +15,17 @@ import { ItemEditDrawer } from '../../../Components/ItemDrawer';
 import { useAuth, useDatabase } from '../../../context/auth-context';
 import { useExchangeItems, useSalesReturnLookup, useSaveSalesReturn } from './hooks';
 import BackButton from '../../../Components/BackButton';
+import { FiSend } from 'react-icons/fi';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../../lib/Firebase';
+import { PLANS } from '../../../enums';
+import { normalizePlan } from '../../../context/Plan';
+import { ROUTES } from '../../../constants/routes.constants';
+import { Permissions } from '../../../enums/permissions.enum';
+import ShowWrapper from '../../../context/ShowWrapper';
+import { Spinner } from '../../../constants/Spinner';
+import { useWhatsappProvider } from '../../Additional/Whatsapp/useWhatsappProvider';
+import { useInvoiceCommunication } from '../../Journal/hooks'; // ← adjust path if your Journal folder is named differently
 
 /* ------------------------------------------------------------------ */
 /* SELLAR design tokens (as Tailwind classes) — UI only                */
@@ -151,8 +162,9 @@ const SalesReturnPage: React.FC = () => {
   const {
     returnDate, setReturnDate,
     modeOfReturn, setModeOfReturn,
-    isDrawerOpen, setIsDrawerOpen,
+        isDrawerOpen, setIsDrawerOpen,
     activeTaxMode, setActiveTaxMode,
+    returnSuccess, setReturnSuccess,
     totalReturnGross, totalReturnValue, totalExchangeValue, finalBalance, discountDeducted, totalMrp, totalTax,
     paidAmountOnSale, isDueSale,
     saveReturnTransaction,
@@ -172,8 +184,48 @@ const SalesReturnPage: React.FC = () => {
     setIsLoading,
   });
 
-  const handleProcessReturn = () => handleProcessReturnBase(exchangeBalanceAction);
+   const handleProcessReturn = () => handleProcessReturnBase(exchangeBalanceAction);
   const getBalanceLabel = () => getBalanceLabelBase(exchangeBalanceAction);
+
+  // ---- WhatsApp share after return (same flow as Journal's invoice action sheet) ----
+  const { provider: whatsappProvider } = useWhatsappProvider(currentUser?.companyId);
+  const [isPosBasicPlan, setIsPosBasicPlan] = useState(false);
+  useEffect(() => {
+    const fetchPlan = async () => {
+      if (!currentUser?.companyId) return;
+      const snap = await getDoc(doc(db, 'companies', currentUser.companyId));
+      if (snap.exists()) {
+        const p = normalizePlan(snap.data().pack);
+        setIsPosBasicPlan(p === PLANS.POS_BASIC || p === PLANS.CALC_CATALOG);
+      }
+    };
+    fetchPlan();
+  }, [currentUser?.companyId]);
+
+  const { sendingPdf, handleSendWhatsapp, handleSendWhatsappSnapto } = useInvoiceCommunication({
+    currentUser,
+    salesSettings,
+    isPosBasicPlan,
+    setModal,
+  });
+
+  const handleCloseReturnSuccess = () => {
+    setReturnSuccess(null);
+    navigate(ROUTES.JOURNAL);
+  };
+
+  const handleSendReturnWhatsapp = () => {
+    if (!returnSuccess) return;
+    const { invoice, creditUpdated, creditAdded, newCreditBalance } = returnSuccess;
+    const inr = (n: number) => n.toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
+    // Credit message only when the credit note was actually updated
+    const creditMsg = creditUpdated
+      ? `Your credit note has been updated.\nCredit added: ${inr(creditAdded)}\nTotal available credit: ${inr(newCreditBalance)}`
+      : undefined;
+
+    if (whatsappProvider === 'botmaster') handleSendWhatsapp(invoice, creditMsg);
+    else handleSendWhatsappSnapto(invoice); // template-based, see note below
+  };
 
   // Same behaviour the two <select onChange> handlers had before.
   const handleModeChange = (value: string) => {
@@ -244,7 +296,63 @@ const SalesReturnPage: React.FC = () => {
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden bg-[#eef2ff] text-[#0f172b]">
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
-      <BarcodeScanner isOpen={scannerPurpose !== null} onClose={() => setScannerPurpose(null)} onScanSuccess={handleBarcodeScanned} />
+            <BarcodeScanner isOpen={scannerPurpose !== null} onClose={() => setScannerPurpose(null)} onScanSuccess={handleBarcodeScanned} />
+
+      {returnSuccess && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-sm bg-white p-6 text-center shadow-2xl">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-sm bg-green-100">
+              <svg className="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+            </div>
+            <p className="mb-1 text-lg font-medium text-gray-800">Return processed successfully!</p>
+            {returnSuccess.creditUpdated && (
+              <p className="mb-4 text-sm text-[#45556c]">
+                Credit note updated: ₹{returnSuccess.creditAdded.toFixed(2)} added
+              </p>
+            )}
+            <div className="mt-4 flex flex-col gap-3">
+              {returnSuccess.invoice.partyNumber && whatsappProvider === 'botmaster' && (
+                <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+                  <button
+                    onClick={handleSendReturnWhatsapp}
+                    disabled={sendingPdf}
+                    className="flex w-full items-center justify-center gap-2 rounded-sm bg-green-600 px-4 py-2.5 font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-50"
+                  >
+                    {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
+                  </button>
+                </ShowWrapper>
+              )}
+              {returnSuccess.invoice.partyNumber && (whatsappProvider === 'snapto' || whatsappProvider === 'sellar') && (
+                <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+                  <button
+                    onClick={handleSendReturnWhatsapp}
+                    disabled={sendingPdf}
+                    className="flex w-full items-center justify-center gap-2 rounded-sm bg-green-600 px-4 py-2.5 font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-50"
+                  >
+                    {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
+                  </button>
+                </ShowWrapper>
+              )}
+              {whatsappProvider === 'none' && (
+                <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+                  <button
+                    onClick={() => navigate(ROUTES.WHATSAPP_CHOOSE)}
+                    className="flex w-full items-center justify-center gap-2 rounded-sm border border-gray-300 bg-gray-100 px-4 py-2.5 font-medium text-gray-700 transition-colors hover:bg-gray-200"
+                  >
+                    <FiSend /> Connect WhatsApp
+                  </button>
+                </ShowWrapper>
+              )}
+              <button
+                onClick={handleCloseReturnSuccess}
+                className="w-full rounded-sm bg-blue-600 px-4 py-2.5 text-white transition-colors hover:bg-blue-700"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {renderHeader()}
 
       <div className="relative flex flex-1 flex-col overflow-hidden xl:flex-row">

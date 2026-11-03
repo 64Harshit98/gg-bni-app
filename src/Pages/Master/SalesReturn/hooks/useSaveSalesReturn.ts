@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
     doc,
+    getDoc,
     writeBatch,
     increment as firebaseIncrement,
     arrayUnion,
@@ -61,6 +62,13 @@ export const useSaveSalesReturn = ({
     const [modeOfReturn, setModeOfReturn] = useState<string>('Credit Note');
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const [activeTaxMode, setActiveTaxMode] = useState<'inclusive' | 'exclusive' | 'exempt'>('exclusive');
+    // Set after a successful return — drives the "Return completed + Send on WhatsApp" popup
+    const [returnSuccess, setReturnSuccess] = useState<{
+        invoice: any;
+        creditUpdated: boolean;
+        creditAdded: number;
+        newCreditBalance: number;
+    } | null>(null);
 
     useEffect(() => {
         if (salesSettings) {
@@ -321,8 +329,45 @@ export const useSaveSalesReturn = ({
 
             await batch.commit();
             clearSalesReportCache(companyId);
-            setModal({ type: State.SUCCESS, message: 'Return processed successfully!' });
-            setTimeout(() => navigate(ROUTES.JOURNAL), 1500);
+
+            // Re-read the updated bill + customer so the WhatsApp invoice/credit message use fresh numbers
+            let updatedInvoice: any = null;
+            let newCreditBalance = 0;
+            try {
+                const savedSnap = await getDoc(saleRef);
+                const sd: any = savedSnap.data() || {};
+                const dueNow = Number(sd.paymentMethods?.due) || 0;
+                const createdAtRaw = sd.createdAt?.toDate ? sd.createdAt.toDate() : (sd.createdAt ?? sd.date ?? new Date());
+                updatedInvoice = {
+                    ...sd,
+                    id: selectedSale.id,
+                    type: 'Credit',
+                    invoiceNumber: sd.invoiceNumber || selectedSale.invoiceNumber,
+                    amount: Number(sd.totalAmount) || 0,
+                    dueAmount: dueNow,
+                    status: dueNow > 0 ? 'Unpaid' : 'Paid',
+                    createdAt: createdAtRaw,
+                };
+                if (shouldAddCredit && finalPartyNumber.length >= 3) {
+                    const custSnap = await getDoc(doc(db, 'companies', companyId, 'customers', finalPartyNumber));
+                    newCreditBalance = Number(custSnap.data()?.creditBalance) || 0;
+                }
+            } catch (e) {
+                console.warn('Could not re-read updated invoice for WhatsApp share:', e);
+            }
+
+            if (updatedInvoice) {
+                setReturnSuccess({
+                    invoice: updatedInvoice,
+                    creditUpdated: !!shouldAddCredit,
+                    creditAdded: shouldAddCredit ? finalBalance : 0,
+                    newCreditBalance,
+                });
+            } else {
+                // Fallback: old behaviour
+                setModal({ type: State.SUCCESS, message: 'Return processed successfully!' });
+                setTimeout(() => navigate(ROUTES.JOURNAL), 1500);
+            }
         } catch (err: any) {
             console.error(err);
             setModal({ type: State.ERROR, message: `Failed: ${err.message}` });
@@ -372,6 +417,7 @@ export const useSaveSalesReturn = ({
         modeOfReturn, setModeOfReturn,
         isDrawerOpen, setIsDrawerOpen,
         activeTaxMode, setActiveTaxMode,
+        returnSuccess, setReturnSuccess,
         totalReturnGross, totalReturnValue, totalExchangeValue, finalBalance, discountDeducted, totalMrp, totalTax,
         paidAmountOnSale, isDueSale,
         saveReturnTransaction,

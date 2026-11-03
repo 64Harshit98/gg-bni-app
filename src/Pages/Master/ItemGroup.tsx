@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import type { ItemGroup } from '../../constants/models';
 import { useAuth, useDatabase } from '../../context/auth-context';
@@ -706,6 +707,10 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
     }
   };
 
+   // Popups render on document.body inside a high z-index wrapper, so the bottom nav can never cover them.
+  const overlayPortal = (node: React.ReactNode) =>
+    createPortal(<div style={{ position: 'relative', zIndex: 9999 }}>{node}</div>, document.body);
+
   const renderTabs = (full: boolean) => (
     <div role="group" className={`${full ? 'flex w-full' : 'inline-flex'} p-[3px] gap-0.5 bg-gray-50 border border-gray-200 rounded-sm`}>
       <button
@@ -1143,7 +1148,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
       </main>
 
       {/* Modals & Drawers */}
-      {isNewGroupModalOpen && (
+            {isNewGroupModalOpen && overlayPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={closeNewGroupModal}>
           <div className="bg-white rounded-sm shadow-xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-semibold text-slate-900 mb-1.5">New item group</h2>
@@ -1192,7 +1197,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
           </div>
         </div>
       )}
-      {deleteTargetGroup && (
+            {deleteTargetGroup && overlayPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-sm shadow-xl w-full max-w-md p-5">
             <h2 className="text-lg font-semibold text-slate-900 mb-1.5">Delete "{deleteTargetGroup.name}"?</h2>
@@ -1231,7 +1236,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
         />
       )}
 
-      {isMergeOpen && (
+            {isMergeOpen && overlayPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-sm shadow-xl w-full max-w-lg p-5 flex flex-col max-h-[80vh]">
             <div className="flex justify-between items-start gap-2 mb-1">
@@ -1291,13 +1296,15 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
         />
       )}
 
-      <AddOnManager
-        isOpen={isAddOnManagerOpen}
-        onClose={() => setIsAddOnManagerOpen(false)}
-        companyId={addOnsEnabled ? currentUser?.companyId : undefined}
-        items={allItems}
-        actionClass={`${actionBg} ${actionHoverBg}`}
-      />
+            {overlayPortal(
+        <AddOnManager
+          isOpen={isAddOnManagerOpen}
+          onClose={() => setIsAddOnManagerOpen(false)}
+          companyId={addOnsEnabled ? currentUser?.companyId : undefined}
+          items={allItems}
+          actionClass={`${actionBg} ${actionHoverBg}`}
+        />
+      )}
 
       <ItemEditDrawer item={selectedItemForEdit} isOpen={isEditDrawerOpen} onClose={closeEditDrawer} onSaveSuccess={() => fetchAndSyncGroups()} />
 

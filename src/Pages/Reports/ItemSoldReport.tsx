@@ -42,11 +42,13 @@ import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import DownloadMenu from './SalesReportComponents/DownloadMenu';
 import CustomRangePanel from './SalesReportComponents/CustomRangePanel';
 import { totalStock } from './ItemReportComponents/itemIssues';
+import { splitAddOns } from '../../UseComponents/addOnText';
 
-// 1. Define the strictly 4-column structure
 export interface AggregatedItem {
-    id: string;
-    name: string;
+    id: string;          // productId + add-on text (same item with different add-ons = separate rows)
+    productId: string;
+    name: string;        // base name (without add-ons)
+    addOnText: string;   // '' when the line has no add-ons
     itemGroup: string;
     quantitySold: number;
     valueSold: number;
@@ -196,12 +198,16 @@ const ItemsSoldReport: React.FC = () => {
         billsInRange.forEach((sale) => {
             let billValue = 0;
             sale.items.forEach((item: any) => {
-                const id = item.productId || item.id || 'unknown';
+                const productId = item.productId || item.id || 'unknown';
+                const { baseName, addOnText } = splitAddOns(item);
+                const id = `${productId}__${addOnText || ''}`;
 
                 if (!itemMap.has(id)) {
                     itemMap.set(id, {
                         id,
-                        name: item.name || 'Unknown Item',
+                        productId,
+                        name: baseName || item.name || 'Unknown Item',
+                        addOnText: addOnText || '',
                         itemGroup: groupNameOf(item.itemGroupId, item.category),
                         quantitySold: 0,
                         valueSold: 0,
@@ -237,7 +243,7 @@ const ItemsSoldReport: React.FC = () => {
         const filtered = soldItems.filter(
             (item) =>
                 (!groupFilter || item.itemGroup === groupFilter) &&
-                (!searchTerm || item.name.toLowerCase().includes(searchTerm)),
+                (!searchTerm || `${item.name} ${item.addOnText}`.toLowerCase().includes(searchTerm)),
         );
         filtered.sort((a, b) => {
             const key = sortConfig.key;
@@ -267,7 +273,7 @@ const ItemsSoldReport: React.FC = () => {
 
     // Catalogue items (in the selected group) that sold nothing in the range.
     const { catalogueCount, unsoldItems, tiedUp } = useMemo(() => {
-        const soldIds = new Set(soldItems.map((i) => i.id));
+        const soldIds = new Set(soldItems.map((i) => i.productId));
         const inGroup = catalogueItems.filter(
             (item) => !groupFilter || groupNameOf(item.itemGroupId) === groupFilter,
         );
@@ -394,9 +400,10 @@ const ItemsSoldReport: React.FC = () => {
                     const formattedName = item.name
                         ? item.name.charAt(0).toUpperCase() + item.name.slice(1).toLowerCase()
                         : 'N/A';
+                    const nameCell = item.addOnText ? `${formattedName}\n+ ${item.addOnText}` : formattedName;
 
                     return [
-                        formattedName,
+                        nameCell,
                         item.itemGroup || 'N/A',
                         item.quantitySold.toString(),
                         item.valueSold.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
@@ -554,7 +561,7 @@ const ItemsSoldReport: React.FC = () => {
             aggregatedItems.forEach((item, idx) => {
                 const r = dataStartRow + idx;
                 aoa[r][0] = idx + 1;
-                aoa[r][1] = item.name || '-';
+                aoa[r][1] = item.addOnText ? `${item.name || '-'}\n+ ${item.addOnText}` : (item.name || '-');
                 aoa[r][2] = item.itemGroup || '-';
                 aoa[r][3] = item.quantitySold;
                 aoa[r][4] = Math.round(item.valueSold);
@@ -578,7 +585,7 @@ const ItemsSoldReport: React.FC = () => {
                 { hpt: 22 }, // 4 summary values
                 { hpt: 8 }, // 5 spacer
                 { hpt: 28 }, // 6 headers
-                ...aggregatedItems.map(() => ({ hpt: 20 })),
+                ...aggregatedItems.map((i) => ({ hpt: i.addOnText ? 32 : 20 })),
                 { hpt: 24 }, // footer
             ];
 
@@ -652,7 +659,7 @@ const ItemsSoldReport: React.FC = () => {
                     style(addr, s(
                         { sz: 9, color: { rgb: '1E293B' } },
                         rowBg,
-                        { horizontal: isNumeric ? 'center' : 'left', vertical: 'center' },
+                        { horizontal: isNumeric ? 'center' : 'left', vertical: 'center', wrapText: true },
                         bblr,
                     ));
                     if (worksheet[addr] && isNumeric) {
@@ -1043,7 +1050,12 @@ const ItemsSoldReport: React.FC = () => {
                                         return (
                                             <tr key={item.id} className="border-t border-line transition hover:bg-sunken">
                                                 <td className="px-4 py-3 text-slate-500">{idx + 1}</td>
-                                                <td className="px-4 py-3 font-semibold text-slate-900">{item.name}</td>
+                                                <td className="px-4 py-3">
+                                                    <p className="font-semibold text-slate-900 break-words">{item.name}</p>
+                                                    {item.addOnText && (
+                                                        <p className="text-xs font-normal text-slate-500 break-words">+ {item.addOnText}</p>
+                                                    )}
+                                                </td>
                                                 <td className="px-4 py-3">
                                                     <span className="inline-block whitespace-nowrap rounded-sm bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">
                                                         {item.itemGroup}
@@ -1091,9 +1103,14 @@ const ItemsSoldReport: React.FC = () => {
                         {aggregatedItems.map((item, idx) => (
                             <li key={item.id} className="border-t border-line px-4 py-3">
                                 <div className="flex items-start justify-between gap-3">
-                                    <p className="min-w-0 text-sm font-semibold text-slate-900">
-                                        {idx + 1}. {item.name}
-                                    </p>
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-semibold text-slate-900">
+                                            {idx + 1}. {item.name}
+                                        </p>
+                                        {item.addOnText && (
+                                            <p className="text-xs text-slate-500 break-words">+ {item.addOnText}</p>
+                                        )}
+                                    </div>
                                     <p className="shrink-0 text-sm font-semibold text-slate-900">{inrRound(item.valueSold)}</p>
                                 </div>
                                 <div className="mt-0.5 flex items-center justify-between gap-3 text-xs text-slate-500">

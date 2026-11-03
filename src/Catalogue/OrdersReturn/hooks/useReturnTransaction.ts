@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { db } from '../../../lib/Firebase';
 import {
   doc,
+  getDoc,
   writeBatch,
   arrayUnion,
   serverTimestamp,
@@ -81,8 +82,15 @@ export const useReturnTransaction = ({
   setModal,
   refreshSelectedOrder,
 }: UseReturnTransactionParams) => {
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [exchangeBalanceAction, setExchangeBalanceAction] = useState<'Credit Note' | 'Cash Refund'>('Credit Note');
+  // Set after a successful return, drives the "Return completed + Send on WhatsApp" popup
+  const [returnSuccess, setReturnSuccess] = useState<{
+    order: Order;
+    creditUpdated: boolean;
+    creditAdded: number;
+    newCreditBalance: number;
+  } | null>(null);
 
   // --- SAVE LOGIC ---
   const saveReturnTransaction = async (
@@ -392,14 +400,46 @@ export const useReturnTransaction = ({
           }
           : prev
       );
-      setSelectedReturnIds(new Set());
-      setModal({
-        type: State.SUCCESS,
-        message: 'Return processed successfully!'
-      });
-      setTimeout(() => navigate(ROUTES.ORDERDETAILS), 1500);
+            setSelectedReturnIds(new Set());
+
+      // Re-read the updated order + customer so the WhatsApp bill/credit message use fresh numbers
+      const creditUpdated = finalPartyNumber.length >= 3 && shouldAddCredit;
+      let updatedOrder: any = null;
+      let newCreditBalance = 0;
+      try {
+        const savedSnap = await getDoc(saleRef);
+        if (savedSnap.exists()) {
+          const sd: any = savedSnap.data();
+          updatedOrder = {
+            ...sd,
+            id: selectedSale.id,
+            orderId: sd.orderId || selectedSale.orderId,
+            time: sd.time ?? selectedSale.time,
+            userName: sd.userName || finalPartyName,
+            userLoginPhone: sd.userLoginPhone || finalPartyNumber,
+          };
+        }
+        if (creditUpdated) {
+          const custSnap = await getDoc(doc(db, 'companies', companyId, 'customers', finalPartyNumber));
+          newCreditBalance = Number(custSnap.data()?.creditBalance) || 0;
+        }
+      } catch (e) {
+        console.warn('Could not re-read updated order for WhatsApp share:', e);
+      }
+
+      if (updatedOrder) {
+        setReturnSuccess({
+          order: updatedOrder as Order,
+          creditUpdated,
+          creditAdded: creditUpdated ? finalBalance : 0,
+          newCreditBalance,
+        });
+      } else {
+        // Fallback: old behaviour
+        setModal({ type: State.SUCCESS, message: 'Return processed successfully!' });
+        setTimeout(() => navigate(ROUTES.ORDERDETAILS), 1500);
+      }
     } catch (err: any) {
-      console.error(err);
       setModal({
         type: State.ERROR,
         message: `Failed: ${err.message}`
@@ -510,9 +550,10 @@ export const useReturnTransaction = ({
     return 'Credit Due';
   };
 
-  return {
+    return {
     isDrawerOpen, setIsDrawerOpen,
     exchangeBalanceAction, setExchangeBalanceAction,
+    returnSuccess, setReturnSuccess,
     saveReturnTransaction,
     handleProcessReturn,
     getBalanceLabel,

@@ -977,6 +977,11 @@ const CataloguePartyLedger: React.FC = () => {
         }`;
     const segClass = (active: boolean) =>
         `whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition ${active ? 'bg-orange-700 text-white' : 'text-slate-600 hover:bg-white'}`;
+    const segCount = (count: number, active: boolean) => (
+        <span className={`ml-1 tabular-nums ${active ? 'text-white/80' : 'text-orange-700/60'}`}>
+            ({count})
+        </span>
+    );
     const inputClass = 'mt-1 w-full rounded-sm border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100';
     const primaryBtn = 'rounded-sm bg-orange-700 font-semibold text-white transition hover:bg-orange-800 disabled:opacity-50';
 
@@ -1779,15 +1784,18 @@ const CataloguePartyLedger: React.FC = () => {
                         <div className="hidden flex-wrap gap-3 md:flex">
                             <div className="flex gap-1 rounded-sm bg-orange-50 p-1">
                                 {statusSegments.map((s) => (
-                                    <button key={s.value} onClick={() => setStatusFilter(s.value)} className={segClass(statusFilter === s.value)}>{s.label}{s.count !== undefined ? ` ${s.count}` : ''}</button>
+                                    <button key={s.value} onClick={() => setStatusFilter(s.value)} className={segClass(statusFilter === s.value)}>
+                                        {s.label}
+                                        {s.count !== undefined && segCount(s.count, statusFilter === s.value)}
+                                    </button>
                                 ))}
                             </div>
                         </div>
                         {/* Mobile chips */}
                         <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden">
-                            <button onClick={() => setStatusFilter('all')} className={chipClass(statusFilter === 'all')}>All {parties.length}</button>
-                            <button onClick={() => setStatusFilter(statusFilter === 'due' ? 'all' : 'due')} className={chipClass(statusFilter === 'due')}>Due {totals.due}</button>
-                            <button onClick={() => setStatusFilter(statusFilter === 'settled' ? 'all' : 'settled')} className={chipClass(statusFilter === 'settled')}>Settled {totals.settled}</button>
+                            <button onClick={() => setStatusFilter('all')} className={chipClass(statusFilter === 'all')}>All ({parties.length})</button>
+                            <button onClick={() => setStatusFilter(statusFilter === 'due' ? 'all' : 'due')} className={chipClass(statusFilter === 'due')}>Due ({totals.due})</button>
+                            <button onClick={() => setStatusFilter(statusFilter === 'settled' ? 'all' : 'settled')} className={chipClass(statusFilter === 'settled')}>Settled ({totals.settled})</button>
                         </div>
                     </div>
 

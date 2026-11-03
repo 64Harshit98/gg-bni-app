@@ -1381,7 +1381,7 @@ const Sales: React.FC = () => {
             </div>
 
             {/* Pinned footer: grand total + pay button on one row */}
-<div className="flex-shrink-0 flex items-center gap-3 px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-white border-t border-[#dfe6fb]">
+            <div className="flex-shrink-0 flex items-center gap-3 px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-white border-t border-[#dfe6fb]">
                 <div className="min-w-0">
                     <span className="block text-xs text-[#45556c]">Grand total</span>
                     <b className="block text-[24px] leading-[30px] font-semibold tracking-tight tabular-nums text-[#0f172b] truncate">₹{fmtINR(finalAmount)}</b>
@@ -1396,8 +1396,8 @@ const Sales: React.FC = () => {
 
     // Phone/tablet bill sheet: shared by card view and list view
     const renderBillSheet = () =>
-    isBillOpen && items.length > 0 ? (
-        <div className="xl:hidden fixed inset-0 z-[2000] flex items-end justify-center bg-[#020618]/45" onClick={() => setIsBillOpen(false)}>
+        isBillOpen && items.length > 0 ? (
+            <div className="xl:hidden fixed inset-0 z-[2000] flex items-end justify-center bg-[#020618]/45" onClick={() => setIsBillOpen(false)}>
                 <div className={`w-full md:max-w-lg h-[88dvh] flex flex-col bg-white rounded-t-sm pt-2 ${SHADOW_FLOAT}`} onClick={(e) => e.stopPropagation()}>
                     {renderBillPanel(() => { setIsBillOpen(false); handleProceedToPayment(); }, () => setIsBillOpen(false))}
                 </div>
@@ -1697,6 +1697,9 @@ const Sales: React.FC = () => {
                     onPartyChange={isEditMode ? undefined : handleDrawerPartyChange}
                     initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined}
                     totalItemDiscount={totalDiscount} totalQuantity={totalQuantity}
+                    totalMrp={totalMrp}
+                    taxMode={activeTaxMode}
+                    isTaxToggleLocked={true}
                     initialDiscount={invoiceToEdit?.manualDiscount}
                     requireCustomerName={salesSettings?.requireCustomerName}
                     requireCustomerMobile={salesSettings?.requireCustomerMobile}
@@ -1718,6 +1721,7 @@ const Sales: React.FC = () => {
                     enableTransportDetails={salesSettings?.enableTransportDetails ?? false}
                     maxBillDiscountValue={salesSettings?.maxBillDiscountValue}
                     maxBillDiscountType={salesSettings?.maxBillDiscountType}
+                    taxableSubtotal={activeTaxMode === 'inclusive' ? netAmount - taxAmount : netAmount}
                 />
                 <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
                 <TierPickerModal
@@ -2065,6 +2069,7 @@ ${colClass || ''}`}
                 taxMode={activeTaxMode}
                 isTaxToggleLocked={true}
                 totalMrp={totalMrp}
+                taxableSubtotal={activeTaxMode === 'inclusive' ? netAmount - taxAmount : netAmount}
                 maxBillDiscountValue={salesSettings?.maxBillDiscountValue}
                 maxBillDiscountType={salesSettings?.maxBillDiscountType}
             />

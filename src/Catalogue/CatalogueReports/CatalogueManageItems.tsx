@@ -351,7 +351,7 @@ const ManageItems: React.FC = () => {
   return (
     <div className="flex min-h-full w-full flex-col bg-[#fff5ec] font-poppins">
       {/* -------- INFO / SUCCESS MODAL -------- */}
-      {modal && <Modal message={modal.message} type={modal.type} onClose={() => setModal(null)} />}
+      {modal && <Modal message={modal.message} type={modal.type} theme="catalogue" onClose={() => setModal(null)} />}
 
       {/* -------------------- HEADER -------------------- */}
       <div className="relative flex flex-shrink-0 items-center gap-3 border-b border-[#f6e1d0] bg-white p-4 shadow-sm">
@@ -615,6 +615,7 @@ const ManageItems: React.FC = () => {
       {itemPendingDelete && (
         <Modal
           type={State.WARNING}
+           theme="catalogue"
           message={`Are you sure you want to delete "${itemPendingDelete.name}"?`}
           onClose={() => setItemPendingDelete(null)}
           onConfirm={confirmDelete}
@@ -624,6 +625,7 @@ const ManageItems: React.FC = () => {
       {isConfirmingDeleteCategory && (
         <Modal
           type={State.WARNING}
+          theme="catalogue"
           message={`Are you sure you want to delete ALL items in "${selectedGroupLabel}"? This cannot be undone.`}
           onClose={() => setIsConfirmingDeleteCategory(false)}
           onConfirm={() => {

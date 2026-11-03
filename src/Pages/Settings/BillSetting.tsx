@@ -243,13 +243,17 @@ const ScaledPaper: React.FC<{ width: number; children: React.ReactNode }> = ({ w
         if (innerRef.current) ro.observe(innerRef.current);
         return () => ro.disconnect();
     }, [width]);
-    return (
+        return (
         <div
             ref={wrapRef}
-            className="border border-indigo-100 overflow-hidden bg-white shadow-lg rounded-sm"
+            className="border border-indigo-100 overflow-hidden bg-slate-100 shadow-lg rounded-sm"
             style={{ height: h * scale }}
         >
-            <div ref={innerRef} style={{ width, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
+            <div
+                ref={innerRef}
+                className="mx-auto"
+                style={{ width, transform: `scale(${scale})`, transformOrigin: 'top left' }}
+            >
                 {children}
             </div>
         </div>

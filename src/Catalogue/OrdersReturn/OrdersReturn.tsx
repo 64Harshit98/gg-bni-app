@@ -1,5 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { FiSend } from 'react-icons/fi';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../lib/Firebase';
 
 import { useAuth } from '../../context/auth-context';
 import BackButton from '../../Components/BackButton';
@@ -15,6 +18,11 @@ import BarcodeScanner from '../../UseComponents/BarcodeScanner';
 import { GenericCartList } from '../../Components/CartItem';
 import { applyRounding } from '../../Pages/Master/Sales'
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
+import ShowWrapper from '../../context/ShowWrapper';
+import { Permissions } from '../../enums/permissions.enum';
+import { Spinner } from '../../constants/Spinner';
+import { useWhatsappProvider } from '../../Pages/Additional/Whatsapp/useWhatsappProvider';
+import { useOrderCommunication } from '../Orders/hooks'; // ← adjust path if needed
 
 import type { TransactionItem, ExchangeItem } from './ordersReturn.types';
 import {
@@ -270,9 +278,10 @@ const OrdersReturnPage: React.FC = () => {
     discountDeducted
   } = useReturnSummary(itemsToReturn, exchangeItems, selectedSale, modeOfReturn);
 
-  const {
+    const {
     isDrawerOpen, setIsDrawerOpen,
     exchangeBalanceAction, setExchangeBalanceAction,
+    returnSuccess, setReturnSuccess,
     saveReturnTransaction,
     handleProcessReturn,
     getBalanceLabel,
@@ -292,10 +301,58 @@ const OrdersReturnPage: React.FC = () => {
     availableItems,
     finalBalance,
     isDueSale,
-    setIsLoading,
+        setIsLoading,
     setModal,
     refreshSelectedOrder,
   });
+
+  // ---- WhatsApp share after return (same flow as Orders' action sheet) ----
+  const { provider: whatsappProvider } = useWhatsappProvider(currentUser?.companyId);
+  const [companyInfo, setCompanyInfo] = useState<any>(null);
+  const [catalogueWhatsappExtra, setCatalogueWhatsappExtra] = useState<string>('');
+
+  useEffect(() => {
+    const loadShareData = async () => {
+      if (!currentUser?.companyId) return;
+      try {
+        const [companySnap, billSnap] = await Promise.all([
+          getDoc(doc(db, 'companies', currentUser.companyId)),
+          getDoc(doc(db, 'companies', currentUser.companyId, 'settings', 'bill')),
+        ]);
+        if (companySnap.exists()) setCompanyInfo(companySnap.data());
+        if (billSnap.exists()) setCatalogueWhatsappExtra(billSnap.data().catalogueWhatsappExtraMessage || '');
+      } catch (e) {
+        console.error('Share data load error:', e);
+      }
+    };
+    loadShareData();
+  }, [currentUser?.companyId]);
+
+  const { sendingPdf, handleSendWhatsapp, handleSendWhatsappSnapto } = useOrderCommunication({
+    currentUser,
+    companyInfo,
+    availableItems: availableItems as any,
+    catalogueWhatsappExtra,
+    setModal,
+  });
+
+  const handleCloseReturnSuccess = () => {
+    setReturnSuccess(null);
+    navigate(ROUTES.ORDERDETAILS);
+  };
+
+  const handleSendReturnWhatsapp = () => {
+    if (!returnSuccess) return;
+    const { order, creditUpdated, creditAdded, newCreditBalance } = returnSuccess;
+    const inr = (n: number) => n.toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
+    // Credit message only when the credit note was actually updated
+    const creditMsg = creditUpdated
+      ? `Your credit note has been updated.\nCredit added: ${inr(creditAdded)}\nTotal available credit: ${inr(newCreditBalance)}`
+      : undefined;
+
+    if (whatsappProvider === 'botmaster') handleSendWhatsapp(order, creditMsg);
+    else handleSendWhatsappSnapto(order); // template-based, see note below
+  };
 
   if (isLoading) {
     return (
@@ -355,7 +412,63 @@ const OrdersReturnPage: React.FC = () => {
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-[#fff5ec] text-[#0f172b]">
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} theme="catalogue" />}
-      <BarcodeScanner isOpen={scannerPurpose !== null} onClose={() => setScannerPurpose(null)} onScanSuccess={handleBarcodeScanned} />
+            <BarcodeScanner isOpen={scannerPurpose !== null} onClose={() => setScannerPurpose(null)} onScanSuccess={handleBarcodeScanned} />
+
+      {returnSuccess && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-sm bg-white p-6 text-center shadow-2xl">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-sm bg-green-100">
+              <svg className="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+            </div>
+            <p className="mb-1 text-lg font-medium text-gray-800">Return processed successfully!</p>
+            {returnSuccess.creditUpdated && (
+              <p className="mb-4 text-sm text-[#45556c]">
+                Credit note updated: ₹{returnSuccess.creditAdded.toFixed(2)} added
+              </p>
+            )}
+            <div className="mt-4 flex flex-col gap-3">
+              {(returnSuccess.order.userLoginPhone || returnSuccess.order.billingDetails?.phone) && whatsappProvider === 'botmaster' && (
+                <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+                  <button
+                    onClick={handleSendReturnWhatsapp}
+                    disabled={sendingPdf}
+                    className="flex w-full items-center justify-center gap-2 rounded-sm bg-green-600 px-4 py-2.5 font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-50"
+                  >
+                    {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
+                  </button>
+                </ShowWrapper>
+              )}
+              {(returnSuccess.order.userLoginPhone || returnSuccess.order.billingDetails?.phone) && (whatsappProvider === 'snapto' || whatsappProvider === 'sellar') && (
+                <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+                  <button
+                    onClick={handleSendReturnWhatsapp}
+                    disabled={sendingPdf}
+                    className="flex w-full items-center justify-center gap-2 rounded-sm bg-green-600 px-4 py-2.5 font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-50"
+                  >
+                    {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
+                  </button>
+                </ShowWrapper>
+              )}
+              {whatsappProvider === 'none' && (
+                <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+                  <button
+                    onClick={() => navigate(ROUTES.WHATSAPP_CHOOSE)}
+                    className="flex w-full items-center justify-center gap-2 rounded-sm border border-gray-300 bg-gray-100 px-4 py-2.5 font-medium text-gray-700 transition-colors hover:bg-gray-200"
+                  >
+                    <FiSend /> Connect WhatsApp
+                  </button>
+                </ShowWrapper>
+              )}
+              <button
+                onClick={handleCloseReturnSuccess}
+                className="w-full rounded-sm bg-[#c2410c] px-4 py-2.5 text-white transition-colors hover:bg-[#9a3412]"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* === HEADER === */}
       <header className="flex flex-shrink-0 items-center gap-3 border-b border-[#f6e1d0] bg-white px-3 py-2.5 md:px-6 md:py-3.5">

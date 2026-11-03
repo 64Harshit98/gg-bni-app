@@ -326,7 +326,7 @@ export const useInvoiceCommunication = ({
     }
   };
 
-  const handleSendWhatsapp = async (invoice: Invoice) => {
+   const handleSendWhatsapp = async (invoice: Invoice, extraMessage?: string) => {
     if (!invoice.partyNumber) {
       setModal({ message: "Customer phone number is missing.", type: State.ERROR });
       return;
@@ -376,7 +376,8 @@ export const useInvoiceCommunication = ({
       const extraMsg = resolvedExtraMessage ? `\n\n${resolvedExtraMessage}` : '';
 
       // Append the extraMsg to the end of your standard message
-      const message = `Hello ${invoice.partyName},\n\nHere is your invoice #${invoice.invoiceNumber}.\nAmount: ${invoice.amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}\n\nThank you!${extraMsg}`;
+            const creditPart = extraMessage ? `\n\n${extraMessage}` : '';
+      const message = `Hello ${invoice.partyName},\n\nHere is your invoice #${invoice.invoiceNumber}.\nAmount: ${invoice.amount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}${creditPart}\n\nThank you!${extraMsg}`;
       const response = await botMasterService.sendPdfFromUrl(
         botMasterToken,
         whatsappNumber,

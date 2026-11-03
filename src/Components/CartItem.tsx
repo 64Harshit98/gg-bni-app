@@ -51,7 +51,11 @@ interface GenericCartListProps<T extends CartItem> {
   onPricePressEnd?: () => void;
   onPriceClick?: () => void;
 }
-
+// Quantity selector width: 2 buttons (24px each) + digits area (9px per digit, min 2 digits) + padding
+const getQtyWidth = (qty: number | string) => {
+  const digits = Math.max(String(qty ?? '').length, 2);
+  return 48 + digits * 9 + 12; // 2 digit = 78px, 4 digit = 96px, 6 digit = 114px
+};
 const FloatingInput = ({
   value,
   onChange,
@@ -167,7 +171,7 @@ export const GenericCartList = <T extends CartItem>({
           const isUnlinked = typeof item.name === 'string' && item.name.includes('(Not in DB)');
 
           const netPrice = parseFloat(displayPrice) || 0;
-                    const lineSubtotal = Math.round(((netPrice + (Number(item.addOnAmount) || 0)) * (item.quantity || 1)) * 100) / 100;
+          const lineSubtotal = Math.round(((netPrice + (Number(item.addOnAmount) || 0)) * (item.quantity || 1)) * 100) / 100;
           const handleDiscountChange = (val: string) => {
             if (val === '') {
               onDiscountChange(item.id, val);
@@ -342,7 +346,10 @@ export const GenericCartList = <T extends CartItem>({
                     </div>
                   </div>
 
-                  <div className=" flex items-center border border-slate-300 rounded h-9 w-22 flex-shrink-0">
+                  <div
+                    className="flex items-center border border-slate-300 rounded h-9 flex-shrink-0 transition-[width] duration-150"
+                    style={{ width: getQtyWidth(item.quantity) }}
+                  >
                     <button
                       onClick={() => {
                         const step = 1;
@@ -352,9 +359,9 @@ export const GenericCartList = <T extends CartItem>({
                         onQuantityChange(item.id, Math.max(moq, nextQty));
                       }}
                       disabled={item.quantity <= (Number(item.moq) || 1) || !item.isEditable}
-                      className="px-2 text-gray-600 hover:bg-gray-100 disabled:text-gray-300 disabled:cursor-not-allowed text-lg leading-none flex items-center justify-center h-full w-8 border-r border-slate-300"
+                      className="text-gray-600 hover:bg-gray-100 disabled:text-gray-300 disabled:cursor-not-allowed text-lg leading-none flex items-center justify-center h-full w-6 flex-shrink-0 border-r border-slate-300"
                     >−</button>
-                    <div className="flex-1 h-full flex items-center justify-center">
+                    <div className="flex-1 min-w-0 h-full flex items-center justify-center">
                       <FloatingInput
                         value={String(item.quantity)}
                         onChange={(val) => {
@@ -368,7 +375,7 @@ export const GenericCartList = <T extends CartItem>({
                           }
                         }}
                         locked={!item.isEditable}
-                        className="w-full text-center text-sm font-semibold"
+                        className="w-full min-w-0 text-center text-sm font-semibold"
                       />
                     </div>
                     <button
@@ -377,7 +384,7 @@ export const GenericCartList = <T extends CartItem>({
                         onQuantityChange(item.id, (item.quantity || step) + step);
                       }}
                       disabled={!item.isEditable}
-                      className="px-2 text-gray-600 hover:bg-gray-100 disabled:text-gray-300 disabled:cursor-not-allowed text-lg leading-none flex items-center justify-center h-full w-8 border-l border-slate-300"
+                      className="text-gray-600 hover:bg-gray-100 disabled:text-gray-300 disabled:cursor-not-allowed text-lg leading-none flex items-center justify-center h-full w-6 flex-shrink-0 border-l border-slate-300"
                     >+</button>
                   </div>
 
@@ -527,7 +534,11 @@ export const GenericCartList = <T extends CartItem>({
                 </div>
 
                 {/* Qty selector */}
-                <div className="flex items-center border border-slate-300 rounded h-9 w-24 flex-shrink-0">
+                {/* Qty selector */}
+                <div
+                  className="flex items-center border border-slate-300 rounded h-9 flex-shrink-0 transition-[width] duration-150"
+                  style={{ width: getQtyWidth(item.quantity) }}
+                >
                   <button
                     onClick={() => {
                       const step = 1;
@@ -538,9 +549,9 @@ export const GenericCartList = <T extends CartItem>({
                       onQuantityChange(item.id, Math.max(moq, nextQty));
                     }}
                     disabled={item.quantity <= (Number(item.moq) || 1) || !item.isEditable}
-                    className="px-2 text-gray-600 hover:bg-gray-100 disabled:text-gray-300 disabled:cursor-not-allowed text-lg leading-none flex items-center justify-center h-full w-8 border-r border-slate-300"
+                    className="text-gray-600 hover:bg-gray-100 disabled:text-gray-300 disabled:cursor-not-allowed text-lg leading-none flex items-center justify-center h-full w-6 flex-shrink-0 border-r border-slate-300"
                   >−</button>
-                  <div className="flex-1 h-full flex items-center justify-center">
+                  <div className="flex-1 min-w-0 h-full flex items-center justify-center">
                     <FloatingInput
                       value={String(item.quantity)}
                       onChange={(val) => {
@@ -554,7 +565,7 @@ export const GenericCartList = <T extends CartItem>({
                         }
                       }}
                       locked={!item.isEditable}
-                      className="w-full text-center text-sm font-semibold"
+                      className="w-full min-w-0 text-center text-sm font-semibold"
                     />
                   </div>
                   <button
@@ -563,7 +574,7 @@ export const GenericCartList = <T extends CartItem>({
                       onQuantityChange(item.id, (item.quantity || step) + step);
                     }}
                     disabled={!item.isEditable}
-                    className="px-2 text-gray-600 hover:bg-gray-100 disabled:text-gray-300 disabled:cursor-not-allowed text-lg leading-none flex items-center justify-center h-full w-8 border-l border-slate-300"
+                    className="text-gray-600 hover:bg-gray-100 disabled:text-gray-300 disabled:cursor-not-allowed text-lg leading-none flex items-center justify-center h-full w-6 flex-shrink-0 border-l border-slate-300"
                   >+</button>
                 </div>
                 {/* Subtotal — label above amount, after Net Price */}

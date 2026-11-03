@@ -75,7 +75,7 @@ const META_LABEL = 'text-[11px] font-semibold uppercase tracking-[.06em] text-[#
 const META_INPUT = 'min-w-0 bg-transparent border-0 outline-none p-0 font-semibold text-[#0f172b] tabular-nums';
 
 // dialogs: centred card on desktop, bottom sheet on mobile
-const OVERLAY = 'fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-[rgba(2,6,24,0.45)] sm:p-4';
+const OVERLAY = 'fixed inset-0 z-[2000] flex items-end sm:items-center justify-center bg-[rgba(2,6,24,0.45)] sm:p-4';
 const DIALOG = `w-full sm:max-w-sm bg-[#ffffff] text-[#0f172b] rounded-t-[20px] sm:rounded-sm border border-[#dfe6fb] ${SHADOW_FLOAT} p-5`;
 
 // ── Card-view toolbar tokens (same as Sales card view) ──
@@ -851,7 +851,7 @@ const PurchasePage: React.FC = () => {
   // Mobile "More" sheet: inv no / date, sort (card view), clear cart
   const renderMoreSheet = () =>
     !isMoreOpen ? null : (
-      <div className="md:hidden fixed inset-0 z-[60] flex items-end bg-[rgba(2,6,24,0.45)]" onClick={() => setIsMoreOpen(false)}>
+      <div className="md:hidden fixed inset-0 z-[2000] flex items-end bg-[rgba(2,6,24,0.45)]" onClick={() => setIsMoreOpen(false)}>
         <div className={`w-full bg-[#ffffff] rounded-t-2xl p-4 pb-6 flex flex-col gap-4 ${SHADOW_FLOAT}`} onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-between">
             <h3 className="m-0 text-base font-semibold text-[#0f172b]">More</h3>
@@ -882,7 +882,7 @@ const PurchasePage: React.FC = () => {
   // Phone: filter button sheet — only Photos/Compact + Sort
   const renderFilterSheet = () =>
     !isFilterOpen ? null : (
-      <div className="md:hidden fixed inset-0 z-[60] flex items-end bg-[rgba(2,6,24,0.45)]" onClick={() => setIsFilterOpen(false)}>
+      <div className="md:hidden fixed inset-0 z-[2000] flex items-end bg-[rgba(2,6,24,0.45)]" onClick={() => setIsFilterOpen(false)}>
         <div className={`w-full bg-[#ffffff] rounded-t-2xl p-4 pb-6 flex flex-col gap-4 ${SHADOW_FLOAT}`} onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-between">
             <h3 className="m-0 text-base font-semibold text-[#0f172b]">View options</h3>
@@ -959,7 +959,7 @@ const PurchasePage: React.FC = () => {
     isMobileSearchOpen ? (
       <div className="flex gap-2 items-center">
         {/* Search bar: icon + input + clear + blue scan segment */}
-        <div className="flex flex-1 min-w-0 items-center h-12 rounded-full border border-[#7a8aa3] bg-white overflow-hidden transition-all focus-within:border-[#155dfc] focus-within:ring-4 focus-within:ring-[#e6eeff]">
+        <div className="flex flex-1 min-w-0 items-center h-12 rounded-sm border border-[#7a8aa3] bg-white overflow-hidden transition-all focus-within:border-[#155dfc] focus-within:ring-4 focus-within:ring-[#e6eeff]">
           <FiSearch size={18} className="ml-3.5 text-[#5b6b86] flex-shrink-0" />
           <input
             type="text"
@@ -1101,6 +1101,7 @@ const PurchasePage: React.FC = () => {
         onTaxModeChange={setBillTaxType}
         isTaxToggleLocked={false}
         totalMrp={totalMrp}
+        taxableSubtotal={finalAmount - Number(roundingOffAmount) - taxAmount}
       />
 
       <PurchaseGodownAssignModal
@@ -1305,9 +1306,9 @@ const PurchasePage: React.FC = () => {
         );
       })()}
       {showAddItemModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(2,6,24,0.45)] px-4">
-          <div className={`bg-[#ffffff] rounded-sm ${SHADOW_FLOAT} w-full max-w-2xl h-[90vh] max-h-[90vh] flex flex-col overflow-hidden`}>
-            <ItemAdd
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-[rgba(2,6,24,0.45)] px-4">
+  <div className={`bg-[#ffffff] rounded-sm ${SHADOW_FLOAT} w-full max-w-2xl h-[90dvh] max-h-[90dvh] flex flex-col overflow-hidden`}>
+    <ItemAdd
               isModal
               prefillData={unlinkedPrefill || undefined}
               onItemCreated={handleUnlinkedItemCreated}

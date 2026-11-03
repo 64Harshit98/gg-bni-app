@@ -15,6 +15,7 @@ import SearchableItemInput from '../UseComponents/SearchIteminput';
 import ShowWrapper from '../context/ShowWrapper';
 import { Cata_Permissions } from './enum/cata_permissions.enum';
 import { ROUTES } from '../constants/routes.constants';
+import BackButton from '../Components/BackButton';
 import { Photo, Sheet, Tag, btnClass, toneClass } from './storefront/StoreUI';
 import { initialsOf } from './storefront/storefront.utils';
 
@@ -637,9 +638,10 @@ const OrderingPage: React.FC = () => {
             )}
 
             {/* --- Page header --- */}
-            <header className="flex flex-wrap items-center gap-3 px-4 pb-4 pt-5 md:gap-4 md:px-6">
-                <div className="min-w-0 flex-1">
-                    <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Edit catalogue</h1>
+           <header className="flex flex-wrap items-center gap-3 px-4 pb-4 pt-5 md:gap-4 md:px-6">
+    <BackButton className="-ml-2" />
+    <div className="min-w-0 flex-1">
+        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Edit catalogue</h1>
                     <p className="truncate text-[13px] text-slate-600">What customers see when they open {companyName ? `${companyName}'s` : 'your'} store link</p>
                 </div>
                 <div className="flex items-center gap-2">

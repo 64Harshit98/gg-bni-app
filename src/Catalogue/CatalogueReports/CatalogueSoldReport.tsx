@@ -43,11 +43,13 @@ import DownloadMenu from '../../Pages/Reports/SalesReportComponents/DownloadMenu
 import CustomRangePanel from '../../Pages/Reports/SalesReportComponents/CustomRangePanel';
 import { totalStock } from '../../Pages/Reports/ItemReportComponents/itemIssues';
 import BackButton from '../../Components/BackButton';
+import { splitAddOns } from '../../UseComponents/addOnText';
 
 export interface AggregatedItem {
-    id: string; // productId__groupId (same product in two groups stays two rows)
+    id: string; // productId__groupId__addOnText (same product in two groups / with different add-ons stays separate rows)
     productId: string;
-    name: string;
+    name: string;       // base name (without add-ons)
+    addOnText: string;  // '' when the line has no add-ons
     itemGroup: string;
     quantitySold: number;
     valueSold: number;
@@ -202,7 +204,8 @@ const ItemsSoldReport: React.FC = () => {
                 .forEach((item) => {
                     const productId = String(item.productId || item.id || 'unknown');
                     const groupKey = item.groupId || item.itemGroupId || item.groupid || item.group?.id || null;
-                    const compositeKey = `${productId}__${typeof groupKey === 'string' || typeof groupKey === 'number' ? groupKey : 'uncategorized'}`;
+                    const { baseName, addOnText } = splitAddOns(item);
+                    const compositeKey = `${productId}__${typeof groupKey === 'string' || typeof groupKey === 'number' ? groupKey : 'uncategorized'}__${addOnText || ''}`;
 
                     const qty = item.quantity || 1;
                     const pricePerItem = item.effectiveUnitPrice || item.customPrice || item.salesPrice || item.mrp || 0;
@@ -213,7 +216,8 @@ const ItemsSoldReport: React.FC = () => {
                         itemMap.set(compositeKey, {
                             id: compositeKey,
                             productId,
-                            name: typeof item.name === 'string' && item.name ? item.name : 'Unknown Item',
+                            name: baseName || (typeof item.name === 'string' && item.name ? item.name : 'Unknown Item'),
+                            addOnText: addOnText || '',
                             itemGroup: groupNameOf(groupKey, item.groupName, item.category),
                             quantitySold: 0,
                             valueSold: 0,
@@ -246,7 +250,7 @@ const ItemsSoldReport: React.FC = () => {
         const filtered = soldItems.filter((item) => {
             if (groupFilter && item.itemGroup !== groupFilter) return false;
             if (!tokens.length) return true;
-            const name = item.name.toLowerCase();
+            const name = `${item.name} ${item.addOnText}`.toLowerCase();
             return tokens.every((t) => name.includes(t));
         });
         filtered.sort((a, b) => {
@@ -368,12 +372,15 @@ const ItemsSoldReport: React.FC = () => {
             autoTable(pdf, {
                 startY: 38,
                 head: [['ITEM NAME', 'CATEGORY', 'QTY SOLD', 'TOTAL VALUE (Rs.)']],
-                body: aggregatedItems.map((item) => [
-                    item.name ? item.name.charAt(0).toUpperCase() + item.name.slice(1).toLowerCase() : 'N/A',
-                    item.itemGroup || 'N/A',
-                    item.quantitySold.toString(),
-                    item.valueSold.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                ]),
+                body: aggregatedItems.map((item) => {
+                    const formattedName = item.name ? item.name.charAt(0).toUpperCase() + item.name.slice(1).toLowerCase() : 'N/A';
+                    return [
+                        item.addOnText ? `${formattedName}\n+ ${item.addOnText}` : formattedName,
+                        item.itemGroup || 'N/A',
+                        item.quantitySold.toString(),
+                        item.valueSold.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                    ];
+                }),
                 foot: [[
                     'TOTAL',
                     '-',
@@ -464,7 +471,7 @@ const ItemsSoldReport: React.FC = () => {
             aggregatedItems.forEach((item, idx) => {
                 const r = dataStartRow + idx;
                 aoa[r][0] = idx + 1;
-                aoa[r][1] = item.name || '-';
+                aoa[r][1] = item.addOnText ? `${item.name || '-'}\n+ ${item.addOnText}` : (item.name || '-');
                 aoa[r][2] = item.itemGroup || '-';
                 aoa[r][3] = item.quantitySold;
                 aoa[r][4] = Math.round(item.valueSold);
@@ -480,7 +487,7 @@ const ItemsSoldReport: React.FC = () => {
             worksheet['!cols'] = COLS.map((c) => ({ wch: c.width }));
             worksheet['!rows'] = [
                 { hpt: 36 }, { hpt: 20 }, { hpt: 8 }, { hpt: 18 }, { hpt: 22 }, { hpt: 8 }, { hpt: 28 },
-                ...aggregatedItems.map(() => ({ hpt: 20 })),
+                ...aggregatedItems.map((i) => ({ hpt: i.addOnText ? 32 : 20 })),
                 { hpt: 24 },
             ];
             worksheet['!merges'] = [
@@ -515,7 +522,7 @@ const ItemsSoldReport: React.FC = () => {
                 for (let ci = 0; ci < colCount; ci++) {
                     const addr = XLSX.utils.encode_cell({ r, c: ci });
                     const isNumeric = numericCols.has(ci);
-                    style(addr, s({ sz: 9, color: { rgb: '1E293B' } }, rowBg, { horizontal: isNumeric ? 'center' : 'left', vertical: 'center' }, bblr));
+                    style(addr, s({ sz: 9, color: { rgb: '1E293B' } }, rowBg, { horizontal: isNumeric ? 'center' : 'left', vertical: 'center', wrapText: true }, bblr));
                     if (worksheet[addr] && isNumeric) {
                         worksheet[addr].t = 'n';
                         worksheet[addr].z = ci === 4 ? '₹#,##0' : '#,##0';
@@ -893,7 +900,12 @@ const ItemsSoldReport: React.FC = () => {
                                             return (
                                                 <tr key={item.id} className={`border-t transition hover:bg-[#fff8f2] ${BORDER}`}>
                                                     <td className="px-4 py-3 text-slate-500">{idx + 1}</td>
-                                                    <td className="px-4 py-3 font-semibold text-slate-900">{item.name}</td>
+                                                    <td className="px-4 py-3">
+                                                        <p className="m-0 break-words font-semibold text-slate-900">{item.name}</p>
+                                                        {item.addOnText && (
+                                                            <p className="m-0 break-words text-xs font-normal text-slate-500">+ {item.addOnText}</p>
+                                                        )}
+                                                    </td>
                                                     <td className="px-4 py-3">
                                                         <span className="inline-block whitespace-nowrap rounded-sm bg-orange-50 px-1.5 py-0.5 text-[11px] text-orange-800">
                                                             {item.itemGroup}
@@ -941,7 +953,12 @@ const ItemsSoldReport: React.FC = () => {
                             {aggregatedItems.map((item, idx) => (
                                 <li key={item.id} className={`border-t px-4 py-3 ${BORDER}`}>
                                     <div className="flex items-start justify-between gap-3">
-                                        <p className="m-0 min-w-0 text-sm font-semibold text-slate-900">{idx + 1}. {item.name}</p>
+                                        <div className="min-w-0">
+                                            <p className="m-0 text-sm font-semibold text-slate-900">{idx + 1}. {item.name}</p>
+                                            {item.addOnText && (
+                                                <p className="m-0 break-words text-xs text-slate-500">+ {item.addOnText}</p>
+                                            )}
+                                        </div>
                                         <p className="m-0 shrink-0 text-sm font-semibold text-slate-900">{inrRound(item.valueSold)}</p>
                                     </div>
                                     <div className="mt-0.5 flex items-center justify-between gap-3 text-xs text-slate-500">

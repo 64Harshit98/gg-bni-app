@@ -1,157 +1,342 @@
 // src/pages/Auth/AgentSignup.tsx
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { CustomButton } from '../../Components/CustomButton';
-import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';
-import { Variant } from '../../enums';
-import { FiUser, FiMail, FiLock, FiPhone, FiMapPin, FiCreditCard, FiFileText } from 'react-icons/fi';
+import { ArrowRight, Building2, FileText, House, LoaderCircle, Lock, ShieldCheck, User, Users, Wallet } from 'lucide-react';
 import { registerAgentWithDetails } from '../../lib/AuthOperations';
-import { ROUTES } from '../../constants/indesx';
+import { newEmailError } from '../../lib/email';
+import { useEmailCheck } from '../../lib/useEmailCheck';
+import { ROUTES } from '../../constants/routes.constants';
+import {
+  AuthCard,
+  AuthLayout,
+  CardFooter,
+  CardHeading,
+  EmailField,
+  ErrorBanner,
+  Field,
+  FormSection,
+  FormSections,
+  LegalNote,
+  Navy,
+  PANEL_MUTED,
+  PasswordInput,
+  TextInput,
+  authBtn,
+  authLink,
+} from './AuthUI';
+
+type FieldKey = 'name' | 'phoneNumber' | 'email' | 'address' | 'panNumber' | 'aadhaarNumber' | 'password';
+type FieldErrors = Partial<Record<FieldKey, string>>;
+
+const EARN_STEPS = [
+  { icon: User, title: 'Sign up', text: 'Get your own referral code.', short: 'Get your code.' },
+  { icon: House, title: 'Refer shops', text: 'They enter your code when they join.', short: 'They use your code.' },
+  { icon: Wallet, title: 'Earn', text: 'Recurring commission on their plan.', short: 'On their plan.' },
+];
+
+const WHO_JOINS = [
+  { icon: Users, text: 'Agencies and software resellers' },
+  { icon: FileText, text: 'CAs, accountants and GST practitioners' },
+  { icon: House, text: 'Anyone who works with shop owners' },
+];
+
+const PartnerPanel: React.FC = () => (
+  <div className="flex flex-1 flex-col gap-11 px-12 pb-10 pt-12">
+    <div>
+      <h2 className="text-[34px] font-semibold leading-[42px] tracking-[-0.025em]">Earn recurring commission for every shop you bring.</h2>
+      <p className={`mt-3 max-w-[380px] text-[15px] leading-[23px] ${PANEL_MUTED}`}>
+        You already help shop owners run their business. SELLAR pays you for bringing them on.
+      </p>
+    </div>
+    <ol className="relative grid grid-cols-3 gap-4 before:absolute before:inset-x-[18px] before:top-[17px] before:h-0.5 before:bg-white/20">
+      {EARN_STEPS.map(({ icon: Icon, title, text }) => (
+        <li key={title} className="relative flex flex-col gap-2">
+          <span className="grid size-9 place-items-center rounded-full bg-blue-600 shadow-[0_0_0_6px_#0b1a45]">
+            <Icon size={18} strokeWidth={1.75} aria-hidden="true" />
+          </span>
+          <span className="text-sm font-semibold">{title}</span>
+          <span className={`text-[13px] leading-[19px] ${PANEL_MUTED}`}>{text}</span>
+        </li>
+      ))}
+    </ol>
+    <div className="mt-auto">
+      <p className={`mb-3.5 text-[13px] font-medium ${PANEL_MUTED}`}>Who joins</p>
+      <ul className="divide-y divide-white/10">
+        {WHO_JOINS.map(({ icon: Icon, text }) => (
+          <li key={text} className="flex items-center gap-3 py-3 text-sm leading-5 first:pt-0">
+            <Icon size={18} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />
+            {text}
+          </li>
+        ))}
+      </ul>
+    </div>
+  </div>
+);
+
+const PartnerHero: React.FC = () => (
+  <Navy label="How the partner programme works" className="flex flex-col gap-4 px-4 py-5">
+    <div>
+      <h1 className="text-2xl font-semibold leading-[31px] tracking-[-0.02em]">Become a SELLAR partner</h1>
+      <p className={`mt-1.5 text-sm leading-5 ${PANEL_MUTED}`}>Earn recurring commission for every shop you bring.</p>
+    </div>
+    <ol className="grid grid-cols-3 gap-3">
+      {EARN_STEPS.map(({ title, short }, i) => (
+        <li key={title} className={`flex flex-col gap-1.5 text-xs leading-[17px] ${PANEL_MUTED}`}>
+          <span className="grid size-[26px] place-items-center rounded-full bg-blue-600 text-xs font-semibold text-white">{i + 1}</span>
+          <span className="text-[13px] font-semibold text-white">{title}</span>
+          {short}
+        </li>
+      ))}
+    </ol>
+  </Navy>
+);
 
 const AgentSignup: React.FC = () => {
-    const navigate = useNavigate();
+  const navigate = useNavigate();
 
-    // Standard Text Fields
-    const [name, setName] = useState('');
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [phoneNumber, setPhoneNumber] = useState('');
-    const [address, setAddress] = useState('');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [address, setAddress] = useState('');
 
-    // Document Number States
-    const [panNumber, setPanNumber] = useState('');
-    const [aadhaarNumber, setAadhaarNumber] = useState('');
+  // Identity documents (required)
+  const [panNumber, setPanNumber] = useState('');
+  const [aadhaarNumber, setAadhaarNumber] = useState(''); // shown as 1234 5678 9012
 
-    // Business Fields
-    const [gstinNumber, setGstinNumber] = useState('');
-    const [msmeNumber, setMsmeNumber] = useState('');
+  // Business documents (optional)
+  const [gstinNumber, setGstinNumber] = useState('');
+  const [msmeNumber, setMsmeNumber] = useState('');
 
-    const [error, setError] = useState<string | null>(null);
-    const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const emailCheck = useEmailCheck(email, { newAccount: true });
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setError(null);
-        setLoading(true);
+  const edit = (key: FieldKey | null, setter: (v: string) => void) => (value: string) => {
+    setter(value);
+    if (key && errors[key]) setErrors((prev) => ({ ...prev, [key]: undefined }));
+  };
 
-        try {
-            await registerAgentWithDetails({
-                name,
-                email,
-                password,
-                phoneNumber,
-                isAgency: true, // Force this to always be true
-                address,
-                panNumber,
-                aadhaarNumber,
-                gstinNumber,
-                msmeNumber
-            });
+  const validate = (): FieldErrors => {
+    const next: FieldErrors = {};
+    if (!name.trim()) next.name = 'Enter your agency or business name.';
+    if (phoneNumber.length !== 10) next.phoneNumber = 'Enter all 10 digits of your mobile number.';
+    const emailError = newEmailError(email);
+    if (emailError) next.email = emailError;
+    if (!address.trim()) next.address = 'Enter your registered business address.';
+    if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(panNumber)) next.panNumber = 'PAN looks like ABCDE1234F.';
+    if (aadhaarNumber.replace(/\s/g, '').length !== 12) next.aadhaarNumber = 'Aadhaar has 12 digits.';
+    if (password.length < 6) next.password = 'Use at least 6 characters.';
+    return next;
+  };
 
-            navigate(ROUTES.PARTNER_DASHBOARD);
-        } catch (err: any) {
-            setError(err.message);
-            setLoading(false);
-        }
-    };
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const next = validate();
+    setErrors(next);
+    emailCheck.reveal();
+    const firstBad = Object.keys(next)[0];
+    if (firstBad) {
+      document.getElementById(firstBad)?.focus();
+      return;
+    }
+    if (emailCheck.holdForTypo()) {
+      document.getElementById('email')?.focus();
+      return;
+    }
 
-    return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4 py-8">
-            <div className="bg-white p-6 md:p-8 rounded-sm shadow-lg w-full max-w-2xl max-h-[95vh] overflow-y-auto custom-scrollbar">
-                <h2 className="text-2xl md:text-3xl font-bold text-center mb-2 text-gray-900">Partner with Sellar</h2>
-                <p className="text-center text-gray-500 mb-6 text-sm md:text-base">Earn recurring commissions by referring businesses.</p>
+    setLoading(true);
+    try {
+      await registerAgentWithDetails({
+        name: name.trim(),
+        email: email.trim(),
+        password,
+        phoneNumber,
+        isAgency: true, // Force this to always be true
+        address: address.trim(),
+        panNumber,
+        aadhaarNumber: aadhaarNumber.replace(/\s/g, ''),
+        gstinNumber,
+        msmeNumber,
+      });
 
-                <form onSubmit={handleSubmit} className="space-y-5">
+      navigate(ROUTES.PARTNER_DASHBOARD);
+    } catch (err) {
+      setError((err as Error)?.message || "Couldn't create your account. Please try again.");
+      setLoading(false);
+    }
+  };
 
-                    {/* Basic Info */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <div className="relative [&_label]:!left-[3rem]">
-                            <FiUser className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
-                            <FloatingLabelInput id="name" label="Agency/Business Name" value={name} onChange={(e) => setName(e.target.value)} required className="pl-12 py-3 bg-gray-50 rounded-sm w-full" />
-                        </div>
+  return (
+    <AuthLayout
+      panelLabel="How the partner programme works"
+      panel={<PartnerPanel />}
+      mobileHero={<PartnerHero />}
+      headerAside={
+        <>
+          <span className="max-sm:hidden">Already a partner? </span>
+          <Link to={ROUTES.LANDING} className={authLink}>
+            Log in
+          </Link>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit} noValidate className="mx-auto w-full max-w-[660px]">
+        <AuthCard
+          split
+          footer={
+            <CardFooter sticky>
+              <span className="flex-1 max-lg:hidden" />
+              <button type="submit" disabled={loading} aria-busy={loading} className={`${authBtn.primary} max-lg:flex-1`}>
+                {loading ? (
+                  <>
+                    <LoaderCircle size={16} aria-hidden="true" className="animate-spin motion-reduce:animate-none" />
+                    Creating your account…
+                  </>
+                ) : (
+                  <>
+                    Become a partner
+                    <ArrowRight size={16} strokeWidth={1.75} aria-hidden="true" />
+                  </>
+                )}
+              </button>
+            </CardFooter>
+          }
+        >
+          <CardHeading
+            icon={Users}
+            tone="pink"
+            title="Become a SELLAR partner"
+            subtitle="Takes about 3 minutes. Keep your PAN and Aadhaar handy."
+            className="max-lg:hidden"
+          />
+          <p className="text-sm leading-5 text-slate-600 lg:hidden">Takes about 3 minutes. Keep your PAN and Aadhaar handy.</p>
 
-                        <div className="relative [&_label]:!left-[3rem]">
-                            <FiPhone className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
-                            <FloatingLabelInput
-                                id="phone"
-                                type="tel"
-                                label="Phone Number"
-                                value={phoneNumber}
-                                onChange={(e) => {
-                                    // --- NEW: Strip non-digits and limit to 10 characters ---
-                                    const onlyNums = e.target.value.replace(/\D/g, '');
-                                    if (onlyNums.length <= 10) {
-                                        setPhoneNumber(onlyNums);
-                                    }
-                                }}
-                                required
-                                className="pl-12 py-3 bg-gray-50 rounded-sm w-full"
-                            />
-                        </div>
-                    </div>
+          {error && <ErrorBanner>{error}</ErrorBanner>}
 
-                    <div className="relative [&_label]:!left-[3rem]">
-                        <FiMail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
-                        <FloatingLabelInput id="email" type="email" label="Email Address" value={email} onChange={(e) => setEmail(e.target.value)} required className="pl-12 py-3 bg-gray-50 rounded-sm w-full" />
-                    </div>
+          <FormSections>
+            <FormSection id="partner-about" icon={Building2} title="About your business" note="How we reach you about referrals.">
+              <div className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2">
+                <Field label="Agency or business name" htmlFor="name" required error={errors.name}>
+                  <TextInput
+                    type="text"
+                    autoComplete="organization"
+                    placeholder="Name you work under"
+                    value={name}
+                    onChange={(e) => edit('name', setName)(e.target.value)}
+                  />
+                </Field>
+                <Field label="Phone number" htmlFor="phoneNumber" required error={errors.phoneNumber}>
+                  <TextInput
+                    addon="+91"
+                    type="tel"
+                    inputMode="numeric"
+                    autoComplete="tel-national"
+                    maxLength={10}
+                    placeholder="98765 43210"
+                    value={phoneNumber}
+                    onChange={(e) => edit('phoneNumber', setPhoneNumber)(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    className="tabular-nums"
+                  />
+                </Field>
+                <EmailField
+                  value={email}
+                  onChange={edit('email', setEmail)}
+                  check={emailCheck}
+                  error={errors.email}
+                  help="You'll log in to your partner dashboard with this."
+                  className="sm:col-span-2"
+                />
+                <Field label="Registered business address" htmlFor="address" required error={errors.address} className="sm:col-span-2">
+                  <TextInput
+                    type="text"
+                    autoComplete="street-address"
+                    placeholder="Full address with city and pincode"
+                    value={address}
+                    onChange={(e) => edit('address', setAddress)(e.target.value)}
+                  />
+                </Field>
+              </div>
+            </FormSection>
 
-                    <div className="relative [&_label]:!left-[3rem]">
-                        <FiMapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
-                        <FloatingLabelInput id="address" type="text" label="Registered Business Address" value={address} onChange={(e) => setAddress(e.target.value)} required className="pl-12 py-3 bg-gray-50 rounded-sm w-full" />
-                    </div>
+            <FormSection id="partner-identity" icon={ShieldCheck} tone="amber" title="Identity" note="Checked before we pay any commission." badge="required">
+              <div className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2">
+                <Field label="PAN number" htmlFor="panNumber" required error={errors.panNumber}>
+                  <TextInput
+                    type="text"
+                    maxLength={10}
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder="ABCDE1234F"
+                    value={panNumber}
+                    onChange={(e) => edit('panNumber', setPanNumber)(e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 10))}
+                    className="tabular-nums uppercase tracking-[0.04em]"
+                  />
+                </Field>
+                <Field label="Aadhaar number" htmlFor="aadhaarNumber" required error={errors.aadhaarNumber}>
+                  <TextInput
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={14}
+                    autoComplete="off"
+                    placeholder="1234 5678 9012"
+                    value={aadhaarNumber}
+                    onChange={(e) => {
+                      const digits = e.target.value.replace(/\D/g, '').slice(0, 12);
+                      edit('aadhaarNumber', setAadhaarNumber)(digits.replace(/(\d{4})(?=\d)/g, '$1 '));
+                    }}
+                    className="tabular-nums tracking-[0.04em]"
+                  />
+                </Field>
+              </div>
+            </FormSection>
 
-                    {/* --- IDENTITY VERIFICATION --- */}
-                    <div className="bg-gray-50 p-4 rounded-sm border border-gray-200 space-y-4 mt-2">
-                        <h4 className="text-sm font-bold text-gray-800 mb-2 border-b border-gray-200 pb-2">
-                            Identity Verification (Required)
-                        </h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="relative [&_label]:!left-[3rem]">
-                                <FiCreditCard className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
-                                <FloatingLabelInput id="pan" type="text" label="PAN Card Number" value={panNumber} onChange={(e) => setPanNumber(e.target.value.toUpperCase())} required className="pl-12 py-3 bg-white rounded-sm uppercase w-full" />
-                            </div>
-                            <div className="relative [&_label]:!left-[3rem]">
-                                <FiCreditCard className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
-                                <FloatingLabelInput id="aadhaar" type="text" label="Aadhaar Card Number" value={aadhaarNumber} onChange={(e) => setAadhaarNumber(e.target.value)} required className="pl-12 py-3 bg-white rounded-sm w-full" />
-                            </div>
-                        </div>
-                    </div>
+            <FormSection id="partner-docs" icon={FileText} title="Business documents" note="Add them if your business has them." badge="optional">
+              <div className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2">
+                <Field label="GSTIN" htmlFor="gstinNumber">
+                  <TextInput
+                    type="text"
+                    maxLength={15}
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder="15 characters"
+                    value={gstinNumber}
+                    onChange={(e) => setGstinNumber(e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 15))}
+                    className="uppercase tracking-[0.04em] placeholder:normal-case placeholder:tracking-normal"
+                  />
+                </Field>
+                <Field label="Udyam (MSME) number" htmlFor="msmeNumber">
+                  <TextInput
+                    type="text"
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder="UDYAM-XX-00-0000000"
+                    value={msmeNumber}
+                    onChange={(e) => setMsmeNumber(e.target.value.toUpperCase())}
+                    className="uppercase tracking-[0.04em]"
+                  />
+                </Field>
+              </div>
+            </FormSection>
 
-                    {/* --- BUSINESS VERIFICATION --- */}
-                    <div className="bg-blue-50 p-4 rounded-sm border border-blue-100 space-y-4 mt-2">
-                        <h4 className="text-sm font-bold text-blue-900 mb-2 border-b border-blue-200 pb-2">
-                            Business Verification (Optional)
-                        </h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="relative [&_label]:!left-[3rem]">
-                                <FiFileText className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-400 z-10" size={18} />
-                                <FloatingLabelInput id="gstin" type="text" label="GSTIN (Optional)" value={gstinNumber} onChange={(e) => setGstinNumber(e.target.value.toUpperCase())} className="pl-12 py-3 bg-white rounded-sm uppercase w-full border-blue-200 focus:border-blue-500 focus:ring-blue-500" />
-                            </div>
-                            <div className="relative [&_label]:!left-[3rem]">
-                                <FiFileText className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-400 z-10" size={18} />
-                                <FloatingLabelInput id="msme" type="text" label="MSME Number (Optional)" value={msmeNumber} onChange={(e) => setMsmeNumber(e.target.value.toUpperCase())} className="pl-12 py-3 bg-white rounded-sm uppercase w-full border-blue-200 focus:border-blue-500 focus:ring-blue-500" />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="relative [&_label]:!left-[3rem] mt-4">
-                        <FiLock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
-                        <FloatingLabelInput id="password" type="password" label="Create Password (min 6 chars)" value={password} onChange={(e) => setPassword(e.target.value)} required className="pl-12 py-3 bg-gray-50 rounded-sm w-full" />
-                    </div>
-
-                    {error && <p className="text-red-500 text-sm font-medium text-center bg-red-50 p-3 rounded-sm border border-red-100">{error}</p>}
-
-                    <CustomButton variant={Variant.Filled} type="submit" disabled={loading} className="w-full !bg-black !text-white h-14 text-lg mt-4 shadow-md hover:shadow-lg transition-all">
-                        {loading ? 'Creating Account...' : 'Become a Partner'}
-                    </CustomButton>
-                </form>
-
-                <p className="text-center mt-6 text-sm font-medium text-gray-600">
-                    Already a partner? <Link to={ROUTES.LANDING} className="text-blue-600 hover:text-blue-800 hover:underline">Log In</Link>
-                </p>
-            </div>
-        </div>
-    );
+            <FormSection id="partner-password" icon={Lock} tone="green" title="Password" note="For your partner dashboard. At least 6 characters.">
+              <Field label="Create a password" htmlFor="password" required error={errors.password} className="sm:max-w-[300px]">
+                <PasswordInput
+                  autoComplete="new-password"
+                  placeholder="Choose a password"
+                  value={password}
+                  onChange={(e) => edit('password', setPassword)(e.target.value)}
+                />
+              </Field>
+            </FormSection>
+          </FormSections>
+        </AuthCard>
+        <LegalNote action="signing up" className="mt-4" />
+      </form>
+    </AuthLayout>
+  );
 };
 
 export default AgentSignup;

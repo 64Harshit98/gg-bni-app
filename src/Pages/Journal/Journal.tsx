@@ -17,78 +17,25 @@ import { Modal, PaymentModal } from '../../constants/Modal';
 //import ShinyText from '../../Components/ShinyText';
 import { useSalesSettings } from '../../context/SettingsContext';
 import { TutorialStep } from '../../Components/TutorialStep'; // ← same import as Home.tsx
-import { Permissions } from '../../enums/permissions.enum';
-import ShowWrapper from '../../context/ShowWrapper';
 import useTutorial from '../../Catalogue/hooks/useTutorial';
 import { completeTutorial } from '../../Catalogue/hooks/useCompleteTutorial';
 import type { Invoice } from './journal.types';
 import { SAMPLE_INVOICES } from './journal.types';
 import { useJournalList, useInvoicePayment, useInvoiceDeletion, useInvoiceCommunication } from './hooks';
-import { JournalListFilters, InvoiceActionSheet, PrintSubMenuModal, QrCodeModal } from './components';
+import { BillDetail, JournalListFilters, InvoiceActionSheet, PrintSubMenuModal, QrCodeModal } from './components';
 import { JournalTabs } from '../Journal/Journaltabs';
-import { splitAddOns } from '../../UseComponents/addOnText';
+import { formatClockTime, formatDayLabel } from '../../lib/format';
+import { useCollapsingPageHeader } from '../../lib/useCollapsingPageHeader';
+import { BADGE, BTN_PRIMARY, BTN_SECONDARY, FIELD_INPUT, FIELD_LABEL, fmt, getActiveModes, modeBadgeClass, modeLabel, returnModeClass } from './journal.ui';
 // ─── Total tutorial steps for Journal ───────────────────────────────────────
 const TOTAL_STEPS = 6;
-
-// ─── UI helpers (display only) ──────────────────────────────────────────────
-const fmt = (n: number) =>
-  Number(n).toLocaleString('en-IN', { style: 'currency', currency: 'INR' });
-const fmt0 = (n: number) =>
-  Number(n).toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 });
-
-// 1 lakh+ → "₹1.18 Cr" / "₹2.5 L", below 1 lakh → normal full amount
-const fmtCompact = (n: number) => {
-  const num = Number(n) || 0;
-  const abs = Math.abs(num);
-  const sign = num < 0 ? '-' : '';
-  const trim = (v: number) => v.toFixed(2).replace(/\.?0+$/, '');
-  if (abs >= 1e7) return `${sign}₹${trim(abs / 1e7)} Cr`;
-  if (abs >= 1e5) return `${sign}₹${trim(abs / 1e5)} L`;
-  return fmt(num);
-};
-
-const getActiveModes = (invoice: Invoice) =>
-  Object.entries(invoice.paymentMethods || {}).filter(([key, value]) => key !== 'due' && Number(value) > 0);
-
-const modeLabel = (mode: string) => (mode === 'upi' ? 'UPI' : mode.replace(/_/g, ' '));
-
-// Firebase UID jaisi random string (20-28 chars, no spaces) ko naam nahi maante
-const isRealSalesmanName = (name?: string | null) => {
-  const n = (name || '').trim();
-  if (!n) return false;
-  const looksLikeId = /^[A-Za-z0-9_-]{20,}$/.test(n); // no space, long, alphanumeric
-  return !looksLikeId;
-};
-
-const BADGE = 'inline-flex items-center gap-1 h-[22px] px-2 rounded-full text-[11px] font-semibold tracking-[0.03em] leading-[22px] whitespace-nowrap';
-const modeBadgeClass = (mode: string) =>
-  mode === 'upi' ? 'bg-[#e6eeff] text-[#155dfc]' : 'bg-[#f5f7ff] text-[#45556c]';
-
-const returnModeClass = (modeRaw: string) => {
-  const mode = (modeRaw || '').toUpperCase().trim();
-  if (mode === 'EXCHANGE') return 'bg-[#e6eeff] text-[#155dfc]';
-  if (mode.includes('CASH') || mode.includes('REFUND')) return 'bg-[#e9faef] text-[#008236]';
-  return 'bg-[#fff3dd] text-[#bb4d00]';
-};
-
-const fmtReturnDate = (v: any) =>
-  new Date(v?.toDate ? v.toDate() : v).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
-
-const ITEM_GRID = 'grid grid-cols-[minmax(0,1fr)_32px_80px_88px] gap-x-3';
-
-const BTN_BASE =
-  'h-10 px-4 inline-flex items-center justify-center gap-2 rounded-sm text-sm font-medium whitespace-nowrap transition-colors disabled:opacity-45 disabled:cursor-not-allowed focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#155dfc]';
-const BTN_PRIMARY = `${BTN_BASE} bg-[#155dfc] text-white hover:bg-[#1447e6]`;
-const BTN_SECONDARY = `${BTN_BASE} bg-white text-[#0f172b] border border-[#7a8aa3] hover:bg-[#f5f7ff]`;
-
-const FIELD_LABEL = 'block text-xs font-medium text-[#45556c] mb-1';
-const FIELD_INPUT =
-  'w-full h-10 px-3 text-sm text-[#0f172b] rounded-sm border border-[#7a8aa3] bg-white outline-none focus:outline focus:outline-2 focus:outline-offset-1 focus:outline-[#155dfc]';
 
 // --- MAIN COMPONENT ---
 const Journal: React.FC = () => {
   // ─── Refs for tutorial autoscroll ─────────────────────────────────────────
   const tutorialRefs = useRef<(HTMLElement | null)[]>([]);
+  const paneHostRef = useRef<HTMLDivElement>(null);
+  useCollapsingPageHeader(paneHostRef, 1280); // xl: where the list + detail split starts
   const setTutorialRef = (index: number) => (el: HTMLElement | null) => {
     tutorialRefs.current[index] = el;
   };
@@ -204,7 +151,9 @@ const Journal: React.FC = () => {
     showCustomPicker,
     setShowCustomPicker,
 
+    typeInvoices,
     filteredInvoices,
+    tabCounts,
     selectedPeriodText,
     dateFilters,
     handleDateFilterSelect,
@@ -216,7 +165,7 @@ const Journal: React.FC = () => {
   useEffect(() => {
     if (isTutorialActive && tutorialStep === 6) {
       const target = SAMPLE_INVOICES.find(
-        (inv) => inv.type === activeType && inv.status === activeTab
+        (inv) => inv.type === activeType && (activeTab === 'All' || inv.status === activeTab)
       );
       if (target) setExpandedInvoiceId(target.id);
     }
@@ -355,426 +304,100 @@ const Journal: React.FC = () => {
     }, 0);
   }, [filteredInvoices, activeTab]);
 
-  // Summary strip numbers (display only, derived from the list already on screen)
+  // Summary strip numbers (display only): the whole period, whichever tab is open
   const summary = useMemo(() => {
-    const total = filteredInvoices.reduce((s, i) => s + (i.amount || 0), 0);
-    const unpaidInvoices = filteredInvoices.filter((i) => i.status === 'Unpaid');
+    const total = typeInvoices.reduce((s, i) => s + (i.amount || 0), 0);
+    const unpaidInvoices = typeInvoices.filter((i) => i.status === 'Unpaid');
     const unpaid = unpaidInvoices.reduce((s, i) => s + (i.dueAmount || 0), 0);
     return {
       total,
       unpaid,
       received: Math.max(total - unpaid, 0),
-      count: filteredInvoices.length,
+      count: typeInvoices.length,
       unpaidCount: unpaidInvoices.length,
     };
-  }, [filteredInvoices]);
+  }, [typeInvoices]);
 
   // The bill whose detail is open (desktop side pane / mobile sheet)
   const selectedInvoice: Invoice | null = expandedInvoiceId
     ? filteredInvoices.find((i) => i.id === expandedInvoiceId) || null
     : null;
 
-  // One crossed-out row for a returned quantity
-  const renderReturnedRow = (
-    key: string,
-    name: string,
-    modeOfReturn: string,
-    returnedAt: any,
-    amount: number,
-    qty: number,
-  ) => (
-    <div key={key} className={`${ITEM_GRID} py-3 border-b border-[#dfe6fb] text-[#5b6b86]`}>
-      <div className="min-w-0">
-        <p className="font-medium line-through break-words">{name}</p>
-        <div className="flex flex-wrap items-center gap-1.5 mt-1">
-          {modeOfReturn && (
-            <span className={`text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded-full ${returnModeClass(modeOfReturn)}`}>
-              {modeOfReturn}
-            </span>
-          )}
-          {returnedAt && (
-            <span className="text-[10px] font-medium uppercase tracking-wide text-[#5b6b86]">
-              {fmtReturnDate(returnedAt)}
-            </span>
-          )}
-        </div>
-      </div>
-      <p className="text-right tabular-nums line-through whitespace-nowrap">{qty}</p>
-      <p className="text-right tabular-nums line-through whitespace-nowrap" title={qty > 0 ? fmt(amount / qty) : ''}>{qty > 0 ? fmtCompact(amount / qty) : ''}</p>
-      <p className="text-right tabular-nums font-medium line-through whitespace-nowrap" title={fmt(amount)}>{fmtCompact(amount)}</p>
-    </div>
+  // Full bill (used in the desktop side pane and the mobile sheet)
+  const renderBillDetail = (invoice: Invoice, onClose?: () => void) => (
+    <BillDetail
+      key={invoice.id}
+      invoice={invoice}
+      showBilledBy={!!salesSettings?.enableSalesmanSelection}
+      pdfGenerating={pdfGenerating}
+      sendingPdf={sendingPdf}
+      onClose={onClose}
+      onSettle={openPaymentModal}
+      onPrint={setInvoiceToPrint}
+      onTransport={setTransportPopupInvoice}
+      onRemind={handleSendReminder}
+      onReturn={(inv) => (inv.type === 'Credit' ? handleSalesReturn(inv) : handlePurchaseReturn(inv))}
+      onEdit={handleEditInvoice}
+      onDelete={promptDeleteInvoice}
+    />
   );
-
-  // Full bill detail (used in the desktop side pane and the mobile sheet)
-  const renderInvoiceDetail = (invoice: Invoice, onClose?: () => void) => {
-    const activeModes = getActiveModes(invoice);
-    const hasTransportInfo =
-      !!(invoice as any).transportDetails && Object.values((invoice as any).transportDetails).some(Boolean);
-    const isSale = invoice.type === 'Credit';
-    const dueAmount = invoice.dueAmount || 0;
-
-    return (
-      <div className="grid gap-3">
-        {/* Header: bill number + total */}
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] leading-4 font-semibold tracking-[0.08em] uppercase text-[#5b6b86]">
-                {isSale ? 'Sale bill' : 'Purchase bill'}
-              </span>
-              <span className={`${BADGE} ${invoice.status === 'Paid' ? 'bg-[#e9faef] text-[#008236]' : 'bg-[#fff3dd] text-[#bb4d00]'}`}>
-                <span className="w-1.5 h-1.5 rounded-full bg-current" aria-hidden="true" />
-                {invoice.status}
-              </span>
-            </div>
-            <h2 className="mt-0.5 text-lg lg:text-[22px] leading-[26px] lg:leading-[30px] font-semibold text-[#0f172b] break-words">
-              {invoice.invoiceNumber}
-            </h2>
-            <p className="text-xs leading-4 text-[#45556c]">
-              {invoice.time}
-              {salesSettings?.enableSalesmanSelection && isRealSalesmanName(invoice.salesmanName)
-                ? ` · Billed by ${invoice.salesmanName!.slice(0, 15)}`
-                : ''}
-            </p>
-          </div>
-          <div className="flex items-start gap-1 shrink-0">
-            <div className="text-right">
-              <p className="text-xs text-[#45556c]">Total</p>
-              <p className="text-lg lg:text-2xl leading-[26px] lg:leading-8 font-semibold text-[#0f172b] tabular-nums" title={fmt(invoice.amount)}>{fmtCompact(invoice.amount)}</p>
-            </div>
-            {onClose && (
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close bill details"
-                className="-mr-2 -mt-1 inline-flex h-8 w-8 items-center justify-center rounded-sm text-[#45556c] transition-colors hover:bg-[#f5f7ff] hover:text-[#0f172b] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#155dfc]"
-              >
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Customer strip */}
-        <div className="flex items-center gap-3 px-3 py-1.5 rounded-sm bg-[#f5f7ff]">
-          <span className="w-8 h-8 text-sm rounded-full grid place-items-center bg-[#e6eeff] text-[#155dfc] font-semibold shrink-0">
-            {(invoice.partyName || 'W').trim().charAt(0).toUpperCase()}
-          </span>
-          <div className="min-w-0">
-            <p className="font-medium text-[#0f172b] truncate">{invoice.partyName || 'Walk-in customer'}</p>
-            {invoice.partyNumber && <p className="text-xs text-[#5b6b86]">{invoice.partyNumber}</p>}
-          </div>
-        </div>
-
-        {/* Return badges + payment modes */}
-        {((invoice.returnHistory && invoice.returnHistory.length > 0) || activeModes.length > 0) && (
-          <div className="flex flex-wrap gap-1.5 -my-1">
-            {(invoice.returnHistory || []).map((historyItem: any, index: number) => (
-              <span key={`return-${index}`} className={`${BADGE} uppercase ${returnModeClass(historyItem.modeOfReturn || 'Return')}`}>
-                {historyItem.modeOfReturn || 'Return'}
-              </span>
-            ))}
-            {activeModes.map(([mode]) => (
-              <span key={mode} className={`${BADGE} uppercase ${modeBadgeClass(mode)}`}>
-                {modeLabel(mode)}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {/* Items table */}
-        <div>
-          <div className={`${ITEM_GRID} pb-2 border-b border-[#dfe6fb] text-[11px] font-semibold tracking-[0.08em] uppercase text-[#5b6b86]`}>
-            <span>Item</span>
-            <span className="text-right">Qty</span>
-            <span className="text-right whitespace-nowrap">Rate</span>
-            <span className="text-right whitespace-nowrap">Amount</span>
-          </div>
-
-          {(invoice.items && invoice.items.length > 0) ? invoice.items.map((item, index) => {
-            const netUnitPrice =
-              item.taxableAmount && item.quantity > 0
-                ? item.taxableAmount / item.quantity
-                : item.effectiveUnitPrice
-                  ? item.effectiveUnitPrice
-                  : (item.quantity > 0 ? (item.finalPrice / item.quantity) : 0);
-
-            // --- Collect ALL returned qty for this item across all return entries ---
-            // Same-item exchanges re-add a line with the SAME id as the one that
-            // was just returned, so matching purely by id (as below) can pair a
-            // return record with the wrong (new-price) current line. Carrying the
-            // return record's own recorded `amount` (its true value at return time)
-            // and using that instead of recomputing from the current item's price
-            // keeps the struck-through row honest even when the id collides.
-            const returnedEntries: { qty: number; modeOfReturn: string; returnedAt: any; amount?: number }[] = [];
-            (invoice.returnHistory || []).forEach((h: any) => {
-              (h.returnedItems || []).forEach((r: any) => {
-                if (r.originalItemId === item.id || r.originalItemId === (item as any).productId) {
-                  returnedEntries.push({
-                    qty: Number(r.quantity) || Number(r.qty) || 0,
-                    modeOfReturn: h.modeOfReturn || '',
-                    returnedAt: h.returnedAt,
-                    amount: r.amount !== undefined ? Number(r.amount) || 0 : undefined,
-                  });
-                }
-              });
-            });
-
-            const remainingQty = item.quantity;
-
-            const priceLabel = item.mrp > 0
-              ? `MRP: ${fmt0(item.mrp)}`
-              : `Sales Price: ${fmt0(item.effectiveUnitPrice || (item.quantity > 0 ? item.finalPrice / item.quantity : 0))}`;
-
-            const { baseName, addOnText } = splitAddOns(item);
-
-            return (
-              <React.Fragment key={index}>
-                {remainingQty > 0 && (
-                  <div className={`${ITEM_GRID} py-2 border-b border-[#dfe6fb] text-[#0f172b]`}>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium break-words">{baseName}</p>
-                      {addOnText && (
-                        <p className="text-xs text-[#5b6b86] break-words">+ {addOnText}</p>
-                      )}
-                      <p className="text-xs text-[#5b6b86]">{priceLabel}</p>
-                    </div>
-                    <p className="text-right tabular-nums whitespace-nowrap">{remainingQty}</p>
-                    <p className="text-right tabular-nums whitespace-nowrap" title={fmt(netUnitPrice)}>{fmtCompact(netUnitPrice)}</p>
-                    <p className="text-right tabular-nums font-medium whitespace-nowrap" title={fmt(netUnitPrice * remainingQty)}>{fmtCompact(netUnitPrice * remainingQty)}</p>
-                  </div>
-                )}
-
-                {/* RETURNED QTY ROW — one crossed-out row per return event */}
-                {returnedEntries.map((entry, rIdx) => (
-                  entry.qty > 0 &&
-                  renderReturnedRow(
-                    `ret-${index}-${rIdx}`,
-                    item.name,
-                    entry.modeOfReturn,
-                    entry.returnedAt,
-                    entry.amount !== undefined ? entry.amount : netUnitPrice * entry.qty,
-                    entry.qty,
-                  )
-                ))}
-              </React.Fragment>
-            );
-          }) : null}
-
-          {/* Show returned items crossed out */}
-          {invoice.returnedItemsSnapshot && invoice.returnedItemsSnapshot.length > 0 &&
-            invoice.returnedItemsSnapshot
-              .filter((snap: any) => !invoice.items?.some(i => i.id === snap.id))
-              .map((item: any, index: number) => {
-                const matchedHistory = invoice.returnHistory?.find((h: any) =>
-                  h.returnedItems?.some((ri: any) =>
-                    String(ri.originalItemId) === String(item.id) ||
-                    String(ri.id) === String(item.id)
-                  )
-                );
-                return renderReturnedRow(
-                  `returned-${index}`,
-                  item.name,
-                  matchedHistory?.modeOfReturn || '',
-                  matchedHistory?.returnedAt,
-                  Number(item.finalPrice),
-                  item.quantity,
-                );
-              })
-          }
-
-          {/* Fallback for OLD transactions missing returnedItemsSnapshot */}
-          {(!invoice.returnedItemsSnapshot || invoice.returnedItemsSnapshot.length === 0) &&
-            invoice.returnHistory?.flatMap((h: any) =>
-              (h.returnedItems || []).map((ri: any) => ({ ...ri, returnedAt: h.returnedAt, modeOfReturn: h.modeOfReturn }))
-            )
-              .filter((ri: any) => !invoice.items?.some(i => i.id === ri.originalItemId))
-              .map((ri: any, index: number) =>
-                renderReturnedRow(
-                  `rh-fallback-${index}`,
-                  ri.name,
-                  ri.modeOfReturn || '',
-                  ri.returnedAt,
-                  Number(ri.amount),
-                  ri.quantity,
-                )
-              )
-          }
-
-          {invoice.items?.length === 0 && (!invoice.returnedItemsSnapshot || invoice.returnedItemsSnapshot.length === 0) &&
-            <p className="py-4 text-xs text-[#5b6b86]">No item details available.</p>
-          }
-        </div>
-
-        {/* Totals */}
-        <dl className="grid grid-cols-[1fr_auto] gap-x-2 gap-y-0.5 text-sm">
-          {invoice.manualDiscount && invoice.manualDiscount > 0 ? (
-            <>
-              <dt className="text-[#45556c]">Bill discount</dt>
-              <dd className="text-right tabular-nums text-[#d5000c]" title={fmt(invoice.manualDiscount)}>- {fmtCompact(invoice.manualDiscount)}</dd>
-            </>
-          ) : null}
-
-          {invoice.taxAmount && invoice.taxAmount > 0 ? (
-            <>
-              <dt className="text-[#45556c]">Tax</dt>
-              <dd className="text-right tabular-nums" title={fmt(invoice.taxAmount)}>+ {fmtCompact(invoice.taxAmount)}</dd>
-            </>
-          ) : null}
-
-          {/* EXTRA EXPENSE ROWS */}
-          {invoice.expenses && invoice.expenses.length > 0 ? (
-            invoice.expenses.map((expense, idx) => (
-              <React.Fragment key={`exp-${idx}`}>
-                <dt className="text-[#45556c]">{expense.name || 'Extra expense'}</dt>
-                <dd className="text-right tabular-nums" title={fmt(Number(expense.amount))}>+ {fmtCompact(Number(expense.amount))}</dd>
-              </React.Fragment>
-            ))
-          ) : (invoice.extraExpenseAmount && invoice.extraExpenseAmount > 0) ? (
-            <>
-              <dt className="text-[#45556c]">{invoice.extraExpenseName || 'Extra expense'}</dt>
-              <dd className="text-right tabular-nums" title={fmt(invoice.extraExpenseAmount)}>+ {fmtCompact(invoice.extraExpenseAmount)}</dd>
-            </>
-          ) : null}
-
-          <dt className="pt-2 mt-1 border-t border-[#dfe6fb] text-base font-semibold text-[#0f172b]">Total</dt>
-          <dd className="pt-2 mt-1 border-t border-[#dfe6fb] text-right text-base font-semibold text-[#0f172b] tabular-nums" title={fmt(invoice.amount)}>{fmtCompact(invoice.amount)}</dd>
-
-          {activeModes.map(([key, val]) => (
-            <React.Fragment key={key}>
-              <dt className="text-[#45556c]">Paid via {key === 'upi' ? 'UPI' : key.charAt(0).toUpperCase() + key.slice(1)}</dt>
-              <dd className="text-right tabular-nums font-medium text-[#008236]" title={fmt(Number(val))}>{fmtCompact(Number(val))}</dd>
-            </React.Fragment>
-          ))}
-
-          {invoice.status === 'Unpaid' && dueAmount > 0 && (
-            <>
-              <dt className="font-medium text-[#bb4d00]">{isSale ? 'They owe you' : 'You owe'}</dt>
-              <dd className="text-right tabular-nums font-semibold text-[#bb4d00]" title={fmt(dueAmount)}>{fmtCompact(dueAmount)}</dd>
-            </>
-          )}
-        </dl>
-
-        {/* Actions */}
-        <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-[#dfe6fb]">
-          {invoice.status === 'Unpaid' && (
-            <button
-              onClick={(e) => { e.stopPropagation(); openPaymentModal(invoice); }}
-              className={BTN_PRIMARY}
-            >
-              Settle
-            </button>
-          )}
-
-          {/* Print (sales only — purchase bills have nothing useful to print): primary, except on an unpaid bill where Settle takes the primary slot */}
-          {isSale && (
-            <button
-              onClick={(e) => { e.stopPropagation(); setInvoiceToPrint(invoice); }}
-              disabled={pdfGenerating === invoice.id}
-              className={invoice.status === 'Unpaid' ? BTN_SECONDARY : BTN_PRIMARY}
-            >
-              {pdfGenerating === invoice.id ? <Spinner /> : 'Print'}
-            </button>
-          )}
-
-          {hasTransportInfo && (
-            <button
-              onClick={(e) => { e.stopPropagation(); setTransportPopupInvoice(invoice); }}
-              className={BTN_SECONDARY}
-            >
-              Transport
-            </button>
-          )}
-
-          {invoice.status === 'Unpaid' && invoice.partyNumber && (
-            <button
-              onClick={(e) => { e.stopPropagation(); handleSendReminder(invoice); }}
-              disabled={sendingPdf}
-              className={BTN_SECONDARY}
-            >
-              {sendingPdf ? <Spinner /> : <>Remind</>}
-            </button>
-          )}
-
-          <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-            <button
-              onClick={(e) => { e.stopPropagation(); isSale ? handleSalesReturn(invoice) : handlePurchaseReturn(invoice); }}
-              className={BTN_SECONDARY}
-            >
-              Return
-            </button>
-          </ShowWrapper>
-
-          <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
-            <button
-              onClick={(e) => { e.stopPropagation(); handleEditInvoice(invoice); }}
-              className={BTN_SECONDARY}
-            >
-              Edit
-            </button>
-          </ShowWrapper>
-
-          {invoice.status === 'Paid' && (
-            <button
-              onClick={(e) => { e.stopPropagation(); promptDeleteInvoice(invoice); }}
-              aria-label="Delete bill"
-              title="Delete bill"
-              className="ml-auto h-10 w-10 inline-flex items-center justify-center rounded-sm text-[#d5000c] hover:bg-[#ffeef0] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#155dfc]"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 15h10l1-15" /></svg>
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  };
 
   const renderContent = () => {
     if (authLoading || dataLoading) return <Spinner />;
     if (error) return <p className="p-8 text-center text-[#d5000c]">{error}</p>;
 
     if (filteredInvoices.length > 0) {
+      let previousDay = '';
       return filteredInvoices.map((invoice) => {
+        const day = formatDayLabel(invoice.createdAt);
+        const startsDay = day !== previousDay;
+        previousDay = day;
         const isSelected = expandedInvoiceId === invoice.id;
         const activeModes = getActiveModes(invoice);
         const hasDue = invoice.status === 'Unpaid' && !!invoice.dueAmount && invoice.dueAmount > 0;
 
         return (
-          <div
-            key={invoice.id}
-            role="option"
-            aria-selected={isSelected}
-            onClick={() => handleInvoiceClick(invoice.id)}
-            className={`grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 px-4 py-3 border-b border-[#dfe6fb] cursor-pointer transition-colors ${isSelected ? 'bg-[#e6eeff]' : 'bg-white hover:bg-[#f5f7ff]'}`}
-          >
-            <div className="flex flex-wrap items-center gap-2 min-w-0 text-[15px] font-semibold text-[#0f172b]">
-              <span>{invoice.invoiceNumber}</span>
-              {(invoice.returnHistory || []).map((historyItem: any, index: number) => (
-                <span key={`return-${index}`} className={`${BADGE} uppercase ${returnModeClass(historyItem.modeOfReturn || 'Return')}`}>
-                  {historyItem.modeOfReturn || 'Return'}
-                </span>
-              ))}
-              {activeModes.map(([mode]) => (
-                <span key={mode} className={`${BADGE} uppercase ${modeBadgeClass(mode)}`}>
-                  {modeLabel(mode)}
-                </span>
-              ))}
-              {invoice.status === 'Unpaid' && (
-                <span className={`${BADGE} bg-[#fff3dd] text-[#bb4d00]`}>
-                  <span className="w-1.5 h-1.5 rounded-full bg-current" aria-hidden="true" />
-                  Unpaid
-                </span>
-              )}
+          <React.Fragment key={invoice.id}>
+            {startsDay && (
+              <div role="presentation" className="px-4 pt-3.5 pb-1.5 bg-[#f5f7ff] border-b border-[#dfe6fb] text-[11px] leading-4 font-semibold tracking-[0.08em] uppercase text-[#5b6b86]">
+                {day}
+              </div>
+            )}
+            <div
+              role="option"
+              aria-selected={isSelected}
+              onClick={() => handleInvoiceClick(invoice.id)}
+              className={`grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 px-4 py-3 border-b border-[#dfe6fb] cursor-pointer transition-colors ${isSelected ? 'bg-[#e6eeff]' : 'bg-white hover:bg-[#f5f7ff]'}`}
+            >
+              <div className="flex flex-wrap items-center gap-2 min-w-0 text-[15px] font-semibold text-[#0f172b]">
+                <span>{invoice.invoiceNumber}</span>
+                {(invoice.returnHistory || []).map((historyItem: any, index: number) => (
+                  <span key={`return-${index}`} className={`${BADGE} uppercase ${returnModeClass(historyItem.modeOfReturn || 'Return')}`}>
+                    {historyItem.modeOfReturn || 'Return'}
+                  </span>
+                ))}
+                {activeModes.map(([mode]) => (
+                  <span key={mode} className={`${BADGE} uppercase ${modeBadgeClass(mode)}`}>
+                    {modeLabel(mode)}
+                  </span>
+                ))}
+                {invoice.status === 'Unpaid' && (
+                  <span className={`${BADGE} bg-[#fff3dd] text-[#bb4d00]`}>
+                    <span className="w-1.5 h-1.5 rounded-full bg-current" aria-hidden="true" />
+                    Unpaid
+                  </span>
+                )}
+              </div>
+              <div className={`text-right text-[15px] font-semibold tabular-nums ${hasDue ? 'text-[#bb4d00]' : 'text-[#0f172b]'}`}>
+                {fmt(hasDue ? (invoice.dueAmount as number) : invoice.amount)}
+              </div>
+              <div className="text-[13px] text-[#45556c] truncate">
+                {invoice.partyName || 'Walk-in customer'}
+                {invoice.partyNumber ? ` · ${invoice.partyNumber}` : ''}
+              </div>
+              <div className="text-right text-xs text-[#5b6b86]">{formatClockTime(invoice.createdAt)}</div>
             </div>
-            <div className={`text-right text-[15px] font-semibold tabular-nums ${hasDue ? 'text-[#bb4d00]' : 'text-[#0f172b]'}`}>
-              {fmt(hasDue ? (invoice.dueAmount as number) : invoice.amount)}
-            </div>
-            <div className="text-[13px] text-[#45556c] truncate">
-              {invoice.partyName || 'Walk-in customer'}
-              {invoice.partyNumber ? ` · ${invoice.partyNumber}` : ''}
-            </div>
-            <div className="text-right text-xs text-[#5b6b86]">{invoice.time}</div>
-          </div>
+          </React.Fragment>
         );
       });
     }
@@ -788,7 +411,7 @@ const Journal: React.FC = () => {
   };
 
   return (
-    <div className="flex min-h-screen w-full flex-col overflow-hidden bg-[#eef2ff] mb-10">
+    <div className="flex min-h-screen w-full flex-col overflow-hidden bg-[#eef2ff] mb-10 xl:mb-0 xl:block xl:h-full xl:min-h-0 xl:overflow-visible xl:bg-transparent">
       {modal && <Modal message={modal.message} type={modal.type} onClose={cancelDelete} onConfirm={confirmDeleteInvoice} showConfirmButton={invoiceToDelete !== null} />}
       <PaymentModal
         isOpen={isModalOpen}
@@ -899,93 +522,99 @@ const Journal: React.FC = () => {
       )}
 
       {/* ── HEADER + FILTERS ───────────────────────────────────────────────── */}
-      <div className="flex flex-col relative">
+      <div className="flex flex-col relative xl:block xl:h-full">
 
-        <JournalListFilters
-          tutorialStep={tutorialStep}
-          next={next}
-          skip={skip}
-          setTutorialRef={setTutorialRef}
-          filterRef={filterRef}
-          isFilterOpen={isFilterOpen}
-          setIsFilterOpen={setIsFilterOpen}
-          dateFilters={dateFilters}
-          activeDateFilter={activeDateFilter}
-          setActiveDateFilter={setActiveDateFilter}
-          handleDateFilterSelect={handleDateFilterSelect}
-          showSearch={showSearch}
-          setShowSearch={setShowSearch}
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          selectedPeriodText={selectedPeriodText}
-          showCustomPicker={showCustomPicker}
-          setShowCustomPicker={setShowCustomPicker}
-          customStartDate={customStartDate}
-          setCustomStartDate={setCustomStartDate}
-          customEndDate={customEndDate}
-          setCustomEndDate={setCustomEndDate}
-          activeType={activeType}
-          setActiveType={setActiveType}
-          hasPermission={hasPermission}
-          summary={summary}
-        />
+        <div className="bg-[#eef2ff]">
+          <JournalListFilters
+            tutorialStep={tutorialStep}
+            next={next}
+            skip={skip}
+            setTutorialRef={setTutorialRef}
+            filterRef={filterRef}
+            isFilterOpen={isFilterOpen}
+            setIsFilterOpen={setIsFilterOpen}
+            dateFilters={dateFilters}
+            activeDateFilter={activeDateFilter}
+            setActiveDateFilter={setActiveDateFilter}
+            handleDateFilterSelect={handleDateFilterSelect}
+            showSearch={showSearch}
+            setShowSearch={setShowSearch}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            selectedPeriodText={selectedPeriodText}
+            showCustomPicker={showCustomPicker}
+            setShowCustomPicker={setShowCustomPicker}
+            customStartDate={customStartDate}
+            setCustomStartDate={setCustomStartDate}
+            customEndDate={customEndDate}
+            setCustomEndDate={setCustomEndDate}
+            activeType={activeType}
+            setActiveType={setActiveType}
+            hasPermission={hasPermission}
+            summary={summary}
+          />
+        </div>
 
-        {/* ── LIST (left) + DETAIL (right, desktop only) ───────────────────── */}
-        <div className="px-4 lg:px-6 mt-4 pb-24 grid gap-4 xl:grid-cols-[420px_minmax(0,1fr)] items-start">
-          <TutorialStep
-            step={6}
-            currentStep={tutorialStep}
-            text="Tap any invoice to see full details — items, discounts, tax, and payment breakdown."
-            onNext={async () => {
-              // Last step — persist tutorial completion in Firestore
-              if (!currentUser?.companyId) {
+        {/* ── LIST (left) + DETAIL (right, desktop only): each scrolls inside its own card ── */}
+        <div ref={paneHostRef} className="bg-[#eef2ff] xl:h-[calc(100%+1rem)]">
+          <div className="px-4 lg:px-6 mt-4 pb-24 grid gap-4 items-start xl:mt-0 xl:h-[calc(100%-var(--pane-offset,0px))] xl:min-h-[320px] xl:grid-cols-[380px_minmax(0,1fr)] xl:grid-rows-[minmax(0,1fr)] xl:items-stretch xl:pb-6 xl:pt-4">
+            <TutorialStep
+              step={6}
+              currentStep={tutorialStep}
+              text="Tap any invoice to see full details — items, discounts, tax, and payment breakdown."
+              onNext={async () => {
+                // Last step — persist tutorial completion in Firestore
+                if (!currentUser?.companyId) {
+                  setTutorialStep(0);
+                  window.dispatchEvent(new Event("journal_tutorial_done"));
+                  return;
+                }
+                try {
+                  await setDoc(
+                    doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial'),
+                    { journalTutorialDone: true },
+                    { merge: true }
+                  );
+                } catch (e) {
+                  console.error('Error saving journal tutorial:', e);
+                }
                 setTutorialStep(0);
                 window.dispatchEvent(new Event("journal_tutorial_done"));
-                return;
-              }
-              try {
-                await setDoc(
-                  doc(db, 'companies', currentUser.companyId, 'settings', 'tutorial'),
-                  { journalTutorialDone: true },
-                  { merge: true }
-                );
-              } catch (e) {
-                console.error('Error saving journal tutorial:', e);
-              }
-              setTutorialStep(0);
-              window.dispatchEvent(new Event("journal_tutorial_done"));
-            }}
-            onSkip={skip}
-            isLast
-          >
-            <div
-              ref={setTutorialRef(6) as any}
-              role="listbox"
-              className="bg-white border border-[#dfe6fb] rounded-sm shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] overflow-hidden"
+              }}
+              onSkip={skip}
+              isLast
             >
-              <JournalTabs
-                tutorialStep={tutorialStep}
-                next={next}
-                skip={skip}
-                activeType={activeType}
-                activeTab={activeTab}
-                setActiveTab={setActiveTab}
-                totalUnpaidAmount={totalUnpaidAmount}
-              />
-              {renderContent()}
-            </div>
-          </TutorialStep>
+              <div
+                ref={setTutorialRef(6) as any}
+                className="bg-white border border-[#dfe6fb] rounded-sm shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] overflow-hidden xl:flex xl:min-h-0 xl:flex-col"
+              >
+                <JournalTabs
+                  tutorialStep={tutorialStep}
+                  next={next}
+                  skip={skip}
+                  activeType={activeType}
+                  activeTab={activeTab}
+                  setActiveTab={setActiveTab}
+                  tabCounts={tabCounts}
+                  totalUnpaidAmount={totalUnpaidAmount}
+                />
+                <div role="listbox" className="xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
+                  {renderContent()}
+                </div>
+              </div>
+            </TutorialStep>
 
-          {/* Desktop detail pane */}
-          <div className="hidden xl:block xl:sticky xl:top-4">
-            <div className="bg-white border border-[#dfe6fb] rounded-sm shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] p-4 2xl:p-5 overflow-x-auto">
-              {selectedInvoice ? (
-                renderInvoiceDetail(selectedInvoice)
-              ) : (
-                <p className="py-10 text-center text-sm text-[#45556c]">
-                  Pick a bill from the list to see its items, payment and actions.
-                </p>
-              )}
+            {/* Desktop detail pane */}
+            <div className="hidden xl:block xl:min-h-0">
+              <div className="h-full bg-white border border-[#dfe6fb] rounded-sm shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] overflow-hidden">
+                {selectedInvoice ? (
+                  renderBillDetail(selectedInvoice)
+                ) : (
+                  <p className="py-10 text-center text-sm text-[#45556c]">
+                    Pick a bill from the list to see its items, payment and actions.
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -998,10 +627,12 @@ const Journal: React.FC = () => {
             className="absolute inset-0 bg-[#020618]/45"
             onClick={() => handleInvoiceClick(selectedInvoice.id)}
           />
-          <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-xl max-h-[88vh] overflow-y-auto bg-white rounded-sm shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)] px-4 pt-5 pb-6">
+          <div className="absolute inset-x-0 bottom-0 mx-auto flex w-full max-w-xl max-h-[88dvh] flex-col overflow-hidden bg-white rounded-sm shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)] pt-5">
             {/* Drag handle */}
             <div className="absolute left-1/2 top-2 h-1 w-10 -translate-x-1/2 rounded-full bg-[#dfe6fb]" aria-hidden="true" />
-            {renderInvoiceDetail(selectedInvoice, () => handleInvoiceClick(selectedInvoice.id))}
+            <div className="flex min-h-0 flex-1 flex-col">
+              {renderBillDetail(selectedInvoice, () => handleInvoiceClick(selectedInvoice.id))}
+            </div>
           </div>
         </div>
       )}

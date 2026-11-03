@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { ROLES } from '../enums';
 import { inviteUser } from '../lib/AuthOperations';
+import { newEmailError } from '../lib/email';
+import { useEmailCheck } from '../lib/useEmailCheck';
 import { IconClose } from '../constants/Icons';
+import { EmailSuggestion } from './EmailSuggestion';
 
 type Theme = 'blue' | 'orange';
 
@@ -122,6 +125,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onU
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const emailCheck = useEmailCheck(email, { newAccount: true });
 
   if (!isOpen) return null;
 
@@ -157,6 +161,12 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onU
 
     if (!fullName.trim() || !email.trim() || !password.trim() || !phoneNumber.trim()) {
       setError('Please fill out all user details.');
+      return;
+    }
+
+    emailCheck.reveal();
+    if (newEmailError(email) || emailCheck.holdForTypo()) {
+      document.getElementById('modalEmail')?.focus();
       return;
     }
 
@@ -253,7 +263,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onU
                   <span className="hidden sm:inline">Gmail / Email (login ID)</span>{' '}
                   <span className="text-red-600">*</span>
                 </label>
-                <div className={fieldWrap}>
+                <div className={`${fieldWrap} ${emailCheck.error ? '!border-red-600' : ''}`}>
                   <Icon className="w-4 h-4 shrink-0 hidden sm:block"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></Icon>
                   <input
                     id="modalEmail"
@@ -262,10 +272,18 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ isOpen, onClose, onU
                     placeholder="name@mail.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    onBlur={emailCheck.onBlur}
+                    aria-invalid={Boolean(emailCheck.error) || undefined}
+                    aria-describedby="modalEmail-msg"
                     required
                     disabled={isSubmitting}
                   />
                 </div>
+                <p id="modalEmail-msg" aria-live="polite" className="mt-1 text-xs leading-[17px] text-red-600 empty:hidden">
+                  {emailCheck.error}
+                  {emailCheck.error && emailCheck.suggestion && ' '}
+                  <EmailSuggestion check={emailCheck} onUse={setEmail} linkClassName={t.link} />
+                </p>
               </div>
             </div>
 

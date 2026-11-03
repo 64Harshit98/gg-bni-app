@@ -7,11 +7,11 @@ interface UseJournalListParams {
   isTutorialActive: boolean;
 }
 
-// Owns Paid/Unpaid tab, Credit/Debit type, date filter, search, and
+// Owns All/Paid/Unpaid tab, Credit/Debit type, date filter, search, and
 // expand/collapse state for the journal (transactions) list, and composes
 // useJournalData internally.
 export const useJournalList = ({ companyId, isTutorialActive }: UseJournalListParams) => {
-  const [activeTab, setActiveTab] = useState<'Paid' | 'Unpaid'>('Paid');
+  const [activeTab, setActiveTab] = useState<'All' | 'Paid' | 'Unpaid'>('All');
   const [activeType, setActiveType] = useState<'Debit' | 'Credit'>('Credit');
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
@@ -72,14 +72,14 @@ export const useJournalList = ({ companyId, isTutorialActive }: UseJournalListPa
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const filteredInvoices = useMemo(() => {
+  // Every bill in the period / search / Sales-or-Purchase selection, before the
+  // All/Paid/Unpaid tab: the summary strip and the tab counts read this.
+  const typeInvoices = useMemo(() => {
     // While the tutorial is active, always show the sample invoices,
-    // regardless of date filter / search / tab state, so every tutorial
+    // regardless of date filter / search state, so every tutorial
     // step has real-looking cards to point at.
     if (isTutorialActive) {
-      return SAMPLE_INVOICES.filter(
-        (invoice) => invoice.type === activeType && invoice.status === activeTab
-      );
+      return SAMPLE_INVOICES.filter((invoice) => invoice.type === activeType);
     }
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -120,8 +120,18 @@ export const useJournalList = ({ companyId, isTutorialActive }: UseJournalListPa
           return matchesDetails || matchesItems;
         });
       })
-      .filter((invoice) => invoice.type === activeType && invoice.status === activeTab);
-  }, [invoices, activeType, activeTab, searchQuery, activeDateFilter, customStartDate, customEndDate, isTutorialActive]);
+      .filter((invoice) => invoice.type === activeType);
+  }, [invoices, activeType, searchQuery, activeDateFilter, customStartDate, customEndDate, isTutorialActive]);
+
+  const filteredInvoices = useMemo(
+    () => (activeTab === 'All' ? typeInvoices : typeInvoices.filter((invoice) => invoice.status === activeTab)),
+    [typeInvoices, activeTab]
+  );
+
+  const tabCounts = useMemo(() => {
+    const unpaid = typeInvoices.filter((invoice) => invoice.status === 'Unpaid').length;
+    return { All: typeInvoices.length, Paid: typeInvoices.length - unpaid, Unpaid: unpaid };
+  }, [typeInvoices]);
 
   const selectedPeriodText = useMemo(() => {
     const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
@@ -190,7 +200,9 @@ export const useJournalList = ({ companyId, isTutorialActive }: UseJournalListPa
     showCustomPicker,
     setShowCustomPicker,
 
+    typeInvoices,
     filteredInvoices,
+    tabCounts,
     selectedPeriodText,
     dateFilters,
     handleDateFilterSelect,

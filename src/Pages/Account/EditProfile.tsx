@@ -12,6 +12,10 @@ import {
 } from 'react-icons/fi';
 import { invalidateLogoCache, logoCache } from '../../Catalogue/hooks/useCompanyLogo';
 import BackButton from '../../Components/BackButton';
+import {
+  toSocialUrl, INSTAGRAM_BASE, FACEBOOK_BASE, TWITTER_BASE,
+  stripCountryCode, toWhatsappNumber,
+} from '../../Catalogue/utils/socialLinks';
 
 // ─── Theme tokens (Tailwind arbitrary properties) ─────────────────────────
 // Light + dark values live here as CSS variables; every class below reads them via var(--…).
@@ -585,6 +589,7 @@ const EditProfilePage: React.FC = () => {
     if (isCustomCategory) setCustomBusinessCategory(profile.businessCategory!);
     setFormData({
       ...profile,
+      whatsappNumber: stripCountryCode(profile.whatsappNumber),
       businessType: isCustomType ? 'Other' : (profile.businessType || ''),
       businessCategory: isCustomCategory ? 'Other' : (profile.businessCategory || ''),
     });
@@ -648,6 +653,12 @@ const EditProfilePage: React.FC = () => {
     }
   };
 
+  const handleWhatsappChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // paste of "91XXXXXXXXXX" is trimmed to the 10-digit number
+    const value = stripCountryCode(e.target.value).slice(0, 10);
+    setFormData(prev => ({ ...prev, whatsappNumber: value }));
+  };
+
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -701,6 +712,10 @@ const EditProfilePage: React.FC = () => {
       setSubmitError('Phone number must be exactly 10 digits.');
       return;
     }
+    if (formData.whatsappNumber && formData.whatsappNumber.length !== 10) {
+      setSubmitError('WhatsApp number must be exactly 10 digits.');
+      return;
+    }
     if (formData.msmeUdyamNumber && formData.msmeUdyamNumber.length !== 19) {
       setSubmitError('MSME/Udyam number must be exactly 19 digits.');
       return;
@@ -741,7 +756,17 @@ const EditProfilePage: React.FC = () => {
 
       const finalBusinessType = formData.businessType === 'Other' ? customBusinessType : formData.businessType;
       const finalBusinessCategory = formData.businessCategory === 'Other' ? customBusinessCategory : formData.businessCategory;
-      await saveData({ ...formData, profilePicture: finalPhotoUrl, companyLogo: finalLogoUrl, businessType: finalBusinessType, businessCategory: finalBusinessCategory });
+      await saveData({
+        ...formData,
+        profilePicture: finalPhotoUrl,
+        companyLogo: finalLogoUrl,
+        businessType: finalBusinessType,
+        businessCategory: finalBusinessCategory,
+        instagram: toSocialUrl(INSTAGRAM_BASE, formData.instagram),
+        facebook: toSocialUrl(FACEBOOK_BASE, formData.facebook),
+        twitter: toSocialUrl(TWITTER_BASE, formData.twitter),
+        whatsappNumber: toWhatsappNumber(formData.whatsappNumber),
+      });
 
       refetch(); // pull the latest from Firestore after save
       setFormData(prev => ({ ...prev, profilePicture: finalPhotoUrl, companyLogo: finalLogoUrl }));
@@ -772,6 +797,7 @@ const EditProfilePage: React.FC = () => {
       !businessCategoryOptions.some(o => o.value === profile.businessCategory);
     setFormData({
       ...profile,
+      whatsappNumber: stripCountryCode(profile.whatsappNumber),
       businessType: isCustomType ? 'Other' : (profile.businessType || ''),
       businessCategory: isCustomCategory ? 'Other' : (profile.businessCategory || ''),
     });
@@ -825,7 +851,8 @@ const EditProfilePage: React.FC = () => {
   const panWarn = pan && !PAN_RE.test(pan) ? 'Not a valid PAN — it looks like ABCDE1234F' : null;
   const gstinWarn = gstin && !GSTIN_RE.test(gstin) ? 'Doesn’t look like a valid GSTIN — e.g. 09ABCDE1234F1Z5' : null;
   const ifscWarn = ifsc && !IFSC_RE.test(ifsc) ? 'IFSC has 11 characters, like SBIN0001234' : null;
-  const instaWarn = insta && looksLikeWebsite(insta) ? 'This is a website — use your handle, e.g. @superstore' : null;
+  const instaWarn = insta && looksLikeWebsite(insta) && !/instagram\.com/i.test(insta)
+    ? 'Enter your Instagram handle (e.g. @superstore) or your instagram.com link' : null;
   const typeWarn = specType && specType.length < 3 ? `Shows as “${specType}” — e.g. Supermarket` : null;
   const catWarn = specCat && specCat.length < 3 ? `Shows as “${specCat}” — e.g. Grocery` : null;
 
@@ -1055,8 +1082,8 @@ const EditProfilePage: React.FC = () => {
                 <Field type="text" name="facebook" value={formData.facebook || ''} onChange={handleInputChange} label="Facebook" icon={<FiFacebook />} />
                 <Field type="text" name="twitter" value={formData.twitter || ''} onChange={handleInputChange} label="Twitter / X" icon={<FiTwitter />} />
                 <Field
-                  type="text" name="whatsappNumber" value={formData.whatsappNumber || ''} onChange={handleInputChange}
-                  label="WhatsApp No." maxLength={10} inputMode="numeric" leading="+91" icon={<FiMessageCircle />}
+                  type="text" name="whatsappNumber" value={formData.whatsappNumber || ''} onChange={handleWhatsappChange}
+                  label="WhatsApp No." inputMode="numeric" leading="+91" icon={<FiMessageCircle />}
                 />
               </div>
             </Section>

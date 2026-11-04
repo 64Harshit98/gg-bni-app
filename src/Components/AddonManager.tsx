@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { FiEdit2, FiLink, FiTrash2, FiX } from 'react-icons/fi';
+import { MdDragIndicator } from 'react-icons/md';
 import type { AddOnGroup, AddOnOption, Item } from '../constants/models';
 import { validateAddOnGroups } from '../constants/models';
 import { useAddOnTemplates } from '../lib/addOnTemplates';
@@ -23,7 +24,7 @@ const selectionLabel = (g: AddOnGroup) =>
     !g.multiple ? 'Choose one' : Number(g.maxSelect) > 0 ? `Choose up to ${g.maxSelect}` : 'Choose any';
 
 export const AddOnManager: React.FC<AddOnManagerProps> = ({ isOpen, onClose, companyId, items, actionClass }) => {
-    const { templates, saveTemplate, deleteTemplate } = useAddOnTemplates(companyId);
+    const { templates, saveTemplate, deleteTemplate, reorderTemplates } = useAddOnTemplates(companyId);
     const [draft, setDraft] = useState<AddOnGroup | null>(null);
     const [mode, setMode] = useState<'custom' | 'inventory' | 'both'>('custom'); // UI only: kaunsa block dikhana hai
     //const [bulk, setBulk] = useState('');
@@ -32,6 +33,9 @@ export const AddOnManager: React.FC<AddOnManagerProps> = ({ isOpen, onClose, com
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState<AddOnGroup | null>(null); // group waiting for delete confirmation
+    const [dragList, setDragList] = useState<AddOnGroup[] | null>(null); // live order while dragging
+    const [draggingId, setDraggingId] = useState<string | null>(null);
+    const dragRef = useRef<AddOnGroup[] | null>(null);
 
     const linkResults = useMemo(() => {
         const q = linkQuery.trim().toLowerCase();
@@ -116,6 +120,42 @@ export const AddOnManager: React.FC<AddOnManagerProps> = ({ isOpen, onClose, com
         }
     };
 
+    // Drag by the handle: rows swap live under the pointer, order is saved when released (mouse + touch)
+    const startDrag = (e: React.PointerEvent<HTMLButtonElement>, id: string) => {
+        e.preventDefault();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        dragRef.current = [...templates];
+        setDragList(dragRef.current);
+        setDraggingId(id);
+        setError(null);
+    };
+    const onDragMove = (e: React.PointerEvent) => {
+        if (!dragRef.current || !draggingId) return;
+        const overId = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-gid]')?.getAttribute('data-gid');
+        if (!overId || overId === draggingId) return;
+        const list = [...dragRef.current];
+        const from = list.findIndex((g) => g.id === draggingId);
+        const to = list.findIndex((g) => g.id === overId);
+        if (from < 0 || to < 0) return;
+        const [moved] = list.splice(from, 1);
+        list.splice(to, 0, moved);
+        dragRef.current = list;
+        setDragList(list);
+    };
+    const endDrag = async () => {
+        const finalList = dragRef.current;
+        dragRef.current = null;
+        setDraggingId(null);
+        if (!finalList || finalList.every((g, i) => g.id === templates[i]?.id)) { setDragList(null); return; }
+        try {
+            await reorderTemplates(finalList);
+        } catch {
+            setError('Failed to reorder add-on groups.');
+        } finally {
+            setDragList(null);
+        }
+    };
+
     const confirmRemove = async () => {
         const g = deleteTarget;
         if (!g) return;
@@ -147,11 +187,23 @@ export const AddOnManager: React.FC<AddOnManagerProps> = ({ isOpen, onClose, com
                             <p className="py-6 text-center text-sm text-slate-500">No add-on groups yet. Create one, then pick it from the Add item or Edit item screen.</p>
                         ) : (
                             <div className="grid gap-2">
-                                {templates.map((g) => (
-                                    <div key={g.id} className="flex items-center justify-between gap-3 rounded-sm border border-gray-200 bg-white px-3 py-2.5">
-                                        <div className="min-w-0">
-                                            <p className="truncate text-sm font-semibold text-slate-900">{g.name}</p>
-                                            <p className="truncate text-xs text-slate-500">{selectionLabel(g)} · {g.options.length} option{g.options.length === 1 ? '' : 's'}</p>
+                                {(dragList ?? templates).map((g) => (
+                                    <div key={g.id} data-gid={g.id}
+                                        className={`flex select-none items-center justify-between gap-3 rounded-sm border bg-white px-3 py-2.5 transition-shadow ${draggingId === g.id ? 'border-blue-400 shadow-lg ring-1 ring-blue-300' : 'border-gray-200'}`}>
+                                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                                            <button type="button" aria-label={`Drag to reorder ${g.name}`}
+                                                onPointerDown={(e) => startDrag(e, g.id)}
+                                                onPointerMove={onDragMove}
+                                                onPointerUp={endDrag}
+                                                onPointerCancel={endDrag}
+                                                style={{ touchAction: 'none' }}
+                                                className={`inline-flex h-9 w-6 shrink-0 items-center justify-center rounded-sm text-slate-400 hover:bg-gray-100 hover:text-slate-700 ${draggingId === g.id ? 'cursor-grabbing' : 'cursor-grab'}`}>
+                                                <MdDragIndicator size={20} />
+                                            </button>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="truncate text-sm font-semibold text-slate-900">{g.name}</p>
+                                                <p className="truncate text-xs text-slate-500">{selectionLabel(g)} · {g.options.length} option{g.options.length === 1 ? '' : 's'}</p>
+                                            </div>
                                         </div>
                                         <div className="flex shrink-0 gap-0.5">
                                             <button type="button" aria-label={`Edit ${g.name}`}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { addDoc, collection, deleteDoc, doc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDocs, serverTimestamp, setDoc, writeBatch } from 'firebase/firestore';
 import { db } from './Firebase';
 import type { AddOnGroup, AddOnOption } from '../constants/models';
 
@@ -9,7 +9,8 @@ export const fromTemplateDoc = (id: string, data: any): AddOnGroup => ({
   name: data?.name || '',
   multiple: data?.multiple !== false,
     maxSelect: Number(data?.maxSelect) || 0,
-  extraPrice: data?.extraPrice != null ? Number(data.extraPrice) : undefined,
+    extraPrice: data?.extraPrice != null ? Number(data.extraPrice) : undefined,
+  order: typeof data?.order === 'number' ? data.order : undefined,
   options: (data?.options || []) as AddOnOption[],
 });
 
@@ -31,7 +32,7 @@ export const useAddOnTemplates = (companyId?: string) => {
     if (!companyId) { setTemplates([]); setLoaded(false); return; }
     try {
       const snap = await getDocs(collection(db, 'companies', companyId, 'addOnTemplates'));
-      setTemplates(snap.docs.map((d) => fromTemplateDoc(d.id, d.data())).sort((a, b) => a.name.localeCompare(b.name)));
+      setTemplates(snap.docs.map((d) => fromTemplateDoc(d.id, d.data())).sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999) || a.name.localeCompare(b.name)));
       setLoaded(true);
     } catch (err) {
       console.error('Failed to load add-on groups:', err);
@@ -48,7 +49,8 @@ export const useAddOnTemplates = (companyId?: string) => {
       multiple: group.multiple,
             maxSelect: group.multiple ? Number(group.maxSelect) || 0 : 0,
       // Firestore rejects undefined, so "not allowed" is saved as null
-      extraPrice: group.multiple && Number(group.maxSelect) > 0 && group.extraPrice != null ? Number(group.extraPrice) || 0 : null,
+           extraPrice: group.multiple && Number(group.maxSelect) > 0 && group.extraPrice != null ? Number(group.extraPrice) || 0 : null,
+      order: group.order ?? templates.length, // new group goes to the end
       options: group.options.map(cleanOption),
       updatedAt: serverTimestamp(),
     };
@@ -66,5 +68,19 @@ export const useAddOnTemplates = (companyId?: string) => {
     await load();
   };
 
-  return { templates, loaded, saveTemplate, deleteTemplate };
+    // Saves the new order of the whole list (index = order). UI updates first, rolls back if the save fails.
+  const reorderTemplates = async (ordered: AddOnGroup[]) => {
+    if (!companyId) throw new Error('No company');
+    setTemplates(ordered.map((g, i) => ({ ...g, order: i })));
+    try {
+      const batch = writeBatch(db);
+      ordered.forEach((g, i) => batch.update(doc(db, 'companies', companyId, 'addOnTemplates', g.id), { order: i }));
+      await batch.commit();
+    } catch (err) {
+      await load();
+      throw err;
+    }
+  };
+
+  return { templates, loaded, saveTemplate, deleteTemplate, reorderTemplates };
 };

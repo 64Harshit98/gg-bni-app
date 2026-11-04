@@ -3,6 +3,7 @@ import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 import type { Item } from '../../constants/models';
 import { ensurePendingApprovalEntry } from '../hooks/ensureApprovalEntry';
+import { safeSet } from '../../lib/safeStorage';
 import { getLeadData, isLeadSubmitted } from './storefront.utils';
 
 const cleanNumber = (n?: string) => (n || '').replace(/\D/g, '').trim();
@@ -56,7 +57,7 @@ export const useCustomerActions = (companyId: string | null, approvalEnabled: bo
 
     const onLeadSubmit = useCallback(() => {
         setLeadOpen(false);
-        localStorage.setItem('leadJustSubmitted', 'true');
+        safeSet('leadJustSubmitted', 'true');
         const lead = getLeadData();
         const number = cleanNumber(lead.number);
         setLeadPhoneKey(number);

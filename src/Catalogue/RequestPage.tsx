@@ -15,6 +15,7 @@ import { sendCompanyWhatsappMessage } from '../Pages/Additional/Whatsapp/sendCom
 import { useWhatsappProvider } from '../Pages/Additional/Whatsapp/useWhatsappProvider';
 import { ROUTES } from '../constants/routes.constants'
 import BackButton from '../Components/BackButton'
+import { todayDateInputValue } from '../lib/format'
 
 type RequestType = {
     id: string;
@@ -252,7 +253,7 @@ function RequestPage() {
     const handleDateFilterSelect = (value: string) => {
         if (value === 'custom') {
             // do NOT change the active filter yet — edit a draft, apply on "Apply"
-            setCustomDraft({ start: customStartDate, end: customEndDate });
+            setCustomDraft({ start: customStartDate || todayDateInputValue(), end: customEndDate || todayDateInputValue() });
             setShowCustomInputs(true);
             return;
         }
@@ -1137,7 +1138,7 @@ function RequestPage() {
                                 {showCustomInputs ? (
                                     <>
                                         <div className="grid grid-cols-2 gap-3">
-                                            <label className="grid gap-1.5 text-[13px] font-medium text-slate-500">
+                                            <label className="grid grid-cols-1 gap-1.5 text-[13px] font-medium text-slate-500">
                                                 From
                                                 <input
                                                     type="date"
@@ -1146,7 +1147,7 @@ function RequestPage() {
                                                     className={cx(INPUT, 'min-w-0')}
                                                 />
                                             </label>
-                                            <label className="grid gap-1.5 text-[13px] font-medium text-slate-500">
+                                            <label className="grid grid-cols-1 gap-1.5 text-[13px] font-medium text-slate-500">
                                                 To
                                                 <input
                                                     type="date"

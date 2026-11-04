@@ -165,7 +165,7 @@ export const DateChips: React.FC<{ compare?: boolean }> = ({ compare = true }) =
             setPopLeft(Math.min(Math.max(0, br.left - rr.left), Math.max(0, rr.width - POP_W)));
         }
         // start from the range currently on screen
-        setDraft({ start: filters.startDate, end: filters.endDate });
+        setDraft({ start: filters.startDate || getLocalDateString(), end: filters.endDate || getLocalDateString() });
         setCustomOpen(true);
     };
 
@@ -232,14 +232,14 @@ export const DateChips: React.FC<{ compare?: boolean }> = ({ compare = true }) =
                     className="absolute top-full z-40 mt-1.5 rounded-sm border border-[#dfe6fb] bg-white p-4 shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]"
                 >
                     <div className="grid grid-cols-2 gap-3">
-                        <label className="grid gap-1.5 text-[13px] font-medium text-[#45556c]">
+                        <label className="grid grid-cols-1 gap-1.5 text-[13px] font-medium text-[#45556c]">
                             From
                             <input
                                 type="date" value={draft.start} max={getLocalDateString()}
                                 onChange={e => setDraft(d => ({ ...d, start: e.target.value }))} className={dateInput}
                             />
                         </label>
-                        <label className="grid gap-1.5 text-[13px] font-medium text-[#45556c]">
+                        <label className="grid grid-cols-1 gap-1.5 text-[13px] font-medium text-[#45556c]">
                             To
                             <input
                                 type="date" value={draft.end} max={getLocalDateString()}

@@ -6,10 +6,180 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>SELLAR APP</title>
   <link rel="icon" type="image/svg+xml" href="/src/assets/sellar-logo.png" />
+  <!-- Catalogue product images are Firebase Storage download URLs. -->
+  <link rel="preconnect" href="https://firebasestorage.googleapis.com" />
+  <style>
+    /* Static boot shell: painted by the browser from this HTML alone, before
+       any JS or the main stylesheet has downloaded, so a slow or failed
+       bundle load is never a blank white page. React replaces #root's
+       contents on its first render. */
+    .boot-shell {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 0 24px;
+      background: #E9F0F7;
+      color: #1A3B5D;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      text-align: center;
+    }
+    .boot-spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid rgba(26, 59, 93, 0.15);
+      border-top-color: #F97316;
+      border-radius: 50%;
+      animation: boot-spin 0.8s linear infinite;
+    }
+    @keyframes boot-spin { to { transform: rotate(360deg); } }
+    .boot-fail { z-index: 2147483647; }
+    .boot-title { margin: 0; font-size: 18px; font-weight: 800; }
+    .boot-text { margin: 0; font-size: 13px; color: rgba(26, 59, 93, 0.6); }
+    .boot-btn {
+      margin-top: 8px;
+      padding: 12px 24px;
+      border: 0;
+      border-radius: 12px;
+      background: #F97316;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 700;
+    }
+  </style>
+  <script>
+    // Plain ES5 on purpose: this must run in every browser, including ones
+    // too old for the app bundle, so it can tell the visitor what happened.
+    (function () {
+      var w = window;
+      var d = document;
+
+      // --- Early storefront data prefetch -------------------------------
+      // Start downloading the catalogue in parallel with the JS bundle
+      // instead of after it. The app picks this request up in
+      // src/Catalogue/storefront/storefrontClient.ts (same key format), and
+      // falls back to its own request if this one is missing or failed.
+      // Subdomain rules mirror getSubdomain() in src/lib/subdomain.ts.
+      try {
+        var host = location.hostname.toLowerCase();
+        var parts = host.split('.');
+        var query = null;
+        if (host !== 'localhost' && host !== '127.0.0.1' && parts.length >= 3 && parts[0] !== 'www' && parts[0] !== 'app') {
+          query = 'sub=' + encodeURIComponent(parts[0]);
+        } else {
+          var seg = location.pathname.split('/').filter(function (s) { return !!s; });
+          if (seg.length === 2 && (seg[0] === 'catalogue' || seg[0] === 'checkout')) {
+            query = 'cId=' + encodeURIComponent(decodeURIComponent(seg[1]));
+          }
+        }
+        if (query && w.fetch) {
+          w.__SF_PREFETCH__ = {
+            key: query,
+            promise: w.fetch('/api/storefront?' + query, {
+              credentials: 'omit',
+              headers: { Accept: 'application/json' }
+            })
+          };
+        }
+      } catch (e) { /* prefetch is only an optimisation */ }
+
+      // --- Boot watchdog ------------------------------------------------
+      // Ends every failed load on a visible "Tap to retry" message instead
+      // of a blank page. Shown as an overlay OUTSIDE #root (React owns #root;
+      // writing into it would corrupt React's DOM), when:
+      //   - a script / stylesheet fails before the app code has started
+      //     (window.__APP_STARTED__) — after that, lazy-chunk failures are
+      //     handled by the app itself (vite:preloadError, error boundaries);
+      //   - the app hasn't rendered (window.__APP_BOOTED__) within
+      //     BOOT_TIMEOUT_MS;
+      //   - an uncaught error leaves #root empty (React unmounted the tree).
+      // The app removes the overlay itself if it renders after all.
+      var BOOT_TIMEOUT_MS = 15000;
+      var overlay = null;
+
+      function mount(el) {
+        if (d.body) {
+          d.body.appendChild(el);
+        } else {
+          d.addEventListener('DOMContentLoaded', function () { d.body.appendChild(el); });
+        }
+      }
+
+      function showFailure(title, text, canRetry) {
+        if (overlay) return;
+        overlay = d.createElement('div');
+        overlay.className = 'boot-shell boot-fail';
+        overlay.setAttribute('role', 'alert');
+        overlay.innerHTML =
+          '<p class="boot-title">' + title + '</p>' +
+          '<p class="boot-text">' + text + '</p>' +
+          (canRetry ? '<button type="button" class="boot-btn" onclick="location.reload()">Tap to retry</button>' : '');
+        mount(overlay);
+      }
+
+      function showLoadFailure() {
+        showFailure("Couldn't load the page", 'Please check your internet connection and try again.', true);
+      }
+
+      function rootIsEmpty() {
+        var root = d.getElementById('root');
+        return !root || !root.firstElementChild;
+      }
+
+      w.__BOOT_FAIL__ = showLoadFailure;
+      w.__BOOT_OK__ = function () {
+        if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        overlay = null;
+      };
+
+      if (!('noModule' in d.createElement('script'))) {
+        showFailure('Please update your browser', 'This browser is too old to open this page. Update it, or open the link in Chrome or Safari.', false);
+        return;
+      }
+
+      // Resource load errors don't bubble, so listen in the capture phase.
+      w.addEventListener('error', function (e) {
+        var t = e && e.target;
+        if (t && t.tagName) {
+          var isAppAsset = t.tagName === 'SCRIPT' ||
+            (t.tagName === 'LINK' && (t.rel === 'stylesheet' || t.rel === 'modulepreload'));
+          if (isAppAsset && !w.__APP_STARTED__) showLoadFailure();
+          return;
+        }
+        if (!w.__APP_STARTED__) {
+          // The entry bundle failed to evaluate: the app is not coming up.
+          showLoadFailure();
+          return;
+        }
+        // After start, only step in if the error took the whole page down.
+        setTimeout(function () {
+          if (rootIsEmpty()) showLoadFailure();
+        }, 100);
+      }, true);
+
+      setTimeout(function () {
+        if (!w.__APP_BOOTED__ || rootIsEmpty()) showLoadFailure();
+      }, BOOT_TIMEOUT_MS);
+    })();
+  </script>
 </head>
 
 <body>
-  <div id="root"></div>
+  <div id="root">
+    <div class="boot-shell" aria-busy="true">
+      <div class="boot-spinner"></div>
+      <p class="boot-text">Loading…</p>
+    </div>
+  </div>
+  <noscript>
+    <div class="boot-shell">
+      <p class="boot-title">JavaScript is turned off</p>
+      <p class="boot-text">Please enable JavaScript to open this page.</p>
+    </div>
+  </noscript>
   <script type="module" src="/src/main.tsx"></script>
 </body>
 

@@ -8,6 +8,10 @@
     ],
     "rewrites": [
       {
+        "source": "/api/storefront",
+        "function": "getPublicStorefront"
+      },
+      {
         "source": "/api/getPublicCatalogue",
         "function": "getPublicCatalogue"
       },
@@ -16,13 +20,13 @@
         "function": "getPublicCatalogueItems"
       },
       {
-        "source": "**",
+        "source": "!/assets/**",
         "destination": "/index.html"
       }
     ],
     "headers": [
       {
-        "source": "**/*.@(js|css|png|jpg|jpeg|gif|webp|svg)",
+        "source": "/assets/**",
         "headers": [
           {
             "key": "Cache-Control",
@@ -31,11 +35,11 @@
         ]
       },
       {
-        "source": "/index.html",
+        "source": "!/@(assets|api)/**",
         "headers": [
           {
             "key": "Cache-Control",
-            "value": "no-cache, no-store, must-revalidate"
+            "value": "no-cache"
           }
         ]
       }

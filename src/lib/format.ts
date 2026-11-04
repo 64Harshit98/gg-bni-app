@@ -12,6 +12,12 @@ export const formatAmount = (amount: number) => {
     return Number(amount || 0).toLocaleString('en-IN');
 };
 
+// Today as an <input type="date"> value, on the user's clock (toISOString alone gives the UTC date)
+export const todayDateInputValue = (): string => {
+    const now = new Date();
+    return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+};
+
 // Clock time for bill and order lists: "2:46 pm"
 export const formatClockTime = (date: Date): string =>
     date.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });

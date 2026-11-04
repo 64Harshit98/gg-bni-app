@@ -1,6 +1,8 @@
 import express from 'express';
+import compression from 'compression';
 import path from 'path';
 import fs from 'fs';
+import { getPublicHost, getMerchantSub, getCatalogueTarget } from './server/tenant.js';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -40,12 +42,53 @@ function escapeHtml(str) {
         .replace(/'/g, '&#39;');
 }
 
-// App Hosting sits behind a proxy: `Host` is the internal Cloud Run address
-// (newapp-<n>.<region>.run.app), the domain the visitor actually used
-// (e.g. acme.sellar.in) arrives in X-Forwarded-Host.
-function getPublicHost(req) {
-    const forwarded = req.get('x-forwarded-host');
-    return (forwarded ? forwarded.split(',')[0].trim() : req.get('host')) || '';
+// --- /api/storefront: cached proxy to the getPublicStorefront function ---
+// One HTTP response with everything the public catalogue needs for first
+// paint (see getPublicStorefront in functions/lib/index.js). This layer
+// keeps a small in-memory copy per tenant so most buyers never wait on the
+// function at all, collapses concurrent cold requests for the same store
+// into one upstream call, and keeps serving the last good copy for a while
+// if the function is slow or down, so a hiccup upstream doesn't blank the
+// storefront.
+const STOREFRONT_FRESH_MS = 30 * 1000;
+const STOREFRONT_STALE_MS = 10 * 60 * 1000;
+const STOREFRONT_UPSTREAM_TIMEOUT_MS = 8000;
+const STOREFRONT_CACHE_MAX = 100;
+const storefrontCache = new Map(); // key -> { status, isJson, body, cacheControl, fetchedAt }
+const storefrontInFlight = new Map(); // key -> Promise<entry>
+
+async function fetchStorefrontUpstream(key) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), STOREFRONT_UPSTREAM_TIMEOUT_MS);
+    try {
+        const response = await fetch(`${FUNCTIONS_BASE_URL}/getPublicStorefront?${key}`, {
+            signal: controller.signal,
+        });
+        return {
+            status: response.status,
+            isJson: (response.headers.get('content-type') || '').includes('application/json'),
+            body: await response.text(),
+            cacheControl: response.headers.get('cache-control') || 'no-store',
+            fetchedAt: Date.now(),
+        };
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+function rememberStorefront(key, entry) {
+    storefrontCache.delete(key);
+    if (storefrontCache.size >= STOREFRONT_CACHE_MAX) {
+        storefrontCache.delete(storefrontCache.keys().next().value);
+    }
+    storefrontCache.set(key, entry);
+}
+
+function sendStorefront(res, entry, cacheState) {
+    // A stale fallback copy must not be re-cached downstream by the CDN.
+    res.set('Cache-Control', cacheState === 'STALE' ? 'no-store' : entry.cacheControl);
+    res.set('X-Storefront-Cache', cacheState);
+    return res.status(entry.status).type('application/json').send(entry.body);
 }
 
 function renderWithMeta({ type, title, description, image, url }) {
@@ -72,38 +115,6 @@ function renderWithMeta({ type, title, description, image, url }) {
         .replace('</head>', `${metaTags}\n</head>`);
 }
 
-// Works out which store (and optionally which category) a catalogue share
-// link points at. Mirrors the client routes in src/routes/routes.tsx:
-//   <sub>.sellar.in/                  -> whole catalogue
-//   <sub>.sellar.in/<categorySlug>    -> category
-//   /catalogue/<companyId>            -> whole catalogue (legacy)
-//   /<companyId>/<categorySlug>       -> category (legacy)
-// Returns null for anything else so non-catalogue pages keep the default shell.
-function getCatalogueTarget(host, pathname) {
-    let segments;
-    try {
-        segments = pathname.split('/').filter(Boolean).map(decodeURIComponent);
-    } catch {
-        return null;
-    }
-    const hostname = (host || '').split(':')[0].toLowerCase();
-
-    if (hostname.endsWith('.sellar.in')) {
-        const sub = hostname.split('.')[0];
-        if (sub !== 'www' && sub !== 'app') {
-            if (segments.length === 0) return { sub };
-            if (segments.length === 1 && segments[0] !== 'checkout') return { sub, cat: segments[0] };
-            return null;
-        }
-    }
-
-    if (segments.length === 2 && segments[0] === 'catalogue') return { cId: segments[1] };
-    if (segments.length === 2 && segments[0] !== 'checkout' && segments[0] !== 'download-bill') {
-        return { cId: segments[0], cat: segments[1] };
-    }
-    return null;
-}
-
 // The HTML shell is the pointer to whichever hashed JS/CSS bundle is
 // currently valid — it must always be revalidated, never served stale from
 // cache. `no-cache` still allows cheap conditional GETs (304s), it just
@@ -111,6 +122,11 @@ function getCatalogueTarget(host, pathname) {
 function setHtmlHeaders(res) {
     res.set('Cache-Control', 'no-cache');
 }
+
+// gzip/brotli for JS, CSS, JSON and HTML. Without it the JS bundles went out
+// uncompressed (several MB) — on a slow mobile connection that alone kept
+// the storefront on a blank screen for many seconds.
+app.use(compression());
 
 // Static assets are content-hashed by Vite (index-<hash>.js), so a changed
 // file always gets a new name — safe to cache forever, and this is the
@@ -121,11 +137,72 @@ function setHtmlHeaders(res) {
 // shell would also be sent with the 1y immutable cache headers.
 app.use(express.static(distPath, { maxAge: '1y', immutable: true, index: false }));
 
+app.get('/api/storefront', async (req, res) => {
+    const hostSub = getMerchantSub(getPublicHost(req));
+    const querySub = typeof req.query.sub === 'string' ? req.query.sub.toLowerCase() : null;
+    const cId = typeof req.query.cId === 'string' ? req.query.cId : null;
+
+    // On a merchant host the Host header decides the tenant — a request can
+    // only ever get the store it was made on. A mismatching ?sub= is
+    // rejected (rather than silently ignored) so a cache keyed on the URL
+    // can never pair one store's URL with another store's data.
+    if (hostSub && querySub && querySub !== hostSub) {
+        res.set('Cache-Control', 'no-store');
+        return res.status(400).json({ error: 'Store does not match host' });
+    }
+
+    const params = hostSub ? { sub: hostSub } : querySub ? { sub: querySub } : cId ? { cId } : null;
+    if (!params) {
+        res.set('Cache-Control', 'no-store');
+        return res.status(400).json({ error: 'Missing sub or cId' });
+    }
+    if (!FUNCTIONS_BASE_URL) {
+        console.error('Storefront error: FUNCTIONS_BASE_URL missing');
+        res.set('Cache-Control', 'no-store');
+        return res.status(503).json({ error: 'Storefront unavailable' });
+    }
+
+    const key = new URLSearchParams(params).toString();
+    const cached = storefrontCache.get(key);
+    if (cached && Date.now() - cached.fetchedAt < STOREFRONT_FRESH_MS) {
+        return sendStorefront(res, cached, 'HIT');
+    }
+
+    try {
+        let pending = storefrontInFlight.get(key);
+        if (!pending) {
+            pending = fetchStorefrontUpstream(key).finally(() => storefrontInFlight.delete(key));
+            storefrontInFlight.set(key, pending);
+        }
+        const entry = await pending;
+        // Only a JSON answer is the function itself speaking. Anything else
+        // (e.g. Google's HTML 404 page while the function isn't deployed)
+        // must not be cached or passed on as "store not found" — fail
+        // instead, so the client falls back to reading Firestore directly.
+        if (entry.status >= 500 || !entry.isJson) {
+            throw new Error(`getPublicStorefront returned ${entry.status}${entry.isJson ? '' : ' (non-JSON)'}`);
+        }
+        if (entry.status === 200 || entry.status === 404) rememberStorefront(key, entry);
+        return sendStorefront(res, entry, 'MISS');
+    } catch (error) {
+        console.error('Storefront fetch error:', error);
+        if (cached && Date.now() - cached.fetchedAt < STOREFRONT_STALE_MS) {
+            return sendStorefront(res, cached, 'STALE');
+        }
+        res.set('Cache-Control', 'no-store');
+        return res.status(502).json({ error: 'Storefront temporarily unavailable' });
+    }
+});
+
 // Catch-all route
 app.get(/.*/, async (req, res, next) => {
 
     // Asset check
     if (req.path.match(/\.(js|css|png|jpe?g|gif|ico|svg|json|woff2?)$/i)) {
+        // A missing hashed chunk (an old build referenced by a stale tab)
+        // must never be cached by the CDN, or the 404 could outlive the
+        // reload that is meant to recover from it.
+        res.set('Cache-Control', 'no-store');
         return res.status(404).send('Asset not found.');
     }
 

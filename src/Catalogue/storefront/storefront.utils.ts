@@ -1,4 +1,6 @@
 import type { Item, ItemGroup } from '../../constants/models';
+import { safeGet } from '../../lib/safeStorage';
+import { readLeadData } from './buyerStorage';
 
 // Same slug rule the storefront has always used for category links, so old links keep working.
 export const slugify = (name: string) =>
@@ -77,10 +79,8 @@ export const formatPhone = (raw?: string) => {
 export const initialsOf = (name?: string) =>
     (name || '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('');
 
-export const getLeadData = (): { name?: string; number?: string } => {
-    try { return JSON.parse(localStorage.getItem('leadData') || '{}'); } catch { return {}; }
-};
-export const isLeadSubmitted = () => localStorage.getItem('leadSubmitted') === 'true';
+export const getLeadData = readLeadData;
+export const isLeadSubmitted = () => safeGet('leadSubmitted') === 'true';
 
 /** A cart line: the catalogue item plus the fields the cart adds to it. */
 export type CartLineItem = Item & { tierId?: string; tierLabel?: string; groupid?: string; groupId?: string; baseSalesPrice?: number };

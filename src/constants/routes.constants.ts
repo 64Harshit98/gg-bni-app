@@ -85,6 +85,7 @@ export const ROUTES = {
   CATA_SUPPORT: 'support',
   SUPER_ADMINHUB: '/super-admin',
   SUPER_ADMIN: '/super-admin/companies',
+  SUPER_ADMIN_BILLING: '/super-admin/billing-activity',
   SUPER_ADMIN_COUPONS: '/super-admin/coupons',
   SUPER_ADMIN_WHATSAPP: '/super-admin/whatsapp',
   SUPPORT_TICKET: '/super-admin/support',

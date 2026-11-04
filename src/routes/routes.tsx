@@ -1,5 +1,5 @@
-import { lazy, Suspense, useEffect } from 'react';
-import { createBrowserRouter, Outlet, RouterProvider, ScrollRestoration, useLocation } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
+import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import MainLayout from '../app/MainLayout';
 import CatalogueLayout from '../app/CatalougeLayout';
 import SuperAdminLayout from '../app/SuperAdminLayout';
@@ -10,27 +10,7 @@ import Loading from '../Pages/Loading/Loading';
 import GlobalError from '../Components/GlobalError';
 import { AppRegistry } from './AppRegistry';
 import AppGuard from '../guards/AppGuard';
-import { getSubdomain } from '../lib/subdomain';
-import { logAnalyticsEvent } from '../lib/Firebase';
-
-const RootLayout: React.FC = () => {
-  const location = useLocation();
-
-  useEffect(() => {
-    logAnalyticsEvent('page_view', {
-      page_path: location.pathname + location.search,
-      page_location: window.location.href,
-      page_title: document.title,
-    });
-  }, [location]);
-
-  return (
-    <>
-      <ScrollRestoration />
-      <Outlet />
-    </>
-  );
-};
+import RootLayout from './RootLayout';
 
 // --- PUBLIC ROUTE IMPORTS ---
 const Landing = lazy(() => import('../Pages/Auth/Landing'));
@@ -42,6 +22,7 @@ const DownloadBill = lazy(() => import('../Pages/Auth/DownloadBill'));
 const SubscriptionPage = lazy(() => import('../Pages/Account/SubscriptionPage'));
 const PaymentReturnPage = lazy(() => import('../Pages/Account/PaymentReturnPage'));
 const SuperAdminCompanies = lazy(() => import('../Pages/Account/SuperAdmin'));
+const SuperAdminBillingActivity = lazy(() => import('../Pages/Account/SuperAdminBillingActivity'));
 const SuperAdminCoupons = lazy(() => import('../Pages/Account/SuperAdminCoupons'));
 const SuperAdminWhatsapp = lazy(() => import('../Pages/Account/SuperAdminWhatsapp'));
 // Customer-facing storefront: the Store page is the home; a category page also shows single products
@@ -64,8 +45,6 @@ const WAPlan = lazy(() => import('../Pages/Additional/Whatsapp/WAPlan'));
 const WADetails = lazy(() => import('../Pages/Additional/Whatsapp/WADetails'));
 const WAVerification = lazy(() => import('../Pages/Additional/Whatsapp/WAVerification'));
 
-const subdomain = getSubdomain();
-
 const generateDynamicRoutes = (layoutType: 'MAIN' | 'CATALOGUE') => {
   return AppRegistry.filter((app) => app.layout === layoutType).map((app) => ({
     element: <AppGuard requiredPlans={app.requiredPlans} />,
@@ -78,23 +57,11 @@ const generateDynamicRoutes = (layoutType: 'MAIN' | 'CATALOGUE') => {
   }));
 };
 
+// Main-domain (app.sellar.in) router only. Merchant subdomains
+// (<sub>.sellar.in) boot the separate, lightweight StorefrontApp instead —
+// see src/main.tsx and src/routes/storefrontRoutes.tsx.
 const router = createBrowserRouter(
-  subdomain
-    ? [
-      {
-        path: '/',
-        errorElement: <GlobalError />,
-        element: <RootLayout />,
-        children: [
-          { index: true, element: <StorePage />, handle: { isPublic: true } },
-          { path: 'checkout', element: <CartPage />, handle: { isPublic: true } },
-          { path: ':groupId', element: <CategoryPage />, handle: { isPublic: true } },
-          { path: ':groupId/:itemSlug', element: <CategoryPage />, handle: { isPublic: true } },
-          { path: '*', element: <StorePage /> }
-        ]
-      }
-    ]
-    : [
+    [
       {
         path: '/',
         errorElement: <GlobalError />,
@@ -127,6 +94,7 @@ const router = createBrowserRouter(
                 children: [
                   { path: ROUTES.SUPER_ADMINHUB, element: <SuperAdminHub /> },
                   { path: ROUTES.SUPER_ADMIN, element: <SuperAdminCompanies /> },
+                  { path: ROUTES.SUPER_ADMIN_BILLING, element: <SuperAdminBillingActivity /> },
                   { path: ROUTES.APP_LEADS, element: <LeadPage /> },
                   { path: ROUTES.WEBSITE_QUERY, element: <WebsiteLeads /> },
                   { path: ROUTES.SUPPORT_TICKET, element: <SuperAdminSupportTicket /> },

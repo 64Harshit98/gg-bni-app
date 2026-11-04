@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Check, ChevronUp, MessageCircle, ShieldCheck, X } from 'lucide-react';
 import type { AddOnGroup, AddOnOption } from '../../constants/models';
 import { extraChargeOf } from '../../constants/models';
-import { useStorefrontData } from '../storefront/useStorefront';
+import { toStorefrontPageData } from '../storefront/useStorefront';
 import { useNavigate, useParams } from 'react-router-dom';
 import LeadPopUp from '../PopUp';
 import { indianStates } from '../../Components/IndianStates';
@@ -23,6 +23,8 @@ import {
 import { EmptyState, Note, Photo, QtyStepper, Sheet, StoreFooter, StoreHeader, StoreMessage, btnClass } from '../storefront/StoreUI';
 import { formatINR, formatPhone } from '../storefront/storefront.utils';
 import { storeAddress } from '../storefront/StoreSections';
+import StorefrontError from '../storefront/StorefrontError';
+import { readLeadData } from '../storefront/buyerStorage';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 const inputCls = 'h-10 w-full rounded-sm border border-sf-control bg-white px-3 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-2 focus:outline-offset-1 focus:outline-sf-primary disabled:bg-sf-sunken disabled:text-slate-500';
@@ -71,14 +73,27 @@ const CartPage: React.FC = () => {
     const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
     const [showAlert, setShowAlert] = useState(false);
 
-    const { subdomain, effectiveCompanyId, domainResolveError, isResolvingDomain } = useDomainResolution(pathId);
-    const { companyName, socialLinks, whatsappLink } = useBusinessInfo(effectiveCompanyId);
-    const { salesSettings, leadStatus } = useCheckoutSettings(effectiveCompanyId);
+    const {
+        subdomain,
+        effectiveCompanyId,
+        storefront,
+        domainResolveError,
+        loadError,
+        isResolvingDomain,
+        retry: retryStorefront,
+    } = useDomainResolution(pathId);
+
+    const { companyName, socialLinks, whatsappLink } = useBusinessInfo(storefront?.businessInfo);
+
+    const { salesSettings, leadStatus } = useCheckoutSettings(effectiveCompanyId, storefront?.catalogueSettings);
 
     const getSavedLead = () => {
         try {
-            const leadData = JSON.parse(localStorage.getItem("leadData") || "{}");
-            return { name: leadData.name || '', phone: (leadData.number || '').replace(/\D/g, '').trim() };
+            const leadData = readLeadData();
+            return {
+                name: leadData.name || '',
+                phone: (leadData.number || '').replace(/\D/g, '').trim(),
+            };
         } catch {
             return { name: '', phone: '' };
         }
@@ -99,7 +114,7 @@ const CartPage: React.FC = () => {
     const { cartItems, setCartItems, updateItemNote, updateQuantity, removeFromCart } = useCart(effectiveCompanyId, salesSettings);
 
     // ── Edit add-ons of a cart line ──
-    const { data: storeData } = useStorefrontData(effectiveCompanyId ?? null);
+    const storeData = useMemo(() => (storefront ? toStorefrontPageData(storefront) : null), [storefront]);
     const [editLineKey, setEditLineKey] = useState<string | null>(null);
     const [editSel, setEditSel] = useState<Record<string, string[]>>({});
 
@@ -217,6 +232,7 @@ const CartPage: React.FC = () => {
     const homeTo = subdomain ? '/' : `/catalogue/${effectiveCompanyId}`;
 
     if (domainResolveError) return <StoreMessage title="Store not found" text="This checkout link is invalid or has expired. Ask the shop for its current link." />;
+    if (loadError) return <StorefrontError onRetry={retryStorefront} />;
     if (isResolvingDomain) return <div className="min-h-[100dvh] bg-sf-canvas" aria-busy="true" />;
 
     const actionLabel = isPlacing ? 'Placing order…' : step === 1 ? 'Continue to delivery details' : `Place order${shouldShowPrice ? ` · ${formatINR(totalPay)}` : ''}`;

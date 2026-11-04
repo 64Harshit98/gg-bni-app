@@ -19,15 +19,18 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        // Split heavy, infrequently-changing vendor libraries into their own
-        // cacheable chunks, so an app-code change doesn't bust the browser
-        // cache for the entire Firebase SDK / PDF / spreadsheet bundles too.
+        // Only Firebase gets a named vendor chunk: every page (including the
+        // public storefront) needs it at boot, so it's safe to keep it in one
+        // long-cached file. PDF / spreadsheet / image libraries are left to
+        // Rollup's automatic splitting on purpose — naming them here used to
+        // drag shared helpers (Vite's lazy-import preload helper, Babel's
+        // typeof, the CJS interop helper) into vendor-pdf / vendor-spreadsheet,
+        // which made the entry chunk statically import both and forced every
+        // visitor to download and run ~3MB of pdf.js + SheetJS + ExcelJS
+        // before the first render.
         manualChunks(id) {
           if (!id.includes('node_modules')) return;
-          if (id.includes('firebase')) return 'vendor-firebase';
-          if (id.includes('jspdf') || id.includes('pdfjs-dist')) return 'vendor-pdf';
-          if (id.includes('exceljs') || id.includes('xlsx')) return 'vendor-spreadsheet';
-          if (id.includes('html2canvas') || id.includes('html-to-image')) return 'vendor-image';
+          if (/[\\/]node_modules[\\/](firebase|@firebase)[\\/]/.test(id)) return 'vendor-firebase';
         },
       },
     },

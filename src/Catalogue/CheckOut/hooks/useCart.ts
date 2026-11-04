@@ -4,6 +4,7 @@ import { db } from '../../../lib/Firebase';
 import type { CartItem, CatalogueSalesSettings } from '../checkOut.types';
 import { deriveTaxContext, buildUpcomingSyncPayload, lineKeyOf } from '../checkOut.calculations';
 import { getSlabForQty } from '../../../constants/models';
+import { safeGet, safeSet } from '../../../lib/safeStorage';
 
 // Quantity-slab pricing for a checkout line.
 // - qty inside a slab  -> slab price
@@ -23,7 +24,7 @@ export const useCart = (
     const [cartItems, setCartItems] = useState<CartItem[]>([]);
 
     useEffect(() => {
-        const savedCart = localStorage.getItem('temp_cart');
+        const savedCart = safeGet('temp_cart');
         console.log("Saved:", savedCart)
         if (savedCart) {
             try {
@@ -61,11 +62,11 @@ export const useCart = (
     const syncToUpcoming = async (updatedCart: CartItem[]) => {
         if (!effectiveCompanyId || updatedCart.length === 0) return;
 
-        const leadSubmittedCheck = localStorage.getItem("leadSubmitted") === "true";
+        const leadSubmittedCheck = safeGet("leadSubmitted") === "true";
         if (!leadSubmittedCheck) return;
 
         try {
-            const userKey = localStorage.getItem("upcoming_user_key");
+            const userKey = safeGet("upcoming_user_key");
             if (!userKey) return;
 
             const orderRef = doc(
@@ -116,7 +117,7 @@ export const useCart = (
             .filter(item => item.quantity > 0);
 
         setCartItems(updatedItems);
-        localStorage.setItem('temp_cart', JSON.stringify(updatedItems.map(i => ({
+        safeSet('temp_cart', JSON.stringify(updatedItems.map(i => ({
             item: { ...i },
             quantity: i.quantity
         }))));
@@ -126,7 +127,7 @@ export const useCart = (
     const removeFromCart = (id: string | number) => {
         const updatedCart = cartItems.filter(item => lineKeyOf(item) !== id);
         setCartItems(updatedCart);
-        localStorage.setItem('temp_cart', JSON.stringify(updatedCart.map(i => ({
+        safeSet('temp_cart', JSON.stringify(updatedCart.map(i => ({
             item: { ...i },
             quantity: i.quantity
         }))));

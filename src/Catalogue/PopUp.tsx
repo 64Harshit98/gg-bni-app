@@ -3,6 +3,7 @@ import { db } from '../lib/Firebase';
 import { collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { X, CheckCircle } from 'lucide-react';
+import { safeGet, safeSet } from '../lib/safeStorage';
 
 interface LeadPopUpProps {
     companyId?: string;
@@ -71,7 +72,7 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
     const [cardPreview, setCardPreview] = useState<string | null>(null);
 
     useEffect(() => {
-        const isFilled = localStorage.getItem("leadSubmitted");
+        const isFilled = safeGet("leadSubmitted");
 
         // If already submitted, never show
         if (isFilled === "true") {
@@ -100,19 +101,19 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
         try {
             // ── DETAILS-ONLY MODE (no approval, just capture name+number) ──
             if (detailsOnly) {
-                localStorage.setItem(
+                safeSet(
                     "leadData",
                     JSON.stringify({
                         name: formData.name,
                         number: formData.number,
                     })
                 );
-                localStorage.setItem("leadSubmitted", "true");
+                safeSet("leadSubmitted", "true");
                 onLeadSubmit?.();
 
                 // Update existing upcoming order with real name
                 try {
-                    const upcomingUserKey = localStorage.getItem("upcoming_user_key");
+                    const upcomingUserKey = safeGet("upcoming_user_key");
                     if (upcomingUserKey && companyId) {
                         const { doc, updateDoc } = await import("firebase/firestore");
                         const orderRef = doc(
@@ -148,14 +149,14 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
                 const docData = existing.docs[0].data();
 
                 // localStorage sync
-                localStorage.setItem(
+                safeSet(
                     "leadData",
                     JSON.stringify({
                         name: docData.customerName,
                         number: docData.customerNumber
                     })
                 );
-                localStorage.setItem("leadSubmitted", "true");
+                safeSet("leadSubmitted", "true");
 
                 // MOST IMPORTANT — parent notify
                 onLeadSubmit?.();
@@ -195,20 +196,20 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
                 }
             );
 
-            localStorage.setItem(
+            safeSet(
                 "leadData",
                 JSON.stringify({
                     name: formData.name,
                     number: formData.number
                 })
             );
-            localStorage.setItem("leadSubmitted", "true");
+            safeSet("leadSubmitted", "true");
             onLeadSubmit?.();
 
             // EXISTING UPCOMING ORDER UPDATE KARO
             try {
                 const upcomingUserKey =
-                    localStorage.getItem("upcoming_user_key");
+                    safeGet("upcoming_user_key");
 
                 if (upcomingUserKey && companyId) {
                     const { doc, updateDoc } = await import("firebase/firestore");

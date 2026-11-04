@@ -285,8 +285,8 @@ const CatalogueLayout = () => {
     ];
 
     const fabActionClass = 'w-full mb-2 rounded-sm bg-white shadow-sm';
-    const fabIconBadgeClass = 'w-10 h-10 rounded-full bg-[#ffedd5] text-[#c2410c] flex items-center justify-center';
-    const fabLabelClass = 'text-[11px] font-medium text-gray-700';
+    const fabIconBadgeClass = 'w-10 h-10 shrink-0 rounded-full bg-[#ffedd5] text-[#c2410c] flex items-center justify-center';
+    const fabLabelClass = 'text-[11px] font-medium text-gray-700 whitespace-nowrap leading-tight';
 
     const MobileActions = () => (
         <>

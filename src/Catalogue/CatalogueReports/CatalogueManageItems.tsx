@@ -92,6 +92,8 @@ const ManageItems: React.FC = () => {
   const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
   const [pageMenuOpen, setPageMenuOpen] = useState(false);
   const [rowMenuId, setRowMenuId] = useState<string | null>(null);
+  // Row menu is rendered `fixed` so the table's overflow container can't clip it
+  const [rowMenuPos, setRowMenuPos] = useState<{ top: number; right: number } | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<ItemFilter | null>(null);
@@ -173,6 +175,21 @@ const ManageItems: React.FC = () => {
     setVisibleCount(PAGE_SIZE);
   }, [baseRows, activeFilter, sortConfig]);
 
+  // `fixed` menu doesn't follow the row, so close it on scroll/resize
+  useEffect(() => {
+    if (!rowMenuId) return;
+    const close = () => {
+      setRowMenuId(null);
+      setRowMenuPos(null);
+    };
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [rowMenuId]);
+
   /* -------------------- HANDLERS -------------------- */
   const handleGroupChange = (value: string) => {
     setItemGroupId(value);
@@ -186,8 +203,29 @@ const ManageItems: React.FC = () => {
     }));
   };
 
-  const openEditDrawer = (item: Item) => {
+  const closeRowMenu = () => {
     setRowMenuId(null);
+    setRowMenuPos(null);
+  };
+
+  const toggleRowMenu = (e: React.MouseEvent<HTMLButtonElement>, key: string) => {
+    e.stopPropagation();
+    if (rowMenuId === key) {
+      closeRowMenu();
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const MENU_HEIGHT = 120; // approx: 3 items (Edit, Duplicate, Delete)
+    const openUp = window.innerHeight - rect.bottom < MENU_HEIGHT;
+    setRowMenuPos({
+      top: openUp ? rect.top - MENU_HEIGHT - 4 : rect.bottom + 4,
+      right: window.innerWidth - rect.right,
+    });
+    setRowMenuId(key);
+  };
+
+  const openEditDrawer = (item: Item) => {
+    closeRowMenu();
     setSelectedItemForEdit(item);
     setIsEditDrawerOpen(true);
   };
@@ -200,7 +238,7 @@ const ManageItems: React.FC = () => {
   // Copies the item as a new one (no barcode, no stock — both must be its own)
   // and opens it in the edit drawer so the user can adjust it straight away.
   const duplicateItem = async (item: Item) => {
-    setRowMenuId(null);
+    closeRowMenu();
     if (!currentUser?.companyId) return;
     try {
       const copy: Record<string, unknown> = {
@@ -284,25 +322,25 @@ const ManageItems: React.FC = () => {
   const renderRowMenu = (item: Item, key: string) => (
     <div className="relative">
       <button
-        onClick={(e) => {
-          e.stopPropagation();
-          setRowMenuId((id) => (id === key ? null : key));
-        }}
+        onClick={(e) => toggleRowMenu(e, key)}
         aria-label="More actions"
         className="rounded-sm p-1.5 text-slate-500 transition hover:bg-orange-50"
       >
         <MoreHorizontal size={16} />
       </button>
-      {rowMenuId === key && (
+      {rowMenuId === key && rowMenuPos && (
         <>
           <div
-            className="fixed inset-0 z-20"
+            className="fixed inset-0 z-[60]"
             onClick={(e) => {
               e.stopPropagation();
-              setRowMenuId(null);
+              closeRowMenu();
             }}
           />
-          <div className="absolute right-0 top-full z-30 mt-1 w-40 rounded-sm border border-[#f6e1d0] bg-white p-1 shadow-lg">
+          <div
+            style={{ top: rowMenuPos.top, right: rowMenuPos.right }}
+            className="fixed z-[70] w-40 rounded-sm border border-[#f6e1d0] bg-white p-1 shadow-lg"
+          >
             <button
               onClick={(e) => { e.stopPropagation(); openEditDrawer(item); }}
               className="flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-sm text-slate-700 hover:bg-[#fff8f2]"
@@ -316,7 +354,7 @@ const ManageItems: React.FC = () => {
               <Copy size={14} /> Duplicate
             </button>
             <button
-              onClick={(e) => { e.stopPropagation(); setRowMenuId(null); setItemPendingDelete(item); }}
+              onClick={(e) => { e.stopPropagation(); closeRowMenu(); setItemPendingDelete(item); }}
               className="flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-sm text-red-600 hover:bg-red-50"
             >
               <Trash2 size={14} /> Delete
@@ -335,11 +373,10 @@ const ManageItems: React.FC = () => {
       <button
         key={value}
         onClick={() => setActiveFilter(active ? null : value)}
-        className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-sm border px-2.5 py-1.5 text-xs font-medium transition ${
-          active
+        className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-sm border px-2.5 py-1.5 text-xs font-medium transition ${active
             ? 'border-[#F97316] bg-[#F97316] text-white'
             : 'border-slate-300 bg-white text-slate-700 hover:border-orange-300'
-        }`}
+          }`}
       >
         {isIssue && <AlertTriangle size={12} className={active ? 'text-white' : 'text-amber-500'} />}
         {label}
@@ -615,7 +652,7 @@ const ManageItems: React.FC = () => {
       {itemPendingDelete && (
         <Modal
           type={State.WARNING}
-           theme="catalogue"
+          theme="catalogue"
           message={`Are you sure you want to delete "${itemPendingDelete.name}"?`}
           onClose={() => setItemPendingDelete(null)}
           onConfirm={confirmDelete}

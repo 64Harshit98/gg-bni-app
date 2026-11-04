@@ -1,61 +1,75 @@
-import { useEffect, useMemo, useState } from 'react';
-import { collection, doc, getDoc, getDocs, onSnapshot, query, where } from 'firebase/firestore';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
-import { getItemGroupsByCompany, getItemsByCompany } from '../../lib/ItemsFirebase';
-import type { Item, ItemGroup, AddOnGroup } from '../../constants/models';
+import { getSubdomain } from '../../lib/subdomain';
+import type { Item, ItemGroup } from '../../constants/models';
 import { resolveAddOnGroups } from '../../constants/models';
 import { fromTemplateDoc } from '../../lib/addOnTemplates';
 import type { CatalogueSalesSettings } from '../Settings/CatalogueSalesSetting';
 import type { StorePageDoc } from './storePage.types';
 import { getLeadData } from './storefront.utils';
+import {
+    getStorefrontTarget,
+    loadStorefront,
+    peekStorefront,
+    StorefrontNotFoundError,
+    type StorefrontBusinessInfo,
+    type StorefrontData,
+} from './storefrontClient';
 
-// ── Which shop is this? ───────────────────────────────────────────
-// <slug>.sellar.in resolves through companies.domainAliases; legacy links carry the id in the path.
-const getStoreSubdomain = () => {
-    const hostname = window.location.hostname;
-    const parts = hostname.split('.');
-    return parts.length >= 3 && !['www', 'app'].includes(parts[0].toLowerCase()) && !hostname.includes('localhost')
-        ? parts[0]
-        : null;
-};
+export type StorefrontStatus = 'loading' | 'ready' | 'not-found' | 'error';
 
-const resolvedIds: Record<string, string> = {};
+interface StorefrontState {
+    status: StorefrontStatus;
+    data: StorefrontData | null;
+}
 
-export const useResolvedCompanyId = (pathId?: string) => {
-    const subdomain = useMemo(getStoreSubdomain, []);
-    const [companyId, setCompanyId] = useState<string | null>(subdomain ? resolvedIds[subdomain] ?? null : pathId ?? null);
-    const [error, setError] = useState(false);
+// The storefront bundle for the current page: resolved from the merchant
+// subdomain, or from `pathCompanyId` on legacy main-domain links. Starts as
+// 'ready' with no loader at all when another storefront page already loaded
+// the same store in this session.
+export const useStorefront = (pathCompanyId?: string | null) => {
+    const target = useMemo(() => getStorefrontTarget(pathCompanyId), [pathCompanyId]);
+
+    const [state, setState] = useState<StorefrontState>(() => {
+        if (!target) return { status: 'not-found', data: null };
+        const ready = peekStorefront(target);
+        return ready ? { status: 'ready', data: ready } : { status: 'loading', data: null };
+    });
+    const [attempt, setAttempt] = useState(0);
 
     useEffect(() => {
-        if (!subdomain) {
-            if (pathId) setCompanyId(pathId); else setError(true);
+        if (!target) {
+            setState({ status: 'not-found', data: null });
             return;
         }
-        if (resolvedIds[subdomain]) { setCompanyId(resolvedIds[subdomain]); return; }
-        let cancelled = false;
-        (async () => {
-            try {
-                const snap = await getDocs(query(collection(db, 'companies'), where('domainAliases', 'array-contains', subdomain)));
-                if (cancelled) return;
-                if (snap.empty) { setError(true); return; }
-                const companyDoc = snap.docs[0];
-                const data = companyDoc.data();
-                // Old link: send them to the shop's current address
-                if (data.subdomain && data.subdomain !== subdomain) {
-                    window.location.replace(`https://${data.subdomain}.sellar.in`);
-                    return;
-                }
-                resolvedIds[subdomain] = companyDoc.id;
-                setCompanyId(companyDoc.id);
-            } catch (e) {
-                console.error('Error resolving subdomain:', e);
-                if (!cancelled) setError(true);
-            }
-        })();
-        return () => { cancelled = true; };
-    }, [subdomain, pathId]);
 
-    return { companyId, error, subdomain };
+        const ready = peekStorefront(target);
+        if (ready) {
+            setState({ status: 'ready', data: ready });
+            return;
+        }
+
+        let cancelled = false;
+        setState({ status: 'loading', data: null });
+        loadStorefront(target)
+            .then((data) => {
+                if (!cancelled) setState({ status: 'ready', data });
+            })
+            .catch((error) => {
+                if (cancelled) return;
+                console.error('Failed to load storefront:', error);
+                setState({ status: error instanceof StorefrontNotFoundError ? 'not-found' : 'error', data: null });
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [target, attempt]);
+
+    const retry = useCallback(() => setAttempt((n) => n + 1), []);
+
+    return { status: state.status, data: state.data, retry };
 };
 
 /** Links inside the storefront, for both <shop>.sellar.in and legacy app links. */
@@ -66,28 +80,10 @@ export const useStoreLinks = (companyId: string | null, subdomain: string | null
     checkout: () => (subdomain ? '/checkout' : `/checkout/${companyId}`),
 }), [companyId, subdomain]);
 
-// ── Everything a storefront page reads, loaded once per shop ──────
-export interface BusinessInfo {
-    businessName?: string;
-    companyLogo?: string;
-    phoneNumber?: string;
-    whatsappNumber?: string;
-    email?: string;
-    streetAddress?: string;
-    city?: string;
-    state?: string;
-    postalCode?: string;
-    gstin?: string;
-    instagram?: string;
-    facebook?: string;
-    twitter?: string;
-    gmail?: string;
-    brandingText?: string;
-    businessCategory?: string;
-    businessType?: string;
-}
+// ── Everything a storefront page reads, derived from the one bundle ──
+export type BusinessInfo = StorefrontBusinessInfo;
 
-export interface StorefrontData {
+export interface StorefrontPageData {
     items: Item[];
     groups: ItemGroup[];
     settings: CatalogueSalesSettings | null;
@@ -97,63 +93,38 @@ export interface StorefrontData {
     storePage: StorePageDoc | null;
 }
 
-const dataCache = new Map<string, Promise<StorefrontData>>();
-
-const loadStorefront = (companyId: string): Promise<StorefrontData> => {
-    const cached = dataCache.get(companyId);
-    if (cached) return cached;
-    const settingsDoc = (name: string) => getDoc(doc(db, 'companies', companyId, 'settings', name));
-    const p = Promise.all([
-        getItemsByCompany(companyId),
-        getItemGroupsByCompany(companyId),
-        settingsDoc('catalogue-sales-settings'),
-        getDoc(doc(db, 'companies', companyId, 'business_info', companyId)),
-        settingsDoc('pinned_items'),
-        settingsDoc('pinned_categories'),
-        settingsDoc('store_page'),
-        // Optional for the storefront: if this read is not allowed, add-ons simply stay off
-        settingsDoc('item-settings').catch(() => null),
-        // The shared add-on library (public read, see firestore.rules)
-        getDocs(collection(db, 'companies', companyId, 'addOnTemplates'))
-            .then((snap) => snap.docs.map((d) => fromTemplateDoc(d.id, d.data())))
-            .catch(() => [] as AddOnGroup[]),
-    ]).then(([items, groups, settings, business, pinnedItems, pinnedCats, storePage, itemSettings, addOnLibrary]) => ({
+export const toStorefrontPageData = (bundle: StorefrontData): StorefrontPageData => {
+    const library = bundle.addOnTemplates.map((t) => fromTemplateDoc(t.id, t));
+    const allowNegative = bundle.catalogueSettings?.allowNegativeInventory === true;
+    return {
         // Add-ons show only when "Enable add-ons" is ON; each item's groups come from the library
-        items: items.map((i) => ({
+        items: bundle.items.map((i) => ({
             ...i,
-            addOnGroups: itemSettings?.exists() && itemSettings.data()?.enableAddOns === true
-                ? resolveAddOnGroups(i, addOnLibrary, {
-                    items,
-                    allowNegative: settings.exists() && (settings.data() as any)?.allowNegativeInventory === true,
-                })
+            addOnGroups: bundle.enableAddOns
+                ? resolveAddOnGroups(i, library, { items: bundle.items, allowNegative })
                 : undefined,
         })),
-        groups,
-        settings: settings.exists() ? (settings.data() as CatalogueSalesSettings) : null,
-        business: business.exists() ? (business.data() as BusinessInfo) : {},
-        pinnedItemIds: new Set<string>(pinnedItems.exists() ? pinnedItems.data().ids || [] : []),
-        pinnedCategoryIds: new Set<string>(pinnedCats.exists() ? pinnedCats.data().ids || [] : []),
-        storePage: storePage.exists() ? (storePage.data() as StorePageDoc) : null,
-    }));
-    p.catch(() => dataCache.delete(companyId));
-    dataCache.set(companyId, p);
-    return p;
+        groups: bundle.itemGroups,
+        settings: bundle.catalogueSettings,
+        business: bundle.businessInfo ?? {},
+        pinnedItemIds: new Set(bundle.pinnedItemIds),
+        pinnedCategoryIds: new Set(bundle.pinnedCategoryIds),
+        storePage: bundle.storePage,
+    };
 };
 
-export const useStorefrontData = (companyId: string | null) => {
-    const [data, setData] = useState<StorefrontData | null>(null);
-    const [error, setError] = useState<string | null>(null);
-
-    useEffect(() => {
-        if (!companyId) return;
-        let cancelled = false;
-        loadStorefront(companyId)
-            .then((d) => { if (!cancelled) setData(d); })
-            .catch((e) => { if (!cancelled) setError(e?.message || 'Failed to load the store.'); });
-        return () => { cancelled = true; };
-    }, [companyId]);
-
-    return { data, error, loading: !data && !error };
+/** Which shop this page is for, plus its data. <slug>.sellar.in wins; legacy links carry the id in the path. */
+export const useStorefrontPage = (pathId?: string) => {
+    const { status, data: bundle, retry } = useStorefront(pathId);
+    const data = useMemo(() => (bundle ? toStorefrontPageData(bundle) : null), [bundle]);
+    return {
+        companyId: bundle?.companyId ?? null,
+        subdomain: getSubdomain(),
+        data,
+        notFound: status === 'not-found',
+        loadFailed: status === 'error',
+        retry,
+    };
 };
 
 // ── Is this customer approved to see prices? ──────────────────────

@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import type { Order, OrderStatus } from '../orders.types';
 import { ORDER_STATUSES, SAMPLE_ORDERS } from '../orders.types';
 import { getDateRange } from '../../../lib/dateRange';
+import { todayDateInputValue } from '../../../lib/format';
 import { useOrdersData } from './useOrdersData';
 
 const DATE_FILTERS = [
@@ -53,7 +54,8 @@ export const useOrdersList = ({ companyId, isTutorialActive, tutorialStep }: Use
     const [showSearch, setShowSearch] = useState(false);
     const [expandedorderId, setExpandedorderId] = useState<string | null>(null);
     const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'unpaid'>('all');
-    const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
+    // iOS shows an empty date input as a blank box, so the Custom popover opens on today
+    const [customDateRange, setCustomDateRange] = useState({ start: todayDateInputValue(), end: todayDateInputValue() });
     const [dateRange, setDateRange] = useState<{ start: Date | null, end: Date | null }>(() => {
 
         if (location.state?.startDate && location.state?.endDate) {

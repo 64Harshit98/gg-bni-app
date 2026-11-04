@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   LayoutGrid, Building2, LineChart, MessageSquare, Ticket,
-  Users, Tag, MessageCircle, Menu, X,
+  Users, Tag, MessageCircle, Menu, X, Receipt,
 } from 'lucide-react';
 import { useAuth } from '../context/auth-context';
 import { ROUTES } from '../constants/routes.constants';
@@ -13,6 +13,7 @@ import { companyStatus, loadCompanies, loadTicketSummary } from '../Pages/Accoun
 const NAV_ITEMS = [
   { label: 'Dashboard', to: ROUTES.SUPER_ADMINHUB, icon: LayoutGrid, end: true },
   { label: 'Companies', to: ROUTES.SUPER_ADMIN, icon: Building2 },
+  { label: 'Billing Activity', to: ROUTES.SUPER_ADMIN_BILLING, icon: Receipt },
   { label: 'App Leads', to: ROUTES.APP_LEADS, icon: LineChart },
   { label: 'Web Queries', to: ROUTES.WEBSITE_QUERY, icon: MessageSquare },
   { label: 'Support Tickets', to: ROUTES.SUPPORT_TICKET, icon: Ticket },

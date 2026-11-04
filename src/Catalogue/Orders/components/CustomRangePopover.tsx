@@ -23,7 +23,7 @@ const CustomRangePopover: React.FC<Props> = ({ start, end, onChange, onApply, on
     return (
         <div className="mt-1 pt-3 border-t border-[#f6e1d0] px-1 pb-1">
             <div className="grid grid-cols-2 gap-2">
-                <label className="grid gap-1 text-xs font-medium text-slate-600">
+                <label className="grid grid-cols-1 gap-1 text-xs font-medium text-slate-600">
                     From
                     <input
                         type="date"
@@ -33,7 +33,7 @@ const CustomRangePopover: React.FC<Props> = ({ start, end, onChange, onApply, on
                         className={inputCls}
                     />
                 </label>
-                <label className="grid gap-1 text-xs font-medium text-slate-600">
+                <label className="grid grid-cols-1 gap-1 text-xs font-medium text-slate-600">
                     To
                     <input
                         type="date"

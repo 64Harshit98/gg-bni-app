@@ -27,6 +27,7 @@ import { JournalTabs } from '../Journal/Journaltabs';
 import { formatClockTime, formatDayLabel } from '../../lib/format';
 import { useCollapsingPageHeader } from '../../lib/useCollapsingPageHeader';
 import { BADGE, BTN_PRIMARY, BTN_SECONDARY, FIELD_INPUT, FIELD_LABEL, fmt, getActiveModes, modeBadgeClass, modeLabel, returnModeClass } from './journal.ui';
+import { useWhatsappProvider } from '../Additional/Whatsapp/useWhatsappProvider';
 // ─── Total tutorial steps for Journal ───────────────────────────────────────
 const TOTAL_STEPS = 6;
 
@@ -160,6 +161,11 @@ const Journal: React.FC = () => {
     handleInvoiceClick,
   } = useJournalList({ companyId: currentUser?.companyId, isTutorialActive });
 
+  // Single source of truth for which WhatsApp sender is connected — same hook
+  // InvoiceActionSheet uses, so only one Remind/"Send on WhatsApp" button ever
+  // shows here too, never both.
+  const { provider: whatsappProvider } = useWhatsappProvider(currentUser?.companyId);
+
   // When the tutorial reaches the "invoice card" step, auto-expand a matching
   // sample invoice so the person actually sees the detail view, not a blank card.
   useEffect(() => {
@@ -277,7 +283,7 @@ const Journal: React.FC = () => {
     handleSendWhatsapp,
     handleSendWhatsappSnapto,
     handleSendReminder,
-    //handleSendReminderSnapto,
+    handleSendReminderSnapto,
     handleShowQr,
   } = useInvoiceCommunication({ currentUser, salesSettings, isPosBasicPlan, setModal });
 
@@ -335,7 +341,7 @@ const Journal: React.FC = () => {
       onSettle={openPaymentModal}
       onPrint={setInvoiceToPrint}
       onTransport={setTransportPopupInvoice}
-      onRemind={handleSendReminder}
+      onRemind={whatsappProvider === 'none' ? undefined : whatsappProvider === 'botmaster' ? handleSendReminder : handleSendReminderSnapto}
       onReturn={(inv) => (inv.type === 'Credit' ? handleSalesReturn(inv) : handlePurchaseReturn(inv))}
       onEdit={handleEditInvoice}
       onDelete={promptDeleteInvoice}

@@ -5,6 +5,7 @@ import { AuthContext } from '../context/auth-context';
 import { PLANS } from '../enums';
 import { ROUTES } from '../constants/routes.constants';
 import { getSubdomain } from '../lib/subdomain';
+import { isChunkLoadError, isReloadPending, reloadOnce } from '../lib/chunkReload';
 import StatusShell, { STATUS_THEMES, rise, stagger, statusButton, type StatusTone } from './StatusShell';
 import { BrokenBillArt, CompassArt, UpdateArt } from './StatusArt';
 
@@ -14,16 +15,6 @@ import { BrokenBillArt, CompassArt, UpdateArt } from './StatusArt';
  * uses plain links and reads auth without requiring it.
  */
 export type CrashKind = 'crash' | 'notFound' | 'update';
-
-/** A lazy page chunk that no longer exists — the app was updated while open. */
-export const isChunkLoadError = (error: unknown) => {
-  const message = (error instanceof Error ? error.message : String(error ?? '')).toLowerCase();
-  return (
-    message.includes('failed to fetch dynamically imported module') ||
-    message.includes('expected a javascript') ||
-    message.includes('text/html')
-  );
-};
 
 const describeError = (error: unknown): string => {
   if (!error) return 'No error message';
@@ -67,8 +58,9 @@ const CrashScreen: React.FC<CrashScreenProps> = ({ error, kind: kindProp }) => {
   const [mended, setMended] = useState(false);
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const [secondsLeft, setSecondsLeft] = useState(UPDATE_SECONDS);
+  const [autoReloadDeclined, setAutoReloadDeclined] = useState(false);
 
-  const kind: CrashKind = kindProp ?? (isChunkLoadError(error) ? 'update' : 'crash');
+  const kind: CrashKind = kindProp ?? (isChunkLoadError(error) && !autoReloadDeclined ? 'update' : 'crash');
   const path = window.location.pathname;
   const customerMatch = path.match(CUSTOMER_PATH);
   const isCustomer = Boolean(getSubdomain()) || Boolean(customerMatch);
@@ -98,10 +90,14 @@ const CrashScreen: React.FC<CrashScreenProps> = ({ error, kind: kindProp }) => {
   };
 
   // Update: count down, then reload on our own — the old page can't load anyway.
+  // If it reloaded moments ago and the chunk is still missing, another reload
+  // can't help: stop here and leave the manual button instead of looping.
   useEffect(() => {
     if (kind !== 'update') return;
     const tick = window.setInterval(() => setSecondsLeft((s) => Math.max(0, s - 1)), 1000);
-    const done = window.setTimeout(() => window.location.reload(), UPDATE_SECONDS * 1000);
+    const done = window.setTimeout(() => {
+      if (!isReloadPending() && !reloadOnce()) setAutoReloadDeclined(true);
+    }, UPDATE_SECONDS * 1000);
     return () => {
       window.clearInterval(tick);
       window.clearTimeout(done);

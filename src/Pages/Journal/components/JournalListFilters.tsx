@@ -6,6 +6,7 @@ import { ROUTES } from '../../../constants/routes.constants';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/auth-context';
 import { ROLES } from '../../../enums';
+import { todayDateInputValue } from '../../../lib/format';
 
 export interface JournalSummary {
   total: number;
@@ -137,7 +138,8 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
   const canApply = !!draft.start && !!draft.end;
 
   const openCustom = () => {
-    setDraft({ start: customStartDate, end: customEndDate });
+    // iOS shows an empty date input as a blank box, so always open on real dates
+    setDraft({ start: customStartDate || todayDateInputValue(), end: customEndDate || todayDateInputValue() });
     setShowCustomPicker(true);
   };
 
@@ -354,7 +356,7 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
               {showCustomPicker && (
                 <div className="absolute top-full left-0 z-50 mt-1.5 w-[328px] max-w-[calc(100vw-2rem)] rounded-sm border border-[#dfe6fb] bg-white p-4 shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)] cursor-default">
                   <div className="grid grid-cols-2 gap-3">
-                    <label className="grid gap-1.5 text-[13px] font-medium text-[#45556c]">
+                    <label className="grid grid-cols-1 gap-1.5 text-[13px] font-medium text-[#45556c]">
                       From
                       <input
                         type="date"
@@ -363,7 +365,7 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
                         className="h-10 w-full min-w-0 rounded-sm border border-[#7a8aa3] bg-white px-3 text-sm text-[#0f172b] outline-none focus-visible:ring-2 focus-visible:ring-[#155dfc]"
                       />
                     </label>
-                    <label className="grid gap-1.5 text-[13px] font-medium text-[#45556c]">
+                    <label className="grid grid-cols-1 gap-1.5 text-[13px] font-medium text-[#45556c]">
                       To
                       <input
                         type="date"

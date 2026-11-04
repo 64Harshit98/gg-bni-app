@@ -8,7 +8,9 @@ import { getEffectivePriceInfo, hasQuantitySlabs } from '../../Pages/utils/prici
 import { buildUpcomingSyncPayload, deriveTaxContext } from '../CheckOut/checkOut.calculations';
 import type { CartItem } from '../CheckOut/checkOut.types';
 import { ensurePendingApprovalEntry } from '../hooks/ensureApprovalEntry';
-import { getLeadData, type CartLineItem } from './storefront.utils';
+import { safeGet, safeRemove, safeSet } from '../../lib/safeStorage';
+import { randomId, readSavedCart } from './buyerStorage';
+import { getLeadData, isLeadSubmitted, type CartLineItem } from './storefront.utils';
 
 export type CartLine = { item: Item; quantity: number };
 
@@ -36,15 +38,13 @@ const cartKey = (i: Item) => `${i.id}__${(i as CartLineItem).tierId || '__base__
 /** Identifies one cart line (item + pack + add-ons). Pass to updateQuantity when an item has several lines. */
 export const cartLineKey = cartKey;
 
-const readCart = (): CartLine[] => {
-    try { return JSON.parse(localStorage.getItem('temp_cart') || '[]'); } catch { return []; }
-};
+const readCart = (): CartLine[] => readSavedCart<CartLine>();
 
 const getGuestKey = () => {
-    let key = localStorage.getItem('guest_uid');
+    let key = safeGet('guest_uid');
     if (!key) {
-        key = crypto.randomUUID();
-        localStorage.setItem('guest_uid', key);
+        key = randomId();
+        safeSet('guest_uid', key);
     }
     return key;
 };
@@ -70,17 +70,16 @@ export const useStorefrontCart = ({ companyId, settings, allItems, currentUser }
 
     const syncToUpcoming = useCallback(async (updatedCart: CartLine[]) => {
         if (!companyId || updatedCart.length === 0) return;
-        const leadSubmittedCheck = localStorage.getItem('leadSubmitted') === 'true';
-        if (approvalEnabled && !leadSubmittedCheck) return;
+        if (approvalEnabled && !isLeadSubmitted()) return;
 
         try {
             const leadData = getLeadData();
             const cleanNumber = (leadData.number || '').replace(/\D/g, '').trim();
 
-            let userKey: string = localStorage.getItem('upcoming_user_key') || '';
+            let userKey: string = safeGet('upcoming_user_key') || '';
             if (!userKey) {
                 userKey = cleanNumber || currentUser?.uid || getGuestKey();
-                localStorage.setItem('upcoming_user_key', userKey);
+                safeSet('upcoming_user_key', userKey);
             }
             const loginName = currentUser?.name || 'Guest User';
 
@@ -114,8 +113,8 @@ export const useStorefrontCart = ({ companyId, settings, allItems, currentUser }
 
             const orderRef = doc(db, 'companies', companyId, 'Orders', `upcoming_${userKey}`);
             const snap = await getDoc(orderRef);
-            const leadSubmitted = localStorage.getItem('leadSubmitted') === 'true';
-            const leadJustSubmitted = localStorage.getItem('leadJustSubmitted') === 'true';
+            const leadSubmitted = isLeadSubmitted();
+            const leadJustSubmitted = safeGet('leadJustSubmitted') === 'true';
             // Block only when it's an old lead and no upcoming doc exists
             if (!leadSubmitted && !leadJustSubmitted && !snap.exists()) return;
 
@@ -136,7 +135,7 @@ export const useStorefrontCart = ({ companyId, settings, allItems, currentUser }
             };
             if (!snap.exists()) payload.createdAt = serverTimestamp();
             await setDoc(orderRef, payload, { merge: true });
-            localStorage.removeItem('leadJustSubmitted');
+            safeRemove('leadJustSubmitted');
         } catch (err) {
             console.error('Sync Upcoming Error:', err);
         }
@@ -192,7 +191,7 @@ export const useStorefrontCart = ({ companyId, settings, allItems, currentUser }
                     : i)
                 : [...prev, { item: repriceForQty(itemWithPrice as Item, moqQty, item), quantity: moqQty }];
 
-            localStorage.setItem('temp_cart', JSON.stringify(newCart.map((c) => ({
+            safeSet('temp_cart', JSON.stringify(newCart.map((c) => ({
                 item: { ...c.item, groupId: (c.item as CartLineItem).groupid || c.item.itemGroupId },
                 quantity: c.quantity,
             }))));
@@ -220,7 +219,7 @@ export const useStorefrontCart = ({ companyId, settings, allItems, currentUser }
                 if (delta > 0 && !settings?.allowNegativeInventory && !isPack && newQty + usedByOthers > Number(source.stock || 0)) return i;
                 return { ...i, item: repriceForQty(i.item, newQty, source), quantity: newQty };
             }).filter(Boolean) as CartLine[];
-            localStorage.setItem('temp_cart', JSON.stringify(newCart));
+            safeSet('temp_cart', JSON.stringify(newCart));
             return newCart;
         });
     }, [allItems, settings]);
@@ -233,4 +232,4 @@ export const useStorefrontCart = ({ companyId, settings, allItems, currentUser }
 };
 
 /** The storefront always asks for a name and number before the first add to cart. */
-export const needsLead = () => localStorage.getItem('leadSubmitted') !== 'true';
+export const needsLead = () => !isLeadSubmitted();

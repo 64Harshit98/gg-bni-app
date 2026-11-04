@@ -5,6 +5,7 @@ import {
   query, orderBy, serverTimestamp, where, Timestamp, limit
 } from "firebase/firestore";
 import { useAuth } from "./auth-context"; // Adjust path if necessary
+import { safeGetJSON, safeSetJSON } from "../lib/safeStorage";
 
 interface Notification {
   id: string;
@@ -37,6 +38,13 @@ const NotificationContext = createContext<NotificationContextType>({
 
 const NOTIFICATION_SEEN_ORDERS_KEY = "seenOrderNotifications";
 
+// Read during render (useRef initializer), so it must never throw — a
+// throw here used to take down the whole app tree, public pages included.
+const loadSeenOrderIds = (): string[] => {
+  const ids = safeGetJSON<unknown>(NOTIFICATION_SEEN_ORDERS_KEY, []);
+  return Array.isArray(ids) ? ids : [];
+};
+
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentUser } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -45,7 +53,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   // Refs for Global Order Tracking & Audio
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const seenOrdersRef = useRef<Set<string>>(
-    new Set(JSON.parse(localStorage.getItem(NOTIFICATION_SEEN_ORDERS_KEY) || "[]"))
+    new Set(loadSeenOrderIds())
   );
   const isInitialLoadRef = useRef(true);
 
@@ -113,7 +121,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       // On first load, just record what we already have so we don't spam notifications
       if (isInitialLoadRef.current) {
         snapshot.docs.forEach(doc => seenOrdersRef.current.add(doc.id));
-        localStorage.setItem(NOTIFICATION_SEEN_ORDERS_KEY, JSON.stringify(Array.from(seenOrdersRef.current)));
+        safeSetJSON(NOTIFICATION_SEEN_ORDERS_KEY, Array.from(seenOrdersRef.current));
         isInitialLoadRef.current = false;
         return;
       }
@@ -170,7 +178,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       // Update local storage so we remember these between page refreshes
       if (updated) {
-        localStorage.setItem(NOTIFICATION_SEEN_ORDERS_KEY, JSON.stringify(Array.from(seenOrdersRef.current)));
+        safeSetJSON(NOTIFICATION_SEEN_ORDERS_KEY, Array.from(seenOrdersRef.current));
       }
     });
 

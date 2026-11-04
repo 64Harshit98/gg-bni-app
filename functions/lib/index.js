@@ -1619,6 +1619,203 @@ exports.getPublicPreview = functions
     });
 
 // =========================================================
+// Public storefront bundle (buyer-facing catalogue viewer)
+// =========================================================
+
+// Everything the public storefront pages (StorePage / CategoryPage /
+// CheckOut) need for first paint, in ONE cacheable HTTP response — instead of
+// the client SDK's serial waterfall of Firestore reads over a WebChannel
+// stream (domain lookup -> items + groups -> business_info -> settings ->
+// pinned), which is what stalled / white-screened on flaky mobile networks
+// and in-app browsers. Buyers reach it at /api/storefront on both hosts:
+//   - Firebase Hosting (app.sellar.in): firebase.json rewrite, CDN-cached
+//   - App Hosting (<sub>.sellar.in): index.js proxies it, resolving the
+//     tenant from the Host header, with its own in-memory cache on top
+// Tenant is `sub` (merchant subdomain, resolved via domainAliases exactly like
+// getPublicPreview and the storefront pages) or `cId` (company doc id, legacy
+// /catalogue/<id> links). Returns docs the anonymous client SDK can already
+// read under firestore.rules, minus what's in STOREFRONT_BUSINESS_FIELDS' note.
+const STOREFRONT_SUB_RE = /^[a-z0-9-]{1,63}$/;
+const STOREFRONT_CID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+// Short CDN window so a merchant's catalogue edits show up within ~1 minute;
+// stale-while-revalidate keeps buyers fast while the edge refreshes.
+const STOREFRONT_CACHE_CONTROL = "public, max-age=0, s-maxage=60, stale-while-revalidate=300";
+const STOREFRONT_DOMAIN_TTL_MS = 5 * 60 * 1000;
+const STOREFRONT_MISS_TTL_MS = 60 * 1000;
+const STOREFRONT_PAYLOAD_TTL_MS = 30 * 1000;
+const STOREFRONT_CACHE_MAX = 200;
+// The business_info fields a storefront shows. That doc also holds private
+// settings such as the merchant's botMasterToken, which must never go out in
+// this public, CDN-cached response. Keep in step with StorefrontBusinessInfo
+// in src/Catalogue/storefront/storefrontClient.ts.
+const STOREFRONT_BUSINESS_FIELDS = [
+    "businessName", "companyLogo", "phoneNumber", "whatsappNumber", "email",
+    "streetAddress", "city", "state", "postalCode", "gstin",
+    "instagram", "facebook", "twitter", "gmail",
+    "brandingText", "businessCategory", "businessType",
+];
+// Per-instance caches (the "domain -> tenant" map): sub -> {companyId,
+// subdomain} | null, and companyId -> payload | null.
+const storefrontDomainCache = new Map();
+const storefrontPayloadCache = new Map();
+
+function ttlGet(cache, key) {
+    const hit = cache.get(key);
+    if (!hit) return undefined;
+    if (hit.expires < Date.now()) {
+        cache.delete(key);
+        return undefined;
+    }
+    return hit.value;
+}
+
+function ttlSet(cache, key, value, ttlMs) {
+    if (cache.size >= STOREFRONT_CACHE_MAX) cache.delete(cache.keys().next().value);
+    cache.set(key, { value, expires: Date.now() + ttlMs });
+}
+
+// Firestore values -> JSON-safe plain values. Timestamps, references and
+// GeoPoints don't survive res.json() cleanly (a DocumentReference is circular).
+function toPlain(value) {
+    if (value === null || typeof value !== "object") return value;
+    if (value instanceof admin.firestore.Timestamp) {
+        return { seconds: value.seconds, nanoseconds: value.nanoseconds };
+    }
+    if (value instanceof admin.firestore.DocumentReference) return value.path;
+    if (value instanceof admin.firestore.GeoPoint) {
+        return { latitude: value.latitude, longitude: value.longitude };
+    }
+    if (Array.isArray(value)) return value.map(toPlain);
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = toPlain(v);
+    return out;
+}
+
+function storefrontDoc(doc) {
+    return { id: doc.id, ...toPlain(doc.data()) };
+}
+
+function storefrontBusinessInfo(data) {
+    const out = {};
+    for (const field of STOREFRONT_BUSINESS_FIELDS) {
+        if (data[field] !== undefined) out[field] = toPlain(data[field]);
+    }
+    return out;
+}
+
+async function resolveStorefrontSub(sub) {
+    const cached = ttlGet(storefrontDomainCache, sub);
+    if (cached !== undefined) return cached;
+
+    const snap = await db.collection("companies")
+        .where("domainAliases", "array-contains", sub)
+        .limit(1)
+        .get();
+    const value = snap.empty ? null : {
+        companyId: snap.docs[0].id,
+        subdomain: snap.docs[0].data().subdomain || null,
+    };
+    // Unknown subdomains are cached too (briefly) so a mistyped or dead link
+    // can't hammer Firestore.
+    ttlSet(storefrontDomainCache, sub, value, value ? STOREFRONT_DOMAIN_TTL_MS : STOREFRONT_MISS_TTL_MS);
+    return value;
+}
+
+async function loadStorefrontPayload(companyId) {
+    const cached = ttlGet(storefrontPayloadCache, companyId);
+    if (cached !== undefined) return cached;
+
+    const companyRef = db.collection("companies").doc(companyId);
+    const settingsRef = companyRef.collection("settings");
+    const [
+        companySnap, infoSnap, salesSettingsSnap, pinnedCatSnap, pinnedItemsSnap,
+        storePageSnap, itemSettingsSnap, groupsSnap, itemsSnap, addOnTemplatesSnap,
+    ] = await Promise.all([
+        companyRef.get(),
+        companyRef.collection("business_info").doc(companyId).get(),
+        settingsRef.doc("catalogue-sales-settings").get(),
+        settingsRef.doc("pinned_categories").get(),
+        settingsRef.doc("pinned_items").get(),
+        settingsRef.doc("store_page").get(),
+        settingsRef.doc("item-settings").get(),
+        companyRef.collection("itemGroups").get(),
+        companyRef.collection("items").where("isListed", "==", true).get(),
+        companyRef.collection("addOnTemplates").get(),
+    ]);
+
+    if (!companySnap.exists) {
+        ttlSet(storefrontPayloadCache, companyId, null, STOREFRONT_MISS_TTL_MS);
+        return null;
+    }
+
+    const payload = {
+        companyId,
+        businessInfo: infoSnap.exists ? storefrontBusinessInfo(infoSnap.data()) : null,
+        catalogueSettings: salesSettingsSnap.exists ? toPlain(salesSettingsSnap.data()) : null,
+        pinnedCategoryIds: (pinnedCatSnap.exists && pinnedCatSnap.data().ids) || [],
+        pinnedItemIds: (pinnedItemsSnap.exists && pinnedItemsSnap.data().ids) || [],
+        itemGroups: groupsSnap.docs.map(storefrontDoc),
+        items: itemsSnap.docs.map(storefrontDoc),
+        storePage: storePageSnap.exists ? toPlain(storePageSnap.data()) : null,
+        enableAddOns: itemSettingsSnap.exists && itemSettingsSnap.data().enableAddOns === true,
+        addOnTemplates: addOnTemplatesSnap.docs.map((d) => ({ ...toPlain(d.data()), id: d.id })),
+    };
+    ttlSet(storefrontPayloadCache, companyId, payload, STOREFRONT_PAYLOAD_TTL_MS);
+    return payload;
+}
+
+exports.getPublicStorefront = functions
+    .region("us-central1")
+    .https.onRequest(async (req, res) => {
+        const sub = typeof req.query.sub === "string" ? req.query.sub.toLowerCase() : null;
+        const cId = typeof req.query.cId === "string" ? req.query.cId : null;
+
+        const fail = (status, error) => {
+            res.set("Cache-Control", "no-store");
+            res.status(status).json({ error });
+        };
+
+        const validSub = !!sub && STOREFRONT_SUB_RE.test(sub);
+        const validCId = !!cId && STOREFRONT_CID_RE.test(cId);
+        if (!validSub && !validCId) {
+            fail(400, "Missing or invalid sub / cId");
+            return;
+        }
+
+        try {
+            let companyId = validSub ? null : cId;
+
+            if (validSub) {
+                const resolved = await resolveStorefrontSub(sub);
+                if (!resolved) {
+                    fail(404, "Store not found");
+                    return;
+                }
+                // An old alias: point the buyer at the merchant's current subdomain
+                // (the client redirects, keeping the path).
+                if (resolved.subdomain && resolved.subdomain !== sub) {
+                    res.set("Cache-Control", STOREFRONT_CACHE_CONTROL);
+                    res.status(200).json({ redirectToSubdomain: resolved.subdomain });
+                    return;
+                }
+                companyId = resolved.companyId;
+            }
+
+            const payload = await loadStorefrontPayload(companyId);
+            if (!payload) {
+                fail(404, "Store not found");
+                return;
+            }
+
+            res.set("Cache-Control", STOREFRONT_CACHE_CONTROL);
+            res.status(200).json(payload);
+        } catch (error) {
+            console.error("Error fetching public storefront:", error);
+            fail(500, "Internal Server Error");
+        }
+    });
+
+// =========================================================
 // Razorpay Subscription Payments + Coupons
 // =========================================================
 

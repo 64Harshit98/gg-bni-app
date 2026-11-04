@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { todayDateInputValue } from '../../../lib/format';
 
 interface CustomRangePanelProps {
   initialStart: string;
@@ -13,8 +14,9 @@ export default function CustomRangePanel({
   onApply,
   onCancel,
 }: CustomRangePanelProps) {
-  const [start, setStart] = useState(initialStart);
-  const [end, setEnd] = useState(initialEnd);
+  // iOS shows an empty date input as a blank box, so always open on real dates
+  const [start, setStart] = useState(initialStart || todayDateInputValue());
+  const [end, setEnd] = useState(initialEnd || todayDateInputValue());
   const isValid = !!start && !!end && start <= end;
 
   const inputClass =
@@ -23,11 +25,11 @@ export default function CustomRangePanel({
   return (
     <div className="rounded-sm border border-line bg-white p-4 shadow-float">
       <div className="grid grid-cols-2 gap-3">
-        <label className="text-xs font-medium text-slate-600">
+        <label className="min-w-0 text-xs font-medium text-slate-600">
           From
           <input type="date" value={start} max={end || undefined} onChange={(e) => setStart(e.target.value)} className={inputClass} />
         </label>
-        <label className="text-xs font-medium text-slate-600">
+        <label className="min-w-0 text-xs font-medium text-slate-600">
           To
           <input type="date" value={end} min={start || undefined} onChange={(e) => setEnd(e.target.value)} className={inputClass} />
         </label>

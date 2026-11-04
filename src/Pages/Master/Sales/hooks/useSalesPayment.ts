@@ -222,9 +222,12 @@ export const useSalesPayment = ({
         const dueAmount = completionData.paymentDetails?.due || 0;
         if (dueAmount > 0) {
             if (!completionData.partyName?.trim() || !completionData.partyNumber?.trim()) {
-                setModal({ message: "Customer name and mobile number are required for a due/credit sale.", type: State.ERROR });
                 setIsSaving(false);
-                return;
+                // Must throw, not just show a modal and return — PaymentDrawer
+                // awaits this as onPaymentComplete and treats a normal return
+                // as success, wiping the whole form (party/payment/shipping
+                // state) even though the save never happened.
+                throw new Error("Customer name and mobile number are required for a due/credit sale.");
             }
         }
 

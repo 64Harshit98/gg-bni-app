@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
-import CrashScreen, { isChunkLoadError } from '../Components/CrashScreen';
+import CrashScreen from '../Components/CrashScreen';
+import { isChunkLoadError, reloadOnce } from '../lib/chunkReload';
 
 interface Props {
   children?: ReactNode;
@@ -24,7 +25,7 @@ class ErrorBoundary extends Component<Props, State> {
     console.error("Uncaught error:", error, errorInfo);
 
     if (isChunkLoadError(error)) {
-      window.location.reload();
+      reloadOnce();
     }
   }
 

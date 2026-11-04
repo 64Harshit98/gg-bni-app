@@ -5,7 +5,8 @@ import { useAuth } from '../../context/auth-context';
 import type { Item } from '../../constants/models';
 import LeadPopUp from '../PopUp';
 import SearchBar from '../SearchBar';
-import { useLeadStatus, useResolvedCompanyId, useStoreLinks, useStorefrontData } from './useStorefront';
+import { useLeadStatus, useStoreLinks, useStorefrontPage } from './useStorefront';
+import StorefrontError from './StorefrontError';
 import { needsLead, useStorefrontCart } from './useStorefrontCart';
 import { useCustomerActions } from './useCustomerActions';
 import { canSeePrices, productState } from './productState';
@@ -19,9 +20,8 @@ const StorePage: React.FC = () => {
     const { companyId: pathId } = useParams<{ companyId: string }>();
     const navigate = useNavigate();
     const { currentUser } = useAuth();
-    const { companyId, error: resolveError, subdomain } = useResolvedCompanyId(pathId);
+    const { companyId, subdomain, data, notFound, loadFailed, retry } = useStorefrontPage(pathId);
     const links = useStoreLinks(companyId, subdomain);
-    const { data, error } = useStorefrontData(companyId);
     const settings = data?.settings ?? null;
     const approvalEnabled = settings?.requireApproval === true;
 
@@ -82,8 +82,8 @@ const StorePage: React.FC = () => {
         }),
     };
 
-    if (resolveError) return <StoreMessage title="Store not found" text="This catalogue link is invalid or has expired. Ask the shop for its current link." />;
-    if (error) return <StoreMessage title="We couldn't open this store" text="Check your internet connection and try again." />;
+    if (notFound) return <StoreMessage title="Store not found" text="This catalogue link is invalid or has expired. Ask the shop for its current link." />;
+    if (loadFailed) return <StorefrontError onRetry={retry} />;
     if (!companyId || !data) return <StoreLoading />;
 
     const waHref = whatsappUrl(business.whatsappNumber || business.phoneNumber, `Hi, I'm interested in your products at ${name}.`);

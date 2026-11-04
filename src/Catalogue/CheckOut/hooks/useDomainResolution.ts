@@ -1,64 +1,22 @@
-import { useState, useEffect, useMemo } from 'react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../../../lib/Firebase';
+import { getSubdomain } from '../../../lib/subdomain';
+import { useStorefront } from '../../storefront/useStorefront';
 
-// Owns subdomain → companyId resolution — moved verbatim from CheckOut.tsx
-// (was the hostname/subdomain parsing + the resolveDomain effect, previously
-// inline in the CartPage component body).
+// Owns subdomain → companyId resolution for the checkout page, on top of the
+// shared storefront loader (see storefront/storefrontClient.ts). Buyers
+// usually arrive here from the catalogue or a category, which already loaded
+// the same store this session, so this normally resolves instantly. An old
+// subdomain alias is redirected to the current one, keeping the pathname so
+// they stay on the Cart page.
 export const useDomainResolution = (pathId: string | undefined) => {
-    const [resolvedCompanyId, setResolvedCompanyId] = useState<string | null>(null);
-    const [domainResolveError, setDomainResolveError] = useState(false);
-    const [isResolvingDomain, setIsResolvingDomain] = useState(true);
+    const { status, data, retry } = useStorefront(pathId);
 
-    const hostname = window.location.hostname;
-    const parts = hostname.split('.');
-
-    const subdomain = useMemo(() => {
-        return (
-            parts.length >= 3 &&
-            !['www', 'app'].includes(parts[0].toLowerCase()) &&
-            !hostname.includes('localhost')
-        ) ? parts[0] : null;
-    }, [hostname, parts]);
-
-    useEffect(() => {
-        const resolveDomain = async () => {
-            if (subdomain) {
-                try {
-                    const companiesRef = collection(db, 'companies');
-                    const q = query(companiesRef, where('domainAliases', 'array-contains', subdomain));
-                    const snap = await getDocs(q);
-
-                    if (!snap.empty) {
-                        const companyDoc = snap.docs[0];
-                        const data = companyDoc.data();
-
-                        // Redirect logic: Preserve the pathname so they stay on the Cart page!
-                        if (data.subdomain && data.subdomain !== subdomain) {
-                            window.location.replace(`https://${data.subdomain}.sellar.in${window.location.pathname}`);
-                            return;
-                        }
-
-                        setResolvedCompanyId(companyDoc.id);
-                    } else {
-                        setDomainResolveError(true);
-                    }
-                } catch (error) {
-                    console.error("Error resolving subdomain:", error);
-                    setDomainResolveError(true);
-                }
-            } else if (pathId) {
-                setResolvedCompanyId(pathId);
-            } else {
-                setDomainResolveError(true);
-            }
-            setIsResolvingDomain(false);
-        };
-
-        resolveDomain();
-    }, [subdomain, pathId]);
-
-    const effectiveCompanyId = resolvedCompanyId;
-
-    return { subdomain, effectiveCompanyId, domainResolveError, isResolvingDomain };
+    return {
+        subdomain: getSubdomain(),
+        effectiveCompanyId: data?.companyId ?? null,
+        storefront: data,
+        domainResolveError: status === 'not-found',
+        loadError: status === 'error',
+        isResolvingDomain: status === 'loading',
+        retry,
+    };
 };

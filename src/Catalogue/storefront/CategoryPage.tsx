@@ -9,7 +9,8 @@ import LeadPopUp from '../PopUp';
 import BulkQuotePopup from '../BulkQuotePopup';
 import SearchBar from '../SearchBar';
 import { TierPickerModal } from '../../Components/TierPickerModal';
-import { useLeadStatus, useResolvedCompanyId, useStoreLinks, useStorefrontData } from './useStorefront';
+import { useLeadStatus, useStoreLinks, useStorefrontPage } from './useStorefront';
+import StorefrontError from './StorefrontError';
 import { needsLead, useStorefrontCart } from './useStorefrontCart';
 import { useCustomerActions } from './useCustomerActions';
 import { canSeePrices, productState } from './productState';
@@ -35,9 +36,8 @@ const CategoryPage: React.FC = () => {
     const location = useLocation();
     const { companyId: pathId, groupId: groupSlug, itemSlug: productSlug } = useParams<{ companyId: string; groupId: string; itemSlug: string }>();
     const { currentUser } = useAuth();
-    const { companyId, error: resolveError, subdomain } = useResolvedCompanyId(pathId);
+    const { companyId, subdomain, data, notFound, loadFailed, retry } = useStorefrontPage(pathId);
     const links = useStoreLinks(companyId, subdomain);
-    const { data, error } = useStorefrontData(companyId);
     const settings = data?.settings ?? null;
     const approvalEnabled = settings?.requireApproval === true;
 
@@ -181,8 +181,8 @@ const CategoryPage: React.FC = () => {
     const groupHeading = sideGroups.find((g) => g.categories.some((c) => c.id === groupId))?.name;
     const countIn = (gid: string) => liveItems.filter((i) => itemInGroup(i, gid)).length;
 
-    if (resolveError) return <StoreMessage title="Store not found" text="This catalogue link is invalid or has expired. Ask the shop for its current link." />;
-    if (error) return <StoreMessage title="We couldn't open this store" text="Check your internet connection and try again." />;
+    if (notFound) return <StoreMessage title="Store not found" text="This catalogue link is invalid or has expired. Ask the shop for its current link." />;
+    if (loadFailed) return <StorefrontError onRetry={retry} />;
     if (!companyId || !data) return <StoreLoading />;
 
     const waNumber = business.whatsappNumber || business.phoneNumber;

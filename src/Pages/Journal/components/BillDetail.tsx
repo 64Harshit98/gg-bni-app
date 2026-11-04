@@ -36,7 +36,8 @@ interface BillDetailProps {
   onSettle: (invoice: Invoice) => void;
   onPrint: (invoice: Invoice) => void;
   onTransport: (invoice: Invoice) => void;
-  onRemind: (invoice: Invoice) => void;
+  /** Sends through the connected WhatsApp provider; leave out when none is connected. */
+  onRemind?: (invoice: Invoice) => void;
   onReturn: (invoice: Invoice) => void;
   onEdit: (invoice: Invoice) => void;
   onDelete: (invoice: Invoice) => void;
@@ -237,7 +238,7 @@ export const BillDetail: React.FC<BillDetailProps> = ({
           </button>
         )}
 
-        {invoice.status === 'Unpaid' && invoice.partyNumber && (
+        {invoice.status === 'Unpaid' && invoice.partyNumber && onRemind && (
           <button
             onClick={(e) => { e.stopPropagation(); onRemind(invoice); }}
             disabled={sendingPdf}

@@ -5,6 +5,7 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import type { Item } from '../constants/models';
 import { FiPackage } from 'react-icons/fi';
 import { ensurePendingApprovalEntry } from './hooks/ensureApprovalEntry';
+import { readLeadData } from './storefront/buyerStorage';
 
 interface BulkQuotePopupProps {
     item: Item;
@@ -23,7 +24,7 @@ const BulkQuotePopup: React.FC<BulkQuotePopupProps> = ({ item, companyId, onClos
         if (!quantity.trim()) return;
         setLoading(true);
         try {
-            const leadData = JSON.parse(localStorage.getItem('leadData') || '{}');
+            const leadData = readLeadData();
             const customerName = leadData.name || 'Guest';
             const customerNumber = (leadData.number || '').replace(/\D/g, '').trim();
             await addDoc(collection(db, 'companies', companyId, 'BulkQuoteRequests'), {

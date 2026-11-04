@@ -55,6 +55,14 @@ export const usePurchaseCatalogueAndSettings = ({
         setAvailableItems(catalogueItems);
     }, [catalogueItems]);
 
+    // Read-only mirror of catalogueItems for the edit-mode hydration effect
+    // below — it only needs the catalogue to resolve masterItem fallbacks,
+    // not to re-run every time the catalogue updates (see the ref usage there).
+    const catalogueItemsRef = useRef(catalogueItems);
+    useEffect(() => {
+        catalogueItemsRef.current = catalogueItems;
+    }, [catalogueItems]);
+
     const [error, setError] = useState<string | null>(null);
 
     const [invoiceNumber, setInvoiceNumber] = useState<string>('');
@@ -168,7 +176,7 @@ export const usePurchaseCatalogueAndSettings = ({
                 }
 
                 const validatedItems = (purchaseData.items || []).map((item: any) => {
-                    const masterItem = catalogueItems.find((i: any) => i.id === (item.productId || item.id));
+                    const masterItem = catalogueItemsRef.current.find((i: any) => i.id === (item.productId || item.id));
                     const recoveredTaxRate = (item.taxRate && item.taxRate > 0)
                         ? item.taxRate
                         : (masterItem?.tax ?? masterItem?.taxRate ?? 0);
@@ -212,7 +220,13 @@ export const usePurchaseCatalogueAndSettings = ({
         };
 
         hydrateEditMode();
-    }, [purchaseIdToEdit, currentUser?.companyId, itemsLoading, catalogueItems, navigate, setItems]);
+        // catalogueItems intentionally excluded — read via catalogueItemsRef.
+        // Re-running this on every catalogue update (e.g. editing any item's
+        // master data mid-edit) would re-fetch the original purchase doc and
+        // overwrite the in-progress cart, silently discarding any items the
+        // user had already added/changed since opening this edit.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [purchaseIdToEdit, currentUser?.companyId, itemsLoading, navigate, setItems]);
 
     return {
         availableItems, setAvailableItems,

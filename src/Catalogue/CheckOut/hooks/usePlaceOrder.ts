@@ -3,6 +3,8 @@ import { doc, collection, serverTimestamp, increment, runTransaction } from 'fir
 import { db } from '../../../lib/Firebase';
 import type { CartItem, Address } from '../checkOut.types';
 import { buildOrderLineItems, computeOrderLevelTotals } from '../checkOut.calculations';
+import { safeGet, safeRemove } from '../../../lib/safeStorage';
+import { readLeadData } from '../../storefront/buyerStorage';
 
 interface UsePlaceOrderParams {
     effectiveCompanyId: string | null;
@@ -90,7 +92,7 @@ export const usePlaceOrder = ({
 
                 const invoice = `${prefix}${currentNumber}`;
                 const newOrderDoc = doc(ordersRef);
-                const leadData = JSON.parse(localStorage.getItem("leadData") || "{}");
+                const leadData = readLeadData();
                 const fallbackPhone = (leadData.number || "").replace(/\D/g, "").trim();
 
                 // 2. WRITE: Create the final order — the full bill snapshot (items,
@@ -154,7 +156,7 @@ export const usePlaceOrder = ({
                     items: orderItems,
                     billingDetails: billing,
                     shippingDetails: isSameAsShipping ? billing : shipping,
-                    orderedBy: localStorage.getItem("upcoming_user_key"),
+                    orderedBy: safeGet("upcoming_user_key"),
                 });
 
                 // 3. WRITE: Increment the counter
@@ -181,8 +183,8 @@ export const usePlaceOrder = ({
             });
 
             // SUCCESS CLEANUP
-            localStorage.removeItem('temp_cart');
-            const upcomingUserKey = localStorage.getItem("upcoming_user_key");
+            safeRemove('temp_cart');
+            const upcomingUserKey = safeGet("upcoming_user_key");
             if (upcomingUserKey && effectiveCompanyId) {
                 try {
                     const { deleteDoc, doc: firestoreDoc } = await import('firebase/firestore');
@@ -192,7 +194,7 @@ export const usePlaceOrder = ({
                     console.warn("Could not delete upcoming draft:", err);
                 }
             }
-            localStorage.removeItem("upcoming_user_key");
+            safeRemove("upcoming_user_key");
             // localStorage.removeItem("leadSubmitted");
             // localStorage.removeItem("leadData");
             setPlacedOrderId(finalInvoiceNumber);

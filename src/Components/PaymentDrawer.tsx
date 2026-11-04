@@ -884,8 +884,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             return;
         }
 
-        if (mode === 'sale' && dueAmount > 0 && !partyNumber.trim()) {
-            setModal({ message: `${partyLabel} Phone Number is required for Due Billing.`, type: State.ERROR });
+        if (mode === 'sale' && dueAmount > 0 && (!partyName.trim() || !partyNumber.trim())) {
+            setModal({ message: `${partyLabel} Name and Phone Number are required for Due Billing.`, type: State.ERROR });
             return;
         }
         if (mode === 'purchase' && dueAmount > 0 && (!partyName.trim() || !partyNumber.trim())) {
@@ -1039,7 +1039,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
 
         } catch (error) {
             setModal({ message: (error as Error).message || 'Failed to save.', type: State.ERROR });
-        } {
+        } finally {
             setIsSubmitting(false);
         }
     };

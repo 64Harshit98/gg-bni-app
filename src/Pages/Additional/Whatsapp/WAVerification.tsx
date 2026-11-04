@@ -7,7 +7,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import TermsAgreementModal from './TermsAndCondition';
 import { ROUTES } from '../../../constants/routes.constants';
 import { Stepper } from '../../../Components/Stepper';
-import { botMasterService } from './WhatsappApi';
+import { botMasterService, BMS_FIXED_PASSWORD } from './WhatsappApi';
 import { useAuth } from '../../../context/auth-context';
 import { db } from '../../../lib/Firebase';
 
@@ -19,11 +19,13 @@ const WhatsAppVerification: React.FC = () => {
     // Data from previous page
     const initialPhone = location.state?.phoneNumber || '';
     const passedToken = location.state?.authToken;
+    const passedCustomerUid = location.state?.customerUid;
 
     // --- State ---
     const [internalStep, setInternalStep] = useState<'CREATE_SESSION' | 'GET_QR' | 'DISPLAY_QR' | 'SUCCESS'>('CREATE_SESSION');
     const [phone, setPhone] = useState(initialPhone);
     const [authToken, setAuthToken] = useState<string | null>(passedToken || null);
+    const [customerUid, setCustomerUid] = useState<string | null>(passedCustomerUid || null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [showTerms, setShowTerms] = useState(false);
@@ -50,8 +52,8 @@ const WhatsAppVerification: React.FC = () => {
             const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
             const userDocRef = doc(db, 'companies', companyId, 'users', currentUser.uid);
 
-            const businessData = { botMasterToken: authToken, whatsappNumber: phone, isWhatsappConnected: true };
-            const userData = { botMasterToken: authToken, phoneNumber: phone, isWhatsappConnected: true };
+            const businessData = { botMasterToken: authToken, botMasterCustomerUid: customerUid, whatsappNumber: phone, isWhatsappConnected: true };
+            const userData = { botMasterToken: authToken, botMasterCustomerUid: customerUid, phoneNumber: phone, isWhatsappConnected: true };
 
             await Promise.all([
                 setDoc(businessDocRef, businessData, { merge: true }),
@@ -125,11 +127,32 @@ const WhatsAppVerification: React.FC = () => {
             const fetchToken = async () => {
                 try {
                     const companyId = (currentUser as any).companyId || currentUser.uid;
-                    const businessDoc = await getDoc(doc(db, 'companies', companyId, 'business_info', companyId));
+                    const businessDocRef = doc(db, 'companies', companyId, 'business_info', companyId);
+                    const businessDoc = await getDoc(businessDocRef);
                     if (businessDoc.exists()) {
                         const data = businessDoc.data();
+                        const restoredPhone = data.whatsappNumber || phone;
                         if (data.botMasterToken) setAuthToken(data.botMasterToken);
                         if (data.whatsappNumber && !phone) setPhone(data.whatsappNumber);
+
+                        if (data.botMasterCustomerUid) {
+                            setCustomerUid(data.botMasterCustomerUid);
+                        } else if (data.botMasterToken && restoredPhone) {
+                            // Older/partial data: token was saved before customer_uid tracking existed.
+                            // Log back in (same fixed password every account uses) to recover it
+                            // instead of forcing the user to restart signup from scratch.
+                            try {
+                                const loginResponse = await botMasterService.loginCustomer(restoredPhone, BMS_FIXED_PASSWORD);
+                                if (loginResponse.user?.uid && loginResponse.user?.auth_token) {
+                                    setCustomerUid(loginResponse.user.uid);
+                                    setAuthToken(loginResponse.user.auth_token);
+                                    await setDoc(businessDocRef, {
+                                        botMasterCustomerUid: loginResponse.user.uid,
+                                        botMasterToken: loginResponse.user.auth_token
+                                    }, { merge: true });
+                                }
+                            } catch (loginErr) { console.error("Failed to backfill customer_uid", loginErr); }
+                        }
                     }
                 } catch (err) { console.error(err); }
             };
@@ -140,7 +163,7 @@ const WhatsAppVerification: React.FC = () => {
     // --- 3. STEP 1: CREATE SESSION ---
     const handleLinkNumber = async (e: React.MouseEvent) => {
         e.preventDefault();
-        if (!authToken) {
+        if (!customerUid) {
             setError("Registration incomplete. Go back to Details page.");
             return;
         }
@@ -148,7 +171,7 @@ const WhatsAppVerification: React.FC = () => {
         setError('');
 
         try {
-            const response = await botMasterService.createSession(authToken, phone);
+            const response = await botMasterService.createSession(customerUid, phone);
 
             const isAlreadyExists =
                 response?.error?.data?.state === 'ALREADY_CONNECTED' ||
@@ -182,11 +205,11 @@ const WhatsAppVerification: React.FC = () => {
 
     // --- 4. STEP 2: FETCH QR CODE ---
     const handleFetchQR = async (retryCount: number = 0) => {
-        if (!authToken || isConnected) return;
+        if (!authToken || !customerUid || isConnected) return;
         if (retryCount === 0 && !qrCodeData) setLoading(true);
 
         try {
-            const response = await botMasterService.getQrCode(authToken!, phone);
+            const response = await botMasterService.getQrCode(authToken, customerUid, phone);
 
             const isSessionActive =
                 response?.error?.data?.state === 'ALREADY_CONNECTED' ||

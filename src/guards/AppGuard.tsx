@@ -2,7 +2,7 @@ import React from 'react';
 import { Navigate, useLocation, Outlet } from 'react-router-dom';
 import { ROUTES } from '../constants/routes.constants';
 import { useAuth } from '../context/auth-context';
-import Loading from '../Pages/Loading/Loading';
+import PageLoader from '../Components/PageLoader';
 import { PLANS } from '../enums';
 
 interface AppGuardProps {
@@ -13,7 +13,7 @@ const AppGuard: React.FC<AppGuardProps> = ({ requiredPlans = [] }) => {
     const { currentUser, loading } = useAuth();
     const location = useLocation();
 
-    if (loading) return <Loading />;
+    if (loading) return <PageLoader />;
 
     if (!currentUser) {
         return <Navigate to={ROUTES.LANDING} state={{ from: location }} replace />;

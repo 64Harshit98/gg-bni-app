@@ -8,21 +8,38 @@
     ],
     "rewrites": [
       {
+        "source": "/api/storefront",
+        "function": "getPublicStorefront"
+      },
+      {
         "source": "/api/getPublicCatalogue",
         "function": "getPublicCatalogue"
       },
       {
-        "source": "**",
+        "source": "/api/getPublicCatalogueItems",
+        "function": "getPublicCatalogueItems"
+      },
+      {
+        "source": "!/assets/**",
         "destination": "/index.html"
       }
     ],
     "headers": [
       {
-        "source": "**/*.@(js|css|png|jpg|jpeg|gif|webp|svg)",
+        "source": "/assets/**",
         "headers": [
           {
             "key": "Cache-Control",
             "value": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "source": "!/@(assets|api)/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
           }
         ]
       }
@@ -61,5 +78,29 @@
   },
   "storage": {
     "rules": "storage.rules"
-  }
+  },
+  "apphosting": [
+    {
+      "backendId": "newapp",
+      "rootDir": "/",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "functions"
+      ]
+    },
+    {
+      "backendId": "my-web-app",
+      "rootDir": "/",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "functions"
+      ]
+    }
+  ]
 }

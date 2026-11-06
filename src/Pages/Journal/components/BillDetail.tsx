@@ -396,7 +396,9 @@ export const BillDetail: React.FC<BillDetailProps> = ({
             ? `MRP: ${fmt0(item.mrp)}`
             : `Sales Price: ${fmt0(item.effectiveUnitPrice || (item.quantity > 0 ? item.finalPrice / item.quantity : 0))}`;
 
-          const { baseName, addOnText } = splitAddOns(item);
+          const { baseName, addOnList } = splitAddOns(item);
+          const showBase = addOnList.length > 0 && addOnList.every((a) => a.price !== undefined);
+          const basePrice = netUnitPrice - addOnList.reduce((s, a) => s + (Number(a.price) || 0), 0);
 
           return (
             <React.Fragment key={index}>
@@ -405,10 +407,18 @@ export const BillDetail: React.FC<BillDetailProps> = ({
                   <div className="flex min-w-0">
                     <span className="hidden w-[22px] shrink-0 pt-px text-xs tabular-nums text-[#5b6b86] xl:block">{index + 1}</span>
                     <div className="min-w-0">
-                      <p className="text-sm font-medium break-words">{baseName}</p>
-                      {addOnText && (
-                        <p className="text-xs text-[#5b6b86] break-words">+ {addOnText}</p>
-                      )}
+                      <p className="text-sm font-medium break-words">
+                        {baseName}
+                        {showBase && <span className="font-normal text-[#5b6b86] tabular-nums"> · {fmt0(basePrice)}</span>}
+                      </p>
+                      {addOnList.map((a, aIdx) => (
+                        <p key={aIdx} className="text-xs text-[#5b6b86] break-words">
+                          + {a.name}
+                          {a.price !== undefined && (
+                            <span className="tabular-nums"> · {Number(a.price) > 0 ? fmt0(Number(a.price)) : 'Free'}</span>
+                          )}
+                        </p>
+                      ))}
                       <p className="text-xs text-[#5b6b86]">{priceLabel}</p>
                     </div>
                   </div>

@@ -19,7 +19,7 @@ import BackButton from '../../../Components/BackButton';
 import { GenericCartList } from '../../../Components/CartItem';
 import BarcodeLinkModal from '../../../Components/BarcodeLinkModal';
 import { AddUserModal } from '../../../Components/AddUserModal';
-import { FiTrash2, FiX, FiEdit, FiCamera, FiDelete, FiSearch, FiMoreVertical, FiCalendar, FiCheck, FiChevronUp, FiChevronRight, FiMinus, FiSliders, FiUser } from 'react-icons/fi';
+import { FiTrash2, FiX, FiEdit, FiCamera, FiDelete, FiSearch, FiMoreVertical, FiCalendar, FiCheck, FiChevronUp, FiChevronRight, FiMinus, FiPlus, FiSliders, FiUser } from 'react-icons/fi';
 import { GenericBillFooter } from '../../../Components/Footer';
 import { CartLinesCompact } from '../../../Components/CartLinesCompact';
 import { IconScanCircle, IconPrint } from '../../../constants/Icons';
@@ -617,6 +617,20 @@ const Sales: React.FC = () => {
     const fmtINR = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const ICON_BTN_CLS = 'inline-flex items-center justify-center w-10 h-10 rounded-sm text-[#45556c] hover:bg-[#f5f7ff] transition-colors flex-shrink-0';
 
+    // MOQ of a cart line (looked up from the catalogue item, same as the card view)
+    const getLineMoq = (lineId: string): number => {
+        const line = items.find((l: any) => l.id === lineId);
+        if (!line) return 1;
+        const base = availableItems.find(a => a.id === ((line as any).productId || line.id));
+        return Number((base as any)?.moq) || 1;
+    };
+
+    // Bill panel: never let quantity go below MOQ (list view already locks this)
+    const handleBillQuantityChange = (lineId: string, newQty: number) => {
+        if (newQty < getLineMoq(lineId)) return;
+        handleQuantityChange(lineId, newQty);
+    };
+
     const renderMobileHeader = () => (
         <header className="md:hidden flex-shrink-0 bg-white border-b border-[#dfe6fb]">
             {/* Row 1: back + centered title */}
@@ -645,7 +659,7 @@ const Sales: React.FC = () => {
                 )}
             </div>
 
-            {/* Row 2 (card view): sort/filter | search + camera | three dots */}
+            {/* Row 2 (card view): sort/filter | search + camera | clear cart */}
             {isCardView && (
                 <div className="flex items-center gap-2 px-2 pb-3">
                     <button type="button" aria-label="View options" onClick={() => setIsFilterOpen(true)}
@@ -676,9 +690,16 @@ const Sales: React.FC = () => {
                         </button>
                     </div>
 
-                    <button type="button" onClick={() => setIsMoreOpen(true)} aria-label="More" className={ICON_BTN_CLS}>
-                        <FiMoreVertical size={20} />
-                    </button>
+                    {items.length > 0 && (
+                        <button
+                            type="button"
+                            onClick={handleClearCart}
+                            aria-label="Clear cart"
+                            className="inline-flex items-center justify-center w-10 h-10 flex-shrink-0 rounded-sm text-[#d5000c] bg-[#ffeef0] hover:bg-[#ffdde1] transition-colors"
+                        >
+                            <FiTrash2 size={18} />
+                        </button>
+                    )}
                 </div>
             )}
         </header>
@@ -1379,7 +1400,7 @@ const Sales: React.FC = () => {
                 <CartLinesCompact
                     items={items}
                     getUnitPrice={(i: any) => Number(i.customPrice ?? i.salesPrice ?? i.mrp ?? 0) + (Number(i.addOnAmount) || 0)}
-                    onQuantityChange={handleQuantityChange}
+                    onQuantityChange={handleBillQuantityChange}
                     onDelete={handleDeleteItem}
                     onEditAddOns={openAddOnEdit}
                 />
@@ -1552,13 +1573,149 @@ const Sales: React.FC = () => {
                                         const orig = availableItems.find(a => a.id === item.id);
                                         if (orig) handleOpenEditDrawer(orig);
                                     };
-                                    const handleTileTap = () => {
-                                        if (tileHoldFired.current) { tileHoldFired.current = false; return; }
+                                    // Add one: tile tap, ADD button aur "+" teeno yahi use karte hain
+                                    const handleAddOne = () => {
                                         // Add-on items always open the popup: each tap can be a different customisation
                                         if (isSelected && !itemHasAddOns(item)) handleQuantityChange(lastAddedCartItem.id, quantity + 1);
                                         else handleAddOrPickTier(item);
                                     };
+                                    const handleTileTap = () => {
+                                        if (tileHoldFired.current) { tileHoldFired.current = false; return; }
+                                        handleAddOne();
+                                    };
+                                    // "−" button: MOQ tak ghatao, MOQ par item hat jaye (pehle jaisa)
+                                    const handleMinusOne = () => {
+                                        if (quantity > moq) handleQuantityChange(lastAddedCartItem.id, quantity - 1);
+                                        else handleDeleteItem(lastAddedCartItem.id);
+                                    };
 
+                                    // ───────── PHOTO CARD (naya Blinkit-style design) ─────────
+                                    if (isCardImageView) {
+                                        return (
+                                            <div
+                                                key={item.id}
+                                                className={`relative flex flex-col min-w-0 overflow-hidden rounded-sm border-2
+                ${isSelected ? 'bg-blue-50 border-blue-600' : 'bg-white border-transparent ring-1 ring-gray-200 hover:ring-gray-300'}`}
+                                            >
+                                                <button
+                                                    type="button"
+                                                    aria-label={`Add one ${item.name}${isSelected ? `, ${quantity} in bill` : ''}`}
+                                                    onClick={handleTileTap}
+                                                    onPointerDown={(e) => {
+                                                        if (e.pointerType !== 'touch') return;
+                                                        tileHoldFired.current = false;
+                                                        clearTimeout(tileHoldTimer.current);
+                                                        tileHoldTimer.current = setTimeout(() => { tileHoldFired.current = true; openEdit(); }, 450);
+                                                    }}
+                                                    onPointerUp={() => clearTimeout(tileHoldTimer.current)}
+                                                    onPointerLeave={() => clearTimeout(tileHoldTimer.current)}
+                                                    onPointerCancel={() => clearTimeout(tileHoldTimer.current)}
+                                                    onContextMenu={(e) => e.preventDefault()}
+                                                    className="flex flex-col w-full p-0 text-left bg-transparent border-0 select-none cursor-pointer [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent]"
+                                                >
+                                                    {/* Top: photo mode = Blinkit-style square box, compact mode = slim header */}
+                                                    <span className="relative block w-full px-1.5 pt-1.5 shrink-0">
+                                                        {/* Square photo box: border + rounded + padding andar */}
+                                                        <span className={`relative flex items-center justify-center w-full aspect-square overflow-hidden rounded-sm border border-gray-200 p-2 ${isSelected ? 'bg-white' : 'bg-white'}`}>
+                                                            {photoUrl && (
+                                                                <img
+                                                                    src={photoUrl}
+                                                                    alt=""
+                                                                    loading="lazy"
+                                                                    className="w-full h-full object-contain block"
+                                                                    onError={(e) => {
+                                                                        (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                                                        const ph = (e.currentTarget as HTMLImageElement).parentElement?.querySelector<HTMLElement>('[data-no-image]');
+                                                                        if (ph) ph.style.display = 'flex';
+                                                                    }}
+                                                                />
+                                                            )}
+                                                            <span data-no-image className="absolute inset-0 items-center justify-center bg-gray-50" style={{ display: photoUrl ? 'none' : 'flex' }}>
+                                                                <FiCamera size={22} strokeWidth={1.5} className="text-gray-300" />
+                                                            </span>
+                                                        </span>
+                                                        {/* Discount ribbon: box ke bahar rakha hai taaki clip na ho */}
+                                                        {discPct > 0 && (
+                                                            <span className="absolute top-0 left-3 px-1.5 pt-[3px] pb-[7px] bg-blue-600 text-white text-[10px] leading-[12px] font-bold text-center whitespace-nowrap [clip-path:polygon(0_0,100%_0,100%_100%,50%_82%,0_100%)]">
+                                                                {discPct}%<br />OFF
+                                                            </span>
+                                                        )}
+                                                    </span>
+
+                                                    {/* Name */}
+                                                    <span className="block w-full px-1.5 pt-1.5 pb-1">
+                                                        <span
+                                                            className="block overflow-hidden text-[12px] leading-4 font-semibold text-gray-900 break-words [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] h-8"
+                                                            title={item.name}
+                                                        >
+                                                            {item.name}
+                                                        </span>
+                                                    </span>
+                                                </button>
+
+                                                {/* Footer: price (left) + ADD / stepper (right) */}
+                                                <div className="flex items-end justify-between gap-1 min-h-[30px] px-1.5 pb-1.5 mt-auto">
+                                                    <span className="flex flex-col min-w-0 tabular-nums leading-[1.15]">
+                                                        {isSelected ? (
+                                                            <span className="text-xs font-bold text-blue-600 whitespace-nowrap">
+                                                                ₹{lineSubtotal.toLocaleString('en-IN')}
+                                                            </span>
+                                                        ) : (
+                                                            <>
+                                                                <span className="text-[13px] font-bold text-gray-900 whitespace-nowrap">₹{Number(sp).toLocaleString('en-IN')}</span>
+                                                                {discPct > 0 && mrp > 0 && Number(sp) < mrp && (
+                                                                    <span className="truncate text-[10px] text-gray-500 line-through whitespace-nowrap">₹{mrp.toLocaleString('en-IN')}</span>
+                                                                )}
+                                                            </>
+                                                        )}
+                                                    </span>
+
+                                                    {isSelected ? (
+                                                        <span className="flex items-center h-7 flex-shrink-0 rounded-sm bg-blue-600 text-white">
+                                                            <button
+                                                                type="button"
+                                                                aria-label={`${atMin ? 'Remove' : 'One less'} ${item.name}`}
+                                                                onClick={handleMinusOne}
+                                                                className="grid place-items-center w-6 h-full rounded-l-sm hover:bg-white/20 transition-colors"
+                                                            >
+                                                                <FiMinus size={14} />
+                                                            </button>
+                                                            <span className="min-w-[18px] text-center text-xs font-bold tabular-nums">{quantity}</span>
+                                                            <button
+                                                                type="button"
+                                                                aria-label={`One more ${item.name}`}
+                                                                onClick={handleAddOne}
+                                                                className="grid place-items-center w-6 h-full rounded-r-sm hover:bg-white/20 transition-colors"
+                                                            >
+                                                                <FiPlus size={14} />
+                                                            </button>
+                                                        </span>
+                                                    ) : (
+                                                        <button
+                                                            type="button"
+                                                            aria-label={`Add ${item.name}`}
+                                                            onClick={handleAddOne}
+                                                            className="h-7 min-w-[56px] px-2 flex-shrink-0 rounded-sm border-[1.5px] border-blue-600 bg-blue-50 text-blue-600 text-xs font-bold hover:bg-blue-600 hover:text-white transition-colors"
+                                                        >
+                                                            ADD
+                                                        </button>
+                                                    )}
+                                                </div>
+
+                                                {/* Edit: hamesha dikhta hai (phone par bhi) */}
+                                                <button
+                                                    type="button"
+                                                    aria-label={`Edit ${item.name}`}
+                                                    onClick={openEdit}
+                                                    className="absolute top-2 right-2 z-[1] grid place-items-center w-[26px] h-[26px] rounded-sm bg-white text-gray-600 border border-gray-200 hover:text-blue-600 hover:border-blue-600 transition-colors"
+                                                >
+                                                    <FiEdit size={14} />
+                                                </button>
+                                            </div>
+                                        );
+                                    }
+
+                                    // ───────── COMPACT CARD (bina photo): bilkul original, koi change nahi ─────────
                                     return (
                                         <div key={item.id} className="relative min-w-0">
                                             <button
@@ -1576,47 +1733,20 @@ const Sales: React.FC = () => {
                                                 onPointerCancel={() => clearTimeout(tileHoldTimer.current)}
                                                 onContextMenu={(e) => e.preventDefault()}
                                                 className={`relative flex flex-col w-full overflow-hidden p-0 text-left rounded-sm border-2 select-none cursor-pointer transition active:scale-[0.97] [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent]
-                ${isCardImageView ? 'h-[176px] md:h-[164px]' : 'h-[100px]'}
+                h-[100px]
                 ${isSelected ? 'bg-blue-50 border-blue-600' : 'bg-white border-transparent ring-1 ring-gray-200 hover:ring-gray-300'}`}
                                             >
-                                                {/* Photo strip (photo mode only) */}
-                                                {isCardImageView && (
-                                                    <span className={`relative flex items-center justify-center w-full h-[96px] md:h-[88px] p-1 shrink-0 overflow-hidden ${isSelected ? 'bg-white' : 'bg-gray-50'}`}>
-                                                        {photoUrl && (
-                                                            <img
-                                                                src={photoUrl}
-                                                                alt=""
-                                                                loading="lazy"
-                                                                className="max-w-full max-h-full object-contain block"
-                                                                onError={(e) => {
-                                                                    (e.currentTarget as HTMLImageElement).style.display = 'none';
-                                                                    const ph = (e.currentTarget as HTMLImageElement).parentElement?.querySelector<HTMLElement>('[data-no-image]');
-                                                                    if (ph) ph.style.display = 'flex';
-                                                                }}
-                                                            />
-                                                        )}
-                                                        <span data-no-image className="absolute inset-0 items-center justify-center" style={{ display: photoUrl ? 'none' : 'flex' }}>
-                                                            <FiCamera size={20} strokeWidth={1.5} className="text-gray-300" />
-                                                        </span>
-                                                        {discPct > 0 && (
-                                                            <span className="absolute top-1 left-1 inline-flex items-center h-4 px-1 rounded-sm bg-blue-600 text-white text-[10px] leading-[14px] font-bold whitespace-nowrap">
-                                                                {discPct}% OFF
-                                                            </span>
-                                                        )}
-                                                    </span>
-                                                )}
-
                                                 {/* Name + price row */}
-                                                <span className={`flex flex-col flex-1 min-w-0 gap-1 ${isCardImageView ? 'px-1.5 py-1' : 'p-1.5'}`}>
+                                                <span className="flex flex-col flex-1 min-w-0 gap-1 p-1.5">
                                                     <span
-                                                        className={`block overflow-hidden pr-2 text-[12px] leading-4 font-semibold text-gray-900 break-words [display:-webkit-box] [-webkit-box-orient:vertical] ${isCardImageView ? '[-webkit-line-clamp:2] h-8' : '[-webkit-line-clamp:3] h-12'}`}
+                                                        className={`block overflow-hidden text-[12px] leading-4 font-semibold text-gray-900 break-words [display:-webkit-box] [-webkit-box-orient:vertical] ${isSelected ? 'pr-7 [-webkit-line-clamp:2] h-8' : 'pr-7 [-webkit-line-clamp:3] h-12'}`}
                                                         title={item.name}
                                                     >
                                                         {item.name}
                                                     </span>
-                                                    <span className={`flex items-center gap-1 mt-auto min-w-0 tabular-nums ${isCardImageView ? 'h-7' : 'h-8'}`}>
+                                                    <span className="flex items-center gap-1 mt-auto min-w-0 tabular-nums h-8">
                                                         {isSelected ? (
-                                                            <span className="ml-auto text-xs leading-4 font-bold text-blue-600 whitespace-nowrap md:mr-[34px]">
+                                                            <span className="max-w-[calc(100%-72px)] md:max-w-none truncate text-[11px] md:text-xs leading-4 font-bold text-blue-600 whitespace-nowrap">
                                                                 ₹{lineSubtotal.toLocaleString('en-IN')}
                                                             </span>
                                                         ) : (
@@ -1631,38 +1761,37 @@ const Sales: React.FC = () => {
                                                 </span>
                                             </button>
 
-                                            {/* Qty badge */}
+                                            {/* Qty stepper: right end (photo card jaisa), wide */}
                                             {isSelected && (
-                                                <span aria-hidden="true" className="absolute -top-[7px] -right-[7px] z-[2] min-w-[22px] h-[22px] px-1.5 grid place-items-center rounded-full bg-blue-600 text-white text-[11px] leading-[14px] font-bold tabular-nums ring-2 ring-[#eef2ff] pointer-events-none">
-                                                    {quantity}
+                                                <span className="absolute z-[1] bottom-2 right-1.5 h-7 flex items-center rounded-sm bg-blue-600 text-white">
+                                                    <button
+                                                        type="button"
+                                                        aria-label={`${atMin ? 'Remove' : 'One less'} ${item.name}`}
+                                                        onClick={handleMinusOne}
+                                                        className="grid place-items-center w-6 md:w-9 h-full rounded-l-sm hover:bg-white/20 transition-colors"
+                                                    >
+                                                        <FiMinus size={14} />
+                                                    </button>
+                                                    <span className="min-w-[20px] md:min-w-[32px] text-center text-xs md:text-sm font-bold tabular-nums">{quantity}</span>
+                                                    <button
+                                                        type="button"
+                                                        aria-label={`One more ${item.name}`}
+                                                        onClick={handleAddOne}
+                                                        className="grid place-items-center w-6 md:w-9 h-full rounded-r-sm hover:bg-white/20 transition-colors"
+                                                    >
+                                                        <FiPlus size={14} />
+                                                    </button>
                                                 </span>
                                             )}
 
-                                            {/* Minus (trash at MOQ) */}
-                                            {isSelected && (
-                                                <button
-                                                    type="button"
-                                                    aria-label={`${atMin ? 'Remove' : 'One less'} ${item.name}`}
-                                                    onClick={() => {
-                                                        if (quantity > moq) handleQuantityChange(lastAddedCartItem.id, quantity - 1);
-                                                        else handleDeleteItem(lastAddedCartItem.id);
-                                                    }}
-                                                    className={`absolute z-[1] grid place-items-center rounded-sm bg-white text-blue-600 border-[1.5px] border-blue-600 hover:bg-blue-600 hover:text-white transition-colors
-                    ${isCardImageView ? 'bottom-1.5 left-1.5 w-7 h-7' : 'bottom-2 left-2 w-8 h-8'}`}
-                                                >
-                                                    {atMin ? <FiTrash2 size={16} /> : <FiMinus size={16} />}
-                                                </button>
-                                            )}
-
-                                            {/* Edit (mouse / trackpad only) */}
+                                            {/* Edit: top-right, hamesha dikhta hai (phone par bhi) */}
                                             <button
                                                 type="button"
                                                 aria-label={`Edit ${item.name}`}
                                                 onClick={openEdit}
-                                                className={`hidden md:grid absolute z-[1] place-items-center rounded-sm bg-transparent text-gray-500 border border-transparent hover:text-blue-600 hover:border-gray-200 hover:bg-white transition-colors
-    ${isCardImageView ? 'bottom-1.5 right-1.5 w-7 h-7' : 'bottom-2 right-2 w-8 h-8'}`}
+                                                className="grid absolute top-1 right-1 z-[1] place-items-center w-6 h-6 rounded-sm bg-white text-gray-600 border border-gray-200 hover:text-blue-600 hover:border-blue-600 transition-colors"
                                             >
-                                                <FiEdit size={15} />
+                                                <FiEdit size={13} />
                                             </button>
                                         </div>
                                     );

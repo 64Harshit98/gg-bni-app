@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import type { Item } from '../constants/models';
 import { Permissions, State } from '../enums';
 import ShowWrapper from '../context/ShowWrapper';
+import { useFormatNumber } from '../lib/formatNumber';
 
 export interface CartItem extends Partial<Item> {
   id: string;
@@ -141,6 +142,7 @@ export const GenericCartList = <T extends CartItem>({
   onPricePressEnd,
   onPriceClick,
 }: GenericCartListProps<T>) => {
+  const fmt = useFormatNumber();
 
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-1 sm:space-y-4 pb-2 px-1 pt-1 sm:pt-4">
@@ -455,7 +457,7 @@ export const GenericCartList = <T extends CartItem>({
                 {!settings.hideMrp && (
                   <div className="flex flex-col items-center flex-shrink-0 min-w-[36px]">
                     <span className="text-[10px] text-gray-500 leading-none mb-0.5">{priceLabel}</span>
-                    <span className="text-xs text-gray-500 leading-none">₹{currentBasePrice.toFixed()}</span>
+                    <span className="text-xs text-gray-500 leading-none">₹{fmt(currentBasePrice, 0)}</span>
                   </div>
                 )}
 

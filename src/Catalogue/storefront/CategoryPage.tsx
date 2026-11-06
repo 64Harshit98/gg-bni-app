@@ -8,7 +8,7 @@ import type { Item, PriceTier, AddOnOption } from '../../constants/models';
 import LeadPopUp from '../PopUp';
 import BulkQuotePopup from '../BulkQuotePopup';
 import SearchBar from '../SearchBar';
-import { TierPickerModal } from '../../Components/TierPickerModal';
+import { useItemOptions } from './useItemOptions';
 import { useLeadStatus, useStoreLinks, useStorefrontPage } from './useStorefront';
 import StorefrontError from './StorefrontError';
 import { needsLead, useStorefrontCart } from './useStorefrontCart';
@@ -50,7 +50,7 @@ const CategoryPage: React.FC = () => {
     const [filter, setFilter] = useState<Filter>('all');
     const [renderCount, setRenderCount] = useState(BATCH);
     const [bulkItem, setBulkItem] = useState<Item | null>(null);
-    const [tierItem, setTierItem] = useState<Item | null>(null);
+    //const [highlight, setHighlight] = useState<string | null>(null);
     const [highlight, setHighlight] = useState<string | null>(null);
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
@@ -154,8 +154,9 @@ const CategoryPage: React.FC = () => {
 
     const addLine = (item: Item, tier?: PriceTier, qty?: number, addOns?: AddOnOption[]) => {
         const withTier: Item = tier ? { ...item, mrp: tier.mrp, salesPrice: tier.salesPrice, discount: tier.discount ?? 0, tierLabel: tier.label, unitMultiplier: tier.quantity } as CartLineItem : item;
-        cart.addToCart(withTier, tier?.id, groupId, qty, addOns);
+                cart.addToCart(withTier, tier?.id, groupId, qty, addOns);
     };
+       const options = useItemOptions({ listed, settings, pricesVisible, requireLead: actions.requireLead, addLine });
 
     const renderCard = (item: Item, i: number, opts: { rail?: boolean } = {}) => {
         const qty = cart.quantityOf(item.id);
@@ -164,11 +165,11 @@ const CategoryPage: React.FC = () => {
             <ProductCard key={item.id} id={opts.rail ? undefined : String(item.id)} rail={opts.rail} tone={i} name={item.name} unit={s.unit}
                 images={getItemImages(item)} price={s.price} mrp={s.mrp} slabPrice={s.slabPrice} priceHidden={!pricesVisible}
                 discountPercent={s.discountPercent} showDiscount={s.showDiscount} lowStock={s.lowStock} bulkFrom={s.bulkFrom}
-                outOfStock={s.outOfStock} canNotify={s.canNotify} notified={!!actions.notified[item.id!]} hasOptions={s.hasOptions}
+                outOfStock={s.outOfStock} canNotify={s.canNotify} notified={!!actions.notified[item.id!]} hasOptions={options.hasVariants(item)}
                 inCart={qty} highlight={highlight === String(item.id)}
                 onOpen={() => openProduct(item)}
-                onAdd={() => (s.hasOptions ? openProduct(item) : actions.requireLead(() => addLine(item)))}
-                onInc={() => (s.hasOptions ? (item.addOnGroups?.length ? openProduct(item) : setTierItem(item)) : cart.updateQuantity(item.id!, 1))}
+                onAdd={() => options.start(item)}
+                                onInc={() => (options.needsChoice(item) ? options.start(item) : cart.updateQuantity(item.id!, 1))}
                 onDec={() => cart.updateQuantity(item.id!, -1)}
                 onNotify={() => actions.notify(item)} />
         );
@@ -334,16 +335,16 @@ const CategoryPage: React.FC = () => {
                 {body}
             </main>
 
-            <StoreFooter name={name} about={business.brandingText} address={storeAddress(business)}
+            <StoreFooter name={name} logo={business.companyLogo}
+                tagline={[business.businessCategory, business.city].filter(Boolean).join(' · ')}
+                about={business.brandingText} address={storeAddress(business)}
                 phone={formatPhone(business.phoneNumber)} whatsapp={formatPhone(business.whatsappNumber)}
                 instagram={business.instagram} facebook={business.facebook} gstin={business.gstin} email={business.email} />
-
             {!productSlug && <CartBar count={cart.cartCount} total={cart.cartTotal} hideTotal={!pricesVisible} onClick={() => navigate(links.checkout())} />}
             {!productSlug && <WhatsAppFab href={waHref} lifted={cart.cartCount > 0} />}
 
             {bulkItem && <BulkQuotePopup item={bulkItem} companyId={companyId} onClose={() => setBulkItem(null)} />}
-            <TierPickerModal item={tierItem} isOpen={!!tierItem} onClose={() => setTierItem(null)} hidePrice={!pricesVisible}
-                onSelect={(item, tier) => actions.requireLead(() => addLine(item, tier.id === '__base__' ? undefined : tier))} />
+            {options.modals}
             <AskSheet open={actions.askOpen} itemName={actions.askItem?.name} onClose={actions.closeAsk} onSubmit={actions.submitQuestion} />
             {actions.toast && (
                 <div className="fixed inset-x-3 top-3 z-[2100] md:left-1/2 md:w-[420px] md:-translate-x-1/2">

@@ -23,6 +23,7 @@ import { Permissions } from '../../enums/permissions.enum';
 import { Spinner } from '../../constants/Spinner';
 import { useWhatsappProvider } from '../../Pages/Additional/Whatsapp/useWhatsappProvider';
 import { useOrderCommunication } from '../Orders/hooks'; // ← adjust path if needed
+import { useFormatNumber } from '../../lib/formatNumber';
 
 import type { TransactionItem, ExchangeItem } from './ordersReturn.types';
 import {
@@ -153,8 +154,8 @@ const TypeCards: React.FC<{
             aria-pressed={on}
             onClick={() => onChange(o.v)}
             className={`grid min-w-0 gap-0.5 rounded-sm border text-left transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${on
-                ? 'border-2 border-[#c2410c] bg-[#ffedd5] px-[9px] py-[7px]'
-                : 'border-[#7a8aa3] bg-white px-2.5 py-2 hover:bg-[#fff8f2]'
+              ? 'border-2 border-[#c2410c] bg-[#ffedd5] px-[9px] py-[7px]'
+              : 'border-[#7a8aa3] bg-white px-2.5 py-2 hover:bg-[#fff8f2]'
               }`}
           >
             <b className={`truncate text-sm font-semibold ${on ? 'text-[#9a3412]' : 'text-[#0f172b]'}`}>{o.t}</b>
@@ -168,6 +169,7 @@ const TypeCards: React.FC<{
 
 const OrdersReturnPage: React.FC = () => {
   const navigate = useNavigate();
+  const fmt = useFormatNumber();
   const { currentUser } = useAuth();
   const { state } = useLocation();
 
@@ -278,7 +280,7 @@ const OrdersReturnPage: React.FC = () => {
     discountDeducted
   } = useReturnSummary(itemsToReturn, exchangeItems, selectedSale, modeOfReturn);
 
-    const {
+  const {
     isDrawerOpen, setIsDrawerOpen,
     exchangeBalanceAction, setExchangeBalanceAction,
     returnSuccess, setReturnSuccess,
@@ -301,7 +303,7 @@ const OrdersReturnPage: React.FC = () => {
     availableItems,
     finalBalance,
     isDueSale,
-        setIsLoading,
+    setIsLoading,
     setModal,
     refreshSelectedOrder,
   });
@@ -368,7 +370,7 @@ const OrdersReturnPage: React.FC = () => {
   const exchangeBlocked = isExchange && exchangeItems.length === 0;
   const balanceTone = finalBalance >= 0 ? 'text-[#9a3412]' : 'text-[#d5000c]';
   const balancePanel = finalBalance >= 0 ? 'bg-[#ffedd5]' : 'bg-[#ffeef0]';
-  const actionLabel = `Process ${isExchange ? 'exchange' : modeOfReturn.toLowerCase()} · ₹${Math.abs(finalBalance).toFixed(2)}`;
+  const actionLabel = `Process ${isExchange ? 'exchange' : modeOfReturn.toLowerCase()} · ₹${fmt(Math.abs(finalBalance), 2)}`;
 
   // Due on order: same formula as the Orders page (totalAmount - paidAmount)
   const dueOnOrder = selectedSale
@@ -404,7 +406,7 @@ const OrdersReturnPage: React.FC = () => {
         <span className={`text-sm font-medium ${balanceTone}`}>{getBalanceLabel()}</span>
       )}
       <b className={`${big ? 'text-[26px] leading-8' : 'text-[22px] leading-7'} font-semibold tracking-tight tabular-nums ${balanceTone}`}>
-        ₹{Math.abs(finalBalance).toFixed(2)}
+        ₹{fmt(Math.abs(finalBalance), 2)}
       </b>
     </div>
   );
@@ -412,7 +414,7 @@ const OrdersReturnPage: React.FC = () => {
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-[#fff5ec] text-[#0f172b]">
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} theme="catalogue" />}
-            <BarcodeScanner isOpen={scannerPurpose !== null} onClose={() => setScannerPurpose(null)} onScanSuccess={handleBarcodeScanned} />
+      <BarcodeScanner isOpen={scannerPurpose !== null} onClose={() => setScannerPurpose(null)} onScanSuccess={handleBarcodeScanned} />
 
       {returnSuccess && (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4">
@@ -561,7 +563,7 @@ const OrdersReturnPage: React.FC = () => {
                               {sale.userName}{' '}
                               <span className="font-normal text-[#5b6b86]">({sale.orderId || 'N/A'})</span>
                             </p>
-                            <p className="flex-none text-sm font-semibold tabular-nums text-[#9a3412]">₹{calculatedAmount.toFixed(2)}</p>
+                            <p className="flex-none text-sm font-semibold tabular-nums text-[#9a3412]">₹{fmt(calculatedAmount, 2)}</p>
                           </div>
                         </div>
                       );
@@ -611,10 +613,10 @@ const OrdersReturnPage: React.FC = () => {
                     <b className="block truncate text-[13px] font-semibold">Catalogue order</b>
                   </Fact>
                   <Fact label="Paid">
-                    <b className="block text-[13px] font-semibold tabular-nums text-[#008236]">₹{paidAmountOnSale.toFixed(2)}</b>
+                    <b className="block text-[13px] font-semibold tabular-nums text-[#008236]">₹{fmt(paidAmountOnSale, 2)}</b>
                   </Fact>
                   <Fact label="Due on order">
-                    <b className="block text-[13px] font-semibold tabular-nums">₹{dueOnOrder.toFixed(2)}</b>
+                    <b className="block text-[13px] font-semibold tabular-nums">₹{fmt(dueOnOrder, 2)}</b>
                   </Fact>
                   <Fact label="Earlier returns">
                     <b className="block text-[13px] font-semibold">
@@ -698,7 +700,7 @@ const OrdersReturnPage: React.FC = () => {
                       <div className="flex flex-wrap justify-end gap-x-6 gap-y-1 rounded-sm border-t border-[#f6e1d0] bg-[#fff8f2] px-4 py-2.5 text-[13px] text-[#45556c]">
                         <span>Selected <b className="tabular-nums text-[#0f172b]">{selectedReturnIds.size} of {originalSaleItems.length}</b> items</span>
                         <span>Return qty <b className="tabular-nums text-[#0f172b]">{returnQty}</b></span>
-                        <span>Return value <b className="tabular-nums text-[#0f172b]">₹{totalReturnGross.toFixed(2)}</b></span>
+                        <span>Return value <b className="tabular-nums text-[#0f172b]">₹{fmt(totalReturnGross, 2)}</b></span>
                       </div>
                     </>
                   )}
@@ -809,17 +811,17 @@ const OrdersReturnPage: React.FC = () => {
                 <Section className="xl:hidden" title="Return summary">
                   <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 text-sm">
                     <dt className="text-[#45556c]">Return value</dt>
-                    <dd className="text-right tabular-nums">₹{totalReturnGross.toFixed(2)}</dd>
+                    <dd className="text-right tabular-nums">₹{fmt(totalReturnGross, 2)}</dd>
                     {discountDeducted > 0 && (
                       <>
                         <dt className="text-xs text-[#d5000c]">Less bill discount</dt>
-                        <dd className="text-right text-xs tabular-nums text-[#d5000c]">- ₹{discountDeducted.toFixed(2)}</dd>
+                        <dd className="text-right text-xs tabular-nums text-[#d5000c]">- ₹{fmt(discountDeducted, 2)}</dd>
                       </>
                     )}
                     {isExchange && (
                       <>
                         <dt className="text-[#45556c]">Exchange value</dt>
-                        <dd className="text-right tabular-nums text-[#9a3412]">₹{totalExchangeValue.toFixed(2)}</dd>
+                        <dd className="text-right tabular-nums text-[#9a3412]">₹{fmt(totalExchangeValue, 2)}</dd>
                       </>
                     )}
                   </dl>
@@ -836,7 +838,7 @@ const OrdersReturnPage: React.FC = () => {
             <div className="flex flex-none items-center gap-3 border-t border-[#f6e1d0] bg-white px-4 py-3 xl:hidden">
               <div className="min-w-0">
                 <span className={`block text-xs ${balanceTone}`}>{getBalanceLabel()}</span>
-                <b className={`block text-xl leading-[26px] tabular-nums ${balanceTone}`}>₹{Math.abs(finalBalance).toFixed(2)}</b>
+                <b className={`block text-xl leading-[26px] tabular-nums ${balanceTone}`}>₹{fmt(Math.abs(finalBalance), 2)}</b>
               </div>
               <button
                 onClick={handleProcessReturn}
@@ -869,23 +871,23 @@ const OrdersReturnPage: React.FC = () => {
               {/* Financials */}
               <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 text-sm">
                 <dt className="text-[#45556c]">Return value ({returnQty} {returnQty === 1 ? 'pc' : 'pcs'})</dt>
-                <dd className="text-right tabular-nums">₹{totalReturnGross.toFixed(2)}</dd>
+                <dd className="text-right tabular-nums">₹{fmt(totalReturnGross, 2)}</dd>
                 {discountDeducted > 0 && (
                   <>
                     <dt className="text-[#d5000c]">Less: proportional discount</dt>
-                    <dd className="text-right tabular-nums text-[#d5000c]">- ₹{discountDeducted.toFixed(2)}</dd>
+                    <dd className="text-right tabular-nums text-[#d5000c]">- ₹{fmt(discountDeducted, 2)}</dd>
                   </>
                 )}
                 <dt className="text-[#45556c]">Paid on this order</dt>
-                <dd className="text-right tabular-nums">₹{paidAmountOnSale.toFixed(2)}</dd>
+                <dd className="text-right tabular-nums">₹{fmt(paidAmountOnSale, 2)}</dd>
                 <dt className="mt-1 border-t border-[#f6e1d0] pt-2 text-base font-semibold">Net return value</dt>
                 <dd className="mt-1 border-t border-[#f6e1d0] pt-2 text-right text-base font-semibold tabular-nums">
-                  ₹{(totalReturnGross - discountDeducted).toFixed(2)}
+                  ₹{fmt(totalReturnGross - discountDeducted, 2)}
                 </dd>
                 {isExchange && (
                   <>
                     <dt className="text-[#45556c]">Less: new items value</dt>
-                    <dd className="text-right tabular-nums text-[#9a3412]">- ₹{totalExchangeValue.toFixed(2)}</dd>
+                    <dd className="text-right tabular-nums text-[#9a3412]">- ₹{fmt(totalExchangeValue, 2)}</dd>
                   </>
                 )}
               </dl>
@@ -911,8 +913,8 @@ const OrdersReturnPage: React.FC = () => {
               <button
                 onClick={handleProcessReturn}
                 className={`mt-auto h-[54px] w-full rounded-sm px-4 text-[15px] font-semibold transition-colors ${exchangeBlocked
-                    ? 'cursor-not-allowed bg-[#c2410c]/45 text-white'
-                    : 'bg-[#c2410c] text-white hover:bg-[#9a3412]'
+                  ? 'cursor-not-allowed bg-[#c2410c]/45 text-white'
+                  : 'bg-[#c2410c] text-white hover:bg-[#9a3412]'
                   }`}
               >
                 {actionLabel}

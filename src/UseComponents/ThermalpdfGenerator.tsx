@@ -2,7 +2,7 @@ import jsPDF from 'jspdf';
 import { ACTION } from '../enums';
 import type { InvoiceData } from './pdfGenerator';
 import { drawWatermark } from '../Components/pdfWatermark';
-import { splitAddOns } from './addOnText';
+import { splitAddOns, nameWithBase } from './addOnText';
 import { needsImageText, textToImage, installUnicodeText } from './textToImage';
 
 export const generateThermalReceipt = (
@@ -103,19 +103,18 @@ export const generateThermalReceipt = (
             }
         }
 
-        const { baseName, addOnText } = splitAddOns(item);
-
-        // Estimate line wrap for height (name + add-ons)
+        const { addOnPdfText } = splitAddOns(item);
+        const baseName = nameWithBase(item, qty > 0 ? taxableAmt / qty : 0);
         const lines = Math.max(1, Math.ceil(baseName.length / charsPerLine));
-        const addOnLinesEst = addOnText
-            ? Math.ceil((addOnText.length + 2) / charsPerLine)
+        const addOnLinesEst = addOnPdfText
+            ? addOnPdfText.split('\n').reduce((s, l) => s + Math.max(1, Math.ceil((l.length + 2) / charsPerLine)), 0)
             : 0;
         itemsAreaHeight += ((lines + addOnLinesEst) * 3) + 2;
 
         const nameImg = needsImageText(baseName) ? textToImage(baseName, nameWrapWidth, 7) : null;
         if (nameImg) itemsAreaHeight += nameImg.heightMm;
 
-        return { name: baseName, nameImg, addOnText, qty, rate: mrp, amount: finalAmount };
+        return { name: baseName, nameImg, addOnText: addOnPdfText, qty, rate: mrp, amount: finalAmount };
     });
 
     const billDiscount = Number(data.billDiscount) || 0;
@@ -230,7 +229,7 @@ export const generateThermalReceipt = (
     processedItems.forEach((item) => {
         const nameLines = doc.splitTextToSize(item.name, nameWrapWidth);
         const addOnLines = item.addOnText
-            ? doc.splitTextToSize(`+ ${item.addOnText}`, nameWrapWidth)
+            ? item.addOnText.split('\n').flatMap((l: string) => doc.splitTextToSize(`+ ${l}`, nameWrapWidth))
             : [];
 
         doc.text(item.qty.toString(), colQty, currentY, { align: 'right' });

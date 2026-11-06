@@ -107,9 +107,10 @@ export const useSalesCommunication = ({
             }
             const { itemAmount, discount1Amount, discount2Amount, d1Pct, d2Pct, absoluteDiscount } =
                 calculatePdfItemDiscounts({ ...item, finalPrice: pdfLineAmount });
-            return {
+                        return {
                 sno: index + 1,
                 name: item.name,
+                addOnLines: item.addOnLines,
                 quantity: item.quantity,
                 unit: fullItem?.unit || item.unit || "Pcs",
                 listPrice: item.mrp,

@@ -37,6 +37,8 @@ interface ItemEditDrawerProps {
     onDraftChange?: (draft: Item, fresh: boolean) => void;
     /** Close after a successful save (default true) */
     closeOnSave?: boolean;
+    /** Force a theme. If not passed, it is detected from the route (CHOME = catalogue orange) */
+    theme?: 'catalogue' | 'pos';
 }
 
 // Brand colours: blue in POS, the storefront orange inside the Catalogue app
@@ -94,17 +96,17 @@ const formatImageUrl = (url: string | null | undefined): string | null => {
 
 // Shared control styles — border-control outline, 8px radius, brand-blue focus ring
 const INPUT_CLS =
-    'flex h-10 w-full min-w-0 rounded-lg border border-[#7a8aa3] bg-white px-3 text-sm text-[#0f172b] ' +
+    'flex h-10 w-full min-w-0 rounded-sm border border-[#7a8aa3] bg-white px-3 text-sm text-[#0f172b] ' +
     'placeholder:text-[#5b6b86] focus-visible:outline-none focus-visible:border-(--dr-primary) ' +
     'focus-visible:ring-2 focus-visible:ring-(--dr-primary)/40 disabled:cursor-not-allowed disabled:opacity-45';
 const INPUT_WARN_CLS = '!border-[#bb4d00]';
 const SMALL_INPUT_CLS =
-    'w-full h-9 rounded-lg border border-[#7a8aa3] bg-white px-2 py-1 text-sm text-[#0f172b] outline-none ' +
+    'w-full h-9 rounded-sm border border-[#7a8aa3] bg-white px-2 py-1 text-sm text-[#0f172b] outline-none ' +
     'focus:border-(--dr-primary) focus:ring-2 focus:ring-(--dr-primary)/40 disabled:opacity-45';
 const LABEL_CLS = 'text-xs font-medium text-[#45556c]';
 const SMALL_LABEL_CLS = 'text-[10px] font-medium text-[#5b6b86] block mb-1';
 const BTN_SECONDARY =
-    'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-[#7a8aa3] bg-white ' +
+    'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-sm border border-[#7a8aa3] bg-white ' +
     'px-3 h-8 text-xs font-medium text-[#0f172b] hover:bg-(--dr-sunken) ' +
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--dr-primary) focus-visible:ring-offset-2 ' +
     'disabled:pointer-events-none disabled:opacity-45';
@@ -124,9 +126,9 @@ const SectionCard: React.FC<{
     hint?: string;
     children: React.ReactNode;
 }> = ({ icon, tone = 'blue', title, hint, children }) => (
-    <section className="rounded-xl border border-(--dr-line) bg-white shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] overflow-hidden">
+    <section className="rounded-sm border border-(--dr-line) bg-white shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] overflow-hidden">
         <div className="flex items-center gap-2.5 px-4 py-3 border-b border-(--dr-line)">
-            <span className={`grid h-8 w-8 place-items-center rounded-lg ${TONE_CLS[tone]}`}>{icon}</span>
+            <span className={`grid h-8 w-8 place-items-center rounded-sm ${TONE_CLS[tone]}`}>{icon}</span>
             <b className="text-[15px] font-semibold text-[#0f172b]">{title}</b>
             {hint && <small className="ml-auto text-xs text-[#5b6b86]">{hint}</small>}
         </div>
@@ -225,10 +227,10 @@ const UNIT_OPTIONS = [
     { value: 'ton', label: 'Ton (1000)' },
 ];
 
-export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, onClose, onSaveSuccess, itemGroupRoute = '/item-group', variant = 'drawer', onDraftChange, closeOnSave = true }) => {
+export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, onClose, onSaveSuccess, itemGroupRoute = '/item-group', variant = 'drawer', onDraftChange, closeOnSave = true, theme }) => {
     const isPanel = variant === 'panel';
     const { pathname } = useLocation();
-    const isCatalogue = pathname.startsWith(ROUTES.CHOME);
+    const isCatalogue = theme ? theme === 'catalogue' : pathname.startsWith(ROUTES.CHOME);
     const themeVars = THEME_VARS[isCatalogue ? 'orange' : 'blue'] as React.CSSProperties;
     const navigate = useNavigate();
     const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -944,7 +946,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 {/* CROP MODAL */}
                 {showCropModal && rawImageSrc && (
                     <div className="absolute inset-0 z-50 flex items-center justify-center bg-[#020618]/70 px-4">
-                        <div className="bg-white rounded-xl shadow-[0_10px_28px_rgba(21,48,140,0.14)] w-full max-w-md p-4 flex flex-col gap-3">
+                        <div className="bg-white rounded-sm shadow-[0_10px_28px_rgba(21,48,140,0.14)] w-full max-w-md p-4 flex flex-col gap-3">
                             <h3 className="text-base font-semibold text-[#0f172b]">Crop Image</h3>
                             <p className="text-xs text-[#45556c]">Drag to select crop area. Tap <strong>Use Full Image</strong> to skip.</p>
                             <div className="flex justify-center overflow-hidden" style={{ maxHeight: 'calc(80vh - 180px)' }}>
@@ -972,19 +974,19 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                         if (cameraInputRef.current) cameraInputRef.current.value = '';
                                         if (fileInputRef.current) fileInputRef.current.value = '';
                                     }}
-                                    className="px-3 h-9 text-xs font-medium text-[#45556c] rounded-lg hover:bg-(--dr-sunken)"
+                                    className="px-3 h-9 text-xs font-medium text-[#45556c] rounded-sm hover:bg-(--dr-sunken)"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     onClick={async () => { if (pendingRawFile.current) await applyCompression(pendingRawFile.current); setShowCropModal(false); }}
-                                    className="px-3 h-9 text-xs font-medium text-[#0f172b] bg-white border border-[#7a8aa3] rounded-lg hover:bg-(--dr-sunken)"
+                                    className="px-3 h-9 text-xs font-medium text-[#0f172b] bg-white border border-[#7a8aa3] rounded-sm hover:bg-(--dr-sunken)"
                                 >
                                     Use Full Image
                                 </button>
                                 <button
                                     onClick={handleCropConfirm}
-                                    className="px-4 h-9 text-xs font-medium text-white bg-(--dr-primary) rounded-lg hover:bg-(--dr-primary-hover)"
+                                    className="px-4 h-9 text-xs font-medium text-white bg-(--dr-primary) rounded-sm hover:bg-(--dr-primary-hover)"
                                 >
                                     Crop & Use
                                 </button>
@@ -1031,7 +1033,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                     {!isPanel && (
                         <button
                             onClick={onClose}
-                            className="order-1 md:order-none grid h-10 w-10 place-items-center rounded-lg text-[#45556c] hover:bg-(--dr-sunken) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--dr-primary)"
+                            className="order-1 md:order-none grid h-10 w-10 place-items-center rounded-sm text-[#45556c] hover:bg-(--dr-sunken) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--dr-primary)"
                             aria-label="Close"
                         >
                             <FiX size={20} />
@@ -1057,7 +1059,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                             <div className={`grid gap-4 items-start ${isPanel ? '' : 'md:grid-cols-[240px_minmax(0,1fr)]'}`}>
                                 {/* ===== LEFT COLUMN: photo + summary ===== */}
                                 <div className="grid gap-3 content-start">
-                                    <div className="rounded-xl border border-(--dr-line) bg-white shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] overflow-hidden">
+                                    <div className="rounded-sm border border-(--dr-line) bg-white shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] overflow-hidden">
                                         <div className="grid grid-cols-[110px_minmax(0,1fr)] items-center md:block">
                                             <ImagePreview imageUrl={imagePreview} alt={formData.name || "Item Preview"} />
 
@@ -1160,14 +1162,14 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                         <div key={url} className="relative w-16 h-16">
                                                             <SafeImage
                                                                 src={url}
-                                                                className="w-full h-full object-cover rounded-lg border border-(--dr-line)"
+                                                                className="w-full h-full object-cover rounded-sm border border-(--dr-line)"
                                                                 fallback={
-                                                                    <div className="w-full h-full grid place-items-center rounded-lg border border-(--dr-line) bg-(--dr-sunken) text-[#5b6b86]">
+                                                                    <div className="w-full h-full grid place-items-center rounded-sm border border-(--dr-line) bg-(--dr-sunken) text-[#5b6b86]">
                                                                         <FiPackage size={20} />
                                                                     </div>
                                                                 }
                                                                 brokenFallback={
-                                                                    <div className="w-full h-full grid place-items-center rounded-lg border border-(--dr-line) bg-(--dr-sunken) text-[#5b6b86]">
+                                                                    <div className="w-full h-full grid place-items-center rounded-sm border border-(--dr-line) bg-(--dr-sunken) text-[#5b6b86]">
                                                                         <BrokenImageIcon size={20} />
                                                                     </div>
                                                                 }
@@ -1185,14 +1187,14 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                         <div key={src + idx} className="relative w-16 h-16">
                                                             <SafeImage
                                                                 src={src}
-                                                                className="w-full h-full object-cover rounded-lg border border-(--dr-line)"
+                                                                className="w-full h-full object-cover rounded-sm border border-(--dr-line)"
                                                                 fallback={
-                                                                    <div className="w-full h-full grid place-items-center rounded-lg border border-(--dr-line) bg-(--dr-sunken) text-[#5b6b86]">
+                                                                    <div className="w-full h-full grid place-items-center rounded-sm border border-(--dr-line) bg-(--dr-sunken) text-[#5b6b86]">
                                                                         <FiPackage size={20} />
                                                                     </div>
                                                                 }
                                                                 brokenFallback={
-                                                                    <div className="w-full h-full grid place-items-center rounded-lg border border-(--dr-line) bg-(--dr-sunken) text-[#5b6b86]">
+                                                                    <div className="w-full h-full grid place-items-center rounded-sm border border-(--dr-line) bg-(--dr-sunken) text-[#5b6b86]">
                                                                         <BrokenImageIcon size={20} />
                                                                     </div>
                                                                 }
@@ -1212,7 +1214,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                     </div>
 
                                     {/* AT THE COUNTER summary (display only) */}
-                                    <div className="hidden md:grid rounded-xl border border-(--dr-line) bg-white p-3.5 gap-2 shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]">
+                                    <div className="hidden md:grid rounded-sm border border-(--dr-line) bg-white p-3.5 gap-2 shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]">
                                         <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]">At the counter</div>
                                         <div>
                                             <span className="text-2xl font-semibold tabular-nums text-[#0f172b]">{fmtINR(uiBase)}</span>{' '}
@@ -1234,18 +1236,20 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
 
                                     {/* STOCK LOCATIONS + TRANSFER (desktop) */}
                                     {isDesktop && isOpen && item?.id && (
-                                        <ItemStockLocations
-                                            itemId={item.id}
-                                            itemName={String(formData.name || item.name || '')}
-                                            unit={formData.unit}
-                                            barcode={formData.barcode}
-                                            theme={isCatalogue ? 'orange' : 'blue'}
-                                            onTransferred={refreshStockAfterTransfer}
-                                        />
+                                        <div className="rounded-sm overflow-hidden">
+                                            <ItemStockLocations
+                                                itemId={item.id}
+                                                itemName={String(formData.name || item.name || '')}
+                                                unit={formData.unit}
+                                                barcode={formData.barcode}
+                                                theme={isCatalogue ? 'orange' : 'blue'}
+                                                onTransferred={refreshStockAfterTransfer}
+                                            />
+                                        </div>
                                     )}
 
                                     {uiIssueCount > 0 && (
-                                        <div className="flex items-start gap-2 rounded-lg bg-[#fff3dd] px-3 py-2 text-xs text-[#bb4d00]">
+                                        <div className="flex items-start gap-2 rounded-sm bg-[#fff3dd] px-3 py-2 text-xs text-[#bb4d00]">
                                             <FiAlertTriangle size={14} className="mt-px shrink-0" />
                                             <span><b>{uiIssueCount} {uiIssueCount === 1 ? 'thing' : 'things'} to check</b> — {uiIssueNames.join(', ')}. You can still save.</span>
                                         </div>
@@ -1359,7 +1363,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                         <button
                                                             type="button"
                                                             onClick={() => setShowCategoryDropdown(false)}
-                                                            className="px-2 h-10 text-xs font-medium text-[#45556c] rounded-lg hover:bg-(--dr-sunken)"
+                                                            className="px-2 h-10 text-xs font-medium text-[#45556c] rounded-sm hover:bg-(--dr-sunken)"
                                                         >
                                                             Cancel
                                                         </button>
@@ -1417,7 +1421,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                             </FieldWrap>
 
                                             {unitChangeWarning && (
-                                                <div className="col-span-2 flex items-start gap-2 rounded-lg bg-[#fff3dd] px-3 py-2 text-[13px] text-[#bb4d00]">
+                                                <div className="col-span-2 flex items-start gap-2 rounded-sm bg-[#fff3dd] px-3 py-2 text-[13px] text-[#bb4d00]">
                                                     <FiAlertTriangle size={14} className="mt-0.5 shrink-0" />
                                                     <span>Unit changed — MRP and Sales Price are still the same values. Please review and update them for the new unit.</span>
                                                     <button onClick={() => setUnitChangeWarning(false)} aria-label="Dismiss" className="ml-auto text-[#bb4d00] hover:opacity-70">
@@ -1523,7 +1527,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                             </FieldWrap>
 
                                             <FieldWrap label="Your profit">
-                                                <div className="flex h-10 items-center rounded-lg bg-(--dr-sunken) px-3 text-sm tabular-nums text-[#5b6b86]">
+                                                <div className="flex h-10 items-center rounded-sm bg-(--dr-sunken) px-3 text-sm tabular-nums text-[#5b6b86]">
                                                     {uiProfit === null ? 'Add purchase price' : fmtINR(uiProfit)}
                                                 </div>
                                             </FieldWrap>
@@ -1667,7 +1671,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                     ) : (
                                                         <div className="space-y-3">
                                                             {priceTiers.map((tier) => (
-                                                                <div key={tier.id} className="border border-(--dr-line) rounded-lg p-3 bg-(--dr-sunken) relative">
+                                                                <div key={tier.id} className="border border-(--dr-line) rounded-sm p-3 bg-(--dr-sunken) relative">
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => removePriceTier(tier.id)}
@@ -1842,9 +1846,9 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
 
                                             {/* Add-ons: pick from the groups created in Item groups */}
                                             {enableAddOns && (
-                                                <div className="border-t border-[#dfe6fb] pt-3">
+                                                <div className="border-t border-(--dr-line) pt-3">
                                                     <div className="flex items-center gap-2.5">
-                                                        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#e6eeff] text-base font-semibold text-[#155dfc]">+</span>
+                                                        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-sm bg-(--dr-soft) text-base font-semibold text-(--dr-primary)">+</span>
                                                         <div className="min-w-0">
                                                             <b className="block text-[15px] font-semibold leading-5 text-[#0f172b]">Add-ons</b>
                                                             <small className="block text-[11px] leading-4 text-[#5b6b86]">Pick groups created in Item groups, then choose which options this item shows</small>
@@ -1852,7 +1856,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                         <button
                                                             type="button"
                                                             onClick={() => { onClose(); navigate(itemGroupRoute); }}
-                                                            className="ml-auto shrink-0 text-xs font-semibold text-[#155dfc] hover:underline"
+                                                            className="ml-auto shrink-0 text-xs font-semibold text-(--dr-primary) hover:underline"
                                                         >
                                                             Manage add-ons
                                                         </button>
@@ -1892,7 +1896,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                                 return (
                                                                     <div
                                                                         key={gid}
-                                                                        className={`inline-flex h-7 items-center rounded-full border pl-2.5 pr-1 text-xs ${open ? 'border-[#155dfc] bg-[#e6eeff]' : 'border-[#dfe6fb] bg-[#f5f7ff]'}`}
+                                                                        className={`inline-flex h-7 items-center rounded-full border pl-2.5 pr-1 text-xs ${open ? 'border-(--dr-primary) bg-(--dr-soft)' : 'border-(--dr-line) bg-(--dr-sunken)'}`}
                                                                     >
                                                                         <button
                                                                             type="button"
@@ -1905,7 +1909,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                                                 {g ? g.name : addOnsLoaded ? 'Removed group' : '…'}
                                                                             </span>
                                                                             {g && (
-                                                                                <span className={`text-[11px] ${partial ? 'font-semibold text-[#155dfc]' : 'text-[#5b6b86]'}`}>
+                                                                                <span className={`text-[11px] ${partial ? 'font-semibold text-(--dr-primary)' : 'text-[#5b6b86]'}`}>
                                                                                     {picked.length}/{g.options.length}
                                                                                 </span>
                                                                             )}
@@ -1944,7 +1948,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                         const picked = addOnPick[gid] ?? g.options.map(o => o.id);
                                                         const partial = picked.length < g.options.length;
                                                         return (
-                                                            <div className="mt-2 grid gap-1.5 rounded-lg bg-[#f5f7ff] p-2.5">
+                                                            <div className="mt-2 grid gap-1.5 rounded-sm bg-(--dr-sunken) p-2.5">
                                                                 {g.multiple && (
                                                                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#45556c]">
                                                                         <label htmlFor={`addon-limit-${gid}`}>Max choices</label>
@@ -1957,7 +1961,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                                             placeholder={Number(g.maxSelect) > 0 ? `${g.maxSelect}` : '∞'}
                                                                             onWheel={(e) => (e.target as HTMLInputElement).blur()}
                                                                             onChange={(e) => setAddOnLimit(prev => ({ ...prev, [gid]: parseInt(e.target.value, 10) || 0 }))}
-                                                                            className="h-7 w-14 rounded-md border border-[#7a8aa3] bg-white px-2 text-xs text-[#0f172b] outline-none focus:border-[#155dfc] focus:ring-2 focus:ring-[#155dfc]/40 disabled:opacity-45"
+                                                                            className="h-7 w-14 rounded-sm border border-[#7a8aa3] bg-white px-2 text-xs text-[#0f172b] outline-none focus:border-(--dr-primary) focus:ring-2 focus:ring-(--dr-primary)/40 disabled:opacity-45"
                                                                         />
                                                                         <span className="text-[11px] text-[#5b6b86]">Blank = group limit · 1 = choose one</span>
                                                                     </div>
@@ -1971,7 +1975,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                                                 disabled={isSaving}
                                                                                 checked={picked.includes(o.id)}
                                                                                 onChange={() => toggleAddOnOption(g, o.id)}
-                                                                                className="h-3.5 w-3.5 shrink-0 accent-[#155dfc]"
+                                                                                className="h-3.5 w-3.5 shrink-0 accent-(--dr-primary)"
                                                                             />
                                                                             <span className="min-w-0 flex-1 truncate" title={o.name}>{o.name}{o.itemId ? ' (item)' : ''}</span>
                                                                             <small className="shrink-0 text-[11px] text-[#5b6b86]">{Number(o.price) > 0 ? `+₹${o.price}` : 'Free'}</small>
@@ -1980,7 +1984,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                                 </div>
 
                                                                 {partial && (
-                                                                    <button type="button" onClick={() => selectAllAddOnOptions(g)} className="w-fit text-xs font-semibold text-[#155dfc] hover:underline">
+                                                                    <button type="button" onClick={() => selectAllAddOnOptions(g)} className="w-fit text-xs font-semibold text-(--dr-primary) hover:underline">
                                                                         Select all
                                                                     </button>
                                                                 )}
@@ -2048,14 +2052,14 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                     <button
                         onClick={onClose}
                         disabled={isSaving}
-                        className="hidden md:inline-flex h-10 items-center justify-center whitespace-nowrap rounded-lg px-4 text-sm font-medium text-[#0f172b] hover:bg-(--dr-sunken) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--dr-primary) focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-45"
+                        className="hidden md:inline-flex h-10 items-center justify-center whitespace-nowrap rounded-sm px-4 text-sm font-medium text-[#0f172b] hover:bg-(--dr-sunken) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--dr-primary) focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-45"
                     >
                         Cancel
                     </button>
                     <button
                         onClick={handleSave}
                         disabled={isSaving || isFetching}
-                        className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-(--dr-primary) px-5 text-sm font-medium text-white transition-colors hover:bg-(--dr-primary-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--dr-primary) focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-45"
+                        className="inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-sm bg-(--dr-primary) px-5 text-sm font-medium text-white transition-colors hover:bg-(--dr-primary-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--dr-primary) focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-45"
                     >
                         {isSaving ? <Spinner /> : <FiSave size={16} />}
                         {isSaving ? (uploadProgress !== null ? 'Uploading...' : 'Saving...') : 'Save changes'}

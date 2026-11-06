@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import type { Item } from '../constants/models';
 import { FiSearch, FiX, FiBox } from 'react-icons/fi';
+import { useFormatNumber } from '../lib/formatNumber';
 
 interface SearchableItemInputProps {
     items: Item[];
@@ -38,6 +39,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
     const [throttledQuery, setThrottledQuery] = useState<string>('');
     const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
     const [activeIndex, setActiveIndex] = useState<number>(-1);
+    const fmt = useFormatNumber();
 
     // Refs
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -349,10 +351,10 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
                                             {/* Right: Price & Stock Badge */}
                                             <div className="flex flex-col items-end flex-shrink-0 gap-1">
                                                 <span className="text-sm font-semibold text-[#0f172b] tabular-nums">
-                                                    ₹{Number(item.mrp || item.salesPrice || 0).toFixed(2)}
+                                                    ₹{fmt(item.mrp || item.salesPrice || 0, 2)}
                                                 </span>
                                                 <span className={`text-[10px] px-1.5 py-0.5 rounded-sm font-medium ${stockColor}`}>
-                                                    {stock} in stock
+                                                    {fmt(stock, 0, 3)} in stock
                                                 </span>
                                             </div>
                                         </div>

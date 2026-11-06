@@ -446,7 +446,9 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                         const remainingQty = originalQty - totalReturnedFromHistory;
 
                         const displayUnitPrice = displayPrice(item, rawUnitPrice(item));
-                        const { baseName, addOnText } = splitAddOns(item);
+                        const { baseName, addOnList } = splitAddOns(item);
+                        const showBase = addOnList.length > 0 && addOnList.every(a => a.price !== undefined);
+                        const basePrice = displayUnitPrice - addOnList.reduce((s, a) => s + (Number(a.price) || 0), 0);
 
                         return (
                             <div key={index} className={`${rowPad} py-2.5`}>
@@ -458,10 +460,18 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                                                 <span className="w-[22px] shrink-0 text-xs leading-[18px] tabular-nums text-slate-500">{index + 1}</span>
                                             )}
                                             <div className="min-w-0">
-                                                <p className="text-[13px] font-medium leading-tight text-slate-900 break-words">{baseName}</p>
-                                                {addOnText && (
-                                                    <p className="text-[11px] leading-tight text-slate-500 mt-0.5 break-words">+ {addOnText}</p>
-                                                )}
+                                                <p className="text-[13px] font-medium leading-tight text-slate-900 break-words">
+                                                    {baseName}
+                                                    {showBase && <span className="font-normal text-slate-500 tabular-nums"> · ₹{money2(basePrice)}</span>}
+                                                </p>
+                                                {addOnList.map((a, aIdx) => (
+                                                    <p key={aIdx} className="text-[11px] leading-tight text-slate-500 mt-0.5 break-words">
+                                                        + {a.name}
+                                                        {a.price !== undefined && (
+                                                            <span className="tabular-nums"> · {Number(a.price) > 0 ? `₹${money2(Number(a.price))}` : 'Free'}</span>
+                                                        )}
+                                                    </p>
+                                                ))}
                                                 {item.note && (
                                                     <p className="text-[11px] leading-tight flex items-baseline gap-1.5 mt-1">
                                                         <span className="font-semibold uppercase tracking-wider text-slate-500">Note:</span>
@@ -484,9 +494,14 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                                         <div key={rIdx} className={`${ITEM_GRID} mt-1.5`}>
                                             <div className={`min-w-0 ${returnedIndent}`}>
                                                 <p className="text-[13px] font-medium leading-tight line-through text-slate-400 break-words">{baseName}</p>
-                                                {addOnText && (
-                                                    <p className="text-[11px] leading-tight line-through text-slate-400 mt-0.5 break-words">+ {addOnText}</p>
-                                                )}
+                                                {addOnList.map((a, aIdx) => (
+                                                    <p key={aIdx} className="text-[11px] leading-tight line-through text-slate-400 mt-0.5 break-words">
+                                                        + {a.name}
+                                                        {a.price !== undefined && (
+                                                            <span className="tabular-nums"> · {Number(a.price) > 0 ? `₹${money2(Number(a.price))}` : 'Free'}</span>
+                                                        )}
+                                                    </p>
+                                                ))}
                                                 {returnMetaEl(entry.modeOfReturn, entry.returnedAt)}
                                             </div>
                                             <p className="text-right text-[13px] line-through tabular-nums text-slate-400">{entry.qty}</p>

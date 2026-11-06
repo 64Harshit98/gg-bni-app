@@ -7,7 +7,7 @@ import { generateA5Invoice } from "../../UseComponents/A5PdfGenerator";
 import { ACTION } from "../../enums/index";
 import QRCode from 'qrcode';
 import { drawWatermark } from "../../Components/pdfWatermark";
-import { splitAddOns, reserveAddOnSpace, drawAddOnText } from "../../UseComponents/addOnText";
+import { splitAddOns, nameWithBase, reserveAddOnSpace, drawAddOnText } from "../../UseComponents/addOnText";
 import { needsImageText, textToImage, NAME_IMG_W, installUnicodeText } from "../../UseComponents/textToImage";
 
 export interface CatalogueInvoiceData {
@@ -75,13 +75,14 @@ export interface CatalogueInvoiceData {
     salesPrice?: number;
     unit?: string;
     compressedImageBase64?: string;
+    addOnLines?: { name: string; price?: number }[];
   }[];
 
   specialInstruction?: string;
   grandTotal: number;
   advancePaid?: number;
   previousBalance?: number;
-   creditNoteBalance?: number;
+  creditNoteBalance?: number;
   billDiscount?: number;
   transportDetails?: {
     transportName?: string;
@@ -114,7 +115,7 @@ export const CatalogueBill = async (
       gstScheme: data.companyGstType,
       taxType: data.taxType,
       enableTriplicate: (data as any).enableTriplicate === true,
-            isCatalogue: true,
+      isCatalogue: true,
       msmeNumber: data.msmeNumber || "",
       discountDisplayFormat: data.discountDisplayMode || 'amount',
 
@@ -187,6 +188,7 @@ export const CatalogueBill = async (
         return {
           sno: index + 1,
           name: item.name,
+          addOnLines: item.addOnLines,
           hsn: "",
           quantity: qty,
           totalPcs,
@@ -195,7 +197,7 @@ export const CatalogueBill = async (
           imageBase64: item.imageBase64 || "",
           gstPercent: effectiveTaxRate,
           gstAmount: gstAmount,
-                    discountAmount: discountAmt,
+          discountAmount: discountAmt,
           // % of MRP (not sales price) so it matches the Catalogue A4 / settings preview
           discountPercent: (mrp * qty) > 0 ? (discountAmt / (mrp * qty)) * 100 : 0,
           amount: finalRowTotal
@@ -427,9 +429,10 @@ export const CatalogueBill = async (
       }
     }
 
-    const { baseName, addOnText } = splitAddOns(item);
-    addOnTexts[index] = addOnText;
-    const itemNameText = `${baseName}\n(${(item.qty * (item.unitMultiplier ?? 1))} pcs)`;
+    const { addOnPdfText } = splitAddOns(item);
+    const baseName = nameWithBase(item, rawPrice);
+    addOnTexts[index] = addOnPdfText;
+   const itemNameText = `${baseName} (${(item.qty * (item.unitMultiplier ?? 1))} pcs)`;
     nameImgs[index] = needsImageText(itemNameText)
       ? textToImage(itemNameText, NAME_IMG_W, 8, true)
       : null;
@@ -488,7 +491,7 @@ export const CatalogueBill = async (
   const hasCreditNote = creditNoteBal > 0;
   const totalDue = prevBal + currentDue;
   const hasPrevOrDue = prevBal > 0 || currentDue > 0;
-   const wordsH = hasPrevOrDue ? (hasCreditNote ? 18 : 12) : 8;
+  const wordsH = hasPrevOrDue ? (hasCreditNote ? 18 : 12) : 8;
   const leftColW = contentWidth - (hasPrevOrDue ? 70 : 0);
 
   // Emoji / non-Latin special instruction -> pre-rendered once as an image
@@ -864,7 +867,7 @@ export const CatalogueBill = async (
     doc.rect(startX, finalY, contentWidth, wordsH);
     doc.setFontSize(8); doc.setFont('helvetica', 'bold');
     doc.text(`Rs. ${convertNumberToWords(invoiceTotal)}`, startX + 2, finalY + (hasPrevOrDue ? 7 : 5.5));
-        if (hasPrevOrDue) {
+    if (hasPrevOrDue) {
       const divX = startX + leftColW;
       const totalRowY = hasCreditNote ? 16.5 : 10;
       doc.line(divX, finalY, divX, finalY + wordsH); doc.line(divX, finalY + 6, endX, finalY + 6);
@@ -925,11 +928,9 @@ export const CatalogueBill = async (
     doc.setTextColor(0); doc.setDrawColor(0);
 
     doc.setFont('helvetica', 'normal');
-    let mx = (pageWidth / 2) - ((doc.getTextWidth("Made with ") + doc.getTextWidth("Love") + doc.getTextWidth(" in India")) / 2);
     doc.setTextColor(0, 0, 0);
-    doc.text("Made with ", mx, by + 10); mx += doc.getTextWidth("Made with ");
-    doc.text("Love", mx, by + 10); mx += doc.getTextWidth("Love");
-    doc.text(" in India", mx, by + 10); doc.setTextColor(0);
+    doc.text("Made with love for a dukandar, by a dukandar", pageWidth / 2, by + 10, { align: 'center' });
+    doc.setTextColor(0);
   };
 
   renderPage(false);

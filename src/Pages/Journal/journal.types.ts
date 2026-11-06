@@ -23,8 +23,9 @@ export interface InvoiceItem {
   taxType?: string;
   taxAmount?: number;
   taxableAmount?: number;
-  salesPrice?: number;
+   salesPrice?: number;
   discountPercentage?: number;
+  addOnLines?: { name: string; price?: number }[];
 }
 
 export interface Invoice {

@@ -176,8 +176,8 @@ const ADD_ITEM_CSS = `
   .ai-bar .ai-seg{display:inline-flex}
   .ai-tabs{display:none}
 }
-.ai-seg{display:inline-flex;padding:3px;gap:2px;background:var(--surface-sunken);border:1px solid var(--border);border-radius:2px}
-.ai-seg button{height:28px;padding:0 12px;border:0;border-radius:2px;background:transparent;color:var(--ink-muted);font-size:12px;font-weight:500;line-height:28px;font-family:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.ai-seg{display:inline-flex;padding:3px;gap:2px;background:var(--surface-sunken);border:1px solid var(--border);border-radius:4px}
+.ai-seg button{height:28px;padding:0 12px;border:0;border-radius:4px;background:transparent;color:var(--ink-muted);font-size:12px;font-weight:500;line-height:28px;font-family:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
 .ai-seg button[aria-pressed="true"]{background:var(--surface);color:var(--primary-text);box-shadow:var(--shadow-card)}
 .ai-count{min-width:22px;height:20px;padding:0 6px;border-radius:999px;background:var(--surface-sunken);color:var(--ink-muted);font-size:11px;line-height:20px;text-align:center}
 .ai-seg button[aria-pressed="true"] .ai-count{background:var(--primary-soft);color:var(--primary-soft-ink)}
@@ -192,7 +192,7 @@ const ADD_ITEM_CSS = `
 @media(min-width:1280px){.ai-right{display:flex;flex-direction:column;gap:16px;width:340px;flex:none;background:var(--surface);border-left:1px solid var(--border);padding:20px;overflow-y:auto}}
 
 /* cards + form */
-.ai-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-card);min-width:0;overflow:hidden}
+.ai-card{background:var(--surface);border:1px solid var(--border);border-radius:4px;box-shadow:var(--shadow-card);min-width:0;overflow:hidden}
 .ai-fs-h{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border)}
 .ai-fs-h b{font-size:15px;font-weight:600}
 .ai-fs-h small{margin-left:auto;font-size:12px;color:var(--ink-subtle);text-align:right}
@@ -205,7 +205,7 @@ const ADD_ITEM_CSS = `
 .ai-lab{font-size:12px;font-weight:500;color:var(--ink-muted)}
 .ai-req::after{content:'*';margin-left:2px;color:var(--danger)}
 .ai-hint{font-size:11px;line-height:15px;color:var(--ink-subtle)}
-.ai-field{display:flex;align-items:center;gap:8px;height:40px;padding:0 12px;border:1px solid var(--border-control);border-radius:8px;background:var(--surface);color:var(--ink-subtle);min-width:0}
+.ai-field{display:flex;align-items:center;gap:8px;height:40px;padding:0 12px;border:1px solid var(--border-control);border-radius:4px;background:var(--surface);color:var(--ink-subtle);min-width:0}
 .ai-field input,.ai-field select,.ai-field textarea{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--ink);font-size:14px;font-family:inherit;height:100%}
 .ai-field input::placeholder,.ai-field textarea::placeholder{color:var(--ink-subtle)}
 .ai-field:focus-within{outline:2px solid var(--primary);outline-offset:1px}
@@ -224,7 +224,7 @@ const ADD_ITEM_CSS = `
 /* image block */
 .ai-img{display:grid;grid-template-columns:96px minmax(0,1fr);gap:12px 16px;align-items:center}
 @media(min-width:768px){.ai-img{grid-template-columns:112px minmax(0,1fr)}}
-.ai-drop{width:96px;height:96px;border:1.5px dashed var(--border-control);border-radius:12px;display:grid;place-content:center;justify-items:center;gap:4px;color:var(--ink-subtle);font-size:11px;text-align:center;background:var(--surface-sunken);cursor:pointer;overflow:hidden;transition:background-color .12s}
+.ai-drop{width:96px;height:96px;border:1.5px dashed var(--border-control);border-radius:4px;display:grid;place-content:center;justify-items:center;gap:4px;color:var(--ink-subtle);font-size:11px;text-align:center;background:var(--surface-sunken);cursor:pointer;overflow:hidden;transition:background-color .12s}
 .ai-drop:hover{background:var(--primary-soft)}
 .ai-drop .ai-ico{width:24px;height:24px;color:var(--primary-text)}
 .ai-drop__img{width:100%;height:100%;object-fit:cover}
@@ -235,7 +235,7 @@ const ADD_ITEM_CSS = `
 .ai-linkbtn--primary{color:var(--primary-text);font-weight:500}
 .ai-thumbs{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .ai-thumb{position:relative;width:56px;height:56px}
-.ai-thumb img{width:100%;height:100%;object-fit:cover;border-radius:8px;border:1px solid var(--border)}
+.ai-thumb img{width:100%;height:100%;object-fit:cover;border-radius:4px;border:1px solid var(--border)}
 .ai-thumb button{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:0;background:var(--danger);color:#fff;display:grid;place-items:center;cursor:pointer;padding:0}
 .ai-thumb .ai-ico{width:12px;height:12px;stroke-width:2.5}
 .ai-file{font-size:12px;color:var(--ink-muted);max-width:100%}
@@ -247,7 +247,7 @@ const ADD_ITEM_CSS = `
 .ai-tag button:hover{color:var(--danger)}
 
 /* buttons */
-.ai-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border-radius:8px;border:1px solid transparent;background:transparent;font-size:14px;font-weight:500;line-height:20px;font-family:inherit;cursor:pointer;white-space:nowrap;transition:background-color .12s,border-color .12s}
+.ai-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border-radius:4px;border:1px solid transparent;background:transparent;font-size:14px;font-weight:500;line-height:20px;font-family:inherit;cursor:pointer;white-space:nowrap;transition:background-color .12s,border-color .12s}
 .ai-btn--primary{background:var(--primary);color:#fff}
 .ai-btn--primary:hover:not([disabled]){background:var(--primary-hover)}
 .ai-btn--secondary{background:var(--surface);color:var(--ink);border-color:var(--border-control)}
@@ -260,23 +260,23 @@ const ADD_ITEM_CSS = `
 .ai-btn--block{width:100%}
 .ai-btn[disabled]{opacity:.45;cursor:not-allowed}
 .ai-btn:focus-visible,.ai-seg button:focus-visible,.ai-drop:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
-.ai-iconbtn{width:32px;height:32px;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:var(--ink-subtle);cursor:pointer}
+.ai-iconbtn{width:32px;height:32px;display:grid;place-items:center;border:0;border-radius:4px;background:transparent;color:var(--ink-subtle);cursor:pointer}
 .ai-iconbtn:hover{background:var(--surface-sunken);color:var(--ink)}
 
 /* chips */
-.ai-tint{width:32px;height:32px;flex:none;display:inline-grid;place-items:center;border-radius:8px;background:var(--primary-soft);color:var(--primary-soft-ink)}
+.ai-tint{width:32px;height:32px;flex:none;display:inline-grid;place-items:center;border-radius:4px;background:var(--primary-soft);color:var(--primary-soft-ink)}
 .ai-tint .ai-ico{width:18px;height:18px}
 .ai-tint--green{background:var(--success-soft);color:var(--success)}
 .ai-tint--amber{background:var(--warning-soft);color:var(--warning)}
 .ai-badge{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.03em;background:var(--success-soft);color:var(--success)}
 
 /* tiers + slabs */
-.ai-sub{border:1px solid var(--border);border-radius:8px;padding:12px;background:var(--surface-sunken);position:relative;display:grid;gap:10px}
+.ai-sub{border:1px solid var(--border);border-radius:4px;padding:12px;background:var(--surface-sunken);position:relative;display:grid;gap:10px}
 .ai-sub .ai-x{position:absolute;top:6px;right:6px}
 .ai-g2{display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr))}
 .ai-g3{display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr))}
 @media(min-width:1024px){.ai-g3{grid-template-columns:repeat(4,minmax(0,1fr))}}
-.ai-slab{position:relative;display:grid;gap:8px;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--surface-sunken)}
+.ai-slab{position:relative;display:grid;gap:8px;grid-template-columns:repeat(2,minmax(0,1fr));align-items:end;padding:10px;border:1px solid var(--border);border-radius:4px;background:var(--surface-sunken)}
 .ai-slab__x{position:absolute;top:2px;right:2px;width:24px;height:24px}
 .ai-slab__price{grid-column:1/-1}
 .ai-slabhead{font-size:11px;font-weight:500;color:var(--ink-subtle)}
@@ -293,7 +293,7 @@ const ADD_ITEM_CSS = `
 .ai-empty{font-size:12px;color:var(--ink-subtle)}
 
 /* alerts */
-.ai-alert{padding:10px 14px;border-radius:8px;font-size:13px;font-weight:500;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ai-alert{padding:10px 14px;border-radius:4px;font-size:13px;font-weight:500;display:flex;align-items:center;justify-content:space-between;gap:8px}
 .ai-alert--danger{background:var(--danger-soft);color:var(--danger)}
 .ai-alert--success{background:var(--success-soft);color:var(--success)}
 .ai-alert span{flex:1;text-align:center}
@@ -337,21 +337,21 @@ const ADD_ITEM_CSS = `
 
 /* overlays */
 .ai-overlay{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(2,6,24,.5);padding:16px}
-.ai-dialog{background:var(--surface);border-radius:12px;box-shadow:var(--shadow-float);width:100%;max-width:512px;padding:20px;display:flex;flex-direction:column;gap:16px;max-height:90vh;overflow:auto}
+.ai-dialog{background:var(--surface);border-radius:4px;box-shadow:var(--shadow-float);width:100%;max-width:512px;padding:20px;display:flex;flex-direction:column;gap:16px;max-height:90vh;overflow:auto}
 .ai-dialog--sm{max-width:340px;text-align:center}
 .ai-dialog h2,.ai-dialog h3{margin:0;font-size:18px;line-height:26px;font-weight:600}
 .ai-dialog p{margin:0;font-size:13px;color:var(--ink-muted)}
 .ai-dialog__f{display:flex;justify-content:flex-end;gap:8px}
-@media(max-width:767px){.ai-overlay{align-items:flex-end;padding:0}.ai-dialog{border-radius:20px 20px 0 0;max-width:none}.ai-dialog--sm{border-radius:20px 20px 0 0}}
+@media(max-width:767px){.ai-overlay{align-items:flex-end;padding:0}.ai-dialog{border-radius:4px 4px 0 0;max-width:none}.ai-dialog--sm{border-radius:4px 4px 0 0}}
 .ai-meter{height:8px;border-radius:999px;background:var(--surface-sunken);overflow:hidden}
 .ai-meter div{height:100%;background:var(--primary);border-radius:999px;transition:width .1s}
-.ai-opt{display:flex;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--border-control);border-radius:8px;cursor:pointer;transition:background-color .12s}
+.ai-opt{display:flex;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--border-control);border-radius:4px;cursor:pointer;transition:background-color .12s}
 .ai-opt:hover{background:var(--surface-sunken)}
 .ai-opt--on{border:2px solid var(--primary);background:var(--primary-soft);padding:11px}
 .ai-opt input{margin-top:4px;accent-color:var(--primary)}
 .ai-opt b{display:block;font-weight:600;font-size:14px}
 .ai-opt small{font-size:12px;color:var(--ink-muted)}
-.ai-fields{background:var(--surface-sunken);border:1px solid var(--border);border-radius:8px;padding:12px}
+.ai-fields{background:var(--surface-sunken);border:1px solid var(--border);border-radius:4px;padding:12px}
 .ai-fields__g{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;font-size:13px}
 .ai-fields__g label{display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:capitalize}
 .ai-fields__g input{accent-color:var(--primary)}
@@ -359,7 +359,7 @@ const ADD_ITEM_CSS = `
 .ai-dialog--wide{max-width:720px}
 .ai-chips{display:flex;flex-wrap:wrap;gap:6px}
 .ai-chip{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:999px;background:var(--danger-soft);color:var(--danger);font-size:12px;font-weight:500}
-.ai-failwrap{border:1px solid var(--border);border-radius:8px;max-height:45vh;overflow:auto}
+.ai-failwrap{border:1px solid var(--border);border-radius:4px;max-height:45vh;overflow:auto}
 .ai-failtable{width:100%;border-collapse:collapse;font-size:12px;line-height:18px}
 .ai-failtable th{position:sticky;top:0;background:var(--surface-sunken);text-align:left;font-weight:600;color:var(--ink-muted);padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
 .ai-failtable td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top;word-break:break-word}
@@ -2182,9 +2182,9 @@ const ItemAdd: React.FC<ItemAddProps> = ({
 
           {/* ---------- Add-ons: pick from the groups created in Item groups ---------- */}
           {addOnsActive && (
-            <section className="rounded-xl border border-[#dfe6fb] bg-white p-3 shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]">
+            <section className="rounded-sm border border-[#dfe6fb] bg-white p-3 shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]">
               <div className="flex items-center gap-2.5">
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#e6eeff] text-base font-semibold text-[#155dfc]">+</span>
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-sm bg-[#e6eeff] text-base font-semibold text-[#155dfc]">+</span>
                 <div className="min-w-0">
                   <b className="block text-[15px] font-semibold leading-5 text-[#0f172b]">Add-ons</b>
                   <small className="block text-[11px] leading-4 text-[#5b6b86]">Pick groups created in Item groups, then choose which options this item shows</small>
@@ -2211,7 +2211,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                         setAddOnOpenId(id); // open its checklist right away
                       }
                     }}
-                    className="h-9 w-full min-w-0 rounded-lg border border-[#7a8aa3] bg-white px-3 text-sm text-[#0f172b] outline-none focus:border-[#155dfc] focus:ring-2 focus:ring-[#155dfc]/40"
+                    className="h-9 w-full min-w-0 rounded-sm border border-[#7a8aa3] bg-white px-3 text-sm text-[#0f172b] outline-none focus:border-[#155dfc] focus:ring-2 focus:ring-[#155dfc]/40"
                   >
                     <option value="">Add an add-on group…</option>
                     {addOnTemplates.filter(t => !addOnGroupIds.includes(t.id)).map(t => (
@@ -2284,7 +2284,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                 const picked = addOnPick[gid] ?? g.options.map(o => o.id);
                 const partial = picked.length < g.options.length;
                 return (
-                  <div className="mt-2 grid gap-1.5 rounded-lg bg-[#f5f7ff] p-2.5">
+                  <div className="mt-2 grid gap-1.5 rounded-sm bg-[#f5f7ff] p-2.5">
                     {g.multiple && (
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#45556c]">
                         <span>Max choices</span>
@@ -2295,7 +2295,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                           placeholder={Number(g.maxSelect) > 0 ? `${g.maxSelect}` : '∞'}
                           onWheel={(e) => (e.target as HTMLInputElement).blur()}
                           onChange={(e) => setAddOnLimit(prev => ({ ...prev, [gid]: parseInt(e.target.value, 10) || 0 }))}
-                          className="h-7 w-14 rounded-md border border-[#7a8aa3] bg-white px-2 text-xs text-[#0f172b] outline-none focus:border-[#155dfc] focus:ring-2 focus:ring-[#155dfc]/40"
+                          className="h-7 w-14 rounded-sm border border-[#7a8aa3] bg-white px-2 text-xs text-[#0f172b] outline-none focus:border-[#155dfc] focus:ring-2 focus:ring-[#155dfc]/40"
                         />
                         <span className="text-[11px] text-[#5b6b86]">Blank = group limit · 1 = choose one</span>
                       </div>

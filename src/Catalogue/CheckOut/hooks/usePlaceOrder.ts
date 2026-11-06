@@ -101,7 +101,17 @@ export const usePlaceOrder = ({
                 // payment time. Every other screen reads these persisted fields
                 // instead of recomputing from the company's *current* settings, so
                 // this order's numbers stay fixed unless the bill is itself edited.
-                const orderItems = buildOrderLineItems(cartItems, scheme, taxType, applyExclusiveTax);
+                const builtItems = buildOrderLineItems(cartItems, scheme, taxType, applyExclusiveTax);
+                // Orders / bill me naam ke saath amount dikhane ke liye add-on ka naam + price alag save karo.
+                // buildOrderLineItems cartItems ka hi map hai, isliye index se jodte hain (length match hone par hi).
+                const orderItems = builtItems.length === cartItems.length
+                    ? builtItems.map((oi: any, idx: number) => {
+                        const addOns = ((cartItems[idx] as any).addOns ?? []) as { name: string; price?: number }[];
+                        return addOns.length > 0
+                            ? { ...oi, addOnLines: addOns.map((a) => ({ name: a.name, price: Number(a.price) || 0 })) }
+                            : oi;
+                    })
+                    : builtItems;
                 const orderTotals = computeOrderLevelTotals(orderItems, [], 0);
 
                 // Upsert a standalone customer master record — same collection/path

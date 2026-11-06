@@ -17,6 +17,7 @@ import { db } from '../../lib/Firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import type { BarcodeSettings, BarcodeFormat } from '../Settings/BarcodeSetting';
 import { getDefaultBarcodeSettings } from '../Settings/BarcodeSetting';
+import { useFormatNumber } from '../../lib/formatNumber';
 
 // --- Data Types ---
 type PrintableItem = Item & {
@@ -59,13 +60,17 @@ const IconBarcodeEmpty = () => (
 const LabelPreview: React.FC<{
   item: Item;
   companyName: string;
+  businessAddress: string;
+  businessPhone: string;
   labelFormat: BarcodeFormat;
   showMrp: boolean;
   showSalePrice: boolean;
   showProductName: boolean;
   showBarcodeNumber: boolean;
   showShopName: boolean;
-}> = ({ item, companyName, labelFormat, showMrp, showSalePrice, showProductName, showBarcodeNumber, showShopName }) => {
+  showAddress: boolean;
+  showPhone: boolean;
+}> = ({ item, companyName, businessAddress, businessPhone, labelFormat, showMrp, showSalePrice, showProductName, showBarcodeNumber, showShopName, showAddress, showPhone }) => {
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [barcodeDataUrl, setBarcodeDataUrl] = useState('');
 
@@ -107,9 +112,21 @@ const LabelPreview: React.FC<{
       className="w-[200px] h-[200px] border border-[#cfd6e4] rounded-sm p-2 flex flex-col items-center justify-around bg-white text-black shadow-[0_6px_20px_rgba(21,48,140,0.12)]"
       style={{ fontFamily: 'Arial, sans-serif' }}
     >
-      {showShopName && (
-        <div className="text-xs font-bold text-center">{companyName}</div>
-      )}
+      <div className="w-full">
+        {showShopName && (
+          <div className="text-xs font-bold text-center">{companyName}</div>
+        )}
+        {(showAddress || showPhone) && (
+          <div className="flex items-center justify-between gap-1 w-full overflow-hidden mt-0.5">
+            <p className="m-0 flex-1 min-w-0 text-left whitespace-nowrap overflow-hidden text-[7px] leading-tight">
+              {showAddress ? businessAddress : ''}
+            </p>
+            <p className="m-0 shrink-0 max-w-[70px] text-right whitespace-nowrap overflow-hidden text-[7px] leading-tight">
+              {showPhone ? businessPhone : ''}
+            </p>
+          </div>
+        )}
+      </div>
 
       {/* Code area */}
       {isBoth ? (
@@ -173,9 +190,12 @@ const QRCodeGeneratorPage: React.FC = () => {
   const [printQueue, setPrintQueue] = useState<PrintableItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isPrinting, setIsPrinting] = useState(false);
-  const navigate = useNavigate();
+    const navigate = useNavigate();
+  const fmt = useFormatNumber();
   const [itemForPreview, setItemForPreview] = useState<PrintableItem | null>(null);
   const [companyName, setCompanyName] = useState<string>('Your Company');
+  const [businessAddress, setBusinessAddress] = useState<string>('');
+  const [businessPhone, setBusinessPhone] = useState<string>('');
   const [isPreviewOpen, setIsPreviewOpen] = useState(true);
   const [barcodeSettings, setBarcodeSettings] = useState<BarcodeSettings>(
     getDefaultBarcodeSettings('')
@@ -220,6 +240,8 @@ const QRCodeGeneratorPage: React.FC = () => {
       try {
         const businessInfo = await dbOperations.getBusinessInfo();
         setCompanyName(businessInfo.name || 'Your Company');
+        setBusinessAddress(businessInfo.address || '');
+        setBusinessPhone(businessInfo.phoneNumber || '');
 
         const settingsRef = doc(db, 'companies', currentUser.companyId!, 'settings', 'barcode-settings');
         const settingsSnap = await getDoc(settingsRef);
@@ -630,7 +652,7 @@ const QRCodeGeneratorPage: React.FC = () => {
                           <div className="text-xs text-[#5b6b86] truncate">Barcode: {item.barcode}</div>
                         </div>
                         <div className="text-right whitespace-nowrap">
-                          <div className="text-sm font-semibold text-[#0f172b] tabular-nums">₹{getDisplayPrice(item)}</div>
+                          <div className="text-sm font-semibold text-[#0f172b] tabular-nums">₹{fmt(getDisplayPrice(item), 0, 2)}</div>
                           <div className={`text-[11px] ${hasMrp ? 'text-[#5b6b86]' : 'text-[#bb4d00] font-medium'}`}>
                             {hasMrp ? 'MRP' : 'No MRP · sale price'}
                           </div>
@@ -732,12 +754,16 @@ const QRCodeGeneratorPage: React.FC = () => {
                   <LabelPreview
                     item={itemForPreview}
                     companyName={companyName}
+                    businessAddress={businessAddress}
+                    businessPhone={businessPhone}
                     labelFormat={barcodeSettings.labelFormat ?? 'both'}
                     showMrp={labelToggles.mrp}
                     showSalePrice={labelToggles.salePrice}
                     showProductName={labelToggles.productName}
                     showBarcodeNumber={labelToggles.barcodeNumber}
                     showShopName={labelToggles.shopName}
+                    showAddress={barcodeSettings.showAddressOnLabel ?? true}
+                    showPhone={barcodeSettings.showPhoneOnLabel ?? true}
                   />
                 </div>
               ) : (

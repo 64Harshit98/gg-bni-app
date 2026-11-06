@@ -26,6 +26,7 @@ import ShowWrapper from '../../../context/ShowWrapper';
 import { Spinner } from '../../../constants/Spinner';
 import { useWhatsappProvider } from '../../Additional/Whatsapp/useWhatsappProvider';
 import { useInvoiceCommunication } from '../../Journal/hooks'; // ← adjust path if your Journal folder is named differently
+import { useFormatNumber } from '../../../lib/formatNumber';
 
 /* ------------------------------------------------------------------ */
 /* SELLAR design tokens (as Tailwind classes) — UI only                */
@@ -104,6 +105,7 @@ const ModePicker: React.FC<{
 
 const SalesReturnPage: React.FC = () => {
   const navigate = useNavigate();
+  const fmt = useFormatNumber();
   const { currentUser } = useAuth();
   const dbOperations = useDatabase();
   const { state } = useLocation();
@@ -404,7 +406,7 @@ const SalesReturnPage: React.FC = () => {
                           <p className="text-sm font-semibold text-[#0f172b]">
                             {sale.partyName} <span className="font-normal text-[#5b6b86]">({sale.invoiceNumber || 'N/A'})</span>
                           </p>
-                          <p className="text-xs text-[#5b6b86]">Amount: ₹{sale.totalAmount.toFixed(2)}</p>
+                          <p className="text-xs text-[#5b6b86]">Amount: ₹{fmt(sale.totalAmount, 2)}</p>
                         </div>
                       ))}
                     </div>
@@ -415,11 +417,11 @@ const SalesReturnPage: React.FC = () => {
                   <Facts
                     items={[
                       { label: 'Bill no.', value: selectedSale.invoiceNumber || 'N/A' },
-                      { label: 'Bill total', value: `₹${billTotal.toFixed(2)}` },
-                      { label: 'Paid', value: `₹${billPaid.toFixed(2)}`, tone: 'text-[#008236]' },
+                      { label: 'Bill total', value: `₹${fmt(billTotal, 2)}` },
+                      { label: 'Paid', value: `₹${fmt(billPaid, 2)}`, tone: 'text-[#008236]' },
                       {
                         label: 'Due on bill',
-                        value: `₹${Math.max(0, billTotal - billPaid).toFixed(2)}`,
+                        value: `₹${fmt(Math.max(0, billTotal - billPaid), 2)}`,
                         tone: isDueSale ? 'text-[#bb4d00]' : undefined,
                       },
                     ]}
@@ -522,7 +524,7 @@ const SalesReturnPage: React.FC = () => {
 
                   <div className="flex justify-end gap-6 rounded-sm border-t border-[#dfe6fb] bg-[#f5f7ff] px-4 py-2.5 text-[13px] text-[#45556c]">
                     <span>Selected <b className="tabular-nums text-[#0f172b]">{selectedReturnIds.size} of {originalSaleItems.length}</b> items</span>
-                    <span>Return value <b className="tabular-nums text-[#0f172b]">₹{totalReturnGross.toFixed(2)}</b></span>
+                    <span>Return value <b className="tabular-nums text-[#0f172b]">₹{fmt(totalReturnGross, 2)}</b></span>
                   </div>
                 </div>
 
@@ -626,16 +628,16 @@ const SalesReturnPage: React.FC = () => {
 
                     <div className="grid gap-1.5 text-sm">
                       <div className="flex items-center justify-between text-[#45556c]">
-                        <p>Return Value</p><p className="font-semibold tabular-nums text-[#0f172b]">₹{totalReturnGross.toFixed(2)}</p>
+                        <p>Return Value</p><p className="font-semibold tabular-nums text-[#0f172b]">₹{fmt(totalReturnGross, 2)}</p>
                       </div>
                       {discountDeducted > 0 && (
                         <div className="flex items-center justify-between text-xs text-[#d5000c]">
-                          <p>Less Bill Discount</p><p className="tabular-nums">- ₹{discountDeducted.toFixed(2)}</p>
+                          <p>Less Bill Discount</p><p className="tabular-nums">- ₹{fmt(discountDeducted, 2)}</p>
                         </div>
                       )}
                       {modeOfReturn === 'Exchange' && (
                         <div className="flex items-center justify-between text-[#45556c]">
-                          <p>Exchange Value</p><p className="font-semibold tabular-nums text-[#155dfc]">₹{totalExchangeValue.toFixed(2)}</p>
+                          <p>Exchange Value</p><p className="font-semibold tabular-nums text-[#155dfc]">₹{fmt(totalExchangeValue, 2)}</p>
                         </div>
                       )}
                     </div>
@@ -644,7 +646,7 @@ const SalesReturnPage: React.FC = () => {
                       {modeOfReturn === 'Exchange' && finalBalance > 0 ? balanceSelect : (
                         <p className="text-sm font-medium">{getBalanceLabel()}</p>
                       )}
-                      <b className="text-2xl font-semibold tabular-nums tracking-tight">₹{Math.abs(finalBalance).toFixed(2)}</b>
+                      <b className="text-2xl font-semibold tabular-nums tracking-tight">₹{fmt(Math.abs(finalBalance), 2)}</b>
                     </div>
 
                     <div className="hidden md:block xl:hidden">
@@ -671,26 +673,26 @@ const SalesReturnPage: React.FC = () => {
               <div className="grid gap-2 text-sm">
                 <div className="flex justify-between text-[#45556c]">
                   <span>Return sale amount</span>
-                  <span className="tabular-nums text-[#0f172b]">₹{totalReturnGross.toFixed(2)}</span>
+<span className="tabular-nums text-[#0f172b]">₹{fmt(totalReturnGross, 2)}</span>
                 </div>
                 {discountDeducted > 0 && (
                   <div className="flex justify-between text-[#d5000c]">
                     <span>Less: proportional discount</span>
-                    <span className="tabular-nums">- ₹{discountDeducted.toFixed(2)}</span>
+<span className="tabular-nums">- ₹{fmt(discountDeducted, 2)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-[#45556c]">
                   <span>Paid amount</span>
-                  <span className="tabular-nums text-[#0f172b]">₹{paidAmountOnSale.toFixed(2)}</span>
+                  <span className="tabular-nums text-[#0f172b]">₹{fmt(paidAmountOnSale, 2)}</span>
                 </div>
                 <div className="flex justify-between border-t border-[#dfe6fb] pt-2 text-base font-semibold text-[#0f172b]">
                   <span>Net return value</span>
-                  <span className="tabular-nums">₹{totalReturnValue.toFixed(2)}</span>
+                  <span className="tabular-nums">₹{fmt(totalReturnValue, 2)}</span>
                 </div>
                 {modeOfReturn === 'Exchange' && (
                   <div className="flex justify-between text-[#45556c]">
                     <span>Less: new items value</span>
-                    <span className="tabular-nums text-[#155dfc]">- ₹{totalExchangeValue.toFixed(2)}</span>
+                    <span className="tabular-nums text-[#155dfc]">- ₹{fmt(totalExchangeValue, 2)}</span>
                   </div>
                 )}
               </div>
@@ -700,7 +702,7 @@ const SalesReturnPage: React.FC = () => {
                   {modeOfReturn === 'Exchange' && finalBalance > 0 ? balanceSelect : (
                     <span className="text-sm font-medium">{getBalanceLabel()}</span>
                   )}
-                  <b className="text-[26px] font-semibold leading-8 tracking-tight tabular-nums">₹{Math.abs(finalBalance).toFixed(2)}</b>
+                 <b className="text-[26px] font-semibold leading-8 tracking-tight tabular-nums">₹{fmt(Math.abs(finalBalance), 2)}</b>
                 </div>
                 <button
                   onClick={handleProcessReturn}

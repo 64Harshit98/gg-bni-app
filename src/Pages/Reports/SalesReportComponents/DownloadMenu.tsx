@@ -5,16 +5,30 @@ interface DownloadMenuProps {
   onExcel: () => void;
   onPdf: () => void;
   // Only the Restock order list shares to WhatsApp; reports export to Excel/PDF only
-  onWhatsApp?: () => void;
+    onWhatsApp?: () => void;
   variant?: 'button' | 'icon';
+  // 'pos' = blue, 'catalogue' = orange
+  theme?: 'pos' | 'catalogue';
 }
 
+const THEMES = {
+  pos: {
+    button: 'bg-blue-600 hover:bg-blue-700',
+    chip: 'bg-blue-50 text-blue-600',
+  },
+  catalogue: {
+    button: 'bg-[#c2410c] hover:bg-[#9a3412]',
+    chip: 'bg-orange-50 text-[#F97316]',
+  },
+} as const;
 export default function DownloadMenu({
   onExcel,
   onPdf,
-  onWhatsApp,
+    onWhatsApp,
   variant = 'button',
+  theme = 'pos',
 }: DownloadMenuProps) {
+  const t = THEMES[theme];
   const [isOpen, setIsOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -45,7 +59,7 @@ export default function DownloadMenu({
       {variant === 'button' ? (
         <button
           onClick={() => setIsOpen((o) => !o)}
-          className="inline-flex items-center gap-2 rounded-sm bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                    className={`inline-flex items-center gap-2 rounded-sm px-4 py-2 text-sm font-semibold text-white shadow-sm transition ${t.button}`}
         >
           <Download size={15} />
           Download
@@ -72,7 +86,7 @@ export default function DownloadMenu({
               }}
               className="flex w-full items-center gap-3 rounded-sm px-2.5 py-2 text-left transition hover:bg-sunken"
             >
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-blue-50 text-blue-600">
+                            <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-sm ${t.chip}`}>
                 <Icon size={15} />
               </span>
               <span className="min-w-0">

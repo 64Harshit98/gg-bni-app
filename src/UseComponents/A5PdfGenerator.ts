@@ -4,7 +4,7 @@ import QRCode from "qrcode";
 import { ACTION } from "../enums";
 import type { InvoiceData } from "./pdfGenerator";
 import { drawWatermark } from "../Components/pdfWatermark";
-import { splitAddOns, reserveAddOnSpace, drawAddOnText } from './addOnText';
+import { splitAddOns, reserveAddOnSpace, nameWithBase, drawAddOnText } from './addOnText';
 import { needsImageText, textToImage, NAME_IMG_W, installUnicodeText } from './textToImage';
 
 const compressBase64Image = (
@@ -445,12 +445,13 @@ export const generateA5Invoice = async (
                 ? Number(item.discountPercent)
                 : (grossAmt > 0 ? (rowDiscountAmt / grossAmt) * 100 : 0);
 
-            const { baseName, addOnText } = splitAddOns(item);
+            const { addOnPdfText } = splitAddOns(item);
+            const baseName = nameWithBase(item, qty > 0 ? rowTotal / qty : 0);
 
             return {
                 sno: item.sno || (index + 1).toString(),
                 name: baseName,
-                addOnText,
+                addOnText: addOnPdfText,
                 totalPcs,
                 unit: item.unit || "pcs",
                 qty,
@@ -466,7 +467,7 @@ export const generateA5Invoice = async (
         });
 
         const nameImgs = processedItems.map(p => {
-            const t = `${p.name}\n(${p.totalPcs} ${p.unit})`;
+            const t = `${p.name} (${p.totalPcs} ${p.unit})`;
             return needsImageText(t) ? textToImage(t, NAME_IMG_W, 8, true) : null;
         });
 
@@ -539,7 +540,7 @@ export const generateA5Invoice = async (
             body: processedItems.map((item, i) => [
                 item.sno,
                 ...(hasImages ? [""] : []),
-                nameImgs[i] ? "" : `${item.name}\n(${item.totalPcs} ${item.unit})`,
+                nameImgs[i] ? "" : `${item.name} (${item.totalPcs} ${item.unit})`,
                 item.qty,
                 item.rawPrice.toFixed(2),
                 isPctDiscount
@@ -606,7 +607,7 @@ export const generateA5Invoice = async (
                     h.cell.styles.minCellWidth = img.widthMm + 2;
                     h.cell.styles.minCellHeight = Math.max(h.cell.styles.minCellHeight || 0, img.heightMm + 3);
                 }
-                reserveAddOnSpace(h, nameCol, processedItems.map(p => p.addOnText));
+                reserveAddOnSpace(h, nameCol, processedItems.map(p => p.addOnText), hasImages ? 24 : 30);
             },
 
             didDrawCell: (hookData) => {
@@ -658,7 +659,17 @@ export const generateA5Invoice = async (
         });
 
         // @ts-ignore
+        // @ts-ignore
         let finalY = (doc as any).lastAutoTable.finalY + 6;
+
+        // Guard: GST table + Bank table dono ke liye jagah check karo
+        if (!resolvedIsEstimate) {
+            const gstBankBlockHeight = 26;
+            if (finalY + gstBankBlockHeight > pageHeight - 42) {
+                doc.addPage();
+                finalY = 20;
+            }
+        }
 
         let gstTableBottomY = finalY;
         // --- 4. TAX BREAKDOWN TABLE (BEFORE PAYMENT INFO) ---
@@ -682,15 +693,6 @@ export const generateA5Invoice = async (
             });
 
             if (Object.keys(taxBreakdownData).length > 0) {
-                const gstBankBlockHeight = 20;
-
-                if (
-                    finalY + gstBankBlockHeight >
-                    pageHeight - 42
-                ) {
-                    doc.addPage();
-                    finalY = 20;
-                }
 
                 const fmt = (n: number) => n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -716,6 +718,8 @@ export const generateA5Invoice = async (
                             ["TOTAL", fmt(totalTaxable), fmt(totalTaxAmt / 2), fmt(totalTaxAmt / 2), fmt(totalTaxAmt)]
                         ],
                     theme: 'grid',
+                    pageBreak: 'avoid',
+                    rowPageBreak: 'avoid',
                     styles: {
                         fontSize: 6,
                         cellPadding: 1,
@@ -754,43 +758,26 @@ export const generateA5Invoice = async (
 
             const paymentX = (pageWidth / 2) + 4;
 
+            const bd: any = data.bankDetails || {};
+            const ifscValue = bd.ifscCode || bd.ifsc || bd.ifsc_code || bd.IFSC || "";
+
             autoTable(doc, {
                 startY: finalY,
                 margin: { left: paymentX },
-                tableWidth: 56,
-
+                tableWidth: 62,
+                pageBreak: 'avoid',
+                rowPageBreak: 'avoid',
                 theme: "grid",
 
-                head: [[
-                    {
-                        content: "BANK DETAIL",
-                        colSpan: 2,
-                        styles: {
-                            halign: "center",
-                            fontStyle: "bold"
-                        }
-                    }
-                ]],
+                head: [[{ content: "BANK DETAIL", colSpan: 2, styles: { halign: "center", fontStyle: "bold" } }]],
 
                 body: [
                     [
-                        {
-                            content: `Bank : ${data.bankDetails?.bankName || ""}`,
-                            colSpan: 1
-                        },
-                        {
-                            content: `A/C No : ${data.bankDetails?.accountNumber || ""}`,
-                            colSpan: 1
-                        }
+                        `Bank : ${bd.bankName || ""}`,
+                        `A/C No : ${bd.accountNumber || ""}`
                     ],
                     [
-                        {
-                            content: `IFSC : ${data.bankDetails?.ifscCode || ""}`,
-                            colSpan: 2,
-                            styles: {
-                                halign: "left"
-                            }
-                        }
+                        { content: `IFSC : ${ifscValue}`, colSpan: 2, styles: { halign: "left" } }
                     ]
                 ],
                 styles: {
@@ -811,12 +798,8 @@ export const generateA5Invoice = async (
                 },
 
                 columnStyles: {
-                    0: {
-                        cellWidth: 28
-                    },
-                    1: {
-                        cellWidth: 28
-                    }
+                    0: { cellWidth: 26, halign: "left" },
+                    1: { cellWidth: 36, halign: "left" }
                 }
             });
 
@@ -931,35 +914,11 @@ export const generateA5Invoice = async (
 
         doc.link(brandingX, footerY + 5, linkWidth, 4, { url: "https://www.sellar.in" });
 
-        // ===== MADE IN INDIA =====
+        // ===== MADE WITH LOVE =====
         doc.setFont("helvetica", "normal");
         doc.setFontSize(7);
-
-        const part1 = "Made with ";
-        const part2 = "pride";
-        const part3 = " in India";
-
-        const w1 = doc.getTextWidth(part1);
-        const w2 = doc.getTextWidth(part2);
-        const w3 = doc.getTextWidth(part3);
-
-        const indiaTextWidth = w1 + w2 + w3;
-
-        let indiaX = rightMargin - indiaTextWidth;
-        const indiaY = footerY + 11.5;
-
         doc.setTextColor(0, 0, 0);
-        doc.text(part1, indiaX, indiaY);
-
-        indiaX += w1;
-        doc.setTextColor(0, 0, 0);
-        doc.text(part2, indiaX, indiaY);
-
-        indiaX += w2;
-        doc.setTextColor(0, 0, 0);
-        doc.text(part3, indiaX, indiaY);
-
-        doc.setTextColor(0, 0, 0);
+        doc.text("Made with love for a dukandar, by a dukandar", rightMargin, footerY + 11.5, { align: "right" });
 
     }; // end drawPage
 

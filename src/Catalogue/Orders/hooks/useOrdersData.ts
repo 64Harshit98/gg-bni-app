@@ -101,6 +101,7 @@ export const useOrdersData = (
                         unit: i.unit ?? "pcs",
                         finalPrice: Number(i.finalPrice ?? finalPrice * Number(i.quantity || 0)),
                         note: i.note || '',
+                        addOnLines: Array.isArray(i.addOnLines) ? i.addOnLines : undefined,
                         imageUrl: i.imageUrl || "",
                         imageBase64: "",
                     };

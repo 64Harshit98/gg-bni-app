@@ -7,7 +7,7 @@ import QRCode from 'qrcode';
 import { generateThermalReceipt } from './ThermalpdfGenerator';
 import { generateA5Invoice } from './A5PdfGenerator';
 import { drawWatermark } from '../Components/pdfWatermark';
-import { splitAddOns, reserveAddOnSpace, drawAddOnText } from './addOnText';
+import { splitAddOns,nameWithBase, reserveAddOnSpace, drawAddOnText } from './addOnText';
 import { needsImageText, textToImage, NAME_IMG_W, installUnicodeText } from './textToImage';
 
 export interface InvoiceData {
@@ -78,8 +78,9 @@ export interface InvoiceData {
     discount2Percent?: number;  // NEW
     amount?: number;
     gstAmount?: number;
-    imageBase64?: string;
+        imageBase64?: string;
     addOns?: { name: string; price?: number }[];
+    addOnLines?: { name: string; price?: number }[];
   }[];
   terms: string;
   transportDetails?: {
@@ -208,16 +209,34 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   const transportRowHeight = hasTransport ? 10 : 0;
 
   const billName = data.billTo.name;
-  const billAddr = doc.splitTextToSize(data.billTo.address, contentWidth / 2 - 10);
+  // Empty address => no lines at all (no blank row wasted)
+  const billAddr: string[] = (data.billTo.address || '').trim()
+    ? doc.splitTextToSize(data.billTo.address, contentWidth / 2 - 10)
+    : [];
   const billPhone = `Phone.No.  : ${data.billTo.phone || ''}`;
 
   const shipName = data.shipTo?.name || '';
-  const shipAddr = doc.splitTextToSize(data.shipTo?.address || '', contentWidth / 2 - 10);
+  const shipAddr: string[] = (data.shipTo?.address || '').trim()
+    ? doc.splitTextToSize(data.shipTo!.address, contentWidth / 2 - 10)
+    : [];
   const shipPhone = `Phone.No.  : ${data.shipTo?.phone || ''}`;
 
   const lineHeight = 5;
-  const padding = 10;
-  const partyHeight = (Math.max(5 + billAddr.length, 4 + shipAddr.length) * lineHeight) + padding;
+
+  // Height = jitni lines actually draw hongi utni (name + address + phone + optional GSTIN)
+  const partyColBottom = (addrLines: string[], hasGstin: boolean) => {
+    let y = 11 + lineHeight;            // name baseline (11) -> next line
+    y += addrLines.length * lineHeight; // address lines (0 if empty)
+    if (hasGstin) y += lineHeight;      // GSTIN line sits below phone
+    return y + 4;                       // bottom padding under last line
+  };
+  const leftPartyAddr = isEstimate ? (billAddr.length ? billAddr : shipAddr) : billAddr;
+  const leftHasGstin = !isEstimate && showGstinDetails && !!data.billTo.gstin;
+  const rightHasGstin = !isEstimate && showGstinDetails && !!data.shipTo?.gstin;
+  const partyHeight = Math.max(
+    partyColBottom(leftPartyAddr, leftHasGstin),
+    isEstimate ? 0 : partyColBottom(shipAddr, rightHasGstin)
+  );
 
   let totalQty = 0, totalTaxable = 0, totalTaxAmt = 0, grossTotal = 0;
   const hasZeroMrp = data.items.some(item => !item.listPrice || item.listPrice === 0);
@@ -320,8 +339,9 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     }
 
     // Item name + add-ons (neeche alag line me)
-    const { baseName, addOnText } = splitAddOns(item);
-    addOnTexts[itemIdx] = addOnText;
+    const { addOnPdfText } = splitAddOns(item);
+const baseName = nameWithBase(item, effectiveUnitRate);
+addOnTexts[itemIdx] = addOnPdfText;
     nameImgs[itemIdx] = needsImageText(baseName) ? textToImage(baseName, NAME_IMG_W, 8, true) : null;
     const nameCell = nameImgs[itemIdx] ? '' : baseName;
 
@@ -519,7 +539,9 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     const printPhone = isEstimate ? (data.billTo.phone ? billPhone : shipPhone) : billPhone;
 
     doc.text(printName, startX + 2, leftY); leftY += lineHeight;
-    doc.text(printAddr, startX + 2, leftY); leftY += (printAddr.length * lineHeight);
+    if (printAddr.length > 0) {
+      doc.text(printAddr, startX + 2, leftY); leftY += (printAddr.length * lineHeight);
+    }
     doc.text(printPhone, startX + 2, leftY); leftY += lineHeight;
 
     if (!isEstimate && showGstinDetails && data.billTo.gstin) {
@@ -529,7 +551,9 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     if (!isEstimate) {
       let rightY = headerY + 6;
       doc.text(shipName, (pageWidth / 2) + 2, rightY); rightY += lineHeight;
-      doc.text(shipAddr, (pageWidth / 2) + 2, rightY); rightY += (shipAddr.length * lineHeight);
+      if (shipAddr.length > 0) {
+        doc.text(shipAddr, (pageWidth / 2) + 2, rightY); rightY += (shipAddr.length * lineHeight);
+      }
       doc.text(shipPhone, (pageWidth / 2) + 2, rightY); rightY += lineHeight;
       if (showGstinDetails && data.shipTo?.gstin) doc.text(`GST No. : ${data.shipTo.gstin}`, (pageWidth / 2) + 2, rightY);
     }
@@ -555,13 +579,13 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       : ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Bill Disc.', 'Amount'];
 
     // NEW: image column ke wajah se baaki columns ka index +1 shift hota hai
-    const activeColumnStyles = showImages
+        const activeColumnStyles = showImages
       ? (showTaxColumns
-        ? { 0: { cellWidth: 8 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto', halign: 'left' }, 3: { cellWidth: 15, fontSize: 7, cellPadding: 0.5 }, 12: { cellWidth: 18, halign: 'right' } }
-        : { 0: { cellWidth: 8 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto', halign: 'left' }, 3: { cellWidth: 15, fontSize: 7, cellPadding: 0.5 }, 9: { cellWidth: 20, halign: 'right' } })
+        ? { 0: { cellWidth: 8 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto', minCellWidth: 38, halign: 'left' }, 3: { cellWidth: 15, fontSize: 7, cellPadding: 0.5 }, 12: { cellWidth: 18, halign: 'right' } }
+        : { 0: { cellWidth: 8 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto', minCellWidth: 38, halign: 'left' }, 3: { cellWidth: 15, fontSize: 7, cellPadding: 0.5 }, 9: { cellWidth: 20, halign: 'right' } })
       : (showTaxColumns
-        ? { 0: { cellWidth: 8 }, 1: { cellWidth: 'auto', halign: 'left' }, 2: { cellWidth: 15, fontSize: 7, cellPadding: 0.5 }, 11: { cellWidth: 18, halign: 'right' } }
-        : { 0: { cellWidth: 8 }, 1: { cellWidth: 'auto', halign: 'left' }, 2: { cellWidth: 15, fontSize: 7, cellPadding: 0.5 }, 8: { cellWidth: 20, halign: 'right' } });
+        ? { 0: { cellWidth: 8 }, 1: { cellWidth: 'auto', minCellWidth: 38, halign: 'left' }, 2: { cellWidth: 15, fontSize: 7, cellPadding: 0.5 }, 11: { cellWidth: 18, halign: 'right' } }
+        : { 0: { cellWidth: 8 }, 1: { cellWidth: 'auto', minCellWidth: 38, halign: 'left' }, 2: { cellWidth: 15, fontSize: 7, cellPadding: 0.5 }, 8: { cellWidth: 20, halign: 'right' } });
 
     autoTable(doc, {
       startY: cursorY,
@@ -682,17 +706,8 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
 
     // --- ADVANCE & SETTLED AMOUNT ---
     if (advance > 0 && !isEstimate) {
-      addRow('Amount Paid (-)', advance, 6, false, true); // no bottom border on this row
-
-      doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-      doc.line(startX, finalY, startX, finalY + 6);          // outer box left
-      doc.line(endX, finalY, endX, finalY + 6);              // outer box right
-      doc.line(startX, finalY + 6, endX, finalY + 6);        // outer box bottom (no top border)
-      doc.text('Balance Due', vBoxX - 6, finalY + 5.5, { align: 'right' });
-      doc.line(vBoxX, finalY, vBoxX, finalY + 6);            // amount box left — now matches expense/rounding off vBoxX
-      doc.line(vBoxX, finalY + 6, endX, finalY + 6);         // amount box bottom (no top border)
-      doc.text(settledAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + 5.5, { align: 'right' });
-      finalY += 8;
+      addRow('Amount Paid (-)', advance, 6, false, true);          // no bottom border (joins with Balance Due)
+      addRow('Balance Due', settledAmount, 6, true, false, true);  // no top border, bold, same text offset as Amount Paid
     }
     if (data.narration && data.narration.trim() !== '') {
       const nLines = narrationImg ? [] : doc.splitTextToSize(data.narration, contentWidth - 18);
@@ -822,11 +837,9 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     doc.setTextColor(0); doc.setDrawColor(0);
 
     doc.setFont('helvetica', 'normal');
-    let mx = (pageWidth / 2) - ((doc.getTextWidth("Made with ") + doc.getTextWidth("Love") + doc.getTextWidth(" in India")) / 2);
     doc.setTextColor(0, 0, 0);
-    doc.text("Made with ", mx, by + 10); mx += doc.getTextWidth("Made with ");
-    doc.text("Love", mx, by + 10); mx += doc.getTextWidth("Love");
-    doc.text(" in India", mx, by + 10); doc.setTextColor(0);
+    doc.text("Made with love for a dukandar, by a dukandar", pageWidth / 2, by + 10, { align: 'center' });
+    doc.setTextColor(0);
   };
 
   // --- TRIGGER PAGE GENERATION ---

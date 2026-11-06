@@ -358,6 +358,7 @@ export const OrderEditModal: React.FC<OrderEditModalProps> = ({
                                     onClose={() => setIsEditDrawerOpen(false)}
                                     onSaveSuccess={handleSaveSuccess}
                                     itemGroupRoute={`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`}
+                                    theme="catalogue"
                                 />
                             )}
                         </div>

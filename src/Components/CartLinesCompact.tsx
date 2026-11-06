@@ -4,7 +4,7 @@ export interface CompactCartLine {
   id: string;
   name: string;
   quantity: number;
-  addOns?: { name: string }[];
+  addOns?: { name: string; price?: number }[];
 }
 
 interface CartLinesCompactProps<T extends CompactCartLine> {
@@ -27,16 +27,32 @@ export const CartLinesCompact = <T extends CompactCartLine>({
   <div>
     {items.map((i) => {
       const unit = Number(getUnitPrice(i) || 0);
+      const hasAddOns = (i.addOns?.length ?? 0) > 0;
+      const addOnSum = (i.addOns ?? []).reduce((s, a) => s + (Number(a.price) || 0), 0);
+      const basePrice = unit - addOnSum;
       return (
         <div key={i.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 gap-y-0.5 py-2.5 border-b border-[#dfe6fb] items-center">
-          <b className="text-[13px] font-medium text-[#0f172b] truncate">{i.name}</b>
+          <b className="text-[13px] font-medium text-[#0f172b] truncate">
+            {i.name}
+            {hasAddOns && <span className="font-normal text-[#5b6b86] tabular-nums"> · ₹{basePrice.toLocaleString('en-IN')}</span>}
+          </b>
           <b className="text-[13px] font-medium text-[#0f172b] tabular-nums">₹{(unit * i.quantity).toLocaleString('en-IN')}</b>
           <div className="min-w-0">
             <span className="text-xs text-[#5b6b86]">{i.quantity} × ₹{unit.toLocaleString('en-IN')}</span>
             {(i.addOns?.length ?? 0) > 0 && (
-              <p className="m-0 mt-0.5 text-xs text-[#155dfc] [overflow-wrap:anywhere]">
-                + {i.addOns!.map((a) => a.name).join(', ')}
-              </p>
+              <div className="mt-0.5 flex flex-col gap-0.5">
+                {i.addOns!.map((a, idx) => {
+                  const p = Number(a.price) || 0;
+                  return (
+                    <p key={`${a.name}-${idx}`} className="m-0 text-xs text-[#155dfc] [overflow-wrap:anywhere]">
+                      + {a.name}{' '}
+                      <span className="tabular-nums text-[#5b6b86]">
+                        · {p > 0 ? `₹${p.toLocaleString('en-IN')}` : 'Free'}
+                      </span>
+                    </p>
+                  );
+                })}
+              </div>
             )}
             {onEditAddOns && (i.addOns?.length ?? 0) > 0 && (
               <button type="button" onClick={() => onEditAddOns(i)}

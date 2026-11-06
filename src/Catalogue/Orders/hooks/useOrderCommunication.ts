@@ -40,6 +40,7 @@ interface BillItem {
     imageBase64: string;
     discount: number;
     discount2: number;
+    addOnLines?: { name: string; price?: number }[];
 }
 
 // Builds the per-item array (with base64 images + discount-display math) used
@@ -91,6 +92,7 @@ const buildBillItems = async (
             imageBase64: base64Image,
             discount: Number(effectiveDiscount1.toFixed(2)),
             discount2: Number(item.discount2 ?? 0),
+            addOnLines: item.addOnLines,
         };
     }));
 };
@@ -181,7 +183,7 @@ interface BuildRawBillDataParams {
     advancePaid: number;
     dueAmount: number;
     previousBalance?: number;
-     creditNoteBalance?: number;
+    creditNoteBalance?: number;
     billingExtras?: {
         billDiscount: number;
         extraExpenseName: string;
@@ -355,7 +357,7 @@ export const useOrderCommunication = ({
             const itemsWithBase64 = await buildBillItems(Order.items, convertImageUrlToBase64, availableItems);
 
             const customerPhone = (Order.billingDetails?.phone || Order.userLoginPhone || '').toString().trim();
-                        const previousBalance = await fetchPreviousBalance(currentUser?.companyId, customerPhone, Order.id);
+            const previousBalance = await fetchPreviousBalance(currentUser?.companyId, customerPhone, Order.id);
             const creditNoteBalance = await fetchCreditNoteBalance(currentUser?.companyId, customerPhone);
 
             const { paidAmount, advancePaid, dueAmount } = computeStatusAwareAmounts(Order);
@@ -398,7 +400,7 @@ export const useOrderCommunication = ({
         }
     };
 
-        const handleSendWhatsapp = async (Order: Order, extraMessage?: string) => {
+    const handleSendWhatsapp = async (Order: Order, extraMessage?: string) => {
         const phone = Order.userLoginPhone || Order.billingDetails?.phone || '';
         const name = Order.userName || Order.billingDetails?.name || 'Customer';
 
@@ -456,7 +458,7 @@ export const useOrderCommunication = ({
             const fileUrl = await getDownloadURL(storageRef);
 
             const amount = Order.totalAmount;
-                       const extraMsg = catalogueWhatsappExtra ? `\n\n${catalogueWhatsappExtra}` : '';
+            const extraMsg = catalogueWhatsappExtra ? `\n\n${catalogueWhatsappExtra}` : '';
             const creditPart = extraMessage ? `\n\n${extraMessage}` : '';
             const message = `Hello ${name},\n\nHere is your order bill #${Order.orderId}.\nAmount: ${Number(amount).toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}${creditPart}\n\nThank you!${extraMsg}`;
 

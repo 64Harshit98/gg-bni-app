@@ -60,7 +60,7 @@ export const ItemStockLocations: React.FC<Props> = ({
         onClick={() => setOpen(true)}
         disabled={!hasSecondLocation || rows.length === 0}
         title={!hasSecondLocation ? 'Add a godown first' : rows.length === 0 ? 'No stock to move' : undefined}
-        className="inline-flex h-9 w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-[#7a8aa3] bg-white px-3 text-xs font-medium text-[#0f172b] hover:bg-(--dr-sunken) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--dr-primary) disabled:pointer-events-none disabled:opacity-45"
+        className="inline-flex h-9 w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-sm border border-[#7a8aa3] bg-white px-3 text-xs font-medium text-[#0f172b] hover:bg-(--dr-sunken) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--dr-primary) disabled:pointer-events-none disabled:opacity-45"
       >
         <FiRepeat size={14} /> Transfer stock
       </button>
@@ -87,7 +87,7 @@ export const ItemStockLocations: React.FC<Props> = ({
   return compact ? (
     <div className="grid gap-2">{body}</div>
   ) : (
-    <div className="grid gap-2 rounded-xl border border-(--dr-line) bg-white p-3.5 shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]">
+    <div className="grid gap-2 rounded-sm border border-(--dr-line) bg-white p-3.5 shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]">
       {body}
     </div>
   );

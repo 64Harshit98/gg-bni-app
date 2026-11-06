@@ -33,13 +33,14 @@ export const productState = (item: Item, settings: CatalogueSalesSettings | null
         discountPercent,
         showDiscount: settings?.showDiscountBadge === true && hasDiscount && priceMode !== 'mrp',
         outOfStock,
-        canNotify: settings?.enableOutOfStockNotification === true && actuallyOut,
+        canNotify: settings?.enableOutOfStockNotification === true && outOfStock,
         slabPrice,
         slabs,
         activeSlab,
         bulkFrom: bulkFrom !== null && bulkFrom < salePrice ? bulkFrom : null,
         lowStock: !settings?.allowNegativeInventory && stock > 0 && stock <= LOW_STOCK ? stock : undefined,
         hasOptions: hasMultiplePricing(item) || (item.addOnGroups?.length ?? 0) > 0,
+        hasVariants: hasMultiplePricing(item),
         unit: unitLabel(item),
     };
 };

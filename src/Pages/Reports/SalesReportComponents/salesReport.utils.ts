@@ -149,8 +149,7 @@ export const isWalkIn = (sale: SaleRecord): boolean =>
 export const formatPhone = (phone?: string): string => {
   const digits = (phone || '').replace(/\D/g, '');
   if (digits.length < 10) return phone || '';
-  const last10 = digits.slice(-10);
-  return `${last10.slice(0, 5)} ${last10.slice(5)}`;
+  return digits.slice(-10);
 };
 
 /* ---------- PAYMENT MODE HELPERS ---------- */

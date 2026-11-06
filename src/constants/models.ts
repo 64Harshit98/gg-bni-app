@@ -159,11 +159,12 @@ export interface AddOnOption {
 }
 
 export interface AddOnGroup {
-  id: string;                 // for saved groups this is the Firestore doc id of companies/{id}/addOnTemplates
-  name: string;               // "Crust", "Toppings"
-  multiple: boolean;          // false = choose one, true = choose many
-    maxSelect?: number;         // only when multiple: max choices (e.g. 4 sauces out of 10). 0 / empty = no limit
-  extraPrice?: number | null; // only with maxSelect: price added to each choice beyond maxSelect. empty = going over the limit is not allowed
+  id: string;
+  name: string;
+  multiple: boolean;
+    maxSelect?: number;
+  extraPrice?: number | null;
+  order?: number;             // position in the add-on library (lower = first). Missing = old group, falls back to A-Z
   options: AddOnOption[];
 }
 
@@ -264,9 +265,9 @@ export const resolveAddOnGroups = (
     if (!ctx.allowNegative && Number(it.stock ?? 0) < (Number(o.itemQty) || 1)) next.soldOut = true;
     return next;
   };
-  const fromLibrary = (item.addOnGroupIds ?? [])
-    .map((id) => library.find((g) => g.id === id))
-    .filter((g): g is AddOnGroup => !!g)
+    // library is already sorted by the saved order, so filtering it keeps that order
+  const fromLibrary = library
+    .filter((g) => (item.addOnGroupIds ?? []).includes(g.id))
     .map((g) => {
       const pick = item.addOnPicks?.find((p) => p.groupId === g.id);
       const options = (pick?.optionIds ? g.options.filter((o) => pick.optionIds!.includes(o.id)) : g.options).map(live);

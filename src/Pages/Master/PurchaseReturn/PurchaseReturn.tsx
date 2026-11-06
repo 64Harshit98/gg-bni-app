@@ -15,6 +15,7 @@ import { useAuth, useDatabase } from '../../../context/auth-context';
 import type { ReturnCartItem } from './purchaseReturn.types';
 import { useNewItemsReceived, usePurchaseReturnLookup, useSavePurchaseReturn } from './hooks';
 import BackButton from '../../../Components/BackButton';
+import { useFormatNumber } from '../../../lib/formatNumber';
 
 /* ------------------------------------------------------------------ */
 /* SELLAR design tokens (as Tailwind classes) — UI only                */
@@ -93,6 +94,7 @@ const ModePicker: React.FC<{
 
 const PurchaseReturnPage: React.FC = () => {
   const navigate = useNavigate();
+  const fmt = useFormatNumber();
   const { currentUser } = useAuth();
   const dbOperations = useDatabase();
   const { purchaseId } = useParams();
@@ -224,7 +226,7 @@ const PurchaseReturnPage: React.FC = () => {
   );
 
   const renderHeader = () => (
-        <div className="flex flex-shrink-0 items-center gap-3 border-b border-[#dfe6fb] bg-white px-2 py-3 md:px-6 md:py-4">
+    <div className="flex flex-shrink-0 items-center gap-3 border-b border-[#dfe6fb] bg-white px-2 py-3 md:px-6 md:py-4">
       <div className="flex-shrink-0">
         <BackButton />
       </div>
@@ -302,7 +304,7 @@ const PurchaseReturnPage: React.FC = () => {
                           <p className="text-sm font-semibold text-[#0f172b]">
                             {item.partyName} <span className="font-normal text-[#5b6b86]">({item.invoiceNumber})</span>
                           </p>
-                          <p className="text-xs text-[#5b6b86]">Amount: ₹{item.totalAmount.toFixed(2)}</p>
+                          <p className="text-xs text-[#5b6b86]">Amount: ₹{fmt(item.totalAmount, 2)}</p>
                         </div>
                       ))}
                     </div>
@@ -313,7 +315,7 @@ const PurchaseReturnPage: React.FC = () => {
                   <Facts
                     items={[
                       { label: 'Bill no.', value: selectedPurchase.invoiceNumber || 'N/A' },
-                      { label: 'Bill total', value: `₹${billTotal.toFixed(2)}` },
+                      { label: 'Bill total', value: `₹${fmt(billTotal, 2)}` },
                       {
                         label: 'Payment',
                         value: isPurchaseUnpaid ? 'Unpaid' : 'Paid',
@@ -427,7 +429,7 @@ const PurchaseReturnPage: React.FC = () => {
 
                   <div className="flex justify-end gap-6 rounded-sm border-t border-[#dfe6fb] bg-[#f5f7ff] px-4 py-2.5 text-[13px] text-[#45556c]">
                     <span>Selected <b className="tabular-nums text-[#0f172b]">{selectedReturnIds.size} of {originalPurchaseItems.length}</b> items</span>
-                    <span>Return value <b className="tabular-nums text-[#0f172b]">₹{totalReturnValue.toFixed(2)}</b></span>
+                    <span>Return value <b className="tabular-nums text-[#0f172b]">₹{fmt(totalReturnValue, 2)}</b></span>
                   </div>
                 </div>
 
@@ -518,16 +520,16 @@ const PurchaseReturnPage: React.FC = () => {
 
                     <div className="grid gap-1.5 text-sm">
                       <div className="flex items-center justify-between text-[#45556c]">
-                        <p>Return Value</p><p className="font-semibold tabular-nums text-[#0f172b]">₹{totalReturnValue.toFixed(2)}</p>
+                        <p>Return Value</p><p className="font-semibold tabular-nums text-[#0f172b]">₹{fmt(totalReturnValue, 2)}</p>
                       </div>
                       {discountDeducted > 0 && (
                         <div className="flex items-center justify-between text-xs text-[#bb4d00]">
-                          <p>Less Bill Discount</p><p className="tabular-nums">- ₹{discountDeducted.toFixed(2)}</p>
+                          <p>Less Bill Discount</p><p className="tabular-nums">- ₹{fmt(discountDeducted, 2)}</p>
                         </div>
                       )}
                       {modeOfReturn === 'Exchange' && (
                         <div className="flex items-center justify-between text-[#45556c]">
-                          <p>New Items Value</p><p className="font-semibold tabular-nums text-[#008236]">₹{totalNewItemsValue.toFixed(2)}</p>
+                          <p>New Items Value</p><p className="font-semibold tabular-nums text-[#008236]">₹{fmt(totalNewItemsValue, 2)}</p>
                         </div>
                       )}
                     </div>
@@ -536,7 +538,7 @@ const PurchaseReturnPage: React.FC = () => {
                       {modeOfReturn === 'Exchange' && finalBalance > 0 ? balanceSelect : (
                         <p className="text-sm font-medium">{getBalanceLabel()}</p>
                       )}
-                      <b className="text-2xl font-semibold tabular-nums tracking-tight">₹{Math.abs(finalBalance).toFixed(2)}</b>
+                      <b className="text-2xl font-semibold tabular-nums tracking-tight">₹{fmt(Math.abs(finalBalance), 2)}</b>
                     </div>
 
                     <div className="hidden md:block xl:hidden">
@@ -563,22 +565,22 @@ const PurchaseReturnPage: React.FC = () => {
               <div className="grid gap-2 text-sm">
                 <div className="flex justify-between text-[#45556c]">
                   <span>Gross return value</span>
-                  <span className="tabular-nums text-[#0f172b]">₹{totalReturnValue.toFixed(2)}</span>
+                  <span className="tabular-nums text-[#0f172b]">₹{fmt(totalReturnValue, 2)}</span>
                 </div>
                 {discountDeducted > 0 && (
                   <div className="flex justify-between text-[#bb4d00]">
                     <span>Less: proportional discount</span>
-                    <span className="tabular-nums">- ₹{discountDeducted.toFixed(2)}</span>
+                    <span className="tabular-nums">- ₹{fmt(discountDeducted, 2)}</span>
                   </div>
                 )}
                 <div className="flex justify-between border-t border-[#dfe6fb] pt-2 text-base font-semibold text-[#0f172b]">
                   <span>Net return value</span>
-                  <span className="tabular-nums">₹{(totalReturnValue - discountDeducted).toFixed(2)}</span>
+                  <span className="tabular-nums">₹{fmt(totalReturnValue - discountDeducted, 2)}</span>
                 </div>
                 {modeOfReturn === 'Exchange' && (
                   <div className="flex justify-between text-[#45556c]">
                     <span>New items value</span>
-                    <span className="tabular-nums text-[#008236]">- ₹{totalNewItemsValue.toFixed(2)}</span>
+                    <span className="tabular-nums text-[#008236]">- ₹{fmt(totalNewItemsValue, 2)}</span>
                   </div>
                 )}
               </div>
@@ -588,7 +590,7 @@ const PurchaseReturnPage: React.FC = () => {
                   {modeOfReturn === 'Exchange' && finalBalance > 0 ? balanceSelect : (
                     <span className="text-sm font-medium">{getBalanceLabel()}</span>
                   )}
-                  <b className="text-[26px] font-semibold leading-8 tracking-tight tabular-nums">₹{Math.abs(finalBalance).toFixed(2)}</b>
+                  <b className="text-[26px] font-semibold leading-8 tracking-tight tabular-nums">₹{fmt(Math.abs(finalBalance), 2)}</b>
                 </div>
                 <button
                   onClick={handleProcessReturn}

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Bell, BellRing, ChevronRight, ImageIcon, Lock, MessageCircle, MessageSquare, Minus, Package, Plus, ShoppingCart, Trash2, X } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, Bell, BellRing, ChevronRight, Facebook, ImageIcon, Instagram, Lock, Mail, MapPin, MessageCircle, MessageSquare, Minus, Package, Phone, Plus, ShoppingCart, Trash2, X } from 'lucide-react';
 import { formatINR, initialsOf } from './storefront.utils';
 import sellarLogo from '../../assets/sellar-logo.png';
 
@@ -190,7 +190,7 @@ export const ProductCard: React.FC<ProductCardProps> = (p) => {
         action = (
             <button type="button" disabled={p.outOfStock} onClick={(e) => { e.stopPropagation(); p.onAdd(e); }} className={btnClass('outline', small ? 'sm' : 'md', !p.rail)}>
                 {!p.rail && !p.hasOptions && <Plus className="size-4" />}
-                                {p.outOfStock ? 'Out of stock' : p.hasOptions ? (p.rail ? 'Options' : 'Choose options') : 'Add'}
+                {p.outOfStock ? 'Out of stock' : p.hasOptions ? (p.rail ? 'Options' : 'Choose options') : 'Add'}
             </button>
         );
     }
@@ -377,37 +377,74 @@ export const AskSheet: React.FC<{ open: boolean; onClose: () => void; onSubmit: 
 };
 
 // ── Footer ──
-export const StoreFooter: React.FC<{ name: string; about?: string; address?: string; phone?: string; whatsapp?: string; instagram?: string; facebook?: string; gstin?: string; email?: string }> = (p) => {
+export const StoreFooter: React.FC<{ name: string; logo?: string; tagline?: string; about?: string; address?: string; phone?: string; whatsapp?: string; instagram?: string; facebook?: string; gstin?: string; email?: string; cartCount?: number }> = (p) => {
     const fix = (u?: string) => (u ? (u.startsWith('http') ? u : `https://${u}`) : '');
+    const digits = (s?: string) => (s || '').replace(/[^\d+]/g, '');
+    const blurb = p.about || p.tagline;
+    const showWhatsapp = !!p.whatsapp && p.whatsapp !== p.phone;
+    const hasContact = p.phone || showWhatsapp || p.email || p.instagram || p.facebook;
+    const linkCls = 'inline-flex items-center gap-2 hover:text-sf-primary transition-colors';
+    const headCls = 'mb-3 text-xs font-semibold uppercase tracking-[0.06em] text-slate-900';
+
     return (
         <footer className="mt-10 border-t border-sf-line bg-white md:mt-16">
-            <div className="mx-auto grid max-w-[1200px] gap-6 px-4 py-8 md:grid-cols-[1.4fr_1fr_1fr] md:px-10">
-                <div>
-                    <h4 className="mb-2 text-[13px] font-semibold text-slate-900">{p.name}</h4>
-                    {p.about && <p className="text-[13px] leading-[22px] text-slate-600">{p.about}</p>}
+            <div className="mx-auto grid max-w-[1200px] gap-6 px-4 py-4 md:flex md:items-start md:justify-between md:gap-10 md:px-10">
+                {/* Brand */}
+                <div className="flex items-start gap-3 md:max-w-[320px]">
+                    <span className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-sm bg-sf-soft text-[15px] font-semibold text-sf-soft-ink">
+                        {p.logo ? <img src={p.logo} alt="" className="h-full w-full object-cover" /> : initialsOf(p.name)}
+                    </span>
+                    <div className="min-w-0">
+                        <h4 className="text-base font-semibold leading-5 text-slate-900">{p.name}</h4>
+                        {blurb && <p className="mt-1.5 max-w-[42ch] text-[13px] leading-[22px] text-slate-600">{blurb}</p>}
+                    </div>
                 </div>
+
+                {/* Visit */}
                 {p.address && (
-                    <div>
-                        <h4 className="mb-2 text-[13px] font-semibold text-slate-900">Visit</h4>
-                        <p className="text-[13px] leading-[22px] text-slate-600">{p.address}</p>
+                    <div className="md:max-w-[280px]">
+                        <h4 className={headCls}>Visit</h4>
+                        <p className="flex items-start gap-2 text-[13px] leading-[22px] text-slate-600">
+                            <MapPin className="mt-[3px] size-4 shrink-0 text-sf-primary" />
+                            <span>{p.address}</span>
+                        </p>
                     </div>
                 )}
-                {(p.phone || p.whatsapp || p.instagram || p.facebook || p.email) && (
+
+                {/* Contact */}
+                {hasContact && (
                     <div>
-                        <h4 className="mb-2 text-[13px] font-semibold text-slate-900">Contact</h4>
-                        <div className="grid gap-0.5 text-[13px] leading-[22px] text-slate-600">
-                            {p.phone && <span>{p.phone}</span>}
-                            {p.whatsapp && p.whatsapp !== p.phone && <span>WhatsApp {p.whatsapp}</span>}
-                            {p.email && <span>{p.email}</span>}
-                            {p.instagram && <a className="hover:text-sf-primary" href={fix(p.instagram)} target="_blank" rel="noopener noreferrer">Instagram</a>}
-                            {p.facebook && <a className="hover:text-sf-primary" href={fix(p.facebook)} target="_blank" rel="noopener noreferrer">Facebook</a>}
+                        <h4 className={headCls}>Contact</h4>
+                        <div className="grid gap-1.5 text-[13px] leading-[22px] text-slate-600">
+                            {p.phone && <a className={linkCls} href={`tel:${digits(p.phone)}`}><Phone className="size-4 shrink-0 text-sf-primary" />Call {p.phone}</a>}
+                            {showWhatsapp && <a className={linkCls} href={`https://wa.me/${digits(p.whatsapp).replace(/^\+/, '')}`} target="_blank" rel="noopener noreferrer"><MessageCircle className="size-4 shrink-0 text-sf-whatsapp" />WhatsApp {p.whatsapp}</a>}
+                            {p.email && <a className={cx(linkCls, 'break-all')} href={`mailto:${p.email.trim()}`}><Mail className="size-4 shrink-0 text-sf-primary" />Email {p.email}</a>}
+                            {(p.instagram || p.facebook) && (
+                                <div className="mt-1 flex gap-2">
+                                    {p.instagram && <a aria-label="Instagram" className="grid size-8 place-items-center rounded-sm border border-sf-line text-slate-600 hover:border-sf-primary hover:text-sf-primary" href={fix(p.instagram)} target="_blank" rel="noopener noreferrer"><Instagram className="size-4" /></a>}
+                                    {p.facebook && <a aria-label="Facebook" className="grid size-8 place-items-center rounded-sm border border-sf-line text-slate-600 hover:border-sf-primary hover:text-sf-primary" href={fix(p.facebook)} target="_blank" rel="noopener noreferrer"><Facebook className="size-4" /></a>}
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
             </div>
-            <div className="mx-auto flex max-w-[1200px] flex-wrap items-center justify-between gap-3 border-t border-sf-line px-4 py-4 text-xs text-slate-500 md:px-10">
-                <span>{p.gstin ? `GSTIN ${p.gstin}` : `© ${new Date().getFullYear()} ${p.name}`}</span>
-                <span className="inline-flex items-center gap-1.5">Powered by <img src={sellarLogo} alt="SELLAR" className="h-3.5 w-auto" /></span>
+
+            {/* Bottom bar */}
+            <div className="border-t border-sf-line bg-sf-canvas">
+                <div className={cx('mx-auto flex max-w-[1200px] flex-col items-center gap-2 px-4 pt-4 text-center md:px-10', p.cartCount && p.cartCount > 0 ? 'pb-[5.75rem]' : 'pb-4')}>
+                    <a href="https://sellar.in" target="_blank" rel="noopener noreferrer" aria-label="Powered by SELLAR, visit sellar.in"
+                        className="group inline-flex items-center gap-2.5 rounded-sm border border-sf-line bg-white py-1.5 pl-3 pr-2.5 shadow-sf-card transition-[border-color,box-shadow] hover:border-sf-primary hover:shadow-sf-float">
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-500">Powered by</span>
+                        <img src={sellarLogo} alt="" className="h-5 w-auto" />
+                        <span className="text-sm font-bold uppercase tracking-[0.08em] text-slate-900">Sellar</span>
+                        <ArrowUpRight className="size-3.5 text-slate-400 transition-colors group-hover:text-sf-primary" aria-hidden />
+                    </a>
+                    <p className="text-[13px] text-slate-600">
+                        Selling something? <a href="https://sellar.in" target="_blank" rel="noopener noreferrer" className="font-semibold text-sf-primary hover:underline">Launch your own store on Sellar</a>
+                    </p>
+                    <span className="text-xs text-slate-500">© {new Date().getFullYear()} {p.name}{p.gstin ? ` · GSTIN ${p.gstin}` : ''}</span>
+                </div>
             </div>
         </footer>
     );

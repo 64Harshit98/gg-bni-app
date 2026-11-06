@@ -927,14 +927,13 @@ const CatalogueProfitLossReport: React.FC = () => {
 
       {/* HEADER */}
       <header className="mb-4 flex items-center gap-2 md:gap-3">
-               <div className="flex-shrink-0">
+        <div className="flex-shrink-0">
           <BackButton />
         </div>
 
         <div className="min-w-0 flex-1">
           <p className="hidden text-xs text-slate-500 md:block">Reports /</p>
           <div className="flex items-baseline gap-3">
-            <h1 className="text-lg font-bold text-slate-900 md:text-xl">Profit & loss</h1>
             <h1 className="text-lg font-bold text-slate-900 md:text-xl">Profit & loss</h1>
             <span className="hidden text-xs text-slate-500 md:inline">
               {plural(rangeBills.length, 'bill')} · {rangeLabelShort}
@@ -986,6 +985,7 @@ const CatalogueProfitLossReport: React.FC = () => {
           </button>
           <DownloadMenu
             variant="icon"
+            theme="catalogue"
             onExcel={() => runDownload(downloadAsExcel)}
             onPdf={() => runDownload(downloadAsPdf)}
           />
@@ -1174,6 +1174,7 @@ const CatalogueProfitLossReport: React.FC = () => {
                 {isListVisible ? 'Hide list' : 'Show list'}
               </button>
               <DownloadMenu
+                theme="catalogue"
                 onExcel={() => runDownload(downloadAsExcel)}
                 onPdf={() => runDownload(downloadAsPdf)}
               />
@@ -1218,10 +1219,10 @@ const CatalogueProfitLossReport: React.FC = () => {
                       key={bill.id}
                       onClick={() => setSelectedId(bill.id)}
                       className={`cursor-pointer border-t border-orange-100 transition ${selectedId === bill.id
-                          ? 'bg-orange-100'
-                          : bill.costMissing
-                            ? 'bg-yellow-50/70 hover:bg-yellow-50'
-                            : 'hover:bg-orange-50'
+                        ? 'bg-orange-100'
+                        : bill.costMissing
+                          ? 'bg-yellow-50/70 hover:bg-yellow-50'
+                          : 'hover:bg-orange-50'
                         }`}
                     >
                       <td className="whitespace-nowrap px-4 py-3 text-slate-600">{formatFullDate(bill.createdAt)}</td>

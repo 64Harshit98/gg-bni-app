@@ -286,7 +286,16 @@ export const useSalesPayment = ({
                 const addOnText = addOns?.length ? ` + ${addOns.map((a: { name: string }) => a.name).join(', ')}` : '';
                 // Remember which inventory items the add-ons took, so editing this bill can put their stock back
                 const addOnStock = addOnStockOf(item);
-                return { ...rest, name: `${baseName}${addOnText}`, ...(addOnStock.length > 0 ? { addOnStock } : {}) } as SalesItem;
+// Bill/Journal me naam ke saath amount dikhane ke liye
+const addOnLines = addOns?.length
+    ? addOns.map((a: { name: string; price?: number }) => ({ name: a.name, price: Number(a.price) || 0 }))
+    : undefined;
+return {
+    ...rest,
+    name: `${baseName}${addOnText}`,
+    ...(addOnStock.length > 0 ? { addOnStock } : {}),
+    ...(addOnLines ? { addOnLines } : {}),
+} as SalesItem;
             });
 
             return calculateFinalizedSaleItems(itemsWithTierNames, {
@@ -317,9 +326,17 @@ export const useSalesPayment = ({
         // calculateFinalizedSaleItems nayi object banata hai, to addOnStock yahin wapas jodo (same order, isliye index se)
         const finalizedItems = finalizedItemsRaw.length === items.length
             ? finalizedItemsRaw.map((fi, idx) => {
-                const linked = addOnStockOf(items[idx] as any);
-                return linked.length > 0 && !(fi as any).addOnStock ? { ...fi, addOnStock: linked } : fi;
-            })
+    const src: any = items[idx];
+    const linked = addOnStockOf(src);
+    const lines = src.addOns?.length
+        ? src.addOns.map((a: any) => ({ name: a.name, price: Number(a.price) || 0 }))
+        : src.addOnLines;
+    return {
+        ...fi,
+        ...(linked.length > 0 && !(fi as any).addOnStock ? { addOnStock: linked } : {}),
+        ...(lines?.length && !(fi as any).addOnLines ? { addOnLines: lines } : {}),
+    };
+})
             : finalizedItemsRaw;
 
         // 3. Re-calculate total Tax and Taxable Amount from the finalized items

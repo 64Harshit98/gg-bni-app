@@ -288,12 +288,22 @@ const CartPage: React.FC = () => {
                                             </div>
                                             {cartItems.map((item) => {
                                                 const struck = item.quantitySlabs?.length && item.baseSalesPrice !== undefined && item.salesPrice < item.baseSalesPrice;
-                                                const lk = lineKeyOf(item);
+                                                                                                const lk = lineKeyOf(item);
+                                                const lineAddOns = ((item as { addOns?: { price?: number }[] }).addOns ?? []);
+                                                const addOnSum = lineAddOns.reduce((s, a) => s + (Number(a.price) || 0), 0);
                                                 return (
                                                     <div key={lk} className="grid grid-cols-[64px_minmax(0,1fr)_auto] gap-3 border-b border-sf-line py-4 last:border-0 md:grid-cols-[72px_minmax(0,1fr)_auto] md:gap-4">
                                                         <Photo src={item.imageUrl} alt={item.name} fit="contain" className="aspect-square border border-sf-line" />
                                                         <div className="min-w-0">
-                                                            <h3 className="text-sm font-medium leading-5">{item.name}{(item as { tierLabel?: string }).tierLabel ? <span className="font-normal text-slate-500"> · {(item as { tierLabel?: string }).tierLabel}</span> : null}{(item as { addOns?: { name: string }[] }).addOns?.length ? <span className="block text-xs font-normal leading-[18px] text-sf-primary">+ {(item as { addOns?: { name: string }[] }).addOns!.map((a) => a.name).join(', ')}</span> : null}</h3>
+                                                            <h3 className="text-sm font-medium leading-5">{item.name}{(item as { tierLabel?: string }).tierLabel ? <span className="font-normal text-slate-500"> · {(item as { tierLabel?: string }).tierLabel}</span> : null}{lineAddOns.length > 0 && shouldShowPrice ? <span className="font-normal tabular-nums text-slate-500"> · {formatINR(item.salesPrice - addOnSum)}</span> : null}</h3>
+                                                            {((item as { addOns?: { name: string; price?: number }[] }).addOns ?? []).map((a, aIdx) => (
+                                                                <p key={`${a.name}-${aIdx}`} className="text-xs font-normal leading-[18px] text-sf-primary">
+                                                                    + {a.name}
+                                                                    {shouldShowPrice && (
+                                                                        <span className="tabular-nums text-slate-500"> · {Number(a.price) > 0 ? formatINR(Number(a.price)) : 'Free'}</span>
+                                                                    )}
+                                                                </p>
+                                                            ))}
                                                             {groupsOfLine(item).length > 0 && (
                                                                 <button type="button" onClick={() => openAddOnEdit(item)} className="mt-0.5 text-xs font-medium text-sf-primary hover:underline">
                                                                     {(item as { addOns?: unknown[] }).addOns?.length ? 'Edit add-ons' : 'Add add-ons'}
@@ -371,9 +381,12 @@ const CartPage: React.FC = () => {
                 </div>
             </main>
 
-            <StoreFooter name={companyName} about={socialLinks?.brandingText} address={storeAddress(socialLinks || {})}
+            <StoreFooter name={companyName} logo={socialLinks?.companyLogo}
+                tagline={[socialLinks?.businessCategory, socialLinks?.city].filter(Boolean).join(' · ')}
+                about={socialLinks?.brandingText} address={storeAddress(socialLinks || {})}
                 phone={formatPhone(socialLinks?.phoneNumber)} whatsapp={formatPhone(socialLinks?.whatsappNumber)}
-                instagram={socialLinks?.instagram} facebook={socialLinks?.facebook} gstin={socialLinks?.gstin} />
+                instagram={socialLinks?.instagram} facebook={socialLinks?.facebook} gstin={socialLinks?.gstin}
+                email={socialLinks?.email} />
 
             {/* Phones: total + the one next step, pinned to the bottom */}
             {cartItems.length > 0 && (

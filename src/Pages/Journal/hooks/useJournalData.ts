@@ -111,9 +111,10 @@ export const useJournalData = (companyId?: string, dateRange?: JournalDateRange 
             hsnSac: item.hsnSac || '',
             unit: item.unit || 'Pcs',
             purchasediscount: Number(item.purchasediscount) || 0,
-            taxType: item.taxType || '',
+                        taxType: item.taxType || '',
             taxAmount: Number(item.taxAmount) || 0,
             taxableAmount: Number(item.taxableAmount) || 0,
+            addOnLines: Array.isArray(item.addOnLines) ? item.addOnLines : undefined,
           };
         });
 

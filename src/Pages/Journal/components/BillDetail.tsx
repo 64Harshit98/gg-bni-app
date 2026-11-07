@@ -41,6 +41,8 @@ interface BillDetailProps {
   onRemind?: (invoice: Invoice) => void;
   onReturn: (invoice: Invoice) => void;
   onEdit: (invoice: Invoice) => void;
+  /** Opens the label print page with this bill's items prefilled; purchase bills only. */
+  onPrintLabels?: (invoice: Invoice) => void;
   onDelete: (invoice: Invoice) => void;
 }
 
@@ -59,6 +61,7 @@ export const BillDetail: React.FC<BillDetailProps> = ({
   onRemind,
   onReturn,
   onEdit,
+  onPrintLabels,
   onDelete,
 }) => {
   const navigate = useNavigate();
@@ -279,6 +282,15 @@ export const BillDetail: React.FC<BillDetailProps> = ({
             Edit
           </button>
         </ShowWrapper>
+
+        {!isSale && onPrintLabels && (invoice.items?.length || 0) > 0 && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onPrintLabels(invoice); }}
+            className={`${BTN_SECONDARY} xl:px-3`}
+          >
+            Label
+          </button>
+        )}
 
         {invoice.status === 'Paid' && (
           <button

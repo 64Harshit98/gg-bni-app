@@ -16,7 +16,7 @@ import ShowWrapper from '../context/ShowWrapper';
 import { Cata_Permissions } from './enum/cata_permissions.enum';
 import { ROUTES } from '../constants/routes.constants';
 import BackButton from '../Components/BackButton';
-import { Photo, Sheet, Tag, btnClass, toneClass } from './storefront/StoreUI';
+import { Photo, Sheet, btnClass, toneClass } from './storefront/StoreUI';
 import { initialsOf } from './storefront/storefront.utils';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
@@ -753,9 +753,9 @@ const OrderingPage: React.FC = () => {
                             const groupItems = groupItemsOf(group.id!);
                             const itemCount = groupItems.length;
                             const liveCount = groupItems.filter(i => i.isListed === true).length;
-const isFullyUnlive = itemCount > 0 && liveCount === 0;
-const collageImages = getGroupImages(group.id!);
-const pinned = pinnedIds.has(group.id!);
+                            const isFullyUnlive = itemCount > 0 && liveCount === 0;
+                            const collageImages = getGroupImages(group.id!);
+                            const pinned = pinnedIds.has(group.id!);
                             const liveText = itemCount === 0 ? 'No products yet' : liveCount === itemCount ? 'all live' : liveCount === 0 ? 'none live' : `${liveCount} live`;
 
                             return (
@@ -764,60 +764,63 @@ const pinned = pinnedIds.has(group.id!);
                                     key={group.id}
                                     onClick={() => navigate(`/catalogue-home/my-shop/${group.id}`)}
                                     className={cx('group flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border bg-white shadow-sf-card transition-shadow hover:shadow-sf-float',
-    highlightedId === group.id ? 'border-sf-primary outline-2 outline-offset-2 outline-sf-primary' : pinned ? 'border-sf-primary' : 'border-sf-line',
-    isVirtual && 'border-dashed border-sf-control shadow-none',
-    isFullyUnlive && 'bg-slate-50')}
+                                        highlightedId === group.id ? 'border-sf-primary outline-2 outline-offset-2 outline-sf-primary' : pinned ? 'border-sf-primary' : 'border-sf-line',
+                                        isVirtual && 'border-dashed border-sf-control shadow-none',
+                                        isFullyUnlive && 'bg-slate-50')}
                                 >
                                     {/* Photo: the category's products as a collage, or its first letter */}
-                                    <div className={cx('relative aspect-[4/3] overflow-hidden bg-sf-sunken', isFullyUnlive && 'grayscale opacity-60')}>
-                                        {collageImages.length > 0 ? (
-                                            <div className={cx('grid h-full w-full gap-0.5',
-                                                collageImages.length === 1 ? 'grid-cols-1' : 'grid-cols-2',
-                                                collageImages.length > 2 && 'grid-rows-2')}>
-                                                {collageImages.map((img, index) => (
-                                                    <Photo key={index} src={img} alt="" fit="contain"
-                                                        className={cx('h-full rounded-none', collageImages.length === 3 && index === 2 && 'col-span-2')} />
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <div className={cx('grid h-full w-full place-items-center text-3xl font-semibold text-slate-500/70', toneClass(gi))}>
-                                                {isVirtual ? '?' : initialsOf(group.name).slice(0, 1) || '?'}
-                                            </div>
+                                    <div className="relative">
+                                        <div className={cx('relative aspect-[4/3] overflow-hidden bg-sf-sunken', isFullyUnlive && 'grayscale opacity-60')}>
+                                            {collageImages.length > 0 ? (
+                                                <div className={cx('grid h-full w-full gap-0.5',
+                                                    collageImages.length === 1 ? 'grid-cols-1' : 'grid-cols-2',
+                                                    collageImages.length > 2 && 'grid-rows-2')}>
+                                                    {collageImages.map((img, index) => (
+                                                        <Photo key={index} src={img} alt="" fit="contain"
+                                                            className={cx('h-full rounded-none', collageImages.length === 3 && index === 2 && 'col-span-2')} />
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <div className={cx('grid h-full w-full place-items-center text-3xl font-semibold text-slate-500/70', toneClass(gi))}>
+                                                    {isVirtual ? '?' : initialsOf(group.name).slice(0, 1) || '?'}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {!isVirtual && (
+                                            <button type="button" onClick={(e) => handleTogglePin(e, group.id!)} aria-label={pinned ? `Unpin ${group.name}` : `Pin ${group.name} to the top`}
+                                                title={pinned ? 'Unpin' : 'Pin to top'}
+                                                className={cx('absolute left-1.5 top-1.5 inline-flex h-6 items-center justify-center gap-0.5 rounded-sm text-[10px] font-medium shadow-sm transition-colors',
+                                                    pinned
+                                                        ? 'bg-sf-soft px-1.5 text-sf-primary hover:brightness-95'
+                                                        : 'w-6 bg-white/90 text-slate-700 hover:bg-white')}>
+                                                <Pin className={cx('size-3', pinned && 'fill-current')} />
+                                                {pinned && 'Pinned'}
+                                            </button>
                                         )}
-                                        {pinned && <span className="absolute left-2 top-2"><Tag tone="soft"><Pin className="size-3 fill-current" />Pinned</Tag></span>}
                                     </div>
 
                                     <div className="flex flex-1 flex-col gap-1 p-3 md:p-4">
-                                        <div className="flex items-start gap-1">
-                                            <h3 className={cx('line-clamp-2 min-w-0 flex-1 break-words text-sm font-semibold leading-5 md:text-[15px] md:leading-[21px]', isVirtual && 'italic text-slate-500', isFullyUnlive && 'text-slate-500')}>{group.name}</h3>
-                                            {!isVirtual && (
-                                                <span className="flex shrink-0 gap-0.5 md:gap-1" onClick={(e) => e.stopPropagation()}>
-                                                    <button type="button" onClick={(e) => handleTogglePin(e, group.id!)} aria-label={pinned ? `Unpin ${group.name}` : `Pin ${group.name} to the top`}
-                                                        title={pinned ? 'Unpin' : 'Pin to top'}
-                                                        className={cx('grid size-7 place-items-center rounded-sm transition-colors md:size-8',
-                                                            pinned
-                                                                ? 'bg-sf-soft text-sf-primary hover:brightness-95'
-                                                                : 'bg-sf-sunken text-slate-600 hover:bg-sf-line hover:text-slate-900')}>
-                                                        <Pin className={cx('size-3.5 md:size-4', pinned && 'fill-current')} />
-                                                    </button>
-                                                    <button type="button" onClick={() => handleShareCategory(group)} aria-label={`Share ${group.name}`} title="Share category"
-                                                        className="grid size-7 place-items-center rounded-sm bg-sf-sunken text-slate-600 transition-colors hover:bg-sf-line hover:text-slate-900 md:size-8">
-                                                        <Send className="size-3.5 md:size-4" />
-                                                    </button>
-                                                </span>
-                                            )}
-                                        </div>
-                                        <p className="text-xs text-slate-500">
+                                        <h3 className={cx('line-clamp-2 min-w-0 break-words text-[13px] font-semibold leading-[18px] md:text-[15px] md:leading-[21px]', isVirtual && 'italic text-slate-500', isFullyUnlive && 'text-slate-500')}>{group.name}</h3>
+                                        <p className="text-[12px] text-slate-500">
                                             {itemCount} item{itemCount === 1 ? '' : 's'}{itemCount > 0 && <> · <span className={liveCount === itemCount ? 'text-green-700' : liveCount === 0 ? 'text-slate-500' : 'text-yellow-800'}>{liveText}</span></>}
                                         </p>
                                         <div className="mt-auto pt-2.5">
                                             {isVirtual ? (
                                                 <p className="text-xs leading-[18px] text-slate-500">Products without a category. Give them one so customers can find them.</p>
                                             ) : (
-                                                <button type="button" onClick={(e) => { e.stopPropagation(); handleEdit(group); setConfirmDeleteId(null); }}
-                                                    className={btnClass('secondary', 'sm', true)}>
-                                                    <Pencil className="size-4" />Edit category
-                                                </button>
+                                                <div className="flex items-center gap-1.5">
+                                                    <button type="button" onClick={(e) => { e.stopPropagation(); handleEdit(group); setConfirmDeleteId(null); }}
+                                                        className={cx(btnClass('secondary', 'sm', true), 'min-w-0 flex-1')}>
+                                                        <Pencil className="size-4" />
+                                                        <span className="sm:hidden">Edit</span>
+                                                        <span className="hidden sm:inline">Edit category</span>
+                                                    </button>
+                                                    <button type="button" onClick={(e) => { e.stopPropagation(); handleShareCategory(group); }} aria-label={`Share ${group.name}`} title="Share category"
+                                                        className="grid size-8 shrink-0 place-items-center rounded-sm bg-sf-sunken text-slate-600 transition-colors hover:bg-sf-line hover:text-slate-900">
+                                                        <Send className="size-4" />
+                                                    </button>
+                                                </div>
                                             )}
                                         </div>
                                     </div>

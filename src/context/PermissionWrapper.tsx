@@ -46,6 +46,17 @@ const PermissionWrapper = () => {
             : hasPermission(required as Permissions);
 
         if (!isAuthorized) {
+            // Catalogue-only user (koi POS permission nahi) ne POS route khola
+            // -> Access Denied dikhane ki jagah seedha catalogue dashboard pe bhejo
+            const isCatalogueOnlyUser =
+                !isCataloguePerm &&
+                (currentUser.corePermissions?.length ?? 0) === 0 &&
+                hasCataloguePermission(Cata_Permissions.ViewCatalogueDashboard);
+
+            if (isCatalogueOnlyUser) {
+                return <Navigate to={ROUTES.CHOME} replace />;
+            }
+
             return <AccessDeniedPage />;
         }
     }

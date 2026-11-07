@@ -117,7 +117,7 @@ interface PaymentDrawerProps {
     totalMrp?: number;
     showBillOptions?: boolean;
     // Sales Setting cap on the Bill Discount field below — 0/undefined means no cap.
-        maxBillDiscountValue?: number;
+    maxBillDiscountValue?: number;
     maxBillDiscountType?: 'percent' | 'amount';
     // Sales Setting controlling whether Bill Discount starts locked (needs a
     // long-press to unlock) each time the drawer opens. Defaults to true —
@@ -1352,7 +1352,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     ) : null;
 
     const taxModeLabel = taxMode.charAt(0).toUpperCase() + taxMode.slice(1);
-        // Asli taxable amount se banao (round off nahi judta). Bill discount lage to usi ratio me ghatao.
+    // Asli taxable amount se banao (round off nahi judta). Bill discount lage to usi ratio me ghatao.
     const subTotalValue = taxableSubtotal !== undefined
         ? Math.max(0, taxableSubtotal * (billTotal > 0 ? Math.max(0, (billTotal - discount) / billTotal) : 1))
         : Math.max(0, netPayable - liveTax);
@@ -1449,8 +1449,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                         disabled={toggleLocked}
                         aria-pressed={taxMode === m}
                         className={`flex-1 h-9 rounded-sm text-sm font-medium transition-all ${toggleLocked
-                                ? `cursor-not-allowed ${taxMode === m ? 'bg-[#dde1e8] text-[#6b7280]' : 'text-[#9ca3af]'}`
-                                : `cursor-pointer ${taxMode === m ? SEG_ON : SEG_OFF}`
+                            ? `cursor-not-allowed ${taxMode === m ? 'bg-[#dde1e8] text-[#6b7280]' : 'text-[#9ca3af]'}`
+                            : `cursor-pointer ${taxMode === m ? SEG_ON : SEG_OFF}`
                             }`}
                     >
                         {m.charAt(0).toUpperCase() + m.slice(1)}
@@ -1465,15 +1465,17 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const showExpenseRow = showExpenseExtra && hasExpense;
     const showTransportRow = showTransportExtra && hasTransportDetails;
     const showNoteRow = showNoteExtra && !!narration;
-    const anyRow = showGstRow || showExpenseRow || showTransportRow || showNoteRow || hasDiscountExtra;
-    const anyAddChip = (showPartyExtras && !hasGst) || (showTransportExtra && !hasTransportDetails) || !hasDiscountExtra || (showNoteExtra && !narration) || (showExpenseExtra && !hasExpense);
+    const otherRow = showGstRow || showExpenseRow || showTransportRow || showNoteRow;
+    const otherChip = (showPartyExtras && !hasGst) || (showTransportExtra && !hasTransportDetails) || (showNoteExtra && !narration) || (showExpenseExtra && !hasExpense);
+    const anyRow = otherRow || hasDiscountExtra;
+    const anyAddChip = otherChip || !hasDiscountExtra;
 
     // Filled extras -> row with "Edit". Empty extras -> dashed "+" chip (like Note).
     const extrasBlock = (
         <>
-            <div className={OVERLINE_CLS}>Extras <span className="normal-case tracking-normal font-normal">· each opens a pop-up</span></div>
+            <div className={`${OVERLINE_CLS} ${otherRow || otherChip ? '' : 'md:hidden'}`}>Extras <span className="normal-case tracking-normal font-normal">· each opens a pop-up</span></div>
             {anyRow && (
-                <div className="grid gap-2">
+                <div className={`grid gap-2 ${otherRow ? '' : 'md:hidden'}`}>
                     {showGstRow && (
                         <ExtraRow tint={TINT_BLUE} icon={gstIcon} title="GST & address" subtitle={gstSummary} onClick={() => openPopup('gst')} />
                     )}
@@ -1487,21 +1489,77 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                         <ExtraRow tint={TINT_AMBER} icon={noteIcon} title="Narration" subtitle={narration} onClick={() => openPopup('note')} />
                     )}
                     {hasDiscountExtra && (
-                        <ExtraRow tint={TINT_GREEN} icon={discountTaxIcon} title="Bill discount" subtitle={discountRowSummary} onClick={() => openPopup('discount')} />
+                        <div className="md:hidden">
+                            <ExtraRow tint={TINT_GREEN} icon={discountTaxIcon} title="Bill discount" subtitle={discountRowSummary} onClick={() => openPopup('discount')} />
+                        </div>
                     )}
                 </div>
             )}
             {anyAddChip && (
-                <div className="flex flex-wrap gap-2">
+                <div className={`flex flex-wrap gap-2 ${otherChip ? '' : 'md:hidden'}`}>
                     {showPartyExtras && !hasGst && <AddChip label="GST & address" onClick={() => openPopup('gst')} />}
                     {showTransportExtra && !hasTransportDetails && <AddChip label="Transport details" onClick={() => openPopup('transport')} />}
-                    {!hasDiscountExtra && <AddChip label="Bill discount" onClick={() => openPopup('discount')} />}
+                    {!hasDiscountExtra && <span className="md:hidden"><AddChip label="Bill discount" onClick={() => openPopup('discount')} /></span>}
                     {showNoteExtra && !narration && <AddChip label="Narration" onClick={() => openPopup('note')} />}
                     {showExpenseExtra && !hasExpense && <AddChip label="Shop expense" onClick={() => openPopup('expense')} />}
                 </div>
             )}
         </>
     );
+
+    // --- BILL DISCOUNT FIELDS (popup aur desktop inline dono me use hota hai) ---
+    const discountFields = (
+        <div
+            className="cursor-pointer"
+            onMouseDown={handleDiscountPressStart}
+            onMouseUp={handleDiscountPressEnd}
+            onMouseLeave={handleDiscountPressEnd}
+            onTouchStart={handleDiscountPressStart}
+            onTouchEnd={handleDiscountPressEnd}
+            onClick={handleDiscountClick}
+        >
+            <div className="flex items-center gap-1.5 mb-1">
+                <span className={`text-xs font-medium ${isDiscountLocked ? 'text-[#d5000c]' : 'text-[#155dfc]'}`}>Bill discount</span>
+                {isDiscountLocked && lockIcon}
+                {discountBlocked && (
+                    <span className="text-[11px] font-semibold text-white bg-[#d5000c] px-1.5 py-0.5 rounded-sm">Cannot edit</span>
+                )}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+                <div className={`${DISC_BOX} ${isDiscountLocked ? 'border-[#d5000c] bg-[#ffeef0]' : 'border-[#7a8aa3] bg-white'}`}>
+                    <input
+                        type="number"
+                        placeholder="0"
+                        value={discountPercent || ''}
+                        onChange={handleDiscountPercentChange}
+                        readOnly={isDiscountLocked}
+                        className={`w-full min-w-0 text-sm text-[#0f172b] bg-transparent outline-none tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${isDiscountLocked ? 'cursor-not-allowed' : 'font-semibold'}`}
+                    />
+                    <span className={`self-stretch w-px flex-none ${isDiscountLocked ? 'bg-[#d5000c]' : 'bg-[#7a8aa3]'}`} aria-hidden="true" />
+                    <i className="not-italic text-[#5b6b86] text-sm pl-1">%</i>
+                </div>
+                <div className={`${DISC_BOX} ${isDiscountLocked ? 'border-[#d5000c] bg-[#ffeef0]' : 'border-[#7a8aa3] bg-white'}`}>
+                    <input
+                        id="discount"
+                        type="number"
+                        placeholder="0"
+                        value={discount || ''}
+                        onChange={handleDiscountAmountChange}
+                        readOnly={isDiscountLocked}
+                        className={`w-full min-w-0 text-sm text-[#0f172b] bg-transparent outline-none tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${isDiscountLocked ? 'cursor-not-allowed' : 'font-semibold'}`}
+                    />
+                    <span className="self-stretch w-px bg-[#7a8aa3] flex-none" aria-hidden="true" />
+                    <i className="not-italic text-[#5b6b86] text-sm pl-1">₹</i>
+                </div>
+            </div>
+            <div className={`text-xs mt-1 ${isDiscountLocked ? 'text-[#d5000c] font-medium' : 'text-[#5b6b86]'}`}>
+                {isDiscountLocked ? 'Locked. Long press to unlock.' : 'Type either — the other fills in.'}
+            </div>
+        </div>
+    );
+
+    // Desktop: inline (popup nahi). Mobile pe hidden.
+    const discountInlineBlock = <div className="hidden md:block">{discountFields}</div>;
 
     const currentRemark = savedRemark?.id === remarkId ? savedRemark.text : '';
 
@@ -1676,51 +1734,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     onSave={closePopups}
                     saveLabel="Apply"
                 >
-                    <div
-                        className="cursor-pointer"
-                        onMouseDown={handleDiscountPressStart}
-                        onMouseUp={handleDiscountPressEnd}
-                        onMouseLeave={handleDiscountPressEnd}
-                        onTouchStart={handleDiscountPressStart}
-                        onTouchEnd={handleDiscountPressEnd}
-                        onClick={handleDiscountClick}
-                    >
-                        <div className="flex items-center gap-1.5 mb-1">
-                            <span className={`text-xs font-medium ${isDiscountLocked ? 'text-[#d5000c]' : 'text-[#155dfc]'}`}>Bill discount</span>
-                            {isDiscountLocked && lockIcon}
-                            {discountBlocked && (
-                                <span className="text-[11px] font-semibold text-white bg-[#d5000c] px-1.5 py-0.5 rounded-sm">Cannot edit</span>
-                            )}
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                            <div className={`${DISC_BOX} ${isDiscountLocked ? 'border-[#d5000c] bg-[#ffeef0]' : 'border-[#7a8aa3] bg-white'}`}>
-                                <input
-                                    type="number"
-                                    placeholder="0"
-                                    value={discountPercent || ''}
-                                    onChange={handleDiscountPercentChange}
-                                    readOnly={isDiscountLocked}
-                                    className={`w-full min-w-0 text-sm text-[#0f172b] bg-transparent outline-none tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${isDiscountLocked ? 'cursor-not-allowed' : 'font-semibold'}`}
-                                />
-                                <i className="not-italic text-[#5b6b86] text-sm">%</i>
-                            </div>
-                            <div className={`${DISC_BOX} ${isDiscountLocked ? 'border-[#d5000c] bg-[#ffeef0]' : 'border-[#7a8aa3] bg-white'}`}>
-                                <i className="not-italic text-[#5b6b86] text-sm">₹</i>
-                                <input
-                                    id="discount"
-                                    type="number"
-                                    placeholder="0"
-                                    value={discount || ''}
-                                    onChange={handleDiscountAmountChange}
-                                    readOnly={isDiscountLocked}
-                                    className={`w-full min-w-0 text-right text-sm text-[#0f172b] bg-transparent outline-none tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${isDiscountLocked ? 'cursor-not-allowed' : 'font-semibold'}`}
-                                />
-                            </div>
-                        </div>
-                        <div className={`text-xs mt-1 ${isDiscountLocked ? 'text-[#d5000c] font-medium' : 'text-[#5b6b86]'}`}>
-                            {isDiscountLocked ? 'Locked.' : 'Type either — the other fills in.'}
-                        </div>
-                    </div>
+                    {discountFields}
 
                     <div className="flex justify-between items-baseline px-3 py-2.5 rounded-sm bg-[#f5f7ff] text-[13px] text-[#45556c]">
                         <span>{amountLabel}</span>
@@ -2008,6 +2022,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                                 );
                             })}
                         </div>
+
+                        {discountInlineBlock}
 
                         {dueNotices}
                         {balancesBlock}

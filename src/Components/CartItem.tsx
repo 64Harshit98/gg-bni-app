@@ -52,6 +52,21 @@ interface GenericCartListProps<T extends CartItem> {
   onPricePressEnd?: () => void;
   onPriceClick?: () => void;
 }
+// "(Not in DB)" flag ko red color mein dikhane ke liye name ko split karta hai
+const NOT_IN_DB_FLAG = '(Not in DB)';
+const renderItemName = (name: string, maxLen?: number) => {
+  const idx = name.indexOf(NOT_IN_DB_FLAG);
+  if (idx === -1) return maxLen ? name.slice(0, maxLen) : name;
+  const base = name.slice(0, idx);
+  const shownBase = maxLen ? base.slice(0, Math.max(0, maxLen - NOT_IN_DB_FLAG.length)) : base;
+  return (
+    <>
+      {shownBase}
+      <span className="text-red-600 font-semibold">{NOT_IN_DB_FLAG}</span>
+    </>
+  );
+};
+
 // Quantity selector width: 2 buttons (24px each) + digits area (9px per digit, min 2 digits) + padding
 const getQtyWidth = (qty: number | string) => {
   const digits = Math.max(String(qty ?? '').length, 2);
@@ -417,7 +432,7 @@ export const GenericCartList = <T extends CartItem>({
                       className={`text-sm font-medium text-gray-800 truncate ${onNameClick ? 'cursor-pointer hover:text-blue-600' : ''}`}
                       onClick={onNameClick ? () => onNameClick(item) : undefined}
                     >
-                      {item.name || 'Unnamed Item'}
+                                           {item.name ? renderItemName(item.name) : 'Unnamed Item'}
                     </span>
                     {item.addOnText && (
                       <span

@@ -28,6 +28,8 @@ import { formatClockTime, formatDayLabel } from '../../lib/format';
 import { useCollapsingPageHeader } from '../../lib/useCollapsingPageHeader';
 import { BADGE, BTN_PRIMARY, BTN_SECONDARY, FIELD_INPUT, FIELD_LABEL, fmt, getActiveModes, modeBadgeClass, modeLabel, returnModeClass } from './journal.ui';
 import { useWhatsappProvider } from '../Additional/Whatsapp/useWhatsappProvider';
+import { useCatalogueData } from '../../context/CatalogueDataContext';
+import { printItemLabels } from '../../lib/printLabels';
 // ─── Total tutorial steps for Journal ───────────────────────────────────────
 const TOTAL_STEPS = 6;
 
@@ -94,6 +96,7 @@ const Journal: React.FC = () => {
   const { salesSettings } = useSalesSettings();
 
   const { currentUser, loading: authLoading, hasPermission } = useAuth();
+  const { items: catalogueItems } = useCatalogueData();
 
   const {
     customerCredit,
@@ -304,6 +307,32 @@ const Journal: React.FC = () => {
     navigate(`${ROUTES.PURCHASE_RETURN}`, { state: { invoiceData: invoice } });
   };
 
+  const handlePrintLabels = async (invoice: Invoice) => {
+    if (!currentUser?.companyId) return;
+
+    // QR page jaisa hi matching: pehle id, phir barcode. Catalogue ka latest item use hota hai (MRP/price ke liye)
+    const entries = (invoice.items || [])
+      .map((it) => {
+        const match =
+          catalogueItems.find((c) => c.id === it.id) ||
+          catalogueItems.find((c) => c.barcode && c.barcode === it.barcode);
+        return match && match.barcode && match.barcode.trim() !== ''
+          ? { item: match, quantity: Number(it.quantity) || 1 }
+          : null;
+      })
+      .filter((e): e is NonNullable<typeof e> => e !== null);
+
+    if (entries.length === 0) {
+      setModal({ message: 'Is bill ke kisi item ka barcode nahi mila, label print nahi ho sakta.', type: State.ERROR });
+      return;
+    }
+
+    try {
+      await printItemLabels(currentUser.companyId, entries);
+    } catch (e: any) {
+      setModal({ message: e?.message || 'Label print nahi ho paya.', type: State.ERROR });
+    }
+  };
   const totalUnpaidAmount = useMemo(() => {
     if (activeTab !== 'Unpaid') return 0;
     return filteredInvoices.reduce((sum, invoice) => {
@@ -346,6 +375,7 @@ const Journal: React.FC = () => {
       onRemind={whatsappProvider === 'none' ? undefined : whatsappProvider === 'botmaster' ? handleSendReminder : handleSendReminderSnapto}
       onReturn={(inv) => (inv.type === 'Credit' ? handleSalesReturn(inv) : handlePurchaseReturn(inv))}
       onEdit={handleEditInvoice}
+      onPrintLabels={invoice.type === 'Credit' ? undefined : handlePrintLabels}
       onDelete={promptDeleteInvoice}
     />
   );

@@ -489,7 +489,7 @@ const CatalogueLayout = () => {
                                 isLast={true}
                                 position="top"
                             >
-                                <FloatingButton className="static shadow-lg">
+                                <FloatingButton className="static shadow-lg !bg-[#c2410c]">
                                     <MobileActions />
                                 </FloatingButton>
                             </TutorialStep>

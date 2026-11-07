@@ -851,6 +851,7 @@ const OrdersReport: React.FC = () => {
           </button>
           <DownloadMenu
             variant="icon"
+            theme="catalogue"
             onExcel={() => runDownload(downloadAsExcel)}
             onPdf={() => runDownload(downloadAsPdf)}
           />
@@ -1001,6 +1002,7 @@ const OrdersReport: React.FC = () => {
               {isListVisible ? 'Hide list' : 'Show list'}
             </button>
             <DownloadMenu
+              theme="catalogue"
               onExcel={() => runDownload(downloadAsExcel)}
               onPdf={() => runDownload(downloadAsPdf)}
             />

@@ -689,7 +689,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
             <button onClick={() => setShowSearch((s) => !s)} aria-label="Search" className="rounded-sm p-2 text-slate-700 transition hover:bg-slate-200">
               <Search size={20} />
             </button>
-            <DownloadMenu variant="icon" onExcel={() => runDownload(downloadAsExcel)} onPdf={() => runDownload(downloadAsPdf)} />
+            <DownloadMenu variant="icon" onExcel={() => runDownload(downloadAsExcel)} onPdf={() => runDownload(downloadAsPdf)} theme={cat ? 'catalogue' : 'pos'} />
           </div>
         </div>
 
@@ -929,7 +929,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
                 {isListVisible ? <EyeOff size={15} /> : <Eye size={15} />}
                 {isListVisible ? 'Hide list' : 'Show list'}
               </button>
-              <DownloadMenu onExcel={() => runDownload(downloadAsExcel)} onPdf={() => runDownload(downloadAsPdf)} />
+              <DownloadMenu onExcel={() => runDownload(downloadAsExcel)} onPdf={() => runDownload(downloadAsPdf)} theme={cat ? 'catalogue' : 'pos'} />
             </div>
 
             {/* Mobile sort (stock) */}

@@ -138,7 +138,7 @@ export const OrderListFilters: React.FC<OrderListFiltersProps> = ({
                     </li>
                 ))}
             </ul>
-                        {activeDateFilter === 'custom' && (
+            {activeDateFilter === 'custom' && (
                 <CustomRangePopover
                     start={customDateRange.start}
                     end={customDateRange.end}
@@ -226,86 +226,86 @@ export const OrderListFilters: React.FC<OrderListFiltersProps> = ({
                     </div>
                 </div>
             ) : (
-            /* ───────── MOBILE PAGE HEADER (fixed 72px so the stage bar can stick right under it) ─────────
-               SELLAR: title + date range left-aligned, outlined Search + Filter buttons on the right */
-            <div className="bg-[#fff5ec] sticky top-0 z-[100] px-4 md:px-6 h-[72px] flex items-center">
-                <div className="flex items-center w-full gap-2">
-                    {/* Left: Title / search input + date range */}
-                    <div className="flex-1 min-w-0 flex flex-col items-start justify-center">
-                        {showSearch ? (
-                            <input
-                                type="text"
-                                placeholder="Search name, phone or order no."
-                                className="w-full h-9 px-3 text-sm text-slate-800 bg-white border border-[#f6e1d0] rounded-sm placeholder:text-slate-400 focus:border-[#ea580c] focus:ring-2 focus:ring-[#ea580c]/20 outline-none transition"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                autoFocus
-                            />
-                        ) : (
-                            <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-slate-900 leading-7">Orders</h1>
-                        )}
+                /* ───────── MOBILE PAGE HEADER (fixed 72px so the stage bar can stick right under it) ─────────
+                   SELLAR: title + date range left-aligned, outlined Search + Filter buttons on the right */
+                <div className="bg-[#fff5ec] sticky top-0 z-[100] px-4 md:px-6 h-[72px] flex items-center">
+                    <div className="flex items-center w-full gap-2">
+                        {/* Left: Title / search input + date range */}
+                        <div className="flex-1 min-w-0 flex flex-col items-start justify-center">
+                            {showSearch ? (
+                                <input
+                                    type="text"
+                                    placeholder="Search name, phone or order no."
+                                    className="w-full h-9 px-3 text-sm text-slate-800 bg-white border border-[#f6e1d0] rounded-sm placeholder:text-slate-400 focus:border-[#ea580c] focus:ring-2 focus:ring-[#ea580c]/20 outline-none transition"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    autoFocus
+                                />
+                            ) : (
+                                <h1 className="text-xl md:text-2xl font-semibold tracking-tight text-slate-900 leading-7">Orders</h1>
+                            )}
 
+                            <TutorialStep
+                                step={2}
+                                currentStep={tutorialStep}
+                                text="This shows the date range currently applied to your orders."
+                                onNext={() => next(3)}
+                                onSkip={skip}
+                            >
+                                <div className="mt-0.5">
+                                    <span className="text-xs font-medium text-slate-500">
+                                        {dateDisplay}
+                                    </span>
+                                </div>
+                            </TutorialStep>
+                        </div>
+
+                        {/* Right: Search */}
                         <TutorialStep
-                            step={2}
+                            step={1}
                             currentStep={tutorialStep}
-                            text="This shows the date range currently applied to your orders."
-                            onNext={() => next(3)}
+                            text="Tap the search icon to find orders by name, order ID, or phone."
+                            onNext={() => next(2)}
                             onSkip={skip}
                         >
-                            <div className="mt-0.5">
-                                <span className="text-xs font-medium text-slate-500">
-                                    {dateDisplay}
-                                </span>
-                            </div>
+                            <button
+                                onClick={() => setShowSearch(!showSearch)}
+                                aria-label={showSearch ? 'Close search' : 'Search orders'}
+                                className={MOBILE_ICON_BTN}
+                            >
+                                {showSearch ? <FiX className="w-5 h-5" /> : <FiSearch className="w-5 h-5" />}
+                            </button>
                         </TutorialStep>
-                    </div>
 
-                    {/* Right: Search */}
-                    <TutorialStep
-                        step={1}
-                        currentStep={tutorialStep}
-                        text="Tap the search icon to find orders by name, order ID, or phone."
-                        onNext={() => next(2)}
-                        onSkip={skip}
-                    >
-                        <button
-                            onClick={() => setShowSearch(!showSearch)}
-                            aria-label={showSearch ? 'Close search' : 'Search orders'}
-                            className={MOBILE_ICON_BTN}
-                        >
-                            {showSearch ? <FiX className="w-5 h-5" /> : <FiSearch className="w-5 h-5" />}
-                        </button>
-                    </TutorialStep>
-
-                    {/* Right: Filter */}
-                    {/* <ShowWrapper requiredPermission={Cata_Permissions.ViewNotification}>
+                        {/* Right: Filter */}
+                        {/* <ShowWrapper requiredPermission={Cata_Permissions.ViewNotification}>
                         <div className="hidden sm:flex items-center justify-center border border-slate-300 rounded-sm bg-gray-100 shadow-sm">
                             <NotificationBell />
                         </div>
                     </ShowWrapper> */}
-                    {/* //<CataShowWrapper permission={Cata_Permissions.ViewFilterbutton}> */}
-                    <div className="relative" ref={filterRef}>
-                        <TutorialStep
-                            step={3}
-                            currentStep={tutorialStep}
-                            text="Use this filter to quickly jump to Today, Last 7 Days, Last 30 Days, and more."
-                            onNext={() => next(4)}
-                            onSkip={skip}
-                        >
-                            <button
-                                onClick={() => setIsFilterOpen(!isFilterOpen)}
-                                aria-label="Filter by date"
-                                className={`${MOBILE_ICON_BTN} cursor-pointer ${isFilterOpen ? '!bg-[#ffedd5] text-[#c2410c]' : ''}`}
+                        {/* //<CataShowWrapper permission={Cata_Permissions.ViewFilterbutton}> */}
+                        <div className="relative" ref={filterRef}>
+                            <TutorialStep
+                                step={3}
+                                currentStep={tutorialStep}
+                                text="Use this filter to quickly jump to Today, Last 7 Days, Last 30 Days, and more."
+                                onNext={() => next(4)}
+                                onSkip={skip}
                             >
-                                <IconFilter />
-                            </button>
-                        </TutorialStep>
+                                <button
+                                    onClick={() => setIsFilterOpen(!isFilterOpen)}
+                                    aria-label="Filter by date"
+                                    className={`${MOBILE_ICON_BTN} cursor-pointer ${isFilterOpen ? '!bg-[#ffedd5] text-[#c2410c]' : ''}`}
+                                >
+                                    <IconFilter />
+                                </button>
+                            </TutorialStep>
 
-                        {dateDropdown}
+                            {dateDropdown}
+                        </div>
+                        {/* </CataShowWrapper> */}
                     </div>
-                    {/* </CataShowWrapper> */}
                 </div>
-            </div>
             )}
 
             {/* ───────── CUSTOMER REQUESTS CARD (scrolls away) ───────── */}
@@ -336,7 +336,7 @@ export const OrderListFilters: React.FC<OrderListFiltersProps> = ({
             </div>
 
             {/* ───────── STAGE TABS (sticky under the header on mobile) ───────── */}
-            <div className="sticky top-[72px] z-[50] bg-[#fff5ec] px-3 md:px-6 pt-3 pb-2 lg:static">
+            <div className="sticky top-[72px] z-[50] bg-[#fff5ec] px-3 md:px-6 pt-2 pb-2 lg:pt-3 lg:static">
                 <TutorialStep
                     step={4}
                     currentStep={tutorialStep}
@@ -344,46 +344,100 @@ export const OrderListFilters: React.FC<OrderListFiltersProps> = ({
                     onNext={() => next(5)}
                     onSkip={skip}
                 >
-                    {/* mobile: compact horizontal chips (swipe) · md+: 4 equal cards with hint */}
-                    <div
-                        ref={setTutorialRef(4) as any}
-                        className="flex gap-1.5 overflow-x-auto md:grid md:grid-cols-4 md:gap-2 md:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                    >
-                        {orderStatuses.map((status) => {
-                            const isActive = status === activeStatusTab;
-                            const count = statusCounts[status] || 0;
-                            const isHot = status === 'Upcoming' && count > 0;
+                    <div ref={setTutorialRef(4) as any}>
+                        {/* ===== MOBILE + TABLET: stepper timeline (no scroll, all 4 visible) ===== */}
+                        <div className="lg:hidden bg-white border border-[#f6e1d0] rounded-sm px-2 pt-3 pb-2.5 md:px-4 md:pt-4 md:pb-3">
+                            <div className="grid grid-cols-4">
+                                {orderStatuses.map((status, i) => {
+                                    const activeIdx = orderStatuses.indexOf(activeStatusTab);
+                                    const isActive = i === activeIdx;
+                                    const count = statusCounts[status] || 0;
+                                    const isHot = status === 'Upcoming' && count > 0;
 
-                            return (
-                                <button
-                                    key={status}
-                                    type="button"
-                                    aria-pressed={isActive}
-                                    onClick={() => setActiveStatusTab(status)}
-                                    className={`flex-none md:flex-auto min-w-0 flex items-center gap-2 md:gap-3 rounded-sm text-left px-2.5 py-2 md:px-3 md:py-2.5 transition active:scale-[0.98] ${isActive
-                                        ? 'bg-[#ffedd5] border-2 border-[#c2410c] px-[9px] py-[7px] md:px-[11px] md:py-[9px]'
-                                        : 'bg-white border border-[#f6e1d0] hover:bg-[#fff8f2]'}`}
-                                >
-                                    <span
-                                        className={`shrink-0 w-[26px] h-[26px] md:w-9 md:h-9 rounded-full grid place-items-center text-xs md:text-sm font-semibold ${isActive
-                                            ? 'bg-[#c2410c] text-white'
-                                            : isHot
-                                                ? 'bg-[#f97316] text-white'
-                                                : 'bg-[#fff8f2] text-slate-600'}`}
+                                    return (
+                                        <button
+                                            key={status}
+                                            type="button"
+                                            aria-pressed={isActive}
+                                            onClick={() => setActiveStatusTab(status)}
+                                            className="relative flex flex-col items-center gap-1.5 min-w-0 active:scale-95 transition"
+                                        >
+                                            {/* connector line: pichle circle ke center se is circle ke center tak */}
+                                            {i > 0 && (
+                                                <span
+                                                    className={`absolute top-[13px] md:top-[15px] right-1/2 w-full h-0.5 ${i <= activeIdx ? 'bg-[#c2410c]' : 'bg-[#f6e1d0]'
+                                                        }`}
+                                                />
+                                            )}
+
+                                            {/* circle with count */}
+                                            <span
+                                                className={`relative z-10 w-7 h-7 md:w-8 md:h-8 rounded-full grid place-items-center text-xs md:text-sm font-semibold ring-4 ring-white transition ${isActive
+                                                    ? 'bg-[#c2410c] text-white scale-110 shadow-sm'
+                                                    : isHot
+                                                        ? 'bg-[#f97316] text-white'
+                                                        : i < activeIdx
+                                                            ? 'bg-[#ffedd5] text-[#9a3412] border border-[#c2410c]'
+                                                            : 'bg-[#fff8f2] text-slate-600 border border-[#f6e1d0]'
+                                                    }`}
+                                            >
+                                                {count}
+                                            </span>
+
+                                            {/* label */}
+                                            <span
+                                                className={`w-full text-center truncate text-[11px] md:text-xs leading-4 ${isActive ? 'font-semibold text-[#9a3412]' : 'font-medium text-slate-600'
+                                                    }`}
+                                            >
+                                                {status}
+                                            </span>
+
+                                            {/* active underline */}
+                                            <span className={`h-0.5 w-6 rounded-full transition ${isActive ? 'bg-[#c2410c]' : 'bg-transparent'}`} />
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* ===== DESKTOP ONLY (>=1024px): 4 cards with hint ===== */}
+                        <div className="hidden lg:grid lg:grid-cols-4 lg:gap-2">
+                            {orderStatuses.map((status) => {
+                                const isActive = status === activeStatusTab;
+                                const count = statusCounts[status] || 0;
+                                const isHot = status === 'Upcoming' && count > 0;
+
+                                return (
+                                    <button
+                                        key={status}
+                                        type="button"
+                                        aria-pressed={isActive}
+                                        onClick={() => setActiveStatusTab(status)}
+                                        className={`min-w-0 flex items-center gap-3 rounded-sm text-left px-3 py-2.5 transition active:scale-[0.98] ${isActive
+                                            ? 'bg-[#ffedd5] border-2 border-[#c2410c] px-[11px] py-[9px]'
+                                            : 'bg-white border border-[#f6e1d0] hover:bg-[#fff8f2]'}`}
                                     >
-                                        {count}
-                                    </span>
-                                    <span className="min-w-0">
-                                        <span className={`block whitespace-nowrap md:truncate text-xs md:text-[13px] font-semibold ${isActive ? 'text-[#9a3412]' : 'text-slate-800'}`}>
-                                            {status}
+                                        <span
+                                            className={`shrink-0 w-9 h-9 rounded-full grid place-items-center text-sm font-semibold ${isActive
+                                                ? 'bg-[#c2410c] text-white'
+                                                : isHot
+                                                    ? 'bg-[#f97316] text-white'
+                                                    : 'bg-[#fff8f2] text-slate-600'}`}
+                                        >
+                                            {count}
                                         </span>
-                                        <span className="hidden md:block truncate text-[11px] text-slate-500">
-                                            {STAGE_HINTS[status] ?? ''}
+                                        <span className="min-w-0">
+                                            <span className={`block truncate text-[13px] font-semibold ${isActive ? 'text-[#9a3412]' : 'text-slate-800'}`}>
+                                                {status}
+                                            </span>
+                                            <span className="block truncate text-[11px] text-slate-500">
+                                                {STAGE_HINTS[status] ?? ''}
+                                            </span>
                                         </span>
-                                    </span>
-                                </button>
-                            );
-                        })}
+                                    </button>
+                                );
+                            })}
+                        </div>
                     </div>
                 </TutorialStep>
 

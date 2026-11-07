@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { motion } from "framer-motion";
 import { useNavigate } from 'react-router-dom';
-import { FiArrowLeft, FiMessageCircle, FiMoreHorizontal, FiPhone, FiPrinter } from 'react-icons/fi';
+import { FiArrowLeft, FiArrowLeftCircle, FiEdit, FiMessageCircle, FiPhone, FiPrinter, FiTrash2 } from 'react-icons/fi';
 import { ROUTES } from '../../../constants/routes.constants';
 import { CustomCard } from '../../../Components/CustomCard';
 import { Spinner } from '../../../constants/Spinner';
@@ -72,61 +72,43 @@ const fmtReturnedAt = (v: any) =>
 
 const sameText = (a?: string, b?: string) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
 
+type ActionIconKey = 'edit' | 'back' | 'delete';
+
 interface MoreMenuItem {
+    key: ActionIconKey;
     label: string;
     onSelect: () => void;
     danger?: boolean;
 }
 
-// ⋯ menu: the actions you rarely need (edit, move back, delete)
-const MoreMenu: React.FC<{ items: MoreMenuItem[]; opensUp?: boolean }> = ({ items, opensUp }) => {
-    const [open, setOpen] = useState(false);
-    const wrapRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (!open) return;
-        const onDown = (e: PointerEvent) => {
-            if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
-        };
-        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
-        document.addEventListener('pointerdown', onDown);
-        document.addEventListener('keydown', onKey);
-        return () => {
-            document.removeEventListener('pointerdown', onDown);
-            document.removeEventListener('keydown', onKey);
-        };
-    }, [open]);
-
-    return (
-        <div ref={wrapRef} className="relative shrink-0">
-            <button
-                type="button"
-                aria-label={`More actions: ${items.map(i => i.label.toLowerCase()).join(', ')}`}
-                aria-haspopup="menu"
-                aria-expanded={open}
-                onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
-                className="w-10 h-10 rounded-sm grid place-items-center text-slate-600 hover:bg-[#fff5ec] hover:text-[#c2410c] transition"
-            >
-                <FiMoreHorizontal className="w-5 h-5" />
-            </button>
-            {open && (
-                <div role="menu" className={`absolute right-0 z-20 w-56 rounded-sm border border-[#f6e1d0] bg-white p-1 shadow-xl ${opensUp ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
-                    {items.map((item) => (
-                        <button
-                            key={item.label}
-                            type="button"
-                            role="menuitem"
-                            onClick={(e) => { e.stopPropagation(); setOpen(false); item.onSelect(); }}
-                            className={`w-full h-10 px-3 rounded-sm text-left text-sm ${item.danger ? 'text-red-600 hover:bg-red-50' : 'text-slate-800 hover:bg-[#fff8f2]'}`}
-                        >
-                            {item.label}
-                        </button>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
+const ACTION_ICONS: Record<ActionIconKey, React.ComponentType<{ className?: string }>> = {
+    edit: FiEdit,
+    back: FiArrowLeftCircle,
+    delete: FiTrash2,
 };
+
+// Edit / move back / delete: ab seedha icon buttons (no dropdown)
+const ActionIcons: React.FC<{ items: MoreMenuItem[] }> = ({ items }) => (
+    <div className="flex items-center gap-0.5 shrink-0">
+        {items.map((item) => {
+            const Icon = ACTION_ICONS[item.key];
+            return (
+                <button
+                    key={item.key}
+                    type="button"
+                    title={item.label}
+                    aria-label={item.label}
+                    onClick={(e) => { e.stopPropagation(); item.onSelect(); }}
+                    className={`w-10 h-10 rounded-sm grid place-items-center transition active:scale-95 ${item.danger
+                        ? 'text-red-600 hover:bg-red-50'
+                        : 'text-slate-600 hover:bg-[#fff5ec] hover:text-[#c2410c]'}`}
+                >
+                    <Icon className="w-5 h-5" />
+                </button>
+            );
+        })}
+    </div>
+);
 
 export const OrderCard: React.FC<OrderCardProps> = ({
     order: Order,
@@ -272,7 +254,9 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                 const on = i <= stageIndex;
                 return (
                     <div key={s} className="relative pt-[18px] text-[10px] sm:text-xs text-slate-500">
-                        <span className={`absolute top-1 left-0 right-0 h-[3px] ${on ? 'bg-[#c2410c]' : 'bg-[#f6e1d0]'}`} />
+                        {i < STAGES.length - 1 && (
+                            <span className={`absolute top-1 left-0 right-0 h-[3px] ${i < stageIndex ? 'bg-[#c2410c]' : 'bg-[#f6e1d0]'}`} />
+                        )}
                         <span className={`absolute top-0 left-0 w-[11px] h-[11px] rounded-full border-2 ${on ? 'bg-[#c2410c] border-[#c2410c]' : 'bg-white border-[#f6e1d0]'} ${i === stageIndex ? 'ring-4 ring-[#ffedd5]' : ''}`} />
                         <b className="block text-xs sm:text-[13px] font-semibold text-slate-900">{s}</b>
                         {i === 0 ? placedAt : i === stageIndex + 1 ? 'Next' : on ? '' : '—'}
@@ -660,9 +644,9 @@ export const OrderCard: React.FC<OrderCardProps> = ({
 
     // Rarely-needed actions behind ⋯ (same conditions as before)
     const moreItems: MoreMenuItem[] = [
-        ...(!isUpcomingStatus ? [{ label: 'Edit order', onSelect: () => openEditor(Order) }] : []),
-        ...(Order.status === 'Packed' ? [{ label: 'Move back to Confirmed', onSelect: () => handlePreviousStatus(Order.id, Order.status) }] : []),
-        { label: 'Delete order', danger: true, onSelect: () => handleDeleteOrder(Order.id) },
+        ...(!isUpcomingStatus ? [{ key: 'edit' as const, label: 'Edit order', onSelect: () => openEditor(Order) }] : []),
+        ...(Order.status === 'Packed' ? [{ key: 'back' as const, label: 'Move back to Confirmed', onSelect: () => handlePreviousStatus(Order.id, Order.status) }] : []),
+        { key: 'delete' as const, label: 'Delete order', danger: true, onSelect: () => handleDeleteOrder(Order.id) },
     ];
 
     const confirmButton = (
@@ -850,7 +834,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                             {isUpcomingStatus ? `Upcoming · ${placedAt}` : `${Order.userName} · ${stageLabel}`}
                         </span>
                     </div>
-                    <MoreMenu items={moreItems} />
+                    <ActionIcons items={moreItems} />
                 </header>
 
                 <div className="grow shrink-0 px-4 pt-3 pb-4 space-y-3 bg-[#fff5ec]">
@@ -1039,7 +1023,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                                 <span className="text-xs font-medium text-[#a16207] tabular-nums">₹{money(due)} due</span>
                             )}
                         </div>
-                        <MoreMenu items={moreItems} opensUp />
+                        <ActionIcons items={moreItems} />
                         {pinnedActions(false)}
                     </div>
                 }

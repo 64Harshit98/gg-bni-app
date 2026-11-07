@@ -150,6 +150,8 @@ const CATALOGUE_PAGES: PageGroup<Cata_Permissions>[] = [
 
 const ALL_PAGES = [...POS_PAGES, ...CATALOGUE_PAGES].flatMap<PageLink<unknown>>((g) => g.pages);
 
+const CATALOGUE_ROOT_PATHS = [`/${ROUTES.CATALOGUE_ACCOUNTS}`, ROUTES.ORDERDETAILS];
+
 const initials = (name?: string) =>
   (name ?? '')
     .trim()
@@ -166,7 +168,9 @@ const UnauthorizedPage: React.FC = () => {
   const path = location.pathname.replace(/\/+$/, '') || '/';
   const isCatalogueOnly = currentUser?.plan === PLANS.CATALOGUE_PRO || currentUser?.plan === PLANS.CALC_CATALOG;
   const inCatalogue =
-    isCatalogueOnly || path.startsWith(ROUTES.CHOME) || path === `/${ROUTES.CATALOGUE_ACCOUNTS}`;
+  isCatalogueOnly ||
+  path.startsWith(ROUTES.CHOME) ||
+  CATALOGUE_ROOT_PATHS.some((p) => path === p || path.startsWith(`${p}/`));
   const tone: StatusTone = inCatalogue ? 'catalogue' : 'pos';
   const theme = STATUS_THEMES[tone];
 

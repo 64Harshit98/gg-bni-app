@@ -364,7 +364,7 @@ const MainLayout = () => {
                 isLast={true}
                 position="top"
               >
-                <FloatingButton className="static">
+                <FloatingButton className="static !bg-[#155dfc]">
                   <MobileActionButtons />
                 </FloatingButton>
               </TutorialStep>

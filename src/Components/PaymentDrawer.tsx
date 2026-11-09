@@ -8,6 +8,7 @@ import {
     doc,
     getDoc,
     setDoc,
+    deleteDoc,
     serverTimestamp,
     increment as firebaseIncrement,
     collection,
@@ -17,6 +18,7 @@ import {
     limit
 } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
+import { CUSTOMER_REMARKS_COLLECTION } from '../constants/customerSource';
 
 export interface PaymentDetails { [key: string]: number; }
 
@@ -117,6 +119,10 @@ interface PaymentDrawerProps {
     // Sales Setting cap on the Bill Discount field below — 0/undefined means no cap.
         maxBillDiscountValue?: number;
     maxBillDiscountType?: 'percent' | 'amount';
+    // Sales Setting controlling whether Bill Discount starts locked (needs a
+    // long-press to unlock) each time the drawer opens. Defaults to true —
+    // matches the existing always-locked behavior for anyone who hasn't set it.
+    lockBillDiscountByDefault?: boolean;
     onPartyChange?: (name: string, number: string) => void;
     // Tax se pehle ka asli amount (round off ke bina) — Sub total row isi se banta hai
     taxableSubtotal?: number;
@@ -172,6 +178,24 @@ interface PartySuggestion {
     pinCode?: string;
     shippingPinCode?: string;
 }
+
+// Which customer a personal remark belongs to: the phone once it's complete, or
+// the name for a customer without a phone. '' = no customer identified yet.
+const customerRemarkId = (name: string, number: string) => {
+    const phone = number.trim();
+    if (phone) return /^\d{10}$/.test(phone) ? phone : '';
+    return name.trim();
+};
+
+const customerRemarkRef = (companyId: string, id: string) =>
+    doc(db, 'companies', companyId, CUSTOMER_REMARKS_COLLECTION, id);
+
+const fetchCustomerRemark = async (companyId: string, id: string) => {
+    const snap = await getDoc(customerRemarkRef(companyId, id));
+    return snap.exists() ? String(snap.data().remark || '') : '';
+};
+
+const REMARK_MAX_LENGTH = 500;
 
 // --- UI-ONLY HELPERS (SELLAR design) ---
 const fmt = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -384,6 +408,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     showBillOptions = true,
     maxBillDiscountValue = 0,
         maxBillDiscountType = 'percent',
+    lockBillDiscountByDefault = true,
     onPartyChange,
     taxableSubtotal,
 }) => {
@@ -413,7 +438,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
     const [pendingReturnAmount, setPendingReturnAmount] = useState<number | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [isDiscountLocked, setIsDiscountLocked] = useState(true);
+    const [isDiscountLocked, setIsDiscountLocked] = useState(lockBillDiscountByDefault);
     const [partyState, setPartyState] = useState('');
     const [shippingState, setShippingState] = useState('');
     const [suggestions, setSuggestions] = useState<PartySuggestion[]>([]);
@@ -450,6 +475,12 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const [showNarrationModal, setShowNarrationModal] = useState(false);
     const [showExpenseModal, setShowExpenseModal] = useState(false);
     const [showDiscountTaxModal, setShowDiscountTaxModal] = useState(false);
+    // Personal remark — belongs to the customer, not this bill, and saves on its own from the pop-up.
+    const [showRemarkModal, setShowRemarkModal] = useState(false);
+    const [savedRemark, setSavedRemark] = useState<{ id: string; text: string } | null>(null);
+    const [remarkDraft, setRemarkDraft] = useState('');
+    const [remarkError, setRemarkError] = useState('');
+    const [isSavingRemark, setIsSavingRemark] = useState(false);
     const [transportName, setTransportName] = useState('');
     const [grRrNo, setGrRrNo] = useState('');
     const [grRrDate, setGrRrDate] = useState('');
@@ -546,7 +577,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
 
         setDiscount(scaledDiscount);
         setDiscountPercent(parseFloat(originalPercent.toFixed(2)));
-        setIsDiscountLocked(true);
+        setIsDiscountLocked(lockBillDiscountByDefault);
         setPartyCredit(0);
         setUseCredit(false);
         setPartyDebit(0);
@@ -687,7 +718,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         if (isSale && finalNumber) searchParty(finalNumber, 'number');
         if (!isSale && finalName) searchParty(finalName, 'name');
 
-    }, [isOpen, mode, billTotal, initialDiscount, originalBillTotal, initialPartyName, initialPartyNumber, initialPartyAddress, initialPartyGST, initialShippingName, initialShippingNumber, initialShippingAddress, initialShippingGST, initialNarration, initialTransportDetails, initialPlaceOfSupply, initialShippingState, initialPartyPinCode, initialShippingPinCode]);
+    }, [isOpen, mode, billTotal, initialDiscount, originalBillTotal, initialPartyName, initialPartyNumber, initialPartyAddress, initialPartyGST, initialShippingName, initialShippingNumber, initialShippingAddress, initialShippingGST, initialNarration, initialTransportDetails, initialPlaceOfSupply, initialShippingState, initialPartyPinCode, initialShippingPinCode, lockBillDiscountByDefault]);
 
     // --- AUTOMATIC SESSION SYNC EFFECT ---
     useEffect(() => {
@@ -719,6 +750,22 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         shippingName, shippingNumber, shippingAddress, shippingGST, shippingState, partyPinCode, shippingPinCode,
         isSameAsBilling, expenses, narration, selectedPayments, isOpen, isSubmitting, transportName, grRrNo, grRrDate, vehicleNo, stationFrom, pinCode
     ]);
+
+    // --- PERSONAL REMARK: follow whichever customer is entered ---
+    const remarkId = isSale && !isCalculator ? customerRemarkId(partyName, partyNumber) : '';
+    const companyIdForRemark = currentUser?.companyId;
+    useEffect(() => {
+        setSavedRemark(null);
+        if (!isOpen || !remarkId || !companyIdForRemark) return;
+        let cancelled = false;
+        // Debounced: a phone-less customer's id changes with every letter of their name
+        const timer = setTimeout(() => {
+            fetchCustomerRemark(companyIdForRemark, remarkId)
+                .then((text) => { if (!cancelled) setSavedRemark({ id: remarkId, text }); })
+                .catch((err) => console.error('Failed to load customer remark', err));
+        }, 400);
+        return () => { cancelled = true; clearTimeout(timer); };
+    }, [isOpen, remarkId, companyIdForRemark]);
 
     // --- CLOSE PARTY SUGGESTIONS ON OUTSIDE CLICK ---
     useEffect(() => {
@@ -1066,6 +1113,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         setShowExpenseModal(false);
         setShowTransportModal(false);
         setShowDiscountTaxModal(false);
+        setShowRemarkModal(false);
     };
 
     // Make sure no pop-up stays "open" while the drawer is closed
@@ -1139,6 +1187,52 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const clearTransportPopup = () => {
         setTransportName(''); setGrRrNo(''); setGrRrDate(''); setVehicleNo(''); setStationFrom(''); setPinCode('');
         closePopups();
+    };
+
+    const openRemarkPopup = async () => {
+        if (!remarkId || !currentUser?.companyId) {
+            setModal({ message: `Enter a 10-digit phone number or the ${partyLabel.toLowerCase()}'s name first.`, type: State.INFO });
+            return;
+        }
+        try {
+            // Tapped before the background load finished: never open blank over an existing remark
+            const text = savedRemark?.id === remarkId ? savedRemark.text : await fetchCustomerRemark(currentUser.companyId, remarkId);
+            setSavedRemark({ id: remarkId, text });
+            setRemarkDraft(text);
+            setRemarkError('');
+            setShowRemarkModal(true);
+        } catch (err) {
+            console.error('Failed to load customer remark', err);
+            setModal({ message: "Couldn't load this customer's remark. Check your connection and try again.", type: State.ERROR });
+        }
+    };
+
+    const saveRemark = async (value: string) => {
+        if (isSavingRemark || !remarkId || !currentUser?.companyId) return;
+        const text = value.trim();
+        if (text === savedRemark?.text) { closePopups(); return; }
+        setIsSavingRemark(true);
+        setRemarkError('');
+        try {
+            const ref = customerRemarkRef(currentUser.companyId, remarkId);
+            if (text) {
+                await setDoc(ref, {
+                    remark: text,
+                    name: partyName.trim(),
+                    number: partyNumber.trim(),
+                    updatedAt: serverTimestamp(),
+                }, { merge: true });
+            } else {
+                await deleteDoc(ref);
+            }
+            setSavedRemark({ id: remarkId, text });
+            closePopups();
+        } catch (err) {
+            console.error('Failed to save customer remark', err);
+            setRemarkError("Couldn't save the remark. Check your connection and try again.");
+        } finally {
+            setIsSavingRemark(false);
+        }
     };
 
     const handleDiscountPressStart = () => {
@@ -1303,6 +1397,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const expenseIcon = <SvgIcon><path d="M19 7V5a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a2 2 0 0 1-2-2V6" /><circle cx="16.5" cy="13.5" r="1.2" /></SvgIcon>;
     const noteIcon = <SvgIcon><path d="M17 3l4 4L8 20H4v-4z" /></SvgIcon>;
     const transportIcon = <SvgIcon><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7z" /><circle cx="7" cy="18" r="1.5" /><circle cx="17" cy="18" r="1.5" /></SvgIcon>;
+    const remarkGlyph = <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />;
 
     const TINT_BLUE = 'bg-[#e6eeff] text-[#155dfc]';
     const TINT_MAGENTA = 'bg-[#ffe8f8] text-[#c4009a]';
@@ -1408,9 +1503,39 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         </>
     );
 
+    const currentRemark = savedRemark?.id === remarkId ? savedRemark.text : '';
+
     // --- POP-UPS ---
     const popups = (
         <>
+            {showRemarkModal && (
+                <PopupDialog
+                    tint={TINT_AMBER}
+                    icon={<SvgIcon>{remarkGlyph}</SvgIcon>}
+                    title="Personal remark"
+                    subtitle={`About ${partyName.trim() || partyNumber.trim()} · private, never printed on bills`}
+                    onCancel={closePopups}
+                    onSave={() => saveRemark(remarkDraft)}
+                    saveLabel={isSavingRemark ? 'Saving…' : 'Save remark'}
+                    onRemove={currentRemark ? () => saveRemark('') : undefined}
+                >
+                    <div>
+                        <span className={LABEL_CLS}>Your remark</span>
+                        <textarea
+                            placeholder="Anything you want to remember about this customer"
+                            value={remarkDraft}
+                            maxLength={REMARK_MAX_LENGTH}
+                            onChange={(e) => setRemarkDraft(e.target.value)}
+                            className="w-full p-3 text-sm leading-[21px] text-[#0f172b] placeholder:text-[#5b6b86] rounded-sm border border-[#7a8aa3] bg-white outline-none focus:border-[#155dfc] focus:ring-2 focus:ring-[#155dfc]/20 resize-none"
+                            rows={4}
+                            autoFocus
+                        />
+                    </div>
+                    <div className="text-xs text-[#5b6b86]">Saves to this customer right away and shows in the Customer report, where you can search it.</div>
+                    {remarkError && <div role="alert" className="text-xs font-medium text-[#d5000c]">{remarkError}</div>}
+                </PopupDialog>
+            )}
+
             {showGstAddressModal && showPartyExtras && (
                 <PopupDialog
                     tint={TINT_BLUE}
@@ -1675,6 +1800,20 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                         />
                     </label>
                 </div>
+                {/* Absolute so it reserves no row: the next section keeps its normal position and the link sits at the right, beside its label.
+                    Not inside the name field's wrapper: the suggestions dropdown is positioned from that wrapper. */}
+                {isSale && !isCalculator && addressType === 'billing' && (
+                    <button
+                        type="button"
+                        aria-haspopup="dialog"
+                        onClick={openRemarkPopup}
+                        title={currentRemark || 'Add a personal remark about this customer'}
+                        // after: a bigger tap area with no visible space, stopping at the field's edge so it never blocks the input
+                        className="absolute right-0 top-full mt-1 after:absolute after:-inset-x-1 after:-top-1 after:-bottom-2 text-xs leading-4 font-medium text-[#155dfc] underline underline-offset-2 hover:text-[#1447e6]"
+                    >
+                        {currentRemark ? 'Edit remark' : 'Add remark'}
+                    </button>
+                )}
                 {addressType === 'billing' && renderSuggestions()}
             </div>
         </>

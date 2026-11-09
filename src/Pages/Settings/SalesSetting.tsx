@@ -56,6 +56,9 @@ export interface SalesSettings {
     // 0 (or unset) means no cap — cashiers can enter any Bill Discount.
     maxBillDiscountValue?: number;
     maxBillDiscountType?: 'percent' | 'amount';
+    // Whether the Bill Discount field starts locked (needs a long-press to
+    // unlock) each time the payment drawer opens. Defaults to true.
+    lockBillDiscountByDefault?: boolean;
     allowNegativeStock?: boolean;
     allowDueBilling?: boolean;
     requireCustomerName?: boolean;
@@ -108,6 +111,7 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     defaultDiscount: 0,
     maxBillDiscountValue: 0,
     maxBillDiscountType: 'percent',
+    lockBillDiscountByDefault: true,
     allowNegativeStock: true,
     allowDueBilling: true,
     requireCustomerName: false,
@@ -1157,6 +1161,14 @@ const SalesSettingsPage: React.FC = () => {
                                             </SegGroup>
                                         </div>
                                     </Opt>
+                                    <Opt
+                                        id="lock-bill-discount"
+                                        label="Lock bill discount by default"
+                                        description="Bill Discount starts locked each time the payment drawer opens — staff must long-press to unlock it. Turn off to let staff edit it freely from the start."
+                                        icon={ico(Lock)}
+                                        checked={settings.lockBillDiscountByDefault ?? true}
+                                        onChange={(checked) => handleCheckboxChange('lockBillDiscountByDefault', checked)}
+                                    />
                                     <Opt
                                         id="hide-mrp"
                                         label="Hide MRP in sales list"

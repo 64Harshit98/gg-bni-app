@@ -18,6 +18,12 @@ export const customerSourceFields = (data: Record<string, unknown>): CustomerSou
   hasOrder: !!data.lastOrderAt,
 });
 
+// Personal remarks have their own collection because `customers` and `sales` are
+// publicly readable (storefront / QR bill download); this one falls under the
+// company-members-only catch-all in firestore.rules, so never copy a remark onto
+// those docs. Doc id: the 10-digit phone, or the name for a customer without one.
+export const CUSTOMER_REMARKS_COLLECTION = 'customerRemarks';
+
 /** Whether a customer record belongs in the given mode's reports. Customers who used both appear in both. */
 export const customerBelongsTo = (mode: CustomerSource, c: CustomerSourceFields) =>
   mode === 'catalogue'

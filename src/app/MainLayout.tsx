@@ -24,6 +24,7 @@ import { Sidebar, type QuickAction } from '../Components/layout/SideBar';
 import { Header } from '../Components/layout/Header';
 import { CommandPalette, LAYOUT_ACTION_EVENT, type LayoutAction } from '../Components/layout/CommandPalette';
 import { SubscriptionBanner, useSubscriptionBanner } from '../Components/layout/SubscriptionBanner';
+import { InstallAppPrompt } from '../Components/InstallAppPrompt';
 
 const MainLayout = () => {
   const location = useLocation();
@@ -384,6 +385,18 @@ const MainLayout = () => {
         onClose={() => setIsAddUserModalOpen(false)}
       />
       <CommandPalette open={isMobileSearchOpen} onOpenChange={setIsMobileSearchOpen} />
+      {/* Home only, so it can never cover a sale in progress. */}
+      <InstallAppPrompt
+        suppressed={
+          location.pathname !== ROUTES.HOME ||
+          tutorialStep >= 0 ||
+          switcherStep > 0 ||
+          showReminder ||
+          isExpenseModalOpen ||
+          isAddUserModalOpen ||
+          isMobileSearchOpen
+        }
+      />
     </div>
   );
 };

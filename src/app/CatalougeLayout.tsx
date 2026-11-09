@@ -29,6 +29,7 @@ import { Sidebar, type QuickAction } from '../Components/layout/SideBar';
 import { Header } from '../Components/layout/Header';
 import { CommandPalette, LAYOUT_ACTION_EVENT, type Destination, type LayoutAction } from '../Components/layout/CommandPalette';
 import { SubscriptionBanner, useSubscriptionBanner } from '../Components/layout/SubscriptionBanner';
+import { InstallAppPrompt } from '../Components/InstallAppPrompt';
 
 const CatalogueLayout = () => {
     const navigate = useNavigate();
@@ -515,6 +516,18 @@ const CatalogueLayout = () => {
                 open={isMobileSearchOpen}
                 onOpenChange={setIsMobileSearchOpen}
                 destinations={searchDestinations}
+            />
+            {/* Home only, so it can never cover work in progress. */}
+            <InstallAppPrompt
+                suppressed={
+                    currentPath !== ROUTES.CHOME ||
+                    tutorialStep >= 0 ||
+                    switcherStep > 0 ||
+                    showReminder ||
+                    isExpenseModalOpen ||
+                    isAddUserModalOpen ||
+                    isMobileSearchOpen
+                }
             />
         </div>
     );

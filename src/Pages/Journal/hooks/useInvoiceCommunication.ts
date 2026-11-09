@@ -617,6 +617,25 @@ export const useInvoiceCommunication = ({
     setShowQrModal(invoice);
   };
 
+  // Opens the label page with this bill's items queued, one label per piece.
+  const handlePrintQr = (invoice: Invoice) => {
+    const printableItems = (invoice.items || []).filter(item => Number(item.quantity) > 0);
+    if (printableItems.length === 0) {
+      setModal({ message: "No items found in this invoice to print.", type: State.ERROR });
+      return;
+    }
+    navigate(ROUTES.PRINTQR, {
+      state: {
+        prefilledItems: printableItems.map(item => ({
+          // PrintQR matches this value against item id, then barcode, so items without a barcode still resolve.
+          barcode: item.barcode || (item as any).productId || item.id,
+          quantity: Number(item.quantity),
+          name: item.name,
+        })),
+      },
+    });
+  };
+
   return {
     pdfGenerating, setPdfGenerating,
     invoiceToPrint, setInvoiceToPrint,
@@ -632,5 +651,6 @@ export const useInvoiceCommunication = ({
     handleSendReminder,
     handleSendReminderSnapto,
     handleShowQr,
+    handlePrintQr,
   };
 };

@@ -11,7 +11,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
 import { createRangeCache } from '../reportRangeCache';
-import { customerSourceFields, type CustomerSourceFields } from '../../../constants/customerSource';
+import { CUSTOMER_REMARKS_COLLECTION, customerSourceFields, type CustomerSourceFields } from '../../../constants/customerSource';
 
 // Data the Customer report needs besides sales (which come from the shared
 // sales cache). Opening balances and newly added customers are cached per date
@@ -110,6 +110,28 @@ export const loadCustomerNames = async (companyId: string, phones: string[]) => 
 export const saveCustomerName = async (companyId: string, phone: string, name: string) => {
   await setDoc(doc(db, 'companies', companyId, 'customers', phone), { name, number: phone }, { merge: true });
   nameCache.set(`${companyId}:${phone}`, name);
+};
+
+/* ---------- PERSONAL REMARKS ---------- */
+
+// Written from the payment drawer. Removing a remark deletes its doc, so this
+// reads only the customers who have one.
+export interface CustomerRemark {
+  name: string;
+  number: string;
+  remark: string;
+}
+
+export const loadCustomerRemarks = async (companyId: string): Promise<CustomerRemark[]> => {
+  const snap = await getDocs(collection(db, 'companies', companyId, CUSTOMER_REMARKS_COLLECTION));
+  return snap.docs.map((d) => {
+    const data = d.data();
+    return {
+      name: String(data.name || '').trim(),
+      number: String(data.number || '').trim(),
+      remark: String(data.remark || '').trim(),
+    };
+  });
 };
 
 /* ---------- CREDIT NOTE BALANCES ---------- */

@@ -23,11 +23,12 @@ import type { EmailCheck } from '../../lib/useEmailCheck';
  * on the right whose content each page draws (no photos).
  * Phone: logo bar, optional navy band, then the form; long forms show each
  * section as its own card and pin the main button to the bottom.
+ * Log in has its own layout (a white sheet over the navy live-bill hero), see Landing.tsx.
  */
 
 export const SUPPORT_WHATSAPP = 'https://wa.me/919818815838';
 
-const NAVY = 'bg-[#0b1a45]';
+export const NAVY = 'bg-[#0b1a45]';
 /** Secondary text on the navy panel. */
 export const PANEL_MUTED = 'text-[#b9c6ea]';
 
@@ -239,30 +240,32 @@ export const Field: React.FC<FieldProps> = ({ label, htmlFor, required, optional
   );
 };
 
-const boxClass = (invalid?: boolean) =>
-  `relative flex h-11 items-center gap-2.5 rounded-sm border px-3 transition-colors focus-within:border-blue-600 focus-within:bg-white focus-within:ring-3 focus-within:ring-blue-600/15 lg:h-10 ${
-    invalid ? 'border-red-700 bg-white' : 'border-slate-400 bg-[#f8faff] hover:border-slate-500'
-  }`;
-const CONTROL = 'h-full min-w-0 flex-1 bg-transparent text-base text-slate-900 outline-none placeholder:text-slate-500 disabled:cursor-not-allowed lg:text-sm';
+const boxClass = (invalid?: boolean, tall?: boolean) =>
+  `relative flex items-center gap-2.5 rounded-sm border transition-colors focus-within:border-blue-600 focus-within:bg-white focus-within:ring-3 focus-within:ring-blue-600/15 ${
+    tall ? 'h-[50px] px-3.5 short:h-[46px] tiny:h-11 lg:h-12' : 'h-11 px-3 lg:h-10'
+  } ${invalid ? 'border-red-700 bg-white' : 'border-slate-400 bg-[#f8faff] hover:border-slate-500'}`;
+const CONTROL = 'h-full min-w-0 flex-1 bg-transparent text-base text-slate-900 outline-none placeholder:text-slate-500 disabled:cursor-not-allowed';
 
 export interface TextInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   icon?: LucideIcon;
   /** Fixed text before the value, e.g. "+91". */
   addon?: string;
   end?: React.ReactNode;
+  /** Larger box and text, for the log in form. */
+  tall?: boolean;
 }
 
-export const TextInput: React.FC<TextInputProps> = ({ icon: Icon, addon, end, className = '', ...rest }) => {
+export const TextInput: React.FC<TextInputProps> = ({ icon: Icon, addon, end, tall, className = '', ...rest }) => {
   const field = useContext(FieldContext);
   return (
-    <span className={boxClass(field.invalid)}>
+    <span className={boxClass(field.invalid, tall)}>
       {Icon && <Icon size={16} strokeWidth={1.75} aria-hidden="true" className="shrink-0 text-slate-500" />}
       {addon && <span className="shrink-0 border-r border-line pr-2.5 text-sm font-medium leading-5 text-slate-600">{addon}</span>}
       <input
         id={field.id}
         aria-invalid={field.invalid || undefined}
         aria-describedby={field.describedBy}
-        className={`${CONTROL} ${className}`}
+        className={`${CONTROL} ${tall ? 'lg:text-[15px]' : 'lg:text-sm'} ${className}`}
         {...rest}
       />
       {end}
@@ -283,9 +286,9 @@ export const PasswordInput: React.FC<Omit<TextInputProps, 'type' | 'end'>> = (pr
           onClick={() => setShow((s) => !s)}
           aria-label={show ? 'Hide password' : 'Show password'}
           aria-pressed={show}
-          className={`-mr-2 grid size-8 shrink-0 place-items-center rounded-sm text-slate-500 hover:bg-sunken hover:text-slate-900 ${FOCUS}`}
+          className={`grid shrink-0 place-items-center rounded-sm text-slate-500 hover:bg-sunken hover:text-slate-900 ${props.tall ? '-mr-2.5 size-10' : '-mr-2 size-8'} ${FOCUS}`}
         >
-          <Icon size={17} strokeWidth={1.75} aria-hidden="true" />
+          <Icon size={props.tall ? 20 : 17} strokeWidth={1.75} aria-hidden="true" />
         </button>
       }
     />
@@ -302,10 +305,14 @@ interface EmailFieldProps {
   icon?: LucideIcon;
   disabled?: boolean;
   className?: string;
+  label?: string;
+  /** Shows the red star after the label. */
+  required?: boolean;
+  tall?: boolean;
 }
 
 /** The email field with its live check, tick and "Did you mean…?" fix. */
-export const EmailField: React.FC<EmailFieldProps> = ({ value, onChange, check, error, help, icon, disabled, className }) => {
+export const EmailField: React.FC<EmailFieldProps> = ({ value, onChange, check, error, help, icon, disabled, className, label = 'Email address', required = true, tall }) => {
   const applySuggestion = (email: string) => {
     onChange(email);
     document.getElementById('email')?.focus();
@@ -314,15 +321,16 @@ export const EmailField: React.FC<EmailFieldProps> = ({ value, onChange, check, 
   const message = check.error || error;
   return (
     <Field
-      label="Email address"
+      label={label}
       htmlFor="email"
-      required
+      required={required}
       error={message && <>{message}{check.suggestion && <> {fix}</>}</>}
       help={check.suggestion ? fix : help}
       className={className}
     >
       <TextInput
         icon={icon}
+        tall={tall}
         type="email"
         autoComplete="email"
         placeholder="you@example.com"

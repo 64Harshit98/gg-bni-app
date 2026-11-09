@@ -5,6 +5,7 @@ import { db } from '../../../lib/Firebase';
 import { clearSalesReportCache } from '../SalesReportComponents/salesReportCache';
 import { clearPurchaseReportCache } from '../PurchaseReportComponents/purchaseReportCache';
 import { clearOpeningBalanceCache, saveCustomerName } from '../CustomerReportComponents/customerReportCache';
+import { CUSTOMER_REMARKS_COLLECTION } from '../../../constants/customerSource';
 import { formatDateForInput } from '../SalesReportComponents/salesReport.utils';
 
 export const normalizePartyNumber = (num?: string): string => {
@@ -795,6 +796,12 @@ export default function usePartyLedger() {
             try { await deleteDoc(doc(db, 'companies', companyId, 'suppliers', normalizedNumber)); } catch { /* may not exist */ }
         }
 
+        // Their personal remark goes too, so it can't resurface on a new customer with the same phone / name
+        const remarkId = normalizedNumber || party.partyName?.trim();
+        if (remarkId) {
+            try { await deleteDoc(doc(db, 'companies', companyId, CUSTOMER_REMARKS_COLLECTION, remarkId)); } catch { /* may not exist */ }
+        }
+
         // Update local state so the UI reflects the deletion immediately
         setTransactions(prev => prev.filter(t => !matchesParty(t)));
         setOpeningBalances(prev => prev.filter(ob => !matchesParty(ob)));
@@ -833,6 +840,7 @@ export default function usePartyLedger() {
         clearOpeningBalanceCache(companyId);
         await wipeCollection('customers');
         await wipeCollection('suppliers');
+        await wipeCollection(CUSTOMER_REMARKS_COLLECTION);
 
         setTransactions([]);
         setOpeningBalances([]);

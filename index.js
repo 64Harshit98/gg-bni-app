@@ -128,14 +128,25 @@ function setHtmlHeaders(res) {
 // the storefront on a blank screen for many seconds.
 app.use(compression());
 
-// Static assets are content-hashed by Vite (index-<hash>.js), so a changed
-// file always gets a new name — safe to cache forever, and this is the
+// Files under dist/assets are content-hashed by Vite (index-<hash>.js), so a
+// changed file always gets a new name — safe to cache forever, and this is the
 // inverse of the HTML policy above: assets long-cached, shell always fresh.
+// Everything else in dist is copied from public/ under a fixed name (manifest,
+// app icons, sounds), so it must be revalidated or an update would never reach
+// browsers or the CDN. This matches the header rules in firebase.json.
 // `index: false` so "/" falls through to the catch-all below instead of
 // express.static serving dist/index.html directly — otherwise the store's
 // root link (acme.sellar.in/) never gets its link-preview tags, and the
 // shell would also be sent with the 1y immutable cache headers.
-app.use(express.static(distPath, { maxAge: '1y', immutable: true, index: false }));
+const hashedAssetsPath = path.join(distPath, 'assets') + path.sep;
+app.use(express.static(distPath, {
+    maxAge: '1y',
+    immutable: true,
+    index: false,
+    setHeaders(res, filePath) {
+        if (!filePath.startsWith(hashedAssetsPath)) res.set('Cache-Control', 'no-cache');
+    },
+}));
 
 app.get('/api/storefront', async (req, res) => {
     const hostSub = getMerchantSub(getPublicHost(req));
@@ -198,7 +209,7 @@ app.get('/api/storefront', async (req, res) => {
 app.get(/.*/, async (req, res, next) => {
 
     // Asset check
-    if (req.path.match(/\.(js|css|png|jpe?g|gif|ico|svg|json|woff2?)$/i)) {
+    if (req.path.match(/\.(js|css|png|jpe?g|gif|ico|svg|json|webmanifest|woff2?)$/i)) {
         // A missing hashed chunk (an old build referenced by a stale tab)
         // must never be cached by the CDN, or the 404 could outlive the
         // reload that is meant to recover from it.

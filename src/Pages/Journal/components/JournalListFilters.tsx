@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { TutorialStep } from '../../../Components/TutorialStep';
 import { Permissions } from '../../../enums/permissions.enum';
 import ShowWrapper from '../../../context/ShowWrapper';
@@ -137,6 +137,34 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
   const dateWrapRef = useRef<HTMLDivElement | null>(null);
   const canApply = !!draft.start && !!draft.end;
 
+  // The row wraps at in-between widths, so a trigger can land at either edge:
+  // nudge an open panel sideways until it fits inside the row's content area.
+  const headerRowRef = useRef<HTMLDivElement | null>(null);
+  const filterPanelRef = useRef<HTMLDivElement | null>(null);
+  const datePanelRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    if (!isFilterOpen && !showCustomPicker) return;
+    const fit = () => {
+      const row = headerRowRef.current;
+      if (!row) return;
+      const { left, right } = row.getBoundingClientRect();
+      const { paddingLeft, paddingRight } = getComputedStyle(row);
+      [filterPanelRef.current, datePanelRef.current].forEach((panel) => {
+        if (!panel) return;
+        panel.style.transform = '';
+        const rect = panel.getBoundingClientRect();
+        const dx = Math.max(
+          Math.min(0, right - parseFloat(paddingRight) - rect.right),
+          left + parseFloat(paddingLeft) - rect.left,
+        );
+        panel.style.transform = dx ? `translateX(${dx}px)` : '';
+      });
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, [isFilterOpen, showCustomPicker]);
+
   const openCustom = () => {
     // iOS shows an empty date input as a blank box, so always open on real dates
     setDraft({ start: customStartDate || todayDateInputValue(), end: customEndDate || todayDateInputValue() });
@@ -194,7 +222,7 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
         Desktop: [Title ............ Party ledger | New sale]
                  [Sales | Purchase] [search] [date] [Filters]
       */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-3 lg:gap-y-0 px-4 lg:px-6 pt-4 lg:pt-6">
+      <div ref={headerRowRef} className="flex flex-wrap items-center gap-x-3 gap-y-3 lg:gap-y-0 px-4 lg:px-6 pt-4 lg:pt-6">
         {/* Title */}
         <div className="order-1 flex-1 min-w-0">
           <h1 className="text-xl lg:text-2xl leading-8 font-semibold text-[#0f172b]">Transactions</h1>
@@ -243,7 +271,7 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
           </TutorialStep>
 
           {isFilterOpen && (
-            <div className="absolute top-full right-0 mt-2 z-50 w-64 bg-white border border-[#dfe6fb] rounded-sm shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)] overflow-hidden">
+            <div ref={filterPanelRef} className="absolute top-full right-0 mt-2 z-50 w-64 bg-white border border-[#dfe6fb] rounded-sm shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)] overflow-hidden">
               <ul className="p-1">
                 {dateFilters.map((filter) => (
                   filter.value !== 'custom' && (
@@ -354,7 +382,7 @@ export const JournalListFilters: React.FC<JournalListFiltersProps> = ({
               </button>
 
               {showCustomPicker && (
-                <div className="absolute top-full left-0 z-50 mt-1.5 w-[328px] max-w-[calc(100vw-2rem)] rounded-sm border border-[#dfe6fb] bg-white p-4 shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)] cursor-default">
+                <div ref={datePanelRef} className="absolute top-full left-0 z-50 mt-1.5 w-[328px] max-w-[calc(100vw-2rem)] rounded-sm border border-[#dfe6fb] bg-white p-4 shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)] cursor-default">
                   <div className="grid grid-cols-2 gap-3">
                     <label className="grid grid-cols-1 gap-1.5 text-[13px] font-medium text-[#45556c]">
                       From

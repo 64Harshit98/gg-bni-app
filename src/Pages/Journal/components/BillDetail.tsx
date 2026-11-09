@@ -35,6 +35,7 @@ interface BillDetailProps {
   onClose?: () => void;
   onSettle: (invoice: Invoice) => void;
   onPrint: (invoice: Invoice) => void;
+  onPrintQr: (invoice: Invoice) => void;
   onTransport: (invoice: Invoice) => void;
   /** Sends through the connected WhatsApp provider; leave out when none is connected. */
   onRemind?: (invoice: Invoice) => void;
@@ -53,6 +54,7 @@ export const BillDetail: React.FC<BillDetailProps> = ({
   onClose,
   onSettle,
   onPrint,
+  onPrintQr,
   onTransport,
   onRemind,
   onReturn,
@@ -218,7 +220,7 @@ export const BillDetail: React.FC<BillDetailProps> = ({
           </button>
         )}
 
-        {/* Print (sales only — purchase bills have nothing useful to print): primary, except on an unpaid bill where Settle takes the primary slot */}
+        {/* Print (sale) / Print QR (purchase, item labels): primary, except on an unpaid bill where Settle takes the primary slot */}
         {isSale && (
           <button
             onClick={(e) => { e.stopPropagation(); onPrint(invoice); }}
@@ -227,6 +229,18 @@ export const BillDetail: React.FC<BillDetailProps> = ({
           >
             {pdfGenerating === invoice.id ? <Spinner /> : 'Print'}
           </button>
+        )}
+        {!isSale && (
+          <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+            <ShowWrapper requiredPermission={Permissions.PrintQR}>
+              <button
+                onClick={(e) => { e.stopPropagation(); onPrintQr(invoice); }}
+                className={invoice.status === 'Unpaid' ? `${BTN_SECONDARY} xl:px-3` : `${BTN_PRIMARY} w-full xl:w-auto xl:px-3`}
+              >
+                Print QR
+              </button>
+            </ShowWrapper>
+          </ShowWrapper>
         )}
 
         {hasTransportInfo && (

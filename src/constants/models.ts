@@ -164,6 +164,7 @@ export interface AddOnGroup {
   multiple: boolean;          // false = choose one, true = choose many
     maxSelect?: number;         // only when multiple: max choices (e.g. 4 sauces out of 10). 0 / empty = no limit
   extraPrice?: number | null; // only with maxSelect: price added to each choice beyond maxSelect. empty = going over the limit is not allowed
+  order?: number;              // display/drag order among a company's add-on groups; undefined sorts last
   options: AddOnOption[];
 }
 

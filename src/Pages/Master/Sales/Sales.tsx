@@ -19,7 +19,7 @@ import BackButton from '../../../Components/BackButton';
 import { GenericCartList } from '../../../Components/CartItem';
 import BarcodeLinkModal from '../../../Components/BarcodeLinkModal';
 import { AddUserModal } from '../../../Components/AddUserModal';
-import { FiTrash2, FiX, FiEdit, FiCamera, FiDelete, FiSearch, FiMoreVertical, FiCalendar, FiCheck, FiChevronUp, FiChevronRight, FiMinus, FiSliders } from 'react-icons/fi';
+import { FiTrash2, FiX, FiEdit, FiCamera, FiDelete, FiSearch, FiMoreVertical, FiCalendar, FiCheck, FiChevronUp, FiChevronRight, FiMinus, FiSliders, FiUser } from 'react-icons/fi';
 import { GenericBillFooter } from '../../../Components/Footer';
 import { CartLinesCompact } from '../../../Components/CartLinesCompact';
 import { IconScanCircle, IconPrint } from '../../../constants/Icons';
@@ -81,6 +81,7 @@ const calcKeys: CalcKey[] = [
 // ── SELLAR design tokens (Tailwind arbitrary values) ──
 const SHADOW_FLOAT = 'shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]';
 const LABEL_CLS = 'text-[11px] font-semibold tracking-[.08em] uppercase text-[#5b6b86]';
+const SALESMAN_NAME_CLS = 'h-[22px] px-2 rounded-full bg-[#e6eeff] text-[#155dfc] text-[11px] leading-[22px] font-semibold truncate';
 
 const chipCls = (active: boolean) =>
     `inline-flex items-center h-[34px] px-3.5 rounded-full border text-[13px] font-medium whitespace-nowrap flex-shrink-0 cursor-pointer transition-colors ${active
@@ -631,6 +632,11 @@ const Sales: React.FC = () => {
                         {invoiceNumber}{invoiceDate ? ` · ${new Date(`${invoiceDate}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}
                     </span>
                 </div>
+                {/* Card view has no cart bar on phones, so the salesman name sits here instead */}
+                {isCardView && salesSettings?.enableSalesmanSelection && selectedWorker && (
+                    <span className={`max-w-[90px] ${SALESMAN_NAME_CLS}`}>{selectedWorker.name}</span>
+                )}
+                {renderSalesmanButton()}
                 {/* List view has no second row, so the three dots stay here */}
                 {!isCardView && (
                     <button type="button" onClick={() => setIsMoreOpen(true)} aria-label="More" className={`${ICON_BTN_CLS} ml-auto`}>
@@ -791,6 +797,7 @@ const Sales: React.FC = () => {
             })}
         </nav>
     );
+    const isSalesmanLocked = !hasPermission(Permissions.ViewTransactions) || (isEditMode && !isManager);
     const renderSalesmanSelect = (extraCls = '') =>
         salesSettings?.enableSalesmanSelection ? (
             <select
@@ -801,12 +808,24 @@ const Sales: React.FC = () => {
                 }}
                 aria-label="Salesman"
                 className={`h-10 px-2 bg-white border border-[#7a8aa3] rounded-sm text-sm font-medium text-[#0f172b] outline-none focus:border-[#155dfc] focus:ring-4 focus:ring-[#e6eeff] disabled:opacity-[.45] ${extraCls}`}
-                disabled={!hasPermission(Permissions.ViewTransactions) || (isEditMode && !isManager)}
+                disabled={isSalesmanLocked}
             >
                 <option value="">Salesman</option>
                 {workers.map(w => <option key={w.uid} value={w.uid}>{w.name}</option>)}
                 <option value="ADD_NEW_SALESMAN">+ Add New Salesman</option>
             </select>
+        ) : null;
+
+    // Phone: square icon button. An invisible native select covers it, so a tap opens the picker directly.
+    const renderSalesmanButton = () =>
+        salesSettings?.enableSalesmanSelection ? (
+            <div
+                title="Salesman"
+                className={`relative inline-flex items-center justify-center w-10 h-10 flex-shrink-0 rounded-sm border border-[#7a8aa3] bg-white text-[#0f172b] transition-all focus-within:border-[#155dfc] focus-within:ring-4 focus-within:ring-[#e6eeff] ${isSalesmanLocked ? 'opacity-[.45]' : ''}`}
+            >
+                <FiUser size={18} />
+                {renderSalesmanSelect('absolute inset-0 w-full !h-full !opacity-0 cursor-pointer disabled:cursor-not-allowed')}
+            </div>
         ) : null;
 
     // // Walk-in customer / filled customer card — "Add" ab popup kholta hai
@@ -999,14 +1018,6 @@ const Sales: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Salesman */}
-                    {salesSettings?.enableSalesmanSelection && (
-                        <div>
-                            <span className={LABEL_CLS}>Salesman</span>
-                            <div className="mt-2">{renderSalesmanSelect('w-full')}</div>
-                        </div>
-                    )}
-
                     {items.length > 0 && (
                         <button
                             type="button"
@@ -1080,7 +1091,10 @@ const Sales: React.FC = () => {
                 )}
             </div>
 
-            {/* Center — Salesman (mobile par More sheet mein already hai) */}
+            {/* Center — Salesman: name on phones (picker is the header's square button), select from tablet up */}
+            {salesSettings?.enableSalesmanSelection && selectedWorker && (
+                <span className={`md:hidden max-w-[120px] ${SALESMAN_NAME_CLS}`}>{selectedWorker.name}</span>
+            )}
             <div className="hidden md:block">
                 {renderSalesmanSelect('!h-8 !text-xs min-w-[160px]')}
             </div>
@@ -1470,7 +1484,7 @@ const Sales: React.FC = () => {
                                     )}
                                 </div>
 
-                                {/* Center — Salesman (mobile par More sheet mein already hai) */}
+                                {/* Center — Salesman (mobile par header ka square button hai) */}
                                 <div className="hidden md:block">
                                     {renderSalesmanSelect('!h-8 !text-xs min-w-[160px]')}
                                 </div>
@@ -1721,6 +1735,7 @@ const Sales: React.FC = () => {
                     enableTransportDetails={salesSettings?.enableTransportDetails ?? false}
                     maxBillDiscountValue={salesSettings?.maxBillDiscountValue}
                     maxBillDiscountType={salesSettings?.maxBillDiscountType}
+                    lockBillDiscountByDefault={salesSettings?.lockBillDiscountByDefault ?? true}
                     taxableSubtotal={activeTaxMode === 'inclusive' ? netAmount - taxAmount : netAmount}
                 />
                 <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
@@ -1890,6 +1905,7 @@ ${colClass || ''}`}
                     totalQuantity={totalQuantity}
                     maxBillDiscountValue={salesSettings?.maxBillDiscountValue}
                     maxBillDiscountType={salesSettings?.maxBillDiscountType}
+                    lockBillDiscountByDefault={salesSettings?.lockBillDiscountByDefault ?? true}
                 />
             </div>
         );
@@ -2072,6 +2088,7 @@ ${colClass || ''}`}
                 taxableSubtotal={activeTaxMode === 'inclusive' ? netAmount - taxAmount : netAmount}
                 maxBillDiscountValue={salesSettings?.maxBillDiscountValue}
                 maxBillDiscountType={salesSettings?.maxBillDiscountType}
+                lockBillDiscountByDefault={salesSettings?.lockBillDiscountByDefault ?? true}
             />
             <ItemEditDrawer item={selectedItemForEdit} isOpen={isItemDrawerOpen} onClose={handleCloseEditDrawer} onSaveSuccess={handleSaveSuccess} />
 

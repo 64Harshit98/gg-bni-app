@@ -11,6 +11,11 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Phones with little height once the browser bars are showing (log in page).
+   tiny must stay after short so its sizes win when both match. */
+@custom-variant short (@media (width < 64rem) and (height <= 840px));
+@custom-variant tiny (@media (width < 64rem) and (height <= 640px));
+
 /* Storefront breakpoints (sf-sm / sf-md / sf-lg). On the live store they are the
    normal screen breakpoints. Inside the Store page builder's preview (.sf-frame,
    a query container) they follow the preview's own width instead, so the Phone

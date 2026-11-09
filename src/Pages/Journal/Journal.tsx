@@ -285,6 +285,7 @@ const Journal: React.FC = () => {
     handleSendReminder,
     handleSendReminderSnapto,
     handleShowQr,
+    handlePrintQr,
   } = useInvoiceCommunication({ currentUser, salesSettings, isPosBasicPlan, setModal });
 
   const handleEditInvoice = (invoice: Invoice) => {
@@ -340,6 +341,7 @@ const Journal: React.FC = () => {
       onClose={onClose}
       onSettle={openPaymentModal}
       onPrint={setInvoiceToPrint}
+      onPrintQr={handlePrintQr}
       onTransport={setTransportPopupInvoice}
       onRemind={whatsappProvider === 'none' ? undefined : whatsappProvider === 'botmaster' ? handleSendReminder : handleSendReminderSnapto}
       onReturn={(inv) => (inv.type === 'Credit' ? handleSalesReturn(inv) : handlePurchaseReturn(inv))}

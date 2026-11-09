@@ -1,5 +1,5 @@
 import { isWalkIn, type SaleRecord } from '../SalesReportComponents/salesReport.utils';
-import type { NewCustomerRecord, OpeningBalanceRecord } from './customerReportCache';
+import type { CustomerRemark, NewCustomerRecord, OpeningBalanceRecord } from './customerReportCache';
 import { customerBelongsTo } from '../../../constants/customerSource';
 
 export interface Sale {
@@ -53,6 +53,8 @@ export interface CustomerSummaryRow {
   lastVisit: number;
   creditNote: number;
   recentBills: CustomerBill[];
+  /** Personal remark from the payment drawer, '' when there is none. */
+  remark: string;
 }
 
 export const phoneDigits = (value?: string) => {
@@ -89,11 +91,13 @@ export const buildCustomerRows = ({
   openingBalances,
   newCustomers,
   credits,
+  remarks = [],
 }: {
   sales: SaleRecord[];
   openingBalances: OpeningBalanceRecord[];
   newCustomers: NewCustomerRecord[];
   credits: { name: string; number: string; creditBalance: number }[];
+  remarks?: CustomerRemark[];
 }): CustomerSummaryRow[] => {
   const map = new Map<string, CustomerSummaryRow>();
 
@@ -113,6 +117,7 @@ export const buildCustomerRows = ({
         lastVisit: 0,
         creditNote: 0,
         recentBills: [],
+        remark: '',
       };
       map.set(key, row);
     }
@@ -166,8 +171,13 @@ export const buildCustomerRows = ({
     if (c.name) creditByKey.set(`n:${c.name.toLowerCase()}`, c.creditBalance);
   });
 
+  // Same key as the row, so a remark never reaches another customer who merely
+  // shares the name: a name only matches for customers without a phone.
+  const remarkByKey = new Map(remarks.map((r) => [customerKey(r.name, r.number), r.remark]));
+
   return [...map.values()].map((row) => ({
     ...row,
+    remark: remarkByKey.get(row.key) || '',
     creditNote:
       creditByKey.get(row.phone ? `p:${row.phone}` : '') ??
       creditByKey.get(row.name ? `n:${row.name.toLowerCase()}` : '') ??

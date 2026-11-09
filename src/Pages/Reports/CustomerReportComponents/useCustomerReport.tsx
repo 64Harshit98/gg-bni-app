@@ -5,8 +5,10 @@ import { loadSalesForRange } from '../SalesReportComponents/salesReportCache';
 import { useCachedRange } from '../useCachedRange';
 import {
   loadCustomerCredits,
+  loadCustomerRemarks,
   loadCustomersCreatedForRange,
   loadOpeningBalancesForRange,
+  type CustomerRemark,
 } from './customerReportCache';
 
 // Sales come from the shared per-range sales cache; opening balances and newly
@@ -34,17 +36,21 @@ export default function useCustomerReport() {
   const obState = useCachedRange(loadOpeningBalancesForRange, companyId, appliedFilters, authLoading);
   const newCustomersState = useCachedRange(loadCustomersCreatedForRange, companyId, appliedFilters, authLoading);
 
-  // Credit balances aren't date based: read once per visit / refresh.
+  // Credit balances and personal remarks aren't date based: read once per visit / refresh.
   const [credits, setCredits] = useState<Awaited<ReturnType<typeof loadCustomerCredits>>>([]);
-  const [creditsToken, setCreditsToken] = useState(0);
+  const [remarks, setRemarks] = useState<CustomerRemark[]>([]);
+  const [customerDataToken, setCustomerDataToken] = useState(0);
   useEffect(() => {
     if (!companyId) return;
     let cancelled = false;
     loadCustomerCredits(companyId)
       .then((list) => { if (!cancelled) setCredits(list); })
       .catch((err) => console.error('Failed to load customer credits', err));
+    loadCustomerRemarks(companyId)
+      .then((list) => { if (!cancelled) setRemarks(list); })
+      .catch((err) => console.error('Failed to load customer remarks', err));
     return () => { cancelled = true; };
-  }, [companyId, creditsToken]);
+  }, [companyId, customerDataToken]);
 
   const parts = [salesState, obState, newCustomersState];
   const updatedTimes = parts.map((p) => p.lastUpdated).filter((t): t is number => t !== null);
@@ -56,7 +62,7 @@ export default function useCustomerReport() {
     refreshSales();
     refreshOb();
     refreshNew();
-    setCreditsToken((t) => t + 1);
+    setCustomerDataToken((t) => t + 1);
   }, [refreshSales, refreshOb, refreshNew]);
 
   return {
@@ -74,6 +80,7 @@ export default function useCustomerReport() {
     openingBalances: obState.records,
     newCustomers: newCustomersState.records,
     credits,
+    remarks,
     isLoading: parts.some((p) => p.isLoading),
     isFetching: parts.some((p) => p.isFetching),
     // The oldest part decides how fresh the page is.

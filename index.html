@@ -86,6 +86,43 @@
         }
       } catch (e) { /* prefetch is only an optimisation */ }
 
+      // --- Install as an app (merchant dashboard only) ------------------
+      // Added from here rather than as static tags so a buyer's storefront
+      // (where `query` is set above) can't be installed as "Sellar".
+      // beforeinstallprompt is captured here because it can fire before the
+      // lazy admin bundle has loaded; src/lib/pwaInstall.ts picks it up, and
+      // shares these storage keys and event names.
+      try {
+        if (!query) {
+          var addHeadTag = function (tag, attrs) {
+            var el = d.createElement(tag);
+            for (var name in attrs) el.setAttribute(name, attrs[name]);
+            d.head.appendChild(el);
+          };
+          addHeadTag('link', { rel: 'manifest', href: '/manifest.webmanifest' });
+          addHeadTag('link', { rel: 'apple-touch-icon', href: '/icons/apple-touch-icon.png' });
+          addHeadTag('meta', { name: 'theme-color', content: '#ffffff' });
+          addHeadTag('meta', { name: 'mobile-web-app-capable', content: 'yes' });
+          addHeadTag('meta', { name: 'apple-mobile-web-app-capable', content: 'yes' });
+          addHeadTag('meta', { name: 'apple-mobile-web-app-title', content: 'Sellar' });
+
+          w.addEventListener('beforeinstallprompt', function (e) {
+            // Stops Chrome's own mini-infobar; our toast offers the install.
+            e.preventDefault();
+            w.__PWA_INSTALL_EVENT__ = e;
+            // The browser only offers this when the app isn't installed, so
+            // an earlier "installed" note is out of date (it was uninstalled).
+            try { localStorage.removeItem('sellar:pwa-installed'); } catch (err) { /* storage blocked */ }
+            w.dispatchEvent(new Event('sellar:pwa-install-available'));
+          });
+          w.addEventListener('appinstalled', function () {
+            w.__PWA_INSTALL_EVENT__ = null;
+            try { localStorage.setItem('sellar:pwa-installed', '1'); } catch (err) { /* storage blocked */ }
+            w.dispatchEvent(new Event('sellar:pwa-install-done'));
+          });
+        }
+      } catch (e) { /* the app works without being installable */ }
+
       // --- Boot watchdog ------------------------------------------------
       // Ends every failed load on a visible "Tap to retry" message instead
       // of a blank page. Shown as an overlay OUTSIDE #root (React owns #root;

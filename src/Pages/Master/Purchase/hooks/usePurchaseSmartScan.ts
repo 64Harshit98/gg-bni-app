@@ -63,11 +63,15 @@ export const usePurchaseSmartScan = ({
                     ignoreLocation: true,
                     includeScore: true
                 });
-                const newCartItems = scannedData.items.map(ocrItem => {
+                // HSN column ka "N/A" ya "-" kabhi naam ke peeche chipak jata hai — match se pehle hata do
+                const cleanOcrName = (raw: string) =>
+                    (raw || '').replace(/\s+/g, ' ').trim().replace(/\s+(N\s*\/?\s*A|-)$/i, '').trim();
+
+                const newCartItems = scannedData.items.map(rawOcrItem => {
+                    const ocrItem = { ...rawOcrItem, name: cleanOcrName(rawOcrItem.name) };
                     const ocrNetPrice = ocrItem.purchasePrice * (1 - (ocrItem.discountPercentage / 100));
                     const roundedOcrNetPrice = Math.round(ocrNetPrice * 100) / 100;
 
-                    // 3 se kam letters/digits wale naam par fuzzy match mat karo ("000" jaise)
                     const cleanLen = ocrItem.name.replace(/[^A-Za-z0-9\u0900-\u097F]/g, '').length;
                     const ocrKey = tokenKey(ocrItem.name);
 

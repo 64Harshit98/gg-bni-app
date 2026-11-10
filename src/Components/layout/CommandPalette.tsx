@@ -101,6 +101,7 @@ export const CATALOGUE_DESTINATIONS: Destination[] = [
   { label: 'Requests', hint: 'Customer requests', to: `${C}/${ROUTES.CATA_REQUEST}` },
   { label: 'Shop', hint: 'Browse shop & place order', to: `${C}/${ROUTES.ORDER}` },
   { label: 'Orders Return', hint: 'Returned orders', to: `${C}/${ROUTES.ORDER_RETURN}` },
+  { label: 'Store page', hint: 'Edit what customers see first', to: `${C}/${ROUTES.CATA_STORE_PAGE}`, keywords: 'storefront landing design' },
   { label: 'Add Product', hint: 'Add a new product', to: `${C}/${ROUTES.ADD_PRODUCT}`, keywords: 'item' },
   { label: 'Item Group', hint: 'Manage item groups', to: `${C}/${ROUTES.CAT_ITEM_GROUP}`, keywords: 'category' },
   { label: 'Manage Items', hint: 'Edit or delete items', to: `${C}/${ROUTES.CATALOGUE_MANAGE_ITEMS}` },

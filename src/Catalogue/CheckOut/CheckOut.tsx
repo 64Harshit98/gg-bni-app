@@ -135,7 +135,33 @@ const CartPage: React.FC = () => {
         setEditSel(sel);
         setEditLineKey(lineKeyOf(line));
     };
-    const closeAddOnEdit = () => { setEditLineKey(null); setEditSel({}); };
+    // "+" par popup: increase quantity ya add as new item
+    const [dupLineKey, setDupLineKey] = useState<string | null>(null);
+    const [isNewLine, setIsNewLine] = useState(false); // add-ons popup naya line bana raha hai (edit nahi)
+    const dupLine: any = dupLineKey ? cartItems.find((c) => lineKeyOf(c) === dupLineKey) : null;
+
+    const closeAddOnEdit = () => { setEditLineKey(null); setEditSel({}); setIsNewLine(false); };
+
+    // Add-ons wale item par "+" popup puchta hai, baaki items par seedha quantity badhti hai
+    const handleInc = (item: any) => {
+        const lk = lineKeyOf(item);
+        if (groupsOfLine(item).length > 0) setDupLineKey(lk);
+        else updateQuantity(lk, 1);
+    };
+
+    const increaseFromPrompt = () => {
+        if (dupLineKey) updateQuantity(dupLineKey, 1);
+        setDupLineKey(null);
+    };
+
+    // "Add as new item": duplicate popup band, add-ons popup khule (naya line mode)
+    const startNewLine = () => {
+        if (!dupLineKey) return;
+        setEditSel({});
+        setEditLineKey(dupLineKey);   // isi line ke item ke add-on groups dikhenge
+        setIsNewLine(true);
+        setDupLineKey(null);
+    };
 
     const optionPriceFor = (g: AddOnGroup, optId: string): number => {
         const opt = g.options.find((x) => x.id === optId);
@@ -178,6 +204,32 @@ const CartPage: React.FC = () => {
             const next = Math.round((Number(c.salesPrice) - sum(c.addOns ?? []) + sum(list)) * 100) / 100;
             return { ...c, addOns: list, salesPrice: next };
         }) as typeof cartItems);
+        closeAddOnEdit();
+    };
+
+    // Same item, nayi add-on choice: nayi line banao (agar wahi combo pehle se cart me hai to uski quantity +1)
+    const addNewLine = (list: AddOnOption[]) => {
+        if (!editLine) return;
+        const sum = (a: AddOnOption[]) => a.reduce((s, o) => s + (Number(o.price) || 0), 0);
+        const idsOf = (a: AddOnOption[]) => a.map((o) => o.id).sort().join('|');
+        const unit = Math.round((Number(editLine.salesPrice) - sum(editLine.addOns ?? []) + sum(list)) * 100) / 100;
+
+        const same = cartItems.find((c: any) =>
+            String(c.id) === String(editLine.id) &&
+            c.tierLabel === editLine.tierLabel &&
+            idsOf(c.addOns ?? []) === idsOf(list)
+        );
+        if (same) {
+            updateQuantity(lineKeyOf(same), 1);
+            closeAddOnEdit();
+            return;
+        }
+
+        const moq = Number(editLine.moq) || 1;
+        setCartItems([
+            ...cartItems,
+            { ...editLine, lineKey: `${lineKeyOf(editLine)}#${Date.now()}`, addOns: list, salesPrice: unit, quantity: moq, note: '' },
+        ] as typeof cartItems);
         closeAddOnEdit();
     };
 
@@ -288,7 +340,7 @@ const CartPage: React.FC = () => {
                                             </div>
                                             {cartItems.map((item) => {
                                                 const struck = item.quantitySlabs?.length && item.baseSalesPrice !== undefined && item.salesPrice < item.baseSalesPrice;
-                                                                                                const lk = lineKeyOf(item);
+                                                const lk = lineKeyOf(item);
                                                 const lineAddOns = ((item as { addOns?: { price?: number }[] }).addOns ?? []);
                                                 const addOnSum = lineAddOns.reduce((s, a) => s + (Number(a.price) || 0), 0);
                                                 return (
@@ -316,7 +368,7 @@ const CartPage: React.FC = () => {
                                                             <div className="mt-2.5 flex flex-wrap items-center gap-3">
                                                                 <QtyStepper value={item.quantity} size="sm" outline trash={item.quantity <= Number(item.moq || 1)} className="w-[120px]"
                                                                     onDec={() => (item.quantity <= Number(item.moq || 1) ? removeFromCart(lk) : updateQuantity(lk, -1))}
-                                                                    onInc={() => updateQuantity(lk, 1)} />
+                                                                    onInc={() => handleInc(item)} />
                                                                 <button type="button" onClick={() => removeFromCart(lk)} className="text-[13px] text-red-700 hover:underline">Remove</button>
                                                             </div>
                                                             <input aria-label={`Note for ${item.name}`} value={item.note} onChange={(e) => updateItemNote(lk, e.target.value)}
@@ -419,7 +471,7 @@ const CartPage: React.FC = () => {
                         <div className="flex items-start justify-between gap-3 border-b border-sf-line px-4 pb-3 pt-4">
                             <div className="min-w-0">
                                 <h2 className="line-clamp-1 text-base font-semibold text-slate-900">{editLine.name}</h2>
-                                <p className="mt-0.5 text-[13px] text-slate-500">Edit add-ons</p>
+                                <p className="mt-0.5 text-[13px] text-slate-500">{isNewLine ? 'Choose add-ons for the new item' : 'Edit add-ons'}</p>
                             </div>
                             <button type="button" onClick={closeAddOnEdit} aria-label="Close" className="grid size-9 shrink-0 place-items-center rounded-sm text-slate-500 hover:bg-sf-sunken hover:text-slate-900"><X className="size-5" /></button>
                         </div>
@@ -468,8 +520,36 @@ const CartPage: React.FC = () => {
                         </div>
 
                         <div className="grid gap-2 border-t border-sf-line px-4 pb-5 pt-3">
-                            <button type="button" onClick={() => saveAddOnEdit(pickedEdit)} disabled={pickedEdit.length === 0} className={btnClass('primary', 'lg', true)}>Update add-ons</button>
-                            <button type="button" onClick={() => saveAddOnEdit([])} className={btnClass('secondary', 'lg', true)}>Remove all add-ons</button>
+                            <button type="button" onClick={() => (isNewLine ? addNewLine(pickedEdit) : saveAddOnEdit(pickedEdit))} disabled={pickedEdit.length === 0} className={btnClass('primary', 'lg', true)}>
+                                {isNewLine ? 'Add to cart' : 'Update add-ons'}
+                            </button>
+                            <button type="button" onClick={() => (isNewLine ? addNewLine([]) : saveAddOnEdit([]))} className={btnClass('secondary', 'lg', true)}>
+                                {isNewLine ? 'No add-ons' : 'Remove all add-ons'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* "+" par: Increase quantity ya Add as new item */}
+            {dupLine && (
+                <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-900/45 p-4" onClick={() => setDupLineKey(null)}>
+                    <div role="dialog" aria-label="Item already in cart" className="w-full max-w-sm rounded-sm bg-white p-6 text-center shadow-sf-float" onClick={(e) => e.stopPropagation()}>
+                        <h2 className="text-lg font-semibold text-slate-900">Item already in cart</h2>
+                        <p className="mt-1.5 mb-5 text-sm text-slate-600">
+                            "<span className="font-medium">
+                                {dupLine.name}
+                                {(dupLine.addOns?.length ?? 0) > 0 ? ` + ${dupLine.addOns.map((a: AddOnOption) => a.name).join(', ')}` : ''}
+                            </span>" is already in your cart
+                            {cartItems.filter((c: any) => String(c.id) === String(dupLine.id)).length > 1
+                                ? ` (${cartItems.filter((c: any) => String(c.id) === String(dupLine.id)).length} times)`
+                                : ''}.
+                            {' '}What would you like to do?
+                        </p>
+                        <div className="grid gap-2">
+                            <button type="button" onClick={increaseFromPrompt} className={btnClass('primary', 'lg', true)}>Increase quantity</button>
+                            <button type="button" onClick={startNewLine} className={btnClass('secondary', 'lg', true)}>Add as new item</button>
+                            <button type="button" onClick={() => setDupLineKey(null)} className="mt-1 h-9 text-xs font-medium text-slate-500 hover:text-slate-900">Cancel</button>
                         </div>
                     </div>
                 </div>

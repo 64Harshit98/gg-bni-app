@@ -266,7 +266,7 @@ const CatalogueLayout = () => {
     // Sidebar quick actions
     const quickActions: QuickAction[] = [
         { key: 'catalog', to: `${ROUTES.CHOME}/${ROUTES.ORDER}`, icon: <Store className="size-4" />, label: 'Edit Catalog', permission: Cata_Permissions.ViewShop },
-        { key: 'storepage', to: `${ROUTES.CHOME}/${ROUTES.CATA_STORE_PAGE}`, icon: <LayoutTemplate className="size-4" />, label: 'Store page', permission: Cata_Permissions.ManageEditProfile },
+        { key: 'storepage', to: `${ROUTES.CHOME}/${ROUTES.CATA_STORE_PAGE}`, icon: <LayoutTemplate className="size-4" />, label: 'Store page', permission: Cata_Permissions.ManageStorePage },
         { key: 'item', to: `${ROUTES.CHOME}/${ROUTES.ADD_PRODUCT}`, icon: <PackagePlus className="size-4" />, label: 'Add Item', permission: Cata_Permissions.ManageItems },
         { key: 'requests', to: `${ROUTES.CHOME}/${ROUTES.CATA_REQUEST}`, icon: <Inbox className="size-4" />, label: 'Requests', permission: Cata_Permissions.ViewCatalogueRequests },
         { key: 'returns', to: `${ROUTES.CHOME}/${ROUTES.ORDER_RETURN}`, icon: <RotateCcw className="size-4" />, label: 'Orders Return', permission: Cata_Permissions.ViewOrdersReturn },
@@ -301,7 +301,7 @@ const CatalogueLayout = () => {
                     <span className={fabLabelClass}>Catalog</span>
                 </Button>
             </ShowWrapper>
-            <ShowWrapper requiredPermission={Cata_Permissions.ManageEditProfile}>
+                        <ShowWrapper requiredPermission={Cata_Permissions.ManageStorePage}>
                 <Button
                     variant="outline"
                     className={fabActionClass}

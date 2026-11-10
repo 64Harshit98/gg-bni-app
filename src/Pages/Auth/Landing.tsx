@@ -88,7 +88,7 @@ const LiveBillHero: React.FC = () => {
   return (
     <section
       aria-label="About SELLAR"
-      className={`relative flex flex-col overflow-hidden px-4 pb-11 pt-6 text-white short:pb-8 short:pt-3 lg:col-start-1 lg:row-span-2 lg:row-start-1 lg:pb-10 lg:pl-12 lg:pr-[68px] lg:pt-12 xl:pb-12 xl:pl-[72px] xl:pr-[92px] xl:pt-14 ${NAVY}`}
+      className={`relative flex min-w-0 flex-col overflow-hidden px-4 pb-11 pt-6 text-white short:pb-8 short:pt-3 lg:col-start-1 lg:row-span-2 lg:row-start-1 lg:pb-10 lg:pl-12 lg:pr-[68px] lg:pt-12 xl:pb-12 xl:pl-[72px] xl:pr-[92px] xl:pt-14 ${NAVY}`}
     >
       <div
         aria-hidden="true"
@@ -247,11 +247,11 @@ const LoginPage: React.FC = () => {
         and the short: / tiny: sizes keep the whole page on one screen down to about 550px tall.
         Desktop: the hero is on the left and the sheet overlaps it from the right.
       */}
-      <div className={`grid min-h-[100dvh] grid-rows-[auto_1fr_auto] text-slate-900 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:grid-rows-[auto_1fr] ${NAVY}`}>
+      <div className={`grid min-h-[100dvh] grid-cols-[minmax(0,1fr)] grid-rows-[auto_1fr_auto] overflow-x-clip text-slate-900 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:grid-rows-[auto_1fr] ${NAVY}`}>
         {/* The white sheet on desktop, behind the header and form, which sit in separate grid rows. */}
         <div aria-hidden="true" className="relative z-[1] col-start-2 row-span-2 row-start-1 -ml-5 rounded-l-2xl bg-white max-lg:hidden" />
 
-        <header className="relative bg-white px-4 lg:z-[2] lg:col-start-2 lg:row-start-1 lg:bg-transparent lg:px-10 lg:pt-5">
+        <header className="relative min-w-0 bg-white px-4 lg:z-[2] lg:col-start-2 lg:row-start-1 lg:bg-transparent lg:px-10 lg:pt-5">
           <div className="mx-auto flex h-14 w-full max-w-[400px] items-center justify-between gap-4 short:h-11">
             <img src={sellarLogo} alt="SELLAR" className="h-5 w-auto" />
             <p className="text-sm text-slate-600">
@@ -272,7 +272,7 @@ const LoginPage: React.FC = () => {
 
         <LiveBillHero />
 
-        <main className="relative z-[1] -mt-5 flex flex-col rounded-t-2xl bg-white px-5 pt-7 short:pt-4 lg:z-[2] lg:col-start-2 lg:row-start-2 lg:mt-0 lg:rounded-none lg:bg-transparent lg:px-10 lg:pb-4 lg:pt-0">
+        <main className="relative z-[1] -mt-5 flex min-w-0 flex-col rounded-t-2xl bg-white px-5 pt-7 short:pt-4 lg:z-[2] lg:col-start-2 lg:row-start-2 lg:mt-0 lg:rounded-none lg:bg-transparent lg:px-10 lg:pb-4 lg:pt-0">
           <div className="mx-auto flex w-full max-w-[400px] flex-1 flex-col">
             <div className="lg:my-auto lg:py-8">
               <form onSubmit={handleLogin} noValidate className="flex flex-col gap-4 short:gap-3 tiny:gap-2.5">

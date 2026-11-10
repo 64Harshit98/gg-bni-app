@@ -30,8 +30,9 @@ export enum Cata_Permissions {
     ViewCatalogueFilter = 'ViewCatalogueFilter',
     ViewCatalogueSalesbarchart = 'ViewCatalogueSalesbarchart',
     ViewTopSoldItems = 'ViewCatalogueTopSoldItems',
-    ViewEditButton = 'ViewEditButton',
+        ViewEditButton = 'ViewEditButton',
     ViewNotification = 'ViewNotification',
+    ManageStorePage = 'ManageCatalogueStorePage',
 }
 
 // Maps old, no-longer-used permission string values to their current

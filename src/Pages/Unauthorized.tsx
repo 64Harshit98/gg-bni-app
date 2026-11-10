@@ -126,7 +126,7 @@ const CATALOGUE_PAGES: PageGroup<Cata_Permissions>[] = [
     pages: [
       { title: 'Add product', description: 'Put a new product in your catalogue', path: C(ROUTES.ADD_PRODUCT), icon: Package, chip: 'blue', permission: Cata_Permissions.ManageItems },
       { title: 'Item groups', description: 'Sort products into groups', path: C(ROUTES.CAT_ITEM_GROUP), icon: FolderTree, chip: 'blue', permission: Cata_Permissions.ManageItems },
-      { title: 'Store page', description: 'What customers see first', path: C(ROUTES.CATA_STORE_PAGE), icon: Store, chip: 'magenta', permission: Cata_Permissions.ManageEditProfile },
+      { title: 'Store page', description: 'What customers see first', path: C(ROUTES.CATA_STORE_PAGE), icon: Store, chip: 'magenta', permission: Cata_Permissions.ManageStorePage },
     ],
   },
   {

@@ -465,6 +465,22 @@ const Sales: React.FC = () => {
         }
         handleItemSelected(item);
     };
+
+    // Duplicate popup ka "Add as new item": add-on wale item par pehle add-ons popup kholo
+    const handleAddAsNewLineWrapper = () => {
+        const dup = duplicateItemPrompt;
+        const base = dup ? availableItems.find(a => a.id === dup.item.id) ?? dup.item : null;
+
+        if (base && itemHasAddOns(base)) {
+            setDuplicateItemPrompt(null);   // duplicate popup band
+            setEditingLineId(null);         // edit mode nahi, naya line ban raha hai
+            setAddOnSelection({});          // fresh selection
+            setAddOnItem(base);             // add-ons popup open
+            return;
+        }
+        // Add-ons nahi hain: pehle jaisa
+        handleAddAsNewLine();
+    };
     const userRole = currentUser?.role || '';
     const isManager = userRole === ROLES.MANAGER || userRole === ROLES.OWNER;
     const hideMrp = (salesSettings as any)?.hideMrp ?? false;
@@ -625,9 +641,27 @@ const Sales: React.FC = () => {
         return Number((base as any)?.moq) || 1;
     };
 
-    // Bill panel: never let quantity go below MOQ (list view already locks this)
+    // Bill panel: never let quantity go below MOQ (list view already locks this).
+    // "+" ek hi item dobara add karne jaisa hai, isliye list view jaisa popup puchta hai.
     const handleBillQuantityChange = (lineId: string, newQty: number) => {
         if (newQty < getLineMoq(lineId)) return;
+
+        const line: any = items.find((l: any) => l.id === lineId);
+        const isPlusTap = !!line && newQty === (Number(line.quantity) || 0) + 1;
+
+        if (isPlusTap) {
+            const base = availableItems.find(a => a.id === (line.productId || line.id));
+            if (base) {
+                const existingCount = items.filter((l: any) => (l.productId || l.id) === base.id).length;
+                setDuplicateItemPrompt({
+                    item: base,
+                    addOns: line.addOns,   // add-on wali line ho to popup me naam bhi dikhega
+                    existingCount,
+                } as any);
+                return;
+            }
+        }
+        // "−" ya direct quantity edit: pehle jaisa
         handleQuantityChange(lineId, newQty);
     };
 
@@ -1263,7 +1297,7 @@ const Sales: React.FC = () => {
                             Increase quantity
                         </button>
                         <button
-                            onClick={handleAddAsNewLine}
+                            onClick={handleAddAsNewLineWrapper}
                             className="w-full h-11 rounded-sm bg-white border border-[#7a8aa3] text-[#0f172b] font-medium hover:bg-[#f5f7ff] transition-colors"
                         >
                             Add as new item
@@ -1825,6 +1859,9 @@ const Sales: React.FC = () => {
                 {/* Phone/tablet: bill sheet first, payment drawer after "Pay" */}
                 {renderBillSheet()}
 
+                {/* Duplicate item popup: bill panel ke "+" se bhi khulta hai */}
+                {renderDuplicateItemPrompt()}
+
                 {/* Drawers & modals — rendered ONCE */}
                 <PaymentDrawer
                     mode='sale' isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)}
@@ -2060,7 +2097,7 @@ ${colClass || ''}`}
             )}
             {renderClearCartConfirm()}
             {/* Duplicate item popup */}
-            {renderDuplicateItemPrompt()}
+            {/* {renderDuplicateItemPrompt()} */}
             <BarcodeScanner isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} onScanSuccess={handleBarcodeScanned} />
             <BarcodeLinkModal
                 isOpen={isBarcodeLinkModalOpen}
@@ -2178,6 +2215,9 @@ ${colClass || ''}`}
 
             {/* Phone/tablet: bill sheet first, payment drawer after "Pay" */}
             {renderBillSheet()}
+
+            {/* Duplicate item popup: bill panel ke "+" se bhi khulta hai */}
+            {renderDuplicateItemPrompt()}
 
             <PaymentDrawer isOpen={isDrawerOpen}
                 mode='sale'

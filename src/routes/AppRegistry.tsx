@@ -230,7 +230,7 @@ export const AppRegistry: AppModule[] = [
             { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_USER_REPORT}`, component: CatalogueUserReport, permission: Cata_Permissions.ViewUserReport },
             { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_TAX_REPORT}`, component: CatalogueTaxReport, permission: Cata_Permissions.ViewTaxReport },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_EDIT}`, component: CatalogueEditProfile, permission: Cata_Permissions.ManageEditProfile },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATA_STORE_PAGE}`, component: StoreBuilder, permission: Cata_Permissions.ManageEditProfile },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATA_STORE_PAGE}`, component: StoreBuilder, permission: Cata_Permissions.ManageStorePage },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_PRODUCT_PAGE}/:itemId`, component: ProductPageBuilder, permission: Cata_Permissions.ViewEditButton },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_MASTERS}`, component: CatalogueMasters, permission: Cata_Permissions.ManageMasters },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_SALE_SETTING}`, component: CatalogueSalesSettings, permission: Cata_Permissions.ManageSalesSettings },

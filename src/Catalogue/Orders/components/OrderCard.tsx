@@ -888,8 +888,8 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                     onClick={() => handleOrderClick(Order.id)}
                     className="p-0 mb-0 bg-white rounded-sm relative overflow-hidden border border-[#f6e1d0] shadow-sm hover:border-[#f9c9a8] cursor-pointer transition"
                 >
-                    <div className="p-3.5 grid gap-2.5">
-                        <div className="flex items-center gap-2.5">
+                    <div className="p-3 grid gap-2.5">
+                        <div className="flex items-center gap-2.5 min-w-0">
                             <span className="shrink-0 w-9 h-9 rounded-full grid place-items-center bg-[#fff8f2] text-slate-600 font-semibold text-[13px]">
                                 {avatarLetter}
                             </span>
@@ -903,19 +903,21 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                                 </div>
                             </div>
 
-                            <div className="shrink-0 text-right">
-                                <b className="block text-[15px] font-semibold text-slate-900 tabular-nums">₹{money(total)}</b>
-                                {isUpcomingStatus ? (
-                                    <div className="text-xs text-slate-500">{itemCount} {itemCount === 1 ? 'item' : 'items'}</div>
-                                ) : due > 0 ? (
-                                    <>
-                                        <span className={`inline-block ${BADGE_UNPAID}`}>UNPAID</span>
-                                        <div className="text-[11px] font-medium text-[#a16207] tabular-nums">₹{money(due)} due</div>
-                                    </>
-                                ) : (
-                                    <span className={`inline-block ${BADGE_PAID}`}>{paidBadgeText}</span>
-                                )}
-                            </div>
+                            <div className="shrink-0 max-w-[55%] flex flex-col items-end gap-0.5">
+    <div className="flex items-center gap-1">
+        {!isUpcomingStatus && due > 0 && (
+            <span className={`${BADGE_UNPAID} !px-1.5 !text-[9px]`}>UNPAID</span>
+        )}
+        <b className="text-[15px] font-semibold text-slate-900 tabular-nums whitespace-nowrap">₹{money(total)}</b>
+    </div>
+    {isUpcomingStatus ? (
+        <div className="text-xs text-slate-500">{itemCount} {itemCount === 1 ? 'item' : 'items'}</div>
+    ) : due > 0 ? (
+        <div className="text-[11px] font-medium text-[#a16207] tabular-nums whitespace-nowrap">₹{money(due)} due</div>
+    ) : (
+        <span className={BADGE_PAID}>{paidBadgeText}</span>
+    )}
+</div>
                         </div>
 
                         {/* Return-method chips (only when the order has returns) */}

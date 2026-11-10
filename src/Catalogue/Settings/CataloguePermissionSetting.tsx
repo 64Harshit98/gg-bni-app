@@ -32,8 +32,9 @@ export const getDefaultCataPermissions = (role: string): Cata_Permissions[] => {
                 Cata_Permissions.ViewEditButton,
                 Cata_Permissions.ViewShop,
                 Cata_Permissions.ViewShopItems,
-                Cata_Permissions.ViewOrdersReturn,
+                                Cata_Permissions.ViewOrdersReturn,
                 Cata_Permissions.ViewNotification,
+                Cata_Permissions.ManageStorePage,
             ];
         case ROLES.SALESMAN:
             // Parity with the POS Salesman defaults: dashboard, create/view
@@ -64,7 +65,7 @@ const cataPermissionGroups = {
             Cata_Permissions.ViewNotification, // moved out of "ungrouped"
         ].filter(Boolean),
     },
-    orders: {
+        orders: {
         title: 'Orders, Shop & Requests',
         permissions: [
             Cata_Permissions.ViewCatalogueOrders,
@@ -73,6 +74,7 @@ const cataPermissionGroups = {
             Cata_Permissions.ViewShop,
             Cata_Permissions.ViewShopItems,
             Cata_Permissions.ViewEditButton,
+            Cata_Permissions.ManageStorePage,
         ].filter(Boolean),
     },
     reports: {
@@ -141,7 +143,8 @@ const CATA_PERMISSION_DESCRIPTIONS: Partial<Record<Cata_Permissions, string>> = 
     [Cata_Permissions.ViewCatalogueRequests]: 'View incoming catalogue requests.',
     [Cata_Permissions.ViewShop]: 'View the shop section of the catalogue.',
     [Cata_Permissions.ViewShopItems]: 'View items listed in the shop.',
-    [Cata_Permissions.ViewEditButton]: 'Allow editing of existing catalogue orders or entries.',
+        [Cata_Permissions.ViewEditButton]: 'Allow editing of existing catalogue orders or entries.',
+    [Cata_Permissions.ManageStorePage]: 'Open and edit the Store page customers see first.',
 
     // Reports & Insights
     [Cata_Permissions.ViewReports]: 'Access the reports section and its settings.',
@@ -188,7 +191,8 @@ const CATA_PERMISSION_LABELS: Partial<Record<Cata_Permissions, string>> = {
     [Cata_Permissions.ViewCatalogueRequests]: 'Customer requests',
     [Cata_Permissions.ViewShop]: 'View catalogue',
     [Cata_Permissions.ViewShopItems]: 'View catalogue items',
-    [Cata_Permissions.ViewEditButton]: 'Edit orders',
+        [Cata_Permissions.ViewEditButton]: 'Edit orders',
+    [Cata_Permissions.ManageStorePage]: 'Store page',
     // Reports & insights
     [Cata_Permissions.ViewReports]: 'Open Reports & Settings tabs',
     [Cata_Permissions.ViewItemReport]: 'Item report',

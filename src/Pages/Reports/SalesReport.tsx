@@ -53,11 +53,78 @@ import BackButton from '../../Components/BackButton';
 import { useSalesSettings } from '../../context/SettingsContext';
 import { normalizePlan } from '../../context/Plan';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import sellarLogo from '../../assets/sellar-logo.png';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 import { useInvoiceCommunication } from '../Journal/hooks';
 import { InvoiceActionSheet, PrintSubMenuModal, QrCodeModal } from '../Journal/components';
 import type { Invoice } from '../Journal/journal.types';
+
+const toDataUrl = async (src: string): Promise<string | null> => {
+  try {
+    const blob = await (await fetch(src)).blob();
+    return await new Promise((resolve) => {
+      const r = new FileReader();
+      r.onloadend = () => resolve(r.result as string);
+      r.onerror = () => resolve(null);
+      r.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+};
+type RGB = [number, number, number];
+
+const PDF_RADIUS = 0.5; // ≈ Tailwind rounded-sm
+
+
+const drawGradientRect = (doc: jsPDF, x: number, y: number, w: number, h: number, from: RGB, to: RGB) => {
+  const steps = 120;
+  const sw = w / steps;
+  for (let i = 0; i < steps; i++) {
+    const t = i / (steps - 1);
+    doc.setFillColor(
+      Math.round(from[0] + (to[0] - from[0]) * t),
+      Math.round(from[1] + (to[1] - from[1]) * t),
+      Math.round(from[2] + (to[2] - from[2]) * t),
+    );
+    doc.rect(x + i * sw, y, sw + 0.3, h, 'F');
+  }
+};
+
+const fmtDay = (ts: number, withWeekday = false) => {
+  const d = new Date(ts);
+  const mon = d.toLocaleString('en-US', { month: 'short' });
+  const wd = d.toLocaleString('en-US', { weekday: 'short' });
+  const base = `${d.getDate()} ${mon} ${d.getFullYear()}`;
+  return withWeekday ? `${wd}, ${base}` : base;
+};
+
+const fmtDayMonth = (ts: number, withWeekday = false) => {
+  const d = new Date(ts);
+  const mon = d.toLocaleString('en-US', { month: 'short' });
+  const wd = d.toLocaleString('en-US', { weekday: 'short' });
+  const base = `${d.getDate()} ${mon}`;
+  return withWeekday ? `${wd}, ${base}` : base;
+};
+
+const fmt2 = (n: number) =>
+  n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const niceMax = (v: number) => {
+  const exp = Math.pow(10, Math.floor(Math.log10(v)));
+  const f = v / exp;
+  const steps = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+  return (steps.find((s) => f <= s + 1e-9) ?? 10) * exp;
+};
+
+const fmtCompact = (n: number) => {
+  const trim = (x: number) => String(Math.round(x * 10) / 10);
+  if (n >= 1e7) return `${trim(n / 1e7)}Cr`;
+  if (n >= 1e5) return `${trim(n / 1e5)}L`;
+  if (n >= 1e3) return `${trim(n / 1e3)}K`;
+  return String(Math.round(n));
+};
 
 const SalesReport: React.FC = () => {
   const { currentUser } = useAuth();
@@ -107,6 +174,8 @@ const SalesReport: React.FC = () => {
 
   /* ---------- BILL ACTION SHEET (WhatsApp / Download / Print / QR) ---------- */
   const { salesSettings } = useSalesSettings();
+  const showSalesman = !!salesSettings?.enableSalesmanSelection;
+  const salesmanOf = (sale: SaleRecord): string => (sale.salesmanName || '').trim() || '-';
   const [actionModal, setActionModal] = useState<{ message: string; type: State } | null>(null);
   const [isPosBasicPlan, setIsPosBasicPlan] = useState(false);
 
@@ -229,10 +298,11 @@ const SalesReport: React.FC = () => {
       return (
         (sale.partyName || '').toLowerCase().includes(q) ||
         (sale.invoiceNumber || '').toLowerCase().includes(q) ||
+        (showSalesman && (sale.salesmanName || '').toLowerCase().includes(q)) ||
         (!!qDigits && (sale.partyNumber || '').replace(/\D/g, '').includes(qDigits))
       );
     });
-  }, [appliedFilters, sales, searchQuery]);
+  }, [appliedFilters, sales, searchQuery, showSalesman]);
 
   // Payment mode filter + sort: drives the bill list and the downloads.
   const { filteredSales, summary } = useMemo(() => {
@@ -282,192 +352,630 @@ const SalesReport: React.FC = () => {
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
+      const M = 14;
+      const PAD = 4; // table cell padding, heading isi se align hoti hai
+      const brandRight = pageWidth - M;
+      const contentW = pageWidth - M * 2;
+      const company = companyName || 'Your Business';
+      const billWord = (n: number) => (n === 1 ? 'bill' : 'bills');
 
-      // --- 1. BRAND ACCENT BAR ---
-      // Uses the #F97316 orange from your UI
-      doc.setFillColor(37, 99, 235);
-      doc.rect(0, 0, pageWidth, 6, 'F');
+      const generatedAtText = `Generated ${new Date().toLocaleString('en-IN', {
+        day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit',
+      })}`;
+      const periodText = `${fmtDay(appliedFilters.start)} – ${fmtDay(appliedFilters.end)}`;
+      const periodDays = Math.max(
+        1,
+        Math.round((appliedFilters.end - appliedFilters.start) / 86400000),
+      );
 
-      // ===== GENERATION TAG (drawn first, reserves space for logo) =====
-      const tagText = `Generated by SELLAR • ${new Date().toLocaleString('en-IN')}`;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
+      // ---------- ASSETS ----------
+      const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId).catch(() => null);
+      const sellarImg = await toDataUrl(sellarLogo);
 
-      const textWidth = doc.getTextWidth(tagText);
-      const paddingX = 2;
-      const boxWidth = textWidth + paddingX * 2;
-      const boxHeight = 5;
-
-      const logoReservedWidth = 18; // space reserved for logo + gap, so tag never overlaps it
-      const boxX = pageWidth - 14 - logoReservedWidth - boxWidth;
-      const boxY = 10;
-
-      doc.setFillColor(245, 245, 245);
-      doc.rect(boxX, boxY, boxWidth, boxHeight, 'F');
-
-      doc.setTextColor(80, 80, 80);
-      doc.text(tagText, boxX + paddingX, boxY + 3.5);
-
-      doc.setTextColor(0, 0, 0);
-
-      // ===== LOGO (drawn after, in its own reserved slot at top-right corner) =====
-      try {
-        const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
+      const drawCompanyTile = (x: number, y: number, size: number, onDark: boolean) => {
+        let drawn = false;
         if (base64Logo) {
-          const img = new Image();
-          img.src = base64Logo;
-          await new Promise<void>((resolve) => {
-            img.onload = () => {
-              const logoWidth = 13;
-              const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
-              const logoX = pageWidth - logoWidth - 14;
-              doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
-              resolve();
-            };
-            img.onerror = () => resolve();
-          });
+          try {
+            const props = doc.getImageProperties(base64Logo);
+            const maxSide = size - size * 0.22;
+            const scale = Math.min(maxSide / props.width, maxSide / props.height);
+            const w = props.width * scale;
+            const h = props.height * scale;
+            doc.setFillColor(255, 255, 255);
+            if (onDark) {
+              doc.roundedRect(x, y, size, size, PDF_RADIUS, PDF_RADIUS, 'F');
+            } else {
+              doc.setDrawColor(229, 231, 235);
+              doc.setLineWidth(0.3);
+              doc.roundedRect(x, y, size, size, PDF_RADIUS, PDF_RADIUS, 'FD');
+            }
+            doc.addImage(base64Logo, props.fileType, x + (size - w) / 2, y + (size - h) / 2, w, h);
+            drawn = true;
+          } catch {
+            // invalid logo -> initial fallback
+          }
         }
-      } catch {
-        // Continue without logo
+        if (!drawn) {
+          if (onDark) doc.setFillColor(52, 78, 168);
+          else doc.setFillColor(37, 99, 235);
+          doc.roundedRect(x, y, size, size, PDF_RADIUS, PDF_RADIUS, 'F');
+          doc.setTextColor(255, 255, 255);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(size * 0.9);
+          doc.text(
+            (companyName.trim().charAt(0) || 'S').toUpperCase(),
+            x + size / 2,
+            y + size / 2,
+            { align: 'center', baseline: 'middle' },
+          );
+        }
+      };
+
+      // ---------- DATA: day-wise totals (chart) ----------
+      const dayKey = (ts: number) => {
+        const d = new Date(ts);
+        return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      };
+      const dayTotals = new Map<string, number>();
+      filteredSales.forEach((s) => {
+        const k = dayKey(s.createdAt);
+        dayTotals.set(k, (dayTotals.get(k) || 0) + s.totalAmount);
+      });
+      const days: { ts: number; value: number }[] = [];
+      const cursor = new Date(appliedFilters.start);
+      cursor.setHours(0, 0, 0, 0);
+      while (cursor.getTime() <= appliedFilters.end) {
+        days.push({ ts: cursor.getTime(), value: dayTotals.get(dayKey(cursor.getTime())) || 0 });
+        cursor.setDate(cursor.getDate() + 1);
       }
+      const best = days.length ? days.reduce((a, b) => (b.value > a.value ? b : a), days[0]) : null;
+      const hasBest = !!best && best.value > 0;
 
-      // --- 2. HEADER SECTION ---
-      doc.setFontSize(22);
-      doc.setTextColor(17, 24, 39); // gray-900
-      doc.setFont('helvetica', 'bold');
-      const reportTitle = companyName
-        ? `Sales Report — ${companyName}`
-        : 'Sales Report';
-      doc.text(reportTitle, 14, 24);
+      // ---------- 1. HEADER (gradient) ----------
+      drawGradientRect(doc, 0, 0, pageWidth, 64, [11, 31, 120], [37, 99, 235]);
 
-      // Dynamic Subtitle with Date Range
-      doc.setFontSize(10);
-      doc.setTextColor(107, 114, 128); // gray-500
+      drawCompanyTile(M, 11, 14, true);
+
       doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(190, 205, 255);
+      doc.text('Prepared for', 32, 15);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.setTextColor(255, 255, 255);
+      doc.text(company, 32, 22);
 
-      const generationDate = new Date().toLocaleDateString('en-IN', {
-        year: 'numeric', month: 'short', day: 'numeric',
+      // SELLAR logo + text (top-right, white pill)
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      const brandTextW = doc.getTextWidth('SELLAR') + 5 * 0.3;
+      const sellarLh = 5;
+      let sellarLw = 0;
+      if (sellarImg) {
+        try {
+          const lp = doc.getImageProperties(sellarImg);
+          sellarLw = (lp.width / lp.height) * sellarLh;
+        } catch {
+          // continue without SELLAR logo
+        }
+      }
+      const pillPadX = 3;
+      const pillW = brandTextW + (sellarLw ? sellarLw + 2 : 0) + pillPadX * 2;
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(brandRight - pillW, 7.5, pillW, 8, PDF_RADIUS, PDF_RADIUS, 'F');
+      if (sellarImg && sellarLw) {
+        doc.addImage(
+          sellarImg,
+          'PNG',
+          brandRight - pillPadX - brandTextW - sellarLw - 2,
+          9,
+          sellarLw,
+          sellarLh,
+        );
+      }
+      doc.setTextColor(0, 0, 0);
+      doc.text('SELLAR', brandRight - pillPadX, 12.6, { align: 'right', charSpace: 0.3 });
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(190, 205, 255);
+      doc.text(generatedAtText, brandRight, 21, { align: 'right' });
+
+      // Title block (left)
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(M, 31, 14, 14, PDF_RADIUS, PDF_RADIUS, 'F');
+
+      // FileText icon (lucide, 24x24 grid -> 7mm)
+      const ix = M + 3.5;
+      const iy = 31 + 3.5;
+      const k = 7 / 24;
+      const seg = (pts: [number, number][]) => {
+        for (let i = 0; i < pts.length - 1; i++) {
+          doc.line(
+            ix + pts[i][0] * k, iy + pts[i][1] * k,
+            ix + pts[i + 1][0] * k, iy + pts[i + 1][1] * k,
+          );
+        }
+      };
+      doc.setDrawColor(37, 99, 235);
+      doc.setLineWidth(0.5);
+      doc.setLineCap('round');
+      doc.setLineJoin('round');
+      seg([[15, 2], [6, 2], [4, 4], [4, 20], [6, 22], [18, 22], [20, 20], [20, 7], [15, 2]]);
+      seg([[14, 2], [14, 6], [16, 8], [20, 8]]);
+      seg([[10, 9], [8, 9]]);
+      seg([[16, 13], [8, 13]]);
+      seg([[16, 17], [8, 17]]);
+      doc.setLineCap('butt');
+      doc.setLineJoin('miter');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(26);
+      doc.setTextColor(255, 255, 255);
+      doc.text('Sales Report', 32, 38);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(190, 205, 255);
+      doc.text("Every bill and each day's sales", 32, 44.5);
+
+      // Report period (right)
+      doc.setFontSize(9);
+      doc.text('Report period', brandRight, 34, { align: 'right' });
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.setTextColor(255, 255, 255);
+      doc.text(periodText, brandRight, 40.5, { align: 'right' });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(190, 205, 255);
+      doc.text(`${periodDays} days`, brandRight, 45.5, { align: 'right' });
+
+      // ---------- 2. SUMMARY CARDS (content-based widths) ----------
+      const cardY = 50;
+      const cardH = 32;
+      const kpiPad = 6;
+
+      const avgBill = summary.totalTransactions > 0 ? summary.totalSales / summary.totalTransactions : 0;
+      const cardsData = [
+        {
+          label: 'Total sales',
+          value: `Rs. ${Math.round(summary.totalSales).toLocaleString('en-IN')}`,
+          hint: `${summary.totalTransactions} ${billWord(summary.totalTransactions)}`,
+        },
+        {
+          label: 'Items sold',
+          value: String(summary.totalItemsSold),
+          hint: `${summary.totalTransactions > 0 ? (summary.totalItemsSold / summary.totalTransactions).toFixed(1) : '0'} per bill`,
+        },
+        {
+          label: 'Average bill',
+          value: `Rs. ${fmt2(avgBill)}`,
+          hint: `across ${summary.totalTransactions} ${billWord(summary.totalTransactions)}`,
+        },
+        {
+          label: 'Best day',
+          value: hasBest ? `Rs. ${Math.round(best!.value).toLocaleString('en-IN')}` : '-',
+          hint: hasBest ? fmtDayMonth(best!.ts, true) : 'No sales',
+        },
+      ];
+      const valBase = [20, 15, 15, 15];
+      const measureKpi = (scale: number) =>
+        cardsData.map((c, i) => {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(valBase[i] * scale);
+          const vw = doc.getTextWidth(c.value);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(9.5);
+          const lw = doc.getTextWidth(c.label);
+          doc.setFontSize(8.5);
+          const hw = doc.getTextWidth(c.hint);
+          return Math.max(vw, lw, hw) + kpiPad * 2;
+        });
+      const sumOf = (arr: number[]) => arr.reduce((a, b) => a + b, 0);
+
+      let vScale = 1;
+      let need = measureKpi(vScale);
+      while (sumOf(need) > contentW && vScale > 0.55) {
+        vScale -= 0.03;
+        need = measureKpi(vScale);
+      }
+      const needTotal = sumOf(need);
+      const spare = needTotal < contentW ? (contentW - needTotal) / cardsData.length : 0;
+      const colWs = need.map((w) => (needTotal > contentW ? (w * contentW) / needTotal : w + spare));
+      const colXs: number[] = [];
+      let accX = M;
+      colWs.forEach((w) => {
+        colXs.push(accX);
+        accX += w;
       });
 
-      const subtitleText = `Generated: ${generationDate}   |   Period: ${formatDate(appliedFilters.start)} to ${formatDate(appliedFilters.end)}`;
-      doc.text(subtitleText, 14, 31);
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(M, cardY, contentW, cardH, PDF_RADIUS, PDF_RADIUS, 'F');
+      doc.setFillColor(238, 243, 255);
+      doc.roundedRect(M, cardY, colWs[0], cardH, PDF_RADIUS, PDF_RADIUS, 'F');
+      doc.rect(M + colWs[0] - 2, cardY, 2, cardH, 'F');
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(M, cardY, contentW, cardH, PDF_RADIUS, PDF_RADIUS, 'S');
+      for (let i = 1; i < cardsData.length; i++) {
+        doc.line(colXs[i], cardY, colXs[i], cardY + cardH);
+      }
 
-      // --- 3. AUTOTABLE GENERATION ---
+      cardsData.forEach((c, i) => {
+        const cx = colXs[i] + kpiPad;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9.5);
+        doc.setTextColor(100, 110, 135);
+        doc.text(c.label, cx, cardY + 9);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(valBase[i] * vScale);
+        if (i === 0) doc.setTextColor(29, 78, 216);
+        else doc.setTextColor(17, 24, 39);
+        doc.text(c.value, cx, cardY + 20);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.setTextColor(120, 128, 150);
+        doc.text(c.hint, cx, cardY + 27);
+      });
+
+      // ---------- 3. SALES BY DAY (LINE CHART) ----------
+      const chartY = 90;
+      const chartH = 66;
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(M, chartY, contentW, chartH, PDF_RADIUS, PDF_RADIUS, 'FD');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(17, 24, 39);
+      doc.text('Sales by day', M + 6, chartY + 10);
+
+      if (hasBest) {
+        const bestLabel = fmtDayMonth(best!.ts, true);
+        const t3 = ` with Rs. ${Math.round(best!.value).toLocaleString('en-IN')}`;
+        const ty = chartY + 10;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        const w1 = doc.getTextWidth('Best day ');
+        const w3 = doc.getTextWidth(t3);
+        doc.setFont('helvetica', 'bold');
+        const w2 = doc.getTextWidth(bestLabel);
+        let bx = brandRight - 6 - w1 - w2 - w3;
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(107, 114, 128);
+        doc.text('Best day ', bx, ty);
+        bx += w1;
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(17, 24, 39);
+        doc.text(bestLabel, bx, ty);
+        bx += w2;
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(107, 114, 128);
+        doc.text(t3, bx, ty);
+      } else {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.setTextColor(107, 114, 128);
+        doc.text('No sales in this period', brandRight - 6, chartY + 10, { align: 'right' });
+      }
+
+      const plotL = M + 20;
+      const plotR = brandRight - 8;
+      const plotT = chartY + 22;
+      const plotB = chartY + chartH - 14;
+      const plotW = plotR - plotL;
+      const plotH = plotB - plotT;
+      const nDays = days.length;
+      const maxVal = Math.max(...days.map((d) => d.value), 1);
+      const yMax = niceMax(maxVal);
+      const px = (i: number) => (nDays > 1 ? plotL + (plotW * i) / (nDays - 1) : plotL + plotW / 2);
+      const py = (v: number) => plotB - (Math.max(v, 0) / yMax) * plotH;
+
+      // gridlines + Y labels
+      for (let g = 0; g <= 4; g++) {
+        const gy = plotB - (plotH * g) / 4;
+        doc.setDrawColor(g === 0 ? 203 : 232, g === 0 ? 213 : 236, g === 0 ? 225 : 244);
+        doc.setLineWidth(g === 0 ? 0.3 : 0.2);
+        doc.line(plotL, gy, plotR, gy);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(130, 138, 155);
+        doc.text(fmtCompact((yMax * g) / 4), plotL - 2.5, gy + 1, { align: 'right' });
+      }
+
+      const pts = days.map((d, i) => ({ x: px(i), y: py(d.value) }));
+
+      if (pts.length > 1) {
+        const rel: number[][] = [];
+        for (let i = 1; i < pts.length; i++) {
+          rel.push([pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y]);
+        }
+
+        // area fill
+        const areaRel = [
+          ...rel,
+          [0, plotB - pts[pts.length - 1].y],
+          [pts[0].x - pts[pts.length - 1].x, 0],
+        ];
+        doc.setFillColor(222, 233, 254);
+        doc.lines(areaRel, pts[0].x, pts[0].y, [1, 1], 'F', true);
+
+        // line
+        doc.setDrawColor(37, 99, 235);
+        doc.setLineWidth(0.5);
+        doc.setLineJoin('round');
+        doc.lines(rel, pts[0].x, pts[0].y, [1, 1], 'S', false);
+        doc.setLineJoin('miter');
+      }
+
+      // dots: kam din ho to sab sales wale din, warna sirf best day
+      const bestIdx = hasBest ? days.findIndex((d) => d.ts === best!.ts) : -1;
+      days.forEach((d, i) => {
+        if (d.value <= 0 || i === bestIdx) return;
+        if (nDays <= 45) {
+          doc.setFillColor(37, 99, 235);
+          doc.circle(pts[i].x, pts[i].y, 0.8, 'F');
+        }
+      });
+      if (bestIdx >= 0) {
+        doc.setFillColor(255, 255, 255);
+        doc.circle(pts[bestIdx].x, pts[bestIdx].y, 1.7, 'F');
+        doc.setFillColor(37, 99, 235);
+        doc.circle(pts[bestIdx].x, pts[bestIdx].y, 1.2, 'F');
+
+        const bl = Math.round(best!.value).toLocaleString('en-IN');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(17, 24, 39);
+        const blw = doc.getTextWidth(bl);
+        const bpx = pts[bestIdx].x;
+        let blAlign: 'left' | 'center' | 'right' = 'center';
+        let blX = bpx;
+        if (bpx + blw / 2 > plotR + 6) {
+          blAlign = 'right';
+          blX = bpx + 2;
+        } else if (bpx - blw / 2 < plotL) {
+          blAlign = 'left';
+          blX = bpx - 2;
+        }
+        doc.text(bl, blX, pts[bestIdx].y - 3, { align: blAlign });
+      }
+
+      // X axis ticks (max 7, evenly spaced)
+      const tickCount = Math.min(nDays, 7);
+      const xLabel = (ts: number) => (nDays > 330 ? fmtDay(ts) : fmtDayMonth(ts));
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(107, 114, 128);
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineWidth(0.3);
+      for (let t = 0; t < tickCount; t++) {
+        const idx = tickCount === 1 ? 0 : Math.round((t * (nDays - 1)) / (tickCount - 1));
+        const x = px(idx);
+        doc.line(x, plotB, x, plotB + 1.2);
+        const tAlign: 'left' | 'center' | 'right' =
+          tickCount === 1 ? 'center' : t === 0 ? 'left' : t === tickCount - 1 ? 'right' : 'center';
+        const tx = tAlign === 'left' ? plotL : tAlign === 'right' ? plotR : x;
+        doc.text(xLabel(days[idx].ts), tx, plotB + 6, { align: tAlign });
+      }
+
+      // ---------- 4. BILLS TABLE (date-wise groups) ----------
+      const billsY = chartY + chartH + 14;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.setTextColor(17, 24, 39);
+      doc.text('Bills', M, billsY);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10.5);
+      doc.setTextColor(107, 114, 128);
+      doc.text(`${filteredSales.length} ${billWord(filteredSales.length)}`, brandRight, billsY, {
+        align: 'right',
+      });
+
+      const groupMap = new Map<string, { ts: number; sales: SaleRecord[] }>();
+      filteredSales.forEach((s) => {
+        const key = dayKey(s.createdAt);
+        if (!groupMap.has(key)) groupMap.set(key, { ts: s.createdAt, sales: [] });
+        groupMap.get(key)!.sales.push(s);
+      });
+      const groups = Array.from(groupMap.values()).sort((a, b) => b.ts - a.ts);
+
+      const groupFill: RGB = [243, 246, 254];
+      const tableBody: any[] = [];
+
+      groups.forEach((g) => {
+        g.sales.sort((a, b) => b.createdAt - a.createdAt);
+        const gItems = g.sales.reduce((n, s) => n + getSaleItemCount(s), 0);
+        const gTotal = g.sales.reduce((n, s) => n + s.totalAmount, 0);
+
+        tableBody.push([
+          { content: fmtDay(g.ts, true), styles: { fontStyle: 'bold', fillColor: groupFill } },
+          {
+            content: `${g.sales.length} ${billWord(g.sales.length)}`,
+            styles: { fontStyle: 'normal', fontSize: 9.5, textColor: [107, 114, 128] as RGB, fillColor: groupFill },
+          },
+          ...(showSalesman ? [{ content: '', styles: { fillColor: groupFill } }] : []),
+          { content: String(gItems), styles: { halign: 'right', fontStyle: 'bold', fillColor: groupFill } },
+          { content: fmt2(gTotal), styles: { halign: 'right', fontStyle: 'bold', fillColor: groupFill } },
+        ]);
+
+        g.sales.forEach((s) => {
+          const walkIn = isWalkIn(s);
+          tableBody.push([
+            { content: s.invoiceNumber || 'N/A', styles: { fontStyle: 'bold' } },
+            {
+              content: walkIn ? 'Walk-in' : s.partyName,
+              styles: { textColor: walkIn ? ([156, 163, 175] as RGB) : ([17, 24, 39] as RGB) },
+            },
+            ...(showSalesman
+              ? [{ content: salesmanOf(s), styles: { textColor: [71, 85, 105] as RGB } }]
+              : []),
+            { content: String(getSaleItemCount(s)), styles: { halign: 'right' } },
+            {
+              content: fmt2(s.totalAmount),
+              styles: {
+                halign: 'right',
+                textColor: s.totalAmount < 0 ? ([220, 38, 38] as RGB) : ([17, 24, 39] as RGB),
+              },
+            },
+          ]);
+        });
+      });
+
+      // Invoice/Date | Customer | (Billed by) | Items | Amount  (total = contentW = 182mm)
+      const COLW = showSalesman ? [40, 44, 36, 22, 40] : [48, 56, 28, 50];
+      const itemsCol = showSalesman ? 3 : 2;
+      const amountCol = showSalesman ? 4 : 3;
+
       autoTable(doc, {
-        startY: 38,
-        head: [['DATE', 'INVOICE NO.', 'CUSTOMER', 'ITEMS', 'AMOUNT (Rs.)']],
-        body: filteredSales.map((sale) => {
-          // Clean up customer name casing
-          const formattedCustomer = sale.partyName
-            ? sale.partyName.charAt(0).toUpperCase() + sale.partyName.slice(1).toLowerCase()
-            : 'N/A';
-
-          // Calculate total items
-          const totalItems = sale.items.reduce((sum, i) => sum + i.quantity, 0);
-
-          return [
-            formatDate(sale.createdAt),
-            sale.invoiceNumber || 'N/A',
-            formattedCustomer,
-            totalItems.toString(),
-            // Strict 2-decimal financial formatting
-            sale.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-          ];
-        }),
+        startY: billsY + 4,
+        margin: { top: 26, bottom: 22, left: M, right: M },
+        head: [
+          showSalesman
+            ? ['Invoice', 'Customer', 'Billed by', 'Items', 'Amount (Rs.)']
+            : ['Invoice', 'Customer', 'Items', 'Amount (Rs.)'],
+        ],
+        body: tableBody,
         foot: [
           [
-            'TOTAL',
-            '',
-            '',
-            summary.totalItemsSold.toString(),
-            summary.totalSales.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-          ]
+            { content: 'Total', styles: { fontStyle: 'bold' } },
+            {
+              content: `${summary.totalTransactions} ${billWord(summary.totalTransactions)}`,
+              styles: { fontStyle: 'normal', fontSize: 9.5, textColor: [107, 114, 128] as RGB },
+            },
+            ...(showSalesman ? [{ content: '' }] : []),
+            { content: String(summary.totalItemsSold), styles: { halign: 'right', fontStyle: 'bold' } },
+            { content: `Rs. ${fmt2(summary.totalSales)}`, styles: { halign: 'right', fontStyle: 'bold' } },
+          ],
         ],
         showFoot: 'lastPage',
         theme: 'plain',
         styles: {
           font: 'helvetica',
-          cellPadding: 7,
-          fontSize: 10,
-          textColor: [55, 65, 81], // gray-700
+          fontSize: 10.5,
+          cellPadding: { top: 3.4, bottom: 3.4, left: PAD, right: PAD },
+          textColor: [17, 24, 39],
+          lineWidth: 0,
         },
         headStyles: {
-          fillColor: [249, 250, 251], // gray-50
-          textColor: [17, 24, 39], // gray-900
+          fillColor: [248, 250, 252],
+          textColor: [100, 110, 135],
           fontStyle: 'bold',
-          halign: 'left',
-          lineWidth: { top: 1, bottom: 1 },
-          lineColor: [229, 231, 235], // gray-200
+          fontSize: 9.5,
         },
         footStyles: {
-          fillColor: [255, 255, 255],
-          textColor: [17, 24, 39], // gray-900
+          fillColor: [248, 250, 252],
+          textColor: [17, 24, 39],
           fontStyle: 'bold',
-          halign: 'left',
-          lineWidth: { top: 1, bottom: 2 }, // Thicker bottom line for totals
-          lineColor: [17, 24, 39],
+          fontSize: 11,
         },
-        alternateRowStyles: {
-          fillColor: [252, 252, 252], // Subtle zebra striping
-        },
-        columnStyles: {
-          0: { halign: 'left', cellWidth: 32 },   // DATE
-          1: { halign: 'left', cellWidth: 35 },   // INVOICE
-          2: { halign: 'left', cellWidth: 48 },   // CUSTOMER
-          3: { halign: 'left', cellWidth: 30 },   // ITEMS (aligned with header)
-          4: { halign: 'left', cellWidth: 45 },   // AMOUNT (shifted left)  // AMOUNT (shifted left)
-        },
-        // --- 4. CONDITIONAL FORMATTING & HEADER ALIGNMENT ---
-        didParseCell: function (data) {
-          // If the header row and INVOICE column, align left
-          if (data.section === 'head' && data.column.index === 1) {
-            data.cell.styles.halign = 'left';
+        columnStyles: Object.fromEntries(
+          COLW.map((w, i) => [
+            i,
+            i >= itemsCol ? { cellWidth: w, halign: 'right' } : { cellWidth: w },
+          ]),
+        ),
+        didParseCell: (data) => {
+          // Har cell vertically center (ek row = ek baseline)
+          data.cell.styles.valign = 'middle';
+
+          // Header aur Total row ke Items/Amount bhi right-aligned (body ke saath match)
+          if (data.section !== 'body' && data.column.index >= itemsCol) {
+            data.cell.styles.halign = 'right';
           }
-          // If the header row and CUSTOMER column, align left
-          if (data.section === 'head' && data.column.index === 2) {
-            data.cell.styles.halign = 'left';
-          }
-          // If the header row and ITEMS column, align left
-          if (data.section === 'head' && data.column.index === 3) {
-            data.cell.styles.halign = 'left';
-          }
-          // If the header row and AMOUNT column, align left
-          if (data.section === 'head' && data.column.index === 4) {
-            data.cell.styles.halign = 'left';
-          }
-          // Highlight negative amounts (e.g., refunds) in red
-          if ((data.section === 'body' || data.section === 'foot') && data.column.index === 4) {
-            const rawVal = parseFloat(String(data.cell.raw).replace(/,/g, ''));
-            if (rawVal < 0) {
-              data.cell.styles.textColor = [220, 38, 38]; // red-600
-              data.cell.styles.fontStyle = 'bold';
+
+          // Total amount bahut lamba ho to font chhota karo, taaki wrap na ho
+          if (data.section === 'foot' && data.column.index === amountCol) {
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(11);
+            const w = doc.getTextWidth(data.cell.text.join(' '));
+            const avail = COLW[amountCol] - PAD * 2;
+            if (w > avail) {
+              data.cell.styles.fontSize = (11 * avail) / w;
             }
           }
-          // Fix alignment for the "TOTAL" label in the footer
-          if (data.section === 'foot' && data.column.index === 0) {
-            data.cell.styles.halign = 'left';
-          }
-          // Ensure ITEMS and AMOUNT in TOTAL row align exactly like columns
-          if (data.section === 'foot' && data.column.index === 3) {
-            data.cell.styles.halign = 'left';
-          }
-          if (data.section === 'foot' && data.column.index === 4) {
-            data.cell.styles.halign = 'left';
-          }
         },
-        // --- 5. PAGINATION FOOTER ---
-        didDrawPage: function () {
-          const pageCount = doc.getNumberOfPages();
-          doc.setFontSize(9);
-          doc.setTextColor(156, 163, 175); // gray-400
-          doc.text(
-            `Page ${pageCount}`,
-            pageWidth - 14,
-            pageHeight - 10,
-            { align: 'right' }
-          );
+        didDrawCell: (data) => {
+          const { x, y, width, height } = data.cell;
+
+          // Vertical column lines (grid)
+          doc.setDrawColor(226, 232, 240);
+          doc.setLineWidth(0.2);
+          doc.line(x + width, y, x + width, y + height);
+          if (data.column.index === 0) {
+            doc.line(x, y, x, y + height);
+          }
+
+          // Horizontal lines
+          if (data.section === 'head') {
+            doc.setDrawColor(37, 99, 235);
+            doc.setLineWidth(0.5);
+            doc.line(x, y + height, x + width, y + height);
+          }
+          if (data.section === 'body') {
+            doc.setDrawColor(226, 232, 240);
+            doc.setLineWidth(0.2);
+            doc.line(x, y + height, x + width, y + height);
+          }
+          if (data.section === 'foot') {
+            doc.setDrawColor(17, 24, 39);
+            doc.setLineWidth(0.5);
+            doc.line(x, y, x + width, y);
+            doc.line(x, y + height, x + width, y + height);
+          }
         },
       });
+
+      // ---------- 5. PAGE 2+ MINI HEADER + FOOTER (har page par) ----------
+      const totalPages = doc.getNumberOfPages();
+
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+
+        if (i > 1) {
+          drawCompanyTile(M, 9, 9, false);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(10);
+          doc.setTextColor(17, 24, 39);
+          doc.text(company, M + 12, 15.4);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(9);
+          doc.setTextColor(107, 114, 128);
+          doc.text(`Sales Report | ${periodText}`, brandRight, 15.4, { align: 'right' });
+        }
+
+        const fy = pageHeight - 12;
+        let x = M;
+        if (sellarImg) {
+          try {
+            const lp = doc.getImageProperties(sellarImg);
+            const lh = 5;
+            const lw = (lp.width / lp.height) * lh;
+            doc.addImage(sellarImg, 'PNG', x, fy - 3.8, lw, lh);
+            x += lw + 2;
+          } catch {
+            // continue without footer logo
+          }
+        }
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.setTextColor(0, 0, 0);
+        doc.text('SELLAR', x, fy, { charSpace: 0.3 });
+        x += doc.getTextWidth('SELLAR') + 5 * 0.3 + 4;
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.setTextColor(107, 114, 128);
+        doc.text(generatedAtText, x, fy);
+
+        doc.text(`${company} | Sales Report | Page ${i} of ${totalPages}`, brandRight, fy, {
+          align: 'right',
+        });
+      }
 
       doc.save(`Sales_Report_${formatDateForInput(new Date())}.pdf`);
     } catch (err) {
@@ -514,11 +1022,14 @@ const SalesReport: React.FC = () => {
         { header: 'Date', width: 16 },
         { header: 'Invoice No.', width: 18 },
         { header: 'Party Name', width: 28 },
+        ...(showSalesman ? [{ header: 'Billed By', width: 22 }] : []),
         { header: 'Items Sold', width: 13 },
         { header: 'Amount (₹)', width: 18 },
-        { header: '', width: 18 },
       ];
       const colCount = COLS.length;
+      const itemsIdx = showSalesman ? 5 : 4;
+      const amountIdx = showSalesman ? 6 : 5;
+      const dataCols = Array.from({ length: colCount }, (_, i) => i);
 
       // ── SUMMARY ROWS ─────────────────────────────────────────────────────
       // Row 0  → Title (merged)
@@ -561,8 +1072,9 @@ const SalesReport: React.FC = () => {
         aoa[r][3] = sale.partyName
           ? sale.partyName.charAt(0).toUpperCase() + sale.partyName.slice(1).toLowerCase()
           : 'N/A';
-        aoa[r][4] = sale.items.reduce((sum, i) => sum + i.quantity, 0);
-        aoa[r][5] = sale.totalAmount;
+        if (showSalesman) aoa[r][4] = salesmanOf(sale);
+        aoa[r][itemsIdx] = sale.items.reduce((sum, i) => sum + i.quantity, 0);
+        aoa[r][amountIdx] = sale.totalAmount;
       });
 
       // Footer row
@@ -571,8 +1083,9 @@ const SalesReport: React.FC = () => {
       aoa[footerRow][1] = '';
       aoa[footerRow][2] = '';
       aoa[footerRow][3] = '';
-      aoa[footerRow][4] = summary.totalItemsSold;
-      aoa[footerRow][5] = summary.totalSales;
+      if (showSalesman) aoa[footerRow][4] = '';
+      aoa[footerRow][itemsIdx] = summary.totalItemsSold;
+      aoa[footerRow][amountIdx] = summary.totalSales;
 
       // ── BUILD WORKSHEET ──────────────────────────────────────────────────
       const ws: any = XLSX.utils.aoa_to_sheet(aoa);
@@ -631,13 +1144,11 @@ const SalesReport: React.FC = () => {
       ));
 
       // Column headers (row index 6)
-      const headerColors = ['1E40AF', '1E40AF', '1E40AF', '1E40AF', '1E40AF', '1E40AF'];
       COLS.forEach((_c, i) => {
-        if (i >= 6) return; // skip the extra helper column
         const addr = XLSX.utils.encode_cell({ r: 6, c: i });
         style(addr, s(
           { sz: 10, bold: true, color: { rgb: 'FFFFFF' } },
-          solidFill(headerColors[i]),
+          solidFill('1E40AF'),
           { horizontal: i <= 2 ? 'left' : 'center', vertical: 'center' },
           allBorders,
         ));
@@ -650,9 +1161,9 @@ const SalesReport: React.FC = () => {
         const rowBg = solidFill(isAlt ? 'F8FAFC' : 'FFFFFF');
         const isNegative = sale.totalAmount < 0;
 
-        [0, 1, 2, 3, 4, 5].forEach(ci => {
+        dataCols.forEach(ci => {
           const addr = XLSX.utils.encode_cell({ r, c: ci });
-          const isAmount = ci === 5;
+          const isAmount = ci === amountIdx;
           style(addr, s(
             {
               sz: 9,
@@ -660,7 +1171,7 @@ const SalesReport: React.FC = () => {
               bold: isAmount && isNegative,
             },
             rowBg,
-            { horizontal: ci <= 3 ? 'left' : 'center', vertical: 'center' },
+            { horizontal: ci < itemsIdx ? 'left' : 'center', vertical: 'center' },
             bblr,
           ));
           // Format amount cell as number
@@ -672,12 +1183,12 @@ const SalesReport: React.FC = () => {
       });
 
       // Footer row
-      [0, 1, 2, 3, 4, 5].forEach(ci => {
+      dataCols.forEach(ci => {
         const addr = XLSX.utils.encode_cell({ r: footerRow, c: ci });
         style(addr, s(
           { sz: 10, bold: true, color: { rgb: '1E293B' } },
           solidFill('E2E8F0'),
-          { horizontal: ci <= 3 ? 'left' : 'center', vertical: 'center' },
+          { horizontal: ci < itemsIdx ? 'left' : 'center', vertical: 'center' },
           {
             top: { style: 'medium', color: { rgb: '1E293B' } },
             bottom: { style: 'medium', color: { rgb: '1E293B' } },
@@ -685,7 +1196,7 @@ const SalesReport: React.FC = () => {
             right: { style: 'thin', color: { rgb: 'CBD5E1' } },
           },
         ));
-        if (ci === 5 && ws[addr]) {
+        if (ci === amountIdx && ws[addr]) {
           ws[addr].t = 'n';
           ws[addr].z = '₹#,##0.00';
         }
@@ -861,8 +1372,8 @@ const SalesReport: React.FC = () => {
       shortLabel: 'Items sold',
       value: rangeSummary.totalItemsSold.toLocaleString('en-IN'),
       hint: `${rangeSummary.totalTransactions > 0
-          ? (rangeSummary.totalItemsSold / rangeSummary.totalTransactions).toFixed(1)
-          : '0'
+        ? (rangeSummary.totalItemsSold / rangeSummary.totalTransactions).toFixed(1)
+        : '0'
         } items per bill`,
       icon: Tag,
       iconClass: 'bg-orange-50 text-orange-600',
@@ -1133,6 +1644,7 @@ const SalesReport: React.FC = () => {
                   {renderSortHeader('Date', 'createdAt')}
                   {renderSortHeader('Bill no.', 'invoiceNumber')}
                   {renderSortHeader('Party', 'partyName')}
+                  {showSalesman && renderSortHeader('Billed by', 'salesmanName')}
                   {renderSortHeader('Items', 'items')}
                   <th className="px-4 py-3 text-left font-semibold uppercase tracking-wide">Paid by</th>
                   {renderSortHeader('Amount', 'totalAmount', 'right')}
@@ -1142,7 +1654,7 @@ const SalesReport: React.FC = () => {
               <tbody>
                 {filteredSales.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-500">
+                    <td colSpan={showSalesman ? 8 : 7} className="px-4 py-10 text-center text-sm text-slate-500">
                       No bills in this period. Pick another period, or make a sale to see it here.
                     </td>
                   </tr>
@@ -1163,6 +1675,9 @@ const SalesReport: React.FC = () => {
                             <p className="text-xs text-slate-500">{formatPhone(sale.partyNumber)}</p>
                           )}
                         </td>
+                        {showSalesman && (
+                          <td className="whitespace-nowrap px-4 py-3 text-slate-700">{salesmanOf(sale)}</td>
+                        )}
                         <td className="px-4 py-3 text-slate-700">{getSaleItemCount(sale)}</td>
                         <td className="px-4 py-3">{renderPayBadge(sale)}</td>
                         <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-slate-900">
@@ -1179,7 +1694,7 @@ const SalesReport: React.FC = () => {
               {filteredSales.length > 0 && (
                 <tfoot className="border-t border-line bg-sunken text-sm font-semibold text-slate-900">
                   <tr>
-                    <td colSpan={3} className="px-4 py-3">
+                    <td colSpan={showSalesman ? 4 : 3} className="px-4 py-3">
                       Total · {summary.totalTransactions} {summary.totalTransactions === 1 ? 'bill' : 'bills'}
                     </td>
                     <td className="px-4 py-3">{summary.totalItemsSold}</td>
@@ -1216,6 +1731,7 @@ const SalesReport: React.FC = () => {
               <div className="mt-0.5 flex items-center justify-between gap-3 text-xs text-slate-500">
                 <span className="truncate">
                   {partyLabel(sale)} · {itemsLabel(getSaleItemCount(sale))}
+                  {showSalesman && salesmanOf(sale) !== '-' ? ` · ${salesmanOf(sale)}` : ''}
                 </span>
                 <span className="shrink-0">{formatDayMonth(sale.createdAt)}</span>
               </div>

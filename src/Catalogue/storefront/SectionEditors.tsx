@@ -5,6 +5,7 @@ import type { ButtonLink, CategoryGroup, FactIcon, SectionMap, StoreButton, Stor
 import { newId } from './storePage.types';
 import { btnClass, Photo } from './StoreUI';
 import { uploadStoreImage } from './uploadStoreImage';
+import { normalizeUrl } from './storefront.utils';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 const inputCls = 'h-10 w-full rounded-sm border border-sf-control bg-white px-3 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-2 focus:outline-offset-1 focus:outline-sf-primary';
@@ -84,18 +85,37 @@ export const PhotoField: React.FC<{ env: EditorEnv; sectionId: string; label: st
 };
 
 const linkValue = (l: ButtonLink) => (l.kind === 'category' ? `category:${l.groupId}` : l.kind);
-const parseLink = (v: string): ButtonLink => (v.startsWith('category:') ? { kind: 'category', groupId: v.slice(9) } : { kind: v as 'categories' | 'whatsapp' | 'call' });
+const parseLink = (v: string, prev?: ButtonLink): ButtonLink => {
+    if (v.startsWith('category:')) return { kind: 'category', groupId: v.slice(9) };
+    if (v === 'url') return { kind: 'url', url: prev?.kind === 'url' ? prev.url : '' };
+    return { kind: v as 'categories' | 'whatsapp' | 'call' };
+};
 
-const ButtonRow: React.FC<{ env: EditorEnv; value: StoreButton; onChange: (b: StoreButton) => void; onRemove?: () => void; idPrefix: string }> = ({ env, value, onChange, onRemove, idPrefix }) => (
-    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
-        <input aria-label="Button label" id={`${idPrefix}-label`} value={value.label} maxLength={24} placeholder="Button label" onChange={(e) => onChange({ ...value, label: e.target.value })} className={inputCls} />
-        <select aria-label="Button opens" value={linkValue(value.link)} onChange={(e) => onChange({ ...value, link: parseLink(e.target.value) })} className={cx(inputCls, 'pr-2')}>
-            <option value="categories">Categories on this page</option>
-            <option value="whatsapp">WhatsApp</option>
-            <option value="call">Phone call</option>
-            {env.categories.map((c) => <option key={c.id} value={`category:${c.id}`}>{c.name}</option>)}
-        </select>
-        {onRemove ? <button type="button" aria-label="Remove button" onClick={onRemove} className={cx(btnClass('ghost'), 'w-10 px-0!')}><X className="size-4" /></button> : <span className="w-10" />}
+const ButtonRow: React.FC<{ env: EditorEnv; value: StoreButton; onChange: (b: StoreButton) => void; onRemove?: () => void; idPrefix: string; allowUrl?: boolean }> = ({ env, value, onChange, onRemove, idPrefix, allowUrl }) => (
+    <div className="grid gap-2">
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
+            <input aria-label="Button label" id={`${idPrefix}-label`} value={value.label} maxLength={24} placeholder="Button label" onChange={(e) => onChange({ ...value, label: e.target.value })} className={inputCls} />
+            <select aria-label="Button opens" value={linkValue(value.link)} onChange={(e) => onChange({ ...value, link: parseLink(e.target.value, value.link) })} className={cx(inputCls, 'pr-2')}>
+                <option value="categories">Categories on this page</option>
+                <option value="whatsapp">WhatsApp</option>
+                <option value="call">Phone call</option>
+                {(allowUrl || value.link.kind === 'url') && <option value="url">Website or social link</option>}
+                {env.categories.map((c) => <option key={c.id} value={`category:${c.id}`}>{c.name}</option>)}
+            </select>
+            {onRemove ? <button type="button" aria-label="Remove button" onClick={onRemove} className={cx(btnClass('ghost'), 'w-10 px-0!')}><X className="size-4" /></button> : <span className="w-10" />}
+        </div>
+        {value.link.kind === 'url' && (
+            <div>
+                <input aria-label="Button link" id={`${idPrefix}-url`} inputMode="url" autoCapitalize="none" value={value.link.url} maxLength={300}
+                    placeholder="instagram.com/yourshop"
+                    onChange={(e) => onChange({ ...value, link: { kind: 'url', url: e.target.value } })} className={inputCls} />
+                <p className={cx('mt-1.5 text-xs leading-[18px]', value.link.url.trim() && !normalizeUrl(value.link.url) ? 'text-red-700' : 'text-slate-500')}>
+                    {value.link.url.trim() && !normalizeUrl(value.link.url)
+                        ? "This link won't work. Enter a website or social media address."
+                        : "If you leave this empty, the button won't be shown to customers."}
+                </p>
+            </div>
+        )}
     </div>
 );
 
@@ -201,11 +221,11 @@ export const SectionEditor: React.FC<{ section: StoreSection; env: EditorEnv; on
                     <Field label="Buttons" hint="Up to 2. The first one is the orange button.">
                         <div className="grid gap-2">
                             {d.buttons.map((b, i) => (
-                                <ButtonRow key={i} env={env} idPrefix={`${id}-b${i}`} value={b}
+                                <ButtonRow key={i} env={env} allowUrl idPrefix={`${id}-b${i}`} value={b}
                                     onChange={(nb) => set({ buttons: d.buttons.map((x, j) => (j === i ? nb : x)) })}
                                     onRemove={() => set({ buttons: d.buttons.filter((_, j) => j !== i) })} />
                             ))}
-                            {d.buttons.length < 2 && (
+                            {d.buttons.length < 6 && (
                                 <button type="button" onClick={() => set({ buttons: [...d.buttons, { label: 'WhatsApp us', link: { kind: 'whatsapp' } }] })} className={cx(btnClass('secondary', 'sm'), 'justify-self-start')}>
                                     <Plus className="size-4" />Add a button
                                 </button>

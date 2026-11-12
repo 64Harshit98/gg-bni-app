@@ -5,7 +5,8 @@ export type ButtonLink =
     | { kind: 'categories' }
     | { kind: 'category'; groupId: string }
     | { kind: 'whatsapp' }
-    | { kind: 'call' };
+    | { kind: 'call' }
+    | { kind: 'url'; url: string };
 
 export interface StoreButton { label: string; link: ButtonLink }
 

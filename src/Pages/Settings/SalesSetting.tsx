@@ -67,8 +67,11 @@ export interface SalesSettings {
     voucherPrefix?: string;
     currentVoucherNumber?: number;
     copyVoucherAfterSaving?: boolean;
-    cartInsertionOrder?: 'top' | 'bottom';
+        cartInsertionOrder?: 'top' | 'bottom';
     cardViewWithPhoto?: boolean;
+    // Card view only: selected (in-cart) items jump to the top of the grid.
+    // false (default) = items stay at their original position.
+    cardSelectedOnTop?: boolean;
     companyId?: string;
     lockTaxToggle?: boolean;
     enableShippingDetails?: boolean;
@@ -102,7 +105,8 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     lockTaxToggle: false,
     enableRounding: true,
     roundingInterval: 1,
-    cartInsertionOrder: 'bottom',
+        cartInsertionOrder: 'bottom',
+    cardSelectedOnTop: false,
     hideMrp: false,
     enableItemWiseDiscount: true,
     enableDiscount2: false,
@@ -958,6 +962,7 @@ const SalesSettingsPage: React.FC = () => {
                                         onChange={(checked) => handleCheckboxChange('enableSalesmanSelection', checked)}
                                     />
 
+                                                                        {settings.salesViewType !== 'card' && (
                                     <Opt
                                         label="Cart item sorting"
                                         description="Where a newly scanned or added item appears in the cart."
@@ -971,15 +976,41 @@ const SalesSettingsPage: React.FC = () => {
                                             >
                                                 Newest first
                                             </SegBtn>
-                                            <SegBtn
+                                                                                        <SegBtn
                                                 large
                                                 active={settings.cartInsertionOrder === 'bottom'}
                                                 onClick={() => handleChange('cartInsertionOrder', 'bottom')}
                                             >
-                                                Oldest first
+                                                                                                Oldest first
                                             </SegBtn>
                                         </SegGroup>
                                     </Opt>
+                                    )}
+
+                                    {settings.salesViewType === 'card' && (
+                                        <Opt
+                                            label="Selected cards position"
+                                            description="Card view: when an item is added to the cart, should its card stay where it is or move to the top?"
+                                            icon={ico(ArrowUpDown)}
+                                        >
+                                            <SegGroup large>
+                                                <SegBtn
+                                                    large
+                                                    active={!settings.cardSelectedOnTop}
+                                                    onClick={() => handleChange('cardSelectedOnTop', false)}
+                                                >
+                                                    Stay in place
+                                                </SegBtn>
+                                                <SegBtn
+                                                    large
+                                                    active={!!settings.cardSelectedOnTop}
+                                                    onClick={() => handleChange('cardSelectedOnTop', true)}
+                                                >
+                                                    Move to top
+                                                </SegBtn>
+                                            </SegGroup>
+                                        </Opt>
+                                    )}
                                 </Section>
 
                                 {/* Tax & rounding */}

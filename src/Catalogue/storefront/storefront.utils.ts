@@ -76,6 +76,15 @@ export const formatPhone = (raw?: string) => {
     return d.length === 10 ? `${d.slice(0, 5)} ${d.slice(5)}` : raw || '';
 };
 
+/** Owner may type "instagram.com/shop": add https:// so it opens outside the app. Only http(s) is allowed, so "javascript:" links can't be saved. */
+export const normalizeUrl = (raw: string) => {
+    const u = raw.trim();
+    if (!u) return '';
+    if (/^https?:\/\//i.test(u)) return u;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(u) && !/^[^/]+\.[a-z]{2,}(:\d+)?(\/|$)/i.test(u)) return '';
+    return `https://${u}`;
+};
+
 export const initialsOf = (name?: string) =>
     (name || '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('');
 

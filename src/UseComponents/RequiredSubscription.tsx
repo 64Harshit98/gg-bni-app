@@ -14,13 +14,11 @@ export const RequireSubscription = () => {
 
     // 1. Group the plans so we know exactly WHO this user is
     const isCatalogueOnly =
-        currentUser?.plan === PLANS.CATALOGUE_BASIC ||
         currentUser?.plan === PLANS.CATALOGUE_PRO;
-
     const isPosOrEnterprise =
         currentUser?.plan === PLANS.ENTERPRISE ||
         currentUser?.plan === PLANS.POS_PRO ||
-        currentUser?.plan === PLANS.POS_BASIC;
+        currentUser?.plan === PLANS.POS_BASIC || currentUser?.plan === PLANS.CALC_CATALOG;
 
     // 2. Validate if they have ANY active plan
     const hasActivePlan = isPlanActive && (isPosOrEnterprise || isCatalogueOnly);

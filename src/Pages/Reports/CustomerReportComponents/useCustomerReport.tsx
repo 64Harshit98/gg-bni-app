@@ -1,131 +1,91 @@
-import { useNavigate } from 'react-router';
+import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../../context/auth-context';
-import { useState, useEffect } from 'react';
-import { State } from '../../../enums';
-import { formatDateForInput } from '../SalesReportComponents/salesReport.utils';
-import { collection, onSnapshot, query, Timestamp } from 'firebase/firestore';
-import { db } from '../../../lib/Firebase';
-import { type Sale } from './customerReport.utils';
+import { formatDateForInput, getPresetRange } from '../SalesReportComponents/salesReport.utils';
+import { loadSalesForRange } from '../SalesReportComponents/salesReportCache';
+import { useCachedRange } from '../useCachedRange';
+import {
+  loadCustomerCredits,
+  loadCustomerRemarks,
+  loadCustomersCreatedForRange,
+  loadOpeningBalancesForRange,
+  type CustomerRemark,
+} from './customerReportCache';
 
+// Sales come from the shared per-range sales cache; opening balances and newly
+// added customers are cached per range too. This report used to keep live
+// listeners on sales (5,000 docs), openingBalances (5,000) and every customer.
 export default function useCustomerReport() {
-  const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
+  const companyId = currentUser?.companyId;
 
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const [datePreset, setDatePreset] = useState('today');
+  const [datePreset, setDatePreset] = useState('fy');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [appliedFilters, setAppliedFilters] = useState({ start: '', end: '' });
-
-  const [isListVisible, setIsListVisible] = useState(false);
-  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
-  const [feedbackModal, setFeedbackModal] = useState({
-    isOpen: false,
-    type: State.INFO,
-    message: '',
-  });
-  const [sortConfig, setSortConfig] = useState<{
-    key: string; // Changed from keyof Sale to string
-    direction: 'asc' | 'desc';
-  }>({ key: 'partyName', direction: 'asc' });
-
-  // Update handleSort to accept a string key
-  const handleSort = (key: string) => {
-    let direction: 'asc' | 'desc' = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
-    setSortConfig({ key, direction });
-  };
+  const [appliedFilters, setAppliedFilters] = useState<{ start: number; end: number } | null>(null);
 
   useEffect(() => {
-    const today = new Date();
-    const formatted = formatDateForInput(today);
+  // Default: current financial year (1 Apr → today)
+  const range = getPresetRange('fy')!;
 
-    const start = new Date(formatted);
-    start.setHours(0, 0, 0, 0);
+  setStartDate(formatDateForInput(range.start));
+  setEndDate(formatDateForInput(range.end));
+  setAppliedFilters({ start: range.start.getTime(), end: range.end.getTime() });
+}, []);
 
-    const end = new Date(formatted);
-    end.setHours(23, 59, 59, 999);
+  const salesState = useCachedRange(loadSalesForRange, companyId, appliedFilters, authLoading);
+  const obState = useCachedRange(loadOpeningBalancesForRange, companyId, appliedFilters, authLoading);
+  const newCustomersState = useCachedRange(loadCustomersCreatedForRange, companyId, appliedFilters, authLoading);
 
-    setStartDate(formatted);
-    setEndDate(formatted);
-    setAppliedFilters({
-      start: start.toISOString(),
-      end: end.toISOString(),
-    });
-  }, []);
-
+  // Credit balances and personal remarks aren't date based: read once per visit / refresh.
+  const [credits, setCredits] = useState<Awaited<ReturnType<typeof loadCustomerCredits>>>([]);
+  const [remarks, setRemarks] = useState<CustomerRemark[]>([]);
+  const [customerDataToken, setCustomerDataToken] = useState(0);
   useEffect(() => {
-    if (!currentUser?.companyId) {
-      setLoading(false);
-      return;
-    }
+    if (!companyId) return;
+    let cancelled = false;
+    loadCustomerCredits(companyId)
+      .then((list) => { if (!cancelled) setCredits(list); })
+      .catch((err) => console.error('Failed to load customer credits', err));
+    loadCustomerRemarks(companyId)
+      .then((list) => { if (!cancelled) setRemarks(list); })
+      .catch((err) => console.error('Failed to load customer remarks', err));
+    return () => { cancelled = true; };
+  }, [companyId, customerDataToken]);
 
-    const salesRef = collection(
-      db,
-      'companies',
-      currentUser.companyId,
-      'sales',
-    );
+  const parts = [salesState, obState, newCustomersState];
+  const updatedTimes = parts.map((p) => p.lastUpdated).filter((t): t is number => t !== null);
 
-    const q = query(salesRef);
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        setSales(
-          snapshot.docs.map((doc) => {
-            const data = doc.data();
-            return {
-              id: doc.id,
-              partyName: data.partyName || 'N/A',
-              partyNumber: data.partyNumber || 'N/A',
-              totalAmount: data.totalAmount || 0,
-              dueAmount: data.dueAmount || 0,
-              createdAt:
-                data.createdAt instanceof Timestamp
-                  ? data.createdAt.toDate()
-                  : new Date(),
-            };
-          }),
-        );
-        setLoading(false);
-      },
-      () => {
-        setError('Failed to fetch customer data.');
-        setLoading(false);
-      },
-    );
-
-    return unsubscribe;
-  }, [currentUser?.companyId]);
+  const { refresh: refreshSales } = salesState;
+  const { refresh: refreshOb } = obState;
+  const { refresh: refreshNew } = newCustomersState;
+  const refresh = useCallback(() => {
+    refreshSales();
+    refreshOb();
+    refreshNew();
+    setCustomerDataToken((t) => t + 1);
+  }, [refreshSales, refreshOb, refreshNew]);
 
   return {
-    navigate,
-    sales,
-    sortConfig,
-    handleSort,
-    loading,
-    error,
+    currentUser,
     authLoading,
     datePreset,
     setDatePreset,
     startDate,
     endDate,
-    appliedFilters,
-    setAppliedFilters,
-    isListVisible,
-    setIsListVisible,
-    isDownloadModalOpen,
-    setIsDownloadModalOpen,
-    feedbackModal,
-    setFeedbackModal,
-    currentUser,
     setStartDate,
     setEndDate,
+    appliedFilters,
+    setAppliedFilters,
+    sales: salesState.records,
+    openingBalances: obState.records,
+    newCustomers: newCustomersState.records,
+    credits,
+    remarks,
+    isLoading: parts.some((p) => p.isLoading),
+    isFetching: parts.some((p) => p.isFetching),
+    // The oldest part decides how fresh the page is.
+    lastUpdated: updatedTimes.length ? Math.min(...updatedTimes) : null,
+    error: parts.map((p) => p.error).find(Boolean) ?? null,
+    refresh,
   };
 }

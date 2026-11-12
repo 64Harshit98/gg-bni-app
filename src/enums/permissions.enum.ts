@@ -25,6 +25,12 @@ export enum Permissions {
     ViewSalesReport = 'ViewSalesReport',
     ViewPurchaseReport = 'ViewPurchaseReport',
     ViewPNLReport = 'ViewPNLReport',
+    ViewItemSoldReport = 'ViewItemSoldReport',
+    ViewCustomerReport = 'ViewCustomerReport',
+    ViewExpenseReport = 'ViewExpenseReport',
+    ViewPartyLedger = 'ViewPartyLedger',
+    ViewTaxReport = 'ViewTaxReport',
+    ViewStockTransferReport = 'ViewStockTransferReport',
     ViewDownloadPDF = 'ViewDownloadPDF',
     // Settings
     ChangeViewtype = 'ChangeViewtype',
@@ -51,4 +57,11 @@ export enum Permissions {
     SetPermissions = 'SetPermissions',
     HiddenProFeatures = 'HiddenProFeatures',
     ViewAddons = 'ViewAddons',
+    ViewPartnerDashboard = 'ViewPartnerDashboard',
+    // Masters / Settings Page
+    ManageSalesSetting = 'ManageSalesSetting',
+    ManagePurchaseSetting = 'ManagePurchaseSetting',
+    ManageItemSetting = 'ManageItemSetting',
+    ManageBillSetting = 'ManageBillSetting',
+
 }

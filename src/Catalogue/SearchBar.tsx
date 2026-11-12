@@ -1,25 +1,32 @@
-// src/Components/SearchableItemInput.tsx
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import type { Item } from '../constants/models';
+import type { Item, ItemGroup } from '../constants/models';
 import { FiSearch, FiX, FiBox } from 'react-icons/fi';
 
 interface SearchableItemInputProps {
   items: Item[];
+  itemGroups: ItemGroup[];
   onItemSelected: (item: Item) => void;
   label?: string;
   placeholder?: string;
   isLoading?: boolean;
   error?: string | null;
+  hideUncategorized?: boolean;
+  hideOutOfStock?: boolean;
+  /** Storefront: shops that hide prices (or need approval) must not leak them here. */
+  hidePrice?: boolean;
 }
 
 const THROTTLE_DELAY = 500;
 
 const SearchBar: React.FC<SearchableItemInputProps> = ({
   items,
+  itemGroups,
   onItemSelected,
   placeholder = "Scan or search item...",
   isLoading = false,
+  hideUncategorized = false,
+  hideOutOfStock = false,
+  hidePrice = false,
   error = null
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -64,13 +71,32 @@ const SearchBar: React.FC<SearchableItemInputProps> = ({
   }, []);
 
   // --- FILTER & SORT LOGIC ---
-  const filteredItems = useMemo(() => {
+  const filteredItems = useMemo<Item[]>(() => {
     const trimmedQuery = throttledQuery.toLowerCase().trim();
     if (!trimmedQuery) return [];
 
     const searchTokens = trimmedQuery.split(/\s+/);
 
     const matches = items.filter(item => {
+
+      if (hideOutOfStock) {
+        const stock = Number(item.stock ?? 0);
+        if (stock <= 0) return false;
+      }
+
+      const uncategorizedGroup = itemGroups.find(
+        g => g.name.toLowerCase().trim() === "uncategorized"
+      );
+
+      const groupExists = itemGroups.some(g => g.id === item.itemGroupId);
+
+      const finalGroupId = groupExists
+        ? item.itemGroupId
+        : uncategorizedGroup?.id;
+
+      if (hideUncategorized && finalGroupId === uncategorizedGroup?.id) {
+        return false;
+      }
       const lowerName = item.name.toLowerCase();
       const lowerBarcode = item.barcode ? item.barcode.toLowerCase() : '';
       const matchesName = searchTokens.every(token => lowerName.includes(token));
@@ -151,8 +177,8 @@ const SearchBar: React.FC<SearchableItemInputProps> = ({
 
       {/* INPUT CONTAINER */}
       <div className="relative flex items-center">
-        <div className="absolute left-3 text-gray-400 pointer-events-none">
-          <FiSearch size={18} />
+        <div className="absolute left-3 text-slate-500 pointer-events-none">
+          <FiSearch size={16} />
         </div>
 
         <input
@@ -167,12 +193,8 @@ const SearchBar: React.FC<SearchableItemInputProps> = ({
           onFocus={() => setIsDropdownOpen(true)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
-          className={`w-full pl-10 pr-10 py-3 bg-white border border-gray-300 rounded-sm shadow-sm 
-                               focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all 
-                               text-gray-800 placeholder-gray-400 font-medium
-                               ${error ? 'border-red-500 focus:border-red-500 focus:ring-red-100' : ''}`}
-          autoComplete="off"
-        />
+          aria-label="Search products"
+          className={`h-10 w-full rounded-sm border border-sf-line bg-sf-sunken pl-10 pr-10 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-500 focus:border-sf-primary focus:bg-white focus:ring-2 focus:ring-sf-primary/20 ${error ? 'border-red-500 focus:border-red-500 focus:ring-red-100' : ''}`} autoComplete="off" />
 
         {searchQuery && (
           <button
@@ -188,7 +210,7 @@ const SearchBar: React.FC<SearchableItemInputProps> = ({
       {isDropdownOpen && searchQuery && (
         <div
           ref={listRef} // Attached Ref here for scrolling
-          className="absolute top-full left-0 right-0 z-50 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl max-h-72 overflow-y-auto overflow-x-hidden scroll-smooth"
+          className="absolute top-full left-0 right-0 z-50 mt-2 bg-white border border-sf-line rounded-sm shadow-sf-float max-h-80 overflow-y-auto overflow-x-hidden scroll-smooth"
         >
 
           {isLoading ? (
@@ -203,40 +225,40 @@ const SearchBar: React.FC<SearchableItemInputProps> = ({
               {filteredItems.length === 0 ? (
                 <div className="p-6 text-center text-gray-500 flex flex-col items-center">
                   <FiBox size={24} className="mb-2 text-gray-300" />
-                  <span>No items found for "{searchQuery}"</span>
+                  <span>No products match "{searchQuery}". Try a shorter word.</span>
                 </div>
               ) : (
                 filteredItems.map((item, index) => {
                   const isSelected = index === activeIndex;
-                  // const stock = item.stock || (item as any).Stock || 0;
-                  // const stockColor = stock <= 0 ? 'text-red-600 bg-red-50' : stock < 10 ? 'text-orange-600 bg-orange-50' : 'text-green-700 bg-green-50';
-
+                  const categoryName =
+                    itemGroups.find(group => group.id === item.itemGroupId)?.name ||
+                    "Uncategorized";
                   return (
                     <div
                       key={item.id}
                       onMouseEnter={() => setActiveIndex(index)}
                       onClick={() => handleSelect(item)}
-                      className={`px-4 py-3 cursor-pointer border-b border-gray-50 last:border-0 transition-colors duration-150 flex justify-between items-center
-                                                ${isSelected ? 'bg-blue-100' : 'hover:bg-gray-50'}
-                                            `}
+                      className={`px-4 py-2.5 cursor-pointer border-b border-sf-line last:border-0 transition-colors duration-150 flex justify-between items-center gap-3 ${isSelected ? 'bg-sf-soft' : 'hover:bg-sf-sunken'}`}
                     >
                       {/* Left: Name & Barcode */}
                       <div className="flex flex-col min-w-0 pr-4">
-                        <span className="text-sm font-medium text-gray-800 truncate">
+                        <span className="text-sm font-medium text-slate-900 truncate">
                           {item.name}
                         </span>
-                        {item.barcode && (
-                          <span className="text-xs text-gray-400 font-mono mt-0.5">
-                            {item.barcode}
-                          </span>
-                        )}
+
+                        <span className="text-xs text-slate-500 mt-0.5">
+                          {categoryName}
+                        </span>
+
                       </div>
 
                       {/* Right: Price & Stock Badge */}
                       <div className="flex flex-col items-end flex-shrink-0 gap-1">
-                        <span className="text-sm font-bold text-gray-900">
-                          ₹{item.salesPrice || item.mrp}
-                        </span>
+                        {!hidePrice && (
+                          <span className="text-sm font-semibold tabular-nums text-slate-900">
+                            ₹{Number(item.salesPrice || item.mrp || 0).toLocaleString('en-IN')}
+                          </span>
+                        )}
                         {/* <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${stockColor}`}>
                           {stock} in stock
                         </span> */}

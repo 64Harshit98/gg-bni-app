@@ -1,16 +1,68 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { ArrowRight, Check, Gift, Mail, RotateCcw, ShieldCheck, User, UserPlus } from 'lucide-react';
 import { ROUTES } from '../../constants/routes.constants';
-import { CustomButton } from '../../Components/CustomButton';
-import { FloatingLabelInput } from '../../Components/ui/FloatingLabelInput';
-import { Stepper } from '../../Components/Stepper';
-import { Variant } from '../../enums';
-import { FiMail, FiLock, FiEye, FiEyeOff, FiPhone, FiUser } from 'react-icons/fi';
+import { newEmailError } from '../../lib/email';
 import { saveLeadProgress } from '../../lib/Lead';
-import bgMain from '../../assets/bg-main.png';
-import sellarHeading from '../../assets/sellar-logo-heading.png';
+import { useEmailCheck } from '../../lib/useEmailCheck';
+import {
+  AuthCard,
+  AuthLayout,
+  AuthStepper,
+  CardFooter,
+  CardHeading,
+  EmailField,
+  Field,
+  FormSection,
+  FormSections,
+  PANEL_MUTED,
+  PasswordInput,
+  TextInput,
+  authBtn,
+  authLink,
+} from './AuthUI';
 
 const LOCAL_STORAGE_KEY = 'sellar_onboarding_data';
+
+type FieldKey = 'fullName' | 'phoneNumber' | 'email' | 'password' | 'confirmPassword';
+type FieldErrors = Partial<Record<FieldKey, string>>;
+
+const NEXT_STEPS = [
+  { title: 'Your details', note: 'Name, phone, email and a password.' },
+  { title: 'Your shop', note: 'Business name, GST and address. These print on your bills.' },
+  { title: 'Your first bill', note: 'Add an item, make a sale, send it on WhatsApp.' },
+];
+
+const SignupPanel: React.FC = () => (
+  <div className="flex flex-1 flex-col justify-between gap-10 px-12 pb-10 pt-12">
+    <div>
+      <h2 className="mb-6 text-[26px] font-semibold leading-[34px] tracking-[-0.02em]">From sign-up to your first bill in a few minutes.</h2>
+      <ol>
+        {NEXT_STEPS.map((s, i) => (
+          <li key={s.title} className="relative flex gap-[18px] pb-7 last:pb-0">
+            {i < NEXT_STEPS.length - 1 && <span aria-hidden="true" className="absolute bottom-0.5 left-[15px] top-[34px] w-0.5 bg-white/15" />}
+            <span
+              className={`relative grid size-8 shrink-0 place-items-center rounded-full border-[1.5px] text-[13px] font-semibold ${i === 0 ? 'border-white bg-white text-[#0b1a45]' : 'border-white/35'
+                }`}
+            >
+              {i + 1}
+            </span>
+            <span className="flex flex-col gap-1 pt-1">
+              <span className="text-[15px] font-semibold">
+                {s.title} {i === 0 && <span className={`font-normal ${PANEL_MUTED}`}>(you are here)</span>}
+              </span>
+              <span className={`text-sm leading-[21px] ${PANEL_MUTED}`}>{s.note}</span>
+            </span>
+          </li>
+        ))}
+      </ol>
+    </div>
+    <div className="flex flex-wrap items-baseline gap-4 border-t border-white/15 pt-6">
+      <span className="text-[40px] font-semibold leading-[44px] tracking-[-0.03em]">3 days free</span>
+      <span className={`max-w-[240px] text-sm leading-[21px] ${PANEL_MUTED}`}>Every feature unlocked. No card needed to start.</span>
+    </div>
+  </div>
+);
 
 const SignUpPage: React.FC = () => {
   const navigate = useNavigate();
@@ -20,9 +72,8 @@ const SignUpPage: React.FC = () => {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const emailCheck = useEmailCheck(email, { newAccount: true });
 
   useEffect(() => {
     const savedDataString = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -39,230 +90,186 @@ const SignUpPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const saveData = () => {
-      const currentSaved = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '{}');
-      const updatedData = { ...currentSaved, fullName, email, phoneNumber, password };
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updatedData));
-    };
-    saveData();
+    const currentSaved = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '{}');
+    const updatedData = { ...currentSaved, fullName, email, phoneNumber, password };
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updatedData));
   }, [fullName, email, phoneNumber, password]);
 
-  const validateForm = (): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!fullName.trim() || !email.trim() || !phoneNumber.trim() || !password.trim() || !confirmPassword.trim()) {
-      setError('Please fill out all fields.');
-      return false;
-    }
-    if (!emailRegex.test(email)) {
-      setError('Please enter a valid email address.');
-      return false;
-    }
-    if (phoneNumber.length !== 10) {
-      setError('Phone number must be exactly 10 digits long.');
-      return false;
-    }
-    if (password !== confirmPassword) {
-      setError('Passwords do not match.');
-      return false;
-    }
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters long.');
-      return false;
-    }
-    return true;
+  // Clears a field's error as soon as it is edited.
+  const edit = (key: FieldKey, setter: (v: string) => void) => (value: string) => {
+    setter(value);
+    if (errors[key]) setErrors((prev) => ({ ...prev, [key]: undefined }));
+  };
+
+  const validateForm = (): FieldErrors => {
+    const next: FieldErrors = {};
+    if (!fullName.trim()) next.fullName = 'Enter your name.';
+    if (phoneNumber.length !== 10) next.phoneNumber = 'Enter all 10 digits of your mobile number.';
+    const emailError = newEmailError(email);
+    if (emailError) next.email = emailError;
+    if (password.length < 6) next.password = 'Use at least 6 characters.';
+    if (!confirmPassword) next.confirmPassword = 'Type your password again.';
+    else if (password !== confirmPassword) next.confirmPassword = "Passwords don't match.";
+    return next;
   };
 
   const handleClearData = () => {
-    localStorage.removeItem(LOCAL_STORAGE_KEY);
+    const existingData = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '{}');
+    localStorage.setItem(
+      LOCAL_STORAGE_KEY,
+      JSON.stringify({ ...existingData, fullName: '', email: '', phoneNumber: '', password: '' })
+    );
     setFullName('');
     setEmail('');
     setPhoneNumber('');
     setPassword('');
     setConfirmPassword('');
-    setError(null);
+    setErrors({});
   };
 
-  const handleNext = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    setError(null);
-
-    if (validateForm()) {
-      await saveLeadProgress(email, {
-        fullName,
-        phoneNumber,
-        status: 'Onboarding',
-        currentStep: 'Step 2: Business Info',
-      });
-
-      navigate(ROUTES.BUSINESS_INFO, {
-        state: { fullName, email, phoneNumber, password },
-      });
+  const handleNext = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const next = validateForm();
+    setErrors(next);
+    emailCheck.reveal();
+    const firstBad = Object.keys(next)[0];
+    if (firstBad) {
+      document.getElementById(firstBad)?.focus();
+      return;
     }
+    if (emailCheck.holdForTypo()) {
+      document.getElementById('email')?.focus();
+      return;
+    }
+
+    const address = email.trim();
+    await saveLeadProgress(address, {
+      fullName,
+      phoneNumber,
+      status: 'Onboarding',
+      currentStep: 'Step 2: Business Info',
+    });
+
+    navigate(ROUTES.BUSINESS_INFO, {
+      state: { fullName, email: address, phoneNumber, password },
+    });
   };
+
+  const passwordsMatch = confirmPassword.length >= 6 && password === confirmPassword && !errors.confirmPassword;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-100">
-  {/* Left side like Figma */}
-  <div className="hidden lg:block w-1/2 relative">
-    <img
-      src={bgMain}
-      alt="Registration visual"
-      className="h-full w-full object-cover"
-    />
-    <div className="absolute inset-0 flex items-center justify-center">
-      <img
-        src={sellarHeading}
-        alt="Sellar Heading"
-        className="w-48 h-auto"
-      />
-    </div>
-  </div>
-
-  {/* Right side keeps your original structure scale */}
-  <div className="flex flex-col h-screen overflow-hidden w-full lg:w-1/2 bg-gray-100">
-    <div className="flex-shrink-0 bg-gray-100 pt-4 pb-2 px-4 shadow-sm z-40 flex justify-center">
-      <div className="w-full max-w-xs">
-        <Stepper totalSteps={2} currentStep={1} onStepClick={() => {}} />
-      </div>
-    </div>
-
-    <div className="flex-grow px-4 pb-4 overflow-hidden flex flex-col justify-start">
-      <div className="flex justify-between items-end mb-6 mt-4">
-        <h1 className="text-4xl font-bold">Create Account</h1>
-        <button
-          type="button"
-          onClick={handleClearData}
-          className="text-sm font-medium text-red-500 hover:text-red-700 transition-colors bg-red-50 px-3 py-1.5 rounded-sm border border-red-100 mb-1"
-        >
-          Clear Form
-        </button>
-      </div>
-
-      <div className="bg-gray-100 p-7 pb-7 pt-7 rounded-sm space-y-2 pt-6 pb-6 w-[90%] mx-auto">
-        <form onSubmit={handleNext} className="flex flex-col space-y-5">
-          <div className="relative [&_label]:!left-[3rem]">
-            <div style={{ position: 'relative' }}>
-              <FiUser className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={16} />
-              <FloatingLabelInput
-                id="fullName"
-                type="text"
-                label="Full Name"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                required
-                className="pl-12 py-3 bg-gray-100
-                 border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
-                style={{ '--label-left': '3rem' } as React.CSSProperties}
-              />
-            </div>
-          </div>
-
-          <div className="relative [&_label]:!left-[3rem]">
-            <div style={{ position: 'relative' }}>
-              <FiPhone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
-              <FloatingLabelInput
-                id="phoneNumber"
-                type="tel"
-                label="Phone Number"
-                value={phoneNumber}
-                onChange={(e) => {
-                  const val = e.target.value.replace(/\D/g, "");
-                  if (val.length <= 10) setPhoneNumber(val);
-                }}
-                required
-                className="pl-12 py-3 bg-gray-100 border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
-                style={{ '--label-left': '3rem' } as React.CSSProperties}
-              />
-            </div>
-          </div>
-
-          <div className="relative [&_label]:!left-[3rem]">
-            <div style={{ position: 'relative' }}>
-              <FiMail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={18} />
-              <FloatingLabelInput
-                id="email"
-                type="email"
-                label="Email Address"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="pl-12 py-3 bg-gray-100 border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
-                style={{ '--label-left': '3rem' } as React.CSSProperties}
-              />
-            </div>
-          </div>
-
-          <div className="relative [&_label]:!left-[3rem]">
-            <div style={{ position: 'relative' }}>
-              <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={16} />
-              <FloatingLabelInput
-                id="password"
-                type={showPassword ? "text" : "password"}
-                label="Create a Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="pl-12 py-3 pr-10 bg-gray-100 border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)] w-full"
-                style={{ '--label-left': '3rem' } as React.CSSProperties}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                {showPassword ? <FiEye size={20} /> : <FiEyeOff size={20} />}
-              </button>
-            </div>
-          </div>
-
-          <div className="relative [&_label]:!left-[3rem]">
-            <div style={{ position: 'relative' }}>
-              <FiLock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" size={16} />
-              <FloatingLabelInput
-                id="confirmPassword"
-                type={showConfirmPassword ? "text" : "password"}
-                label="Confirm Password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                className="pl-12 py-3 pr-10 bg-gray-100 border border-[#7D7777A3] shadow-[0_4px_4px_rgba(0,0,0,0.15)] w-full"
-                style={{ '--label-left': '3rem' } as React.CSSProperties}
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                {showConfirmPassword ? <FiEye size={20} /> : <FiEyeOff size={20} />}
-              </button>
-            </div>
-          </div>
-
-          {error && <p className="text-red-500 text-sm text-center bg-red-50 p-2 rounded-sm">{error}</p>}
-        </form>
-      </div>
-    </div>
-
-    <div className="fixed lg:absolute bottom-0 left-0 lg:left-auto right-0 lg:w-1/2 p-4 h-[110px] bg-gray-100 border-t border-gray-200 z-50 shadow-lg">
-      <div className="max-w-md mx-auto space-y-3">
-        <CustomButton
-          type="submit"
-          variant={Variant.Filled}
-          onClick={handleNext}
-          className="w-full !bg-[#141212] hover:!bg-[#2a2626] !text-white"
-        >
-          Next
-        </CustomButton>
-        <p className="text-center text-sm text-gray-600">
-          Already have an account?{" "}
-          <Link to={ROUTES.LANDING} className="font-medium text-[#2B10F2] hover:underline">
-            Log In
+    <AuthLayout
+      panelLabel="What happens next"
+      panel={<SignupPanel />}
+      headerAside={
+        <>
+          <span className="max-sm:hidden">Already have an account? </span>
+          <Link to={ROUTES.LANDING} className={authLink}>
+            Log in
           </Link>
-        </p>
-      </div>
-    </div>
-  </div>
-</div>
+        </>
+      }
+    >
+      <form onSubmit={handleNext} noValidate className="mx-auto w-full max-w-[620px]">
+        <AuthCard
+          split
+          top={<AuthStepper step={1} />}
+          footer={
+            <CardFooter sticky>
+              <button type="button" onClick={handleClearData} className={authBtn.ghost}>
+                <RotateCcw size={16} strokeWidth={1.75} aria-hidden="true" />
+                <span className="max-sm:sr-only">Clear form</span>
+              </button>
+              <span className="flex-1" />
+              <span className="text-[13px] text-slate-500 max-sm:hidden">Step 1 of 2</span>
+              <button type="submit" className={`${authBtn.primary} max-sm:flex-1`}>
+                Next: your shop
+                <ArrowRight size={16} strokeWidth={1.75} aria-hidden="true" />
+              </button>
+            </CardFooter>
+          }
+        >
+          <CardHeading icon={UserPlus} title="Create your account" subtitle="Start with your own details. Your shop comes next." />
+
+          <FormSections>
+            <FormSection id="signup-you" icon={User} title="About you" note="The person who runs the shop.">
+              <div className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2">
+                <Field label="Your name" htmlFor="fullName" required error={errors.fullName} className="sm:col-span-2">
+                  <TextInput
+                    type="text"
+                    autoComplete="name"
+                    placeholder="Full name"
+                    value={fullName}
+                    onChange={(e) => edit('fullName', setFullName)(e.target.value)}
+                  />
+                </Field>
+                <Field label="Phone number" htmlFor="phoneNumber" required error={errors.phoneNumber} help="Your 10-digit mobile number.">
+                  <TextInput
+                    addon="+91"
+                    type="tel"
+                    inputMode="numeric"
+                    autoComplete="tel-national"
+                    maxLength={10}
+                    placeholder="98765 43210"
+                    value={phoneNumber}
+                    onChange={(e) => edit('phoneNumber', setPhoneNumber)(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  />
+                </Field>
+                <EmailField
+                  icon={Mail}
+                  value={email}
+                  onChange={edit('email', setEmail)}
+                  check={emailCheck}
+                  error={errors.email}
+                  help="You'll log in with this email."
+                />
+              </div>
+            </FormSection>
+
+            <FormSection id="signup-password" icon={ShieldCheck} tone="green" title="Password" note="At least 6 characters.">
+              <div className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2">
+                <Field label="Create a password" htmlFor="password" required error={errors.password}>
+                  <PasswordInput
+                    autoComplete="new-password"
+                    placeholder="Choose a password"
+                    value={password}
+                    onChange={(e) => edit('password', setPassword)(e.target.value)}
+                  />
+                </Field>
+                <Field
+                  label="Confirm password"
+                  htmlFor="confirmPassword"
+                  required
+                  error={errors.confirmPassword}
+                  help={
+                    passwordsMatch ? (
+                      <span className="flex items-center gap-1 text-green-700">
+                        <Check size={14} strokeWidth={2.25} aria-hidden="true" />
+                        Passwords match
+                      </span>
+                    ) : undefined
+                  }
+                >
+                  <PasswordInput
+                    autoComplete="new-password"
+                    placeholder="Type it again"
+                    value={confirmPassword}
+                    onChange={(e) => edit('confirmPassword', setConfirmPassword)(e.target.value)}
+                  />
+                </Field>
+              </div>
+            </FormSection>
+          </FormSections>
+
+          <div className="flex items-center gap-3 rounded-sm bg-blue-50 px-3.5 py-3 text-blue-800 lg:hidden">
+            <Gift size={20} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />
+            <span className="text-[13px] leading-[19px]">
+              <span className="font-semibold">3 days free.</span> Every feature unlocked. No card needed.
+            </span>
+          </div>
+        </AuthCard>
+      </form>
+    </AuthLayout>
   );
 };
 

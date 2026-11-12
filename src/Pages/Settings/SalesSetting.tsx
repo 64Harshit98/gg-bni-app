@@ -35,6 +35,7 @@ import {
     FileText,
     Clock,
     Search,
+    BadgePercent,
 } from 'lucide-react';
 
 export interface SalesSettings {
@@ -79,6 +80,7 @@ export interface SalesSettings {
     enableNarration?: boolean;
     enableCustomerInfoToggle?: boolean;
     enableTransportDetails?: boolean;
+    enableCustomerPricing?: boolean;
     lastSavedPlan?: string;
 }
 
@@ -129,6 +131,7 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     enableNarration: false,
     enableTransportDetails: false,
     enableCustomerInfoToggle: true, // ✅ ON by default so POS & CALC both show it consistently
+    enableCustomerPricing: false,
 });
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -1207,6 +1210,14 @@ const SalesSettingsPage: React.FC = () => {
                                         icon={ico(EyeOff)}
                                         checked={settings.hideMrp ?? false}
                                         onChange={(checked) => handleCheckboxChange('hideMrp', checked)}
+                                    />
+                                    <Opt
+                                        id="customer-pricing"
+                                        label="Customer-wise fixed discount"
+                                        description="Give regular customers their fixed prices (set them in Settings → Customer pricing). Add the customer at the top of the bill or in the payment screen — prices change only when you tap Apply prices."
+                                        icon={ico(BadgePercent)}
+                                        checked={settings.enableCustomerPricing ?? false}
+                                        onChange={(checked) => handleCheckboxChange('enableCustomerPricing', checked)}
                                     />
                                 </Section>
                             </ShowWrapper>

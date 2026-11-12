@@ -117,6 +117,8 @@ const PERMISSION_DESCRIPTIONS: Partial<Record<Permissions, string>> = {
     [Permissions.ManagePurchaseSetting]: 'Purchase bill fields and rules.',
     [Permissions.ManageItemSetting]: 'Which item fields are required.',
     [Permissions.ManageBillSetting]: 'Printed bill layout and footer.',
+    [Permissions.ManageCustomerPricing]: 'Set fixed discounts for each customer and supplier.',
+    [Permissions.OverrideCustomerDiscount]: 'Change the price on a line that has a customer or supplier fixed price.',
 };
 
 // UI-only: plain display names
@@ -135,6 +137,8 @@ const PERMISSION_LABELS: Partial<Record<Permissions, string>> = {
     // Sales
     [Permissions.CreateSales]: 'Create sale bills',
     [Permissions.CreateSalesReturn]: 'Create sales returns',
+    [Permissions.ManageCustomerPricing]: 'Manage party pricing',
+    [Permissions.OverrideCustomerDiscount]: 'Edit party-priced lines',
     // Purchases
     [Permissions.CreatePurchase]: 'Create purchase bills',
     [Permissions.CreatePurchaseReturn]: 'Create purchase returns',
@@ -306,6 +310,8 @@ const permissionGroups = {
         permissions: [
             Permissions.CreateSales,
             Permissions.CreateSalesReturn,
+            Permissions.ManageCustomerPricing,
+            Permissions.OverrideCustomerDiscount,
             //Permissions.SalesmanwiseBilling,
         ],
     },

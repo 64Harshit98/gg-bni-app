@@ -1,4 +1,5 @@
 import { FiEdit } from 'react-icons/fi';
+import { PriceFlag, type PriceFlagData } from './PriceFlag';
 
 export interface CompactCartLine {
   id: string;
@@ -13,6 +14,8 @@ interface CartLinesCompactProps<T extends CompactCartLine> {
   onQuantityChange: (id: string, quantity: number) => void;
   onDelete: (id: string) => void;
   onEditAddOns?: (item: T) => void;
+  /** Optional price flag shown under a line (flags only — never changes the price). */
+  getPriceFlag?: (item: T) => PriceFlagData | PriceFlagData[] | null | undefined;
 }
 
 // Desktop side-panel cart lines (name, line total, "qty × ₹unit", −/+ stepper).
@@ -23,6 +26,7 @@ export const CartLinesCompact = <T extends CompactCartLine>({
   onQuantityChange,
   onDelete,
   onEditAddOns,
+  getPriceFlag,
 }: CartLinesCompactProps<T>) => (
   <div>
     {items.map((i) => {
@@ -30,6 +34,8 @@ export const CartLinesCompact = <T extends CompactCartLine>({
       const hasAddOns = (i.addOns?.length ?? 0) > 0;
       const addOnSum = (i.addOns ?? []).reduce((s, a) => s + (Number(a.price) || 0), 0);
       const basePrice = unit - addOnSum;
+      const rawFlag = getPriceFlag?.(i);
+      const flags = Array.isArray(rawFlag) ? rawFlag : rawFlag ? [rawFlag] : [];
       return (
         <div key={i.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 gap-y-0.5 py-2.5 border-b border-[#dfe6fb] items-center">
           <b className="text-[13px] font-medium text-[#0f172b] truncate">
@@ -66,6 +72,11 @@ export const CartLinesCompact = <T extends CompactCartLine>({
             <span className="min-w-[20px] text-center text-xs font-semibold tabular-nums">{i.quantity}</span>
             <button onClick={() => onQuantityChange(i.id, i.quantity + 1)} aria-label="More" className="w-6 h-[26px] text-[#45556c]">+</button>
           </div>
+          {flags.length > 0 && (
+            <div className="col-span-2 -mx-1 mt-1 overflow-hidden rounded-sm">
+              {flags.map((f, idx) => <PriceFlag key={idx} flag={f} compact />)}
+            </div>
+          )}
         </div>
       );
     })}

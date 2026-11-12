@@ -4,6 +4,7 @@ import type { Item } from '../constants/models';
 import { Permissions, State } from '../enums';
 import ShowWrapper from '../context/ShowWrapper';
 import { useFormatNumber } from '../lib/formatNumber';
+import { PriceFlag, type PriceFlagData } from './PriceFlag';
 
 export interface CartItem extends Partial<Item> {
   id: string;
@@ -14,6 +15,10 @@ export interface CartItem extends Partial<Item> {
   customPrice?: number | string;
   quantity: number;
   isEditable?: boolean;
+  /** Optional strip under the line that flags a price (never changes it). */
+  priceFlag?: PriceFlagData | PriceFlagData[] | null;
+  /** Locks Disc%/Disc2/Net Price on this line only; long-press unlock does not apply. */
+  lockPricing?: boolean;
   [key: string]: any;
 }
 
@@ -181,8 +186,8 @@ export const GenericCartList = <T extends CartItem>({
             ? String(item.customPrice)
             : calculatedRoundedPrice.toFixed(2);
 
-          const discountLocked = settings.lockDiscount || !item.isEditable;
-          const priceLocked = settings.lockPrice || !item.isEditable;
+          const discountLocked = settings.lockDiscount || !item.isEditable || !!item.lockPricing;
+          const priceLocked = settings.lockPrice || !item.isEditable || !!item.lockPricing;
 
           const isZeroPrice = displayPrice !== '' && Number(displayPrice) === 0;
           const isUnlinked = typeof item.name === 'string' && item.name.includes('(Not in DB)');
@@ -604,6 +609,8 @@ export const GenericCartList = <T extends CartItem>({
 
 
               </div>
+              {(Array.isArray(item.priceFlag) ? item.priceFlag : item.priceFlag ? [item.priceFlag] : [])
+                .map((f, idx) => <PriceFlag key={idx} flag={f} />)}
             </div>
 
           );

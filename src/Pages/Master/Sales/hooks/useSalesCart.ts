@@ -4,10 +4,18 @@ import { getSlabForQty } from '../../../../constants/models';
 import { State } from '../../../../enums';
 import { findTierByBarcode, hasQuantitySlabs } from '../../../utils/pricingUtils';
 import { applyLineRounding } from '../sales.calculations';
+import { withoutCustomerPrice as stripCustomerPrice, MANUAL_PRICE_SKIP } from '../../../utils/customerPricing';
 import type { SalesItem } from '../sales.types';
 
 // Same item + same add-on combo = same cart line (order of selection doesn't matter)
 const addOnKeyOf = (addOns: AddOnOption[]) => addOns.map(a => a.id).sort().join('|');
+
+// A hand edit (or a re-price from the item master) means the line no longer carries
+// the customer's agreed price — drop the "applied" tag so the flag shows again.
+// A hand-edited price is the cashier's call: drop any customer-price tag and mark the
+// line so the customer's fixed price is never re-applied over it automatically.
+const withoutCustomerPrice = (line: SalesItem): SalesItem =>
+    ({ ...stripCustomerPrice(line), customerPriceSkip: MANUAL_PRICE_SKIP });
 
 interface UseSalesCartParams {
     salesSettings: any;
@@ -486,7 +494,7 @@ export const useSalesCart = ({
                 const isRoundingEnabled = salesSettings?.enableRounding ?? true;
                 const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
                 newPrice = applyLineRounding(newPrice, isRoundingEnabled, roundingInterval, Number(i.mrp) || 0);
-                return { ...i, discount: safeDiscount, customPrice: newPrice };
+                return { ...withoutCustomerPrice(i), discount: safeDiscount, customPrice: newPrice };
             }
             return i;
         }));
@@ -503,7 +511,7 @@ export const useSalesCart = ({
                 const isRoundingEnabled = salesSettings?.enableRounding ?? true;
                 const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
                 newPrice = applyLineRounding(newPrice, isRoundingEnabled, roundingInterval, Number(i.mrp) || 0);
-                return { ...i, discount2: safeDiscount2, customPrice: newPrice };
+                return { ...withoutCustomerPrice(i), discount2: safeDiscount2, customPrice: newPrice };
             }
             return i;
         }));
@@ -520,7 +528,7 @@ export const useSalesCart = ({
                 const basePrice = (i.mrp > 0) ? i.mrp : (i.salesPrice || 0);
 
                 if (basePrice > 0) d = ((basePrice - n) / basePrice) * 100;
-                return { ...i, customPrice: n, discount: parseFloat(d.toFixed(2)) };
+                return { ...withoutCustomerPrice(i), customPrice: n, discount: parseFloat(d.toFixed(2)) };
             }
             return i;
         }));
@@ -546,7 +554,7 @@ export const useSalesCart = ({
 
         setItems(prevCartItems => prevCartItems.map(cartItem => {
             if (cartItem.productId === selectedItemForEdit?.id || cartItem.id === selectedItemForEdit?.id) {
-                const mergedItem = { ...cartItem, ...updateForCart } as SalesItem;
+                const mergedItem = stripCustomerPrice({ ...cartItem, ...updateForCart } as SalesItem);
 
                 const mrp = Number(mergedItem.mrp || 0) > 0 ? Number(mergedItem.mrp) : 0;
                 const salesPrice = Number(mergedItem.salesPrice || 0) > 0 ? Number(mergedItem.salesPrice) : 0;

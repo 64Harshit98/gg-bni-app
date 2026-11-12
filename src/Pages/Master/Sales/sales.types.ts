@@ -36,6 +36,15 @@ export interface SalesItem extends OriginalSalesItem {
     addOnKey?: string;               // sorted add-on ids joined; same item + same key = same line
     addOnAmount?: number;            // add-ons total per 1 unit. Not part of mrp / discount
     addOnStock?: { itemId: string; qty: number }[]; // linked inventory items this line takes (saved on the invoice, used when the bill is edited)
+    // Customer-wise fixed pricing — set ONLY when the user taps Apply (never automatic)
+    customerDiscountPct?: number;      // the agreed % (or effective % for a fixed net price)
+    customerDiscountSource?: 'item' | 'category' | 'default';
+    customerPricingFor?: string;       // customer doc id the price was applied for
+    customerPricingName?: string;      // their name, for the "price set for X" flag
+    customerPriceSkip?: string;        // cart-only: 'manual' (hand-edited) or a customer id the user reverted for
+    preCustomerPrice?: number | string; // cart-only: price before Apply, restored by Revert
+    preCustomerDiscount?: number;
+    preCustomerDiscount2?: number;
 }
 
 // Formalized shape of the invoice/sale-data object built in

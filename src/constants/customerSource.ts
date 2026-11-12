@@ -24,6 +24,19 @@ export const customerSourceFields = (data: Record<string, unknown>): CustomerSou
 // those docs. Doc id: the 10-digit phone, or the name for a customer without one.
 export const CUSTOMER_REMARKS_COLLECTION = 'customerRemarks';
 
+// Members-only collections (see firestore.rules). Pricing data never goes on the
+// public customers/suppliers docs.
+export const CUSTOMER_PRICING_COLLECTION = 'customerPricing';
+export const SUPPLIER_PRICE_BOOK_COLLECTION = 'supplierPriceBook';
+export const SUPPLIER_PRICING_COLLECTION = 'supplierPricing'; // supplier-wise fixed discounts (same shape as customerPricing)
+
+/**
+ * Doc id of a party (customers/suppliers): the trimmed phone, else the trimmed name.
+ * Must stay identical to PaymentDrawer's `safePartyNumber || safePartyName`.
+ */
+export const getPartyDocId = (name?: string | null, number?: string | null): string =>
+  (number ?? '').trim() || (name ?? '').trim();
+
 /** Whether a customer record belongs in the given mode's reports. Customers who used both appear in both. */
 export const customerBelongsTo = (mode: CustomerSource, c: CustomerSourceFields) =>
   mode === 'catalogue'

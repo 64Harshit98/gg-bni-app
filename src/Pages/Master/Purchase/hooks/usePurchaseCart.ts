@@ -3,6 +3,7 @@ import type { Item, PriceTier} from '../../../../constants/models';
 import { State } from '../../../../enums';
 import { applyPurchaseRounding } from '../purchase.calculations';
 import type { PurchaseItem } from '../purchase.types';
+import { MANUAL_PRICE_SKIP, withoutSupplierPrice } from '../../../utils/customerPricing';
 
 interface UsePurchaseCartParams {
     isEditMode: boolean;
@@ -204,6 +205,11 @@ export const usePurchaseCart = ({
         }
     };
 
+    // A hand-edited rate is the user's call: drop any supplier-price tag and never
+    // auto-apply the supplier's fixed price over it.
+    const asManualRate = (line: PurchaseItem): PurchaseItem =>
+        ({ ...withoutSupplierPrice(line), supplierPriceSkip: MANUAL_PRICE_SKIP });
+
     // --- LOGIC 3: HANDLE DISCOUNT CHANGE (Calc Price from MRP) ---
     const handleDiscountChange = (id: string, v: number | string) => {
         const n = typeof v === 'string' ? parseFloat(v) : v;
@@ -220,7 +226,7 @@ export const usePurchaseCart = ({
                 newPrice = applyPurchaseRounding(newPrice, isRoundingEnabled);
 
                 return {
-                    ...i,
+                    ...asManualRate(i),
                     discount: safeDiscount,
                     purchasediscount: safeDiscount,
                     purchasePrice: newPrice
@@ -245,7 +251,7 @@ export const usePurchaseCart = ({
                 newPrice = applyPurchaseRounding(newPrice, isRoundingEnabled);
 
                 return {
-                    ...i,
+                    ...asManualRate(i),
                     purchasediscount2: safeDiscount2,
                     purchasePrice: newPrice
                 };
@@ -274,8 +280,12 @@ export const usePurchaseCart = ({
                 const finalDiscount = parseFloat(d.toFixed(2));
 
                 // purchasediscount2 left as-is intentionally; only discount1 is recalculated from manual price
+                // Blur without a real change keeps the supplier price tag
+                const unchanged = i.supplierPricingFor !== undefined
+                    && Math.abs(currentPriceVal - Number(i.purchasePrice)) < 0.001
+                    && typeof i.purchasePrice === 'number';
                 return {
-                    ...i,
+                    ...(unchanged ? i : asManualRate(i)),
                     purchasePrice: currentPriceVal,
                     discount: finalDiscount,
                     purchasediscount: finalDiscount
@@ -441,7 +451,7 @@ const handleAddAsNewLine = () => {
             const stock = (updatedItemData as any).stock ?? (updatedItemData as any).Stock ?? cartItem.stock;
 
             return {
-                ...cartItem,
+                ...withoutSupplierPrice(cartItem),
                 name: mergedMaster.name || cartItem.name,
                 mrp,
                 purchasePrice: parseFloat(finalNetPrice.toFixed(2)),

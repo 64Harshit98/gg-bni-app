@@ -193,6 +193,19 @@ service cloud.firestore {
         allow read, write: if isCompanyMember(companyId);
       }
 
+      // Customer-wise fixed discounts and the supplier price book (last rate per
+      // item) are private pricing data — kept OFF the public customers/suppliers
+      // docs on purpose. Company members only.
+      match /customerPricing/{customerId} {
+        allow read, write: if isCompanyMember(companyId);
+      }
+      match /supplierPriceBook/{supplierId} {
+        allow read, write: if isCompanyMember(companyId);
+      }
+      match /supplierPricing/{supplierId} {
+        allow read, write: if isCompanyMember(companyId);
+      }
+
       // WhatsApp (Sellar/Snapto shared-tier) status mirror + message log —
       // company members can read, but only Cloud Functions (Admin SDK, which
       // bypasses rules) may write. Never holds credentials.

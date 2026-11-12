@@ -1,7 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
-import { db } from '../../../lib/Firebase';
-import { collection, query, where, getDocs, limit } from 'firebase/firestore';
+import { searchParties } from '../../../lib/partySearch';
 import type { PaymentCompletionData } from '../../../Components/PaymentDrawer';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth, useDatabase } from '../../../context/auth-context';
@@ -19,7 +17,7 @@ import BackButton from '../../../Components/BackButton';
 import { GenericCartList } from '../../../Components/CartItem';
 import BarcodeLinkModal from '../../../Components/BarcodeLinkModal';
 import { AddUserModal } from '../../../Components/AddUserModal';
-import { FiTrash2, FiX, FiEdit, FiCamera, FiDelete, FiSearch, FiMoreVertical, FiCalendar, FiCheck, FiChevronUp, FiChevronRight, FiMinus, FiPlus, FiSliders, FiUser } from 'react-icons/fi';
+import { FiTrash2, FiX, FiEdit, FiCamera, FiDelete, FiSearch, FiMoreVertical, FiCalendar, FiCheck, FiChevronUp, FiChevronRight, FiMinus, FiPlus, FiSliders, FiUser, FiUserPlus } from 'react-icons/fi';
 import { GenericBillFooter } from '../../../Components/Footer';
 import { CartLinesCompact } from '../../../Components/CartLinesCompact';
 import { IconScanCircle, IconPrint } from '../../../constants/Icons';
@@ -28,6 +26,7 @@ import { FiSend } from 'react-icons/fi';
 import CalcDisplay from '../../../Components/CalcDisplay';
 import { useWhatsappProvider } from '../../Additional/Whatsapp/useWhatsappProvider';
 import type { SalesItem } from './sales.types';
+import { useCustomerPricing } from './hooks/useCustomerPricing';
 import { TierPickerModal } from '../../../Components/TierPickerModal';
 import { hasMultiplePricing } from '../../utils/pricingUtils';
 import type { Item, AddOnGroup } from '../../../constants/models';
@@ -152,12 +151,13 @@ const Sales: React.FC = () => {
         setCustomerSuggestions([]);
     };
 
-    // const openCustomerModal = () => {
-    //     setCustomerDraft({ name: customerName, phone: customerPhone });
-    //     setCustomerSuggestions([]);
-    //     setShowCustomerSuggestions(false);
-    //     setShowCustomerModal(true);
-    // };
+    // Customer picker before billing (shown when customer-wise pricing is on)
+    const openCustomerModal = () => {
+        setCustomerDraft({ name: customerName, phone: customerPhone });
+        setCustomerSuggestions([]);
+        setShowCustomerSuggestions(false);
+        setShowCustomerModal(true);
+    };
 
     const saveCustomer = () => {
         const phone = customerDraft.phone.replace(/\D/g, '');
@@ -167,7 +167,13 @@ const Sales: React.FC = () => {
         }
         setCustomerName(customerDraft.name.trim());
         setCustomerPhone(phone);
+        setPricingParty({ name: customerDraft.name.trim(), number: phone });
         closeCustomerModal();
+    };
+    const clearCustomer = () => {
+        setCustomerName('');
+        setCustomerPhone('');
+        setPricingParty({ name: '', number: '' });
     };
 
     const searchCustomer = async (term: string, field: 'name' | 'number') => {
@@ -176,32 +182,13 @@ const Sales: React.FC = () => {
             setShowCustomerSuggestions(false);
             return;
         }
-        const partyRef = collection(db, 'companies', currentUser.companyId, 'customers');
-        const termLower = term.toLowerCase();
-        const termCap = termLower.charAt(0).toUpperCase() + termLower.slice(1);
-
         try {
-            const queries = [
-                getDocs(query(partyRef, where(field, '>=', termLower), where(field, '<=', termLower + '\uf8ff'), limit(5))),
-            ];
-            if (field === 'name' && termCap !== termLower) {
-                queries.push(
-                    getDocs(query(partyRef, where(field, '>=', termCap), where(field, '<=', termCap + '\uf8ff'), limit(5)))
-                );
-            }
-            const snapshots = await Promise.all(queries);
-            const map = new Map<string, CustomerSuggestion>();
-            snapshots.forEach(snap => snap.forEach(d => {
-                if (!map.has(d.id)) {
-                    const data = d.data();
-                    map.set(d.id, {
-                        name: data.name || '',
-                        number: data.number || d.id,
-                        creditBalance: data.creditBalance,
-                    });
-                }
+            const hits = await searchParties(currentUser.companyId, 'customers', term, field);
+            const results: CustomerSuggestion[] = hits.map(h => ({
+                name: h.name,
+                number: h.number,
+                creditBalance: h.data.creditBalance,
             }));
-            const results = Array.from(map.values());
             setCustomerSuggestions(results);
             setShowCustomerSuggestions(results.length > 0);
         } catch (err) {
@@ -219,14 +206,24 @@ const Sales: React.FC = () => {
     };
 
     const selectCustomerSuggestion = (c: CustomerSuggestion) => {
-        setCustomerDraft({ name: c.name, phone: (c.number || '').replace(/\D/g, '').slice(0, 10) });
-        setShowCustomerSuggestions(false);
+        const name = (c.name || '').trim();
+        const phone = (c.number || '').replace(/\D/g, '').slice(0, 10);
+        setCustomerDraft({ name, phone });
+        setCustomerName(name);
+        setCustomerPhone(phone.length === 10 ? phone : '');
+        setPricingParty({ name, number: phone.length === 10 ? phone : '' });
+        closeCustomerModal();
     };
     // Payment drawer me jo bhi fill ho, drawer band hone par yahan wapas dikhe
     const handleDrawerPartyChange = (name: string, number: string) => {
         setCustomerName(name);
         setCustomerPhone(number);
+        setPricingParty({ name, number });
     };
+    // Customer typed/picked in the payment drawer — customer-wise pricing looks this one up
+    const [pricingParty, setPricingParty] = useState({ name: prefillParty?.name ?? '', number: prefillParty?.number ?? '' });
+    const handleDrawerPartyInput = (name: string, number: string) =>
+        setPricingParty(prev => (prev.name === name && prev.number === number ? prev : { name, number }));
     useEffect(() => {
         if (!showCustomerSuggestions) return;
         const onDown = (e: MouseEvent) => {
@@ -601,6 +598,25 @@ const Sales: React.FC = () => {
         showSuccessModal,
     });
 
+    // ── Customer-wise fixed pricing ──
+    // Customer picked at the top of the bill or in the payment drawer: their fixed price is
+    // applied automatically where it is lower (Busy-style). Revert on a line undoes it;
+    // editing a saved bill never re-prices automatically.
+    const customerPricingEnabled = !!salesSettings?.enableCustomerPricing && !isCalculatorView;
+    const customerPricing = useCustomerPricing({
+        enabled: customerPricingEnabled,
+        auto: !isEditMode,
+        companyId: currentUser?.companyId,
+        customerName: isEditMode ? (invoiceToEdit?.partyName || '') : pricingParty.name,
+        customerPhone: isEditMode ? (invoiceToEdit?.partyNumber || '') : pricingParty.number,
+        items,
+        setItems,
+        salesSettings,
+        canOverride: hasPermission(Permissions.OverrideCustomerDiscount),
+    });
+    const decorateLine = <T extends SalesItem>(line: T): T =>
+        customerPricingEnabled ? { ...line, ...customerPricing.decorate(line) } : line;
+
     // Print / WhatsApp ticks from PaymentDrawer — fire once the bill is saved
     const postSaveOptionsRef = useRef<{ printBill?: boolean; sendWhatsApp?: boolean } | null>(null);
 
@@ -636,6 +652,7 @@ const Sales: React.FC = () => {
         if (savedBillData && !isEditMode) {
             setCustomerName('');
             setCustomerPhone('');
+            setPricingParty({ name: '', number: '' });
         }
     }, [savedBillData, isEditMode]);
 
@@ -924,22 +941,22 @@ const Sales: React.FC = () => {
     // );
     const renderCustomerSuggestions = () => {
         if (!showCustomerSuggestions || customerSuggestions.length === 0) return null;
-        const ref = activeSuggestField === 'name' ? customerNameWrapRef.current : customerPhoneWrapRef.current;
-        const rect = ref?.getBoundingClientRect();
-        if (!rect) return null;
-
-        return createPortal(
+        // Rendered inside the popup, right under the field: a portal outside the popup could
+        // lose the click. Selected on mouse-down so the field's blur can't swallow it.
+        return (
             <div
                 ref={customerSuggestionsRef}
-                style={{ position: 'fixed', top: rect.bottom + 4, left: rect.left, width: rect.width, zIndex: 99999 }}
-                className="bg-white border border-[#dfe6fb] shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)] rounded-sm p-1.5 max-h-48 overflow-y-auto"
+                role="listbox"
+                className="absolute left-0 right-0 top-full mt-1 z-20 bg-white border border-[#dfe6fb] shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)] rounded-sm p-1.5 max-h-48 overflow-y-auto"
                 onClick={(e) => e.stopPropagation()}
             >
                 {customerSuggestions.map((c, idx) => (
                     <div
                         key={idx}
+                        role="option"
+                        aria-selected={false}
                         className="px-2.5 py-2 hover:bg-[#e6eeff] rounded-sm cursor-pointer flex justify-between items-center gap-2"
-                        onClick={() => selectCustomerSuggestion(c)}
+                        onMouseDown={(e) => { e.preventDefault(); selectCustomerSuggestion(c); }}
                     >
                         <div className="min-w-0">
                             <div className="font-semibold text-xs text-[#0f172b] truncate">{c.name}</div>
@@ -952,8 +969,7 @@ const Sales: React.FC = () => {
                         )}
                     </div>
                 ))}
-            </div>,
-            document.body
+            </div>
         );
     };
     const renderCustomerModal = () =>
@@ -984,6 +1000,7 @@ const Sales: React.FC = () => {
                                 autoComplete="off"
                                 autoFocus
                             />
+                            {activeSuggestField === 'number' && renderCustomerSuggestions()}
                         </div>
                         <div ref={customerNameWrapRef} className="relative">
                             <label className={`block mb-1.5 ${LABEL_CLS}`}>Name</label>
@@ -999,6 +1016,7 @@ const Sales: React.FC = () => {
                                 className={POPUP_INPUT_CLS}
                                 autoComplete="off"
                             />
+                            {activeSuggestField === 'name' && renderCustomerSuggestions()}
                         </div>
                     </div>
                     <div className="flex justify-end gap-2 mt-6">
@@ -1006,9 +1024,62 @@ const Sales: React.FC = () => {
                         <CustomButton variant={Variant.Filled} onClick={saveCustomer}>Save</CustomButton>
                     </div>
                 </div>
-                {renderCustomerSuggestions()}
             </div>
         );
+
+    // ── Customer bar (customer-wise pricing on): pick the customer before billing ──
+    const renderCustomerBar = (inPanel = false) => {
+        if (!customerPricingEnabled) return null;
+        const shownName = isEditMode ? (invoiceToEdit?.partyName || '') : customerName;
+        const shownPhone = isEditMode ? (invoiceToEdit?.partyNumber || '') : customerPhone;
+        const hasCustomer = !!(shownName || shownPhone);
+        const offer = customerPricing.offer;
+        const status = !hasCustomer
+            ? 'Add a customer to see their fixed prices'
+            : customerPricing.loading
+                ? 'Checking customer prices…'
+                : customerPricing.rule
+                    ? 'Has fixed prices'
+                    : 'No fixed prices for this customer';
+        const offerCls = offer?.tone === 'warn'
+            ? 'bg-[#fff3dd] text-[#bb4d00]'
+            : offer?.tone === 'applied' ? 'bg-[#e9faef] text-[#008236]' : 'bg-[#e6eeff] text-[#155dfc]';
+        return (
+            <div className={inPanel ? 'flex flex-col gap-2' : 'flex-shrink-0 flex flex-col gap-2 px-4 md:px-5 py-2.5 bg-white border-b border-[#dfe6fb]'}>
+                <div className="flex items-center gap-2.5">
+                    <span className="w-8 h-8 rounded-sm bg-[#e6eeff] text-[#155dfc] flex items-center justify-center flex-shrink-0"><FiUser size={15} /></span>
+                    <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-[#0f172b] truncate">
+                            {hasCustomer ? (shownName || shownPhone) : 'Walk-in customer'}
+                            {hasCustomer && shownName && shownPhone && <span className="font-normal text-[#5b6b86]"> · {shownPhone}</span>}
+                        </div>
+                        <div className={`text-xs truncate ${customerPricing.rule ? 'text-[#008236]' : 'text-[#5b6b86]'}`}>{status}</div>
+                    </div>
+                    {!isEditMode && (
+                        <button type="button" onClick={openCustomerModal}
+                            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-sm border border-[#7a8aa3] bg-white text-[13px] font-medium text-[#0f172b] hover:bg-[#f5f7ff] flex-shrink-0">
+                            <FiUserPlus size={14} /> {hasCustomer ? 'Change' : 'Add customer'}
+                        </button>
+                    )}
+                    {!isEditMode && hasCustomer && (
+                        <button type="button" aria-label="Remove customer" onClick={clearCustomer}
+                            className="inline-flex items-center justify-center w-8 h-8 rounded-sm text-[#45556c] hover:bg-[#f5f7ff] flex-shrink-0">
+                            <FiX size={16} />
+                        </button>
+                    )}
+                </div>
+                {offer && (
+                    <div className={`flex items-center gap-2 px-3 py-2 rounded-sm text-[13px] font-medium ${offerCls}`} role="status">
+                        <span className="flex-1 min-w-0">{offer.text}</span>
+                        <button type="button" onClick={offer.onAction}
+                            className={`flex-shrink-0 h-8 px-3 rounded-sm text-xs font-semibold ${offer.tone === 'info' ? 'bg-[#155dfc] text-white hover:bg-[#1447e6]' : 'bg-white border border-current hover:opacity-80'}`}>
+                            {offer.actionLabel}
+                        </button>
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     const renderSaveBox = (suffix = '') =>
         totalDiscount > 0 ? (
@@ -1430,6 +1501,9 @@ const Sales: React.FC = () => {
     const renderBillPanel = (onCollect: () => void, onClose?: () => void) => (
         <div className="flex-1 min-h-0 flex flex-col">
             <div className={`flex-1 min-h-0 px-5 pb-5 flex flex-col gap-4 overflow-y-auto ${onClose ? 'pt-2' : 'pt-5'}`}>
+                {/* Customer above the bill: desktop panel (both views) and the card-view bill sheet.
+                    The list view shows it above the cart on phones/tablets instead. */}
+                {(isCardView || !onClose) && renderCustomerBar(true)}
                 <div className="flex items-center justify-between gap-2 -mb-2">
                     <h2 className="m-0 text-base font-semibold text-[#0f172b]">Bill · {totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}</h2>
                     <div className="flex items-center gap-1">
@@ -1448,6 +1522,7 @@ const Sales: React.FC = () => {
                     onQuantityChange={handleBillQuantityChange}
                     onDelete={handleDeleteItem}
                     onEditAddOns={openAddOnEdit}
+                    getPriceFlag={customerPricingEnabled && isCardView ? (i) => customerPricing.decorate(i).priceFlag : undefined}
                 />
 
                 <div className="space-y-1.5 text-sm">
@@ -1886,6 +1961,8 @@ const Sales: React.FC = () => {
                     initialPartyName={isEditMode ? invoiceToEdit?.partyName : customerName}
                     initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : customerPhone}
                     onPartyChange={isEditMode ? undefined : handleDrawerPartyChange}
+                    onPartyInput={isEditMode ? undefined : handleDrawerPartyInput}
+                    partyOffer={customerPricing.offer}
                     initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined}
                     totalItemDiscount={totalDiscount} totalQuantity={totalQuantity}
                     totalMrp={totalMrp}
@@ -2153,16 +2230,18 @@ ${colClass || ''}`}
                     {/* Cart List Container */}
                     <div className="flex-1 flex flex-col bg-[#eef2ff] overflow-y-hidden">
                         {renderCartBar()}
+                        {/* Desktop has it in the bill panel on the right */}
+                        <div className="xl:hidden">{renderCustomerBar()}</div>
                         <div className="flex-shrink-0 grid grid-cols-2 px-2 py-1">
                             {discountInfo && <div className="text-xs text-red-600">{discountInfo}</div>}
                             {priceInfo && <div className="text-xs text-red-600">{priceInfo}</div>}
                         </div>
                         <GenericCartList
-                            items={displayItems.map(i =>
+                            items={displayItems.map(i => decorateLine(
                                 (i.addOns?.length ?? 0) > 0
                                     ? { ...i, addOnText: i.addOns!.map(a => a.name).join(', ') }
                                     : i
-                            )}
+                            ))}
                             availableItems={availableItems}
                             scrollRef={cartListRef}
                             basePriceKey="mrp"
@@ -2245,6 +2324,8 @@ ${colClass || ''}`}
                 initialPartyName={isEditMode ? invoiceToEdit?.partyName : customerName}
                 initialPartyNumber={isEditMode ? invoiceToEdit?.partyNumber : customerPhone}
                 onPartyChange={isEditMode ? undefined : handleDrawerPartyChange}
+                onPartyInput={isEditMode ? undefined : handleDrawerPartyInput}
+                partyOffer={customerPricing.offer}
                 initialPaymentMethods={isEditMode ? invoiceToEdit?.paymentMethods : undefined}
                 totalItemDiscount={totalDiscount} totalQuantity={totalQuantity}
                 requireCustomerName={salesSettings?.requireCustomerName}

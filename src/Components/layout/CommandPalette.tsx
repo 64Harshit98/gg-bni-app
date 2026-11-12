@@ -78,6 +78,7 @@ export const DESTINATIONS: Destination[] = [
   { label: 'Permission Settings', hint: 'User roles & permissions', to: ROUTES.PERMSETTING, keywords: 'roles access', ownerOnly: true },
   { label: 'Sales Settings', hint: 'Sales preferences', to: ROUTES.SALESETTING },
   { label: 'Purchase Settings', hint: 'Purchase preferences', to: ROUTES.PURCHASESETTING },
+  { label: 'Party Pricing', hint: 'Fixed discount per customer / supplier', to: ROUTES.CUSTOMER_PRICING, keywords: 'customer supplier party discount special price rate dealer wholesale structure' },
   { label: 'User Settings', hint: 'Manage users', to: ROUTES.USERSETTING },
   { label: 'Item Settings', hint: 'Item preferences', to: ROUTES.ITEMSETTING },
   { label: 'Bill Settings', hint: 'Invoice / bill format', to: ROUTES.BILLSETTING, keywords: 'invoice print' },

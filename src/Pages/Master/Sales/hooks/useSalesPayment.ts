@@ -16,6 +16,8 @@ import { ROUTES } from '../../../../constants/routes.constants';
 import { peekNextInvoiceNumber } from '../../../../UseComponents/InvoiceCounter';
 import type { PaymentCompletionData } from '../../../../Components/PaymentDrawer';
 import { calculateFinalizedSaleItems, toCurrency } from '../sales.calculations';
+import { omitKeys } from '../../../../lib/omitKeys';
+import { CART_ONLY_CUSTOMER_KEYS } from '../../../utils/customerPricing';
 import type { SalesInvoice, SalesItem } from '../sales.types';
 
 // Firestore document IDs can't contain '/' (and a few other characters are
@@ -281,7 +283,8 @@ export const useSalesPayment = ({
         const formatItemsForDB = (itemsToFormat: SalesItem[]) => {
             const itemsWithTierNames = itemsToFormat.map(item => {
                 // addOns / addOnKey / addOnGroups / addOnGroupIds are cart-only; the add-on text goes into the saved name
-                const { addOns, addOnKey, addOnGroups, addOnGroupIds, addOnPicks, ...rest } = item as any;
+                // preCustomer* only back the cart's Revert button — not saved
+                const { addOns, addOnKey, addOnGroups, addOnGroupIds, addOnPicks, ...rest } = omitKeys(item, CART_ONLY_CUSTOMER_KEYS) as any;
                 const baseName = item.tierLabel ? `${item.name} - ${item.tierLabel}` : item.name;
                 const addOnText = addOns?.length ? ` + ${addOns.map((a: { name: string }) => a.name).join(', ')}` : '';
                 // Remember which inventory items the add-ons took, so editing this bill can put their stock back
@@ -381,6 +384,8 @@ return {
                 expenses: completionData.expenses || [],
                 narration: completionData.narration || '',
                 transportDetails: completionData.transportDetails || null,
+                // Which customer's fixed pricing was applied on this bill (null when none)
+                customerPricingId: items.find(i => i.customerPricingFor)?.customerPricingFor ?? null,
             };
 
             if (isNew) {

@@ -22,8 +22,10 @@ export const syncCompanyPermissions = async (
         if (changed) {
             const docRef = doc(db, 'companies', companyId, 'permissions', role);
             try {
+                // Write the MERGED list — writing `defaults` here would wipe any
+                // permissions the owner customised for this role.
                 await setDoc(docRef, {
-    allowedPermissions: defaults,
+    allowedPermissions: merged,
     syncedDefaults: defaults,
     lastAutoSync: new Date()
 }, { merge: true });

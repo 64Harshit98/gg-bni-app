@@ -24,6 +24,7 @@ import {
     FiLock,
     FiSearch,
     FiArrowUp,
+    FiTrendingUp,
 } from 'react-icons/fi';
 import { Search } from 'lucide-react';
 import { ResetSettingsButton } from '../../Components/ResetSettingsButton';
@@ -51,6 +52,8 @@ export interface PurchaseSettings {
     // false (default) = items stay at their original position.
     cardSelectedOnTop?: boolean;
     enableGodownAssignment?: boolean;
+    enablePriceChangeAlert?: boolean;
+    enableSupplierPricing?: boolean;
 }
 
 export const getDefaultPurchaseSettings = (companyId: string): PurchaseSettings => ({
@@ -73,6 +76,8 @@ export const getDefaultPurchaseSettings = (companyId: string): PurchaseSettings 
     cardViewWithPhoto: true,
     cardSelectedOnTop: false,
     enableGodownAssignment: false,
+    enablePriceChangeAlert: true,
+    enableSupplierPricing: false,
 });
 
 /* ------------------------------------------------------------------ */
@@ -355,7 +360,9 @@ const PurchaseSettingsPage: React.FC = () => {
     const rowBarcode = secBehaviour || m('barcode printing option print labels');
     const rowDisc2 = secBehaviour || m('second discount disc2 discount');
     const rowGodown = secBehaviour || m('godown assignment pay now stock shop warehouse');
-    const showBehaviour = rowBarcode || rowDisc2 || rowGodown;
+    const rowPriceAlert = secBehaviour || m('price change alert last rate supplier rate changed');
+    const rowSupplierPricing = secBehaviour || m('supplier wise fixed discount party pricing structure');
+    const showBehaviour = rowBarcode || rowDisc2 || rowGodown || rowPriceAlert || rowSupplierPricing;
 
     const secRequired = m('required fields what must be filled before saving');
     const rowSupName = secRequired || m('require supplier name');
@@ -726,6 +733,26 @@ const PurchaseSettingsPage: React.FC = () => {
                                                     description="Pay Now opens a pop-up to split the purchased quantity across godowns. When off, all stock goes straight to the Shop."
                                                     checked={settings.enableGodownAssignment ?? true}
                                                     onChange={(checked) => handleCheckboxChange('enableGodownAssignment', checked)}
+                                                />
+                                            )}
+                                            {rowPriceAlert && (
+                                                <ToggleRow
+                                                    id="price-change-alert"
+                                                    icon={<FiTrendingUp size={16} />}
+                                                    label="Supplier rate change alert"
+                                                    description="Shows what the same supplier charged last time and flags items whose purchase rate has changed. Prices are never changed for you — you choose to use the last rate or keep the new one."
+                                                    checked={settings.enablePriceChangeAlert ?? true}
+                                                    onChange={(checked) => handleCheckboxChange('enablePriceChangeAlert', checked)}
+                                                />
+                                            )}
+                                            {rowSupplierPricing && (
+                                                <ToggleRow
+                                                    id="supplier-pricing"
+                                                    icon={<FiPercent size={16} />}
+                                                    label="Supplier-wise fixed discount"
+                                                    description="When you pick a supplier, their fixed discount (set in Party pricing → Purchase) is taken off the purchase rate of matching items automatically. Undo puts the normal rates back."
+                                                    checked={settings.enableSupplierPricing ?? false}
+                                                    onChange={(checked) => handleCheckboxChange('enableSupplierPricing', checked)}
                                                 />
                                             )}
                                         </SettingsCard>

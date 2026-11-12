@@ -31,6 +31,7 @@ export const ROUTES = {
   UNAUTHORIZED: '/unauthorized',
   SALESETTING: '/sales-setting',
   PURCHASESETTING: '/purchase-setting',
+  CUSTOMER_PRICING: '/customer-pricing',
   HISTORY: '/history',
   USERSETTING: '/user-setting',
   BILLSETTING: '/bill-setting',

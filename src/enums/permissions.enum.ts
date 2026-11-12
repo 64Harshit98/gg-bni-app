@@ -63,5 +63,8 @@ export enum Permissions {
     ManagePurchaseSetting = 'ManagePurchaseSetting',
     ManageItemSetting = 'ManageItemSetting',
     ManageBillSetting = 'ManageBillSetting',
+    // Customer pricing (owner-grantable)
+    ManageCustomerPricing = 'ManageCustomerPricing',
+    OverrideCustomerDiscount = 'OverrideCustomerDiscount',
 
 }

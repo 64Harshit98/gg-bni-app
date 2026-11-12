@@ -23,6 +23,7 @@ import {
     FiHash,
     FiLock,
     FiSearch,
+    FiArrowUp,
 } from 'react-icons/fi';
 import { Search } from 'lucide-react';
 import { ResetSettingsButton } from '../../Components/ResetSettingsButton';
@@ -46,6 +47,9 @@ export interface PurchaseSettings {
     requireSupplierMobile: boolean;
     cartInsertionOrder?: 'top' | 'bottom';
     cardViewWithPhoto?: boolean;
+    // Card view only: selected (in-cart) items jump to the top of the grid.
+    // false (default) = items stay at their original position.
+    cardSelectedOnTop?: boolean;
     enableGodownAssignment?: boolean;
 }
 
@@ -67,6 +71,7 @@ export const getDefaultPurchaseSettings = (companyId: string): PurchaseSettings 
     requireSupplierMobile: false,
     cartInsertionOrder: 'bottom',
     cardViewWithPhoto: true,
+    cardSelectedOnTop: false,
     enableGodownAssignment: false,
 });
 
@@ -338,8 +343,13 @@ const PurchaseSettingsPage: React.FC = () => {
 
     const secDisplay = m('display how the purchase screen looks');
     const showView = secDisplay || m('list view card view photo image touchscreen pos barcode scanning');
-    const showSort = secDisplay || m('cart item sorting newest first oldest first scanned');
-    const showDisplay = showView || showSort;
+    const showSort =
+        settings.purchaseViewType === 'list' &&
+        (secDisplay || m('cart item sorting newest first oldest first scanned'));
+    const showCardPos =
+        settings.purchaseViewType === 'card' &&
+        (secDisplay || m('selected cards position card view move to top stay in place cart'));
+    const showDisplay = showView || showSort || showCardPos;
 
     const secBehaviour = m('defaults behaviour extra options while recording a purchase');
     const rowBarcode = secBehaviour || m('barcode printing option print labels');
@@ -634,6 +644,42 @@ const PurchaseSettingsPage: React.FC = () => {
                                                         }`}
                                                 >
                                                     Oldest first
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Selected cards position (card view only) */}
+                                    {showCardPos && (
+                                        <div className="grid gap-3 px-4 py-3.5 md:px-[18px]">
+                                            <div>
+                                                <OptionTitle icon={<FiArrowUp size={16} />}>Selected cards position</OptionTitle>
+                                                <p className="mt-0.5 text-xs leading-[18px] text-[#5b6b86]">
+                                                    Card view: when an item is added to the bill, should its card stay where it is or move to the top?
+                                                </p>
+                                            </div>
+                                            <div className="flex gap-0.5 rounded-[11px] border border-[#dfe6fb] bg-[#f5f7ff] p-[3px]" role="group" aria-label="Selected cards position">
+                                                <button
+                                                    type="button"
+                                                    aria-pressed={!settings.cardSelectedOnTop}
+                                                    onClick={() => handleCheckboxChange('cardSelectedOnTop', false)}
+                                                    className={`h-9 flex-1 rounded-sm text-sm font-medium transition-colors ${FOCUS_RING} ${!settings.cardSelectedOnTop
+                                                        ? 'bg-[#0f172b] text-white'
+                                                        : 'text-[#45556c] hover:text-[#0f172b]'
+                                                        }`}
+                                                >
+                                                    Stay in place
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    aria-pressed={!!settings.cardSelectedOnTop}
+                                                    onClick={() => handleCheckboxChange('cardSelectedOnTop', true)}
+                                                    className={`h-9 flex-1 rounded-sm text-sm font-medium transition-colors ${FOCUS_RING} ${settings.cardSelectedOnTop
+                                                        ? 'bg-[#0f172b] text-white'
+                                                        : 'text-[#45556c] hover:text-[#0f172b]'
+                                                        }`}
+                                                >
+                                                    Move to top
                                                 </button>
                                             </div>
                                         </div>

@@ -58,6 +58,8 @@ import { Modal } from '../../constants/Modal';
 import { useInvoiceCommunication } from '../Journal/hooks'
 import { InvoiceActionSheet, PrintSubMenuModal, QrCodeModal } from '../Journal/components';
 import type { Invoice } from '../Journal/journal.types';
+import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import sellarLogo from '../../assets/sellar-logo.png';
 
 interface BulkOpeningBalanceRow {
     partyName: string;
@@ -108,6 +110,43 @@ const partyKey = (party: Pick<PartySummary, 'partyNumber' | 'partyName'>) =>
 
 const inr = (n: number) => `₹${Math.round(Math.abs(n)).toLocaleString('en-IN')}`;
 
+/* ---------- STATEMENT PDF HELPERS (same look as Sales Report PDF) ---------- */
+type RGB = [number, number, number];
+const PDF_RADIUS = 0.5; // ≈ Tailwind rounded-sm
+
+const toDataUrl = async (src: string): Promise<string | null> => {
+    try {
+        const blob = await (await fetch(src)).blob();
+        return await new Promise((resolve) => {
+            const r = new FileReader();
+            r.onloadend = () => resolve(r.result as string);
+            r.onerror = () => resolve(null);
+            r.readAsDataURL(blob);
+        });
+    } catch {
+        return null;
+    }
+};
+
+const drawGradientRect = (pdf: jsPDF, x: number, y: number, w: number, h: number, from: RGB, to: RGB) => {
+    const steps = 120;
+    const sw = w / steps;
+    for (let i = 0; i < steps; i++) {
+        const t = i / (steps - 1);
+        pdf.setFillColor(
+            Math.round(from[0] + (to[0] - from[0]) * t),
+            Math.round(from[1] + (to[1] - from[1]) * t),
+            Math.round(from[2] + (to[2] - from[2]) * t),
+        );
+        pdf.rect(x + i * sw, y, sw + 0.3, h, 'F');
+    }
+};
+
+const fmtDay = (ts: number) => {
+    const d = new Date(ts);
+    return `${d.getDate()} ${d.toLocaleString('en-US', { month: 'short' })} ${d.getFullYear()}`;
+};
+
 const PartyLedger: React.FC = () => {
     const {
         companyId, isLoading, authLoading, error,
@@ -145,7 +184,24 @@ const PartyLedger: React.FC = () => {
                 setIsPosBasicPlan(plan === PLANS.POS_BASIC || plan === PLANS.CALC_CATALOG);
             }
         };
-        fetchPlan();
+                fetchPlan();
+    }, [currentUser?.companyId]);
+
+    // Company name for the statement PDF header
+    const [companyName, setCompanyName] = useState('');
+    useEffect(() => {
+        const fetchCompanyName = async () => {
+            if (!currentUser?.companyId) return;
+            try {
+                const snap = await fsGetDoc(
+                    fsDocRef(firebaseDb, 'companies', currentUser.companyId, 'business_info', currentUser.companyId),
+                );
+                if (snap.exists()) setCompanyName(snap.data().businessName || '');
+            } catch (e) {
+                console.error('Failed to fetch company name', e);
+            }
+        };
+        fetchCompanyName();
     }, [currentUser?.companyId]);
 
     const {
@@ -1134,32 +1190,229 @@ const PartyLedger: React.FC = () => {
 
     const daysSince = (t: number) => Math.max(0, Math.floor((Date.now() - t) / 86_400_000));
 
-    const downloadStatementPdf = () => {
+        const downloadStatementPdf = async () => {
         if (!selectedPartyLedger || !statement) return;
         try {
             const pdf = new jsPDF();
             const pw = pdf.internal.pageSize.getWidth();
-            pdf.setFillColor(21, 93, 252);
-            pdf.rect(0, 0, pw, 6, 'F');
+            const ph = pdf.internal.pageSize.getHeight();
+            const M = 14;
+            const PAD = 4;
+            const brandRight = pw - M;
+            const contentW = pw - M * 2;
+            const company = companyName || 'Your Business';
+            const money = (n: number) => `Rs. ${Math.round(Math.abs(n)).toLocaleString('en-IN')}`;
+            const entryWord = (n: number) => (n === 1 ? 'entry' : 'entries');
+
+            const generatedAtText = `Generated ${new Date().toLocaleString('en-IN', {
+                day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit',
+            })}`;
+            const periodText = appliedFilters ? `${fmtDay(appliedFilters.start)} – ${fmtDay(appliedFilters.end)}` : '';
+            const periodDays = appliedFilters
+                ? Math.max(1, Math.round((appliedFilters.end - appliedFilters.start) / 86400000))
+                : 0;
+            const partyHasPhone = !!selectedPartyLedger.partyNumber && selectedPartyLedger.partyNumber !== 'N/A';
+            const partyLine = [
+                selectedPartyLedger.partyName,
+                partyHasPhone ? formatPhone(selectedPartyLedger.partyNumber) : '',
+            ].filter(Boolean).join('  |  ');
+
+            // ---------- ASSETS ----------
+            const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId).catch(() => null);
+            const sellarImg = await toDataUrl(sellarLogo);
+
+            const drawCompanyTile = (x: number, y: number, size: number, onDark: boolean) => {
+                let drawn = false;
+                if (base64Logo) {
+                    try {
+                        const props = pdf.getImageProperties(base64Logo);
+                        const maxSide = size - size * 0.22;
+                        const scale = Math.min(maxSide / props.width, maxSide / props.height);
+                        const w = props.width * scale;
+                        const h = props.height * scale;
+                        pdf.setFillColor(255, 255, 255);
+                        if (onDark) {
+                            pdf.roundedRect(x, y, size, size, PDF_RADIUS, PDF_RADIUS, 'F');
+                        } else {
+                            pdf.setDrawColor(229, 231, 235);
+                            pdf.setLineWidth(0.3);
+                            pdf.roundedRect(x, y, size, size, PDF_RADIUS, PDF_RADIUS, 'FD');
+                        }
+                        pdf.addImage(base64Logo, props.fileType, x + (size - w) / 2, y + (size - h) / 2, w, h);
+                        drawn = true;
+                    } catch {
+                        // invalid logo -> initial fallback
+                    }
+                }
+                if (!drawn) {
+                    if (onDark) pdf.setFillColor(52, 78, 168);
+                    else pdf.setFillColor(37, 99, 235);
+                    pdf.roundedRect(x, y, size, size, PDF_RADIUS, PDF_RADIUS, 'F');
+                    pdf.setTextColor(255, 255, 255);
+                    pdf.setFont('helvetica', 'bold');
+                    pdf.setFontSize(size * 0.9);
+                    pdf.text((companyName.trim().charAt(0) || 'S').toUpperCase(), x + size / 2, y + size / 2, { align: 'center', baseline: 'middle' });
+                }
+            };
+
+            // ---------- 1. HEADER (gradient) ----------
+            drawGradientRect(pdf, 0, 0, pw, 64, [11, 31, 120], [37, 99, 235]);
+            drawCompanyTile(M, 11, 14, true);
+
+            pdf.setFont('helvetica', 'normal');
+            pdf.setFontSize(9);
+            pdf.setTextColor(190, 205, 255);
+            pdf.text('Prepared for', 32, 15);
             pdf.setFont('helvetica', 'bold');
-            pdf.setFontSize(20);
-            pdf.setTextColor(17, 24, 39);
-            pdf.text(`Statement — ${selectedPartyLedger.partyName}`, 14, 22);
+            pdf.setFontSize(14);
+            pdf.setTextColor(255, 255, 255);
+            pdf.text(company, 32, 22);
+
+            // SELLAR logo + text (top-right, white pill)
+            pdf.setFont('helvetica', 'bold');
+            pdf.setFontSize(9);
+            const brandTextW = pdf.getTextWidth('SELLAR') + 5 * 0.3;
+            const sellarLh = 5;
+            let sellarLw = 0;
+            if (sellarImg) {
+                try {
+                    const lp = pdf.getImageProperties(sellarImg);
+                    sellarLw = (lp.width / lp.height) * sellarLh;
+                } catch {
+                    // continue without SELLAR logo
+                }
+            }
+            const pillPadX = 3;
+            const pillW = brandTextW + (sellarLw ? sellarLw + 2 : 0) + pillPadX * 2;
+            pdf.setFillColor(255, 255, 255);
+            pdf.roundedRect(brandRight - pillW, 7.5, pillW, 8, PDF_RADIUS, PDF_RADIUS, 'F');
+            if (sellarImg && sellarLw) {
+                pdf.addImage(sellarImg, 'PNG', brandRight - pillPadX - brandTextW - sellarLw - 2, 9, sellarLw, sellarLh);
+            }
+            pdf.setTextColor(0, 0, 0);
+            pdf.text('SELLAR', brandRight - pillPadX, 12.6, { align: 'right', charSpace: 0.3 });
+
+            pdf.setFont('helvetica', 'normal');
+            pdf.setFontSize(8.5);
+            pdf.setTextColor(190, 205, 255);
+            pdf.text(generatedAtText, brandRight, 21, { align: 'right' });
+
+            // Title block (left): icon tile + title + party line
+            pdf.setFillColor(255, 255, 255);
+            pdf.roundedRect(M, 31, 14, 14, PDF_RADIUS, PDF_RADIUS, 'F');
+            const ix = M + 3.5;
+            const iy = 31 + 3.5;
+            const k = 7 / 24;
+            const seg = (pts: [number, number][]) => {
+                for (let i = 0; i < pts.length - 1; i++) {
+                    pdf.line(ix + pts[i][0] * k, iy + pts[i][1] * k, ix + pts[i + 1][0] * k, iy + pts[i + 1][1] * k);
+                }
+            };
+            pdf.setDrawColor(37, 99, 235);
+            pdf.setLineWidth(0.5);
+            pdf.setLineCap('round');
+            pdf.setLineJoin('round');
+            seg([[15, 2], [6, 2], [4, 4], [4, 20], [6, 22], [18, 22], [20, 20], [20, 7], [15, 2]]);
+            seg([[14, 2], [14, 6], [16, 8], [20, 8]]);
+            seg([[10, 9], [8, 9]]);
+            seg([[16, 13], [8, 13]]);
+            seg([[16, 17], [8, 17]]);
+            pdf.setLineCap('butt');
+            pdf.setLineJoin('miter');
+
+            pdf.setFont('helvetica', 'bold');
+            pdf.setFontSize(24);
+            pdf.setTextColor(255, 255, 255);
+            pdf.text('Party Statement', 32, 38);
             pdf.setFont('helvetica', 'normal');
             pdf.setFontSize(10);
+            pdf.setTextColor(190, 205, 255);
+            pdf.text(pdf.splitTextToSize(partyLine, 90)[0] as string, 32, 44.5);
+
+            // Statement period (right)
+            if (appliedFilters) {
+                pdf.setFontSize(9);
+                pdf.text('Statement period', brandRight, 34, { align: 'right' });
+                pdf.setFont('helvetica', 'bold');
+                pdf.setFontSize(13);
+                pdf.setTextColor(255, 255, 255);
+                pdf.text(periodText, brandRight, 40.5, { align: 'right' });
+                pdf.setFont('helvetica', 'normal');
+                pdf.setFontSize(9);
+                pdf.setTextColor(190, 205, 255);
+                pdf.text(`${periodDays} days`, brandRight, 45.5, { align: 'right' });
+            }
+                        // ---------- 2. SUMMARY CARDS ----------
+            const cardY = 50;
+            const cardH = 32;
+            const kpiPad = 6;
+            const closingText = statement.closing === 0 ? 'Settled' : money(statement.closing);
+            const closingHint = statement.closing > 0 ? 'they owe you' : statement.closing < 0 ? 'you owe them' : 'no balance';
+            const cardsData = [
+                { label: 'Total billed', value: money(selectedPartyLedger.totalBilled), hint: `${statement.rows.filter((r) => !r.isPayment).length} bills / entries` },
+                { label: 'Received', value: money(statement.received), hint: `${statement.payments.length} ${statement.payments.length === 1 ? 'payment' : 'payments'}` },
+                { label: 'Paid out', value: money(statement.paidOut), hint: 'to this party' },
+                { label: 'Closing balance', value: closingText, hint: closingHint },
+            ];
+            const cardW = contentW / cardsData.length;
+
+            pdf.setFillColor(255, 255, 255);
+            pdf.roundedRect(M, cardY, contentW, cardH, PDF_RADIUS, PDF_RADIUS, 'F');
+            pdf.setFillColor(238, 243, 255);
+            pdf.roundedRect(M, cardY, cardW, cardH, PDF_RADIUS, PDF_RADIUS, 'F');
+            pdf.rect(M + cardW - 2, cardY, 2, cardH, 'F');
+            pdf.setDrawColor(226, 232, 240);
+            pdf.setLineWidth(0.3);
+            pdf.roundedRect(M, cardY, contentW, cardH, PDF_RADIUS, PDF_RADIUS, 'S');
+            for (let i = 1; i < cardsData.length; i++) {
+                pdf.line(M + cardW * i, cardY, M + cardW * i, cardY + cardH);
+            }
+
+            cardsData.forEach((c, i) => {
+                const cx = M + cardW * i + kpiPad;
+                pdf.setFont('helvetica', 'normal');
+                pdf.setFontSize(9.5);
+                pdf.setTextColor(100, 110, 135);
+                pdf.text(c.label, cx, cardY + 9);
+
+                // value ko card me fit karne ke liye font chhota karo
+                pdf.setFont('helvetica', 'bold');
+                let vSize = 15;
+                pdf.setFontSize(vSize);
+                const maxW = cardW - kpiPad * 2;
+                const vw = pdf.getTextWidth(c.value);
+                if (vw > maxW) {
+                    vSize = (vSize * maxW) / vw;
+                    pdf.setFontSize(vSize);
+                }
+                if (i === 0) pdf.setTextColor(29, 78, 216);
+                else if (i === 3 && statement.closing > 0) pdf.setTextColor(180, 83, 9);
+                else if (i === 3 && statement.closing === 0) pdf.setTextColor(21, 128, 61);
+                else pdf.setTextColor(17, 24, 39);
+                pdf.text(c.value, cx, cardY + 20);
+
+                pdf.setFont('helvetica', 'normal');
+                pdf.setFontSize(8.5);
+                pdf.setTextColor(120, 128, 150);
+                pdf.text(c.hint, cx, cardY + 27);
+            });
+                        // ---------- 3. STATEMENT TABLE ----------
+            const tableTitleY = cardY + cardH + 14;
+            pdf.setFont('helvetica', 'bold');
+            pdf.setFontSize(14);
+            pdf.setTextColor(17, 24, 39);
+            pdf.text('Statement', M, tableTitleY);
+            pdf.setFont('helvetica', 'normal');
+            pdf.setFontSize(10.5);
             pdf.setTextColor(107, 114, 128);
-            pdf.text(
-                [
-                    selectedPartyLedger.partyNumber && selectedPartyLedger.partyNumber !== 'N/A' ? `Phone: ${formatPhone(selectedPartyLedger.partyNumber)}` : '',
-                    appliedFilters ? `Period: ${formatRangeLabel(appliedFilters.start, appliedFilters.end)}` : '',
-                    `Generated: ${formatFullDate(Date.now())}`,
-                ].filter(Boolean).join('   |   '),
-                14,
-                29,
-            );
-            const money = (n: number) => `Rs. ${Math.round(Math.abs(n)).toLocaleString('en-IN')}`;
+            pdf.text(`${statement.rows.length} ${entryWord(statement.rows.length)} | running balance`, brandRight, tableTitleY, { align: 'right' });
+
+            // Date | Entry | Mode | Billed | Paid | Balance  (total = contentW = 182mm)
+            const COLW = [26, 54, 22, 26, 26, 28];
+
             autoTable(pdf, {
-                startY: 36,
+                startY: tableTitleY + 4,
+                margin: { top: 26, bottom: 22, left: M, right: M },
                 head: [['DATE', 'ENTRY', 'MODE', 'BILLED', 'PAID', 'BALANCE']],
                 body: statement.rows.map((r) => [
                     formatFullDate(r.date),
@@ -1175,11 +1428,101 @@ const PartyLedger: React.FC = () => {
                 ]],
                 showFoot: 'lastPage',
                 theme: 'plain',
-                styles: { font: 'helvetica', fontSize: 9, cellPadding: 4, textColor: [55, 65, 81] },
-                headStyles: { fillColor: [245, 247, 255], textColor: [17, 24, 39], fontStyle: 'bold' },
-                footStyles: { textColor: [17, 24, 39], fontStyle: 'bold', lineWidth: { top: 1 }, lineColor: [17, 24, 39] },
-                columnStyles: { 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' } },
+                styles: {
+                    font: 'helvetica',
+                    fontSize: 9,
+                    cellPadding: { top: 3.4, bottom: 3.4, left: PAD, right: PAD },
+                    textColor: [17, 24, 39],
+                    lineWidth: 0,
+                },
+                headStyles: { fillColor: [248, 250, 252], textColor: [100, 110, 135], fontStyle: 'bold', fontSize: 9.5 },
+                footStyles: { fillColor: [248, 250, 252], textColor: [17, 24, 39], fontStyle: 'bold', fontSize: 10 },
+                columnStyles: Object.fromEntries(
+                    COLW.map((w, i) => [i, i >= 3 ? { cellWidth: w, halign: 'right' } : { cellWidth: w }]),
+                ),
+                didParseCell: (data) => {
+                    data.cell.styles.valign = 'middle';
+                    // Header / footer ke Billed, Paid, Balance bhi right-aligned
+                    if (data.section !== 'body' && data.column.index >= 3) {
+                        data.cell.styles.halign = 'right';
+                    }
+                    // Footer ka "Closing balance" label do columns me phail jaye, wrap na ho
+                    if (data.section === 'foot' && data.column.index === 0) {
+                        data.cell.colSpan = 5;
+                    }
+                },
+                didDrawCell: (data) => {
+                    const { x, y, width, height } = data.cell;
+                    // Vertical column lines (grid)
+                    pdf.setDrawColor(226, 232, 240);
+                    pdf.setLineWidth(0.2);
+                    pdf.line(x + width, y, x + width, y + height);
+                    if (data.column.index === 0) pdf.line(x, y, x, y + height);
+
+                    // Horizontal lines
+                    if (data.section === 'head') {
+                        pdf.setDrawColor(37, 99, 235);
+                        pdf.setLineWidth(0.5);
+                        pdf.line(x, y + height, x + width, y + height);
+                    }
+                    if (data.section === 'body') {
+                        pdf.setDrawColor(226, 232, 240);
+                        pdf.setLineWidth(0.2);
+                        pdf.line(x, y + height, x + width, y + height);
+                    }
+                                        if (data.section === 'foot') {
+                        pdf.setDrawColor(17, 24, 39);
+                        pdf.setLineWidth(0.5);
+                        pdf.line(x, y, x + width, y);
+                        pdf.line(x, y + height, x + width, y + height);
+                    }
+                },
             });
+
+            // ---------- 4. PAGE 2+ MINI HEADER + FOOTER (har page par) ----------
+            const totalPages = pdf.getNumberOfPages();
+            for (let i = 1; i <= totalPages; i++) {
+                pdf.setPage(i);
+
+                if (i > 1) {
+                    drawCompanyTile(M, 9, 9, false);
+                    pdf.setFont('helvetica', 'bold');
+                    pdf.setFontSize(10);
+                    pdf.setTextColor(17, 24, 39);
+                    pdf.text(company, M + 12, 15.4);
+                    pdf.setFont('helvetica', 'normal');
+                    pdf.setFontSize(9);
+                    pdf.setTextColor(107, 114, 128);
+                    pdf.text(`Party Statement | ${selectedPartyLedger.partyName}`, brandRight, 15.4, { align: 'right' });
+                }
+
+                // FOOTER: SELLAR logo + SELLAR text + generated time + page number
+                const fy = ph - 12;
+                let fx = M;
+                if (sellarImg) {
+                    try {
+                        const lp = pdf.getImageProperties(sellarImg);
+                        const lh = 5;
+                        const lw = (lp.width / lp.height) * lh;
+                        pdf.addImage(sellarImg, 'PNG', fx, fy - 3.8, lw, lh);
+                        fx += lw + 2;
+                    } catch {
+                        // continue without footer logo
+                    }
+                }
+                pdf.setFont('helvetica', 'bold');
+                pdf.setFontSize(9);
+                pdf.setTextColor(0, 0, 0);
+                pdf.text('SELLAR', fx, fy, { charSpace: 0.3 });
+                fx += pdf.getTextWidth('SELLAR') + 5 * 0.3 + 4;
+
+                pdf.setFont('helvetica', 'normal');
+                pdf.setFontSize(8.5);
+                pdf.setTextColor(107, 114, 128);
+                pdf.text(generatedAtText, fx, fy);
+                pdf.text(`${company} | Party Statement | Page ${i} of ${totalPages}`, brandRight, fy, { align: 'right' });
+            }
+
             pdf.save(`Statement_${selectedPartyLedger.partyName.replace(/[^\w]+/g, '_')}_${formatDateForInput(new Date())}.pdf`);
         } catch (err) {
             console.error('Statement PDF failed:', err);

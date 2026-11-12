@@ -24,6 +24,7 @@ import autoTable from 'jspdf-autotable';
 import XLSX from 'xlsx-js-style';
 import { Spinner } from '../../constants/Spinner';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import sellarLogo from '../../assets/sellar-logo.png';
 import { useAuth } from '../../context/auth-context';
 import BackButton from '../../Components/BackButton';
 import { useGodowns, useGodownStock, SHOP_ID, SHOP_NAME } from '../hooks/useStockTransfer';
@@ -69,6 +70,66 @@ const inrRound = (n: number) => {
   const r = Math.round(n);
   return `${r < 0 ? '-' : ''}₹${Math.abs(r).toLocaleString('en-IN')}`;
 };
+
+/* ---------- PDF HELPERS ---------- */
+const toDataUrl = async (src: string): Promise<string | null> => {
+  try {
+    const blob = await (await fetch(src)).blob();
+    return await new Promise((resolve) => {
+      const r = new FileReader();
+      r.onloadend = () => resolve(r.result as string);
+      r.onerror = () => resolve(null);
+      r.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+};
+
+type RGB = [number, number, number];
+const PDF_RADIUS = 0.5;
+
+const drawGradientRect = (pdf: jsPDF, x: number, y: number, w: number, h: number, from: RGB, to: RGB) => {
+  const steps = 120;
+  const sw = w / steps;
+  for (let i = 0; i < steps; i++) {
+    const t = i / (steps - 1);
+    pdf.setFillColor(
+      Math.round(from[0] + (to[0] - from[0]) * t),
+      Math.round(from[1] + (to[1] - from[1]) * t),
+      Math.round(from[2] + (to[2] - from[2]) * t),
+    );
+    pdf.rect(x + i * sw, y, sw + 0.3, h, 'F');
+  }
+};
+
+const fmtDay = (ts: number) => {
+  const d = new Date(ts);
+  return `${d.getDate()} ${d.toLocaleString('en-US', { month: 'short' })} ${d.getFullYear()}`;
+};
+
+const fmtDayMonth = (ts: number) => {
+  const d = new Date(ts);
+  return `${d.getDate()} ${d.toLocaleString('en-US', { month: 'short' })}`;
+};
+
+const fmt2 = (n: number) =>
+  n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// Helvetica can only draw Latin-1 text. Anything else (Hindi, Arabic, emoji, ₹) prints
+// garbled with wrong widths, so overlaps the next column. Keep only what it can draw.
+const PDF_OK = /[\u0020-\u007E\u00A0-\u00FF\u2013\u2014\u2018\u2019\u201C\u201D\u2022\u2026\u2122]/;
+const pdfSafe = (value: unknown): string =>
+  Array.from(
+    String(value ?? '')
+      .replace(/₹/g, 'Rs.')
+      .replace(/[\u2010\u2011\u2212]/g, '-')
+      .replace(/[\r\t]/g, ' '),
+  )
+    .filter((ch) => ch === '\n' || PDF_OK.test(ch))
+    .join('')
+    .replace(/ {2,}/g, ' ')
+    .trim();
 
 const ItemReport: React.FC = () => {
   const { currentUser, hasPermission } = useAuth();
@@ -301,210 +362,421 @@ const ItemReport: React.FC = () => {
     };
   };
 
-  const downloadAsPdf = async () => {
+    const downloadAsPdf = async () => {
     try {
+      // Guard clause in case filteredItems is empty
+      if (!filteredItems || filteredItems.length === 0) {
+        throw new Error('No data available to export');
+      }
+
       // Landscape A4 for wide data tables
       const doc = new jsPDF('l', 'mm', 'a4');
       const pageWidth = doc.internal.pageSize.getWidth();
-
-      // ===== CLEAN GENERATION TAG (drawn first, reserves space for logo) =====
-      const now = new Date();
-      const generatedAt = now.toLocaleString('en-IN', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-
-      const margin = 14;
-
-      const tagText = `Generated using SELLAR • ${generatedAt}`;
-
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(8);
-
-      const textWidth = doc.getTextWidth(tagText);
-      const paddingX = 2;
-
-      const boxWidth = textWidth + paddingX * 2;
-      const boxHeight = 5;
-
-      const logoReservedWidth = 20; // space reserved for logo + gap, so tag never overlaps it
-      const boxX = pageWidth - margin - logoReservedWidth - boxWidth;
-      const boxY = 10;
-
-      // light gray background
-      doc.setFillColor(245, 245, 245);
-      doc.rect(boxX, boxY, boxWidth, boxHeight, "F");
-
-      // text
-      doc.setTextColor(80, 80, 80);
-      doc.text(tagText, boxX + paddingX, boxY + 3.5);
-
-      // reset styles
-      doc.setTextColor(0, 0, 0);
-
-      doc.setFontSize(14);
-
-      // --- Embed logo (drawn after, in its own reserved slot at top-right corner) ---
-      try {
-        const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
-        if (base64Logo) {
-          const img = new Image();
-          img.src = base64Logo;
-          await new Promise<void>((resolve) => {
-            img.onload = () => {
-              const logoWidth = 15;
-              const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
-              const logoX = pageWidth - logoWidth - 14;
-              doc.addImage(base64Logo, 'PNG', logoX, 8, logoWidth, logoHeight);
-              resolve();
-            };
-            img.onerror = () => resolve();
-          });
-        }
-      } catch {
-        // Continue without logo
-      }
-
-      //const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
+      const M = 14;
+      const PAD = 4;
+      const brandRight = pageWidth - M;
+      const contentW = pageWidth - M * 2;
+            const company = pdfSafe(companyName) || 'Your Business';
 
-      // --- 1. BRAND ACCENT BAR ---
-      doc.setFillColor(37, 99, 235); // blue-600
-      doc.rect(0, 0, pageWidth, 6, 'F');
-
-      // --- 2. HEADER SECTION ---
-      doc.setFontSize(22);
-      doc.setTextColor(17, 24, 39); // gray-900
-      doc.setFont('helvetica', 'bold');
-      const reportTitle = companyName
-        ? `Detailed Item Report — ${companyName}`
-        : 'Detailed Item Report';
-      doc.text(reportTitle, 14, 24);
-
-      // Dynamic Subtitle
-      doc.setFontSize(10);
-      doc.setTextColor(107, 114, 128); // gray-500
-      doc.setFont('helvetica', 'normal');
-
-      const generationDate = new Date().toLocaleDateString('en-IN', {
-        year: 'numeric', month: 'short', day: 'numeric',
-      });
-
+      const generatedAtText = `Generated ${new Date().toLocaleString('en-IN', {
+        day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit',
+      })}`;
+      const rangeStart = parseInputDate(fromDate).getTime();
+      const rangeEnd = parseInputDate(toDate).getTime();
+      const sameYear = new Date(rangeStart).getFullYear() === new Date(rangeEnd).getFullYear();
       const periodText = fromDate === toDate
-        ? `Period: ${new Date(fromDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}`
-        : `Period: ${new Date(fromDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })} to ${new Date(toDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}`;
+        ? fmtDay(rangeStart)
+        : sameYear
+          ? `${fmtDayMonth(rangeStart)} – ${fmtDay(rangeEnd)}`
+          : `${fmtDay(rangeStart)} – ${fmtDay(rangeEnd)}`;
+      const periodDays = Math.max(1, Math.round((rangeEnd - rangeStart) / 86400000) + 1);
 
-      const subtitleText = `Generated: ${generationDate}   |   ${periodText}   |   Total Items: ${summary.totalItems}   |   Avg Margin: ${Math.round(summary.averageMarginPercentage)}%`;
-      doc.text(subtitleText, 14, 31);
+      // ---------- ASSETS ----------
+      const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId).catch(() => null);
+      const sellarImg = await toDataUrl(sellarLogo);
 
-      // --- 3. DYNAMIC DATA PREPARATION ---
-      // Guard clause in case filteredItems is empty
-      if (!filteredItems || filteredItems.length === 0) {
-        throw new Error("No data available to export");
-      }
-
-      const exportData = filteredItems.map(prepareExportDataForPdf);
-
-      // Helper to convert camelCase/snake_case keys to clean uppercase headers
-      // e.g. "totalSalesAmount" -> "TOTAL SALES AMOUNT"
-      const formatHeader = (str: string) => {
-        return str
-          .replace(/([A-Z])/g, ' $1')
-          .replace(/_/g, ' ')
-          .trim()
-          .toUpperCase();
+      const drawCompanyTile = (x: number, y: number, size: number, onDark: boolean) => {
+        let drawn = false;
+        if (base64Logo) {
+          try {
+            const props = doc.getImageProperties(base64Logo);
+            const maxSide = size - size * 0.22;
+            const scale = Math.min(maxSide / props.width, maxSide / props.height);
+            const w = props.width * scale;
+            const h = props.height * scale;
+            doc.setFillColor(255, 255, 255);
+            if (onDark) {
+              doc.roundedRect(x, y, size, size, PDF_RADIUS, PDF_RADIUS, 'F');
+            } else {
+              doc.setDrawColor(229, 231, 235);
+              doc.setLineWidth(0.3);
+              doc.roundedRect(x, y, size, size, PDF_RADIUS, PDF_RADIUS, 'FD');
+            }
+            doc.addImage(base64Logo, props.fileType, x + (size - w) / 2, y + (size - h) / 2, w, h);
+            drawn = true;
+          } catch {
+            // invalid logo -> initial fallback
+          }
+        }
+        if (!drawn) {
+          if (onDark) doc.setFillColor(52, 78, 168);
+          else doc.setFillColor(37, 99, 235);
+          doc.roundedRect(x, y, size, size, PDF_RADIUS, PDF_RADIUS, 'F');
+          doc.setTextColor(255, 255, 255);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(size * 0.9);
+          doc.text(
+            (companyName.trim().charAt(0) || 'S').toUpperCase(),
+            x + size / 2,
+            y + size / 2,
+            { align: 'center', baseline: 'middle' },
+          );
+        }
       };
 
-      const rawHeaders = Object.keys(exportData[0] || {});
-      const cleanHeaders = rawHeaders.map(formatHeader);
-      const body = exportData.map((obj) => Object.values(obj));
+      const INK: RGB = [17, 24, 39];
+      const GRAY: RGB = [107, 114, 128];
+      const LIGHT: RGB = [156, 163, 175];
+      const RED: RGB = [220, 38, 38];
 
-      const numericColumns = ['mrp', 'purchasePrice', 'discount', 'tax', 'stock', 'restockQuantity'];
-      const columnStyles: any = {};
+      // ---------- DATA (same filteredItems + prepareExportDataForPdf as before) ----------
+      const exportData = filteredItems.map(prepareExportDataForPdf);
 
-      rawHeaders.forEach((key, index) => {
-        if (key === 'name') {
-          columnStyles[index] = { cellWidth: 48 };
-        } else if (key === 'purchasePrice') {
-          columnStyles[index] = { cellWidth: 30, halign: 'right' };
-        } else if (key === 'mrp') {
-          columnStyles[index] = { cellWidth: 20, halign: 'right' };
-        } else if (key === 'discount') {
-          columnStyles[index] = { cellWidth: 29, halign: 'right' };
-        } else if (key === 'tax') {
-          columnStyles[index] = { cellWidth: 25, halign: 'right' };
-        } else if (key === 'stock') {
-          columnStyles[index] = { cellWidth: 25, halign: 'right' };
-        } else if (key === 'barcode') {
-          columnStyles[index] = { cellWidth: 28 };
-        } else if (key === 'restockQuantity') {
-          columnStyles[index] = { cellWidth: 30, halign: 'right' };
-        } else if (numericColumns.includes(key)) {
-          columnStyles[index] = { halign: 'right' };
+      // ---------- 1. HEADER (gradient) ----------
+      drawGradientRect(doc, 0, 0, pageWidth, 64, [11, 31, 120], [37, 99, 235]);
+
+      drawCompanyTile(M, 11, 14, true);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(190, 205, 255);
+      doc.text('Prepared for', 32, 15);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.setTextColor(255, 255, 255);
+      doc.text(company, 32, 22);
+
+      // SELLAR logo + text (top-right, white pill)
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      const brandTextW = doc.getTextWidth('SELLAR') + 5 * 0.3;
+      const sellarLh = 5;
+      let sellarLw = 0;
+      if (sellarImg) {
+        try {
+          const lp = doc.getImageProperties(sellarImg);
+          sellarLw = (lp.width / lp.height) * sellarLh;
+        } catch {
+          // continue without SELLAR logo
         }
+      }
+      const pillPadX = 3;
+      const pillW = brandTextW + (sellarLw ? sellarLw + 2 : 0) + pillPadX * 2;
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(brandRight - pillW, 7.5, pillW, 8, PDF_RADIUS, PDF_RADIUS, 'F');
+      if (sellarImg && sellarLw) {
+        doc.addImage(
+          sellarImg,
+          'PNG',
+          brandRight - pillPadX - brandTextW - sellarLw - 2,
+          9,
+          sellarLw,
+          sellarLh,
+        );
+      }
+      doc.setTextColor(0, 0, 0);
+      doc.text('SELLAR', brandRight - pillPadX, 12.6, { align: 'right', charSpace: 0.3 });
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(190, 205, 255);
+      doc.text(generatedAtText, brandRight, 21, { align: 'right' });
+
+      // Title block (left)
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(M, 31, 14, 14, PDF_RADIUS, PDF_RADIUS, 'F');
+
+      // Tag icon (lucide, 24x24 grid -> 7mm)
+      const ix = M + 3.5;
+      const iy = 31 + 3.5;
+      const k = 7 / 24;
+      const seg = (pts: [number, number][]) => {
+        for (let i = 0; i < pts.length - 1; i++) {
+          doc.line(
+            ix + pts[i][0] * k, iy + pts[i][1] * k,
+            ix + pts[i + 1][0] * k, iy + pts[i + 1][1] * k,
+          );
+        }
+      };
+      doc.setDrawColor(37, 99, 235);
+      doc.setLineWidth(0.5);
+      doc.setLineCap('round');
+      doc.setLineJoin('round');
+      seg([
+        [12.6, 2.6], [11.2, 2], [4, 2], [2, 4], [2, 11.2], [2.6, 12.6],
+        [11.3, 21.3], [14.7, 21.3], [21.3, 14.7], [21.3, 11.3], [12.6, 2.6],
+      ]);
+      doc.setFillColor(37, 99, 235);
+      doc.circle(ix + 7.5 * k, iy + 7.5 * k, 0.5, 'F');
+      doc.setLineCap('butt');
+      doc.setLineJoin('miter');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(26);
+      doc.setTextColor(255, 255, 255);
+      doc.text('Detailed Item Report', 32, 38);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(190, 205, 255);
+      doc.text('Prices, stock and restock levels for every item', 32, 44.5);
+
+      // Report period (right)
+      doc.setFontSize(9);
+      doc.text('Report period', brandRight, 34, { align: 'right' });
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.setTextColor(255, 255, 255);
+      doc.text(periodText, brandRight, 40.5, { align: 'right' });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(190, 205, 255);
+      doc.text(`${periodDays} ${periodDays === 1 ? 'day' : 'days'}`, brandRight, 45.5, { align: 'right' });
+
+      // ---------- 2. SUMMARY STRIP ----------
+      const cardY = 50;
+      const cardH = 32;
+      const kpiPad = 6;
+      const colWs = [62, 62, contentW - 124];
+      const colXs = [M, M + colWs[0], M + colWs[0] + colWs[1]];
+
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(M, cardY, contentW, cardH, PDF_RADIUS, PDF_RADIUS, 'F');
+      doc.setFillColor(238, 243, 255);
+      doc.roundedRect(M, cardY, colWs[0], cardH, PDF_RADIUS, PDF_RADIUS, 'F');
+      doc.rect(M + colWs[0] - 2, cardY, 2, cardH, 'F');
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(M, cardY, contentW, cardH, PDF_RADIUS, PDF_RADIUS, 'S');
+      doc.line(colXs[1], cardY, colXs[1], cardY + cardH);
+      doc.line(colXs[2], cardY, colXs[2], cardY + cardH);
+
+      // Total items
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9.5);
+      doc.setTextColor(100, 110, 135);
+      doc.text('Total items', colXs[0] + kpiPad, cardY + 9);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(20);
+      doc.setTextColor(29, 78, 216);
+      doc.text(summary.totalItems.toLocaleString('en-IN'), colXs[0] + kpiPad, cardY + 20);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(120, 128, 150);
+      doc.text('in your catalogue', colXs[0] + kpiPad, cardY + 27);
+
+      // Average margin
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9.5);
+      doc.setTextColor(100, 110, 135);
+      doc.text('Average margin', colXs[1] + kpiPad, cardY + 9);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(15);
+      doc.setTextColor(INK[0], INK[1], INK[2]);
+      doc.text(`${Math.round(summary.averageMarginPercentage)}%`, colXs[1] + kpiPad, cardY + 20);
+
+      // How to read this report
+      const lx = colXs[2] + kpiPad;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9.5);
+      doc.setTextColor(100, 110, 135);
+      doc.text('How to read this report', lx, cardY + 9);
+
+      // legend row 1: red pill + text
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      const pillTxt = '-2';
+      const pillTxtW = doc.getTextWidth(pillTxt);
+      doc.setFillColor(254, 226, 226);
+      doc.roundedRect(lx, cardY + 13.2, pillTxtW + 5, 5.4, PDF_RADIUS, PDF_RADIUS, 'F');
+      doc.setTextColor(RED[0], RED[1], RED[2]);
+      doc.text(pillTxt, lx + 2.5, cardY + 17);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9.5);
+      doc.setTextColor(INK[0], INK[1], INK[2]);
+      doc.text('Negative stock: more sold than recorded', lx + pillTxtW + 8, cardY + 17);
+
+      // legend row 2: dash + text
+      doc.setTextColor(LIGHT[0], LIGHT[1], LIGHT[2]);
+      doc.text('—', lx + 1, cardY + 25);
+      doc.setTextColor(INK[0], INK[1], INK[2]);
+      doc.text('Price not set for this item', lx + pillTxtW + 8, cardY + 25);
+
+      // ---------- 3. ITEM DETAILS TABLE ----------
+      const listY = cardY + cardH + 14;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.setTextColor(17, 24, 39);
+      doc.text('Item details', M, listY);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10.5);
+      doc.setTextColor(107, 114, 128);
+      doc.text(
+        `${exportData.length.toLocaleString('en-IN')} ${exportData.length === 1 ? 'item' : 'items'}`,
+        brandRight,
+        listY,
+        { align: 'right' },
+      );
+
+      const priceCell = (v: number) => ({
+        content: v > 0 ? fmt2(v) : '—',
+        styles: { halign: 'right' as const, textColor: v > 0 ? INK : LIGHT },
+      });
+      const numCell = (v: number) => ({
+        content: String(v),
+        styles: { halign: 'right' as const, textColor: v ? INK : LIGHT },
       });
 
-      // --- 4. AUTOTABLE GENERATION ---
+            const tableBody: any[] = exportData.map((e) => [
+        { content: pdfSafe(e.name) || 'N/A', styles: { fontStyle: 'bold' } },
+        { content: pdfSafe(e.itemGroupId) || '-', styles: { textColor: GRAY } },
+        { content: pdfSafe(e.barcode) || '-', styles: { textColor: GRAY } },
+        priceCell(e.mrp),
+        priceCell(e.purchasePrice),
+        numCell(e.discount),
+        numCell(e.tax),
+        {
+          content: e.stock < 0 ? '' : e.stock.toLocaleString('en-IN'),
+          styles: { halign: 'right' as const, textColor: e.stock ? INK : LIGHT },
+        },
+        numCell(e.restockQuantity),
+      ]);
+
+      // Item | Group | Barcode | MRP | Purchase | Discount | Tax | Stock | Restock  (total = 269mm)
+const COLW = [52, 32, 34, 28, 34, 25, 14, 22, 28];
+
       autoTable(doc, {
-        startY: 38,
-        head: [cleanHeaders],
-        body: body,
-        columnStyles: columnStyles,
+        startY: listY + 4,
+        margin: { top: 26, bottom: 22, left: M, right: M },
+        head: [['Item', 'Group', 'Barcode', 'MRP (Rs.)', 'Purchase price (Rs.)', 'Discount', 'Tax', 'Stock', 'Restock qty']],
+        body: tableBody,
         theme: 'plain',
         styles: {
           font: 'helvetica',
-          cellPadding: 6,
-          fontSize: 9, // Slightly smaller to fit dynamic columns in landscape
-          textColor: [55, 65, 81], // gray-700
+          fontSize: 10.5,
+          cellPadding: { top: 3.4, bottom: 3.4, left: PAD, right: PAD },
+          textColor: [17, 24, 39],
+          lineWidth: 0,
         },
         headStyles: {
-          fillColor: [249, 250, 251], // gray-50
-          textColor: [17, 24, 39], // gray-900
+          fillColor: [248, 250, 252],
+          textColor: [100, 110, 135],
           fontStyle: 'bold',
-          lineWidth: { top: 1, bottom: 1 },
-          lineColor: [229, 231, 235], // gray-200
+          fontSize: 9.5,
         },
-        alternateRowStyles: {
-          fillColor: [252, 252, 252], // Subtle zebra striping
-        },
-        // --- 5. SMART CONDITIONAL FORMATTING ---
-        didParseCell: function (data) {
-          if (data.section === 'body') {
-            if (numericColumns.includes(rawHeaders[data.column.index])) {
-              data.cell.styles.halign = 'right';
+        columnStyles: COLW.reduce((acc: any, w, i) => {
+          acc[i] = { cellWidth: w, ...(i >= 3 ? { halign: 'right' } : {}) };
+          return acc;
+        }, {}),
+                didParseCell: (data) => {
+          data.cell.styles.valign = 'middle';
 
-              const value = parseFloat(String(data.cell.raw ?? '0'));
-              if (!isNaN(value) && value < 0) {
-                data.cell.styles.textColor = [220, 38, 38];
-                data.cell.styles.fontStyle = 'bold';
-              }
+          // Header numeric columns right-aligned (matches body)
+          if (data.section === 'head' && data.column.index >= 3) {
+            data.cell.styles.halign = 'right';
+          }
+
+          // MRP / Purchase price: very long numbers shrink instead of wrapping
+          if (data.section === 'body' && (data.column.index === 3 || data.column.index === 4)) {
+            const base = Number(data.cell.styles.fontSize) || 10.5;
+            doc.setFont('helvetica', data.cell.styles.fontStyle === 'bold' ? 'bold' : 'normal');
+            doc.setFontSize(base);
+            const w = doc.getTextWidth(data.cell.text.join(' '));
+            const avail = COLW[data.column.index] - PAD * 2;
+            if (w > avail) data.cell.styles.fontSize = Math.max((base * avail) / w, 6);
+          }
+        },
+        didDrawCell: (data) => {
+          const { x, y, width, height } = data.cell;
+
+          // Negative stock -> red pill
+          if (data.section === 'body' && data.column.index === 7) {
+            const stockVal = exportData[data.row.index]?.stock ?? 0;
+            if (stockVal < 0) {
+              const label = `-${Math.abs(stockVal).toLocaleString('en-IN')}`;
+              doc.setFont('helvetica', 'bold');
+              doc.setFontSize(9.5);
+              const tw = doc.getTextWidth(label);
+              const pw = tw + 5;
+              const px = x + width - PAD - pw;
+              doc.setFillColor(254, 226, 226);
+              doc.roundedRect(px, y + height / 2 - 3, pw, 6, PDF_RADIUS, PDF_RADIUS, 'F');
+              doc.setTextColor(RED[0], RED[1], RED[2]);
+              doc.text(label, px + 2.5, y + height / 2 + 1.2);
             }
           }
 
+          // Horizontal lines only (no column grid)
           if (data.section === 'head') {
-            if (numericColumns.includes(rawHeaders[data.column.index])) {
-              data.cell.styles.halign = 'right';
-            } else {
-              data.cell.styles.halign = 'left';
-            }
+            doc.setDrawColor(37, 99, 235);
+            doc.setLineWidth(0.5);
+            doc.line(x, y + height, x + width, y + height);
           }
-        },
-        // --- 6. PAGINATION FOOTER ---
-        didDrawPage: function () {
-          const pageCount = (doc.internal as any).getNumberOfPages();
-          doc.setFontSize(9);
-          doc.setTextColor(156, 163, 175); // gray-400
-          doc.text(
-            `Page ${pageCount}`,
-            pageWidth - 14,
-            pageHeight - 10,
-            { align: 'right' }
-          );
+          if (data.section === 'body') {
+            doc.setDrawColor(226, 232, 240);
+            doc.setLineWidth(0.2);
+            doc.line(x, y + height, x + width, y + height);
+          }
         },
       });
+
+      // ---------- 4. PAGE 2+ MINI HEADER + FOOTER (every page) ----------
+      const totalPages = doc.getNumberOfPages();
+
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+
+        if (i > 1) {
+          drawCompanyTile(M, 9, 9, false);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(10);
+          doc.setTextColor(17, 24, 39);
+          doc.text(company, M + 12, 15.4);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(9);
+          doc.setTextColor(107, 114, 128);
+          doc.text(`Detailed Item Report | ${periodText}`, brandRight, 15.4, { align: 'right' });
+        }
+
+        const fy = pageHeight - 12;
+        let x = M;
+        if (sellarImg) {
+          try {
+            const lp = doc.getImageProperties(sellarImg);
+            const lh = 5;
+            const lw = (lp.width / lp.height) * lh;
+            doc.addImage(sellarImg, 'PNG', x, fy - 3.8, lw, lh);
+            x += lw + 2;
+          } catch {
+            // continue without footer logo
+          }
+        }
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.setTextColor(0, 0, 0);
+        doc.text('SELLAR', x, fy, { charSpace: 0.3 });
+        x += doc.getTextWidth('SELLAR') + 5 * 0.3 + 4;
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8.5);
+        doc.setTextColor(107, 114, 128);
+        doc.text(generatedAtText, x, fy);
+
+        doc.text(`${company} | Detailed Item Report | Page ${i} of ${totalPages}`, brandRight, fy, {
+          align: 'right',
+        });
+      }
 
       doc.save('detailed_item_report.pdf');
 
@@ -519,7 +791,7 @@ const ItemReport: React.FC = () => {
       setFeedbackModal({
         isOpen: true,
         type: State.ERROR,
-        message: e?.message === "No data available to export"
+        message: e?.message === 'No data available to export'
           ? 'No data available to export.'
           : 'Failed to generate PDF.',
       });

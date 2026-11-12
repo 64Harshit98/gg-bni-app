@@ -13,6 +13,7 @@ import {
   Info,
   MapPin,
   Package,
+  Pencil,
   Plus,
   RefreshCw,
   Ruler,
@@ -38,10 +39,12 @@ import {
 } from '../hooks/useStockTransfer';
 import { GodownModal } from '../../Components/GodownModal';
 import { TransferStockModal } from '../../Components/TransferStockModal';
+import { DeleteGodownModal } from '../../Components/DeleteGodownModal';
 import { State } from '../../enums';
-import { Modal } from '../../constants/Modal';
+import { ThemedModal as Modal } from '../../Components/ThemeModal';
 import { Spinner } from '../../constants/Spinner';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
+import sellarLogo from '../../assets/sellar-logo.png';
 import DownloadMenu from './SalesReportComponents/DownloadMenu';
 import CustomRangePanel from './SalesReportComponents/CustomRangePanel';
 import {
@@ -61,6 +64,43 @@ type HistorySortKey = 'date' | 'itemName' | 'quantity';
 
 const PAGE_SIZE = 100;
 const qty = (n: number) => n.toLocaleString('en-IN');
+
+/* ---------- PDF HELPERS (same look as Sales Report PDF) ---------- */
+type RGB = [number, number, number];
+const PDF_RADIUS = 0.5; // ≈ Tailwind rounded-sm
+
+const toDataUrl = async (src: string): Promise<string | null> => {
+  try {
+    const blob = await (await fetch(src)).blob();
+    return await new Promise((resolve) => {
+      const r = new FileReader();
+      r.onloadend = () => resolve(r.result as string);
+      r.onerror = () => resolve(null);
+      r.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+};
+
+const drawGradientRect = (pdf: jsPDF, x: number, y: number, w: number, h: number, from: RGB, to: RGB) => {
+  const steps = 120;
+  const sw = w / steps;
+  for (let i = 0; i < steps; i++) {
+    const t = i / (steps - 1);
+    pdf.setFillColor(
+      Math.round(from[0] + (to[0] - from[0]) * t),
+      Math.round(from[1] + (to[1] - from[1]) * t),
+      Math.round(from[2] + (to[2] - from[2]) * t),
+    );
+    pdf.rect(x + i * sw, y, sw + 0.3, h, 'F');
+  }
+};
+
+const fmtDay = (ts: number) => {
+  const d = new Date(ts);
+  return `${d.getDate()} ${d.toLocaleString('en-US', { month: 'short' })} ${d.getFullYear()}`;
+};
 const plural = (n: number, word: string, many = `${word}s`) => `${qty(n)} ${n === 1 ? word : many}`;
 
 const TYPE_LABEL: Record<StockTransfer['type'], string> = {
@@ -158,7 +198,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
   const [isRangeOpen, setIsRangeOpen] = useState(false);
 
   /* ---------- DATA ---------- */
-  const { godowns, loading: godownsLoading, addGodown } = useGodowns(companyId);
+  const { godowns, loading: godownsLoading, addGodown, updateGodown, deleteGodown } = useGodowns(companyId);
   const { stockRows, items, loading: stockLoading } = useGodownStock(companyId, godowns);
   const {
     transfers,
@@ -178,6 +218,11 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [isListVisible, setIsListVisible] = useState(true);
   const [isGodownModalOpen, setIsGodownModalOpen] = useState(false);
+  const [editingGodown, setEditingGodown] = useState<{ id: string; name: string; location?: string; type?: 'godown' | 'branch' } | null>(null);
+  const [godownToDelete, setGodownToDelete] = useState<{ id: string; name: string } | null>(null);
+  // Godown that still has stock. Totals are captured when the dialog opens so
+  // the numbers don't change while the stock is being moved out.
+  const [godownToMove, setGodownToMove] = useState<{ id: string; name: string; qty: number; items: number } | null>(null);
   const [transferModal, setTransferModal] = useState<{ open: boolean; fromId?: string; toId?: string; itemId?: string }>({ open: false });
   const [feedbackModal, setFeedbackModal] = useState({ isOpen: false, type: State.INFO, message: '' });
   const [deleteConfirm, setDeleteConfirm] = useState<StockTransfer | null>(null);
@@ -330,6 +375,84 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
     setIsRangeOpen(false);
   };
 
+  const closeGodownModal = () => {
+    setIsGodownModalOpen(false);
+    setEditingGodown(null);
+  };
+
+  const openEditGodown = (id: string) => {
+    const g = godowns.find((x) => x.id === id);
+    if (!g) return;
+    setEditingGodown({ id: g.id, name: g.name, location: g.location, type: g.type });
+    setIsGodownModalOpen(true);
+  };
+
+  const handleSaveGodown = async (data: { name: string; location?: string; type: 'godown' | 'branch' }) => {
+    const name = data.name.trim();
+    const clash = locations.some((l) => l.id !== editingGodown?.id && l.name.trim().toLowerCase() === name.toLowerCase());
+    if (clash) throw new Error('A location with this name already exists.');
+    if (editingGodown) {
+      await updateGodown(companyId!, editingGodown.id, { name, location: data.location?.trim() || '', type: data.type });
+      return editingGodown.id;
+    }
+    return addGodown(companyId!, { ...data, name });
+  };
+
+  const requestDeleteGodown = (id: string) => {
+    const g = godowns.find((x) => x.id === id);
+    if (!g) return;
+    const t = locationTotals(id);
+    if (t.qty > 0) {
+      setGodownToMove({ id: g.id, name: g.name, qty: t.qty, items: t.items });
+      return;
+    }
+    setGodownToDelete({ id: g.id, name: g.name });
+  };
+
+  const confirmDeleteGodown = async () => {
+    if (!companyId || !godownToDelete) return;
+    const { id } = godownToDelete;
+    setGodownToDelete(null);
+    try {
+      await deleteGodown(companyId, id);
+      if (locationFilter === id) setLocationFilter('');
+    } catch (err) {
+      console.error('Failed to delete godown:', err);
+      setFeedbackModal({ isOpen: true, type: State.ERROR, message: 'Failed to delete godown.' });
+    }
+  };
+
+  // Moves every item out of the godown (in chunks, since a Firestore transaction
+  // has a write limit), then deletes it. Throws on failure so the dialog can show
+  // the error; the godown is only deleted if every transfer succeeded.
+  const moveAllAndDeleteGodown = async (toId: string, toName: string) => {
+    if (!companyId || !godownToMove) return;
+    const from = godownToMove;
+    const rows = stockRows.filter((r) => r.godownId === from.id && r.quantity > 0);
+    const CHUNK = 200; // 2 writes per item, Firestore allows 500 per transaction
+
+    for (let i = 0; i < rows.length; i += CHUNK) {
+      await transferStock(companyId, {
+        items: rows.slice(i, i + CHUNK).map((r) => ({
+          itemId: r.itemId,
+          itemName: r.itemName,
+          unit: r.unit,
+          quantity: r.quantity,
+        })),
+        fromGodownId: from.id,
+        fromGodownName: from.name,
+        toGodownId: toId,
+        toGodownName: toName,
+        date: Date.now(),
+        remarks: `Moved before deleting ${from.name}`,
+      });
+    }
+
+    await deleteGodown(companyId, from.id);
+    if (locationFilter === from.id) setLocationFilter('');
+    setGodownToMove(null);
+  };
+
   const openTransfer = (opts: { fromId?: string; toId?: string; itemId?: string } = {}) => {
     if (!hasSecondLocation) return;
     setTransferModal({ open: true, ...opts });
@@ -361,89 +484,346 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
       const pdf = new jsPDF();
       const pw = pdf.internal.pageSize.getWidth();
       const ph = pdf.internal.pageSize.getHeight();
-      pdf.setFillColor(...((theme === 'orange' ? [234, 88, 12] : [21, 93, 252]) as [number, number, number]));
-      pdf.rect(0, 0, pw, 6, 'F');
+      const M = 14;
+      const PAD = 3;
+      const brandRight = pw - M;
+      const contentW = pw - M * 2;
+      const company = companyName || 'Your Business';
+      const reportTitle = isStock ? 'Godown Stock Report' : 'Stock Transfer History';
 
-      const tagText = `Generated by SELLAR • ${new Date().toLocaleString('en-IN')}`;
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(8);
-      const boxWidth = pdf.getTextWidth(tagText) + 4;
-      const boxX = pw - 14 - 18 - boxWidth;
-      pdf.setFillColor(245, 245, 245);
-      pdf.rect(boxX, 10, boxWidth, 5, 'F');
-      pdf.setTextColor(80, 80, 80);
-      pdf.text(tagText, boxX + 2, 13.5);
+      // Theme colours: blue = POS, orange = Catalogue
+      const P: { from: RGB; to: RGB; light: RGB; accent: RGB; soft: RGB; tile: RGB; tileDark: RGB } =
+        theme === 'orange'
+          ? { from: [154, 52, 18], to: [234, 88, 12], light: [255, 226, 205], accent: [194, 65, 12], soft: [255, 237, 213], tile: [234, 88, 12], tileDark: [194, 65, 12] }
+          : { from: [11, 31, 120], to: [37, 99, 235], light: [190, 205, 255], accent: [29, 78, 216], soft: [238, 243, 255], tile: [37, 99, 235], tileDark: [52, 78, 168] };
 
-      try {
-        const logo = await resolveCompanyLogoBase64(companyId);
-        if (logo) {
-          await new Promise<void>((resolve) => {
-            const img = new Image();
-            img.onload = () => {
-              const w = 13;
-              pdf.addImage(logo, 'PNG', pw - w - 14, 8, w, (img.naturalHeight / img.naturalWidth) * w);
-              resolve();
-            };
-            img.onerror = () => resolve();
-            img.src = logo;
-          });
+      const generatedAtText = `Generated ${new Date().toLocaleString('en-IN', {
+        day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit',
+      })}`;
+      const periodText = appliedFilters ? `${fmtDay(appliedFilters.start)} – ${fmtDay(appliedFilters.end)}` : '';
+      const periodDays = appliedFilters
+        ? Math.max(1, Math.round((appliedFilters.end - appliedFilters.start) / 86400000))
+        : 0;
+      const subtitle = isStock
+        ? (locationFilter ? locationName(locationFilter) : 'All locations')
+        : 'Every purchase and transfer';
+
+      // ---------- ASSETS ----------
+      const base64Logo = await resolveCompanyLogoBase64(companyId).catch(() => null);
+      const sellarImg = await toDataUrl(sellarLogo);
+
+      const drawCompanyTile = (x: number, y: number, size: number, onDark: boolean) => {
+        let drawn = false;
+        if (base64Logo) {
+          try {
+            const props = pdf.getImageProperties(base64Logo);
+            const maxSide = size - size * 0.22;
+            const scale = Math.min(maxSide / props.width, maxSide / props.height);
+            const w = props.width * scale;
+            const h = props.height * scale;
+            pdf.setFillColor(255, 255, 255);
+            if (onDark) {
+              pdf.roundedRect(x, y, size, size, PDF_RADIUS, PDF_RADIUS, 'F');
+            } else {
+              pdf.setDrawColor(229, 231, 235);
+              pdf.setLineWidth(0.3);
+              pdf.roundedRect(x, y, size, size, PDF_RADIUS, PDF_RADIUS, 'FD');
+            }
+            pdf.addImage(base64Logo, props.fileType, x + (size - w) / 2, y + (size - h) / 2, w, h);
+            drawn = true;
+          } catch {
+            // invalid logo -> initial fallback
+          }
         }
-      } catch {
-        // Continue without logo
-      }
-
-      const baseTitle = isStock ? 'Godown Stock Report' : 'Stock Transfer History';
-      pdf.setFontSize(22);
-      pdf.setTextColor(17, 24, 39);
-      pdf.text(companyName ? `${baseTitle} — ${companyName}` : baseTitle, 14, 24);
-      pdf.setFontSize(10);
-      pdf.setFont('helvetica', 'normal');
-      pdf.setTextColor(107, 114, 128);
-      pdf.text(
-        isStock
-          ? `Generated: ${formatFullDate(Date.now())}   |   ${locationFilter ? locationName(locationFilter) : 'All locations'}`
-          : `Generated: ${formatFullDate(Date.now())}   |   Period: ${appliedFilters ? formatRangeLabel(appliedFilters.start, appliedFilters.end) : ''}`,
-        14,
-        31,
-      );
-
-      const tableStyles = {
-        theme: 'plain' as const,
-        styles: { font: 'helvetica', cellPadding: 5, fontSize: 9.5, textColor: [55, 65, 81] as [number, number, number] },
-        headStyles: { fillColor: [245, 247, 255] as [number, number, number], textColor: [17, 24, 39] as [number, number, number], fontStyle: 'bold' as const, lineWidth: { top: 1, bottom: 1 }, lineColor: [223, 230, 251] as [number, number, number] },
-        footStyles: { fillColor: [255, 255, 255] as [number, number, number], textColor: [17, 24, 39] as [number, number, number], fontStyle: 'bold' as const, lineWidth: { top: 1, bottom: 2 }, lineColor: [17, 24, 39] as [number, number, number] },
-        showFoot: 'lastPage' as const,
-        didDrawPage: () => {
-          pdf.setFontSize(9);
-          pdf.setTextColor(156, 163, 175);
-          pdf.text(`Page ${pdf.getNumberOfPages()}`, pw - 14, ph - 10, { align: 'right' });
-        },
+        if (!drawn) {
+          const c = onDark ? P.tileDark : P.tile;
+          pdf.setFillColor(c[0], c[1], c[2]);
+          pdf.roundedRect(x, y, size, size, PDF_RADIUS, PDF_RADIUS, 'F');
+          pdf.setTextColor(255, 255, 255);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setFontSize(size * 0.9);
+          pdf.text((companyName.trim().charAt(0) || 'S').toUpperCase(), x + size / 2, y + size / 2, { align: 'center', baseline: 'middle' });
+        }
       };
 
-      if (isStock) {
-        autoTable(pdf, {
-          ...tableStyles,
-          startY: 38,
-          head: [['ITEM', 'GODOWN', 'QUANTITY', 'UNIT', 'LOCATION']],
-          body: filteredStock.map((r) => [r.itemName, r.godownName, qty(r.quantity), r.unit || 'Not set', locations.find((l) => l.id === r.godownId)?.location || '-']),
-          foot: [[`Total · ${plural(filteredStockTotals.items, 'item')}`, plural(filteredStockTotals.locations, 'location'), qty(filteredStockTotals.qty), '', '']],
-          columnStyles: { 2: { halign: 'right' } },
-        });
-        pdf.save(`Godown_Stock_Report_${formatDateForInput(new Date())}.pdf`);
-      } else {
-        autoTable(pdf, {
-          ...tableStyles,
-          startY: 38,
-          head: [['DATE', 'ITEM', 'FROM', 'TO', 'QTY', 'TYPE', 'REMARKS']],
-          body: filteredHistory.map((t) => [
+      // ---------- 1. HEADER (gradient) ----------
+      drawGradientRect(pdf, 0, 0, pw, 64, P.from, P.to);
+      drawCompanyTile(M, 11, 14, true);
+
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
+      pdf.setTextColor(P.light[0], P.light[1], P.light[2]);
+      pdf.text('Prepared for', 32, 15);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(14);
+      pdf.setTextColor(255, 255, 255);
+      pdf.text(company, 32, 22);
+
+      // SELLAR logo + text (top-right, white pill)
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(9);
+      const brandTextW = pdf.getTextWidth('SELLAR') + 5 * 0.3;
+      const sellarLh = 5;
+      let sellarLw = 0;
+      if (sellarImg) {
+        try {
+          const lp = pdf.getImageProperties(sellarImg);
+          sellarLw = (lp.width / lp.height) * sellarLh;
+        } catch {
+          // continue without SELLAR logo
+        }
+      }
+      const pillPadX = 3;
+      const pillW = brandTextW + (sellarLw ? sellarLw + 2 : 0) + pillPadX * 2;
+      pdf.setFillColor(255, 255, 255);
+      pdf.roundedRect(brandRight - pillW, 7.5, pillW, 8, PDF_RADIUS, PDF_RADIUS, 'F');
+      if (sellarImg && sellarLw) {
+        pdf.addImage(sellarImg, 'PNG', brandRight - pillPadX - brandTextW - sellarLw - 2, 9, sellarLw, sellarLh);
+      }
+      pdf.setTextColor(0, 0, 0);
+      pdf.text('SELLAR', brandRight - pillPadX, 12.6, { align: 'right', charSpace: 0.3 });
+
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(8.5);
+      pdf.setTextColor(P.light[0], P.light[1], P.light[2]);
+      pdf.text(generatedAtText, brandRight, 21, { align: 'right' });
+
+      // Title block (left): icon tile + title + subtitle
+      pdf.setFillColor(255, 255, 255);
+      pdf.roundedRect(M, 31, 14, 14, PDF_RADIUS, PDF_RADIUS, 'F');
+      const ix = M + 3.5;
+      const iy = 31 + 3.5;
+      const k = 7 / 24;
+      const seg = (pts: [number, number][]) => {
+        for (let i = 0; i < pts.length - 1; i++) {
+          pdf.line(ix + pts[i][0] * k, iy + pts[i][1] * k, ix + pts[i + 1][0] * k, iy + pts[i + 1][1] * k);
+        }
+      };
+      pdf.setDrawColor(P.tile[0], P.tile[1], P.tile[2]);
+      pdf.setLineWidth(0.5);
+      pdf.setLineCap('round');
+      pdf.setLineJoin('round');
+      seg([[15, 2], [6, 2], [4, 4], [4, 20], [6, 22], [18, 22], [20, 20], [20, 7], [15, 2]]);
+      seg([[14, 2], [14, 6], [16, 8], [20, 8]]);
+      seg([[10, 9], [8, 9]]);
+      seg([[16, 13], [8, 13]]);
+      seg([[16, 17], [8, 17]]);
+      pdf.setLineCap('butt');
+      pdf.setLineJoin('miter');
+
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(22);
+      pdf.setTextColor(255, 255, 255);
+      pdf.text(reportTitle, 32, 38);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      pdf.setTextColor(P.light[0], P.light[1], P.light[2]);
+      pdf.text(pdf.splitTextToSize(subtitle, 90)[0] as string, 32, 44.5);
+
+      // Right side: period (history) / "stock as on" date (stock)
+      pdf.setFontSize(9);
+      pdf.text(isStock ? 'Stock as on' : 'Report period', brandRight, 34, { align: 'right' });
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(13);
+      pdf.setTextColor(255, 255, 255);
+      pdf.text(isStock ? fmtDay(Date.now()) : periodText, brandRight, 40.5, { align: 'right' });
+      if (!isStock) {
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(9);
+        pdf.setTextColor(P.light[0], P.light[1], P.light[2]);
+        pdf.text(`${periodDays} days`, brandRight, 45.5, { align: 'right' });
+      }
+      // ---------- 2. SUMMARY CARDS ----------
+      const cardY = 50;
+      const cardH = 32;
+      const kpiPad = 6;
+      const sumType = (type: StockTransfer['type']) =>
+        filteredHistory.filter((t) => t.type === type).reduce((s, t) => s + t.quantity, 0);
+      const cardsData = isStock
+        ? [
+          { label: 'Total stock', value: `${qty(filteredStockTotals.qty)} pcs`, hint: 'in this view' },
+          { label: 'Items in stock', value: qty(filteredStockTotals.items), hint: 'different items' },
+          { label: 'Locations', value: qty(filteredStockTotals.locations), hint: locationFilter ? 'selected location' : 'all locations' },
+          { label: 'Stock entries', value: qty(filteredStock.length), hint: 'item x location' },
+        ]
+        : [
+          { label: 'Quantity moved', value: `${qty(filteredHistoryQty)} pcs`, hint: plural(filteredHistory.length, 'entry', 'entries') },
+          { label: 'From purchases', value: qty(sumType('purchase-in')), hint: 'stock in' },
+          { label: 'Between godowns', value: qty(sumType('transfer')), hint: 'transfers' },
+          { label: 'Adjustments', value: qty(sumType('adjustment')), hint: 'corrections' },
+        ];
+      const cardW = contentW / cardsData.length;
+
+      pdf.setFillColor(255, 255, 255);
+      pdf.roundedRect(M, cardY, contentW, cardH, PDF_RADIUS, PDF_RADIUS, 'F');
+      pdf.setFillColor(P.soft[0], P.soft[1], P.soft[2]);
+      pdf.roundedRect(M, cardY, cardW, cardH, PDF_RADIUS, PDF_RADIUS, 'F');
+      pdf.rect(M + cardW - 2, cardY, 2, cardH, 'F');
+      pdf.setDrawColor(226, 232, 240);
+      pdf.setLineWidth(0.3);
+      pdf.roundedRect(M, cardY, contentW, cardH, PDF_RADIUS, PDF_RADIUS, 'S');
+      for (let i = 1; i < cardsData.length; i++) {
+        pdf.line(M + cardW * i, cardY, M + cardW * i, cardY + cardH);
+      }
+
+      cardsData.forEach((c, i) => {
+        const cx = M + cardW * i + kpiPad;
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(9.5);
+        pdf.setTextColor(100, 110, 135);
+        pdf.text(c.label, cx, cardY + 9);
+
+        // value card me fit ho, isliye font chhota karo agar zaroorat ho
+        pdf.setFont('helvetica', 'bold');
+        let vSize = 15;
+        pdf.setFontSize(vSize);
+        const maxW = cardW - kpiPad * 2;
+        const vw = pdf.getTextWidth(c.value);
+        if (vw > maxW) {
+          vSize = (vSize * maxW) / vw;
+          pdf.setFontSize(vSize);
+        }
+        if (i === 0) pdf.setTextColor(P.accent[0], P.accent[1], P.accent[2]);
+        else pdf.setTextColor(17, 24, 39);
+        pdf.text(c.value, cx, cardY + 20);
+
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8.5);
+        pdf.setTextColor(120, 128, 150);
+        pdf.text(c.hint, cx, cardY + 27);
+      });
+      // ---------- 3. TABLE ----------
+      const tableTitleY = cardY + cardH + 14;
+      const rowCount = isStock ? filteredStock.length : filteredHistory.length;
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(14);
+      pdf.setTextColor(17, 24, 39);
+      pdf.text(isStock ? 'Stock by godown' : 'Transfer entries', M, tableTitleY);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10.5);
+      pdf.setTextColor(107, 114, 128);
+      pdf.text(plural(rowCount, 'entry', 'entries'), brandRight, tableTitleY, { align: 'right' });
+
+      // Column widths (total = contentW = 182mm) aur quantity column ka index
+      const COLW = isStock ? [58, 34, 26, 24, 40] : [26, 36, 28, 26, 18, 20, 28];
+      const qtyCol = isStock ? 2 : 4;
+
+      autoTable(pdf, {
+        startY: tableTitleY + 4,
+        margin: { top: 26, bottom: 22, left: M, right: M },
+        head: [isStock
+          ? ['ITEM', 'GODOWN', 'QUANTITY', 'UNIT', 'LOCATION']
+          : ['DATE', 'ITEM', 'FROM', 'TO', 'QTY', 'TYPE', 'REMARKS']],
+        body: isStock
+          ? filteredStock.map((r) => [r.itemName, r.godownName, qty(r.quantity), r.unit || 'Not set', locations.find((l) => l.id === r.godownId)?.location || '-'])
+          : filteredHistory.map((t) => [
             formatFullDate(t.date), t.itemName, fromLabel(t), t.toGodownName,
             `${t.type === 'purchase-in' ? '+' : ''}${qty(t.quantity)}`, TYPE_LABEL[t.type], t.remarks || '-',
           ]),
-          foot: [[`Total · ${plural(filteredHistory.length, 'entry', 'entries')}`, '', '', '', qty(filteredHistoryQty), '', '']],
-          columnStyles: { 4: { halign: 'right' } },
-        });
-        pdf.save(`Stock_Transfer_History_${startDate}_to_${endDate}.pdf`);
+        foot: [isStock
+          ? [`Total · ${plural(filteredStockTotals.items, 'item')}`, plural(filteredStockTotals.locations, 'location'), qty(filteredStockTotals.qty), '', '']
+          : [
+            { content: `Total · ${plural(filteredHistory.length, 'entry', 'entries')}`, colSpan: 4 },
+            qty(filteredHistoryQty),
+            { content: '', colSpan: 2 },
+          ]],
+        showFoot: 'lastPage',
+        theme: 'plain',
+        styles: {
+          font: 'helvetica',
+          fontSize: 9,
+          cellPadding: { top: 3.4, bottom: 3.4, left: PAD, right: PAD },
+          textColor: [17, 24, 39],
+          lineWidth: 0,
+        },
+        headStyles: { fillColor: [248, 250, 252], textColor: [100, 110, 135], fontStyle: 'bold', fontSize: 9 },
+        footStyles: { fillColor: [248, 250, 252], textColor: [17, 24, 39], fontStyle: 'bold', fontSize: 10 },
+        columnStyles: Object.fromEntries(
+          COLW.map((w, i) => [i, i === qtyCol ? { cellWidth: w, halign: 'right' } : { cellWidth: w }]),
+        ),
+        didParseCell: (data) => {
+          data.cell.styles.valign = 'middle';
+          // Header aur Total row me quantity bhi right-aligned (body ke saath match)
+          if (data.section !== 'body' && data.column.index === qtyCol) {
+            data.cell.styles.halign = 'right';
+          }
+        },
+        didDrawCell: (data) => {
+          const { x, y, width, height } = data.cell;
+          // Vertical column lines (grid)
+          pdf.setDrawColor(226, 232, 240);
+          pdf.setLineWidth(0.2);
+          pdf.line(x + width, y, x + width, y + height);
+          if (data.column.index === 0) pdf.line(x, y, x, y + height);
+
+          // Horizontal lines
+          if (data.section === 'head') {
+            pdf.setDrawColor(P.tile[0], P.tile[1], P.tile[2]);
+            pdf.setLineWidth(0.5);
+            pdf.line(x, y + height, x + width, y + height);
+          }
+          if (data.section === 'body') {
+            pdf.setDrawColor(226, 232, 240);
+            pdf.setLineWidth(0.2);
+            pdf.line(x, y + height, x + width, y + height);
+          }
+          if (data.section === 'foot') {
+            pdf.setDrawColor(17, 24, 39);
+            pdf.setLineWidth(0.5);
+            pdf.line(x, y, x + width, y);
+            pdf.line(x, y + height, x + width, y + height);
+          }
+        },
+      });
+      // ---------- 4. PAGE 2+ MINI HEADER + FOOTER (har page par) ----------
+      const totalPages = pdf.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        pdf.setPage(i);
+
+        if (i > 1) {
+          drawCompanyTile(M, 9, 9, false);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setFontSize(10);
+          pdf.setTextColor(17, 24, 39);
+          pdf.text(company, M + 12, 15.4);
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(9);
+          pdf.setTextColor(107, 114, 128);
+          pdf.text(reportTitle, brandRight, 15.4, { align: 'right' });
+        }
+
+        // FOOTER: SELLAR logo + SELLAR text + generated time + page number
+        const fy = ph - 12;
+        let fx = M;
+        if (sellarImg) {
+          try {
+            const lp = pdf.getImageProperties(sellarImg);
+            const lh = 5;
+            const lw = (lp.width / lp.height) * lh;
+            pdf.addImage(sellarImg, 'PNG', fx, fy - 3.8, lw, lh);
+            fx += lw + 2;
+          } catch {
+            // continue without footer logo
+          }
+        }
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(9);
+        pdf.setTextColor(0, 0, 0);
+        pdf.text('SELLAR', fx, fy, { charSpace: 0.3 });
+        fx += pdf.getTextWidth('SELLAR') + 5 * 0.3 + 4;
+
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8.5);
+        pdf.setTextColor(107, 114, 128);
+        pdf.text(generatedAtText, fx, fy);
+        pdf.text(`${company} | ${reportTitle} | Page ${i} of ${totalPages}`, brandRight, fy, { align: 'right' });
       }
+
+      pdf.save(
+        isStock
+          ? `Godown_Stock_Report_${formatDateForInput(new Date())}.pdf`
+          : `Stock_Transfer_History_${startDate}_to_${endDate}.pdf`,
+      );
     } catch (err) {
       console.error(err);
       setFeedbackModal({ isOpen: true, type: State.ERROR, message: 'Failed to generate PDF.' });
@@ -602,14 +982,15 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
   return (
     <div className={`${cat ? 'min-h-full' : 'min-h-screen'} ${T.canvas} px-3 pb-28 pt-3 md:px-6 md:pb-8 md:pt-5`}>
       {feedbackModal.isOpen && (
-        <Modal type={feedbackModal.type} message={feedbackModal.message}
+        <Modal type={feedbackModal.type} message={feedbackModal.message} theme={theme}
           onClose={() => setFeedbackModal((p) => ({ ...p, isOpen: false }))} showConfirmButton={false} />
       )}
       <GodownModal
         isOpen={isGodownModalOpen}
-        onClose={() => setIsGodownModalOpen(false)}
-        onSave={(data) => addGodown(companyId!, data)}
+        onClose={closeGodownModal}
+        onSave={handleSaveGodown}
         theme={theme}
+        editing={editingGodown}
         existingLocations={locations.map((l) => l.name)}
         onSaveAndTransfer={(godownId) => setTransferModal({ open: true, fromId: SHOP_ID, toId: godownId })}
       />
@@ -625,9 +1006,30 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
         initialToId={transferModal.toId}
         initialItemId={transferModal.itemId}
       />
+      <DeleteGodownModal
+        isOpen={!!godownToMove}
+        onClose={() => setGodownToMove(null)}
+        godownName={godownToMove?.name || ''}
+        totalQty={godownToMove?.qty || 0}
+        itemCount={godownToMove?.items || 0}
+        destinations={locations.filter((l) => l.id !== godownToMove?.id).map((l) => ({ id: l.id, name: l.name }))}
+        onMoveAndDelete={moveAllAndDeleteGodown}
+        theme={theme}
+      />
+      {godownToDelete && (
+        <Modal
+          type={State.WARNING}
+          theme={theme}
+          message={`Delete godown "${godownToDelete.name}"? This cannot be undone.`}
+          onClose={() => setGodownToDelete(null)}
+          showConfirmButton={true}
+          onConfirm={confirmDeleteGodown}
+        />
+      )}
       {deleteConfirm && (
         <Modal
           type={State.WARNING}
+          theme={theme}
           message={`Delete this transfer of ${qty(deleteConfirm.quantity)} × ${deleteConfirm.itemName}? The stock goes back to ${deleteConfirm.fromGodownName || 'where it came from'}.`}
           onClose={() => setDeleteConfirm(null)}
           showConfirmButton={true}
@@ -754,21 +1156,42 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
               const t = locationTotals(l.id);
               const selected = locationFilter === l.id;
               return (
-                <button
-                  key={l.id}
-                  onClick={() => setLocationFilter(selected ? '' : l.id)}
-                  className={`flex items-center gap-3 rounded-sm border bg-white p-4 text-left shadow-card transition ${selected ? T.selected : `${T.line} hover:border-slate-300`}`}
-                >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm bg-blue-50">
-                    <LocIcon id={l.id} size={18} />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold text-slate-900">{l.name}</span>
-                    <span className="block truncate text-xs text-slate-500">
-                      {qty(t.qty)} pcs · {plural(t.items, 'item')} · {l.kind === 'shop' ? 'default location' : l.location || (l.kind === 'branch' ? 'shop / branch' : 'godown')}
+                <div key={l.id} className="group relative">
+                  <button
+                    onClick={() => setLocationFilter(selected ? '' : l.id)}
+                    className={`flex w-full items-center gap-3 rounded-sm border bg-white p-4 text-left shadow-card transition ${selected ? T.selected : `${T.line} hover:border-slate-300`}`}
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm bg-blue-50">
+                      <LocIcon id={l.id} size={18} />
                     </span>
-                  </span>
-                </button>
+                    <span className={`min-w-0 ${l.kind !== 'shop' ? 'pr-24' : ''}`}>
+                      <span className="block truncate text-sm font-semibold text-slate-900">{l.name}</span>
+                      <span className="block truncate text-xs text-slate-500">
+                        {qty(t.qty)} pcs · {plural(t.items, 'item')} · {l.kind === 'shop' ? 'default location' : l.location || (l.kind === 'branch' ? 'shop / branch' : 'godown')}
+                      </span>
+                    </span>
+                  </button>
+                  {l.kind !== 'shop' && (
+  <div className="absolute right-3 top-1/2 flex -translate-y-1/2 gap-1">
+                      <button
+                        onClick={() => openEditGodown(l.id)}
+                        aria-label={`Edit ${l.name}`}
+                        title="Edit"
+                        className="flex h-9 w-9 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:bg-slate-100 hover:text-slate-800"
+                      >
+                        <Pencil size={17} />
+                      </button>
+                      <button
+                        onClick={() => requestDeleteGodown(l.id)}
+                        aria-label={`Delete ${l.name}`}
+                        title="Delete"
+                        className="flex h-9 w-9 items-center justify-center rounded-sm border border-slate-200 bg-white text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+                      >
+                        <Trash2 size={17} />
+                      </button>
+                    </div>
+                  )}
+                </div>
               );
             })}
             <button
@@ -797,6 +1220,37 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
               <Plus size={14} /> Godown
             </button>
           </div>
+
+          {/* MOBILE: edit / delete the selected godown */}
+          {locationFilter && locationFilter !== SHOP_ID && (
+            <div className={`mb-3 flex items-center justify-between gap-2 rounded-sm border ${T.line} bg-white px-3 py-2 md:hidden`}>
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-sm ${T.soft}`}>
+                  <LocIcon id={locationFilter} size={16} />
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-slate-900">{locationName(locationFilter)}</p>
+                  <p className="truncate text-xs text-slate-500">
+                    {qty(locationTotals(locationFilter).qty)} pcs · {plural(locationTotals(locationFilter).items, 'item')}
+                  </p>
+                </div>
+              </div>
+              <div className="flex shrink-0 gap-1">
+                <button
+                  onClick={() => openEditGodown(locationFilter)}
+                  className="inline-flex items-center gap-1.5 rounded-sm border border-slate-300 px-3.5 py-2 text-sm font-medium text-slate-700"
+                >
+                  <Pencil size={15} /> Edit
+                </button>
+                <button
+                  onClick={() => requestDeleteGodown(locationFilter)}
+                  className="inline-flex items-center gap-1.5 rounded-sm border border-red-200 px-3.5 py-2 text-sm font-medium text-red-600"
+                >
+                  <Trash2 size={15} /> Delete
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* ONE LOCATION NOTE */}
           {!hasSecondLocation && (

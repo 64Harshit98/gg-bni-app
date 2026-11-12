@@ -487,6 +487,7 @@ const Sales: React.FC = () => {
 
     const [showPhotos, setShowPhotos] = useState<boolean | null>(null);
     const isCardView = salesSettings?.salesViewType === 'card';
+    const selectedOnTop = isCardView && !!(salesSettings as any)?.cardSelectedOnTop;
     const isCardImageView = isCardView && (showPhotos ?? (salesSettings?.cardViewWithPhoto !== false));
     const isCalculatorView = salesSettings?.salesViewType === 'calculator';
     // Filter button par blue dot: Photos/Compact ya sort default se alag ho
@@ -511,6 +512,16 @@ const Sales: React.FC = () => {
 
     const amountToPayNow = useMemo(() => finalAmount, [finalAmount]);
     const netAmount = subtotal - totalDiscount;
+
+    // Card view: optionally pull items that are already in the cart to the top.
+    // Array.sort is stable, so the rest keep the A-Z / price order the user chose.
+    const gridItemsToShow = useMemo(() => {
+        if (!selectedOnTop) return sortedGridItems;
+        const inCart = new Set(items.map((l: any) => l.productId || l.id));
+        const picked = sortedGridItems.filter(it => inCart.has(it.id));
+        const rest = sortedGridItems.filter(it => !inCart.has(it.id));
+        return [...picked, ...rest];
+    }, [sortedGridItems, items, selectedOnTop]);
     // const taxableValue = activeTaxMode === 'inclusive' ? netAmount - taxAmount : netAmount;
     // const roundOff = finalAmount - (activeTaxMode === 'inclusive' ? netAmount : netAmount + taxAmount);
 
@@ -1563,7 +1574,7 @@ const Sales: React.FC = () => {
                             {renderCategoryRail()}
 
                             <div className="flex-1 min-w-0 overflow-y-auto grid grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] auto-rows-max content-start gap-2 bg-[#eef2ff] px-2 pt-2.5 pb-20 md:px-3">
-                                {sortedGridItems.map(item => {
+                                {gridItemsToShow.map(item => {
                                     const matchingCartItems = items.filter(i => i.productId === item.id);
                                     const lastAddedCartItem = matchingCartItems[matchingCartItems.length - 1];
                                     const isSelected = matchingCartItems.length > 0;

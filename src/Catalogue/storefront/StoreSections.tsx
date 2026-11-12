@@ -1,11 +1,11 @@
 import React, { useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Award, ChevronLeft, ChevronRight, Clock, LayoutGrid, MapPin, MessageCircle, Package, Phone, ShieldCheck, Truck, Users, Mail } from 'lucide-react';
+import { Award, ChevronLeft, ChevronRight, Clock, ExternalLink, LayoutGrid, MapPin, MessageCircle, Package, Phone, ShieldCheck, Truck, Users, Mail } from 'lucide-react';
 import type { Item, ItemGroup } from '../../constants/models';
 import type { BusinessInfo } from './useStorefront';
 import type { CategoryGroupsData, FactIcon, StoreButton, StoreSection } from './storePage.types';
 import { CategoryTile, Photo, btnClass } from './StoreUI';
-import { formatPhone, getItemImages, itemInGroup, slugify, whatsappUrl } from './storefront.utils';
+import { formatPhone, getItemImages, itemInGroup, normalizeUrl, slugify, whatsappUrl } from './storefront.utils';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 
@@ -41,7 +41,7 @@ const SectionHead: React.FC<{ title?: string; text?: string; right?: React.React
 const StoreBtn: React.FC<{ button: StoreButton; variant: 'primary' | 'secondary' | 'whatsapp'; ctx: SectionContext; size?: 'sm' | 'md' | 'lg'; block?: boolean; className?: string }> = ({ button, variant, ctx, size = 'md', block, className }) => {
     const { link } = button;
     const cls = cx(btnClass(link.kind === 'whatsapp' && variant !== 'primary' ? 'whatsapp' : variant, size, block), className);
-    const icon = link.kind === 'whatsapp' ? <MessageCircle className="size-4" /> : link.kind === 'call' ? <Phone className="size-4" /> : link.kind === 'categories' ? <LayoutGrid className="size-4" /> : null;
+        const icon = link.kind === 'whatsapp' ? <MessageCircle className="size-4" /> : link.kind === 'call' ? <Phone className="size-4" /> : link.kind === 'categories' ? <LayoutGrid className="size-4" /> : link.kind === 'url' ? <ExternalLink className="size-4" /> : null;
     if (ctx.preview) return <span className={cls}>{icon}{button.label}</span>;
     if (link.kind === 'categories') {
         return <a href="#categories" className={cls} onClick={(e) => { e.preventDefault(); document.getElementById('categories')?.scrollIntoView({ behavior: 'smooth' }); }}>{icon}{button.label}</a>;
@@ -50,8 +50,12 @@ const StoreBtn: React.FC<{ button: StoreButton; variant: 'primary' | 'secondary'
         const g = ctx.groups.find((x) => x.id === link.groupId);
         return g ? <Link to={ctx.categoryHref(slugify(g.name))} className={cls}>{icon}{button.label}</Link> : null;
     }
-    if (link.kind === 'whatsapp') {
+        if (link.kind === 'whatsapp') {
         const href = whatsappUrl(ctx.business.whatsappNumber || ctx.business.phoneNumber, `Hi, I found your shop ${ctx.business.businessName || ''} online.`);
+        return href ? <a href={href} target="_blank" rel="noopener noreferrer" className={cls}>{icon}{button.label}</a> : null;
+    }
+    if (link.kind === 'url') {
+        const href = normalizeUrl(link.url);
         return href ? <a href={href} target="_blank" rel="noopener noreferrer" className={cls}>{icon}{button.label}</a> : null;
     }
     const phone = (ctx.business.phoneNumber || '').replace(/\D/g, '');

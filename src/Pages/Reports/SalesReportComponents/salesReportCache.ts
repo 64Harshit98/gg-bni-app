@@ -12,8 +12,10 @@ const mapSale = (snap: QueryDocumentSnapshot): SaleRecord => {
     partyNumber: data.partyNumber || '',
     invoiceNumber: data.invoiceNumber || 'N/A',
     totalAmount: data.totalAmount || 0,
-    paymentMethods: data.paymentMethods || {},
+        paymentMethods: data.paymentMethods || {},
     dueAmount: Number(data.dueAmount) || 0,
+    salesmanId: data.salesmanId || '',
+    salesmanName: data.salesmanName || '',
     createdAt:
       data.createdAt instanceof Timestamp ? data.createdAt.toMillis() : Date.now(),
     items: toPlain(data.items || []),

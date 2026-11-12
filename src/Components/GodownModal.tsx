@@ -16,12 +16,15 @@ interface Props {
   theme?: 'blue' | 'orange';
   /** Names of the locations that already exist, for the subtitle ("you have 1 (Shop)"). */
   existingLocations?: string[];
-  /** Shows "Save & transfer stock"; receives the new godown's id. */
+   /** Shows "Save & transfer stock"; receives the new godown's id. */
   onSaveAndTransfer?: (godownId: string) => void;
+  /** When set, the modal edits this godown instead of creating a new one. */
+  editing?: { id: string; name: string; location?: string; type?: GodownType } | null;
 }
 
 // Desktop: a centred dialog. Mobile: a bottom sheet.
-export const GodownModal = ({ isOpen, onClose, onSave, theme = 'blue', existingLocations, onSaveAndTransfer }: Props) => {
+export const GodownModal = ({ isOpen, onClose, onSave, theme = 'blue', existingLocations, onSaveAndTransfer, editing }: Props) => {
+  const isEdit = !!editing;
   const accent = theme === 'orange'
     ? 'bg-[#F97316] hover:bg-orange-600'
     : 'bg-blue-600 hover:bg-blue-700';
@@ -35,13 +38,14 @@ export const GodownModal = ({ isOpen, onClose, onSave, theme = 'blue', existingL
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
+    useEffect(() => {
     if (!isOpen) return;
-    setName('');
-    setLocation('');
-    setType('godown');
+    setName(editing?.name || '');
+    setLocation(editing?.location || '');
+    setType(editing?.type || 'godown');
     setError('');
-  }, [isOpen]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, editing?.id]);
 
   if (!isOpen) return null;
 
@@ -53,8 +57,8 @@ export const GodownModal = ({ isOpen, onClose, onSave, theme = 'blue', existingL
       const result = await onSave({ name: name.trim(), location: location.trim(), type });
       onClose();
       if (thenTransfer && onSaveAndTransfer && typeof result === 'string') onSaveAndTransfer(result);
-    } catch {
-      setError('Failed to save. Try again.');
+        } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save. Try again.');
     } finally {
       setSaving(false);
     }
@@ -82,8 +86,8 @@ export const GodownModal = ({ isOpen, onClose, onSave, theme = 'blue', existingL
             <Warehouse size={18} />
           </span>
           <div className="min-w-0 flex-1">
-            <h2 className="text-base font-semibold text-slate-900">Add godown</h2>
-            {existingLocations && existingLocations.length > 0 && (
+                        <h2 className="text-base font-semibold text-slate-900">{isEdit ? 'Edit godown' : 'Add godown'}</h2>
+            {!isEdit && existingLocations && existingLocations.length > 0 && (
               <p className="text-xs text-slate-500">
                 A place where you keep stock — you have {existingLocations.length} ({existingLocations.join(', ')})
               </p>
@@ -134,9 +138,11 @@ export const GodownModal = ({ isOpen, onClose, onSave, theme = 'blue', existingL
             </p>
           </div>
 
-          <div className="rounded-sm bg-blue-50 px-3 py-2.5 text-xs text-blue-800">
-            It starts empty. Move stock in with <strong>Transfer stock</strong>, or pick it as the location when recording a purchase.
-          </div>
+                    {!isEdit && (
+            <div className="rounded-sm bg-blue-50 px-3 py-2.5 text-xs text-blue-800">
+              It starts empty. Move stock in with <strong>Transfer stock</strong>, or pick it as the location when recording a purchase.
+            </div>
+          )}
 
           {error && <p className="text-xs text-red-600">{error}</p>}
         </div>
@@ -149,7 +155,7 @@ export const GodownModal = ({ isOpen, onClose, onSave, theme = 'blue', existingL
           >
             Cancel
           </button>
-          {onSaveAndTransfer && (
+                    {!isEdit && onSaveAndTransfer && (
             <button
               type="button"
               onClick={() => save(true)}
@@ -164,7 +170,7 @@ export const GodownModal = ({ isOpen, onClose, onSave, theme = 'blue', existingL
             disabled={saving}
             className={`rounded-sm px-4 py-3 text-sm font-semibold text-white transition disabled:opacity-50 md:py-2 ${accent}`}
           >
-            {saving ? 'Saving…' : 'Save godown'}
+                        {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Save godown'}
           </button>
         </div>
       </form>

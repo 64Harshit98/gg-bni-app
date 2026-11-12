@@ -570,6 +570,18 @@ const PurchasePage: React.FC = () => {
     [items, purchaseSettings, billTaxType]
   );
 
+  // Card view: optionally pull items that are already in the bill to the top.
+  // Array.prototype.filter keeps order, so both groups keep the A-Z / price sort the user chose.
+  const selectedOnTop =
+    purchaseSettings?.purchaseViewType === 'card' && !!purchaseSettings?.cardSelectedOnTop;
+  const gridItemsToShow = useMemo(() => {
+    if (!selectedOnTop) return sortedGridItems;
+    const inCart = new Set(items.map((l) => l.productId).filter(Boolean));
+    const picked = sortedGridItems.filter((it) => inCart.has(it.id));
+    const rest = sortedGridItems.filter((it) => !inCart.has(it.id));
+    return [...picked, ...rest];
+  }, [sortedGridItems, items, selectedOnTop]);
+
   const {
     showPrintQrModal,
     handleProceedToPayment,
@@ -1307,8 +1319,8 @@ const PurchasePage: React.FC = () => {
       })()}
       {showAddItemModal && (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-[rgba(2,6,24,0.45)] px-4">
-  <div className={`bg-[#ffffff] rounded-sm ${SHADOW_FLOAT} w-full max-w-2xl h-[90dvh] max-h-[90dvh] flex flex-col overflow-hidden`}>
-    <ItemAdd
+          <div className={`bg-[#ffffff] rounded-sm ${SHADOW_FLOAT} w-full max-w-2xl h-[90dvh] max-h-[90dvh] flex flex-col overflow-hidden`}>
+            <ItemAdd
               isModal
               prefillData={unlinkedPrefill || undefined}
               onItemCreated={handleUnlinkedItemCreated}
@@ -1390,7 +1402,7 @@ const PurchasePage: React.FC = () => {
                   )}
                 </div>
               ) : (
-                sortedGridItems.map(item => {
+                gridItemsToShow.map(item => {
                   const matchingCartItems = items.filter(i => i.productId === item.id);
                   const lastAddedCartItem = matchingCartItems[matchingCartItems.length - 1];
                   const isSelected = matchingCartItems.length > 0;

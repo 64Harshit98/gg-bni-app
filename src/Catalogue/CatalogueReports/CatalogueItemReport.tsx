@@ -24,6 +24,7 @@ import autoTable from 'jspdf-autotable';
 import XLSX from 'xlsx-js-style';
 import { Spinner } from '../../constants/Spinner';
 import { resolveCompanyLogoBase64 } from '../hooks/useCompanyLogo';
+import sellarLogo from '../../assets/sellar-logo.png';
 import { useAuth } from '../../context/auth-context';
 import { useGodowns, useGodownStock, SHOP_ID, SHOP_NAME } from '../../Pages/hooks/useStockTransfer';
 import { doc, getDoc } from 'firebase/firestore';
@@ -69,6 +70,66 @@ const inrRound = (n: number) => {
   const r = Math.round(n);
   return `${r < 0 ? '-' : ''}₹${Math.abs(r).toLocaleString('en-IN')}`;
 };
+
+/* ---------- PDF HELPERS ---------- */
+const toDataUrl = async (src: string): Promise<string | null> => {
+  try {
+    const blob = await (await fetch(src)).blob();
+    return await new Promise((resolve) => {
+      const r = new FileReader();
+      r.onloadend = () => resolve(r.result as string);
+      r.onerror = () => resolve(null);
+      r.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+};
+
+type RGB = [number, number, number];
+const PDF_RADIUS = 0.5;
+
+const drawGradientRect = (pdf: jsPDF, x: number, y: number, w: number, h: number, from: RGB, to: RGB) => {
+  const steps = 120;
+  const sw = w / steps;
+  for (let i = 0; i < steps; i++) {
+    const t = i / (steps - 1);
+    pdf.setFillColor(
+      Math.round(from[0] + (to[0] - from[0]) * t),
+      Math.round(from[1] + (to[1] - from[1]) * t),
+      Math.round(from[2] + (to[2] - from[2]) * t),
+    );
+    pdf.rect(x + i * sw, y, sw + 0.3, h, 'F');
+  }
+};
+
+const fmtDay = (ts: number) => {
+  const d = new Date(ts);
+  return `${d.getDate()} ${d.toLocaleString('en-US', { month: 'short' })} ${d.getFullYear()}`;
+};
+
+const fmtDayMonth = (ts: number) => {
+  const d = new Date(ts);
+  return `${d.getDate()} ${d.toLocaleString('en-US', { month: 'short' })}`;
+};
+
+const fmt2 = (n: number) =>
+  n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// Helvetica can only draw Latin-1 text. Anything else (Hindi, Arabic, emoji, ₹) prints
+// garbled with wrong widths, so overlaps the next column. Keep only what it can draw.
+const PDF_OK = /[\u0020-\u007E\u00A0-\u00FF\u2013\u2014\u2018\u2019\u201C\u201D\u2022\u2026\u2122]/;
+const pdfSafe = (value: unknown): string =>
+  Array.from(
+    String(value ?? '')
+      .replace(/₹/g, 'Rs.')
+      .replace(/[\u2010\u2011\u2212]/g, '-')
+      .replace(/[\r\t]/g, ' '),
+  )
+    .filter((ch) => ch === '\n' || PDF_OK.test(ch))
+    .join('')
+    .replace(/ {2,}/g, ' ')
+    .trim();
 
 const CatalogueItemReport: React.FC = () => {
   const { currentUser, hasPermission } = useAuth();
@@ -302,141 +363,428 @@ const CatalogueItemReport: React.FC = () => {
   const periodText =
     fromDate === toDate ? `Period: ${fmtDate(fromDate)}` : `Period: ${fmtDate(fromDate)} to ${fmtDate(toDate)}`;
 
-  const downloadAsPdf = async () => {
+    const downloadAsPdf = async () => {
     try {
-      // Landscape A4 for wide data tables
-      const pdf = new jsPDF('l', 'mm', 'a4');
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-
+      // Guard clause in case filteredItems is empty
       if (!filteredItems || filteredItems.length === 0) {
         throw new Error('No data available to export');
       }
 
-      // Brand accent bar (orange)
-      pdf.setFillColor(234, 88, 12);
-      pdf.rect(0, 0, pageWidth, 6, 'F');
+      // Landscape A4 for wide data tables
+      const pdf = new jsPDF('l', 'mm', 'a4');
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const M = 14;
+      const PAD = 4;
+      const brandRight = pageWidth - M;
+      const contentW = pageWidth - M * 2;
+      const company = pdfSafe(companyName) || 'Your Business';
 
-      // Generation tag (drawn first, reserves space for logo)
-      const generatedAt = new Date().toLocaleString('en-IN', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-      const tagText = `Generated using SELLAR • ${generatedAt}`;
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(8);
-      const boxWidth = pdf.getTextWidth(tagText) + 4;
-      const boxX = pageWidth - 14 - 20 - boxWidth;
-      pdf.setFillColor(245, 245, 245);
-      pdf.rect(boxX, 10, boxWidth, 5, 'F');
-      pdf.setTextColor(80, 80, 80);
-      pdf.text(tagText, boxX + 2, 13.5);
+      const generatedAtText = `Generated ${new Date().toLocaleString('en-IN', {
+        day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit',
+      })}`;
+      const rangeStart = parseInputDate(fromDate).getTime();
+      const rangeEnd = parseInputDate(toDate).getTime();
+      const sameYear = new Date(rangeStart).getFullYear() === new Date(rangeEnd).getFullYear();
+      // NOTE: component-level `periodText` Excel use karta hai, isliye PDF ka alag naam
+      const pdfPeriodText = fromDate === toDate
+        ? fmtDay(rangeStart)
+        : sameYear
+          ? `${fmtDayMonth(rangeStart)} – ${fmtDay(rangeEnd)}`
+          : `${fmtDay(rangeStart)} – ${fmtDay(rangeEnd)}`;
+      const periodDays = Math.max(1, Math.round((rangeEnd - rangeStart) / 86400000) + 1);
 
-      // Company logo (top-right corner)
-      try {
-        const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId);
+      // ---------- COLOURS (catalogue = orange) ----------
+      const INK: RGB = [17, 24, 39];
+      const GRAY: RGB = [107, 114, 128];
+      const LIGHT: RGB = [156, 163, 175];
+      const RED: RGB = [220, 38, 38];
+      const ACCENT: RGB = [234, 88, 12];        // orange-600
+      const ACCENT_DARK: RGB = [194, 65, 12];   // orange-700
+      const GRAD_FROM: RGB = [154, 52, 18];     // orange-800
+      const ON_DARK: RGB = [255, 237, 213];     // orange-100 (text on gradient)
+      const LINE: RGB = [246, 225, 208];        // #f6e1d0
+
+      // ---------- ASSETS ----------
+      const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId).catch(() => null);
+      const sellarImg = await toDataUrl(sellarLogo);
+
+      const drawCompanyTile = (x: number, y: number, size: number, onDark: boolean) => {
+        let drawn = false;
         if (base64Logo) {
-          const img = new Image();
-          img.src = base64Logo;
-          await new Promise<void>((resolve) => {
-            img.onload = () => {
-              const logoWidth = 15;
-              const logoHeight = (img.naturalHeight / img.naturalWidth) * logoWidth;
-              pdf.addImage(base64Logo, 'PNG', pageWidth - logoWidth - 14, 8, logoWidth, logoHeight);
-              resolve();
-            };
-            img.onerror = () => resolve();
-          });
+          try {
+            const props = pdf.getImageProperties(base64Logo);
+            const maxSide = size - size * 0.22;
+            const scale = Math.min(maxSide / props.width, maxSide / props.height);
+            const w = props.width * scale;
+            const h = props.height * scale;
+            pdf.setFillColor(255, 255, 255);
+            if (onDark) {
+              pdf.roundedRect(x, y, size, size, PDF_RADIUS, PDF_RADIUS, 'F');
+            } else {
+              pdf.setDrawColor(LINE[0], LINE[1], LINE[2]);
+              pdf.setLineWidth(0.3);
+              pdf.roundedRect(x, y, size, size, PDF_RADIUS, PDF_RADIUS, 'FD');
+            }
+            pdf.addImage(base64Logo, props.fileType, x + (size - w) / 2, y + (size - h) / 2, w, h);
+            drawn = true;
+          } catch {
+            // invalid logo -> initial fallback
+          }
         }
-      } catch {
-        // Continue without logo
-      }
+        if (!drawn) {
+          if (onDark) pdf.setFillColor(ACCENT_DARK[0], ACCENT_DARK[1], ACCENT_DARK[2]);
+          else pdf.setFillColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+          pdf.roundedRect(x, y, size, size, PDF_RADIUS, PDF_RADIUS, 'F');
+          pdf.setTextColor(255, 255, 255);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setFontSize(size * 0.9);
+          pdf.text(
+            (companyName.trim().charAt(0) || 'S').toUpperCase(),
+            x + size / 2,
+            y + size / 2,
+            { align: 'center', baseline: 'middle' },
+          );
+        }
+      };
 
-      // Header
-      pdf.setFontSize(22);
-      pdf.setTextColor(17, 24, 39);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text(companyName ? `Detailed Item Report — ${companyName}` : 'Detailed Item Report', 14, 24);
+      // ---------- 1. HEADER (orange gradient) ----------
+      drawGradientRect(pdf, 0, 0, pageWidth, 64, GRAD_FROM, ACCENT);
 
-      pdf.setFontSize(10);
-      pdf.setTextColor(107, 114, 128);
+      drawCompanyTile(M, 11, 14, true);
+
       pdf.setFont('helvetica', 'normal');
-      const generationDate = new Date().toLocaleDateString('en-IN', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      });
+      pdf.setFontSize(9);
+      pdf.setTextColor(ON_DARK[0], ON_DARK[1], ON_DARK[2]);
+      pdf.text('Prepared for', 32, 15);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(14);
+      pdf.setTextColor(255, 255, 255);
+      pdf.text(company, 32, 22);
+
+      // SELLAR logo + text (top-right, white pill)
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(9);
+      const brandTextW = pdf.getTextWidth('SELLAR') + 5 * 0.3;
+      const sellarLh = 5;
+      let sellarLw = 0;
+      if (sellarImg) {
+        try {
+          const lp = pdf.getImageProperties(sellarImg);
+          sellarLw = (lp.width / lp.height) * sellarLh;
+        } catch {
+          // continue without SELLAR logo
+        }
+      }
+      const pillPadX = 3;
+      const pillW = brandTextW + (sellarLw ? sellarLw + 2 : 0) + pillPadX * 2;
+      pdf.setFillColor(255, 255, 255);
+      pdf.roundedRect(brandRight - pillW, 7.5, pillW, 8, PDF_RADIUS, PDF_RADIUS, 'F');
+      if (sellarImg && sellarLw) {
+        pdf.addImage(
+          sellarImg,
+          'PNG',
+          brandRight - pillPadX - brandTextW - sellarLw - 2,
+          9,
+          sellarLw,
+          sellarLh,
+        );
+      }
+      pdf.setTextColor(0, 0, 0);
+      pdf.text('SELLAR', brandRight - pillPadX, 12.6, { align: 'right', charSpace: 0.3 });
+
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(8.5);
+      pdf.setTextColor(ON_DARK[0], ON_DARK[1], ON_DARK[2]);
+      pdf.text(generatedAtText, brandRight, 21, { align: 'right' });
+
+      // Title block (left)
+      pdf.setFillColor(255, 255, 255);
+      pdf.roundedRect(M, 31, 14, 14, PDF_RADIUS, PDF_RADIUS, 'F');
+
+      // Tag icon (lucide, 24x24 grid -> 7mm)
+      const ix = M + 3.5;
+      const iy = 31 + 3.5;
+      const k = 7 / 24;
+      const seg = (pts: [number, number][]) => {
+        for (let i = 0; i < pts.length - 1; i++) {
+          pdf.line(
+            ix + pts[i][0] * k, iy + pts[i][1] * k,
+            ix + pts[i + 1][0] * k, iy + pts[i + 1][1] * k,
+          );
+        }
+      };
+      pdf.setDrawColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+      pdf.setLineWidth(0.5);
+      pdf.setLineCap('round');
+      pdf.setLineJoin('round');
+      seg([
+        [12.6, 2.6], [11.2, 2], [4, 2], [2, 4], [2, 11.2], [2.6, 12.6],
+        [11.3, 21.3], [14.7, 21.3], [21.3, 14.7], [21.3, 11.3], [12.6, 2.6],
+      ]);
+      pdf.setFillColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+      pdf.circle(ix + 7.5 * k, iy + 7.5 * k, 0.5, 'F');
+      pdf.setLineCap('butt');
+      pdf.setLineJoin('miter');
+
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(26);
+      pdf.setTextColor(255, 255, 255);
+      pdf.text('Detailed Item Report', 32, 38);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10);
+      pdf.setTextColor(ON_DARK[0], ON_DARK[1], ON_DARK[2]);
+      pdf.text('Prices, stock and restock levels for every item', 32, 44.5);
+
+      // Report period (right)
+      pdf.setFontSize(9);
+      pdf.text('Report period', brandRight, 34, { align: 'right' });
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(14);
+      pdf.setTextColor(255, 255, 255);
+      pdf.text(pdfPeriodText, brandRight, 40.5, { align: 'right' });
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
+      pdf.setTextColor(ON_DARK[0], ON_DARK[1], ON_DARK[2]);
+      pdf.text(`${periodDays} ${periodDays === 1 ? 'day' : 'days'}`, brandRight, 45.5, { align: 'right' });
+
+            // ---------- DATA (same filteredItems + prepareExportDataForPdf) ----------
+      const exportData = filteredItems.map(prepareExportDataForPdf);
+
+      // ---------- 2. SUMMARY STRIP ----------
+      const cardY = 50;
+      const cardH = 32;
+      const kpiPad = 6;
+      const colWs = [62, 62, contentW - 124];
+      const colXs = [M, M + colWs[0], M + colWs[0] + colWs[1]];
+
+      pdf.setFillColor(255, 255, 255);
+      pdf.roundedRect(M, cardY, contentW, cardH, PDF_RADIUS, PDF_RADIUS, 'F');
+      pdf.setFillColor(255, 247, 237); // orange-50
+      pdf.roundedRect(M, cardY, colWs[0], cardH, PDF_RADIUS, PDF_RADIUS, 'F');
+      pdf.rect(M + colWs[0] - 2, cardY, 2, cardH, 'F');
+      pdf.setDrawColor(LINE[0], LINE[1], LINE[2]);
+      pdf.setLineWidth(0.3);
+      pdf.roundedRect(M, cardY, contentW, cardH, PDF_RADIUS, PDF_RADIUS, 'S');
+      pdf.line(colXs[1], cardY, colXs[1], cardY + cardH);
+      pdf.line(colXs[2], cardY, colXs[2], cardY + cardH);
+
+      // Total items
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9.5);
+      pdf.setTextColor(100, 110, 135);
+      pdf.text('Total items', colXs[0] + kpiPad, cardY + 9);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(20);
+      pdf.setTextColor(ACCENT_DARK[0], ACCENT_DARK[1], ACCENT_DARK[2]);
+      pdf.text(summary.totalItems.toLocaleString('en-IN'), colXs[0] + kpiPad, cardY + 20);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(8.5);
+      pdf.setTextColor(120, 128, 150);
+      pdf.text('in your catalogue', colXs[0] + kpiPad, cardY + 27);
+
+      // Average margin
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9.5);
+      pdf.setTextColor(100, 110, 135);
+      pdf.text('Average margin', colXs[1] + kpiPad, cardY + 9);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(15);
+      pdf.setTextColor(INK[0], INK[1], INK[2]);
+      pdf.text(`${Math.round(summary.averageMarginPercentage)}%`, colXs[1] + kpiPad, cardY + 20);
+
+      // How to read this report
+      const lx = colXs[2] + kpiPad;
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9.5);
+      pdf.setTextColor(100, 110, 135);
+      pdf.text('How to read this report', lx, cardY + 9);
+
+      // legend row 1: red pill + text
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(8.5);
+      const pillTxt = '-2';
+      const pillTxtW = pdf.getTextWidth(pillTxt);
+      pdf.setFillColor(254, 226, 226);
+      pdf.roundedRect(lx, cardY + 13.2, pillTxtW + 5, 5.4, PDF_RADIUS, PDF_RADIUS, 'F');
+      pdf.setTextColor(RED[0], RED[1], RED[2]);
+      pdf.text(pillTxt, lx + 2.5, cardY + 17);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9.5);
+      pdf.setTextColor(INK[0], INK[1], INK[2]);
+      pdf.text('Negative stock: more sold than recorded', lx + pillTxtW + 8, cardY + 17);
+
+      // legend row 2: dash + text
+      pdf.setTextColor(LIGHT[0], LIGHT[1], LIGHT[2]);
+      pdf.text('—', lx + 1, cardY + 25);
+      pdf.setTextColor(INK[0], INK[1], INK[2]);
+      pdf.text('Price not set for this item', lx + pillTxtW + 8, cardY + 25);
+
+      // ---------- 3. ITEM DETAILS TABLE ----------
+      const listY = cardY + cardH + 14;
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(14);
+      pdf.setTextColor(17, 24, 39);
+      pdf.text('Item details', M, listY);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(10.5);
+      pdf.setTextColor(107, 114, 128);
       pdf.text(
-        `Generated: ${generationDate}   |   ${periodText}   |   Total Items: ${summary.totalItems}   |   Avg Margin: ${Math.round(summary.averageMarginPercentage)}%`,
-        14,
-        31,
+        `${exportData.length.toLocaleString('en-IN')} ${exportData.length === 1 ? 'item' : 'items'}`,
+        brandRight,
+        listY,
+        { align: 'right' },
       );
 
-      const exportData = filteredItems.map(prepareExportDataForPdf);
-      const formatHeader = (str: string) => str.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim().toUpperCase();
-      const rawHeaders = Object.keys(exportData[0] || {});
-      const cleanHeaders = rawHeaders.map(formatHeader);
-      const body = exportData.map((obj) => Object.values(obj));
-
-      const numericColumns = ['mrp', 'purchasePrice', 'discount', 'tax', 'stock', 'restockQuantity'];
-      const widths: Record<string, number> = {
-        name: 48,
-        purchasePrice: 30,
-        mrp: 20,
-        discount: 29,
-        tax: 25,
-        stock: 25,
-        barcode: 28,
-        restockQuantity: 30,
-      };
-      const columnStyles: any = {};
-      rawHeaders.forEach((key, index) => {
-        columnStyles[index] = {
-          ...(widths[key] ? { cellWidth: widths[key] } : {}),
-          ...(numericColumns.includes(key) ? { halign: 'right' } : {}),
-        };
+      const priceCell = (v: number) => ({
+        content: v > 0 ? fmt2(v) : '—',
+        styles: { halign: 'right' as const, textColor: v > 0 ? INK : LIGHT },
+      });
+      const numCell = (v: number) => ({
+        content: String(v),
+        styles: { halign: 'right' as const, textColor: v ? INK : LIGHT },
       });
 
+      const tableBody: any[] = exportData.map((e) => [
+        { content: pdfSafe(e.name) || 'N/A', styles: { fontStyle: 'bold' } },
+        { content: pdfSafe(e.itemGroupId) || '-', styles: { textColor: GRAY } },
+        { content: pdfSafe(e.barcode) || '-', styles: { textColor: GRAY } },
+        priceCell(e.mrp),
+        priceCell(e.purchasePrice),
+        numCell(e.discount),
+        numCell(e.tax),
+        {
+          content: e.stock < 0 ? '' : e.stock.toLocaleString('en-IN'),
+          styles: { halign: 'right' as const, textColor: e.stock ? INK : LIGHT },
+        },
+        numCell(e.restockQuantity),
+      ]);
+
+      // Item | Group | Barcode | MRP | Purchase | Discount | Tax | Stock | Restock  (total = 269mm)
+const COLW = [52, 32, 34, 28, 34, 25, 14, 22, 28];
+
       autoTable(pdf, {
-        startY: 38,
-        head: [cleanHeaders],
-        body,
-        columnStyles,
+        startY: listY + 4,
+        margin: { top: 26, bottom: 22, left: M, right: M },
+        head: [['Item', 'Group', 'Barcode', 'MRP (Rs.)', 'Purchase price (Rs.)', 'Discount', 'Tax', 'Stock', 'Restock qty']],
+        body: tableBody,
         theme: 'plain',
-        styles: { font: 'helvetica', cellPadding: 6, fontSize: 9, textColor: [55, 65, 81] },
+        styles: {
+          font: 'helvetica',
+          fontSize: 10.5,
+          cellPadding: { top: 3.4, bottom: 3.4, left: PAD, right: PAD },
+          textColor: [17, 24, 39],
+          lineWidth: 0,
+        },
         headStyles: {
           fillColor: [255, 248, 242],
           textColor: [124, 45, 18],
           fontStyle: 'bold',
-          lineWidth: { top: 1, bottom: 1 },
-          lineColor: [246, 225, 208],
+          fontSize: 9.5,
         },
-        alternateRowStyles: { fillColor: [255, 252, 249] },
+        columnStyles: COLW.reduce((acc: any, w, i) => {
+          acc[i] = { cellWidth: w, ...(i >= 3 ? { halign: 'right' } : {}) };
+          return acc;
+        }, {}),
         didParseCell: (data) => {
-          const isNumeric = numericColumns.includes(rawHeaders[data.column.index]);
-          if (data.section === 'body' && isNumeric) {
+          data.cell.styles.valign = 'middle';
+
+          // Header numeric columns right-aligned (matches body)
+          if (data.section === 'head' && data.column.index >= 3) {
             data.cell.styles.halign = 'right';
-            const value = parseFloat(String(data.cell.raw ?? '0'));
-            if (!isNaN(value) && value < 0) {
-              data.cell.styles.textColor = [220, 38, 38];
-              data.cell.styles.fontStyle = 'bold';
+          }
+
+          // MRP / Purchase price: very long numbers shrink instead of wrapping
+          if (data.section === 'body' && (data.column.index === 3 || data.column.index === 4)) {
+            const base = Number(data.cell.styles.fontSize) || 10.5;
+            pdf.setFont('helvetica', data.cell.styles.fontStyle === 'bold' ? 'bold' : 'normal');
+            pdf.setFontSize(base);
+            const w = pdf.getTextWidth(data.cell.text.join(' '));
+            const avail = COLW[data.column.index] - PAD * 2;
+            if (w > avail) data.cell.styles.fontSize = Math.max((base * avail) / w, 6);
+          }
+        },
+        didDrawCell: (data) => {
+          const { x, y, width, height } = data.cell;
+
+          // Negative stock -> red pill
+          if (data.section === 'body' && data.column.index === 7) {
+            const stockVal = exportData[data.row.index]?.stock ?? 0;
+            if (stockVal < 0) {
+              const label = `-${Math.abs(stockVal).toLocaleString('en-IN')}`;
+              pdf.setFont('helvetica', 'bold');
+              pdf.setFontSize(9.5);
+              const tw = pdf.getTextWidth(label);
+              const pw = tw + 5;
+              const px = x + width - PAD - pw;
+              pdf.setFillColor(254, 226, 226);
+              pdf.roundedRect(px, y + height / 2 - 3, pw, 6, PDF_RADIUS, PDF_RADIUS, 'F');
+              pdf.setTextColor(RED[0], RED[1], RED[2]);
+              pdf.text(label, px + 2.5, y + height / 2 + 1.2);
             }
           }
+
+          // Horizontal lines only (no column grid)
           if (data.section === 'head') {
-            data.cell.styles.halign = isNumeric ? 'right' : 'left';
+            pdf.setDrawColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+            pdf.setLineWidth(0.5);
+            pdf.line(x, y + height, x + width, y + height);
+          }
+          if (data.section === 'body') {
+            pdf.setDrawColor(LINE[0], LINE[1], LINE[2]);
+            pdf.setLineWidth(0.2);
+            pdf.line(x, y + height, x + width, y + height);
           }
         },
-        didDrawPage: () => {
-          pdf.setFontSize(9);
-          pdf.setTextColor(156, 163, 175);
-          pdf.text(`Page ${(pdf.internal as any).getNumberOfPages()}`, pageWidth - 14, pageHeight - 10, {
-            align: 'right',
-          });
-        },
       });
+
+            // ---------- 4. PAGE 2+ MINI HEADER + FOOTER (every page) ----------
+      const totalPages = pdf.getNumberOfPages();
+
+      for (let i = 1; i <= totalPages; i++) {
+        pdf.setPage(i);
+
+        if (i > 1) {
+          drawCompanyTile(M, 9, 9, false);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setFontSize(10);
+          pdf.setTextColor(17, 24, 39);
+          pdf.text(company, M + 12, 15.4);
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(9);
+          pdf.setTextColor(107, 114, 128);
+          pdf.text(`Detailed Item Report | ${pdfPeriodText}`, brandRight, 15.4, { align: 'right' });
+        }
+
+        const fy = pageHeight - 12;
+        let x = M;
+        if (sellarImg) {
+          try {
+            const lp = pdf.getImageProperties(sellarImg);
+            const lh = 5;
+            const lw = (lp.width / lp.height) * lh;
+            pdf.addImage(sellarImg, 'PNG', x, fy - 3.8, lw, lh);
+            x += lw + 2;
+          } catch {
+            // continue without footer logo
+          }
+        }
+
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(9);
+        pdf.setTextColor(0, 0, 0);
+        pdf.text('SELLAR', x, fy, { charSpace: 0.3 });
+        x += pdf.getTextWidth('SELLAR') + 5 * 0.3 + 4;
+
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8.5);
+        pdf.setTextColor(107, 114, 128);
+        pdf.text(generatedAtText, x, fy);
+
+        pdf.text(`${company} | Detailed Item Report | Page ${i} of ${totalPages}`, brandRight, fy, {
+          align: 'right',
+        });
+      }
 
       pdf.save('detailed_item_report.pdf');
 

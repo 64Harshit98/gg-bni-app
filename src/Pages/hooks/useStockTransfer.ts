@@ -104,7 +104,7 @@ export function useGodowns(companyId: string | undefined) {
     return ref.id;
   };
 
-  const updateGodown = async (companyId: string, id: string, data: Partial<Pick<Godown, 'name' | 'location' | 'isActive'>>) => {
+  const updateGodown = async (companyId: string, id: string, data: Partial<Pick<Godown, 'name' | 'location' | 'isActive' | 'type'>>) => {
     await updateDoc(doc(db, 'companies', companyId, 'godowns', id), data);
   };
 

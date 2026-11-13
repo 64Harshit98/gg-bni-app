@@ -56,8 +56,8 @@ const qtyOf = (l: { quantity?: number | string }) => Number(l.quantity) || 1;
 
 /**
  * Party-wise fixed pricing, shared by Sales (customers) and Purchase (suppliers).
- * When a party with a rule is picked, lines get the party's price automatically if it
- * is lower than the line's current price. Revert on a line keeps it at the normal price
+ * When a party with a rule is picked, matching lines get the party's agreed price
+ * automatically — it replaces the item's own discount, higher or lower. Undo keeps the normal price
  * for that party; a hand-edited price is never overwritten.
  */
 export const usePartyPricing = <L extends { id: string; quantity?: number | string }>({
@@ -95,7 +95,7 @@ export const usePartyPricing = <L extends { id: string; quantity?: number | stri
     const suggestFor = (line: L) =>
         rule ? getCustomerPriceSuggestion(adapter.toPriced(line), rule, rounding.enabled, rounding.interval) : null;
 
-    // Automatic: revert prices set for another party, apply this party's price where it's lower.
+    // Automatic: revert prices set for another party, then apply this party's agreed price.
     useEffect(() => {
         if (!enabled || !auto || resolvedFor === null || resolvedFor !== partyId) return;
         const displayName = rule?.customerName || partyName;
@@ -202,9 +202,10 @@ export const usePartyPricing = <L extends { id: string; quantity?: number | stri
                 const s = suggestions.get(l.id);
                 return s ? sum + (adapter.currentPrice(l) - s.net) * qtyOf(l) : sum;
             }, 0);
+            const change = saves > 0.005 ? ` — saves ${money(saves)}` : saves < -0.005 ? ` — ${money(-saves)} more than now` : '';
             return {
                 tone: 'info',
-                text: `${who} has fixed prices on ${suggestions.size} ${suggestions.size === 1 ? 'item' : 'items'} — saves ${money(saves)}.`,
+                text: `${who} has fixed prices on ${suggestions.size} ${suggestions.size === 1 ? 'item' : 'items'}${change}.`,
                 actionLabel: 'Apply prices',
                 onAction: applyAll,
             };

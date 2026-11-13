@@ -1574,7 +1574,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 </div>
             </div>
             <div className={`text-xs mt-1 ${isDiscountLocked ? 'text-[#d5000c] font-medium' : 'text-[#5b6b86]'}`}>
-                {isDiscountLocked ? 'Locked' : 'Type either — the other fills in.'}
+                {isDiscountLocked ? 'Locked. Long press to unlock.' : 'Type either — the other fills in.'}
             </div>
         </div>
     );

@@ -1214,7 +1214,7 @@ const SalesSettingsPage: React.FC = () => {
                                     <Opt
                                         id="customer-pricing"
                                         label="Customer-wise fixed discount"
-                                        description="Give regular customers their fixed prices (set them in Settings → Customer pricing). Add the customer at the top of the bill or in the payment screen — prices change only when you tap Apply prices."
+                                        description="Give regular customers their agreed discount (set it in Party pricing). When the customer is added on the bill, their discount replaces the item's own discount. Undo puts the normal prices back."
                                         icon={ico(BadgePercent)}
                                         checked={settings.enableCustomerPricing ?? false}
                                         onChange={(checked) => handleCheckboxChange('enableCustomerPricing', checked)}

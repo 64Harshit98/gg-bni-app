@@ -103,7 +103,8 @@ export const resolveCustomerDiscount = (
 
 /**
  * What the line would cost at the customer's agreed price — only returned when it is
- * CHEAPER than the line's current net price (a customer is never charged more than walk-in).
+ * different from the line's current net price. The party's agreed price always wins over the
+ * item's own discount / slab price — higher or lower (e.g. item 10% off, customer only 5%).
  */
 export const getCustomerPriceSuggestion = (
     line: PricedLine,
@@ -130,7 +131,7 @@ export const getCustomerPriceSuggestion = (
     if (net <= 0) return null;
 
     const current = Number(line.customPrice);
-    if (Number.isFinite(current) && current > 0 && net >= current - 0.005) return null;
+    if (Number.isFinite(current) && current > 0 && Math.abs(net - current) < 0.005) return null;
 
     const discount = parseFloat((((base - net) / base) * 100).toFixed(2));
     const pct = resolved.type === 'percent' ? resolved.value : discount;

@@ -38,7 +38,7 @@ const purchaseAdapter: PartyPricingAdapter<PurchaseItem> = {
     pricedName: l => l.supplierPricingName,
     pricedPct: l => Number(l.supplierDiscountPct || 0),
     skip: l => l.supplierPriceSkip,
-    // Supplier discount is % off the purchase rate (not MRP), used only when it lowers the rate.
+    // Supplier discount is % off the purchase rate (not MRP); it replaces the item's own discount.
     toPriced: l => ({
         productId: isRealProductLine(l) ? l.productId : undefined,
         itemGroupId: l.itemGroupId,

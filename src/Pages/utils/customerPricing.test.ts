@@ -36,17 +36,25 @@ describe('resolveCustomerDiscount', () => {
 });
 
 describe('getCustomerPriceSuggestion', () => {
-    it('suggests the customer price off MRP when it is cheaper', () => {
+    it('suggests the customer price off MRP', () => {
         const s = getCustomerPriceSuggestion(
             { productId: 'p', itemGroupId: 'snacks', mrp: 100, salesPrice: 95, customPrice: 95 }, rule());
         expect(s).toEqual({ net: 90, discount: 10, pct: 10, source: 'category' });
     });
 
-    it('does not suggest when the normal / slab price is already cheaper', () => {
+    it("uses the customer's rate even when the item's own discount is bigger", () => {
+        // Item sells at 10% off (₹90); customer is set to 5% → ₹95
         expect(getCustomerPriceSuggestion(
-            { productId: 'p', mrp: 100, salesPrice: 90, customPrice: 90 }, rule())).toBeNull();
+            { productId: 'p', mrp: 100, salesPrice: 90, customPrice: 90 }, rule())).toEqual(
+            { net: 95, discount: 5, pct: 5, source: 'default' });
+        // Slab price ₹94 → customer's 5% (₹95) still applies
         expect(getCustomerPriceSuggestion(
-            { productId: 'p', mrp: 100, salesPrice: 100, customPrice: 94 }, rule())).toBeNull();
+            { productId: 'p', mrp: 100, salesPrice: 100, customPrice: 94 }, rule())?.net).toBe(95);
+    });
+
+    it('returns nothing when the line is already at the customer price', () => {
+        expect(getCustomerPriceSuggestion(
+            { productId: 'p', mrp: 100, salesPrice: 95, customPrice: 95 }, rule())).toBeNull();
     });
 
     it('uses sale price as base when there is no MRP', () => {
@@ -60,8 +68,8 @@ describe('getCustomerPriceSuggestion', () => {
         const s = getCustomerPriceSuggestion({ productId: 'p', mrp: 100, salesPrice: 80, basePrice: 80, customPrice: 80 }, rule());
         expect(s?.net).toBe(76);
         expect(s?.pct).toBe(5);
-        // Off MRP it would be ₹95 — dearer than ₹80, so nothing would apply
-        expect(getCustomerPriceSuggestion({ productId: 'p', mrp: 100, salesPrice: 80, customPrice: 80 }, rule())).toBeNull();
+        // Without basePrice it is taken off MRP instead: ₹95
+        expect(getCustomerPriceSuggestion({ productId: 'p', mrp: 100, salesPrice: 80, customPrice: 80 }, rule())?.net).toBe(95);
     });
 
     it('handles a fixed net price override', () => {

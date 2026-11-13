@@ -721,7 +721,8 @@ const Sales: React.FC = () => {
                 )}
             </div>
 
-            {/* Row 2 (card view): sort/filter | search + camera | clear cart */}
+            {/* Row 2 (card view): sort/filter | search + camera | clear cart | three dots
+                (the More sheet is the only place to change bill no./date on phones) */}
             {isCardView && (
                 <div className="flex items-center gap-2 px-2 pb-3">
                     <button type="button" aria-label="View options" onClick={() => setIsFilterOpen(true)}
@@ -762,6 +763,10 @@ const Sales: React.FC = () => {
                             <FiTrash2 size={18} />
                         </button>
                     )}
+
+                    <button type="button" onClick={() => setIsMoreOpen(true)} aria-label="More" className={ICON_BTN_CLS}>
+                        <FiMoreVertical size={20} />
+                    </button>
                 </div>
             )}
         </header>
@@ -974,18 +979,26 @@ const Sales: React.FC = () => {
     };
     const renderCustomerModal = () =>
         !showCustomerModal ? null : (
-            <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-[#020618]/45 sm:p-4" onClick={closeCustomerModal}>
+            // z-[200]: above the phone bottom nav (z-[150]), which otherwise covers the sheet
+            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-[#020618]/45 p-4" onClick={closeCustomerModal}>
                 <div
-                    className={`w-full sm:max-w-sm bg-white text-[#0f172b] rounded-sm border border-[#dfe6fb] ${SHADOW_FLOAT} p-5`}
+                    role="dialog" aria-modal="true" aria-labelledby="sale-customer-title"
+                    className={`w-full max-w-md bg-white text-[#0f172b] rounded-sm border border-[#dfe6fb] ${SHADOW_FLOAT} p-4`}
                     onClick={(e) => e.stopPropagation()}
                 >
-                    <h3 className="m-0 text-lg font-semibold">Customer</h3>
-                    <p className="mt-1 mb-4 text-sm text-[#45556c]">These details are filled in at payment.</p>
-                    <div className="space-y-4">
-                        {/* Mobile pehle (PaymentDrawer jaisa) */}
-                        <div ref={customerPhoneWrapRef} className="relative">
-                            <label className={`block mb-1.5 ${LABEL_CLS}`}>Mobile</label>
+                    <div className="flex items-center gap-2 mb-3">
+                        <h3 id="sale-customer-title" className="m-0 flex-1 text-base font-semibold">Add customer</h3>
+                        <button type="button" aria-label="Close" onClick={closeCustomerModal}
+                            className="inline-grid place-items-center w-8 h-8 -mr-1 rounded-sm text-[#45556c] hover:bg-[#f5f7ff]">
+                            <FiX size={16} aria-hidden />
+                        </button>
+                    </div>
+                    {/* Mobile + name side by side (mobile first, like PaymentDrawer) */}
+                    <div className="relative grid grid-cols-2 gap-2.5">
+                        <div ref={customerPhoneWrapRef} className="min-w-0">
+                            <label htmlFor="sale-customer-phone" className={`block mb-1 ${LABEL_CLS}`}>Mobile</label>
                             <input
+                                id="sale-customer-phone"
                                 type="tel"
                                 inputMode="tel"
                                 maxLength={10}
@@ -1002,9 +1015,10 @@ const Sales: React.FC = () => {
                             />
                             {activeSuggestField === 'number' && renderCustomerSuggestions()}
                         </div>
-                        <div ref={customerNameWrapRef} className="relative">
-                            <label className={`block mb-1.5 ${LABEL_CLS}`}>Name</label>
+                        <div ref={customerNameWrapRef} className="min-w-0">
+                            <label htmlFor="sale-customer-name" className={`block mb-1 ${LABEL_CLS}`}>Name</label>
                             <input
+                                id="sale-customer-name"
                                 type="text"
                                 value={customerDraft.name}
                                 onChange={(e) => handleCustomerDraftChange(e.target.value, 'name')}
@@ -1012,14 +1026,16 @@ const Sales: React.FC = () => {
                                     setActiveSuggestField('name');
                                     if (customerDraft.name.length >= 3) searchCustomer(customerDraft.name, 'name');
                                 }}
-                                placeholder="Customer name"
+                                placeholder="Customer name…"
                                 className={POPUP_INPUT_CLS}
                                 autoComplete="off"
+                                spellCheck={false}
                             />
                             {activeSuggestField === 'name' && renderCustomerSuggestions()}
                         </div>
                     </div>
-                    <div className="flex justify-end gap-2 mt-6">
+                    <p className="mt-2 mb-0 text-xs text-[#5b6b86]">Type 3+ letters or digits to pick a saved customer. Also filled in at payment.</p>
+                    <div className="grid grid-cols-2 gap-2.5 mt-4">
                         <CustomButton variant={Variant.Outline} onClick={closeCustomerModal}>Cancel</CustomButton>
                         <CustomButton variant={Variant.Filled} onClick={saveCustomer}>Save</CustomButton>
                     </div>
@@ -1045,29 +1061,39 @@ const Sales: React.FC = () => {
             ? 'bg-[#fff3dd] text-[#bb4d00]'
             : offer?.tone === 'applied' ? 'bg-[#e9faef] text-[#008236]' : 'bg-[#e6eeff] text-[#155dfc]';
         return (
-            <div className={inPanel ? 'flex flex-col gap-2' : 'flex-shrink-0 flex flex-col gap-2 px-4 md:px-5 py-2.5 bg-white border-b border-[#dfe6fb]'}>
-                <div className="flex items-center gap-2.5">
-                    <span className="w-8 h-8 rounded-sm bg-[#e6eeff] text-[#155dfc] flex items-center justify-center flex-shrink-0"><FiUser size={15} /></span>
-                    <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-[#0f172b] truncate">
-                            {hasCustomer ? (shownName || shownPhone) : 'Walk-in customer'}
-                            {hasCustomer && shownName && shownPhone && <span className="font-normal text-[#5b6b86]"> · {shownPhone}</span>}
+            <div className={inPanel ? 'flex flex-col gap-2' : 'flex-shrink-0 flex flex-col gap-2 px-4 md:px-5 py-2 bg-white border-b border-[#dfe6fb]'}>
+                {!hasCustomer && !isEditMode ? (
+                    // No customer yet: the whole row is one compact "Add customer" button
+                    <button type="button" onClick={openCustomerModal}
+                        className="flex items-center gap-2.5 w-full min-h-10 px-2.5 py-1.5 rounded-sm border border-dashed border-[#a9b8de] bg-[#f8faff] text-left hover:bg-[#eef2ff] hover:border-[#155dfc]">
+                        <span className="w-7 h-7 rounded-sm bg-[#e6eeff] text-[#155dfc] flex items-center justify-center flex-shrink-0"><FiUserPlus size={14} aria-hidden /></span>
+                        <span className="text-sm font-medium text-[#155dfc] flex-shrink-0">Add customer</span>
+                        <span className="flex-1 min-w-0 text-xs text-[#5b6b86] truncate text-right">for their fixed prices</span>
+                    </button>
+                ) : (
+                    <div className="flex items-center gap-2.5">
+                        <span className="w-7 h-7 rounded-sm bg-[#e6eeff] text-[#155dfc] flex items-center justify-center flex-shrink-0"><FiUser size={14} aria-hidden /></span>
+                        <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-[#0f172b] truncate">
+                                {hasCustomer ? (shownName || shownPhone) : 'No customer'}
+                                {hasCustomer && shownName && shownPhone && <span className="font-normal text-[#5b6b86]"> · {shownPhone}</span>}
+                            </div>
+                            <div className={`text-xs truncate ${customerPricing.rule ? 'text-[#008236]' : 'text-[#5b6b86]'}`}>{status}</div>
                         </div>
-                        <div className={`text-xs truncate ${customerPricing.rule ? 'text-[#008236]' : 'text-[#5b6b86]'}`}>{status}</div>
+                        {!isEditMode && (
+                            <button type="button" onClick={openCustomerModal}
+                                className="inline-flex items-center h-8 px-2.5 rounded-sm text-[13px] font-medium text-[#155dfc] hover:bg-[#e6eeff] flex-shrink-0">
+                                Change
+                            </button>
+                        )}
+                        {!isEditMode && (
+                            <button type="button" aria-label="Remove customer" onClick={clearCustomer}
+                                className="inline-flex items-center justify-center w-8 h-8 rounded-sm text-[#45556c] hover:bg-[#f5f7ff] flex-shrink-0">
+                                <FiX size={16} aria-hidden />
+                            </button>
+                        )}
                     </div>
-                    {!isEditMode && (
-                        <button type="button" onClick={openCustomerModal}
-                            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-sm border border-[#7a8aa3] bg-white text-[13px] font-medium text-[#0f172b] hover:bg-[#f5f7ff] flex-shrink-0">
-                            <FiUserPlus size={14} /> {hasCustomer ? 'Change' : 'Add customer'}
-                        </button>
-                    )}
-                    {!isEditMode && hasCustomer && (
-                        <button type="button" aria-label="Remove customer" onClick={clearCustomer}
-                            className="inline-flex items-center justify-center w-8 h-8 rounded-sm text-[#45556c] hover:bg-[#f5f7ff] flex-shrink-0">
-                            <FiX size={16} />
-                        </button>
-                    )}
-                </div>
+                )}
                 {offer && (
                     <div className={`flex items-center gap-2 px-3 py-2 rounded-sm text-[13px] font-medium ${offerCls}`} role="status">
                         <span className="flex-1 min-w-0">{offer.text}</span>
@@ -1078,6 +1104,62 @@ const Sales: React.FC = () => {
                     </div>
                 )}
             </div>
+        );
+    };
+
+    /** The "fixed prices applied · Undo" message, on its own (used under the cart bar). */
+    const renderCustomerOffer = () => {
+        const offer = customerPricingEnabled ? customerPricing.offer : null;
+        if (!offer) return null;
+        const offerCls = offer.tone === 'warn'
+            ? 'bg-[#fff3dd] text-[#bb4d00]'
+            : offer.tone === 'applied' ? 'bg-[#e9faef] text-[#008236]' : 'bg-[#e6eeff] text-[#155dfc]';
+        return (
+            <div className="flex-shrink-0 px-4 md:px-5 pt-2">
+                <div className={`flex items-center gap-2 pl-3 pr-1 py-1 rounded-sm text-xs font-medium ${offerCls}`} role="status">
+                    <span className="flex-1 min-w-0">{offer.text}</span>
+                    <button type="button" onClick={offer.onAction}
+                        className={`flex-shrink-0 h-7 px-2.5 rounded-sm text-xs font-semibold ${offer.tone === 'info' ? 'bg-[#155dfc] text-white hover:bg-[#1447e6]' : 'bg-white border border-current hover:opacity-80'}`}>
+                        {offer.actionLabel}
+                    </button>
+                </div>
+            </div>
+        );
+    };
+
+    /** Small customer chip for the cart bar: "+ Customer", or the picked name with ✕. */
+    const renderCustomerChip = () => {
+        if (!customerPricingEnabled) return null;
+        const shownName = isEditMode ? (invoiceToEdit?.partyName || '') : customerName;
+        const shownPhone = isEditMode ? (invoiceToEdit?.partyNumber || '') : customerPhone;
+        const label = shownName || shownPhone;
+        if (!label) {
+            if (isEditMode) return null;
+            return (
+                <button type="button" onClick={openCustomerModal} title="Add a customer to apply their fixed prices"
+                    className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-sm border border-[#c9d3ea] bg-white text-[13px] font-medium text-[#155dfc] hover:bg-[#e6eeff] hover:border-[#155dfc]">
+                    <FiUserPlus size={14} aria-hidden /> Customer
+                </button>
+            );
+        }
+        const tone = customerPricing.rule ? 'border-[#b9e8c9] bg-[#e9faef] text-[#008236]' : 'border-[#c9d3ea] bg-white text-[#0f172b]';
+        const hint = customerPricing.loading ? 'Checking customer prices…'
+            : customerPricing.rule ? 'Has fixed prices' : 'No fixed prices for this customer';
+        return (
+            <span className={`inline-flex items-center h-8 max-w-[170px] sm:max-w-[240px] rounded-sm border ${tone}`} title={`${label}${shownName && shownPhone ? ` · ${shownPhone}` : ''} — ${hint}`}>
+                <button type="button" onClick={isEditMode ? undefined : openCustomerModal} disabled={isEditMode}
+                    aria-label={isEditMode ? `Customer ${label}` : `Change customer ${label}`}
+                    className="inline-flex items-center gap-1.5 min-w-0 h-full pl-2.5 pr-1.5 text-[13px] font-medium disabled:cursor-default">
+                    <FiUser size={14} aria-hidden className="flex-shrink-0" />
+                    <span className="truncate">{label}</span>
+                </button>
+                {!isEditMode && (
+                    <button type="button" aria-label="Remove customer" onClick={clearCustomer}
+                        className="inline-grid place-items-center w-7 h-full flex-shrink-0 opacity-70 hover:opacity-100">
+                        <FiX size={14} aria-hidden />
+                    </button>
+                )}
+            </span>
         );
     };
 
@@ -1237,7 +1319,8 @@ const Sales: React.FC = () => {
             </div>
 
             {/* Right */}
-            <div className="flex-1 min-w-fit flex items-center justify-end">
+            <div className="flex-1 min-w-fit flex items-center justify-end gap-2">
+                <span className="xl:hidden contents">{renderCustomerChip()}</span>
                 {items.length > 0 && (
                     <button
                         type="button"
@@ -2230,8 +2313,8 @@ ${colClass || ''}`}
                     {/* Cart List Container */}
                     <div className="flex-1 flex flex-col bg-[#eef2ff] overflow-y-hidden">
                         {renderCartBar()}
-                        {/* Desktop has it in the bill panel on the right */}
-                        <div className="xl:hidden">{renderCustomerBar()}</div>
+                        {/* Customer is a chip in the cart bar; desktop has the full bar in the bill panel */}
+                        <div className="xl:hidden">{renderCustomerOffer()}</div>
                         <div className="flex-shrink-0 grid grid-cols-2 px-2 py-1">
                             {discountInfo && <div className="text-xs text-red-600">{discountInfo}</div>}
                             {priceInfo && <div className="text-xs text-red-600">{priceInfo}</div>}

@@ -17,8 +17,8 @@ import { searchParties, type PartyHit } from '../../lib/partySearch';
 // Owner sets each customer's (Sale tab) or supplier's (Purchase tab) agreed discount
 // here — Busy-style party-wise discount structure, without party groups. Every existing
 // party is listed with a quick "% on all items" box; the editor adds category and item
-// rules. On the bill the party's price is applied automatically to matching lines,
-// only where it is lower.
+// rules. On the bill the party's price is applied automatically to matching lines and
+// replaces the item's own discount.
 
 const FIELD = 'flex items-center gap-2 h-10 px-3 rounded-sm border border-[#7a8aa3] bg-white text-[#5b6b86] focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-[#155dfc]';
 const INPUT = 'flex-1 min-w-0 border-0 outline-none bg-transparent text-sm text-[#0f172b] placeholder:text-[#5b6b86]';
@@ -868,7 +868,7 @@ const CustomerPricing: React.FC = () => {
                     </section>
 
                     <p className="m-0 text-xs text-[#5b6b86]">
-                        Priority: item rule, then category, then “all items”. Applied automatically when the {party} is picked on a {side === 'sale' ? 'bill' : 'purchase'}, only where it’s lower than the normal price.
+                        Priority: item rule, then category, then “all items”. Applied automatically when the {party} is picked on a {side === 'sale' ? 'bill' : 'purchase'} and replaces the item’s own discount.
                     </p>
                 </div>
 
@@ -1121,7 +1121,7 @@ const CustomerPricing: React.FC = () => {
                                 {[
                                     `Type a % next to a ${party} — that’s their discount on all items.`,
                                     'Tap the name for category or item prices.',
-                                    `It’s applied automatically when the ${party} is picked on a ${side === 'sale' ? 'bill' : 'purchase'}, only where it’s lower.`,
+                                    `It’s applied automatically when the ${party} is picked on a ${side === 'sale' ? 'bill' : 'purchase'} and replaces the item’s own discount.`,
                                 ].map((t, i) => (
                                     <li key={i} className="flex gap-2.5">
                                         <span aria-hidden className="grid place-items-center flex-none w-5 h-5 rounded-sm bg-[#e6eeff] text-[#155dfc] text-[11px] font-semibold">{i + 1}</span>

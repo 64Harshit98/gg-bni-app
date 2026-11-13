@@ -141,6 +141,45 @@ export interface PriceTier {
   barcode?: string;           // is tier ka apna alag barcode (optional)
 }
 
+// ─── Customer-wise fixed pricing (companies/{cid}/customerPricing/{partyDocId}) ───
+export interface CustomerItemOverride {
+  name: string;
+  type: 'percent' | 'netPrice';
+  value: number;
+}
+
+export interface CustomerPricingRule {
+  customerId: string;            // same as the customers doc id (phone, else name)
+  customerName: string;
+  customerNumber: string;
+  isActive: boolean;
+  defaultDiscountPct: number;    // 0 = none
+  categoryDiscounts: Record<string, number>;          // itemGroupId -> pct
+  itemOverrides: Record<string, CustomerItemOverride>; // itemId -> override
+  note?: string;
+  updatedAt?: any;
+  updatedBy?: string;
+}
+
+// ─── Supplier price book (companies/{cid}/supplierPriceBook/{partyDocId}) ───
+export interface SupplierPriceEntry {
+  rate: number;                  // purchasePrice per unit as entered on that bill
+  rateExclTax: number;           // normalised for comparison across tax modes
+  taxType: string;
+  taxRate: number;
+  mrp: number;
+  date: number;                  // bill date (ms)
+  invoiceNumber: string;
+  purchaseId: string;
+}
+
+export interface SupplierPriceBook {
+  supplierName: string;
+  supplierNumber: string;
+  updatedAt?: any;
+  items: Record<string, SupplierPriceEntry>; // key: productId or productId__tierId
+}
+
 export interface QuantitySlab {
   id: string;
   minQty: number;

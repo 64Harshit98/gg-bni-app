@@ -7,6 +7,7 @@ import type { Permissions } from '../../enums';
 import type { Cata_Permissions } from '../../Catalogue/enum/cata_permissions.enum';
 import sellarLogo from '../../assets/sellar-logo-heading.png';
 import { Avatar, UserMenu, THEMES, type Theme } from './UserMenu';
+import { TutorialStep } from '../TutorialStep';
 
 type AnyPermission = Permissions | Cata_Permissions;
 
@@ -29,6 +30,14 @@ export interface QuickAction {
   onClick?: () => void;
 }
 
+export interface SidebarTutorial {
+  activeKey: string | null; // 'nav:<to>' | 'qa:<key>' ; null = no step active
+  texts: Record<string, string>;
+  isLast: boolean;
+  onNext: () => void;
+  onSkip: () => void;
+}
+
 interface SidebarProps {
   navItems: NavItem[];
   quickActions: QuickAction[];
@@ -36,12 +45,32 @@ interface SidebarProps {
   userRole?: string;
   switcher?: ReactNode; // POS / Catalogue switcher (with tutorial wrapper)
   theme?: Theme; // 'sky' (POS) | 'orange' (Catalogue)
+  tutorial?: SidebarTutorial;
 }
 
 const COLLAPSE_KEY = 'gg-sidebar-collapsed';
 
-export function Sidebar({ navItems, quickActions, userName, userRole, switcher, theme = 'sky' }: SidebarProps) {
+export function Sidebar({ navItems, quickActions, userName, userRole, switcher, theme = 'sky', tutorial }: SidebarProps) {
   const t = THEMES[theme];
+
+  // One TutorialStep per item; only the item whose key is active shows the spotlight
+  const withTutorial = (key: string, node: ReactNode) =>
+    tutorial ? (
+      <TutorialStep
+        key={key}
+        step={0}
+        currentStep={tutorial.activeKey === key ? 0 : -1}
+        text={tutorial.texts[key] ?? ''}
+        onNext={tutorial.onNext}
+        onSkip={tutorial.onSkip}
+        isLast={tutorial.isLast}
+        arrowAlign="left"
+      >
+        {node}
+      </TutorialStep>
+    ) : (
+      node
+    );
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try {
       return window.localStorage.getItem(COLLAPSE_KEY) === '1';
@@ -94,11 +123,13 @@ export function Sidebar({ navItems, quickActions, userName, userRole, switcher, 
 
         {/* Primary nav */}
         <nav className={cx('flex-1 space-y-1 overflow-y-auto py-4', collapsed ? 'px-2' : 'px-3')}>
-          {navItems.map(({ to, icon, label, badge }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end
+          {navItems.map(({ to, icon, label, badge }) =>
+            withTutorial(
+              `nav:${to}`,
+              <NavLink
+                key={to}
+                to={to}
+                end
               title={collapsed ? label : undefined}
               className={({ isActive }) =>
                 cx(
@@ -188,12 +219,14 @@ export function Sidebar({ navItems, quickActions, userName, userRole, switcher, 
               </button>
             );
 
+                        const wrapped = withTutorial(`qa:${action.key}`, node);
+
             return action.permission ? (
               <ShowWrapper key={action.key} requiredPermission={action.permission as any}>
-                {node}
+                {wrapped}
               </ShowWrapper>
             ) : (
-              node
+              wrapped
             );
           })}
         </nav>

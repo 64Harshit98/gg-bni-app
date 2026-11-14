@@ -50,7 +50,7 @@ function escapeHtml(str) {
 // into one upstream call, and keeps serving the last good copy for a while
 // if the function is slow or down, so a hiccup upstream doesn't blank the
 // storefront.
-const STOREFRONT_FRESH_MS = 30 * 1000;
+const STOREFRONT_FRESH_MS = 10 * 1000;
 const STOREFRONT_STALE_MS = 10 * 60 * 1000;
 const STOREFRONT_UPSTREAM_TIMEOUT_MS = 8000;
 const STOREFRONT_CACHE_MAX = 100;

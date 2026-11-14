@@ -13,6 +13,7 @@ export interface BillSettingsData {
     enableTriplicate?: boolean;
     discountDisplayFormat?: 'amount' | 'percentage';
     enableItemImages?: boolean;
+    enableWatermark?: boolean;
 }
 
 export const DEFAULT_TERMS_AND_CONDITIONS =
@@ -103,6 +104,8 @@ export const BillPaper: React.FC<{ business: BusinessInfoData; settings: BillSet
     const upi = (settings.upiId || '').trim();
     const today = new Date().toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
     const showPhotos = !!settings.enableItemImages;
+    // Default ON: only an explicit `false` hides the watermark (matches the PDF generators).
+    const showWatermark = settings.enableWatermark !== false;
 
     const qr = upi ? (
         <div className="inline-grid justify-items-center text-[9px]">
@@ -165,7 +168,7 @@ export const BillPaper: React.FC<{ business: BusinessInfoData; settings: BillSet
     if (f === 'A5') {
         return (
             <div className={PAPER} style={{ width: PAPER_W.A5 }}>
-                <div className={WM}>SELLAR.IN</div>
+                {showWatermark && <div className={WM}>SELLAR.IN</div>}
                 <div className="grid grid-cols-[1fr_2fr_1fr] items-center gap-2 p-2 border border-black">
                     <div>{qr}</div>
                     <div className="text-center font-bold text-[28px]">{name}</div>
@@ -228,7 +231,7 @@ export const BillPaper: React.FC<{ business: BusinessInfoData; settings: BillSet
     // ── A4 ──
     return (
         <div className={PAPER} style={{ width: PAPER_W.A4 }}>
-            <div className={WM}>SELLAR.IN</div>
+            {showWatermark && <div className={WM}>SELLAR.IN</div>}
             <div className="text-right text-[9px]">Bill generated on {today}</div>
             <div className="grid grid-cols-[1fr_2fr_1fr] items-center gap-2 p-2 border border-black">
                 <div>{qr}</div>

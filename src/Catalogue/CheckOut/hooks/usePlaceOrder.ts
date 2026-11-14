@@ -4,6 +4,7 @@ import { db } from '../../../lib/Firebase';
 import type { CartItem, Address } from '../checkOut.types';
 import { buildOrderLineItems, computeOrderLevelTotals } from '../checkOut.calculations';
 import { safeGet, safeRemove } from '../../../lib/safeStorage';
+import { getMaxOrderQty } from '../../storefront/productState';
 import { readLeadData } from '../../storefront/buyerStorage';
 
 interface UsePlaceOrderParams {
@@ -80,6 +81,23 @@ export const usePlaceOrder = ({
                 });
                 const itemRefs = Array.from(qtyByItem.keys()).map(id => doc(db, 'companies', effectiveCompanyId!, 'items', id));
                 const itemSnaps = await Promise.all(itemRefs.map(ref => transaction.get(ref)));
+
+                // Max order limit: fresh settings se, same item ki sab lines jodkar (pack = quantity, pieces nahi)
+                if (settingsSnap.exists() && settingsSnap.data().enableOrderLimits) {
+                    const liveSettings = settingsSnap.data() as any;
+                    const orderedQty = new Map<string, number>();
+                    cartItems.forEach(c => {
+                        const k = String(c.id);
+                        orderedQty.set(k, (orderedQty.get(k) || 0) + Number(c.quantity));
+                    });
+                    for (const snap of itemSnaps) {
+                        if (!snap.exists() || !orderedQty.has(snap.id)) continue;
+                        const limit = getMaxOrderQty({ id: snap.id, ...snap.data() } as any, liveSettings);
+                        if (limit !== null && orderedQty.get(snap.id)! > limit) {
+                            throw new Error(`ORDER_LIMIT::${String(snap.data().name || 'This item')}::${limit}`);
+                        }
+                    }
+                }
 
                 let prefix = "SLS-";
                 let currentNumber = 1001;
@@ -231,7 +249,13 @@ export const usePlaceOrder = ({
 
         } catch (e) {
             console.error("Critical Transaction Error:", e);
-            alert("Failed to place order. No numbers were skipped.");
+            const msg = e instanceof Error ? e.message : '';
+            if (msg.startsWith('ORDER_LIMIT::')) {
+                const [, name, limit] = msg.split('::');
+                alert(`You can order at most ${limit} of ${name}. Please reduce the quantity in your cart.`);
+            } else {
+                alert("Failed to place order. No numbers were skipped.");
+            }
         } finally {
             setIsPlacing(false);
         }

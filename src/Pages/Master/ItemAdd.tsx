@@ -139,7 +139,7 @@ const ADD_ITEM_CSS = `
 }
 .ai-root.ai-orange{--canvas:#fff5ec;--primary:#c2410c;--primary-hover:#9a3412;--primary-text:#c2410c;--primary-soft:#ffedd5;--primary-soft-ink:#c2410c;--warning:#a16207}
 .ai-root *{box-sizing:border-box}
-.ai-root--page{height:100vh;width:100%}
+.ai-root--page{height:100%;width:100%}
 .ai-root--modal{height:100%;width:100%;background:var(--surface)}
 .ai-ico{width:20px;height:20px;flex:none;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
 .ai-ico--sm{width:16px;height:16px}
@@ -189,7 +189,7 @@ const ADD_ITEM_CSS = `
 .ai-left > *{flex-shrink:0}
 @media(min-width:768px){.ai-left{padding:20px 20px 24px;gap:14px}}
 .ai-right{display:none}
-@media(min-width:1280px){.ai-right{display:flex;flex-direction:column;gap:16px;width:340px;flex:none;background:var(--surface);border-left:1px solid var(--border);padding:20px;overflow-y:auto}}
+@media(min-width:1280px){.ai-right{display:flex;flex-direction:column;gap:10px;width:340px;flex:none;background:var(--surface);border-left:1px solid var(--border);padding:12px 16px;overflow:hidden;min-height:0}}
 
 /* cards + form */
 .ai-card{background:var(--surface);border:1px solid var(--border);border-radius:4px;box-shadow:var(--shadow-card);min-width:0;overflow:hidden}
@@ -255,7 +255,7 @@ const ADD_ITEM_CSS = `
 .ai-btn--ghost{color:var(--ink-muted)}
 .ai-btn--ghost:hover:not([disabled]){background:var(--surface-sunken);color:var(--ink)}
 .ai-btn--sm{height:32px;padding:0 12px;font-size:13px}
-.ai-btn--lg{height:48px;padding:0 20px;font-size:15px}
+.ai-btn--lg{height:44px;padding:0 16px;font-size:14px}
 .ai-btn--icon{width:32px;padding:0}
 .ai-btn--block{width:100%}
 .ai-btn[disabled]{opacity:.45;cursor:not-allowed}
@@ -300,28 +300,32 @@ const ADD_ITEM_CSS = `
 .ai-alert button{border:0;background:none;color:inherit;cursor:pointer;display:grid;place-items:center;padding:0}
 
 /* right panel (desktop >=1280 only) */
-.ai-prev__img{height:96px;background:var(--surface-sunken);display:grid;place-items:center;color:var(--ink-subtle);border-bottom:1px solid var(--border);overflow:hidden}
+.ai-prev__img{height:100px;background:var(--surface-sunken);display:grid;place-items:center;color:var(--ink-subtle);border-bottom:1px solid var(--border);overflow:hidden}
 .ai-prev__img img{width:100%;height:100%;object-fit:cover}
-.ai-prev__b{padding:14px 16px;display:grid;gap:10px}
+.ai-prev__b{padding:10px 14px;display:grid;gap:6px}
 .ai-prev__name{font-size:15px;font-weight:600;line-height:22px;word-break:break-word}
 .ai-meta{font-size:12px;color:var(--ink-subtle)}
 .ai-price{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
-.ai-price b{font-size:22px;line-height:30px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.ai-price b{font-size:20px;line-height:26px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
 .ai-mrp{color:var(--ink-subtle);text-decoration:line-through;font-size:12px}
-.ai-kv{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;font-size:13px;margin:0}
+.ai-kv{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 12px;font-size:12px;line-height:18px;margin:0}
 .ai-kv dt{color:var(--ink-muted);margin:0}
 .ai-kv dd{margin:0;text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
-.ai-bulk{background:var(--primary-soft);padding:14px 16px;display:grid;gap:10px}
-.ai-bulk__h{display:flex;gap:10px;align-items:flex-start}
-.ai-bulk__h b{font-size:14px}
-.ai-bulk__h div div{font-size:12px;line-height:18px;color:var(--ink-muted)}
+.ai-bulk{background:var(--primary-soft);padding:10px 12px;display:grid;gap:8px}
+.ai-bulk__h{display:flex;gap:8px;align-items:flex-start}
+.ai-bulk__h b{font-size:13px;line-height:18px}
+.ai-bulk__h div div{font-size:11px;line-height:15px;color:var(--ink-muted)}
 .ai-bulk__btns{display:grid;grid-template-columns:1fr auto;gap:8px}
-.ai-spacer{flex:1}
+.ai-right .ai-bulk .ai-tint{width:28px;height:28px}
+.ai-right .ai-bulk .ai-btn--sm{height:30px}
+.ai-spacer{display:none}
+@media(min-width:1280px){.ai-spacer{display:block;flex:1 1 auto;min-height:0}}
 @media(min-width:1280px){.ai-bulk.ai-mobonly{display:none}}
 
 /* phone pinned bar (<768 only) */
 .ai-savebar{position:fixed;left:0;right:0;bottom:64px;z-index:20;background:var(--surface);border-top:1px solid var(--border);padding:12px 16px;display:grid;grid-template-columns:1fr 1.4fr;gap:8px}
 .ai-savepair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ai-savepair--sticky{flex:none;margin-top:auto;background:var(--surface);padding-top:4px}
 /* Tablet: bar sits at the bottom of the page, form scrolls above it */
 @media(min-width:768px) and (max-width:1279px){
   .ai-savebar{
@@ -2527,7 +2531,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
 
             <div className="ai-spacer" />
 
-            <div className="ai-savepair">
+            <div className="ai-savepair ai-savepair--sticky">
               <button
                 type="button"
                 onClick={() => { keepForNextRef.current = true; handleAddItem(); }}

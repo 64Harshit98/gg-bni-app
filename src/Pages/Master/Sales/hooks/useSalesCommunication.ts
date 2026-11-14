@@ -107,7 +107,7 @@ export const useSalesCommunication = ({
             }
             const { itemAmount, discount1Amount, discount2Amount, d1Pct, d2Pct, absoluteDiscount } =
                 calculatePdfItemDiscounts({ ...item, finalPrice: pdfLineAmount });
-                        return {
+            return {
                 sno: index + 1,
                 name: item.name,
                 addOnLines: item.addOnLines,
@@ -132,6 +132,7 @@ export const useSalesCommunication = ({
             printFormat: billSettings.posPrintFormat || 'A4',
             enableTriplicate: billSettings.enableTriplicate || false,
             enableItemImages: billSettings.enableItemImages || false, // NEW
+            enableWatermark: billSettings.enableWatermark ?? true,
             gstScheme: salesSettings?.gstScheme || '',
             taxType: salesSettings?.taxType || '',
             enableDiscount2: salesSettings?.enableDiscount2 || false,
@@ -203,7 +204,7 @@ export const useSalesCommunication = ({
                     return total;
                 } catch { return 0; }
             })(),
-             // Credit note balance (informational row on A4 bill)
+            // Credit note balance (informational row on A4 bill)
             creditNoteBalance: await (async () => {
                 if (!currentUser?.companyId || !invoice.partyNumber) return 0;
                 try {

@@ -71,7 +71,9 @@ export const ProductView: React.FC<Props> = (p) => {
     // Once a single-piece product is in the cart, the stepper edits the cart itself (packs keep the picker)
     const editsCart = tiers.length === 0 && !hasAddOns && p.inCart > 0;
     const stockCap = settings?.allowNegativeInventory || tierId !== '__base__' ? Infinity : Number(item.stock || 0);
-    const atCap = editsCart ? p.inCart >= stockCap : qty + p.inCart >= stockCap;
+    const orderLimit = s.maxQty ?? Infinity;           // owner ki max order limit
+    const capQty = Math.min(stockCap, orderLimit);     // stock aur limit mein jo chhota
+    const atCap = editsCart ? p.inCart >= capQty : qty + p.inCart >= capQty;
     const tier = tiers.find((t) => t.id === tierId);
     const tierPrice = tier && tier.id !== '__base__' ? getEffectivePriceInfo(tier) : null;
     const basePrice = rp(tierPrice ? tierPrice.salePrice : s.price);
@@ -129,7 +131,7 @@ export const ProductView: React.FC<Props> = (p) => {
 
     // withAddOns=false: "Skip add-ons" adds the plain item
     const add = (withAddOns = true) => {
-        p.onAdd(item, Math.min(qty, Math.max(0, stockCap - p.inCart)), tier && tier.id !== '__base__' ? tier : undefined, withAddOns ? pickedAddOns : []);
+        p.onAdd(item, Math.min(qty, Math.max(0, capQty - p.inCart)), tier && tier.id !== '__base__' ? tier : undefined, withAddOns ? pickedAddOns : []);
         setQty(minQty);
         setAddOnSel({});
         setAddOnOpen(false);
@@ -149,7 +151,7 @@ export const ProductView: React.FC<Props> = (p) => {
             ? <button type="button" onClick={p.onViewCart} className={btnClass('primary', 'lg', true)}>
                 <ShoppingCart className="size-4" />View cart
             </button>
-            : <button type="button" onClick={onBuyClick} disabled={p.inCart >= stockCap} className={cx(btnClass('primary', 'lg', true), 'min-w-0')}>
+            : <button type="button" onClick={onBuyClick} disabled={p.inCart >= capQty} className={cx(btnClass('primary', 'lg', true), 'min-w-0')}>
                 <ShoppingCart className="size-4 shrink-0" /><span className="min-w-0 truncate">Add to cart{pricesVisible ? ` · ${formatINR((unitPrice + addOnExtra) * qty)}` : ''}</span>
             </button>;
 
@@ -294,8 +296,13 @@ export const ProductView: React.FC<Props> = (p) => {
                         <div className="min-w-0 flex-1">{buyButton}</div>
                     </div>
 
-                    {!s.outOfStock && atCap && Number.isFinite(stockCap) && (
-                        <p className="-mt-3 text-[13px] text-yellow-800">Only {stockCap} in stock{p.inCart > 0 ? ` · ${p.inCart} already in your cart` : ''}.</p>
+                    {!s.outOfStock && atCap && Number.isFinite(capQty) && (
+                        <p className="-mt-3 text-[13px] text-yellow-800">
+                            {orderLimit <= stockCap
+                                ? `You can order up to ${orderLimit} of this item`
+                                : `Only ${stockCap} in stock`}
+                            {p.inCart > 0 ? ` · ${p.inCart} already in your cart` : ''}.
+                        </p>
                     )}
 
                     {p.inCart > 0 && (

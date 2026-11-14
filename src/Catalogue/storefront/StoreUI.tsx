@@ -148,7 +148,9 @@ export interface ProductCardProps {
     canNotify?: boolean;
     notified?: boolean;
     hasOptions?: boolean;
-    inCart?: number;
+        inCart?: number;
+    /** Customer already has the max allowed quantity in the cart */
+    atLimit?: boolean;
     highlight?: boolean;
     pinned?: boolean;
     rail?: boolean;
@@ -173,7 +175,7 @@ export const ProductCard: React.FC<ProductCardProps> = (p) => {
 
     let action: React.ReactNode;
     if (p.inCart && p.inCart > 0) {
-        action = <QtyStepper value={p.inCart} onDec={p.onDec} onInc={p.onInc} size={small ? 'sm' : 'md'} className={p.rail ? 'w-[92px]' : ''} />;
+                action = <QtyStepper value={p.inCart} onDec={p.onDec} onInc={p.onInc} incDisabled={p.atLimit} size={small ? 'sm' : 'md'} className={p.rail ? 'w-[92px]' : ''} />;
     } else if (p.canNotify) {
         action = p.rail
             ? <button type="button" aria-label={p.notified ? 'We will notify you' : 'Notify me'} aria-pressed={!!p.notified} title={p.notified ? "We'll notify you when it's back" : 'Notify me when back'}

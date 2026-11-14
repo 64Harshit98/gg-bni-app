@@ -9,6 +9,7 @@ import type { Item, PriceTier } from '../../../constants/models';
 import { TierPickerModal } from '../../../Components/TierPickerModal';
 import { hasMultiplePricing } from '../../../Pages/utils/pricingUtils';
 import type { Order } from '../orders.types';
+import type { OrderPriceOffer } from '../hooks/useOrderCustomerPricing';
 import { formatAmount } from '../../../lib/format';
 import { indianStates } from '../../../Components/IndianStates';
 
@@ -56,6 +57,7 @@ interface OrderEditModalProps {
     handleDiscountPercentInputChange: (value: string) => void;
     handleDiscountAmountInputChange: (value: string) => void;
     handleSaveChanges: () => void;
+    customerPriceOffer?: OrderPriceOffer | null;
 }
 
 // ─── UI-only helpers (SELLAR "Catalogue orange" — PageCatEditOrderDesktop / Mobile) ───
@@ -154,6 +156,7 @@ export const OrderEditModal: React.FC<OrderEditModalProps> = ({
     handleDiscountPercentInputChange,
     handleDiscountAmountInputChange,
     handleSaveChanges,
+    customerPriceOffer,
 }) => {
     const [tierPickerItem, setTierPickerItem] = useState<Item | null>(null);
 
@@ -574,6 +577,29 @@ export const OrderEditModal: React.FC<OrderEditModalProps> = ({
                                     </span>
                                 </button>
                             </div>
+
+                            {/* Customer-wise fixed discount: owner taps Apply, nothing changes by itself */}
+                            {customerPriceOffer && (
+                                <div
+                                    role="status"
+                                    className={`mt-2.5 flex items-center gap-2 px-3 py-2 rounded-sm text-[13px] font-medium ${customerPriceOffer.tone === 'warn'
+                                        ? 'bg-amber-50 text-amber-800'
+                                        : customerPriceOffer.tone === 'applied'
+                                            ? 'bg-emerald-50 text-emerald-700'
+                                            : 'bg-[#ffedd5] text-[#9a3412]'}`}
+                                >
+                                    <span className="flex-1 min-w-0">{customerPriceOffer.text}</span>
+                                    <button
+                                        type="button"
+                                        onClick={customerPriceOffer.onAction}
+                                        className={`shrink-0 h-8 px-3 rounded-sm text-xs font-semibold ${customerPriceOffer.tone === 'info'
+                                            ? 'bg-[#c2410c] text-white hover:bg-[#9a3412]'
+                                            : 'bg-white border border-current hover:opacity-80'}`}
+                                    >
+                                        {customerPriceOffer.actionLabel}
+                                    </button>
+                                </div>
+                            )}
                         </div>
 
                         {/* Extras + totals — desktop only (mobile has the bottom bar) */}

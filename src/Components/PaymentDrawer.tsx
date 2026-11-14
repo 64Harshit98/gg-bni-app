@@ -18,7 +18,7 @@ import {
     limit
 } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
-import { CUSTOMER_REMARKS_COLLECTION } from '../constants/customerSource';
+import { CUSTOMER_REMARKS_COLLECTION, getPartyDocId } from '../constants/customerSource';
 
 export interface PaymentDetails { [key: string]: number; }
 
@@ -124,6 +124,15 @@ interface PaymentDrawerProps {
     // matches the existing always-locked behavior for anyone who hasn't set it.
     lockBillDiscountByDefault?: boolean;
     onPartyChange?: (name: string, number: string) => void;
+    /**
+     * Prices on the bill were checked against this party (customer pricing / supplier
+     * last rates). If the party typed here is a different one, `message` is shown.
+     */
+    partyPriceNote?: { partyId: string; message: string } | null;
+    /** Called while the drawer is open whenever the billing party name/number changes. */
+    onPartyInput?: (name: string, number: string) => void;
+    /** A one-line offer under the customer fields (e.g. "Apply hardik's fixed prices"). */
+    partyOffer?: { tone: 'info' | 'applied' | 'warn'; text: string; actionLabel: string; onAction: () => void } | null;
     // Tax se pehle ka asli amount (round off ke bina) — Sub total row isi se banta hai
     taxableSubtotal?: number;
 }
@@ -407,9 +416,12 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     totalMrp = 0,
     showBillOptions = true,
     maxBillDiscountValue = 0,
-        maxBillDiscountType = 'percent',
+    maxBillDiscountType = 'percent',
     lockBillDiscountByDefault = true,
     onPartyChange,
+    partyPriceNote,
+    onPartyInput,
+    partyOffer,
     taxableSubtotal,
 }) => {
     const { currentUser } = useAuth();
@@ -718,7 +730,16 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         if (isSale && finalNumber) searchParty(finalNumber, 'number');
         if (!isSale && finalName) searchParty(finalName, 'name');
 
-    }, [isOpen, mode, billTotal, initialDiscount, originalBillTotal, initialPartyName, initialPartyNumber, initialPartyAddress, initialPartyGST, initialShippingName, initialShippingNumber, initialShippingAddress, initialShippingGST, initialNarration, initialTransportDetails, initialPlaceOfSupply, initialShippingState, initialPartyPinCode, initialShippingPinCode, lockBillDiscountByDefault]);
+        // billTotal is read when the drawer opens; a total that changes while it is open
+        // (customer prices applied from here) must not reset the customer/payments typed in.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen, mode, initialDiscount, originalBillTotal, initialPartyName, initialPartyNumber, initialPartyAddress, initialPartyGST, initialShippingName, initialShippingNumber, initialShippingAddress, initialShippingGST, initialNarration, initialTransportDetails, initialPlaceOfSupply, initialShippingState, initialPartyPinCode, initialShippingPinCode, lockBillDiscountByDefault]);
+
+    // Live party for the page (customer-wise pricing looks up the typed/picked customer)
+    useEffect(() => {
+        if (isOpen && onPartyInput) onPartyInput(partyName, partyNumber);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen, partyName, partyNumber]);
 
     // --- AUTOMATIC SESSION SYNC EFFECT ---
     useEffect(() => {
@@ -1014,7 +1035,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 sendWhatsApp: mode === 'sale' && showBillOptions ? sendWhatsApp : undefined,
             });
 
-            const identifier = safePartyNumber || safePartyName;
+            const identifier = getPartyDocId(safePartyName, safePartyNumber);
 
             if (currentUser?.companyId && identifier) {
                 const partyDocRef = doc(db, 'companies', currentUser.companyId, collectionName, identifier);
@@ -1830,6 +1851,32 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 )}
                 {addressType === 'billing' && renderSuggestions()}
             </div>
+            {partyOffer && addressType === 'billing' && (
+                <div
+                    className={`mt-6 flex items-center gap-2 p-2.5 rounded-sm text-xs font-medium ${partyOffer.tone === 'warn'
+                        ? 'bg-[#fff3dd] text-[#bb4d00]'
+                        : partyOffer.tone === 'applied' ? 'bg-[#e9faef] text-[#008236]' : 'bg-[#e6eeff] text-[#155dfc]'}`}
+                    role="status"
+                >
+                    <span className="flex-1 min-w-0">{partyOffer.text}</span>
+                    <button
+                        type="button"
+                        onClick={partyOffer.onAction}
+                        className={`flex-shrink-0 h-8 px-3 rounded-sm text-xs font-semibold ${partyOffer.tone === 'info'
+                            ? 'bg-[#155dfc] text-white hover:bg-[#1447e6]'
+                            : 'bg-white border border-current hover:opacity-80'}`}
+                    >
+                        {partyOffer.actionLabel}
+                    </button>
+                </div>
+            )}
+            {partyPriceNote && !isCalculator && addressType === 'billing'
+                && getPartyDocId(partyName, partyNumber) !== partyPriceNote.partyId && (
+                    <div className="mt-6 flex items-start gap-2 p-2.5 rounded-sm bg-[#fff3dd] text-[#bb4d00] text-xs font-medium" role="status">
+                        <SvgIcon size={16}><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" /></SvgIcon>
+                        <span>{partyPriceNote.message}</span>
+                    </div>
+                )}
         </>
     ) : null;
 

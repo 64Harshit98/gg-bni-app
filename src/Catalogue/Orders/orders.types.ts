@@ -30,6 +30,15 @@ export interface OrderItem {
     taxRate?: number;
     taxableAmount?: number; // <-- Add this
     taxAmount?: number;
+    // Customer-wise fixed discount tags (set by useOrderCustomerPricing)
+    customerPricingFor?: string;
+    customerPricingName?: string;
+    customerDiscountPct?: number;
+    customerDiscountSource?: string;
+    customerPriceSkip?: string;
+    preCustomerPrice?: number;
+    preCustomerDiscount?: number;
+    preCustomerDiscount2?: number;
 }
 
 // 1. Updated Status Types

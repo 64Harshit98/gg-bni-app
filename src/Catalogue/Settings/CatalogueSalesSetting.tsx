@@ -27,7 +27,9 @@ import {
   ClipboardList,
   Hash,
   FileText,
-  Search,
+   Search,
+  ArrowDownUp,
+  BadgePercent,
 } from 'lucide-react';
 
 export interface CatalogueSalesSettings {
@@ -55,8 +57,9 @@ export interface CatalogueSalesSettings {
   requireApproval: boolean;
   enableItemWiseDiscount?: boolean;
   enableDiscount2?: boolean;
-  hideOutOfStock?: boolean;
+    hideOutOfStock?: boolean;
   enableTransportDetails?: boolean;
+  enableCustomerPricing?: boolean;
 }
 
 export const getDefaultCatalogueSalesSettings = (companyId: string): CatalogueSalesSettings => ({
@@ -84,8 +87,9 @@ export const getDefaultCatalogueSalesSettings = (companyId: string): CatalogueSa
   requireApproval: false,
   enableItemWiseDiscount: false,
   enableDiscount2: false,
-  hideOutOfStock: false,
+    hideOutOfStock: false,
   enableTransportDetails: false,
+  enableCustomerPricing: false,
 });
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -160,6 +164,10 @@ const BTN_BASE =
 const BTN_PRIMARY = `${BTN_BASE} bg-[#F97316] text-white hover:bg-[#EA580C] disabled:cursor-not-allowed disabled:opacity-[.45] disabled:hover:bg-[#F97316] ${FOCUS_RING}`;
 const BTN_SECONDARY = `${BTN_BASE} border-[#7a8aa3] bg-white text-[#0f172b] hover:bg-[#fff3e6] ${FOCUS_RING}`;
 
+// Small "example / preview" pill. <b> inside is bold + tabular numbers.
+const PREVIEW =
+  'mt-2 inline-flex flex-wrap items-center gap-1.5 bg-[#fff3e6] px-3 py-2 text-xs leading-[18px] text-[#45556c] rounded-sm [&_b]:font-semibold [&_b]:tabular-nums [&_b]:text-[#0f172b]';
+
 /* ── Presentational building blocks ────────────────────────────────────────── */
 // UI-only: the search box filters which option rows are shown on screen.
 const SettingsSearchContext = React.createContext<string>('');
@@ -212,9 +220,8 @@ const Opt: React.FC<OptProps> = ({ id, label, description, icon, checked, onChan
   return (
     <div
       data-opt
-      className={`grid items-center gap-x-4 gap-y-1.5 border-b border-[#f6e3d0] px-3.5 py-3 last:border-b-0 lg:px-[18px] lg:py-3.5 ${
-        hasSwitch ? 'grid-cols-[minmax(0,1fr)_auto]' : 'grid-cols-[minmax(0,1fr)]'
-      } ${disabled ? 'pointer-events-none opacity-[.45]' : ''}`}
+      className={`grid items-center gap-x-4 gap-y-1.5 border-b border-[#f6e3d0] px-3.5 py-3 last:border-b-0 lg:px-[18px] lg:py-3.5 ${hasSwitch ? 'grid-cols-[minmax(0,1fr)_auto]' : 'grid-cols-[minmax(0,1fr)]'
+        } ${disabled ? 'pointer-events-none opacity-[.45]' : ''}`}
     >
       <div className="min-w-0">
         <div className="flex items-center gap-2 text-sm font-medium">
@@ -260,15 +267,13 @@ const SegBtn: React.FC<{ active: boolean; large?: boolean; onClick: () => void; 
     type="button"
     aria-pressed={active}
     onClick={onClick}
-    className={`cursor-pointer border-0 font-medium rounded-sm ${FOCUS_RING} ${
-      large ? 'h-9 min-w-0 flex-1 px-1.5 text-xs leading-4 sm:px-3 sm:text-sm' : 'h-7 px-3 text-xs'
-    } ${
-      active
+    className={`cursor-pointer border-0 font-medium rounded-sm ${FOCUS_RING} ${large ? 'h-9 min-w-0 flex-1 px-1.5 text-xs leading-4 sm:px-3 sm:text-sm' : 'h-7 px-3 text-xs'
+      } ${active
         ? large
           ? 'bg-[#0f172b] text-white'
           : `bg-white text-[#C2410C] ${CARD_SHADOW}`
         : 'bg-transparent text-[#45556c]'
-    }`}
+      }`}
   >
     {children}
   </button>
@@ -283,6 +288,12 @@ const NAV_SECTIONS: { id: string; label: string; icon: React.ReactNode }[] = [
 ];
 
 const ico = (Icon: React.ComponentType<{ size?: number; strokeWidth?: number }>) => <Icon size={16} strokeWidth={1.75} />;
+
+// Display-only helper for the rounding example line.
+const formatRupees = (n: number) =>
+  `₹${Number.isInteger(n)
+    ? n.toLocaleString('en-IN')
+    : n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const CatalogueSalesSettings: React.FC = () => {
   const { currentUser } = useAuth();
@@ -463,6 +474,10 @@ const CatalogueSalesSettings: React.FC = () => {
     );
   }
 
+  // Display-only preview for the rounding example line
+  const roundingStep = Number(settings.roundingInterval ?? 1) || 1;
+  const roundedExample = Math.round(946.7 / roundingStep) * roundingStep;
+
   return (
     <div className={`${ROOT_BASE} flex min-h-screen w-full flex-col`}>
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} theme="catalogue" />}
@@ -583,11 +598,10 @@ const CatalogueSalesSettings: React.FC = () => {
               type="button"
               aria-pressed={activeSection === s.id}
               onClick={() => goToSection(s.id)}
-              className={`inline-flex h-[30px] flex-none cursor-pointer items-center whitespace-nowrap border px-3 text-xs font-medium rounded-sm ${FOCUS_RING} ${
-                activeSection === s.id
+              className={`inline-flex h-[30px] flex-none cursor-pointer items-center whitespace-nowrap border px-3 text-xs font-medium rounded-sm ${FOCUS_RING} ${activeSection === s.id
                   ? 'border-[#0f172b] bg-[#0f172b] text-white'
                   : 'border-[#7a8aa3] bg-white text-[#45556c]'
-              }`}
+                }`}
             >
               {s.label}
             </button>
@@ -606,11 +620,10 @@ const CatalogueSalesSettings: React.FC = () => {
                   type="button"
                   aria-current={activeSection === s.id}
                   onClick={() => goToSection(s.id)}
-                  className={`flex w-full cursor-pointer items-center gap-2.5 border-0 px-3 py-2 text-left text-[13px] font-medium rounded-sm ${
-                    activeSection === s.id
+                  className={`flex w-full cursor-pointer items-center gap-2.5 border-0 px-3 py-2 text-left text-[13px] font-medium rounded-sm ${activeSection === s.id
                       ? 'bg-[#ffedd5] text-[#C2410C]'
                       : 'bg-transparent text-[#45556c] hover:bg-white hover:text-[#0f172b]'
-                  }`}
+                    }`}
                 >
                   {s.icon}
                   {s.label}
@@ -622,9 +635,8 @@ const CatalogueSalesSettings: React.FC = () => {
             <form
               ref={formRef}
               onSubmit={handleSave}
-              className={`grid min-w-0 content-start gap-3 lg:gap-4 ${
-                query.trim() ? '[&_section:not(:has([data-opt]))]:hidden' : ''
-              }`}
+              className={`grid min-w-0 content-start gap-3 lg:gap-4 ${query.trim() ? '[&_section:not(:has([data-opt]))]:hidden' : ''
+                }`}
             >
               {noMatch && (
                 <div className={`min-w-0 border border-[#f6e3d0] bg-white px-4 py-10 text-center text-[#45556c] rounded-sm ${CARD_SHADOW}`}>
@@ -675,7 +687,15 @@ const CatalogueSalesSettings: React.FC = () => {
                   icon={ico(Percent)}
                   checked={settings.enableDiscount2 ?? false}
                   onChange={(checked) => handleCheckboxChange('enableDiscount2', checked)}
-                  disabled={!settings.enableItemWiseDiscount}
+                                    disabled={!settings.enableItemWiseDiscount}
+                />
+                <Opt
+                  id="customer-pricing"
+                  label="Customer-wise fixed discount"
+                  description="Give regular customers their agreed discount (set it in Party pricing). In the order edit screen, their discount replaces the item's own discount. Undo puts the normal prices back."
+                  icon={ico(BadgePercent)}
+                  checked={settings.enableCustomerPricing ?? false}
+                  onChange={(checked) => handleCheckboxChange('enableCustomerPricing', checked)}
                 />
 
                 {/* GST Scheme */}
@@ -733,6 +753,36 @@ const CatalogueSalesSettings: React.FC = () => {
                     </SegGroup>
                   </Opt>
                 )}
+
+                {/* Round off */}
+                <Opt
+                  id="enable-rounding"
+                  label="Round off"
+                  description="Round the sale price shown on the catalogue and in the PDF."
+                  icon={ico(ArrowDownUp)}
+                  checked={settings.enableRounding ?? false}
+                  onChange={(checked) => handleCheckboxChange('enableRounding', checked)}
+                >
+                  {settings.enableRounding && (
+                    <>
+                      <div className="mb-1.5 text-xs leading-[18px] text-[#5b6b86]">Round to the nearest</div>
+                      <SegGroup>
+                        {[0.01, 0.1, 0.5, 1, 5, 10].map((value) => (
+                          <SegBtn
+                            key={value}
+                            active={Number(settings.roundingInterval ?? 1) === value}
+                            onClick={() => handleChange('roundingInterval', value)}
+                          >
+                            {value.toFixed(2)}
+                          </SegBtn>
+                        ))}
+                      </SegGroup>
+                      <div className={PREVIEW}>
+                        {formatRupees(946.7)} → <b>{formatRupees(roundedExample)}</b>
+                      </div>
+                    </>
+                  )}
+                </Opt>
               </Section>
 
               {/* Inventory / Customer access / Order & delivery / Voucher numbering.

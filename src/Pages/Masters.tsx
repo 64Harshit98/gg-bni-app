@@ -53,6 +53,7 @@ const ICONS = {
   ],
   permission: ['M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z', 'm9 12 2 2 4-4'],
   clock: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M12 7v5l3 2'],
+  tag: ['M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z', 'M9 15l6-6M9.5 9.5h.01M14.5 14.5h.01'],
   chevron: ['m9 6 6 6-6 6'],
   search: ['M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14z', 'm20 20-3.5-3.5'],
 };
@@ -254,6 +255,7 @@ const Masters = () => {
     sales: 'sales setting display gst rounding discounts due billing bill numbering',
     purchase: 'purchase setting numbering cost price supplier',
     bill: 'bill setting print size logo footer terms whatsapp',
+    custPricing: 'customer supplier party pricing fixed discount special price dealer wholesale rate structure',
     items: 'items setting units categories low stock alerts mrp',
     barcode: 'barcode label setting size format',
     users: 'users salesman admin staff password',
@@ -261,7 +263,7 @@ const Masters = () => {
     shop: 'shop timing opening hours weekly off day close',
   };
 
-  const showBilling = match(K.sales) || match(K.purchase) || match(K.bill);
+  const showBilling = match(K.sales) || match(K.purchase) || match(K.bill) || match(K.custPricing);
   const showItems = match(K.items) || match(K.barcode);
   const showTeam = isOwner && (match(K.users) || match(K.perm));
   const showShop = isOwner && match(K.shop);
@@ -364,6 +366,17 @@ const Masters = () => {
                       title="Bill Setting"
                       value={billValue}
                       desc="Print size, logo, footer, terms and WhatsApp bill"
+                    />
+                  </ShowWrapper>
+                )}
+                {match(K.custPricing) && (
+                  <ShowWrapper requiredPermission={Permissions.ManageCustomerPricing}>
+                    <SettingItem
+                      to={ROUTES.CUSTOMER_PRICING}
+                      tint="green"
+                      icon={ICONS.tag}
+                      title="Party Pricing"
+                      desc="Fixed discount per customer (sale) and supplier (purchase) — all items, by category or per item"
                     />
                   </ShowWrapper>
                 )}

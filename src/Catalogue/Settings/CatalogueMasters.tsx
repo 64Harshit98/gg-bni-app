@@ -56,7 +56,8 @@ const ICONS = {
   permission: ['M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z', 'm9 12 2 2 4-4'],
   clock: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M12 7v5l3 2'],
   chevron: ['m9 6 6 6-6 6'],
-  search: ['M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14z', 'm20 20-3.5-3.5'],
+    search: ['M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14z', 'm20 20-3.5-3.5'],
+  tag: ['M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z', 'M9 15l6-6M9.5 9.5h.01M14.5 14.5h.01'],
 };
 
 /* ---------- One settings entry (card on desktop, row on mobile) ---------- */
@@ -239,21 +240,22 @@ const CatalogueMasters = () => {
 
   const K = {
     sales: 'sales setting catalogue order display gst rounding discounts',
-    bill: 'bill setting print size logo footer terms whatsapp',
+        bill: 'bill setting print size logo footer terms whatsapp',
+    custPricing: 'customer party pricing fixed discount special price dealer wholesale rate',
     items: 'item items setting units categories low stock mrp',
     users: 'user users setting salesman admin staff password',
     perm: 'permission setting role access',
     shop: 'shop timing opening hours weekly off day close',
   };
 
-  const showBilling = match(K.sales) || match(K.bill);
+    const showBilling = match(K.sales) || match(K.bill) || match(K.custPricing);
   const showItems = match(K.items);
   const showTeam = isOwner && (match(K.users) || match(K.perm));
   const showShop = isOwner && match(K.shop);
   const nothingFound = !!q && !showBilling && !showItems && !showTeam && !showShop;
 
   return (
-    <div className="flex flex-col h-screen w-full bg-[#fff5ec] overflow-hidden font-poppins">
+    <div className="flex flex-col h-full min-h-0 w-full bg-[#fff5ec] font-poppins">
       {/* Header */}
       <div className="flex-shrink-0 sticky top-0 z-10 bg-white border-b border-[#f6e1d0]">
         <div className="flex items-center gap-3 px-2 h-14 md:h-auto md:px-6 md:py-3.5">
@@ -311,7 +313,7 @@ const CatalogueMasters = () => {
       </div>
 
       {/* Body */}
-      <div className="flex-grow min-h-0 p-4 md:px-6 md:py-5 overflow-y-auto bg-[#fff5ec] box-border">
+      <div className="flex-grow min-h-0 p-4 md:px-6 md:py-5 overflow-y-auto bg-[#fff5ec]">
         {isDefaultMastersView ? (
           <>
             {showBilling && (
@@ -333,7 +335,16 @@ const CatalogueMasters = () => {
                     icon={ICONS.bill}
                     title="Bill Setting"
                     value={billValue}
-                    desc="Print size, logo, footer, terms and WhatsApp bill"
+                                        desc="Print size, logo, footer, terms and WhatsApp bill"
+                  />
+                )}
+                {match(K.custPricing) && (
+                  <SettingItem
+                    to={`${ROUTES.CHOME}/${ROUTES.CATA_CUSTOMER_PRICING}`}
+                    tint="green"
+                    icon={ICONS.tag}
+                    title="Party Pricing"
+                    desc="Fixed discount per customer — all items, by category or per item"
                   />
                 )}
               </Group>

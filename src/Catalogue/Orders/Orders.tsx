@@ -22,7 +22,7 @@ import { completeTutorial } from '../../Catalogue/hooks/useCompleteTutorial';
 import { useCollapsingPageHeader } from '../../lib/useCollapsingPageHeader';
 import { ORDER_STATUSES } from './orders.types';
 import { useOrdersList, useOrderEditor, useOrderStatus, useOrderPayment, useOrderDeletion, usePendingRequestCount, useOrderCommunication } from './hooks';
-import { OrderListFilters, PaymentSwitch, OrderEditModal,TransportDetailsModal, ZeroAmountConfirmModal, AdjustmentConfirmModal, StatusConfirmModal, DeleteConfirmModal, OrderActionSheet, PrintSubMenuModal, QrCodeModal, OrderCard, DuplicateItemPromptModal } from './components';
+import { OrderListFilters, PaymentSwitch, OrderEditModal, TransportDetailsModal, ZeroAmountConfirmModal, AdjustmentConfirmModal, StatusConfirmModal, DeleteConfirmModal, OrderActionSheet, PrintSubMenuModal, QrCodeModal, OrderCard, DuplicateItemPromptModal } from './components';
 
 // ─── Total tutorial steps for Orders ────────────────────────────────────────
 const TOTAL_STEPS = 5;
@@ -209,6 +209,7 @@ const OrdersPage: React.FC = () => {
         handleSaveChanges,
         handleCreditNote,
         handleRefund,
+        customerPriceOffer,
     } = useOrderEditor({
         companyId: currentUser?.companyId,
         currentUser,
@@ -756,6 +757,7 @@ const OrdersPage: React.FC = () => {
                     handleDiscountPercentInputChange={handleDiscountPercentInputChange}
                     handleDiscountAmountInputChange={handleDiscountAmountInputChange}
                     handleSaveChanges={handleSaveChanges}
+                    customerPriceOffer={customerPriceOffer}
                 />
             )}
             {selectedOrderForConfirm && (

@@ -14,6 +14,7 @@ import { getSlabForQty } from '../../../constants/models';
 import { useCatalogueData } from '../../../context/CatalogueDataContext';
 import type { Order } from '../orders.types';
 import { computeOrderTotals, computeLineTax, isTaxEnabled as computeIsTaxEnabled, resolveUnitPrice } from '../orders.calculations';
+import { useOrderCustomerPricing } from './useOrderCustomerPricing';
 
 // ─── Live MOQ lookup for items currently in the order being edited ─────────
 // Moved verbatim from Orders.tsx (was module-level `useLiveMoqMapHook`).
@@ -110,6 +111,15 @@ export const useOrderEditor = ({
 
     const liveMoqMap = useLiveMoqMapHook(companyId, editingOrder);
     const { items: catalogueItems } = useCatalogueData();
+
+    // Customer-wise fixed discount: offered in the edit modal, never auto-applied
+    const customerPricing = useOrderCustomerPricing({
+        enabled: !!salesSettings?.enableCustomerPricing,
+        companyId,
+        editingOrder,
+        setEditingOrder,
+        salesSettings,
+    });
 
     // ─── Opens the editor for a given order, restoring saved expenses/discount/
     // transport details — moved verbatim from the card's pencil-edit button.
@@ -1127,5 +1137,6 @@ export const useOrderEditor = ({
         handleSaveChanges,
         handleCreditNote,
         handleRefund,
+        customerPriceOffer: customerPricing.offer,
     };
 };

@@ -68,7 +68,7 @@ export interface SalesSettings {
     voucherPrefix?: string;
     currentVoucherNumber?: number;
     copyVoucherAfterSaving?: boolean;
-        cartInsertionOrder?: 'top' | 'bottom';
+    cartInsertionOrder?: 'top' | 'bottom';
     cardViewWithPhoto?: boolean;
     // Card view only: selected (in-cart) items jump to the top of the grid.
     // false (default) = items stay at their original position.
@@ -107,7 +107,7 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     lockTaxToggle: false,
     enableRounding: true,
     roundingInterval: 1,
-        cartInsertionOrder: 'bottom',
+    cartInsertionOrder: 'bottom',
     cardSelectedOnTop: false,
     hideMrp: false,
     enableItemWiseDiscount: true,
@@ -265,9 +265,8 @@ const Opt: React.FC<OptProps> = ({ id, label, description, icon, checked, onChan
     return (
         <div
             data-opt
-            className={`grid items-center gap-x-4 gap-y-1.5 border-b border-[#dfe6fb] px-3.5 py-3 last:border-b-0 lg:px-[18px] lg:py-3.5 ${
-                hasSwitch ? 'grid-cols-[minmax(0,1fr)_auto]' : 'grid-cols-[minmax(0,1fr)]'
-            } ${disabled ? 'pointer-events-none opacity-[.45]' : ''}`}
+            className={`grid items-center gap-x-4 gap-y-1.5 border-b border-[#dfe6fb] px-3.5 py-3 last:border-b-0 lg:px-[18px] lg:py-3.5 ${hasSwitch ? 'grid-cols-[minmax(0,1fr)_auto]' : 'grid-cols-[minmax(0,1fr)]'
+                } ${disabled ? 'pointer-events-none opacity-[.45]' : ''}`}
         >
             <div className="min-w-0">
                 <div className="flex items-center gap-2 text-sm font-medium">
@@ -313,15 +312,13 @@ const SegBtn: React.FC<{ active: boolean; large?: boolean; onClick: () => void; 
         type="button"
         aria-pressed={active}
         onClick={onClick}
-        className={`cursor-pointer border-0 font-medium rounded-sm ${FOCUS_RING} ${
-            large ? 'h-9 min-w-0 flex-1 px-1.5 text-xs leading-4 sm:px-3 sm:text-sm' : 'h-7 px-3 text-xs'
-        } ${
-            active
+        className={`cursor-pointer border-0 font-medium rounded-sm ${FOCUS_RING} ${large ? 'h-9 min-w-0 flex-1 px-1.5 text-xs leading-4 sm:px-3 sm:text-sm' : 'h-7 px-3 text-xs'
+            } ${active
                 ? large
                     ? 'bg-[#0f172b] text-white'
                     : `bg-white text-[#155dfc] ${CARD_SHADOW}`
                 : 'bg-transparent text-[#45556c]'
-        }`}
+            }`}
     >
         {children}
     </button>
@@ -342,10 +339,9 @@ const ViewTick: React.FC<{ size?: number }> = ({ size = 12 }) => (
 );
 
 const viewBtnClass = (active: boolean) =>
-    `relative grid cursor-pointer gap-2 bg-white text-left rounded-sm ${FOCUS_RING} ${
-        active
-            ? 'border-2 border-[#155dfc] bg-[#e6eeff] p-[11px]'
-            : 'border border-[#7a8aa3] p-3'
+    `relative grid cursor-pointer gap-2 bg-white text-left rounded-sm ${FOCUS_RING} ${active
+        ? 'border-2 border-[#155dfc] bg-[#e6eeff] p-[11px]'
+        : 'border border-[#7a8aa3] p-3'
     }`;
 
 const NAV_SECTIONS: { id: string; label: string; icon: React.ReactNode }[] = [
@@ -783,11 +779,10 @@ const SalesSettingsPage: React.FC = () => {
                             type="button"
                             aria-pressed={activeSection === s.id}
                             onClick={() => goToSection(s.id)}
-                            className={`inline-flex h-[30px] flex-none cursor-pointer items-center whitespace-nowrap border px-3 text-xs font-medium rounded-sm ${FOCUS_RING} ${
-                                activeSection === s.id
+                            className={`inline-flex h-[30px] flex-none cursor-pointer items-center whitespace-nowrap border px-3 text-xs font-medium rounded-sm ${FOCUS_RING} ${activeSection === s.id
                                     ? 'border-[#0f172b] bg-[#0f172b] text-white'
                                     : 'border-[#7a8aa3] bg-white text-[#45556c]'
-                            }`}
+                                }`}
                         >
                             {s.label}
                         </button>
@@ -806,11 +801,10 @@ const SalesSettingsPage: React.FC = () => {
                                     type="button"
                                     aria-current={activeSection === s.id}
                                     onClick={() => goToSection(s.id)}
-                                    className={`flex w-full cursor-pointer items-center gap-2.5 border-0 px-3 py-2 text-left text-[13px] font-medium rounded-sm ${
-                                        activeSection === s.id
+                                    className={`flex w-full cursor-pointer items-center gap-2.5 border-0 px-3 py-2 text-left text-[13px] font-medium rounded-sm ${activeSection === s.id
                                             ? 'bg-[#e6eeff] text-[#155dfc]'
                                             : 'bg-transparent text-[#45556c] hover:bg-white hover:text-[#0f172b]'
-                                    }`}
+                                        }`}
                                 >
                                     {s.icon}
                                     {s.label}
@@ -822,9 +816,8 @@ const SalesSettingsPage: React.FC = () => {
                         <form
                             ref={formRef}
                             onSubmit={handleSave}
-                            className={`grid min-w-0 content-start gap-3 lg:gap-4 ${
-                                query.trim() ? '[&_section:not(:has([data-opt]))]:hidden' : ''
-                            }`}
+                            className={`grid min-w-0 content-start gap-3 lg:gap-4 ${query.trim() ? '[&_section:not(:has([data-opt]))]:hidden' : ''
+                                }`}
                         >
                             {noMatch && (
                                 <div className={`min-w-0 border border-[#dfe6fb] bg-white px-4 py-10 text-center text-[#45556c] rounded-sm ${CARD_SHADOW}`}>
@@ -965,29 +958,29 @@ const SalesSettingsPage: React.FC = () => {
                                         onChange={(checked) => handleCheckboxChange('enableSalesmanSelection', checked)}
                                     />
 
-                                                                        {settings.salesViewType !== 'card' && (
-                                    <Opt
-                                        label="Cart item sorting"
-                                        description="Where a newly scanned or added item appears in the cart."
-                                        icon={ico(ArrowUpDown)}
-                                    >
-                                        <SegGroup large>
-                                            <SegBtn
-                                                large
-                                                active={settings.cartInsertionOrder === 'top'}
-                                                onClick={() => handleChange('cartInsertionOrder', 'top')}
-                                            >
-                                                Newest first
-                                            </SegBtn>
-                                                                                        <SegBtn
-                                                large
-                                                active={settings.cartInsertionOrder === 'bottom'}
-                                                onClick={() => handleChange('cartInsertionOrder', 'bottom')}
-                                            >
-                                                                                                Oldest first
-                                            </SegBtn>
-                                        </SegGroup>
-                                    </Opt>
+                                    {settings.salesViewType !== 'card' && (
+                                        <Opt
+                                            label="Cart item sorting"
+                                            description="Where a newly scanned or added item appears in the cart."
+                                            icon={ico(ArrowUpDown)}
+                                        >
+                                            <SegGroup large>
+                                                <SegBtn
+                                                    large
+                                                    active={settings.cartInsertionOrder === 'top'}
+                                                    onClick={() => handleChange('cartInsertionOrder', 'top')}
+                                                >
+                                                    Newest first
+                                                </SegBtn>
+                                                <SegBtn
+                                                    large
+                                                    active={settings.cartInsertionOrder === 'bottom'}
+                                                    onClick={() => handleChange('cartInsertionOrder', 'bottom')}
+                                                >
+                                                    Oldest first
+                                                </SegBtn>
+                                            </SegGroup>
+                                        </Opt>
                                     )}
 
                                     {settings.salesViewType === 'card' && (

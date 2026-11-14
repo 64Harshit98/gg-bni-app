@@ -234,7 +234,7 @@ const AdditionalServices: React.FC = () => {
     };
 
     return (
-        <div className="flex h-screen w-full flex-col overflow-hidden bg-[#eef2ff] mb-10 font-sans">
+        <div className="flex h-full min-h-0 w-full flex-col bg-[#eef2ff] font-sans">
             {/* Header */}
             <div className="z-30 flex-none border-b border-[#dfe6fb] bg-white px-4 py-4 sm:px-6">
                 <div className="flex items-center gap-3 sm:gap-4">
@@ -251,7 +251,7 @@ const AdditionalServices: React.FC = () => {
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto px-4 pb-24 pt-4 sm:px-6 sm:pt-5">
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-24 pt-4 sm:px-6 sm:pt-5">
                 {/* 2 x 2 grid on desktop, single column on phones */}
                 <div className="mx-auto grid max-w-5xl grid-cols-1 gap-4 md:grid-cols-2 md:gap-5">
                     {SERVICES.map((service) => {

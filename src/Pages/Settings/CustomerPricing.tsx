@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { collection, doc, getDocs, serverTimestamp, setDoc, writeBatch } from 'firebase/firestore';
+import { useLocation, useSearchParams } from 'react-router-dom';
+import { collection, doc, getDocs, onSnapshot, serverTimestamp, setDoc, writeBatch } from 'firebase/firestore';
 import { FiCheck, FiEdit2, FiInfo, FiPlus, FiSearch, FiTrash2, FiX } from 'react-icons/fi';
 import { db } from '../../lib/Firebase';
 import { useAuth } from '../../context/auth-context';
@@ -20,14 +20,26 @@ import { searchParties, type PartyHit } from '../../lib/partySearch';
 // rules. On the bill the party's price is applied automatically to matching lines and
 // replaces the item's own discount.
 
-const FIELD = 'flex items-center gap-2 h-10 px-3 rounded-sm border border-[#7a8aa3] bg-white text-[#5b6b86] focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-[#155dfc]';
+const FIELD = 'flex items-center gap-2 h-10 px-3 rounded-sm border border-[#7a8aa3] bg-white text-[#5b6b86] focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-[color:var(--cp-primary)]';
 const INPUT = 'flex-1 min-w-0 border-0 outline-none bg-transparent text-sm text-[#0f172b] placeholder:text-[#5b6b86]';
 const LABEL = 'block mb-1.5 text-[11px] font-semibold tracking-[.08em] uppercase text-[#5b6b86]';
-const CARD = 'bg-white border border-[#dfe6fb] rounded-sm shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]';
-const BTN_PRIMARY = 'inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-sm bg-[#155dfc] text-white text-sm font-medium hover:bg-[#1447e6] disabled:opacity-[.45]';
-const BTN_OUTLINE = 'inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-sm border border-[#7a8aa3] bg-white text-sm font-medium text-[#0f172b] hover:bg-[#f5f7ff] disabled:opacity-[.45]';
-const ICON_BTN = 'inline-grid place-items-center w-9 h-9 rounded-sm text-[#45556c] hover:bg-[#f5f7ff]';
+const CARD = 'bg-white border border-[color:var(--cp-border)] rounded-sm shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]';
+const BTN_PRIMARY = 'inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-sm bg-[color:var(--cp-primary)] text-white text-sm font-medium hover:bg-[color:var(--cp-primary-hover)] disabled:opacity-[.45]';
+const BTN_OUTLINE = 'inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-sm border border-[#7a8aa3] bg-white text-sm font-medium text-[#0f172b] hover:bg-[color:var(--cp-sunken)] disabled:opacity-[.45]';
+const ICON_BTN = 'inline-grid place-items-center w-9 h-9 rounded-sm text-[#45556c] hover:bg-[color:var(--cp-sunken)]';
 const PAGE = 50;
+
+// Same page, two themes: POS = blue, Catalogue = orange (SELLAR catalogue tokens)
+const THEMES = {
+    pos: {
+        '--cp-primary': '#155dfc', '--cp-primary-hover': '#1447e6', '--cp-soft': '#e6eeff',
+        '--cp-sunken': '#f5f7ff', '--cp-border': '#dfe6fb', '--cp-canvas': '#eef2ff', '--cp-input-border': '#c9d3ea',
+    },
+    cat: {
+        '--cp-primary': '#c2410c', '--cp-primary-hover': '#9a3412', '--cp-soft': '#ffedd5',
+        '--cp-sunken': '#fff8f2', '--cp-border': '#f6e1d0', '--cp-canvas': '#fff5ec', '--cp-input-border': '#f0d5c0',
+    },
+} as const;
 
 interface Party { id: string; name: string; number: string }
 interface Row extends Party { rule: CustomerPricingRule | null }
@@ -93,15 +105,32 @@ const CustomerPricing: React.FC = () => {
     // Sale = customer-wise discounts, Purchase = supplier-wise discounts (same rule shape).
     // Kept in the URL (?side=purchase) so a reload or a shared link opens the same tab.
     const [searchParams, setSearchParams] = useSearchParams();
-    const side: 'sale' | 'purchase' = searchParams.get('side') === 'purchase' ? 'purchase' : 'sale';
+    // Opened from Catalogue settings: customers only, reads the catalogue's own setting
+    const isCatalogue = useLocation().pathname.startsWith('/catalogue-home');
+    const side: 'sale' | 'purchase' = !isCatalogue && searchParams.get('side') === 'purchase' ? 'purchase' : 'sale';
     const COLL = side === 'sale' ? CUSTOMER_PRICING_COLLECTION : SUPPLIER_PRICING_COLLECTION;
     const PARTY_COLL = side === 'sale' ? 'customers' : 'suppliers';
     const party = side === 'sale' ? 'customer' : 'supplier';
     const Party = side === 'sale' ? 'Customer' : 'Supplier';
     const partiesWord = side === 'sale' ? 'customers' : 'suppliers';
 
-    const featureOn = side === 'sale' ? !!salesSettings?.enableCustomerPricing : !!purchaseSettings?.enableSupplierPricing;
-    const settingsKnown = side === 'sale' ? !!salesSettings : !!purchaseSettings;
+    // undefined = not loaded yet, null = doc missing
+    const [catSettings, setCatSettings] = useState<any | null | undefined>(undefined);
+    useEffect(() => {
+        if (!isCatalogue || !companyId) return;
+        return onSnapshot(
+            doc(db, 'companies', companyId, 'settings', 'catalogue-sales-settings'),
+            snap => setCatSettings(snap.exists() ? snap.data() : null),
+            err => console.error(err)
+        );
+    }, [isCatalogue, companyId]);
+
+    const featureOn = isCatalogue
+        ? !!catSettings?.enableCustomerPricing
+        : side === 'sale' ? !!salesSettings?.enableCustomerPricing : !!purchaseSettings?.enableSupplierPricing;
+    const settingsKnown = isCatalogue
+        ? catSettings !== undefined
+        : side === 'sale' ? !!salesSettings : !!purchaseSettings;
 
     const [rules, setRules] = useState<CustomerPricingRule[]>([]);
     const [parties, setParties] = useState<Party[]>([]);
@@ -411,8 +440,11 @@ const CustomerPricing: React.FC = () => {
         if (!companyId) return;
         setTurningOn(true);
         try {
-            await setDoc(doc(db, 'companies', companyId, 'settings', side === 'sale' ? 'sales-settings' : 'purchase-settings'),
-                side === 'sale' ? { enableCustomerPricing: true } : { enableSupplierPricing: true }, { merge: true });
+            await setDoc(
+                doc(db, 'companies', companyId, 'settings',
+                    isCatalogue ? 'catalogue-sales-settings' : side === 'sale' ? 'sales-settings' : 'purchase-settings'),
+                side === 'sale' ? { enableCustomerPricing: true } : { enableSupplierPricing: true },
+                { merge: true });
         } catch (e) {
             console.error(e);
             setModal({ message: 'Could not turn it on. Please try again.', type: State.ERROR });
@@ -640,8 +672,8 @@ const CustomerPricing: React.FC = () => {
         if (partyLocked) {
             const label = draft.customerName || draft.customerNumber;
             return (
-                <section className="flex items-center gap-3 p-3 rounded-sm bg-[#f5f7ff] border border-[#dfe6fb]">
-                    <span aria-hidden className="grid place-items-center flex-none w-10 h-10 rounded-sm bg-[#dfe6fb] text-[#155dfc] text-sm font-semibold">{initials(label)}</span>
+                <section className="flex items-center gap-3 p-3 rounded-sm bg-[color:var(--cp-sunken)] border border-[color:var(--cp-border)]">
+                    <span aria-hidden className="grid place-items-center flex-none w-10 h-10 rounded-sm bg-[color:var(--cp-border)] text-[color:var(--cp-primary)] text-sm font-semibold">{initials(label)}</span>
                     <div className="flex-1 min-w-0">
                         <div className="text-sm font-semibold truncate">{label}</div>
                         <div className="text-xs text-[#5b6b86] truncate">
@@ -649,7 +681,7 @@ const CustomerPricing: React.FC = () => {
                         </div>
                     </div>
                     {canChangeParty && (
-                        <button type="button" onClick={changeParty} className="h-9 px-3 rounded-sm text-sm font-medium text-[#155dfc] hover:bg-[#e6eeff]">Change</button>
+                        <button type="button" onClick={changeParty} className="h-9 px-3 rounded-sm text-sm font-medium text-[color:var(--cp-primary)] hover:bg-[color:var(--cp-soft)]">Change</button>
                     )}
                 </section>
             );
@@ -678,10 +710,10 @@ const CustomerPricing: React.FC = () => {
                     </div>
                 </div>
                 {partyHits.length > 0 && (
-                    <div className="mt-2 border border-[#dfe6fb] rounded-sm p-1 max-h-48 overflow-y-auto">
+                    <div className="mt-2 border border-[color:var(--cp-border)] rounded-sm p-1 max-h-48 overflow-y-auto">
                         {partyHits.map(h => (
                             <button key={h.id} type="button" onClick={() => pickParty(h)}
-                                className="w-full flex items-center gap-2 text-left px-2.5 py-2 rounded-sm hover:bg-[#e6eeff]">
+                                className="w-full flex items-center gap-2 text-left px-2.5 py-2 rounded-sm hover:bg-[color:var(--cp-soft)]">
                                 <span className="flex-1 min-w-0">
                                     <span className="block text-sm font-medium text-[#0f172b] truncate">{h.name || h.number}</span>
                                     {h.name && <span className="block text-xs text-[#5b6b86]">{h.number}</span>}
@@ -703,8 +735,8 @@ const CustomerPricing: React.FC = () => {
     const renderEditor = () => !editorOpen ? null : (
         <div className="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-[#020618]/45 md:p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) requestClose(); }}>
             <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="cp-editor-title"
-                className="w-full md:max-w-2xl max-h-[92dvh] flex flex-col bg-white rounded-t-sm md:rounded-sm border border-[#dfe6fb] shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]">
-                <div className="flex items-center gap-3 px-5 py-4 border-b border-[#dfe6fb]">
+                className="w-full md:max-w-2xl max-h-[92dvh] flex flex-col bg-white rounded-t-sm md:rounded-sm border border-[color:var(--cp-border)] shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]">
+                <div className="flex items-center gap-3 px-5 py-4 border-b border-[color:var(--cp-border)]">
                     <h2 id="cp-editor-title" className="m-0 flex-1 text-lg font-semibold">{editingId ? `Edit ${party} pricing` : `Set ${party} pricing`}</h2>
                     <button type="button" aria-label="Close" onClick={requestClose} className={ICON_BTN}><FiX size={18} aria-hidden /></button>
                 </div>
@@ -741,7 +773,7 @@ const CustomerPricing: React.FC = () => {
                                 {[2, 5, 10, 15, 20].map(p => (
                                     <button key={p} type="button" aria-pressed={draft.defaultDiscountPct === String(p)}
                                         onClick={() => editDraft(d => ({ ...d, defaultDiscountPct: String(p) }))}
-                                        className={`h-8 min-w-10 px-2 rounded-sm border text-xs font-medium tabular-nums ${draft.defaultDiscountPct === String(p) ? 'border-[#155dfc] bg-[#e6eeff] text-[#155dfc]' : 'border-[#dfe6fb] text-[#45556c] hover:bg-[#f5f7ff]'}`}>
+                                        className={`h-8 min-w-10 px-2 rounded-sm border text-xs font-medium tabular-nums ${draft.defaultDiscountPct === String(p) ? 'border-[color:var(--cp-primary)] bg-[color:var(--cp-soft)] text-[color:var(--cp-primary)]' : 'border-[color:var(--cp-border)] text-[#45556c] hover:bg-[color:var(--cp-sunken)]'}`}>
                                         {p}%
                                     </button>
                                 ))}
@@ -755,7 +787,7 @@ const CustomerPricing: React.FC = () => {
                     <section>
                         <div className="flex items-center justify-between mb-1.5">
                             <span className={LABEL + ' !mb-0'}>By category</span>
-                            <button type="button" className="h-8 px-2 rounded-sm text-sm font-medium text-[#155dfc] hover:bg-[#e6eeff]"
+                            <button type="button" className="h-8 px-2 rounded-sm text-sm font-medium text-[color:var(--cp-primary)] hover:bg-[color:var(--cp-soft)]"
                                 onClick={() => editDraft(d => ({ ...d, categories: [...d.categories, { groupId: '', pct: '' }] }))}>
                                 + Add category
                             </button>
@@ -800,7 +832,7 @@ const CustomerPricing: React.FC = () => {
                                 placeholder="Search item to add a fixed % or price…" className={INPUT} aria-label="Search item" />
                         </div>
                         {itemMatches.length > 0 && (
-                            <div className="mt-1 border border-[#dfe6fb] rounded-sm p-1 max-h-48 overflow-y-auto">
+                            <div className="mt-1 border border-[color:var(--cp-border)] rounded-sm p-1 max-h-48 overflow-y-auto">
                                 {itemMatches.map(i => (
                                     <button key={i.id} type="button"
                                         onClick={() => {
@@ -809,7 +841,7 @@ const CustomerPricing: React.FC = () => {
                                             setItemQuery('');
                                             requestAnimationFrame(() => document.getElementById(`cp-item-${idx}`)?.focus());
                                         }}
-                                        className="w-full flex items-center gap-2 text-left px-2.5 py-2 rounded-sm hover:bg-[#e6eeff]">
+                                        className="w-full flex items-center gap-2 text-left px-2.5 py-2 rounded-sm hover:bg-[color:var(--cp-soft)]">
                                         <span className="flex-1 min-w-0 text-sm truncate">{i.name}</span>
                                         <span className="text-xs text-[#5b6b86] tabular-nums">MRP {Number(i.mrp) > 0 ? money(Number(i.mrp)) : '—'}</span>
                                     </button>
@@ -818,7 +850,7 @@ const CustomerPricing: React.FC = () => {
                         )}
                         <div className="mt-2 space-y-2">
                             {draft.items.map((it, idx) => (
-                                <div key={it.itemId} className="border border-[#dfe6fb] rounded-sm p-2.5">
+                                <div key={it.itemId} className="border border-[color:var(--cp-border)] rounded-sm p-2.5">
                                     <div className="flex items-center gap-2">
                                         <span className="flex-1 min-w-0 text-sm font-medium truncate">{it.name}</span>
                                         <button type="button" aria-label={`Remove ${it.name}`} className={ICON_BTN}
@@ -827,11 +859,11 @@ const CustomerPricing: React.FC = () => {
                                         </button>
                                     </div>
                                     <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                                        <div role="group" aria-label="Discount type" className="inline-flex p-[3px] gap-0.5 bg-[#f5f7ff] border border-[#dfe6fb] rounded-sm">
+                                        <div role="group" aria-label="Discount type" className="inline-flex p-[3px] gap-0.5 bg-[color:var(--cp-sunken)] border border-[color:var(--cp-border)] rounded-sm">
                                             {([['percent', '% off'], ['netPrice', 'Fixed ₹']] as const).map(([t, label]) => (
                                                 <button key={t} type="button" aria-pressed={it.type === t}
                                                     onClick={() => editDraft(d => ({ ...d, items: d.items.map((x, i) => i === idx ? { ...x, type: t } : x) }))}
-                                                    className={`h-7 px-3 rounded-sm text-xs font-medium ${it.type === t ? 'bg-white text-[#155dfc] shadow-sm' : 'text-[#45556c]'}`}>
+                                                    className={`h-7 px-3 rounded-sm text-xs font-medium ${it.type === t ? 'bg-white text-[color:var(--cp-primary)] shadow-sm' : 'text-[#45556c]'}`}>
                                                     {label}
                                                 </button>
                                             ))}
@@ -862,7 +894,7 @@ const CustomerPricing: React.FC = () => {
                             </div>
                         </div>
                         <label className="inline-flex items-center gap-2 h-9 text-sm cursor-pointer">
-                            <input type="checkbox" checked={draft.isActive} onChange={(e) => editDraft(d => ({ ...d, isActive: e.target.checked }))} className="w-4 h-4 accent-[#155dfc]" />
+                            <input type="checkbox" checked={draft.isActive} onChange={(e) => editDraft(d => ({ ...d, isActive: e.target.checked }))} className="w-4 h-4 accent-[color:var(--cp-primary)]" />
                             Active — apply on {side === 'sale' ? 'bills' : 'purchases'}
                         </label>
                     </section>
@@ -872,7 +904,7 @@ const CustomerPricing: React.FC = () => {
                     </p>
                 </div>
 
-                <div className="flex items-center gap-2 px-5 pt-3 pb-[max(12px,env(safe-area-inset-bottom))] border-t border-[#dfe6fb]">
+                <div className="flex items-center gap-2 px-5 pt-3 pb-[max(12px,env(safe-area-inset-bottom))] border-t border-[color:var(--cp-border)]">
                     {editingId && ruleById.get(editingId) && (
                         <button type="button" onClick={() => setPendingDelete(ruleById.get(editingId)!)}
                             className="h-10 px-3 -ml-3 rounded-sm text-sm font-medium text-red-700 hover:bg-red-50">
@@ -897,10 +929,10 @@ const CustomerPricing: React.FC = () => {
         const rs = rowStatus[r.id];
         const isSel = selected.has(r.id);
         return (
-            <li key={r.id} className={`flex items-center gap-3 px-3 sm:px-4 py-2.5 ${isSel ? 'bg-[#f5f7ff]' : ''}`}>
+            <li key={r.id} className={`flex items-center gap-3 px-3 sm:px-4 py-2.5 ${isSel ? 'bg-[color:var(--cp-sunken)]' : ''}`}>
                 <input type="checkbox" checked={isSel} onChange={() => toggleSelect(r.id)}
-                    aria-label={`Select ${label}`} className="flex-none w-4 h-4 accent-[#155dfc] cursor-pointer" />
-                <span aria-hidden className="hidden sm:grid place-items-center flex-none w-9 h-9 rounded-sm bg-[#eef2ff] text-[#155dfc] text-xs font-semibold">{initials(label)}</span>
+                    aria-label={`Select ${label}`} className="flex-none w-4 h-4 accent-[color:var(--cp-primary)] cursor-pointer" />
+                <span aria-hidden className="hidden sm:grid place-items-center flex-none w-9 h-9 rounded-sm bg-[color:var(--cp-canvas)] text-[color:var(--cp-primary)] text-xs font-semibold">{initials(label)}</span>
                 <button type="button" onClick={() => openRow(r)} className="flex-1 min-w-0 text-left rounded-sm">
                     <span className="block text-sm font-semibold truncate">
                         {label}
@@ -912,15 +944,15 @@ const CustomerPricing: React.FC = () => {
                 </button>
 
                 {r.rule && hasDiscount(r.rule) && (
-                    <label className="hidden sm:inline-flex items-center gap-1.5 h-9 px-2 rounded-sm text-xs text-[#45556c] cursor-pointer flex-shrink-0 hover:bg-[#f5f7ff]">
-                        <input type="checkbox" checked={r.rule.isActive} onChange={() => toggleActive(r.rule!)} className="w-4 h-4 accent-[#155dfc]"
+                    <label className="hidden sm:inline-flex items-center gap-1.5 h-9 px-2 rounded-sm text-xs text-[#45556c] cursor-pointer flex-shrink-0 hover:bg-[color:var(--cp-sunken)]">
+                        <input type="checkbox" checked={r.rule.isActive} onChange={() => toggleActive(r.rule!)} className="w-4 h-4 accent-[color:var(--cp-primary)]"
                             aria-label={`Pricing for ${label} active`} />
                         <span aria-hidden>Active</span>
                     </label>
                 )}
 
                 <div title="Discount on all items"
-                    className={`flex-none flex items-center gap-1 w-[84px] h-9 px-2 rounded-sm border bg-white focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-[#155dfc] ${rs === 'error' ? 'border-red-600' : rs === 'saved' ? 'border-[#008236]' : 'border-[#c9d3ea]'}`}>
+                    className={`flex-none flex items-center gap-1 w-[84px] h-9 px-2 rounded-sm border bg-white focus-within:outline focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-[color:var(--cp-primary)] ${rs === 'error' ? 'border-red-600' : rs === 'saved' ? 'border-[#008236]' : 'border-[color:var(--cp-input-border)]'}`}>
                     <input type="text" inputMode="decimal" value={quickValue(r)} placeholder="—"
                         aria-label={`Discount % on all items for ${label}`}
                         onChange={(e) => DECIMAL.test(e.target.value) && setQuick(q => ({ ...q, [r.id]: e.target.value }))}
@@ -977,23 +1009,23 @@ const CustomerPricing: React.FC = () => {
         }
         return (
             <div className={CARD}>
-                <div className="flex items-center gap-3 px-3 sm:px-4 h-11 border-b border-[#dfe6fb] text-[11px] font-semibold tracking-[.08em] uppercase text-[#5b6b86]">
+                <div className="flex items-center gap-3 px-3 sm:px-4 h-11 border-b border-[color:var(--cp-border)] text-[11px] font-semibold tracking-[.08em] uppercase text-[#5b6b86]">
                     <input type="checkbox" checked={allVisibleSelected}
                         ref={el => { if (el) el.indeterminate = someVisibleSelected && !allVisibleSelected; }}
                         onChange={toggleSelectVisible} aria-label="Select all shown"
-                        className="flex-none w-4 h-4 accent-[#155dfc] cursor-pointer" />
+                        className="flex-none w-4 h-4 accent-[color:var(--cp-primary)] cursor-pointer" />
                     <span className="hidden sm:block w-9 flex-none" />
                     <span className="flex-1 min-w-0 truncate">{shown.length.toLocaleString('en-IN')} {shown.length === 1 ? party : partiesWord}</span>
                     <span className="w-[84px] text-right flex-none">All items</span>
                     <span className="w-9 flex-none" />
                 </div>
-                <ul className="m-0 p-0 list-none divide-y divide-[#dfe6fb]">
+                <ul className="m-0 p-0 list-none divide-y divide-[color:var(--cp-border)]">
                     {visible.map(renderRow)}
                 </ul>
                 {shown.length > visible.length && (
-                    <div className="p-2 border-t border-[#dfe6fb]">
+                    <div className="p-2 border-t border-[color:var(--cp-border)]">
                         <button type="button" onClick={() => setLimitN(n => n + PAGE)}
-                            className="w-full h-10 rounded-sm text-sm font-medium text-[#155dfc] hover:bg-[#e6eeff]">
+                            className="w-full h-10 rounded-sm text-sm font-medium text-[color:var(--cp-primary)] hover:bg-[color:var(--cp-soft)]">
                             Show {Math.min(PAGE, shown.length - visible.length)} more ({(shown.length - visible.length).toLocaleString('en-IN')} left)
                         </button>
                     </div>
@@ -1030,7 +1062,9 @@ const CustomerPricing: React.FC = () => {
     );
 
     return (
-        <div className="flex min-h-screen w-full flex-col bg-[#eef2ff] font-['Poppins',system-ui,-apple-system,'Segoe_UI',sans-serif] text-[#0f172b]">
+        <div
+            style={THEMES[isCatalogue ? 'cat' : 'pos'] as React.CSSProperties}
+                        className="flex min-h-screen w-full flex-col bg-[color:var(--cp-canvas)] font-['Poppins',system-ui,-apple-system,'Segoe_UI',sans-serif] text-[#0f172b]">
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
             {confirmDiscard && (
                 <Modal message="Discard your changes? What you entered will be lost."
@@ -1048,7 +1082,7 @@ const CustomerPricing: React.FC = () => {
             )}
             <div className="sr-only" role="status" aria-live="polite">{announce}</div>
 
-            <div className="sticky top-0 z-30 border-b border-[#dfe6fb] bg-white">
+            <div className="sticky top-0 z-30 border-b border-[color:var(--cp-border)] bg-white">
                 <div className="flex items-center gap-3 px-3 py-3 md:px-6 md:py-3.5">
                     <BackButton />
                     <div className="min-w-0">
@@ -1064,10 +1098,10 @@ const CustomerPricing: React.FC = () => {
             <div className={`flex-1 w-full max-w-6xl mx-auto p-4 md:px-6 md:py-5 ${selected.size > 0 ? 'pb-36 sm:pb-28' : ''}`}>
                 {/* Top row: tabs + search (side by side on desktop) */}
                 <div className="flex flex-col lg:flex-row lg:items-center gap-3">
-                    <div role="group" aria-label="Sale or purchase" className="flex w-full sm:w-auto sm:self-start lg:self-auto flex-none p-[3px] gap-0.5 bg-white border border-[#dfe6fb] rounded-sm">
+                    <div role="group" aria-label="Sale or purchase" hidden={isCatalogue} className="flex w-full sm:w-auto sm:self-start lg:self-auto flex-none p-[3px] gap-0.5 bg-white border border-[color:var(--cp-border)] rounded-sm">
                         {([['sale', 'Sale · customers'], ['purchase', 'Purchase · suppliers']] as const).map(([v, label]) => (
                             <button key={v} type="button" aria-pressed={side === v} onClick={() => switchSide(v)}
-                                className={`flex-1 sm:flex-none h-9 px-4 rounded-sm text-sm font-medium whitespace-nowrap ${side === v ? 'bg-[#155dfc] text-white' : 'text-[#45556c] hover:bg-[#f5f7ff]'}`}>
+                                className={`flex-1 sm:flex-none h-9 px-4 rounded-sm text-sm font-medium whitespace-nowrap ${side === v ? 'bg-[color:var(--cp-primary)] text-white' : 'text-[#45556c] hover:bg-[color:var(--cp-sunken)]'}`}>
                                 {label}
                             </button>
                         ))}
@@ -1115,7 +1149,7 @@ const CustomerPricing: React.FC = () => {
                                     <FiCheck size={14} aria-hidden /> Applied on {side === 'sale' ? 'bills' : 'purchases'}
                                 </p>
                             )}
-                            <hr className="my-4 border-0 border-t border-[#dfe6fb]" />
+                            <hr className="my-4 border-0 border-t border-[color:var(--cp-border)]" />
                             <p className={LABEL}>How it works</p>
                             <ol className="m-0 p-0 list-none space-y-3 text-sm text-[#45556c]">
                                 {[
@@ -1124,7 +1158,7 @@ const CustomerPricing: React.FC = () => {
                                     `It’s applied automatically when the ${party} is picked on a ${side === 'sale' ? 'bill' : 'purchase'} and replaces the item’s own discount.`,
                                 ].map((t, i) => (
                                     <li key={i} className="flex gap-2.5">
-                                        <span aria-hidden className="grid place-items-center flex-none w-5 h-5 rounded-sm bg-[#e6eeff] text-[#155dfc] text-[11px] font-semibold">{i + 1}</span>
+                                        <span aria-hidden className="grid place-items-center flex-none w-5 h-5 rounded-sm bg-[color:var(--cp-soft)] text-[color:var(--cp-primary)] text-[11px] font-semibold">{i + 1}</span>
                                         <span>{t}</span>
                                     </li>
                                 ))}
@@ -1132,11 +1166,11 @@ const CustomerPricing: React.FC = () => {
                         </div>
 
                         <div role="group" aria-label="Filter"
-                            className="flex gap-1.5 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 pb-0.5 lg:flex-col lg:gap-0.5 lg:overflow-visible lg:p-1.5 lg:bg-white lg:border lg:border-[#dfe6fb] lg:rounded-sm">
+                            className="flex gap-1.5 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 pb-0.5 lg:flex-col lg:gap-0.5 lg:overflow-visible lg:p-1.5 lg:bg-white lg:border lg:border-[color:var(--cp-border)] lg:rounded-sm">
                             <span className={`${LABEL} hidden lg:block px-2 pt-1.5 !mb-1`}>Show</span>
                             {FILTERS.filter(([f]) => f !== 'paused' || counts.paused > 0 || filter === 'paused').map(([f, label]) => (
                                 <button key={f} type="button" aria-pressed={filter === f} onClick={() => { setFilter(f); setLimitN(PAGE); }}
-                                    className={`flex-none inline-flex items-center gap-1.5 h-8 px-3 rounded-sm border text-sm font-medium lg:w-full lg:h-9 lg:justify-between lg:border-0 ${filter === f ? 'border-[#155dfc] bg-[#e6eeff] text-[#155dfc]' : 'border-[#dfe6fb] bg-white text-[#45556c] hover:bg-[#f5f7ff]'}`}>
+                                    className={`flex-none inline-flex items-center gap-1.5 h-8 px-3 rounded-sm border text-sm font-medium lg:w-full lg:h-9 lg:justify-between lg:border-0 ${filter === f ? 'border-[color:var(--cp-primary)] bg-[color:var(--cp-soft)] text-[color:var(--cp-primary)]' : 'border-[color:var(--cp-border)] bg-white text-[#45556c] hover:bg-[color:var(--cp-sunken)]'}`}>
                                     {label}
                                     <span className="text-xs tabular-nums opacity-80">{loading ? '…' : counts[f].toLocaleString('en-IN')}</span>
                                 </button>

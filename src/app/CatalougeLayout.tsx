@@ -30,6 +30,7 @@ import { Header } from '../Components/layout/Header';
 import { CommandPalette, LAYOUT_ACTION_EVENT, type Destination, type LayoutAction } from '../Components/layout/CommandPalette';
 import { SubscriptionBanner, useSubscriptionBanner } from '../Components/layout/SubscriptionBanner';
 import { InstallAppPrompt } from '../Components/InstallAppPrompt';
+import { OrderLimitsHost } from '../Catalogue/Settings/OrderLimitsHost';
 
 const CatalogueLayout = () => {
     const navigate = useNavigate();
@@ -512,6 +513,7 @@ const CatalogueLayout = () => {
                 onClose={() => setIsAddUserModalOpen(false)}
                 theme="orange"
             />
+            <OrderLimitsHost />
             <CommandPalette
                 open={isMobileSearchOpen}
                 onOpenChange={setIsMobileSearchOpen}

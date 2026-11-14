@@ -25,6 +25,7 @@ import { formatINR, formatPhone, getPriceRounding, roundToInterval } from '../st
 import { storeAddress } from '../storefront/StoreSections';
 import StorefrontError from '../storefront/StorefrontError';
 import { readLeadData } from '../storefront/buyerStorage';
+import { getMaxOrderQty } from '../storefront/productState';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 const inputCls = 'h-10 w-full rounded-sm border border-sf-control bg-white px-3 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-2 focus:outline-offset-1 focus:outline-sf-primary disabled:bg-sf-sunken disabled:text-slate-500';
@@ -108,12 +109,13 @@ const CartPage: React.FC = () => {
         return { name: lead.name, phone: lead.phone, city: '', state: '', address: '', gstin: '' };
     });
     const [isSameAsShipping, setIsSameAsShipping] = useState<boolean>(true);
-    const [movError, setMovError] = useState<string | null>(null);
+        const [movError, setMovError] = useState<string | null>(null);
+    const [limitError, setLimitError] = useState<string | null>(null);
     const [specialInstruction, setSpecialInstruction] = useState("");
 
     const { cartItems: rawCartItems, setCartItems, updateItemNote, updateQuantity, removeFromCart } = useCart(effectiveCompanyId, salesSettings);
 
-        const roundingSource = salesSettings as
+    const roundingSource = salesSettings as
         { enableRounding?: boolean; roundingInterval?: number } | null | undefined;
     const rounding = useMemo(
         () => getPriceRounding(roundingSource),
@@ -137,6 +139,14 @@ const CartPage: React.FC = () => {
 
     const groupsOfLine = (line: any): AddOnGroup[] =>
         (storeData?.items.find((i) => String(i.id) === String(line.id))?.addOnGroups ?? []) as AddOnGroup[];
+        // Order limit: same item ki sab lines (alag add-ons wali bhi) ki quantity jodkar check hoti hai
+    const limitOfLine = (line: any): number | null => {
+        const full = storeData?.items.find((i) => String(i.id) === String(line.id));
+        return full ? getMaxOrderQty(full, salesSettings as any) : null;
+    };
+    const qtyOfItem = (line: any) =>
+        cartItems.filter((c: any) => String(c.id) === String(line.id)).reduce((s, c) => s + Number(c.quantity || 0), 0);
+    const limitMsg = (line: any, lim: number) => `You can order at most ${lim} of ${line.name}.`;
     const limitOf = (g: AddOnGroup) => (g.multiple ? Number(g.maxSelect) || 0 : 0);
     const hasExtra = (g: AddOnGroup) => g.extraPrice != null;
     const editLine: any = editLineKey ? cartItems.find((c) => lineKeyOf(c) === editLineKey) : null;
@@ -160,7 +170,10 @@ const CartPage: React.FC = () => {
     const closeAddOnEdit = () => { setEditLineKey(null); setEditSel({}); setIsNewLine(false); };
 
     // Add-ons wale item par "+" popup puchta hai, baaki items par seedha quantity badhti hai
-    const handleInc = (item: any) => {
+        const handleInc = (item: any) => {
+        const lim = limitOfLine(item);
+        if (lim !== null && qtyOfItem(item) >= lim) { setLimitError(limitMsg(item, lim)); return; }
+        setLimitError(null);
         const lk = lineKeyOf(item);
         if (groupsOfLine(item).length > 0) setDupLineKey(lk);
         else updateQuantity(lk, 1);
@@ -250,9 +263,9 @@ const CartPage: React.FC = () => {
         closeAddOnEdit();
     };
 
-    useEffect(() => {
-        if (movError) window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
-    }, [movError]);
+        useEffect(() => {
+        if (movError || limitError) window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+    }, [movError, limitError]);
 
     // 1. Evaluate the master tax logic
     const { scheme, taxType, applyExclusiveTax } = deriveTaxContext(salesSettings);
@@ -290,7 +303,10 @@ const CartPage: React.FC = () => {
 
     /** The one forward action: Cart → Delivery details → Place order. */
     const next = () => {
-        if (cartItems.length === 0) return;
+                if (cartItems.length === 0) return;
+        const over = cartItems.find((c: any) => { const lim = limitOfLine(c); return lim !== null && qtyOfItem(c) > lim; });
+        if (over) { setLimitError(limitMsg(over, limitOfLine(over)!)); return; }
+        setLimitError(null);
         if (!isMovValid()) { setMovError(movMessage()); return; }
         setMovError(null);
         if (step === 1) { setStep(2); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
@@ -342,7 +358,8 @@ const CartPage: React.FC = () => {
                     </nav>
                 </div>
 
-                {movError && <div className="mt-4"><Note tone="warning" onClose={() => setMovError(null)}><b>Minimum order not reached.</b> {movError}</Note></div>}
+                                {movError && <div className="mt-4"><Note tone="warning" onClose={() => setMovError(null)}><b>Minimum order not reached.</b> {movError}</Note></div>}
+                {limitError && <div className="mt-4"><Note tone="warning" onClose={() => setLimitError(null)}><b>Order limit reached.</b> {limitError}</Note></div>}
 
                 <div className="mt-5 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
                     <div className="grid gap-5">

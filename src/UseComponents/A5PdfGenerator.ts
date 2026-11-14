@@ -931,10 +931,12 @@ export const generateA5Invoice = async (
         }
     }
 
-    const totalPages = (doc as any).getNumberOfPages();
-    for (let i = 1; i <= totalPages; i++) {
-        doc.setPage(i);
-        drawWatermark(doc, pageWidth, pageHeight, "SELLAR.IN", { fontSize: 50, centerYOffset: 6 });
+    if ((data as any).enableWatermark !== false) {
+        const totalPages = (doc as any).getNumberOfPages();
+        for (let i = 1; i <= totalPages; i++) {
+            doc.setPage(i);
+            drawWatermark(doc, pageWidth, pageHeight, "SELLAR.IN", { fontSize: 50, centerYOffset: 6 });
+        }
     }
 
     // --- PRINT / DOWNLOAD / BLOB ---

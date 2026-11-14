@@ -5,7 +5,7 @@ import { getEffectivePriceInfo, hasMultiplePricing } from '../../Pages/utils/pri
 import { TierPickerModal } from '../../Components/TierPickerModal';
 import { AddOnSheet } from './AddOnSheet';
 import { VariantSheet } from './VariantSheet';
-import { productState } from './productState';
+import { getMaxOrderQty, productState } from './productState';
 import { variantGroup } from './storefront.utils';
 
 interface Args {
@@ -13,7 +13,11 @@ interface Args {
     settings: CatalogueSalesSettings | null;
     pricesVisible: boolean;
     requireLead: (fn: () => void) => void;
-    addLine: (item: Item, tier?: PriceTier, qty?: number, addOns?: AddOnOption[]) => void;
+        addLine: (item: Item, tier?: PriceTier, qty?: number, addOns?: AddOnOption[]) => void;
+    /** Item ki max order limit pehle se poori hai: caller toast dikhaye */
+    onLimit?: (item: Item, limit: number) => void;
+    /** Cart mein is item ki total quantity */
+    quantityOf?: (itemId?: string) => number;
 }
 
 const hasAddOns = (i: Item) => (i.addOnGroups?.length ?? 0) > 0;
@@ -24,7 +28,16 @@ const hasAddOns = (i: Item) => (i.addOnGroups?.length ?? 0) > 0;
  *  add-ons only              -> add-on popup -> cart
  *  neither                   -> cart
  */
-export const useItemOptions = ({ listed, settings, pricesVisible, requireLead, addLine }: Args) => {
+export const useItemOptions = ({ listed, settings, pricesVisible, requireLead, addLine: rawAddLine, onLimit, quantityOf }: Args) => {
+    // Limit poori ho chuki ho to add mat karo, customer ko batao
+    const addLine: Args['addLine'] = (item, tier, qty, addOns) => {
+        const limit = getMaxOrderQty(item, settings);
+        if (limit !== null && quantityOf && quantityOf(item.id) >= limit) {
+            onLimit?.(item, limit);
+            return;
+        }
+        rawAddLine(item, tier, qty, addOns);
+    };
     const [variantBase, setVariantBase] = useState<Item | null>(null);
     const [tierItem, setTierItem] = useState<Item | null>(null);
     const [addOnTarget, setAddOnTarget] = useState<{ item: Item; tier?: PriceTier } | null>(null);

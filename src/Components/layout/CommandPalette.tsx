@@ -12,7 +12,7 @@ import { useAuth } from '../../context/auth-context';
  * layout, so instead of passing callbacks we broadcast a window event and the layout listens.
  */
 export const LAYOUT_ACTION_EVENT = 'sellar_layout_action';
-export type LayoutAction = 'add-user' | 'add-expense';
+export type LayoutAction = 'add-user' | 'add-expense' | 'order-limits';
 
 export interface Destination {
   label: string;
@@ -133,7 +133,8 @@ export const CATALOGUE_DESTINATIONS: Destination[] = [
   },
   { label: 'Sales Settings', hint: 'Sales preferences', to: `${C}/${ROUTES.CATA_SALE_SETTING}` },
   { label: 'Bill Settings', hint: 'Invoice format', to: `${C}/${ROUTES.CATA_BILL_SETTING}` },
-  { label: 'Party Pricing', hint: 'Fixed discount per customer', to: `${C}/${ROUTES.CATA_CUSTOMER_PRICING}`, keywords: 'customer party discount special price dealer wholesale rate' },
+      { label: 'Party Pricing', hint: 'Fixed discount per customer', to: `${C}/${ROUTES.CATA_CUSTOMER_PRICING}`, keywords: 'customer party discount special price dealer wholesale rate' },
+  { label: 'Order Limits', hint: 'Max quantity per item a customer can order', action: 'order-limits', keywords: 'maximum max quantity qty limit restrict cap' },
   { label: 'Item Settings', hint: 'Item preferences', to: `${C}/${ROUTES.CATA_ITEM_SETTING}` },
   { label: 'User Settings', hint: 'Manage users', to: `${C}/${ROUTES.CATA_USER_SETTING}` },
   { label: 'Permission Settings', hint: 'Roles & permissions', to: `${C}/${ROUTES.CATA_PERMISSION_SETTING}`, ownerOnly: true },

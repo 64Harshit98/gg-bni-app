@@ -23,7 +23,7 @@ export interface InvoiceItem {
   taxType?: string;
   taxAmount?: number;
   taxableAmount?: number;
-   salesPrice?: number;
+  salesPrice?: number;
   discountPercentage?: number;
   addOnLines?: { name: string; price?: number }[];
 }
@@ -79,7 +79,8 @@ export interface Invoice {
 export interface PdfData {
   printFormat?: 'A4' | 'THERMAL58' | 'THERMAL80';
   enableTriplicate?: boolean;
-  enableItemImages?: boolean; // NEW
+  enableItemImages?: boolean;
+  enableWatermark?: boolean;
   gstScheme: string;
   taxType: string;
   companyName: string;

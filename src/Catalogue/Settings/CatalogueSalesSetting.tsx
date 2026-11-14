@@ -27,7 +27,7 @@ import {
   ClipboardList,
   Hash,
   FileText,
-   Search,
+  Search,
   ArrowDownUp,
   BadgePercent,
 } from 'lucide-react';
@@ -57,9 +57,13 @@ export interface CatalogueSalesSettings {
   requireApproval: boolean;
   enableItemWiseDiscount?: boolean;
   enableDiscount2?: boolean;
-    hideOutOfStock?: boolean;
+  hideOutOfStock?: boolean;
   enableTransportDetails?: boolean;
   enableCustomerPricing?: boolean;
+  enableOrderLimits?: boolean;
+  maxOrderQtyAll?: number;                         // sab items par limit
+  maxOrderQtyByCategory?: Record<string, number>;  // groupId -> max qty
+  maxOrderQtyByItem?: Record<string, number>;      // itemId  -> max qty
 }
 
 export const getDefaultCatalogueSalesSettings = (companyId: string): CatalogueSalesSettings => ({
@@ -87,7 +91,7 @@ export const getDefaultCatalogueSalesSettings = (companyId: string): CatalogueSa
   requireApproval: false,
   enableItemWiseDiscount: false,
   enableDiscount2: false,
-    hideOutOfStock: false,
+  hideOutOfStock: false,
   enableTransportDetails: false,
   enableCustomerPricing: false,
 });
@@ -363,8 +367,11 @@ const CatalogueSalesSettings: React.FC = () => {
       const companyId = currentUser.companyId;
       const docRef = doc(db, 'companies', companyId, 'settings', 'catalogue-sales-settings');
 
+      // Order-limit fields yahan se nahi likhte: unhe sirf Order Limits modal badalta hai.
+      // Warna is page ki purani copy modal ki saved limits ko overwrite kar deti.
+      const { enableOrderLimits, maxOrderQtyAll, maxOrderQtyByCategory, maxOrderQtyByItem, ...rest } = settings;
       await setDoc(docRef, {
-        ...settings,
+        ...rest,
         companyId,
         settingType: 'catalogueSales',
         updatedAt: new Date()
@@ -473,6 +480,7 @@ const CatalogueSalesSettings: React.FC = () => {
       </div>
     );
   }
+  // Display-only preview for the rounding example line
 
   // Display-only preview for the rounding example line
   const roundingStep = Number(settings.roundingInterval ?? 1) || 1;
@@ -599,8 +607,8 @@ const CatalogueSalesSettings: React.FC = () => {
               aria-pressed={activeSection === s.id}
               onClick={() => goToSection(s.id)}
               className={`inline-flex h-[30px] flex-none cursor-pointer items-center whitespace-nowrap border px-3 text-xs font-medium rounded-sm ${FOCUS_RING} ${activeSection === s.id
-                  ? 'border-[#0f172b] bg-[#0f172b] text-white'
-                  : 'border-[#7a8aa3] bg-white text-[#45556c]'
+                ? 'border-[#0f172b] bg-[#0f172b] text-white'
+                : 'border-[#7a8aa3] bg-white text-[#45556c]'
                 }`}
             >
               {s.label}
@@ -621,8 +629,8 @@ const CatalogueSalesSettings: React.FC = () => {
                   aria-current={activeSection === s.id}
                   onClick={() => goToSection(s.id)}
                   className={`flex w-full cursor-pointer items-center gap-2.5 border-0 px-3 py-2 text-left text-[13px] font-medium rounded-sm ${activeSection === s.id
-                      ? 'bg-[#ffedd5] text-[#C2410C]'
-                      : 'bg-transparent text-[#45556c] hover:bg-white hover:text-[#0f172b]'
+                    ? 'bg-[#ffedd5] text-[#C2410C]'
+                    : 'bg-transparent text-[#45556c] hover:bg-white hover:text-[#0f172b]'
                     }`}
                 >
                   {s.icon}
@@ -687,7 +695,7 @@ const CatalogueSalesSettings: React.FC = () => {
                   icon={ico(Percent)}
                   checked={settings.enableDiscount2 ?? false}
                   onChange={(checked) => handleCheckboxChange('enableDiscount2', checked)}
-                                    disabled={!settings.enableItemWiseDiscount}
+                  disabled={!settings.enableItemWiseDiscount}
                 />
                 <Opt
                   id="customer-pricing"

@@ -39,7 +39,11 @@ const StorePage: React.FC = () => {
         cart.addToCart(withTier, tier?.id, findItemGroup(item, data?.groups || [])?.id, qty, addOns);
     };
     const listed = useMemo(() => (data?.items || []).filter((i) => i.isListed === true), [data]);
-    const options = useItemOptions({ listed, settings, pricesVisible, requireLead: actions.requireLead, addLine });
+        const options = useItemOptions({
+        listed, settings, pricesVisible, requireLead: actions.requireLead, addLine,
+        quantityOf: cart.quantityOf,
+        onLimit: (item, limit) => actions.setToast(`You can order up to ${limit} of ${item.name}.`),
+    });
     const business = data?.business || {};
     const name = business.businessName || 'Our shop';
 
@@ -79,6 +83,7 @@ const StorePage: React.FC = () => {
                     discountPercent={s.discountPercent} showDiscount={s.showDiscount} lowStock={s.lowStock}
                     outOfStock={s.outOfStock} canNotify={s.canNotify} notified={!!actions.notified[item.id!]}
                     hasOptions={options.hasVariants(item)} inCart={qty}
+                    atLimit={s.maxQty !== null && qty >= s.maxQty}
                     onOpen={() => openProduct(item)}
                     onAdd={() => options.start(item)}
                     onInc={() => (options.needsChoice(item) ? options.start(item) : cart.updateQuantity(item.id!, 1))}

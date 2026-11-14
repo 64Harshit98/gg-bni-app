@@ -37,6 +37,10 @@ export interface CatalogueSalesSettings {
     requireApproval?: boolean;
     gstScheme?: string;
     taxType?: string;
+    enableOrderLimits?: boolean;
+    maxOrderQtyAll?: number;
+    maxOrderQtyByCategory?: Record<string, number>;
+    maxOrderQtyByItem?: Record<string, number>;
 }
 
 export interface Address {

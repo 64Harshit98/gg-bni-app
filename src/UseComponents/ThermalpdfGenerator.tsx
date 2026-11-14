@@ -349,11 +349,13 @@ export const generateThermalReceipt = (
     // --- STAMP WATERMARK ON EVERY PAGE ---
     // Thermal receipt is one continuous page, so center the watermark on the
     // content actually printed (currentY) instead of the estimated page height.
-    const actualHeight = Math.min(calculatedHeight, currentY + 6);
-    const totalPages = (doc as any).getNumberOfPages();
-    for (let i = 1; i <= totalPages; i++) {
-        doc.setPage(i);
-        drawWatermark(doc, paperWidth, actualHeight, "SELLAR.IN", { fitRatio: 0.5 });
+    if ((data as any).enableWatermark !== false) {
+        const actualHeight = Math.min(calculatedHeight, currentY + 6);
+        const totalPages = (doc as any).getNumberOfPages();
+        for (let i = 1; i <= totalPages; i++) {
+            doc.setPage(i);
+            drawWatermark(doc, paperWidth, actualHeight, "SELLAR.IN", { fitRatio: 0.5 });
+        }
     }
     // --- OUTPUT ROUTING ---
     if (action === ACTION.PRINT) {

@@ -3,7 +3,7 @@ import { getSlabForQty } from '../../constants/models';
 import type { CatalogueSalesSettings } from '../Settings/CatalogueSalesSetting';
 import { getEffectivePriceInfo, hasMultiplePricing, hasQuantitySlabs } from '../../Pages/utils/pricingUtils';
 import type { LeadStatus } from './useStorefront';
-import { getPriceRounding, roundToInterval } from './storefront.utils';
+import { getItemGroupIds, getPriceRounding, roundToInterval } from './storefront.utils';
 
 /** Can this customer see prices? (shop setting + approval) */
 export const canSeePrices = (settings: CatalogueSalesSettings | null, leadStatus: LeadStatus) =>
@@ -14,7 +14,18 @@ export const unitLabel = (item: Item) => {
     if (m > 1) return `${m} pcs`;
     return item.unit && item.unit !== 'pcs' ? `1 ${item.unit}` : '1 pc';
 };
-
+/** Max quantity a customer may order of this item. null = no limit. Item > category (smallest) > all items. */
+export const getMaxOrderQty = (item: Item, settings: CatalogueSalesSettings | null): number | null => {
+    if (!settings?.enableOrderLimits) return null;
+    const byItem = Number(settings.maxOrderQtyByItem?.[item.id!] || 0);
+    if (byItem > 0) return byItem;
+    const catLimits = getItemGroupIds(item)
+        .map((id) => Number(settings.maxOrderQtyByCategory?.[id] || 0))
+        .filter((n) => n > 0);
+    if (catLimits.length) return Math.min(...catLimits);
+    const all = Number(settings.maxOrderQtyAll || 0);
+    return all > 0 ? all : null;
+};
 const LOW_STOCK = 5;
 
 /** Everything a product card or the product page needs to know about price and stock. */
@@ -50,7 +61,8 @@ export const productState = (item: Item, settings: CatalogueSalesSettings | null
         bulkFrom: bulkFrom !== null && bulkFrom < salePrice ? bulkFrom : null,
         lowStock: !settings?.allowNegativeInventory && stock > 0 && stock <= LOW_STOCK ? stock : undefined,
         hasOptions: hasMultiplePricing(item) || (item.addOnGroups?.length ?? 0) > 0,
-        hasVariants: hasMultiplePricing(item),
+                hasVariants: hasMultiplePricing(item),
         unit: unitLabel(item),
+        maxQty: getMaxOrderQty(item, settings),
     };
 };

@@ -7,13 +7,14 @@ import QRCode from 'qrcode';
 import { generateThermalReceipt } from './ThermalpdfGenerator';
 import { generateA5Invoice } from './A5PdfGenerator';
 import { drawWatermark } from '../Components/pdfWatermark';
-import { splitAddOns,nameWithBase, reserveAddOnSpace, drawAddOnText } from './addOnText';
+import { splitAddOns, nameWithBase, reserveAddOnSpace, drawAddOnText } from './addOnText';
 import { needsImageText, textToImage, NAME_IMG_W, installUnicodeText } from './textToImage';
 
 export interface InvoiceData {
   printFormat?: 'A4' | 'THERMAL58' | 'THERMAL80' | 'A5';
   enableTriplicate?: boolean;
   enableItemImages?: boolean;
+  enableWatermark?: boolean;
   gstScheme?: string;
   taxType?: string;
   companyGstType?: string;
@@ -78,7 +79,7 @@ export interface InvoiceData {
     discount2Percent?: number;  // NEW
     amount?: number;
     gstAmount?: number;
-        imageBase64?: string;
+    imageBase64?: string;
     addOns?: { name: string; price?: number }[];
     addOnLines?: { name: string; price?: number }[];
   }[];
@@ -340,8 +341,8 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
 
     // Item name + add-ons (neeche alag line me)
     const { addOnPdfText } = splitAddOns(item);
-const baseName = nameWithBase(item, effectiveUnitRate);
-addOnTexts[itemIdx] = addOnPdfText;
+    const baseName = nameWithBase(item, effectiveUnitRate);
+    addOnTexts[itemIdx] = addOnPdfText;
     nameImgs[itemIdx] = needsImageText(baseName) ? textToImage(baseName, NAME_IMG_W, 8, true) : null;
     const nameCell = nameImgs[itemIdx] ? '' : baseName;
 
@@ -579,7 +580,7 @@ addOnTexts[itemIdx] = addOnPdfText;
       : ['S.N.', 'Items', 'HSN', 'Qty', 'Unit', priceHeader, 'Discount', 'Bill Disc.', 'Amount'];
 
     // NEW: image column ke wajah se baaki columns ka index +1 shift hota hai
-        const activeColumnStyles = showImages
+    const activeColumnStyles = showImages
       ? (showTaxColumns
         ? { 0: { cellWidth: 8 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto', minCellWidth: 38, halign: 'left' }, 3: { cellWidth: 15, fontSize: 7, cellPadding: 0.5 }, 12: { cellWidth: 18, halign: 'right' } }
         : { 0: { cellWidth: 8 }, 1: { cellWidth: 15 }, 2: { cellWidth: 'auto', minCellWidth: 38, halign: 'left' }, 3: { cellWidth: 15, fontSize: 7, cellPadding: 0.5 }, 9: { cellWidth: 20, halign: 'right' } })
@@ -854,10 +855,12 @@ addOnTexts[itemIdx] = addOnPdfText;
   }
 
   // --- STAMP WATERMARK ON EVERY PAGE (handles pages auto-created by autoTable/overflow) ---
-  const totalPages = (doc as any).getNumberOfPages();
-  for (let i = 1; i <= totalPages; i++) {
-    doc.setPage(i);
-    drawWatermark(doc, pageWidth, pageHeight);
+  if (data.enableWatermark !== false) {
+    const totalPages = (doc as any).getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      drawWatermark(doc, pageWidth, pageHeight);
+    }
   }
 
   // --- OUTPUT ---
@@ -1016,6 +1019,7 @@ export const preparePdfData = async (invoiceData: any) => {
     mode: invoiceData.mode || 'print',
     upiId: invoiceData.settings?.upiId || companyData.upiId || '',
     discountDisplayFormat: invoiceData.settings?.discountDisplayFormat || invoiceData.discountDisplayFormat || 'amount',
+    enableWatermark: invoiceData.settings?.enableWatermark ?? invoiceData.enableWatermark ?? true,
 
     // --- OBJECTS ---
     company: companyData,

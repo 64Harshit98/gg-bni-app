@@ -80,7 +80,7 @@ export const ItemGroupViewModal: React.FC<ItemGroupViewModalProps> = ({
           item,
           stock,
           price,
-          priceLabel: item.mrp ? 'MRP' : 'SP',
+          priceLabel: item.mrp ? 'MRP' : 'Sale price',
           purchase,
           hasPurchase,
           margin: hasPurchase && price > 0 ? Math.round(((price - purchase) / price) * 100) : null,
@@ -88,6 +88,15 @@ export const ItemGroupViewModal: React.FC<ItemGroupViewModalProps> = ({
         };
       });
   }, [items, query]);
+
+  // Header label: MRP only if every item uses MRP, Sale price only if none do, otherwise a neutral "Price"
+  const priceHeader = useMemo(() => {
+    if (items.length === 0) return 'Sale price';
+    const withMrp = items.filter(i => i.mrp).length;
+    if (withMrp === 0) return 'Sale price';
+    if (withMrp === items.length) return 'MRP';
+    return 'Price';
+  }, [items]);
 
   const missingPurchase = useMemo(
     () => items.filter(i => !(typeof i.purchasePrice === 'number' && i.purchasePrice > 0)),
@@ -206,7 +215,7 @@ export const ItemGroupViewModal: React.FC<ItemGroupViewModalProps> = ({
                     <tr className="bg-gray-50 border-b border-gray-200 text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500">
                       <th className="text-left px-3 py-2.5 sticky top-0 bg-gray-50">Item</th>
                       <th className="text-left px-3 py-2.5 sticky top-0 bg-gray-50">Stock</th>
-                      <th className="text-right px-3 py-2.5 sticky top-0 bg-gray-50">MRP</th>
+                      <th className="text-right px-3 py-2.5 sticky top-0 bg-gray-50">{priceHeader}</th>
                       <th className="text-right px-3 py-2.5 sticky top-0 bg-gray-50">Purchase</th>
                       <th className="text-right px-3 py-2.5 sticky top-0 bg-gray-50">Margin</th>
                       <th className="text-right px-3 py-2.5 sticky top-0 bg-gray-50">Stock value</th>

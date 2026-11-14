@@ -10,6 +10,7 @@ import type { CartItem } from '../CheckOut/checkOut.types';
 import { ensurePendingApprovalEntry } from '../hooks/ensureApprovalEntry';
 import { safeGet, safeRemove, safeSet } from '../../lib/safeStorage';
 import { randomId, readSavedCart } from './buyerStorage';
+import { getMaxOrderQty } from './productState';
 import { getLeadData, isLeadSubmitted, type CartLineItem } from './storefront.utils';
 
 export type CartLine = { item: Item; quantity: number };
@@ -164,7 +165,14 @@ export const useStorefrontCart = ({ companyId, settings, allItems, currentUser }
             const usedByOtherLines = prev
                 .filter((i) => i.item.id === item.id && !(i.item as CartLineItem).tierId && cartKey(i.item) !== newKey)
                 .reduce((a, c) => a + c.quantity, 0);
-            const cap = !settings?.allowNegativeInventory && newTierId === '__base__' ? Number(item.stock || 0) - usedByOtherLines : Infinity;
+                        const stockCap = !settings?.allowNegativeInventory && newTierId === '__base__' ? Number(item.stock || 0) - usedByOtherLines : Infinity;
+            // Owner ki max order limit: is item ki sab lines (pack / add-on wali bhi) milkar
+            const orderLimit = getMaxOrderQty(item, settings);
+            const usedByAllOthers = prev
+                .filter((i) => i.item.id === item.id && cartKey(i.item) !== newKey)
+                .reduce((a, c) => a + c.quantity, 0);
+            const limitCap = orderLimit === null ? Infinity : orderLimit - usedByAllOthers;
+            const cap = Math.min(stockCap, limitCap);
             const moqQty = Math.min(step, cap - (existing?.quantity ?? 0));
             if (moqQty <= 0) return prev;
             const addOnExtra = addOns.reduce((sum, a) => sum + (Number(a.price) || 0), 0);
@@ -216,7 +224,11 @@ export const useStorefrontCart = ({ companyId, settings, allItems, currentUser }
                 const usedByOthers = prev.reduce((a, c, idx2) => (
                     idx2 !== target && c.item.id === i.item.id && !(c.item as CartLineItem).tierId ? a + c.quantity : a
                 ), 0);
-                if (delta > 0 && !settings?.allowNegativeInventory && !isPack && newQty + usedByOthers > Number(source.stock || 0)) return i;
+                                if (delta > 0 && !settings?.allowNegativeInventory && !isPack && newQty + usedByOthers > Number(source.stock || 0)) return i;
+                // Max order limit: same item ki sab lines jodkar
+                const orderLimit = getMaxOrderQty(source, settings);
+                const usedByAllOthers = prev.reduce((a, c, idx2) => (idx2 !== target && c.item.id === i.item.id ? a + c.quantity : a), 0);
+                if (delta > 0 && orderLimit !== null && newQty + usedByAllOthers > orderLimit) return i;
                 return { ...i, item: repriceForQty(i.item, newQty, source), quantity: newQty };
             }).filter(Boolean) as CartLine[];
             safeSet('temp_cart', JSON.stringify(newCart));

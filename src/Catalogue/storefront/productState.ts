@@ -3,6 +3,7 @@ import { getSlabForQty } from '../../constants/models';
 import type { CatalogueSalesSettings } from '../Settings/CatalogueSalesSetting';
 import { getEffectivePriceInfo, hasMultiplePricing, hasQuantitySlabs } from '../../Pages/utils/pricingUtils';
 import type { LeadStatus } from './useStorefront';
+import { getPriceRounding, roundToInterval } from './storefront.utils';
 
 /** Can this customer see prices? (shop setting + approval) */
 export const canSeePrices = (settings: CatalogueSalesSettings | null, leadStatus: LeadStatus) =>
@@ -18,12 +19,21 @@ const LOW_STOCK = 5;
 
 /** Everything a product card or the product page needs to know about price and stock. */
 export const productState = (item: Item, settings: CatalogueSalesSettings | null, inCart: number) => {
-    const { mrp, salePrice, discountPercent, hasDiscount } = getEffectivePriceInfo(item);
+    const { mrp, salePrice: rawSalePrice, discountPercent, hasDiscount } = getEffectivePriceInfo(item);
+    // Round off setting from Catalogue Sales Settings (missing fields fall back to ON, nearest 1)
+    const rounding = getPriceRounding(settings);
+    const rp = (n: number) => roundToInterval(n, rounding);
+    const salePrice = rp(rawSalePrice);
     const priceMode = settings?.priceDisplayMode || 'both';
     const actuallyOut = (item.stock || 0) <= 0;
     const outOfStock = !settings?.allowNegativeInventory && actuallyOut;
-    const slabs = hasQuantitySlabs(item) ? [...(item.quantitySlabs || [])].sort((a, b) => a.minQty - b.minQty) : [];
-    const activeSlab = inCart > 0 && slabs.length ? getSlabForQty(item, inCart) : null;
+    const slabs = hasQuantitySlabs(item)
+        ? [...(item.quantitySlabs || [])]
+            .sort((a, b) => a.minQty - b.minQty)
+            .map((s) => ({ ...s, salesPrice: rp(s.salesPrice) }))
+        : [];
+    const activeSlabRaw = inCart > 0 && slabs.length ? getSlabForQty(item, inCart) : null;
+    const activeSlab = activeSlabRaw ? { ...activeSlabRaw, salesPrice: rp(activeSlabRaw.salesPrice) } : null;
     const slabPrice = activeSlab && activeSlab.salesPrice < salePrice ? activeSlab.salesPrice : null;
     const bulkFrom = slabs.length ? Math.min(...slabs.map((s) => s.salesPrice)) : null;
     const stock = Number(item.stock || 0);

@@ -17,7 +17,8 @@ import BackButton from '../../../Components/BackButton';
 import { GenericCartList } from '../../../Components/CartItem';
 import BarcodeLinkModal from '../../../Components/BarcodeLinkModal';
 import { AddUserModal } from '../../../Components/AddUserModal';
-import { FiTrash2, FiX, FiEdit, FiCamera, FiDelete, FiSearch, FiMoreVertical, FiCalendar, FiCheck, FiChevronUp, FiChevronRight, FiMinus, FiPlus, FiSliders, FiUser, FiUserPlus } from 'react-icons/fi';
+import { FiTrash2, FiX, FiEdit, FiCamera, FiDelete, FiSearch, FiMoreVertical, FiCalendar, FiCheck, FiChevronUp, FiChevronRight, FiMinus, FiPlus, FiSliders, FiUser, FiUserPlus, FiTag } from 'react-icons/fi';
+import CustomerPricingEditorModal from '../../../Components/CustomerPricingEditorModal';
 import { GenericBillFooter } from '../../../Components/Footer';
 import { CartLinesCompact } from '../../../Components/CartLinesCompact';
 import { IconScanCircle, IconPrint } from '../../../constants/Icons';
@@ -136,6 +137,7 @@ const Sales: React.FC = () => {
     const [customerName, setCustomerName] = useState(prefillParty?.name ?? '');
     const [customerPhone, setCustomerPhone] = useState(prefillParty?.number ?? '');
     const [showCustomerModal, setShowCustomerModal] = useState(false);
+    const [showPricingInfo, setShowPricingInfo] = useState(false); // customer's discount details popup
     const [customerDraft, setCustomerDraft] = useState({ name: '', phone: '' });
     // Customer popup suggestions (same behaviour as PaymentDrawer)
     const [customerSuggestions, setCustomerSuggestions] = useState<CustomerSuggestion[]>([]);
@@ -224,6 +226,12 @@ const Sales: React.FC = () => {
     const [pricingParty, setPricingParty] = useState({ name: prefillParty?.name ?? '', number: prefillParty?.number ?? '' });
     const handleDrawerPartyInput = (name: string, number: string) =>
         setPricingParty(prev => (prev.name === name && prev.number === number ? prev : { name, number }));
+    // After the editor saves, re-pick the same customer so the hook reads the new prices
+    const refreshCustomerPricing = () => {
+        const p = pricingParty;
+        setPricingParty({ name: '', number: '' });
+        setTimeout(() => setPricingParty(p), 0);
+    };
     useEffect(() => {
         if (!showCustomerSuggestions) return;
         const onDown = (e: MouseEvent) => {
@@ -653,6 +661,7 @@ const Sales: React.FC = () => {
             setCustomerName('');
             setCustomerPhone('');
             setPricingParty({ name: '', number: '' });
+            setShowPricingInfo(false);
         }
     }, [savedBillData, isEditMode]);
 
@@ -979,8 +988,8 @@ const Sales: React.FC = () => {
     };
     const renderCustomerModal = () =>
         !showCustomerModal ? null : (
-            // z-[200]: above the phone bottom nav (z-[150]), which otherwise covers the sheet
-            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-[#020618]/45 p-4" onClick={closeCustomerModal}>
+            // z-[2100]: above the bill sheet / more sheet (z-[2000]) and the phone bottom nav
+            <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-[#020618]/45 p-4" onClick={closeCustomerModal}>
                 <div
                     role="dialog" aria-modal="true" aria-labelledby="sale-customer-title"
                     className={`w-full max-w-md bg-white text-[#0f172b] rounded-sm border border-[#dfe6fb] ${SHADOW_FLOAT} p-4`}
@@ -1078,7 +1087,14 @@ const Sales: React.FC = () => {
                                 {hasCustomer ? (shownName || shownPhone) : 'No customer'}
                                 {hasCustomer && shownName && shownPhone && <span className="font-normal text-[#5b6b86]"> · {shownPhone}</span>}
                             </div>
-                            <div className={`text-xs truncate ${customerPricing.rule ? 'text-[#008236]' : 'text-[#5b6b86]'}`}>{status}</div>
+                            {hasCustomer && customerPricing.rule ? (
+                                <button type="button" onClick={() => setShowPricingInfo(true)}
+                                    className="inline-flex items-center gap-1 p-0 border-0 bg-transparent text-xs font-medium text-[#008236] underline underline-offset-2 cursor-pointer">
+                                    <FiTag size={12} aria-hidden /> {status} · View / edit
+                                </button>
+                            ) : (
+                                <div className="text-xs truncate text-[#5b6b86]">{status}</div>
+                            )}
                         </div>
                         {!isEditMode && (
                             <button type="button" onClick={openCustomerModal}
@@ -1107,25 +1123,25 @@ const Sales: React.FC = () => {
         );
     };
 
-    /** The "fixed prices applied · Undo" message, on its own (used under the cart bar). */
-    const renderCustomerOffer = () => {
-        const offer = customerPricingEnabled ? customerPricing.offer : null;
-        if (!offer) return null;
-        const offerCls = offer.tone === 'warn'
-            ? 'bg-[#fff3dd] text-[#bb4d00]'
-            : offer.tone === 'applied' ? 'bg-[#e9faef] text-[#008236]' : 'bg-[#e6eeff] text-[#155dfc]';
-        return (
-            <div className="flex-shrink-0 px-4 md:px-5 pt-2">
-                <div className={`flex items-center gap-2 pl-3 pr-1 py-1 rounded-sm text-xs font-medium ${offerCls}`} role="status">
-                    <span className="flex-1 min-w-0">{offer.text}</span>
-                    <button type="button" onClick={offer.onAction}
-                        className={`flex-shrink-0 h-7 px-2.5 rounded-sm text-xs font-semibold ${offer.tone === 'info' ? 'bg-[#155dfc] text-white hover:bg-[#1447e6]' : 'bg-white border border-current hover:opacity-80'}`}>
-                        {offer.actionLabel}
-                    </button>
-                </div>
-            </div>
-        );
-    };
+    // /** The "fixed prices applied · Undo" message, on its own (used under the cart bar). */
+    // const renderCustomerOffer = () => {
+    //     const offer = customerPricingEnabled ? customerPricing.offer : null;
+    //     if (!offer) return null;
+    //     const offerCls = offer.tone === 'warn'
+    //         ? 'bg-[#fff3dd] text-[#bb4d00]'
+    //         : offer.tone === 'applied' ? 'bg-[#e9faef] text-[#008236]' : 'bg-[#e6eeff] text-[#155dfc]';
+    //     return (
+    //         <div className="flex-shrink-0 px-4 md:px-5 pt-2">
+    //             <div className={`flex items-center gap-2 pl-3 pr-1 py-1 rounded-sm text-xs font-medium ${offerCls}`} role="status">
+    //                 <span className="flex-1 min-w-0">{offer.text}</span>
+    //                 <button type="button" onClick={offer.onAction}
+    //                     className={`flex-shrink-0 h-7 px-2.5 rounded-sm text-xs font-semibold ${offer.tone === 'info' ? 'bg-[#155dfc] text-white hover:bg-[#1447e6]' : 'bg-white border border-current hover:opacity-80'}`}>
+    //                     {offer.actionLabel}
+    //                 </button>
+    //             </div>
+    //         </div>
+    //     );
+    // };
 
     /** Small customer chip for the cart bar: "+ Customer", or the picked name with ✕. */
     const renderCustomerChip = () => {
@@ -1294,14 +1310,13 @@ const Sales: React.FC = () => {
             </div>
         );
 
-    // Cart title row: label + salesman select + clear (used by both views)
     const renderCartBar = () => (
-        <div className="flex-shrink-0 flex flex-wrap items-center gap-x-2 gap-y-2 px-4 md:px-5 py-2.5 bg-white border-b border-[#dfe6fb]">
+        <div className="flex-shrink-0 grid grid-cols-[1fr_auto_1fr] md:flex md:flex-wrap items-center gap-x-2 gap-y-2 px-4 md:px-5 py-2.5 bg-white border-b border-[#dfe6fb]">
             {/* Left */}
-            <div className="flex-1 min-w-fit flex items-center gap-2">
+            <div className="md:flex-1 md:min-w-fit flex items-center gap-2 min-w-0">
                 <span className={LABEL_CLS}>Cart</span>
                 {totalQuantity > 0 && (
-                    <span className="inline-flex items-center h-[22px] px-2 rounded-full bg-[#e6eeff] text-[#155dfc] text-[11px] font-semibold">
+                    <span className="inline-flex items-center h-[22px] px-2 rounded-full bg-[#e6eeff] text-[#155dfc] text-[11px] font-semibold whitespace-nowrap">
                         <span className="md:hidden">{totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}</span>
                         <span className="hidden md:inline">
                             {items.length} {items.length === 1 ? 'line' : 'lines'} · {totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}
@@ -1310,22 +1325,24 @@ const Sales: React.FC = () => {
                 )}
             </div>
 
-            {/* Center — Salesman: name on phones (picker is the header's square button), select from tablet up */}
-            {salesSettings?.enableSalesmanSelection && selectedWorker && (
-                <span className={`md:hidden max-w-[120px] ${SALESMAN_NAME_CLS}`}>{selectedWorker.name}</span>
-            )}
-            <div className="hidden md:block">
-                {renderSalesmanSelect('!h-8 !text-xs min-w-[160px]')}
+            {/* Center — Salesman name (phone) / select (tablet+) */}
+            <div className="flex justify-center min-w-0">
+                {salesSettings?.enableSalesmanSelection && selectedWorker && (
+                    <span className={`md:hidden max-w-[110px] ${SALESMAN_NAME_CLS}`}>{selectedWorker.name}</span>
+                )}
+                <div className="hidden md:block">
+                    {renderSalesmanSelect('!h-8 !text-xs min-w-[160px]')}
+                </div>
             </div>
 
-            {/* Right */}
-            <div className="flex-1 min-w-fit flex items-center justify-end gap-2">
+            {/* Right — customer chip pinned to the right end */}
+            <div className="md:flex-1 md:min-w-fit flex items-center justify-end gap-2 min-w-0">
                 <span className="xl:hidden contents">{renderCustomerChip()}</span>
                 {items.length > 0 && (
                     <button
                         type="button"
                         onClick={handleClearCart}
-                        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-sm text-[13px] font-medium text-[#d5000c] bg-[#ffeef0] hover:bg-[#ffdde1] transition-colors"
+                        className="hidden md:inline-flex items-center gap-1.5 h-8 px-3 rounded-sm text-[13px] font-medium text-[#d5000c] bg-[#ffeef0] hover:bg-[#ffdde1] transition-colors"
                     >
                         <FiTrash2 size={14} />
                         Clear
@@ -1584,9 +1601,8 @@ const Sales: React.FC = () => {
     const renderBillPanel = (onCollect: () => void, onClose?: () => void) => (
         <div className="flex-1 min-h-0 flex flex-col">
             <div className={`flex-1 min-h-0 px-5 pb-5 flex flex-col gap-4 overflow-y-auto ${onClose ? 'pt-2' : 'pt-5'}`}>
-                {/* Customer above the bill: desktop panel (both views) and the card-view bill sheet.
-                    The list view shows it above the cart on phones/tablets instead. */}
-                {(isCardView || !onClose) && renderCustomerBar(true)}
+                {/* Customer above the bill: desktop panel and the phone/tablet bill sheet (both views). */}
+                {renderCustomerBar(true)}
                 <div className="flex items-center justify-between gap-2 -mb-2">
                     <h2 className="m-0 text-base font-semibold text-[#0f172b]">Bill · {totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}</h2>
                     <div className="flex items-center gap-1">
@@ -1605,7 +1621,7 @@ const Sales: React.FC = () => {
                     onQuantityChange={handleBillQuantityChange}
                     onDelete={handleDeleteItem}
                     onEditAddOns={openAddOnEdit}
-                    getPriceFlag={customerPricingEnabled && isCardView ? (i) => customerPricing.decorate(i).priceFlag : undefined}
+                    getPriceFlag={customerPricingEnabled ? (i) => customerPricing.decorate(i).priceFlag : undefined}
                 />
 
                 <div className="space-y-1.5 text-sm">
@@ -2086,6 +2102,19 @@ const Sales: React.FC = () => {
                 />
                 {renderAddOnPopup()}
                 {renderCustomerModal()}
+                {showPricingInfo && currentUser?.companyId && (
+                    <CustomerPricingEditorModal
+                        companyId={currentUser.companyId}
+                        uid={currentUser.uid}
+                        party={{
+                            name: isEditMode ? (invoiceToEdit?.partyName || '') : customerName,
+                            number: isEditMode ? (invoiceToEdit?.partyNumber || '') : customerPhone,
+                        }}
+                        rule={customerPricing.rule}
+                        onClose={() => setShowPricingInfo(false)}
+                        onSaved={refreshCustomerPricing}
+                    />
+                )}
                 {renderSavedBillModals()}
             </div >
         );
@@ -2307,14 +2336,23 @@ ${colClass || ''}`}
                                 <IconScanCircle width={20} height={20} />
                                 <span className="hidden md:inline">Scan</span>
                             </button>
+                            {/* Phone only: clear cart at the end of the search row (same as card view) */}
+                            {items.length > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={handleClearCart}
+                                    aria-label="Clear cart"
+                                    className="md:hidden inline-flex items-center justify-center w-12 h-12 flex-shrink-0 rounded-sm text-[#d5000c] bg-[#ffeef0] hover:bg-[#ffdde1] transition-colors"
+                                >
+                                    <FiTrash2 size={18} />
+                                </button>
+                            )}
                         </div>
                     </div>
 
                     {/* Cart List Container */}
                     <div className="flex-1 flex flex-col bg-[#eef2ff] overflow-y-hidden">
                         {renderCartBar()}
-                        {/* Customer is a chip in the cart bar; desktop has the full bar in the bill panel */}
-                        <div className="xl:hidden">{renderCustomerOffer()}</div>
                         <div className="flex-shrink-0 grid grid-cols-2 px-2 py-1">
                             {discountInfo && <div className="text-xs text-red-600">{discountInfo}</div>}
                             {priceInfo && <div className="text-xs text-red-600">{priceInfo}</div>}
@@ -2446,8 +2484,21 @@ ${colClass || ''}`}
             />
             {renderAddOnPopup()}
             {renderCustomerModal()}
+            {showPricingInfo && currentUser?.companyId && (
+                <CustomerPricingEditorModal
+                    companyId={currentUser.companyId}
+                    uid={currentUser.uid}
+                    party={{
+                        name: isEditMode ? (invoiceToEdit?.partyName || '') : customerName,
+                        number: isEditMode ? (invoiceToEdit?.partyNumber || '') : customerPhone,
+                    }}
+                    rule={customerPricing.rule}
+                    onClose={() => setShowPricingInfo(false)}
+                    onSaved={refreshCustomerPricing}
+                />
+            )}
             {renderSavedBillModals()}
-        </div>
+        </div >
     );
 };
 

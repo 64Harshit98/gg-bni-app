@@ -75,6 +75,7 @@ export const ROUTES = {
   CATA_ITEM_SETTING: 'cata-item-setting',
   CATA_USER_SETTING: 'cata-user-setting',
   CATA_PERMISSION_SETTING: 'cata-permission-setting',
+  CATA_CUSTOMER_PRICING: 'cata-customer-pricing',
   CATA_EDIT: 'cata-edit-profile',
   CATA_STORE_PAGE: 'store-page',
   CATA_PRODUCT_PAGE: 'product-page',

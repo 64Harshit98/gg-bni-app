@@ -21,7 +21,7 @@ import {
     usePlaceOrder,
 } from './hooks';
 import { EmptyState, Note, Photo, QtyStepper, Sheet, StoreFooter, StoreHeader, StoreMessage, btnClass } from '../storefront/StoreUI';
-import { formatINR, formatPhone } from '../storefront/storefront.utils';
+import { formatINR, formatPhone, getPriceRounding, roundToInterval } from '../storefront/storefront.utils';
 import { storeAddress } from '../storefront/StoreSections';
 import StorefrontError from '../storefront/StorefrontError';
 import { readLeadData } from '../storefront/buyerStorage';
@@ -111,7 +111,24 @@ const CartPage: React.FC = () => {
     const [movError, setMovError] = useState<string | null>(null);
     const [specialInstruction, setSpecialInstruction] = useState("");
 
-    const { cartItems, setCartItems, updateItemNote, updateQuantity, removeFromCart } = useCart(effectiveCompanyId, salesSettings);
+    const { cartItems: rawCartItems, setCartItems, updateItemNote, updateQuantity, removeFromCart } = useCart(effectiveCompanyId, salesSettings);
+
+        const roundingSource = salesSettings as
+        { enableRounding?: boolean; roundingInterval?: number } | null | undefined;
+    const rounding = useMemo(
+        () => getPriceRounding(roundingSource),
+        [roundingSource?.enableRounding, roundingSource?.roundingInterval]
+    );
+    const cartItems = useMemo(() => rawCartItems.map((c) => {
+        const addOnSum = ((c as { addOns?: { price?: number }[] }).addOns ?? [])
+            .reduce((s, a) => s + (Number(a.price) || 0), 0);
+        const base = roundToInterval(Number(c.salesPrice) - addOnSum, rounding);
+        const salesPrice = Math.round((base + addOnSum) * 100) / 100;
+        const baseSalesPrice = c.baseSalesPrice !== undefined
+            ? roundToInterval(Number(c.baseSalesPrice), rounding)
+            : undefined;
+        return { ...c, salesPrice, ...(baseSalesPrice !== undefined ? { baseSalesPrice } : {}) };
+    }) as typeof rawCartItems, [rawCartItems, rounding]);
 
     // ── Edit add-ons of a cart line ──
     const storeData = useMemo(() => (storefront ? toStorefrontPageData(storefront) : null), [storefront]);
@@ -199,7 +216,7 @@ const CartPage: React.FC = () => {
     const saveAddOnEdit = (list: AddOnOption[]) => {
         if (!editLineKey) return;
         const sum = (a: AddOnOption[]) => a.reduce((s, o) => s + (Number(o.price) || 0), 0);
-        setCartItems(cartItems.map((c: any) => {
+        setCartItems(rawCartItems.map((c: any) => {
             if (lineKeyOf(c) !== editLineKey) return c;
             const next = Math.round((Number(c.salesPrice) - sum(c.addOns ?? []) + sum(list)) * 100) / 100;
             return { ...c, addOns: list, salesPrice: next };
@@ -227,7 +244,7 @@ const CartPage: React.FC = () => {
 
         const moq = Number(editLine.moq) || 1;
         setCartItems([
-            ...cartItems,
+            ...rawCartItems,
             { ...editLine, lineKey: `${lineKeyOf(editLine)}#${Date.now()}`, addOns: list, salesPrice: unit, quantity: moq, note: '' },
         ] as typeof cartItems);
         closeAddOnEdit();

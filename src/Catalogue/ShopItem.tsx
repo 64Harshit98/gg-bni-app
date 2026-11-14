@@ -15,7 +15,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import ShowWrapper from '../context/ShowWrapper';
 import { Cata_Permissions } from './enum/cata_permissions.enum';
 import { Photo, Sheet, Tag, btnClass } from './storefront/StoreUI';
-import { findItemGroup, itemInGroup, productPageUrl } from './storefront/storefront.utils';
+import { findItemGroup, itemInGroup, productPageUrl, roundToInterval, type PriceRounding } from './storefront/storefront.utils';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 
@@ -69,8 +69,17 @@ const QuickListedToggle: React.FC<QuickListedToggleProps> = ({ itemId, isListed,
 };
 
 const ITEMS_PER_BATCH_RENDER = 24;
+
+// type PriceRounding = { enabled: boolean; interval: number };
+
+// // Rounds a price to the interval chosen in Catalogue Sales Settings (e.g. 1, 0.5, 10)
+// const roundToInterval = (value: number, rounding?: PriceRounding) => {
+//     if (!rounding?.enabled || !(rounding.interval > 0)) return value;
+//     return Number((Math.round(value / rounding.interval) * rounding.interval).toFixed(2));
+// };
+
 // --- NEW 3-TIER LOGIC HELPER ---
-const getEffectivePriceInfo = (item: Item) => {
+const getEffectivePriceInfo = (item: Item, rounding?: PriceRounding) => {
     const mrp = Number(item.mrp || 0);
     const itemSalesPrice = Number(item.salesPrice || 0);
     const presetDiscount = Number(item.discount || 0);
@@ -92,8 +101,10 @@ const getEffectivePriceInfo = (item: Item) => {
         salePrice = mrp * (1 - (presetDiscount / 100));
     }
 
-    // Round to 2 decimal places to ensure clean UI numbers
+        // Round to 2 decimal places to ensure clean UI numbers
     salePrice = Math.round((salePrice + Number.EPSILON) * 100) / 100;
+    // Then apply the shop's round-off setting
+    salePrice = roundToInterval(salePrice, rounding);
 
     return {
         mrp,
@@ -193,7 +204,13 @@ const MyShop: React.FC = () => {
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
     const [catalogueSettings, setCatalogueSettings] = useState<CatalogueSalesSettings | null>(null);
-    const [subdomain, setSubdomain] = useState<string | null>(null);
+        const [subdomain, setSubdomain] = useState<string | null>(null);
+
+    // Missing fields fall back to the defaults (round off ON, nearest 1)
+    const priceRounding = useMemo<PriceRounding>(() => ({
+        enabled: catalogueSettings?.enableRounding ?? true,
+        interval: Number(catalogueSettings?.roundingInterval ?? 1) || 1,
+    }), [catalogueSettings?.enableRounding, catalogueSettings?.roundingInterval]);
 
     const observerRef = useRef<IntersectionObserver | null>(null);
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -334,7 +351,7 @@ const MyShop: React.FC = () => {
 
             // --- Prepare Data (Using the new filtered array & throttling) ---
             for (const item of liveItemsToPrint) {
-                const { salePrice, mrp, hasBothPrices } = getEffectivePriceInfo(item);
+                               const { salePrice, mrp, hasBothPrices } = getEffectivePriceInfo(item, priceRounding);
                 let base64Img = '';
 
                 if (item.imageUrl) {
@@ -885,7 +902,7 @@ const MyShop: React.FC = () => {
                 ) : (
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:gap-5 lg:grid-cols-4 xl:grid-cols-5">
                         {itemsToDisplay.map((item, idx) => {
-                            const { mrp, salePrice, discountPercent, hasDiscount, hasBothPrices } = getEffectivePriceInfo(item);
+                            const { mrp, salePrice, discountPercent, hasDiscount, hasBothPrices } = getEffectivePriceInfo(item, priceRounding);
                             const multiplier = item.unitMultiplier || 1;
                             const showDiscountBadge = catalogueSettings?.showDiscountBadge && hasDiscount;
                             const pinned = pinnedIds.has(item.id!);

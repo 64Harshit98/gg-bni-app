@@ -3,6 +3,7 @@ import { getSlabForQty } from '../../constants/models';
 import type { CatalogueSalesSettings } from '../Settings/CatalogueSalesSetting';
 import { getEffectivePriceInfo, hasMultiplePricing, hasQuantitySlabs } from '../../Pages/utils/pricingUtils';
 import type { LeadStatus } from './useStorefront';
+import { getItemGroupIds, getPriceRounding, roundToInterval } from './storefront.utils';
 
 /** Can this customer see prices? (shop setting + approval) */
 export const canSeePrices = (settings: CatalogueSalesSettings | null, leadStatus: LeadStatus) =>
@@ -13,17 +14,37 @@ export const unitLabel = (item: Item) => {
     if (m > 1) return `${m} pcs`;
     return item.unit && item.unit !== 'pcs' ? `1 ${item.unit}` : '1 pc';
 };
-
+/** Max quantity a customer may order of this item. null = no limit. Item > category (smallest) > all items. */
+export const getMaxOrderQty = (item: Item, settings: CatalogueSalesSettings | null): number | null => {
+    if (!settings?.enableOrderLimits) return null;
+    const byItem = Number(settings.maxOrderQtyByItem?.[item.id!] || 0);
+    if (byItem > 0) return byItem;
+    const catLimits = getItemGroupIds(item)
+        .map((id) => Number(settings.maxOrderQtyByCategory?.[id] || 0))
+        .filter((n) => n > 0);
+    if (catLimits.length) return Math.min(...catLimits);
+    const all = Number(settings.maxOrderQtyAll || 0);
+    return all > 0 ? all : null;
+};
 const LOW_STOCK = 5;
 
 /** Everything a product card or the product page needs to know about price and stock. */
 export const productState = (item: Item, settings: CatalogueSalesSettings | null, inCart: number) => {
-    const { mrp, salePrice, discountPercent, hasDiscount } = getEffectivePriceInfo(item);
+    const { mrp, salePrice: rawSalePrice, discountPercent, hasDiscount } = getEffectivePriceInfo(item);
+    // Round off setting from Catalogue Sales Settings (missing fields fall back to ON, nearest 1)
+    const rounding = getPriceRounding(settings);
+    const rp = (n: number) => roundToInterval(n, rounding);
+    const salePrice = rp(rawSalePrice);
     const priceMode = settings?.priceDisplayMode || 'both';
     const actuallyOut = (item.stock || 0) <= 0;
     const outOfStock = !settings?.allowNegativeInventory && actuallyOut;
-    const slabs = hasQuantitySlabs(item) ? [...(item.quantitySlabs || [])].sort((a, b) => a.minQty - b.minQty) : [];
-    const activeSlab = inCart > 0 && slabs.length ? getSlabForQty(item, inCart) : null;
+    const slabs = hasQuantitySlabs(item)
+        ? [...(item.quantitySlabs || [])]
+            .sort((a, b) => a.minQty - b.minQty)
+            .map((s) => ({ ...s, salesPrice: rp(s.salesPrice) }))
+        : [];
+    const activeSlabRaw = inCart > 0 && slabs.length ? getSlabForQty(item, inCart) : null;
+    const activeSlab = activeSlabRaw ? { ...activeSlabRaw, salesPrice: rp(activeSlabRaw.salesPrice) } : null;
     const slabPrice = activeSlab && activeSlab.salesPrice < salePrice ? activeSlab.salesPrice : null;
     const bulkFrom = slabs.length ? Math.min(...slabs.map((s) => s.salesPrice)) : null;
     const stock = Number(item.stock || 0);
@@ -40,7 +61,8 @@ export const productState = (item: Item, settings: CatalogueSalesSettings | null
         bulkFrom: bulkFrom !== null && bulkFrom < salePrice ? bulkFrom : null,
         lowStock: !settings?.allowNegativeInventory && stock > 0 && stock <= LOW_STOCK ? stock : undefined,
         hasOptions: hasMultiplePricing(item) || (item.addOnGroups?.length ?? 0) > 0,
-        hasVariants: hasMultiplePricing(item),
+                hasVariants: hasMultiplePricing(item),
         unit: unitLabel(item),
+        maxQty: getMaxOrderQty(item, settings),
     };
 };

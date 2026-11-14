@@ -154,9 +154,13 @@ const CategoryPage: React.FC = () => {
 
     const addLine = (item: Item, tier?: PriceTier, qty?: number, addOns?: AddOnOption[]) => {
         const withTier: Item = tier ? { ...item, mrp: tier.mrp, salesPrice: tier.salesPrice, discount: tier.discount ?? 0, tierLabel: tier.label, unitMultiplier: tier.quantity } as CartLineItem : item;
-                cart.addToCart(withTier, tier?.id, groupId, qty, addOns);
+        cart.addToCart(withTier, tier?.id, groupId, qty, addOns);
     };
-       const options = useItemOptions({ listed, settings, pricesVisible, requireLead: actions.requireLead, addLine });
+    const options = useItemOptions({
+        listed, settings, pricesVisible, requireLead: actions.requireLead, addLine,
+        quantityOf: cart.quantityOf,
+        onLimit: (item, limit) => actions.setToast(`You can order up to ${limit} of ${item.name}.`),
+    });
 
     const renderCard = (item: Item, i: number, opts: { rail?: boolean } = {}) => {
         const qty = cart.quantityOf(item.id);
@@ -167,9 +171,10 @@ const CategoryPage: React.FC = () => {
                 discountPercent={s.discountPercent} showDiscount={s.showDiscount} lowStock={s.lowStock} bulkFrom={s.bulkFrom}
                 outOfStock={s.outOfStock} canNotify={s.canNotify} notified={!!actions.notified[item.id!]} hasOptions={options.hasVariants(item)}
                 inCart={qty} highlight={highlight === String(item.id)}
+                atLimit={s.maxQty !== null && qty >= s.maxQty}
                 onOpen={() => openProduct(item)}
                 onAdd={() => options.start(item)}
-                                onInc={() => (options.needsChoice(item) ? options.start(item) : cart.updateQuantity(item.id!, 1))}
+                onInc={() => (options.needsChoice(item) ? options.start(item) : cart.updateQuantity(item.id!, 1))}
                 onDec={() => cart.updateQuantity(item.id!, -1)}
                 onNotify={() => actions.notify(item)} />
         );

@@ -177,7 +177,7 @@ export const useInvoiceCommunication = ({
         discount2Amount = Math.max(0, totalDiscountAmt - discount1Amount);
       }
 
-           return {
+      return {
         sno: index + 1,
         name: item.name,
         addOnLines: item.addOnLines,
@@ -229,6 +229,7 @@ export const useInvoiceCommunication = ({
       printFormat: resolvedPrintFormat,
       enableTriplicate: billSettings.enableTriplicate || false,
       enableItemImages: billSettings.enableItemImages || false, // NEW
+      enableWatermark: billSettings.enableWatermark ?? true,
       gstScheme: salesSettings?.gstScheme || '',
       taxType: invoice.taxType || salesSettings?.taxType || '',
       companyName: businessInfo?.name || '',

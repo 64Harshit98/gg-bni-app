@@ -7,7 +7,7 @@ import type { CatalogueSalesSettings } from '../Settings/CatalogueSalesSetting';
 import { getAllTiers, getEffectivePriceInfo } from '../../Pages/utils/pricingUtils';
 import { productState } from './productState';
 import { PriceBlock, QtyStepper, Tag, btnClass, toneClass } from './StoreUI';
-import { formatINR, getItemImages } from './storefront.utils';
+import { formatINR, getItemImages, getPriceRounding, roundToInterval } from './storefront.utils';
 import { ZoomPhoto } from './ZoomPhoto';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
@@ -62,17 +62,26 @@ export const ProductView: React.FC<Props> = (p) => {
     useEffect(() => { setPhoto(0); setTierId('__base__'); setQty(minQty); setAddOnSel({}); setAddOnOpen(false); }, [item.id, minQty]);
 
     const s = productState(item, settings, 0);
+    // Round off setting from Catalogue Sales Settings (missing fields fall back to ON, nearest 1)
+    const rounding = useMemo(
+        () => getPriceRounding(settings),
+        [settings?.enableRounding, settings?.roundingInterval]
+    );
+    const rp = (n: number) => roundToInterval(n, rounding);
     // Once a single-piece product is in the cart, the stepper edits the cart itself (packs keep the picker)
     const editsCart = tiers.length === 0 && !hasAddOns && p.inCart > 0;
     const stockCap = settings?.allowNegativeInventory || tierId !== '__base__' ? Infinity : Number(item.stock || 0);
-    const atCap = editsCart ? p.inCart >= stockCap : qty + p.inCart >= stockCap;
+    const orderLimit = s.maxQty ?? Infinity;           // owner ki max order limit
+    const capQty = Math.min(stockCap, orderLimit);     // stock aur limit mein jo chhota
+    const atCap = editsCart ? p.inCart >= capQty : qty + p.inCart >= capQty;
     const tier = tiers.find((t) => t.id === tierId);
     const tierPrice = tier && tier.id !== '__base__' ? getEffectivePriceInfo(tier) : null;
-    const basePrice = tierPrice ? tierPrice.salePrice : s.price;
+    const basePrice = rp(tierPrice ? tierPrice.salePrice : s.price);
     const baseMrp = tierPrice ? (settings?.priceDisplayMode === 'salePrice' ? 0 : tierPrice.mrp) : s.mrp;
     const slab = !tierPrice && s.slabs.length ? getSlabForQty(item, qty) : null;
-    const unitPrice = slab && slab.salesPrice < basePrice ? slab.salesPrice : basePrice;
-    const saving = baseMrp > unitPrice ? baseMrp - unitPrice : 0;
+    const slabPrice = slab ? rp(slab.salesPrice) : 0;
+    const unitPrice = slab && slabPrice < basePrice ? slabPrice : basePrice;
+    const saving = baseMrp > unitPrice ? Math.round((baseMrp - unitPrice) * 100) / 100 : 0;
 
     const addOnLimit = (g: AddOnGroup) => (g.multiple ? Number(g.maxSelect) || 0 : 0);
     const hasExtraPrice = (g: AddOnGroup) => g.extraPrice != null;
@@ -122,7 +131,7 @@ export const ProductView: React.FC<Props> = (p) => {
 
     // withAddOns=false: "Skip add-ons" adds the plain item
     const add = (withAddOns = true) => {
-        p.onAdd(item, Math.min(qty, Math.max(0, stockCap - p.inCart)), tier && tier.id !== '__base__' ? tier : undefined, withAddOns ? pickedAddOns : []);
+        p.onAdd(item, Math.min(qty, Math.max(0, capQty - p.inCart)), tier && tier.id !== '__base__' ? tier : undefined, withAddOns ? pickedAddOns : []);
         setQty(minQty);
         setAddOnSel({});
         setAddOnOpen(false);
@@ -142,7 +151,7 @@ export const ProductView: React.FC<Props> = (p) => {
             ? <button type="button" onClick={p.onViewCart} className={btnClass('primary', 'lg', true)}>
                 <ShoppingCart className="size-4" />View cart
             </button>
-            : <button type="button" onClick={onBuyClick} disabled={p.inCart >= stockCap} className={cx(btnClass('primary', 'lg', true), 'min-w-0')}>
+            : <button type="button" onClick={onBuyClick} disabled={p.inCart >= capQty} className={cx(btnClass('primary', 'lg', true), 'min-w-0')}>
                 <ShoppingCart className="size-4 shrink-0" /><span className="min-w-0 truncate">Add to cart{pricesVisible ? ` · ${formatINR((unitPrice + addOnExtra) * qty)}` : ''}</span>
             </button>;
 
@@ -205,7 +214,7 @@ export const ProductView: React.FC<Props> = (p) => {
                             <p className="mb-2 text-[13px] font-medium text-slate-900">Pack</p>
                             <div className="flex flex-wrap gap-2">
                                 {tiers.map((t) => {
-                                    const tp = getEffectivePriceInfo(t);
+                                    const tp = { ...getEffectivePriceInfo(t), salePrice: rp(getEffectivePriceInfo(t).salePrice) };
                                     const on = t.id === tierId;
                                     return (
                                         <button key={t.id} type="button" aria-pressed={on} onClick={() => setTierId(t.id)}
@@ -235,7 +244,7 @@ export const ProductView: React.FC<Props> = (p) => {
                                             <span className={cx('size-9 shrink-0 overflow-hidden rounded-sm', img ? 'bg-white' : toneClass(i))}>{img && <img src={img} alt="" className="h-full w-full object-cover" />}</span>
                                             <span className="min-w-0">
                                                 <b className="block max-w-[160px] truncate text-[13px] font-medium leading-[18px] text-slate-900">{v.name}</b>
-                                                <small className="block text-xs tabular-nums text-slate-500">{vs.outOfStock ? 'Out of stock' : pricesVisible ? formatINR(vs.price) : ''}</small>
+                                                <small className="block text-xs tabular-nums text-slate-500">{vs.outOfStock ? 'Out of stock' : pricesVisible ? formatINR(rp(vs.price)) : ''}</small>
                                             </span>
                                         </>
                                     );
@@ -260,11 +269,12 @@ export const ProductView: React.FC<Props> = (p) => {
                                 <tbody className="tabular-nums">
                                     {s.slabs.map((sl) => {
                                         const on = slab?.id === sl.id;
-                                        const save = basePrice - sl.salesPrice;
+                                        const slPrice = rp(sl.salesPrice);
+                                        const save = Math.round((basePrice - slPrice) * 100) / 100;
                                         return (
                                             <tr key={sl.id} aria-current={on} className={cx('border-t border-sf-line', on && 'bg-sf-soft font-medium text-sf-soft-ink')}>
                                                 <td className="px-3 py-2">{sl.maxQty === null ? `${sl.minQty} and more` : `${sl.minQty} – ${sl.maxQty}`}</td>
-                                                <td className="px-3 py-2 text-right">{formatINR(sl.salesPrice)}</td>
+                                                <td className="px-3 py-2 text-right">{formatINR(slPrice)}</td>
                                                 <td className="px-3 py-2 text-right">{save > 0 ? `${formatINR(save)} each` : 'Base price'}</td>
                                             </tr>
                                         );
@@ -286,8 +296,13 @@ export const ProductView: React.FC<Props> = (p) => {
                         <div className="min-w-0 flex-1">{buyButton}</div>
                     </div>
 
-                    {!s.outOfStock && atCap && Number.isFinite(stockCap) && (
-                        <p className="-mt-3 text-[13px] text-yellow-800">Only {stockCap} in stock{p.inCart > 0 ? ` · ${p.inCart} already in your cart` : ''}.</p>
+                    {!s.outOfStock && atCap && Number.isFinite(capQty) && (
+                        <p className="-mt-3 text-[13px] text-yellow-800">
+                            {orderLimit <= stockCap
+                                ? `You can order up to ${orderLimit} of this item`
+                                : `Only ${stockCap} in stock`}
+                            {p.inCart > 0 ? ` · ${p.inCart} already in your cart` : ''}.
+                        </p>
                     )}
 
                     {p.inCart > 0 && (

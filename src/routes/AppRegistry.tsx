@@ -25,6 +25,7 @@ const PnlReport = lazy(() => import('../Pages/Reports/PNLReport'));
 const Permissionsetting = lazy(() => import('../Pages/Settings/Permissionsetting'));
 const SalesSettingsPage = lazy(() => import('../Pages/Settings/SalesSetting'));
 const PurchaseSettingsPage = lazy(() => import('../Pages/Settings/Purchasesetting'));
+const CustomerPricingPage = lazy(() => import('../Pages/Settings/CustomerPricing'));
 const UserSetting = lazy(() => import('../Pages/Settings/UserSettings'));
 const ItemSetting = lazy(() => import('../Pages/Settings/ItemSetting'));
 const BillSettings = lazy(() => import('../Pages/Settings/BillSetting'));
@@ -188,6 +189,7 @@ export const AppRegistry: AppModule[] = [
             { path: ROUTES.PERMSETTING, component: Permissionsetting, permission: null },
             { path: ROUTES.SALESETTING, component: SalesSettingsPage, permission: null },
             { path: ROUTES.PURCHASESETTING, component: PurchaseSettingsPage, permission: null },
+            { path: ROUTES.CUSTOMER_PRICING, component: CustomerPricingPage, permission: Permissions.ManageCustomerPricing },
             { path: ROUTES.USERSETTING, component: UserSetting, permission: Permissions.ManageUsers },
             { path: ROUTES.ITEMSETTING, component: PosItemSettingWrapper, permission: null },
             { path: ROUTES.BILLSETTING, component: BillSettings, permission: null },
@@ -235,6 +237,7 @@ export const AppRegistry: AppModule[] = [
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_MASTERS}`, component: CatalogueMasters, permission: Cata_Permissions.ManageMasters },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_SALE_SETTING}`, component: CatalogueSalesSettings, permission: Cata_Permissions.ManageSalesSettings },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_BILL_SETTING}`, component: CatalogueBillSetting, permission: Cata_Permissions.ManageBillSettings },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATA_CUSTOMER_PRICING}`, component: CustomerPricingPage, permission: Cata_Permissions.ManageSalesSettings },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_ITEM_SETTING}`, component: CatalogueItemSettingWrapper, permission: Cata_Permissions.ManageItemSettings },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_USER_SETTING}`, component: CatalogueUserSetting, permission: Cata_Permissions.ManageUserSettings },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_PERMISSION_SETTING}`, component: CataloguePermissionSetting, permission: Cata_Permissions.ManagePermissions },

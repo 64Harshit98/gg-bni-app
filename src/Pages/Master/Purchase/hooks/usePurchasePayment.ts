@@ -18,6 +18,11 @@ import { SHOP_ID } from '../../../hooks/useStockTransfer';
 import type { Godown } from '../../../hooks/useStockTransfer';
 import type { GodownSplit } from '../../../../Components/PurchaseGodownAssign';
 import { formatPurchaseItemsForDB } from '../purchase.calculations';
+import { SUPPLIER_PRICE_BOOK_COLLECTION, getPartyDocId } from '../../../../constants/customerSource';
+import { entriesFromPurchase, pickNewerEntries } from '../purchasePriceBook';
+import type { RateAudit } from './useSupplierPriceAlert';
+import { omitKeys } from '../../../../lib/omitKeys';
+import { CART_ONLY_SUPPLIER_KEYS } from '../../../utils/customerPricing';
 import type { Purchase, PurchaseDocumentData, PurchaseItem, TaxOption } from '../purchase.types';
 
 // Moved verbatim from Purchase.tsx (was a module-level helper above the
@@ -105,6 +110,9 @@ interface UsePurchasePaymentParams {
     setIsDrawerOpen: (open: boolean) => void;
     godownAssignments: Record<string, GodownSplit[]>;
     setGodownAssignments: React.Dispatch<React.SetStateAction<Record<string, GodownSplit[]>>>;
+    // Supplier rate-change alert: audit fields to store on each line, valid only for
+    // the supplier the rates were compared against.
+    rateAudit?: { supplierId: string; forLine: (line: PurchaseItem) => RateAudit | null };
 }
 
 // Owns the payment-drawer flow — moved verbatim from Purchase.tsx:
@@ -146,6 +154,7 @@ export const usePurchasePayment = ({
     setIsDrawerOpen,
     godownAssignments,
     setGodownAssignments,
+    rateAudit,
 }: UsePurchasePaymentParams) => {
     const [showPrintQrModal, setShowPrintQrModal] = useState<PurchaseItem[] | null>(null);
 
@@ -213,7 +222,14 @@ export const usePurchasePayment = ({
         const finalTaxType = taxType;
         const gstScheme = taxType === 'exempt' ? 'none' : 'regular';
 
-        const formattedItemsForDB = formatPurchaseItemsForDB(items, finalTaxType);
+        const savedSupplierId = getPartyDocId(completionData.partyName, completionData.partyNumber);
+        const formattedItemsForDB = formatPurchaseItemsForDB(items, finalTaxType).map((fi, idx) => {
+            const rest = omitKeys(fi, ['rateReviewedFor', ...CART_ONLY_SUPPLIER_KEYS]);
+            const audit = rateAudit && rateAudit.supplierId === savedSupplierId && items[idx]
+                ? rateAudit.forLine(items[idx])
+                : null;
+            return (audit ? { ...rest, ...audit } : rest) as PurchaseItem;
+        });
 
         if (editModeData && purchaseIdToEdit) {
             await updateExistingPurchase(purchaseIdToEdit, completionData, formattedItemsForDB, gstScheme, finalTaxType);
@@ -277,6 +293,15 @@ export const usePurchasePayment = ({
                     throw new Error(`INVOICE_NUMBER_TAKEN:${finalInvoiceNumber}`);
                 }
 
+                // Supplier price book (last rate per item) — a record of what was paid,
+                // never a price change. Read now: all transaction reads go before writes.
+                const supplierBookId = getPartyDocId(completionData.partyName, completionData.partyNumber);
+                const bookRef = supplierBookId
+                    ? doc(db, 'companies', companyId, SUPPLIER_PRICE_BOOK_COLLECTION, supplierBookId)
+                    : null;
+                const bookSnap = bookRef ? await transaction.get(bookRef) : null;
+
+                const purchaseDate = getParsedInvoiceDate();
                 const purchaseData: Omit<PurchaseDocumentData, 'id'> = {
                     userId: currentUser.uid,
                     partyName: completionData.partyName.trim(),
@@ -295,7 +320,7 @@ export const usePurchasePayment = ({
                     manualDiscount: manualDiscount,
                     totalAmount: finalTotalAmount,
                     paymentMethods: completionData.paymentDetails,
-                    createdAt: getParsedInvoiceDate(),
+                    createdAt: purchaseDate,
                     companyId: companyId,
                     voucherName: purchaseSettings?.voucherName ?? 'Purchase',
                 };
@@ -303,6 +328,24 @@ export const usePurchasePayment = ({
                 const newPurchaseRef = doc(collection(db, 'companies', companyId, 'purchases'));
                 transaction.set(newPurchaseRef, sanitizeForFirestore(purchaseData));
                 transaction.set(registryRef, { purchaseId: newPurchaseRef.id, createdAt: serverTimestamp() });
+
+                if (bookRef) {
+                    const incoming = entriesFromPurchase(formattedItemsForDB, {
+                        taxType: finalTaxType,
+                        date: purchaseDate.getTime(),
+                        invoiceNumber: finalInvoiceNumber,
+                        purchaseId: newPurchaseRef.id,
+                    });
+                    const toWrite = pickNewerEntries(bookSnap?.exists() ? bookSnap.data().items : undefined, incoming);
+                    if (Object.keys(toWrite).length > 0) {
+                        transaction.set(bookRef, {
+                            supplierName: completionData.partyName.trim(),
+                            supplierNumber: completionData.partyNumber.trim(),
+                            updatedAt: serverTimestamp(),
+                            items: toWrite,
+                        }, { merge: true });
+                    }
+                }
 
                 if (usedSuggestedNumber) {
                     transaction.set(counterRef, { currentNumber: nextNumber + 1, financialYear: currentFY }, { merge: false });
@@ -463,6 +506,13 @@ export const usePurchasePayment = ({
                 const purchaseDoc = await transaction.get(purchaseRef);
                 if (!purchaseDoc.exists()) throw new Error("Purchase not found.");
 
+                // Supplier price book — read before any write (see createNewPurchase)
+                const supplierBookId = getPartyDocId(completionData.partyName, completionData.partyNumber);
+                const bookRef = supplierBookId
+                    ? doc(db, 'companies', companyId, SUPPLIER_PRICE_BOOK_COLLECTION, supplierBookId)
+                    : null;
+                const bookSnap = bookRef ? await transaction.get(bookRef) : null;
+
                 const originalItemsMap = new Map(
                     (purchaseDoc.data().items as PurchaseItem[] || []).map(item =>
                         [item.id, (item.quantity || 1) * (item.tierQuantity || 1)]  // 👈 CHANGED
@@ -504,6 +554,7 @@ export const usePurchasePayment = ({
                     }
                 });
 
+                const editedDate = getParsedInvoiceDate();
                 const updatedPurchaseData: Partial<PurchaseDocumentData> = {
                     partyName: completionData.partyName.trim(),
                     partyNumber: completionData.partyNumber.trim(),
@@ -522,10 +573,28 @@ export const usePurchasePayment = ({
                     totalAmount: finalTotalAmount,
                     paymentMethods: completionData.paymentDetails,
                     updatedAt: serverTimestamp(),
-                    createdAt: getParsedInvoiceDate(),
+                    createdAt: editedDate,
                 };
 
                 transaction.update(purchaseRef, sanitizeForFirestore(updatedPurchaseData));
+
+                if (bookRef) {
+                    const incoming = entriesFromPurchase(formattedItemsForDB, {
+                        taxType: finalTaxType,
+                        date: editedDate.getTime(),
+                        invoiceNumber: finalInvoiceNumber,
+                        purchaseId,
+                    });
+                    const toWrite = pickNewerEntries(bookSnap?.exists() ? bookSnap.data().items : undefined, incoming);
+                    if (Object.keys(toWrite).length > 0) {
+                        transaction.set(bookRef, {
+                            supplierName: completionData.partyName.trim(),
+                            supplierNumber: completionData.partyNumber.trim(),
+                            updatedAt: serverTimestamp(),
+                            items: toWrite,
+                        }, { merge: true });
+                    }
+                }
             });
             // ✅ FIX: Update local inventory immediately for edit mode
             setAvailableItems(prev => prev.map(item => {

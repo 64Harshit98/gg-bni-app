@@ -18,6 +18,7 @@ export interface BillSettingsData {
     signatureBase64?: string;
     whatsappExtraMessage?: string;
     enableTriplicate?: boolean;
+    enableWatermark?: boolean;
     discountDisplayFormat?: 'amount' | 'percentage';
 }
 
@@ -233,6 +234,9 @@ const BillPaper: React.FC<{ business: BusinessInfoData; settings: BillSettingsDa
     const upi = (settings.upiId || '').trim();
     const today = new Date().toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 
+    // Default ON: only an explicit `false` hides the watermark (matches the PDF generators).
+    const showWatermark = settings.enableWatermark !== false;
+
     const qr = upi ? (
         <div className="inline-grid justify-items-center text-[9px]">
             <QRCodeSVG value={buildUpiUrl(upi, name, SAMPLE_TOTAL)} size={f === 'A4' ? 78 : 72} />
@@ -250,7 +254,7 @@ const BillPaper: React.FC<{ business: BusinessInfoData; settings: BillSettingsDa
     if (f === 'A5') {
         return (
             <div className={PAPER} style={{ width: PAPER_W.A5 }}>
-                <div className={WM}>SELLAR.IN</div>
+                {showWatermark && <div className={WM}>SELLAR.IN</div>}
                 <div className="grid grid-cols-[1fr_2fr_1fr] items-center gap-2 p-2 border border-black">
                     <div>{qr}</div>
                     <div className="text-center font-bold text-[28px]">{name}</div>
@@ -313,7 +317,7 @@ const BillPaper: React.FC<{ business: BusinessInfoData; settings: BillSettingsDa
     // ── A4 ──
     return (
         <div className={PAPER} style={{ width: PAPER_W.A4 }}>
-            <div className={WM}>SELLAR.IN</div>
+            {showWatermark && <div className={WM}>SELLAR.IN</div>}
             <div className="text-right text-[9px]">Bill generated on {today}</div>
             <div className="grid grid-cols-[1fr_2fr_1fr] items-center gap-2 p-2 border border-black">
                 <div>{qr}</div>
@@ -453,6 +457,7 @@ const CatalogueBillSettings: React.FC = () => {
         signatureBase64: '',
         whatsappExtraMessage: '',
         enableTriplicate: false,
+        enableWatermark: true,
         discountDisplayFormat: 'amount',
     });
 
@@ -513,6 +518,7 @@ const CatalogueBillSettings: React.FC = () => {
                     signatureBase64: sData.signatureBase64 || '',
                     whatsappExtraMessage: sData.catalogueWhatsappExtraMessage || '',
                     enableTriplicate: sData.enableTriplicate || false,
+                    enableWatermark: sData.enableWatermark ?? true,
                     discountDisplayFormat: sData.discountDisplayFormat || 'amount',
                 };
                 setSettings(loadedSettings);
@@ -587,6 +593,7 @@ const CatalogueBillSettings: React.FC = () => {
                 upiId: settings.upiId,
                 signatureBase64: currentSignature,
                 enableTriplicate: settings.enableTriplicate || false,
+                enableWatermark: settings.enableWatermark ?? true,
 
                 // Editable settings (independent per bill type)
                 catalogueTermsAndConditions: settings.termsAndConditions,
@@ -657,7 +664,7 @@ const CatalogueBillSettings: React.FC = () => {
                 case 'bs-payment':
                     return { ...prev, upiId: '' };
                 case 'bs-print':
-                    return { ...prev, printFormat: 'A4', enableTriplicate: false, discountDisplayFormat: 'amount' };
+                    return { ...prev, printFormat: 'A4', enableTriplicate: false, enableWatermark: true, discountDisplayFormat: 'amount' };
                 case 'bs-whatsapp':
                     return { ...prev, whatsappExtraMessage: '' };
                 case 'bs-terms':
@@ -741,6 +748,7 @@ const CatalogueBillSettings: React.FC = () => {
         upi: !!base && (settings.upiId || '') !== (base.upiId || ''),
         size: !!base && settings.printFormat !== base.printFormat,
         triplicate: !!base && !!settings.enableTriplicate !== !!base.enableTriplicate,
+        watermark: !!base && (settings.enableWatermark ?? true) !== (base.enableWatermark ?? true),
         discount: !!base && (settings.discountDisplayFormat ?? 'amount') !== (base.discountDisplayFormat ?? 'amount'),
         signature: !!base && sigDirty,
         whatsapp: !!base && (settings.whatsappExtraMessage || '') !== (base.whatsappExtraMessage || ''),
@@ -750,6 +758,7 @@ const CatalogueBillSettings: React.FC = () => {
     if (chg.upi) changeLabels.push('UPI ID');
     if (chg.size) changeLabels.push('Bill size');
     if (chg.triplicate) changeLabels.push('Print 3 copies');
+    if (chg.watermark) changeLabels.push('Watermark');
     if (chg.discount) changeLabels.push('Discount display');
     if (chg.signature) changeLabels.push('Signature');
     if (chg.whatsapp) changeLabels.push('WhatsApp message');
@@ -818,11 +827,10 @@ const CatalogueBillSettings: React.FC = () => {
                             type="button"
                             aria-pressed={activeSection === sec.id}
                             onClick={() => scrollToSection(sec.id)}
-                            className={`inline-flex items-center h-[30px] px-3 rounded-sm border text-xs font-medium leading-none whitespace-nowrap ${
-                                activeSection === sec.id
-                                    ? 'bg-slate-900 border-slate-900 text-white'
-                                    : 'bg-white border-slate-400 text-slate-600 hover:bg-orange-50'
-                            }`}
+                            className={`inline-flex items-center h-[30px] px-3 rounded-sm border text-xs font-medium leading-none whitespace-nowrap ${activeSection === sec.id
+                                ? 'bg-slate-900 border-slate-900 text-white'
+                                : 'bg-white border-slate-400 text-slate-600 hover:bg-orange-50'
+                                }`}
                         >
                             {sec.label}
                         </button>
@@ -839,11 +847,10 @@ const CatalogueBillSettings: React.FC = () => {
                             type="button"
                             aria-current={activeSection === sec.id}
                             onClick={() => scrollToSection(sec.id)}
-                            className={`flex items-center gap-2.5 px-3 py-2 rounded-sm text-[13px] leading-[18px] font-medium text-left ${
-                                activeSection === sec.id
-                                    ? 'bg-orange-100 text-orange-600'
-                                    : 'text-slate-600 hover:bg-orange-50 hover:text-slate-900'
-                            }`}
+                            className={`flex items-center gap-2.5 px-3 py-2 rounded-sm text-[13px] leading-[18px] font-medium text-left ${activeSection === sec.id
+                                ? 'bg-orange-100 text-orange-600'
+                                : 'text-slate-600 hover:bg-orange-50 hover:text-slate-900'
+                                }`}
                         >
                             <Icon name={sec.icon} />
                             {sec.label}
@@ -999,11 +1006,10 @@ const CatalogueBillSettings: React.FC = () => {
                                         return (
                                             <label
                                                 key={o.value}
-                                                className={`relative grid grid-cols-[44px_1fr] gap-3 items-center p-3 rounded-sm bg-white cursor-pointer text-left focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-orange-600 ${
-                                                    on
-                                                        ? 'border-2 border-orange-600 p-[11px] bg-orange-50'
-                                                        : 'border border-slate-400 hover:bg-orange-50/60'
-                                                }`}
+                                                className={`relative grid grid-cols-[44px_1fr] gap-3 items-center p-3 rounded-sm bg-white cursor-pointer text-left focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-orange-600 ${on
+                                                    ? 'border-2 border-orange-600 p-[11px] bg-orange-50'
+                                                    : 'border border-slate-400 hover:bg-orange-50/60'
+                                                    }`}
                                             >
                                                 <input
                                                     type="radio"
@@ -1053,6 +1059,18 @@ const CatalogueBillSettings: React.FC = () => {
                             />
                         </div>
 
+                        {/* Watermark toggle */}
+                        <div className={`${OPT} ${optBg(chg.watermark)}`}>
+                            <div>
+                                <div className={OPT_T}><Icon name="doc" />Show watermark{chg.watermark && <ChangedTag />}</div>
+                                <div className={OPT_D}>Light &ldquo;SELLAR.IN&rdquo; watermark in the background of printed/PDF bills.</div>
+                            </div>
+                            <Toggle
+                                checked={settings.enableWatermark ?? true}
+                                onChange={v => setSettings(prev => ({ ...prev, enableWatermark: v }))}
+                            />
+                        </div>
+
                         {/* Discount display format */}
                         <div className={`${OPT} ${optBg(chg.discount)}`}>
                             <div className={OPT_X}>
@@ -1079,9 +1097,8 @@ const CatalogueBillSettings: React.FC = () => {
                                                     onClick={() =>
                                                         setSettings(prev => ({ ...prev, discountDisplayFormat: opt.value as 'amount' | 'percentage' }))
                                                     }
-                                                    className={`h-[30px] px-3.5 rounded-sm text-[13px] font-medium leading-none ${
-                                                        on ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-600'
-                                                    }`}
+                                                    className={`h-[30px] px-3.5 rounded-sm text-[13px] font-medium leading-none ${on ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-600'
+                                                        }`}
                                                 >
                                                     {opt.label}
                                                 </button>

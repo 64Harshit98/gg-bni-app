@@ -34,6 +34,7 @@ export interface RawBillSettings {
     enableTriplicate: boolean;
     discountDisplayFormat: 'amount' | 'percentage';
     enableItemImages: boolean;
+    enableWatermark: boolean;
     posTermsAndConditions: string;
     posPrintFormat: 'A4' | 'A5' | 'THERMAL58' | 'THERMAL80';
     posWhatsappExtraMessage: string;
@@ -56,6 +57,7 @@ export const getDefaultBillSettings = (companyId: string): RawBillSettings => ({
     enableTriplicate: false,
     discountDisplayFormat: 'amount',
     enableItemImages: false,
+    enableWatermark: true,
     posTermsAndConditions: DEFAULT_TERMS_AND_CONDITIONS,
     posPrintFormat: 'A4',
     posWhatsappExtraMessage: '',
@@ -276,6 +278,7 @@ const BillSettings: React.FC = () => {
         enableTriplicate: false,
         discountDisplayFormat: 'amount',
         enableItemImages: false,
+        enableWatermark: true,
     });
 
     const formatAddress = (addr: any): string => {
@@ -339,6 +342,7 @@ const BillSettings: React.FC = () => {
                     enableTriplicate: sData.enableTriplicate || false,
                     discountDisplayFormat: sData.discountDisplayFormat || 'amount',
                     enableItemImages: sData.enableItemImages || false,
+                    enableWatermark: sData.enableWatermark ?? true,
                 };
 
                 setSettings(loadedSettings);
@@ -420,6 +424,7 @@ const BillSettings: React.FC = () => {
                 enableTriplicate: settings.enableTriplicate || false,
                 discountDisplayFormat: settings.discountDisplayFormat || 'amount',
                 enableItemImages: settings.enableItemImages || false,
+                enableWatermark: settings.enableWatermark ?? true,
 
                 // Always sync from businessInfo so these stay fresh
                 companyGstin: businessInfo.gstin,
@@ -488,6 +493,7 @@ const BillSettings: React.FC = () => {
                         printFormat: isThermalOnlyPlan ? 'THERMAL58' : 'A4',
                         enableTriplicate: false,
                         enableItemImages: false,
+                        enableWatermark: true,
                         discountDisplayFormat: 'amount',
                     };
                 case 'bs-whatsapp':
@@ -584,6 +590,7 @@ const BillSettings: React.FC = () => {
         size: !!base && settings.printFormat !== base.printFormat,
         triplicate: !!base && !!settings.enableTriplicate !== !!base.enableTriplicate,
         photos: !!base && !!settings.enableItemImages !== !!base.enableItemImages,
+        watermark: !!base && (settings.enableWatermark ?? true) !== (base.enableWatermark ?? true),
         discount: !!base && (settings.discountDisplayFormat ?? 'amount') !== (base.discountDisplayFormat ?? 'amount'),
         signature: !!base && sigDirty,
         whatsapp: !!base && (settings.whatsappExtraMessage || '') !== (base.whatsappExtraMessage || ''),
@@ -594,6 +601,7 @@ const BillSettings: React.FC = () => {
     if (chg.size) changeLabels.push('Bill size');
     if (chg.triplicate) changeLabels.push('Print 3 copies');
     if (chg.photos) changeLabels.push('Item photos');
+    if (chg.watermark) changeLabels.push('Watermark');
     if (chg.discount) changeLabels.push('Discount display');
     if (chg.signature) changeLabels.push('Signature');
     if (chg.whatsapp) changeLabels.push('WhatsApp message');
@@ -664,8 +672,8 @@ const BillSettings: React.FC = () => {
                             aria-pressed={activeSection === sec.id}
                             onClick={() => scrollToSection(sec.id)}
                             className={`inline-flex items-center h-[30px] px-3 rounded-sm border text-xs font-medium leading-none whitespace-nowrap ${activeSection === sec.id
-                                    ? 'bg-slate-900 border-slate-900 text-white'
-                                    : 'bg-white border-slate-400 text-slate-600 hover:bg-indigo-50'
+                                ? 'bg-slate-900 border-slate-900 text-white'
+                                : 'bg-white border-slate-400 text-slate-600 hover:bg-indigo-50'
                                 }`}
                         >
                             {sec.label}
@@ -684,8 +692,8 @@ const BillSettings: React.FC = () => {
                             aria-current={activeSection === sec.id}
                             onClick={() => scrollToSection(sec.id)}
                             className={`flex items-center gap-2.5 px-3 py-2 rounded-sm text-[13px] leading-[18px] font-medium text-left ${activeSection === sec.id
-                                    ? 'bg-blue-100 text-blue-600'
-                                    : 'text-slate-600 hover:bg-indigo-50 hover:text-slate-900'
+                                ? 'bg-blue-100 text-blue-600'
+                                : 'text-slate-600 hover:bg-indigo-50 hover:text-slate-900'
                                 }`}
                         >
                             <Icon name={sec.icon} />
@@ -849,8 +857,8 @@ const BillSettings: React.FC = () => {
                                             <label
                                                 key={o.value}
                                                 className={`relative grid grid-cols-[44px_1fr] gap-3 items-center p-3 rounded-sm bg-white cursor-pointer text-left focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-blue-600 ${on
-                                                        ? 'border-2 border-blue-600 p-[11px] bg-blue-50'
-                                                        : 'border border-slate-400 hover:bg-indigo-50/60'
+                                                    ? 'border-2 border-blue-600 p-[11px] bg-blue-50'
+                                                    : 'border border-slate-400 hover:bg-indigo-50/60'
                                                     }`}
                                             >
                                                 <input
@@ -910,6 +918,18 @@ const BillSettings: React.FC = () => {
                             <Toggle
                                 checked={!!settings.enableItemImages}
                                 onChange={v => setSettings(prev => ({ ...prev, enableItemImages: v }))}
+                            />
+                        </div>
+
+                        {/* Watermark toggle */}
+                        <div className={`${OPT} ${optBg(chg.watermark)}`}>
+                            <div>
+                                <div className={OPT_T}><Icon name="doc" />Show watermark{chg.watermark && <ChangedTag />}</div>
+                                <div className={OPT_D}>Light &ldquo;SELLAR.IN&rdquo; watermark in the background of printed/PDF bills.</div>
+                            </div>
+                            <Toggle
+                                checked={settings.enableWatermark ?? true}
+                                onChange={v => setSettings(prev => ({ ...prev, enableWatermark: v }))}
                             />
                         </div>
 

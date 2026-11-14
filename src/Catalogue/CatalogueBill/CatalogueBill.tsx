@@ -34,6 +34,7 @@ export interface CatalogueInvoiceData {
   taxType?: 'inclusive' | 'exclusive';
   upiId?: string;
   enableTriplicate?: boolean;
+  enableWatermark?: boolean;
 
   customer: {
     billing: {
@@ -115,6 +116,7 @@ export const CatalogueBill = async (
       gstScheme: data.companyGstType,
       taxType: data.taxType,
       enableTriplicate: (data as any).enableTriplicate === true,
+      enableWatermark: data.enableWatermark,
       isCatalogue: true,
       msmeNumber: data.msmeNumber || "",
       discountDisplayFormat: data.discountDisplayMode || 'amount',
@@ -432,7 +434,7 @@ export const CatalogueBill = async (
     const { addOnPdfText } = splitAddOns(item);
     const baseName = nameWithBase(item, rawPrice);
     addOnTexts[index] = addOnPdfText;
-   const itemNameText = `${baseName} (${(item.qty * (item.unitMultiplier ?? 1))} pcs)`;
+    const itemNameText = `${baseName} (${(item.qty * (item.unitMultiplier ?? 1))} pcs)`;
     nameImgs[index] = needsImageText(itemNameText)
       ? textToImage(itemNameText, NAME_IMG_W, 8, true)
       : null;
@@ -942,10 +944,12 @@ export const CatalogueBill = async (
       renderPage(true);
     }
   }
-  const totalPages = (doc as any).getNumberOfPages();
-  for (let i = 1; i <= totalPages; i++) {
-    doc.setPage(i);
-    drawWatermark(doc, pageWidth, pageHeight);
+  if (data.enableWatermark !== false) {
+    const totalPages = (doc as any).getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      drawWatermark(doc, pageWidth, pageHeight);
+    }
   }
   if (action === "print") {
     doc.autoPrint();
@@ -1196,6 +1200,7 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
     termsAndConditions: billSettings.catalogueTermsAndConditions || '',
     signatureBase64: billSettings.signatureBase64 || "",
     enableTriplicate: billSettings.enableTriplicate || false,
+    enableWatermark: billSettings.enableWatermark ?? true,
     discountDisplayMode: billSettings.discountDisplayFormat || invoiceData.discountDisplayFormat || 'amount',
     enableDiscount2: salesSettings?.enableDiscount2 || false,
   };

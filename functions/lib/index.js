@@ -1637,12 +1637,13 @@ exports.getPublicPreview = functions
 // read under firestore.rules, minus what's in STOREFRONT_BUSINESS_FIELDS' note.
 const STOREFRONT_SUB_RE = /^[a-z0-9-]{1,63}$/;
 const STOREFRONT_CID_RE = /^[A-Za-z0-9_-]{1,128}$/;
-// Short CDN window so a merchant's catalogue edits show up within ~1 minute;
-// stale-while-revalidate keeps buyers fast while the edge refreshes.
-const STOREFRONT_CACHE_CONTROL = "public, max-age=0, s-maxage=60, stale-while-revalidate=300";
+// Short CDN window so a merchant's edits show up within ~10 seconds.
+// No stale-while-revalidate: it made both the CDN and the browser serve the
+// old copy first and only refresh in the background.
+const STOREFRONT_CACHE_CONTROL = "public, max-age=0, s-maxage=10";
 const STOREFRONT_DOMAIN_TTL_MS = 5 * 60 * 1000;
 const STOREFRONT_MISS_TTL_MS = 60 * 1000;
-const STOREFRONT_PAYLOAD_TTL_MS = 30 * 1000;
+const STOREFRONT_PAYLOAD_TTL_MS = 10 * 1000;
 const STOREFRONT_CACHE_MAX = 200;
 // The business_info fields a storefront shows. That doc also holds private
 // settings such as the merchant's botMasterToken, which must never go out in

@@ -59,6 +59,22 @@ export const findItemBySlug = (items: Item[], slug: string, groupId?: string) =>
         ?? items.find((i) => itemSlug(i) === slug);
 };
 
+export type PriceRounding = { enabled: boolean; interval: number };
+
+/** Reads the Round off setting from catalogue-sales-settings. Missing fields fall back to the defaults (ON, nearest 1). */
+export const getPriceRounding = (
+    settings?: { enableRounding?: boolean; roundingInterval?: number } | null
+): PriceRounding => ({
+    enabled: settings?.enableRounding ?? true,
+    interval: Number(settings?.roundingInterval ?? 1) || 1,
+});
+
+/** Rounds a price to the interval chosen in Catalogue Sales Settings (e.g. 1, 0.5, 10). */
+export const roundToInterval = (value: number, rounding?: PriceRounding) => {
+    if (!rounding?.enabled || !(rounding.interval > 0)) return value;
+    return Number((Math.round(value / rounding.interval) * rounding.interval).toFixed(2));
+};
+
 export const formatINR = (n: number, decimals = false) =>
     (Number(n) < 0 ? '-₹' : '₹') + Math.abs(Number(n || 0)).toLocaleString('en-IN', decimals
         ? { minimumFractionDigits: 2, maximumFractionDigits: 2 }

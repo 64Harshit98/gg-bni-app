@@ -24,6 +24,22 @@ export interface PurchaseItem extends Omit<SalesItem, 'finalPrice' | 'effectiveU
   tierId?: string;         // 👈 NEW
   tierLabel?: string;      // 👈 NEW
   tierQuantity?: number;   // 👈 NEW
+  rateReviewedFor?: number; // cart-only: the rate the user tapped "Keep" on (supplier rate-change alert)
+  // Saved on the purchase line when the supplier's rate changed (audit trail)
+  lastRate?: number;
+  rateChangePct?: number;
+  rateReviewed?: boolean;
+  // Supplier-wise fixed pricing (applied automatically when the supplier has a rule)
+  supplierDiscountPct?: number;
+  supplierDiscountSource?: 'item' | 'category' | 'default';
+  supplierPricingFor?: string;        // supplier doc id the price was applied for
+  supplierPricingName?: string;
+  preSupplierPrice?: number | string; // cart-only: rate before it, restored by Revert
+  preSupplierDiscount?: number;
+  preSupplierDiscount2?: number;
+  supplierPriceSkip?: string;         // cart-only: 'manual' or a supplier id the user reverted for
+  itemGroupId?: string;
+  itemGroupIds?: string[];
 }
 
 // Moved verbatim from Purchase.tsx (was defined inline around L54-78). The

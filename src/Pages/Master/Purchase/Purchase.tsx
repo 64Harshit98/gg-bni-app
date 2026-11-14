@@ -1,14 +1,12 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { db } from '../../../lib/Firebase';
-import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ROUTES } from '../../../constants/routes.constants';
 import { useAuth, useDatabase } from '../../../context/auth-context';
 import BarcodeScanner from '../../../UseComponents/BarcodeScanner';
 import PaymentDrawer from '../../../Components/PaymentDrawer';
 import { Modal } from '../../../constants/Modal';
-import { State } from '../../../enums';
+import { Permissions, State } from '../../../enums';
 import SearchableItemInput from '../../../UseComponents/SearchIteminput';
 import { Spinner } from '../../../constants/Spinner';
 import {
@@ -30,6 +28,10 @@ import { IconScanCircle } from '../../../constants/Icons';
 import { PurchaseGodownAssignModal } from '../../../Components/PurchaseGodownAssign';
 import type { PurchaseItem, PurchaseDocumentData, Purchase } from './purchase.types';
 import { calculatePurchaseTotals } from './purchase.calculations';
+import { useSupplierPriceAlert } from './hooks/useSupplierPriceAlert';
+import { useSupplierPricing } from './hooks/useSupplierPricing';
+import type { PriceFlagData } from '../../../Components/PriceFlag';
+import { searchParties } from '../../../lib/partySearch';
 import {
   usePurchaseCart,
   usePurchaseCatalogueAndSettings,
@@ -121,7 +123,7 @@ interface SupplierSuggestion {
 const PurchasePage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { currentUser, loading: authLoading } = useAuth();
+  const { currentUser, loading: authLoading, hasPermission } = useAuth();
   const dbOperations = useDatabase();
   const { purchaseSettings, loadingSettings: loadingPurchaseSettings } = usePurchaseSettings();
 
@@ -312,8 +314,13 @@ const PurchasePage: React.FC = () => {
   const saveSupplier = () => {
     setSupplierName(supplierDraft.name.trim());
     setSupplierPhone(supplierDraft.phone.trim());
+    setPricingSupplier({ name: supplierDraft.name.trim(), number: supplierDraft.phone.trim() });
     closeSupplierModal();
   };
+  // Supplier picked at the top or typed in the payment drawer — supplier-wise pricing uses this one
+  const [pricingSupplier, setPricingSupplier] = useState({ name: prefillParty?.name ?? '', number: prefillParty?.number ?? '' });
+  const handleDrawerPartyInput = (name: string, number: string) =>
+    setPricingSupplier(prev => (prev.name === name && prev.number === number ? prev : { name, number }));
 
   const searchSupplier = async (term: string) => {
     if (!term || term.length < 2 || !currentUser?.companyId) {
@@ -321,32 +328,13 @@ const PurchasePage: React.FC = () => {
       setShowSupplierSuggestions(false);
       return;
     }
-    const partyRef = collection(db, 'companies', currentUser.companyId, 'suppliers');
-    const termLower = term.toLowerCase();
-    const termCap = termLower.charAt(0).toUpperCase() + termLower.slice(1);
-
     try {
-      const queries = [
-        getDocs(query(partyRef, where('name', '>=', termLower), where('name', '<=', termLower + '\uf8ff'), limit(5))),
-      ];
-      if (termCap !== termLower) {
-        queries.push(
-          getDocs(query(partyRef, where('name', '>=', termCap), where('name', '<=', termCap + '\uf8ff'), limit(5)))
-        );
-      }
-      const snapshots = await Promise.all(queries);
-      const map = new Map<string, SupplierSuggestion>();
-      snapshots.forEach(snap => snap.forEach(d => {
-        if (!map.has(d.id)) {
-          const data = d.data();
-          map.set(d.id, {
-            name: data.name || '',
-            number: data.number || d.id,
-            debitBalance: data.debitBalance,
-          });
-        }
+      const hits = await searchParties(currentUser.companyId, 'suppliers', term, 'name');
+      const results: SupplierSuggestion[] = hits.map(h => ({
+        name: h.name,
+        number: h.number,
+        debitBalance: h.data.debitBalance,
       }));
-      const results = Array.from(map.values());
       setSupplierSuggestions(results);
       setShowSupplierSuggestions(results.length > 0);
     } catch (err) {
@@ -582,6 +570,42 @@ const PurchasePage: React.FC = () => {
     return [...picked, ...rest];
   }, [sortedGridItems, items, selectedOnTop]);
 
+  // ── Supplier rate-change alert ──
+  // Flags only: a line's rate changes when the user taps "Use ₹x"; "Keep" accepts the new rate.
+  const rateAlertEnabled = purchaseSettings?.enablePriceChangeAlert ?? true;
+  const rateAlert = useSupplierPriceAlert({
+    enabled: rateAlertEnabled,
+    companyId: currentUser?.companyId,
+    supplierName: editModeData ? (editModeData.partyName || '') : supplierName,
+    supplierPhone: editModeData ? (editModeData.partyNumber || '') : supplierPhone,
+    items,
+    setItems,
+    billTaxType,
+    editingPurchaseId: purchaseIdToEdit ?? null,
+  });
+  const [showRateConfirm, setShowRateConfirm] = useState(false);
+
+  // ── Supplier-wise fixed discount (Busy-style party pricing) ──
+  // Applied automatically when the supplier has a rule and it lowers the rate; Revert undoes it.
+  const supplierPricingEnabled = !!purchaseSettings?.enableSupplierPricing;
+  const supplierPricing = useSupplierPricing({
+    enabled: supplierPricingEnabled,
+    auto: !isEditMode,
+    companyId: currentUser?.companyId,
+    supplierName: editModeData ? (editModeData.partyName || '') : pricingSupplier.name,
+    supplierPhone: editModeData ? (editModeData.partyNumber || '') : pricingSupplier.number,
+    items,
+    setItems,
+    roundingOff: purchaseSettings?.roundingOff ?? true,
+    canOverride: hasPermission(Permissions.OverrideCustomerDiscount),
+  });
+  /** All flags for a cart line (supplier price + rate change) and its lock. */
+  const decoratePurchaseLine = (l: PurchaseItem): { priceFlag: PriceFlagData[]; lockPricing: boolean } => {
+    const sp = supplierPricing.decorate(l);
+    const rate = rateAlertEnabled ? rateAlert.decorate(l) : null;
+    return { priceFlag: [sp.priceFlag, rate].filter((f): f is PriceFlagData => !!f), lockPricing: sp.lockPricing };
+  };
+
   const {
     showPrintQrModal,
     handleProceedToPayment,
@@ -613,6 +637,7 @@ const PurchasePage: React.FC = () => {
     setIsDrawerOpen,
     godownAssignments,
     setGodownAssignments,
+    rateAudit: rateAlertEnabled ? { supplierId: rateAlert.supplierId, forLine: rateAlert.auditFor } : undefined,
   });
 
   if (pageIsLoading) return (
@@ -648,6 +673,70 @@ const PurchasePage: React.FC = () => {
     i => i.productId && !i.name.includes('(Not in DB)') && !(Number((i as any).mrp) > 0)
   );
 
+  // Before payment: list supplier rates that changed and were not reviewed (never blocks)
+  const proceedToPayment = () => {
+    if (rateAlertEnabled && rateAlert.unreviewed.length > 0) {
+      setShowRateConfirm(true);
+      return;
+    }
+    handleProceedToPayment();
+  };
+  const rateChangedCount = rateAlert.unreviewed.length;
+  const rateSupplierLabel = (editModeData ? editModeData.partyName : supplierName) || 'this supplier';
+  const rateChangeBanner = (extraCls = '') => rateAlertEnabled && rateChangedCount > 0 ? (
+    <div className={`flex flex-wrap items-start gap-2 p-2.5 rounded-sm text-[13px] leading-[19px] bg-[#fff3dd] text-[#bb4d00] ${extraCls}`} role="status">
+      <FiAlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+      <span className="flex-1 min-w-0">
+        <b className="font-semibold">
+          {rateChangedCount} {rateChangedCount === 1 ? 'item has' : 'items have'} a different rate
+        </b>{' '}
+        than the last purchase from {rateSupplierLabel}. Prices are not changed — check each flagged line.
+      </span>
+      <button type="button" onClick={rateAlert.keepAll} className="flex-shrink-0 font-semibold underline underline-offset-2 hover:opacity-80">
+        Keep all
+      </button>
+    </div>
+  ) : null;
+  const ratePartyNote = rateAlertEnabled && rateAlert.supplierId && rateAlert.comparisons.size > 0
+    ? {
+      partyId: rateAlert.supplierId,
+      message: `Rates were compared with ${rateSupplierLabel}'s last purchase. To compare with another supplier, close this and change the supplier at the top.`,
+    }
+    : null;
+  const renderRateConfirm = () => {
+    if (!showRateConfirm) return null;
+    const close = () => setShowRateConfirm(false);
+    return (
+      <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-[#020618]/45 sm:p-4" onClick={close}>
+        <div className={`${CARD} w-full sm:max-w-md p-5`} onClick={(e) => e.stopPropagation()}>
+          <h3 className="m-0 text-lg font-semibold text-[#0f172b]">Rates changed since last purchase</h3>
+          <p className="mt-1 mb-3 text-sm text-[#45556c]">
+            Compared with the last bill from {rateSupplierLabel}. Nothing has been changed.
+          </p>
+          <div className="max-h-56 overflow-y-auto border border-[#dfe6fb] rounded-sm divide-y divide-[#dfe6fb]">
+            {rateAlert.unreviewed.map(l => {
+              const c = rateAlert.comparisons.get(l.id)!;
+              return (
+                <div key={l.id} className="flex items-center gap-2 px-3 py-2 text-sm">
+                  <span className="flex-1 min-w-0 truncate text-[#0f172b]">{l.name}</span>
+                  <span className="tabular-nums text-[#5b6b86]">₹{fmtINR(c.lastRate)}</span>
+                  <span className="text-[#5b6b86]">→</span>
+                  <span className={`tabular-nums font-semibold ${c.direction === 'up' ? 'text-[#d5000c]' : 'text-[#008236]'}`}>
+                    ₹{fmtINR(Number(l.purchasePrice) || 0)} ({c.diff > 0 ? '+' : '−'}{Math.abs(c.diffPct)}%)
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex flex-wrap justify-end gap-2 mt-5">
+            <button type="button" className={BTN_GHOST} onClick={close}>Review</button>
+            <button type="button" className={BTN_PRIMARY} onClick={() => { close(); handleProceedToPayment(); }}>Continue</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const pageTitle = editModeData ? 'Edit purchase' : (purchaseSettings?.voucherName ?? 'Purchase');
   const actionLabel = isEditMode ? 'Update purchase' : 'Record purchase';
   const disableAction = items.length === 0 || hasUnlinkedItems;
@@ -669,7 +758,7 @@ const PurchasePage: React.FC = () => {
       ? [{ label: 'MRP value', value: `₹${Number(totalMrp).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` }]
       : [],
     actionLabel,
-    onActionClick: handleProceedToPayment,
+    onActionClick: proceedToPayment,
     disableAction,
   };
 
@@ -714,7 +803,7 @@ const PurchasePage: React.FC = () => {
           </span>
           <b className="block text-xl leading-[26px] font-semibold tabular-nums text-[#0f172b] truncate">₹{fmtINR(finalAmount)}</b>
         </button>
-        <button type="button" onClick={handleProceedToPayment} disabled={disableAction}
+        <button type="button" onClick={proceedToPayment} disabled={disableAction}
           className={`${BTN_PRIMARY} !h-12 !px-4 !text-[15px]`}>
           {actionLabel}
           <FiChevronRight size={16} />
@@ -757,6 +846,20 @@ const PurchasePage: React.FC = () => {
           </button>
         )}
       </div>
+      {supplierPricing.offer && (
+        <div
+          className={`mt-2 flex items-center gap-2 px-3 py-2 rounded-sm text-[13px] font-medium ${supplierPricing.offer.tone === 'warn'
+            ? 'bg-[#fff3dd] text-[#bb4d00]'
+            : supplierPricing.offer.tone === 'applied' ? 'bg-[#e9faef] text-[#008236]' : 'bg-[#e6eeff] text-[#155dfc]'}`}
+          role="status"
+        >
+          <span className="flex-1 min-w-0">{supplierPricing.offer.text}</span>
+          <button type="button" onClick={supplierPricing.offer.onAction}
+            className={`flex-shrink-0 h-8 px-3 rounded-sm text-xs font-semibold ${supplierPricing.offer.tone === 'info' ? 'bg-[#155dfc] text-white hover:bg-[#1447e6]' : 'bg-white border border-current hover:opacity-80'}`}>
+            {supplierPricing.offer.actionLabel}
+          </button>
+        </div>
+      )}
     </div>
   );
 
@@ -780,8 +883,10 @@ const PurchasePage: React.FC = () => {
           getUnitPrice={(i) => Number(i.purchasePrice) || 0}
           onQuantityChange={handleQuantityChange}
           onDelete={handleDeleteItem}
+          getPriceFlag={(i) => decoratePurchaseLine(i).priceFlag}
         />
       )}
+      {showLines && rateChangeBanner()}
       <GenericBillFooter {...footerProps} />
     </aside>
   );
@@ -1071,7 +1176,7 @@ const PurchasePage: React.FC = () => {
           <div
             key={idx}
             className="px-2.5 py-2 hover:bg-[#e6eeff] rounded-sm cursor-pointer flex justify-between items-center gap-2"
-            onClick={() => selectSupplierSuggestion(s)}
+            onMouseDown={(e) => { e.preventDefault(); selectSupplierSuggestion(s); }}
           >
             <div className="min-w-0">
               <div className="font-semibold text-xs text-[#0f172b] truncate">{s.name}</div>
@@ -1091,6 +1196,7 @@ const PurchasePage: React.FC = () => {
   // Drawers / pickers / add-item popup — identical in both views
   const renderCommonOverlays = () => (
     <>
+      {renderRateConfirm()}
       <PaymentDrawer
         mode='purchase'
         payingOut
@@ -1104,6 +1210,9 @@ const PurchasePage: React.FC = () => {
         isPartyNameEditable={!editModeData}
         initialPartyName={editModeData ? editModeData.partyName : supplierName}
         initialPartyNumber={editModeData ? editModeData.partyNumber : supplierPhone}
+        partyPriceNote={ratePartyNote}
+        onPartyInput={editModeData ? undefined : handleDrawerPartyInput}
+        partyOffer={supplierPricing.offer}
         initialPaymentMethods={editModeData ? editModeData.paymentMethods : undefined}
         totalQuantity={totalQuantity}
         enableCustomerDetails={true}
@@ -1862,7 +1971,7 @@ const PurchasePage: React.FC = () => {
 
             <div className="flex flex-col gap-2">
               <GenericCartList
-                items={cartItemsAdapter}
+                items={cartItemsAdapter.map(l => ({ ...l, ...decoratePurchaseLine(l as PurchaseItem) }))}
                 availableItems={availableItems}
                 basePriceKey="mrp"
                 priceLabel="MRP"
@@ -1887,6 +1996,8 @@ const PurchasePage: React.FC = () => {
                 onQuantityChange={(id, qty) => handleQuantityChange(id, qty)}
               />
             </div>
+
+            {rateChangeBanner('mt-3')}
 
             {missingMrpItems.length > 0 && (
               <div className="mt-3 flex flex-wrap items-start gap-2 p-2.5 rounded-sm text-[13px] leading-[19px] bg-[#fff3dd] text-[#bb4d00]">

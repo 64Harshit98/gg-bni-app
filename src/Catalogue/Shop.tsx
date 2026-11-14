@@ -86,8 +86,15 @@ const convertImageUrlToBase64 = async (url: string, itemName: string): Promise<s
         }
     }
 };
+type PriceRounding = { enabled: boolean; interval: number };
+
+const roundToInterval = (value: number, rounding?: PriceRounding) => {
+    if (!rounding?.enabled || !(rounding.interval > 0)) return value;
+    return Number((Math.round(value / rounding.interval) * rounding.interval).toFixed(2));
+};
+
 // Helper to calculate effective prices consistently
-const getEffectivePriceInfo = (item: Item) => {
+const getEffectivePriceInfo = (item: Item, rounding?: PriceRounding) => {
     const mrp = Number(item.mrp || 0);
     const itemSalesPrice = Number(item.salesPrice || 0);
     const presetDiscount = Number(item.discount || 0);
@@ -100,7 +107,8 @@ const getEffectivePriceInfo = (item: Item) => {
     } else if (mrp > 0) {
         salePrice = mrp * (1 - (presetDiscount / 100));
     }
-    salePrice = Math.round((salePrice + Number.EPSILON) * 100) / 100;
+        salePrice = Math.round((salePrice + Number.EPSILON) * 100) / 100;
+    salePrice = roundToInterval(salePrice, rounding);
 
     return {
         mrp,
@@ -349,7 +357,25 @@ const OrderingPage: React.FC = () => {
             return;
         }
 
-        setIsGeneratingPDF(true);
+                setIsGeneratingPDF(true);
+
+        // Read the shop's round-off setting (must happen outside the try below,
+        // because `const doc = new jsPDF()` shadows Firestore's `doc` there)
+        let rounding: PriceRounding = { enabled: true, interval: 1 };
+        if (companyId) {
+            try {
+                const s = await getDoc(doc(db, 'companies', companyId, 'settings', 'catalogue-sales-settings'));
+                if (s.exists()) {
+                    const d = s.data();
+                    rounding = {
+                        enabled: d.enableRounding ?? true,
+                        interval: Number(d.roundingInterval ?? 1) || 1,
+                    };
+                }
+            } catch (e) {
+                console.warn('Could not load rounding settings, using defaults.', e);
+            }
+        }
 
         try {
             // Deferred to keep jsPDF/jspdf-autotable out of the storefront's
@@ -385,7 +411,7 @@ const OrderingPage: React.FC = () => {
 
             // --- Prepare Data (Throttled to prevent 429 errors) ---
             for (const item of sortedItems) {
-                const { salePrice, mrp, hasBothPrices } = getEffectivePriceInfo(item);
+                                const { salePrice, mrp, hasBothPrices } = getEffectivePriceInfo(item, rounding);
                 let base64Img = '';
 
                 if (item.imageUrl) {

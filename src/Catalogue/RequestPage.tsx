@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from 'react'
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import {
@@ -16,6 +16,11 @@ import { useWhatsappProvider } from '../Pages/Additional/Whatsapp/useWhatsappPro
 import { ROUTES } from '../constants/routes.constants'
 import BackButton from '../Components/BackButton'
 import { todayDateInputValue } from '../lib/format'
+import useTutorial from './hooks/useTutorial'
+import { completeTutorial } from './hooks/useCompleteTutorial'
+import { TutorialStep } from '../Components/TutorialStep'
+
+const TUTORIAL_KEY = 'requestsTutorialDone'
 
 type RequestType = {
     id: string;
@@ -168,6 +173,45 @@ const useMediaQuery = (q: string) => {
     return match;
 };
 
+// ───────────── Tutorial sample data (shown only while the tutorial is active) ─────────────
+const sampleTs = (minsAgo: number) => {
+    const d = new Date(Date.now() - minsAgo * 60000);
+    return { seconds: Math.floor(d.getTime() / 1000), toDate: () => d };
+};
+
+const SAMPLE_REQUESTS: RequestType[] = [
+    {
+        id: 'sample_notify_1', type: 'notify', customerName: 'Sample Customer 1', customerNumber: '9876500001',
+        createdAt: sampleTs(30), messageSent: false,
+        items: [
+            { id: 'sample_item_a', name: 'Sample Item A', qty: 1, inStock: true },
+            { id: 'sample_item_b', name: 'Sample Item B', qty: 2, inStock: false },
+        ],
+    },
+    {
+        id: 'sample_notify_2', type: 'notify', customerName: 'Sample Customer 2', customerNumber: '9876500002',
+        createdAt: sampleTs(120), messageSent: true,
+        items: [{ id: 'sample_item_c', name: 'Sample Item C', qty: 1, inStock: true }],
+    },
+    { id: 'sample_appr_1', type: 'approval', customerName: 'Sample Customer 5', customerNumber: '9876500005', status: 'pending', createdAt: sampleTs(45) },
+    { id: 'sample_appr_2', type: 'approval', customerName: 'Sample Customer 6', customerNumber: '9876500006', status: 'pending', createdAt: sampleTs(90) },
+    { id: 'sample_appr_3', type: 'approval', customerName: 'Sample Customer 7', customerNumber: '9876500007', status: 'approved', createdAt: sampleTs(300) },
+    { id: 'sample_appr_4', type: 'approval', customerName: 'Sample Customer 8', customerNumber: '9876500008', status: 'declined', createdAt: sampleTs(600) },
+];
+
+const SAMPLE_BULK_QUOTES: BulkQuoteType[] = [
+    // same phone as Sample Customer 1 → shows inside that customer's detail
+    { id: 'sample_bulk_1', customerName: 'Sample Customer 1', customerNumber: '9876500001', itemId: 'sample_item_a', itemName: 'Sample Item A', quantity: '50 pcs', note: 'Need a best price for a wedding order.', createdAt: sampleTs(25) },
+    // bulk-only customer (no notify row)
+    { id: 'sample_bulk_2', customerName: 'Sample Customer 3', customerNumber: '9876500003', itemId: 'sample_item_d', itemName: 'Sample Item D', quantity: '120 pcs', createdAt: sampleTs(200) },
+];
+
+const SAMPLE_PERSONALIZATION: PersonalizationType[] = [
+    { id: 'sample_query_1', customerName: 'Sample Customer 1', customerNumber: '9876500001', itemName: 'Sample Item A', note: 'Can I get this in a different colour?', createdAt: sampleTs(20) },
+    // query-only customer (no notify row)
+    { id: 'sample_query_2', customerName: 'Sample Customer 4', customerNumber: '9876500004', itemName: 'Sample Item E', note: 'Do you deliver outside the city?', createdAt: sampleTs(400) },
+];
+
 const dateFilters = [
     { label: 'All', value: 'all' },
     { label: 'Today', value: 'today' },
@@ -187,6 +231,7 @@ function RequestPage() {
     const isDesktop = useMediaQuery('(min-width: 1280px)'); // two-pane needs room: sidebar + 380px list + detail
 
     const [requireApproval, setRequireApproval] = useState<boolean>(false);
+    const [settingsLoaded, setSettingsLoaded] = useState<boolean>(false);
     const [requestType, setRequestType] = useState<'notify' | 'approval'>('notify')
     const [catalogueBaseUrl, setCatalogueBaseUrl] = useState<string>('');
     const [approvalStatus, setApprovalStatus] = useState<'pending' | 'completed'>('pending')
@@ -217,6 +262,12 @@ function RequestPage() {
     const [sendingId, setSendingId] = useState<string | null>(null)
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null)
 
+    const [tutorialStepRaw, setTutorialStep] = useState(0);
+    // don't show any step until settings are loaded (requireApproval decides which steps exist)
+    const tutorialStep = settingsLoaded ? tutorialStepRaw : 0;
+    // while the tutorial runs, the page shows sample data instead of real data
+    const isTutorialActive = tutorialStep > 0;
+
     // Approval tab only exists when approval is required
     const tab: 'notify' | 'approval' = requireApproval ? requestType : 'notify';
 
@@ -245,6 +296,7 @@ function RequestPage() {
                 console.error('Failed to fetch subdomain:', err);
                 setCatalogueBaseUrl(`${window.location.origin}/catalogue/${companyId}`);
             }
+            setSettingsLoaded(true);
         };
         fetchSettings();
     }, [companyId]);
@@ -279,8 +331,8 @@ function RequestPage() {
     useEffect(() => {
         if (!isDateFilterOpen) setShowCustomInputs(false);
     }, [isDateFilterOpen]);
-
     const matchesDateFilter = (timestamp: any) => {
+        if (isTutorialActive) return true; // sample data is never filtered out
         if (activeDateFilter === 'all') return true;
         if (!timestamp?.toDate) return false;
 
@@ -379,18 +431,23 @@ function RequestPage() {
         };
     }, [companyId]);
 
+    // Real data normally; sample data while the tutorial is active
+    const srcRequests = isTutorialActive ? SAMPLE_REQUESTS : requests;
+    const srcBulkQuotes = isTutorialActive ? SAMPLE_BULK_QUOTES : bulkQuotes;
+    const srcPersonalization = isTutorialActive ? SAMPLE_PERSONALIZATION : personalizationRequests;
+
     // ───────────── derived data ─────────────
     // search + date applied once; each tab derives from it
     const baseFiltered = useMemo(() => {
-        const q = searchQuery.toLowerCase();
-        return requests
+        const q = isTutorialActive ? '' : searchQuery.toLowerCase();
+        return srcRequests
             .filter(req =>
                 ((req.customerName || "").toLowerCase().includes(q) || (req.customerNumber || "").includes(q)) &&
                 matchesDateFilter(req.createdAt)
             )
             .sort((a, b) => secs(b.createdAt) - secs(a.createdAt));
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [requests, searchQuery, activeDateFilter, customStartDate, customEndDate]);
+    }, [srcRequests, searchQuery, activeDateFilter, customStartDate, customEndDate, isTutorialActive]);
 
     const notifyRequests = useMemo(() => baseFiltered.filter(r => r.type === 'notify'), [baseFiltered]);
     const approvalRequests = useMemo(() => baseFiltered.filter(r => r.type === 'approval'), [baseFiltered]);
@@ -413,15 +470,15 @@ function RequestPage() {
         });
         return map;
     };
-    const bulkByPhone = useMemo(() => groupByPhone(bulkQuotes), [bulkQuotes]);
-    const personalizationByPhone = useMemo(() => groupByPhone(personalizationRequests), [personalizationRequests]);
+    const bulkByPhone = useMemo(() => groupByPhone(srcBulkQuotes), [srcBulkQuotes]);
+    const personalizationByPhone = useMemo(() => groupByPhone(srcPersonalization), [srcPersonalization]);
 
     // Bulk / query-only customers (no notify row) → one merged row per phone
     const mergedPreOrderCards = useMemo(() => {
         const knownPhones = new Set(
-            requests.filter(r => r.type === 'notify').map(r => digits(r.customerNumber))
+            srcRequests.filter(r => r.type === 'notify').map(r => digits(r.customerNumber))
         );
-        const q = searchQuery.toLowerCase();
+        const q = isTutorialActive ? '' : searchQuery.toLowerCase();
         const keep = (x: { customerNumber?: string; customerName?: string; createdAt?: any }) => {
             const phone = digits(x.customerNumber);
             if (knownPhones.has(phone)) return false;
@@ -436,19 +493,19 @@ function RequestPage() {
             return map.get(phone)!;
         };
 
-        bulkQuotes.filter(keep).forEach(bq => {
+        srcBulkQuotes.filter(keep).forEach(bq => {
             const e = entryFor(digits(bq.customerNumber), bq.customerName);
             e.bulks.push(bq);
             if (secs(bq.createdAt) > e.latestAt) { e.latestAt = secs(bq.createdAt); e.name = bq.customerName || e.name; }
         });
-        personalizationRequests.filter(keep).forEach(pr => {
+        srcPersonalization.filter(keep).forEach(pr => {
             const e = entryFor(digits(pr.customerNumber), pr.customerName);
             e.queries.push(pr);
             if (secs(pr.createdAt) > e.latestAt) { e.latestAt = secs(pr.createdAt); e.name = pr.customerName || e.name; }
         });
         return Array.from(map.values());
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [bulkQuotes, personalizationRequests, requests, searchQuery, activeDateFilter, customStartDate, customEndDate]);
+    }, [srcBulkQuotes, srcPersonalization, srcRequests, searchQuery, activeDateFilter, customStartDate, customEndDate, isTutorialActive]);
 
     // Unified Pre-orders list (notify rows + bulk/query-only customers), newest first
     const preOrderRows = useMemo<PreOrderRow[]>(() => {
@@ -517,9 +574,78 @@ function RequestPage() {
 
     useEffect(() => { setMenuOpen(false); }, [selectedKey, tab]);
 
+    // ───────────── tutorial ─────────────
+    const headerRef = useRef<HTMLDivElement | null>(null);
+    const tabsRef = useRef<HTMLDivElement | null>(null);
+    const listColRef = useRef<HTMLDivElement | null>(null);
+    const detailRef = useRef<HTMLDivElement | null>(null);
+    const approvalsRef = useRef<HTMLDivElement | null>(null);
+
+    const stepRefMap: Record<number, React.RefObject<HTMLDivElement | null>> = {
+        1: headerRef,
+        2: tabsRef,
+        3: listColRef,
+        4: detailRef,
+        5: approvalsRef,
+    };
+
+    // All steps this page can show. The tutorial switches tabs itself (see effect below).
+    const stepsAvailable = useMemo(() => {
+        const s = [1];
+        if (requireApproval) s.push(2);
+        // sample data guarantees rows exist during the tutorial
+        s.push(3);
+        if (isDesktop) s.push(4);
+        if (requireApproval) s.push(5);
+        return s;
+    }, [requireApproval, isDesktop]);
+
+    // Move to the tab that the current step lives on
+    useEffect(() => {
+        if (!requireApproval || tutorialStep === 0) return;
+        if (tutorialStep === 3 || tutorialStep === 4) setRequestType('notify');
+        if (tutorialStep === 5) setRequestType('approval');
+    }, [tutorialStep, requireApproval]);
+
+    const isLastStep = (s: number) => stepsAvailable[stepsAvailable.length - 1] === s;
+
+    const goNext = useCallback((current: number) => {
+        const nextStep = stepsAvailable[stepsAvailable.indexOf(current) + 1];
+        if (nextStep) setTutorialStep(nextStep);
+        else completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep);
+    }, [stepsAvailable, currentUser]);
+
+    const skip = useCallback(() => {
+        completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep);
+    }, [currentUser]);
+
+    useTutorial(currentUser, setTutorialStep, TUTORIAL_KEY);
+
+    // If the current step vanished (e.g. user switched tab), jump to the next valid one
+    useEffect(() => {
+        if (!settingsLoaded || tutorialStep === 0 || stepsAvailable.includes(tutorialStep)) return;
+        const fallback = stepsAvailable.find(s => s > tutorialStep);
+        if (fallback) setTutorialStep(fallback);
+        else completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep);
+    }, [tutorialStep, stepsAvailable, currentUser]);
+
+    useEffect(() => {
+        if (tutorialStep === 0) return;
+        const t = setTimeout(() => {
+            const el = stepRefMap[tutorialStep]?.current;
+            if (!el) return;
+            const tall = el.getBoundingClientRect().height > window.innerHeight * 0.4;
+            // keep the top of a tall block just under the sticky top bar,
+            // so the most room is left below it for the tooltip + Next button
+            el.style.scrollMarginTop = tall ? '72px' : '0px';
+            el.scrollIntoView({ behavior: 'smooth', block: tall ? 'start' : 'center' });
+        }, 400); // wait for the extra padding + tab switch to render
+        return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tutorialStep]);
     // ───────────── actions ─────────────
     const updateRequestStatus = async (requestId: string, newStatus: "approved" | "declined") => {
-        if (!companyId) return;
+        if (!companyId || isTutorialActive) return;
         setAnimatingId(requestId);
         setTimeout(async () => {
             try {
@@ -534,7 +660,7 @@ function RequestPage() {
     };
 
     const approveAll = async () => {
-        if (!companyId || pendingApprovals.length === 0) return;
+        if (!companyId || isTutorialActive || pendingApprovals.length === 0) return;
         if (!window.confirm(`Approve all ${pendingApprovals.length} pending requests?`)) return;
         const ids = pendingApprovals.map(r => r.id);
         try {
@@ -549,7 +675,7 @@ function RequestPage() {
     };
 
     const markMessageSent = async (requestId: string) => {
-        if (!companyId) return;
+        if (!companyId || isTutorialActive) return;
         try {
             await updateDoc(doc(db, "companies", companyId, "NotifyRequests", requestId), {
                 messageSent: true,
@@ -575,7 +701,7 @@ function RequestPage() {
 
     // Deletes the notify row (if any) + every bulk quote / query of that customer
     const handleDeleteRow = async (row: PreOrderRow) => {
-        if (!companyId) return;
+        if (!companyId || isTutorialActive) return;
         if (!window.confirm(`Delete ${row.name}'s request and everything linked to it?`)) return;
         try {
             if (row.req) {
@@ -590,7 +716,7 @@ function RequestPage() {
     };
 
     const handleDeleteBulk = async (bulkId: string) => {
-        if (!companyId) return;
+        if (!companyId || isTutorialActive) return;
         try {
             await deleteDoc(doc(db, "companies", companyId, "BulkQuoteRequests", bulkId));
             setBulkQuotes(prev => prev.filter(b => b.id !== bulkId));
@@ -600,7 +726,7 @@ function RequestPage() {
     };
 
     const handleDeletePersonalization = async (pid: string) => {
-        if (!companyId) return;
+        if (!companyId || isTutorialActive) return;
         try {
             await deleteDoc(doc(db, "companies", companyId, "PersonalizationRequests", pid));
             setPersonalizationRequests(prev => prev.filter(p => p.id !== pid));
@@ -614,6 +740,7 @@ function RequestPage() {
         message: string,
         rowKey: string
     ): Promise<boolean> => {
+        if (isTutorialActive) return false; // never message sample customers
         if (!companyId) {
             setModal({ message: "Company not found.", type: State.ERROR });
             return false;
@@ -674,6 +801,7 @@ function RequestPage() {
         itemNames: string[],
         rowKey: string
     ): Promise<boolean> => {
+        if (isTutorialActive) return false; // never message sample customers
         if (!companyId) {
             setModal({ message: "Company not found.", type: State.ERROR });
             return false;
@@ -1093,106 +1221,117 @@ function RequestPage() {
                     </p>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
-                    {/* desktop: always-visible search (only when there's real room) */}
-                    <label className="hidden lg:flex items-center gap-2 w-60 xl:w-72 h-10 px-3 bg-white border border-[#7a8aa3] rounded-sm text-slate-500 focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-orange-600">
-                        <Search size={16} className="shrink-0" />
-                        <input
-                            type="text"
-                            placeholder="Search name or phone"
-                            value={searchQuery}
-                            onChange={e => setSearchQuery(e.target.value)}
-                            className="flex-1 min-w-0 border-0 outline-0 bg-transparent text-sm text-slate-900 placeholder:text-slate-500"
-                        />
-                    </label>
-                    {/* phone + tablet: search toggle */}
-                    <button
-                        onClick={() => setIsSearchOpen(p => !p)}
-                        className={cx(ICONBTN, 'lg:hidden', isSearchOpen && '!bg-orange-100 !border-orange-700 !text-orange-800')}
-                        aria-label="Search"
+                <div ref={headerRef} className="shrink-0">
+                    <TutorialStep
+                        step={1}
+                        currentStep={tutorialStep}
+                        text="Search requests by customer name or phone, and filter them by date. By default only today's requests are shown."
+                        onNext={() => goNext(1)}
+                        onSkip={skip}
+                        isLast={isLastStep(1)}
                     >
-                        <Search size={18} />
-                    </button>
+                        <div className="flex items-center gap-2 shrink-0">
+                            {/* desktop: always-visible search (only when there's real room) */}
+                            <label className="hidden lg:flex items-center gap-2 w-60 xl:w-72 h-10 px-3 bg-white border border-[#7a8aa3] rounded-sm text-slate-500 focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-orange-600">
+                                <Search size={16} className="shrink-0" />
+                                <input
+                                    type="text"
+                                    placeholder="Search name or phone"
+                                    value={searchQuery}
+                                    onChange={e => setSearchQuery(e.target.value)}
+                                    className="flex-1 min-w-0 border-0 outline-0 bg-transparent text-sm text-slate-900 placeholder:text-slate-500"
+                                />
+                            </label>
+                            {/* phone + tablet: search toggle */}
+                            <button
+                                onClick={() => setIsSearchOpen(p => !p)}
+                                className={cx(ICONBTN, 'lg:hidden', isSearchOpen && '!bg-orange-100 !border-orange-700 !text-orange-800')}
+                                aria-label="Search"
+                            >
+                                <Search size={18} />
+                            </button>
 
-                    <div ref={dateFilterRef} className="relative">
-                        <button
-                            onClick={() => setIsDateFilterOpen(p => !p)}
-                            className={cx(
-                                BTN, 'h-10 px-3 md:px-4', SECONDARY,
-                                (isDateFilterOpen || activeDateFilter !== 'today') && '!bg-orange-100 !border-orange-700 !text-orange-800'
-                            )}
-                            aria-label="Filter by date"
-                            title="Filter by date"
-                        >
-                            <Filter size={16} />
-                            <span className="hidden md:inline">
-                                {dateFilters.find(f => f.value === activeDateFilter)?.label || 'Filter'}
-                            </span>
-                        </button>
+                            <div ref={dateFilterRef} className="relative">
+                                <button
+                                    onClick={() => setIsDateFilterOpen(p => !p)}
+                                    className={cx(
+                                        BTN, 'h-10 px-3 md:px-4', SECONDARY,
+                                        (isDateFilterOpen || activeDateFilter !== 'today') && '!bg-orange-100 !border-orange-700 !text-orange-800'
+                                    )}
+                                    aria-label="Filter by date"
+                                    title="Filter by date"
+                                >
+                                    <Filter size={16} />
+                                    <span className="hidden md:inline">
+                                        {dateFilters.find(f => f.value === activeDateFilter)?.label || 'Filter'}
+                                    </span>
+                                </button>
 
-                        {isDateFilterOpen && (
-                            <div className={cx(
-                                'absolute right-0 top-[calc(100%+8px)] z-[120] max-w-[calc(100vw-2rem)] bg-white border border-[#f6e1d0] rounded-sm shadow-xl',
-                                showCustomInputs ? 'w-[328px] p-4' : 'w-60 p-2'
-                            )}>
-                                {showCustomInputs ? (
-                                    <>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <label className="grid grid-cols-1 gap-1.5 text-[13px] font-medium text-slate-500">
-                                                From
-                                                <input
-                                                    type="date"
-                                                    value={customDraft.start}
-                                                    onChange={e => setCustomDraft(d => ({ ...d, start: e.target.value }))}
-                                                    className={cx(INPUT, 'min-w-0')}
-                                                />
-                                            </label>
-                                            <label className="grid grid-cols-1 gap-1.5 text-[13px] font-medium text-slate-500">
-                                                To
-                                                <input
-                                                    type="date"
-                                                    value={customDraft.end}
-                                                    onChange={e => setCustomDraft(d => ({ ...d, end: e.target.value }))}
-                                                    className={cx(INPUT, 'min-w-0')}
-                                                />
-                                            </label>
-                                        </div>
-                                        <div className="mt-4 flex justify-end gap-2">
-                                            <button
-                                                onClick={() => setIsDateFilterOpen(false)}
-                                                className={cx(BTN, BTN_MD, SECONDARY)}
-                                            >
-                                                Cancel
-                                            </button>
-                                            <button
-                                                disabled={!canApplyCustom}
-                                                onClick={applyCustomRange}
-                                                className={cx(BTN, BTN_MD, PRIMARY)}
-                                            >
-                                                Apply
-                                            </button>
-                                        </div>
-                                    </>
-                                ) : (
-                                    dateFilters.map(f => (
-                                        <button
-                                            key={f.value}
-                                            onClick={() => handleDateFilterSelect(f.value)}
-                                            aria-pressed={activeDateFilter === f.value}
-                                            className={cx(
-                                                'block w-full text-left px-3 py-2 rounded-sm text-[13px] cursor-pointer',
-                                                activeDateFilter === f.value
-                                                    ? 'bg-orange-100 text-orange-800 font-semibold'
-                                                    : 'font-medium text-slate-600 hover:bg-[#fff8f2]'
-                                            )}
-                                        >
-                                            {f.label}
-                                        </button>
-                                    ))
+                                {isDateFilterOpen && (
+                                    <div className={cx(
+                                        'absolute right-0 top-[calc(100%+8px)] z-[120] max-w-[calc(100vw-2rem)] bg-white border border-[#f6e1d0] rounded-sm shadow-xl',
+                                        showCustomInputs ? 'w-[328px] p-4' : 'w-60 p-2'
+                                    )}>
+                                        {showCustomInputs ? (
+                                            <>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <label className="grid grid-cols-1 gap-1.5 text-[13px] font-medium text-slate-500">
+                                                        From
+                                                        <input
+                                                            type="date"
+                                                            value={customDraft.start}
+                                                            onChange={e => setCustomDraft(d => ({ ...d, start: e.target.value }))}
+                                                            className={cx(INPUT, 'min-w-0')}
+                                                        />
+                                                    </label>
+                                                    <label className="grid grid-cols-1 gap-1.5 text-[13px] font-medium text-slate-500">
+                                                        To
+                                                        <input
+                                                            type="date"
+                                                            value={customDraft.end}
+                                                            onChange={e => setCustomDraft(d => ({ ...d, end: e.target.value }))}
+                                                            className={cx(INPUT, 'min-w-0')}
+                                                        />
+                                                    </label>
+                                                </div>
+                                                <div className="mt-4 flex justify-end gap-2">
+                                                    <button
+                                                        onClick={() => setIsDateFilterOpen(false)}
+                                                        className={cx(BTN, BTN_MD, SECONDARY)}
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                    <button
+                                                        disabled={!canApplyCustom}
+                                                        onClick={applyCustomRange}
+                                                        className={cx(BTN, BTN_MD, PRIMARY)}
+                                                    >
+                                                        Apply
+                                                    </button>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            dateFilters.map(f => (
+                                                <button
+                                                    key={f.value}
+                                                    onClick={() => handleDateFilterSelect(f.value)}
+                                                    aria-pressed={activeDateFilter === f.value}
+                                                    className={cx(
+                                                        'block w-full text-left px-3 py-2 rounded-sm text-[13px] cursor-pointer',
+                                                        activeDateFilter === f.value
+                                                            ? 'bg-orange-100 text-orange-800 font-semibold'
+                                                            : 'font-medium text-slate-600 hover:bg-[#fff8f2]'
+                                                    )}
+                                                >
+                                                    {f.label}
+                                                </button>
+                                            ))
+                                        )}
+                                    </div>
                                 )}
                             </div>
-                        )}
-                    </div>
+                        </div>
+                    </TutorialStep>
                 </div>
             </header>
 
@@ -1214,57 +1353,71 @@ function RequestPage() {
 
             {/* --- MAIN TABS --- */}
             <div className="px-4 pb-3 lg:px-6 lg:pb-4">
-                {requireApproval ? (
-                    <>
-                        {/* phone: segmented */}
-                        <div className={cx(SEG, 'grid grid-cols-2 w-full md:hidden')} role="group">
-                            <button onClick={() => { setRequestType('notify'); setSelectedKey(null); }} aria-pressed={tab === 'notify'} className={cx(segBtn(tab === 'notify'), 'h-9 text-sm')}>
-                                Pre-orders · {preOrderRows.length}
-                            </button>
-                            <button onClick={() => { setRequestType('approval'); setSelectedKey(null); }} aria-pressed={tab === 'approval'} className={cx(segBtn(tab === 'approval'), 'h-9 text-sm')}>
-                                Approvals · {pendingApprovals.length}
-                            </button>
-                        </div>
-                        {/* tablet / desktop: tabs with counts — wrap if the content area is tight */}
-                        <div className="hidden md:flex flex-wrap items-center gap-2">
-                            {([
-                                { id: 'notify', label: 'Pre-order requests', icon: <Bell size={16} />, count: preOrderRows.length },
-                                { id: 'approval', label: 'Approval requests', icon: <UserPlus size={16} />, count: pendingApprovals.length },
-                            ] as const).map(t => (
-                                <button
-                                    key={t.id}
-                                    onClick={() => { setRequestType(t.id); setSelectedKey(null); }}
-                                    aria-pressed={tab === t.id}
-                                    className={cx(
-                                        'inline-flex items-center gap-2 h-10 px-4 rounded-sm border text-sm font-medium whitespace-nowrap cursor-pointer transition-colors',
-                                        tab === t.id
-                                            ? 'bg-orange-700 border-orange-700 text-white'
-                                            : 'bg-white border-[#f6e1d0] text-slate-600 hover:bg-[#fff8f2]'
-                                    )}
-                                >
-                                    {t.icon}{t.label}
-                                    <span className={cx(
-                                        'grid place-items-center min-w-[22px] h-5 px-1.5 rounded-sm text-[11px] font-semibold',
-                                        tab === t.id ? 'bg-white/25 text-white' : 'bg-[#fff8f2] text-slate-600'
-                                    )}>
-                                        {t.count}
-                                    </span>
-                                </button>
-                            ))}
-                        </div>
-                    </>
-                ) : (
-                    <div className="inline-flex items-center gap-2 h-10 px-4 rounded-sm bg-orange-700 text-white text-sm font-medium max-md:flex max-md:justify-center">
-                        <Bell size={16} /> Pre-order requests
-                        <span className="grid place-items-center min-w-[22px] h-5 px-1.5 rounded-sm text-[11px] font-semibold bg-white/25">
-                            {preOrderRows.length}
-                        </span>
-                    </div>
-                )}
+                <div ref={tabsRef}>
+                    <TutorialStep
+                        step={2}
+                        currentStep={tutorialStep}
+                        text="Switch between Pre-order requests and Approval requests here. The number shows how many are waiting."
+                        onNext={() => goNext(2)}
+                        onSkip={skip}
+                        isLast={isLastStep(2)}
+                    >
+                        {requireApproval ? (
+                            <>
+                                {/* phone: segmented */}
+                                <div className={cx(SEG, 'grid grid-cols-2 w-full md:hidden')} role="group">
+                                    <button onClick={() => { setRequestType('notify'); setSelectedKey(null); }} aria-pressed={tab === 'notify'} className={cx(segBtn(tab === 'notify'), 'h-9 text-sm')}>
+                                        Pre-orders · {preOrderRows.length}
+                                    </button>
+                                    <button onClick={() => { setRequestType('approval'); setSelectedKey(null); }} aria-pressed={tab === 'approval'} className={cx(segBtn(tab === 'approval'), 'h-9 text-sm')}>
+                                        Approvals · {pendingApprovals.length}
+                                    </button>
+                                </div>
+                                {/* tablet / desktop: tabs with counts — wrap if the content area is tight */}
+                                <div className="hidden md:flex flex-wrap items-center gap-2">
+                                    {([
+                                        { id: 'notify', label: 'Pre-order requests', icon: <Bell size={16} />, count: preOrderRows.length },
+                                        { id: 'approval', label: 'Approval requests', icon: <UserPlus size={16} />, count: pendingApprovals.length },
+                                    ] as const).map(t => (
+                                        <button
+                                            key={t.id}
+                                            onClick={() => { setRequestType(t.id); setSelectedKey(null); }}
+                                            aria-pressed={tab === t.id}
+                                            className={cx(
+                                                'inline-flex items-center gap-2 h-10 px-4 rounded-sm border text-sm font-medium whitespace-nowrap cursor-pointer transition-colors',
+                                                tab === t.id
+                                                    ? 'bg-orange-700 border-orange-700 text-white'
+                                                    : 'bg-white border-[#f6e1d0] text-slate-600 hover:bg-[#fff8f2]'
+                                            )}
+                                        >
+                                            {t.icon}{t.label}
+                                            <span className={cx(
+                                                'grid place-items-center min-w-[22px] h-5 px-1.5 rounded-sm text-[11px] font-semibold',
+                                                tab === t.id ? 'bg-white/25 text-white' : 'bg-[#fff8f2] text-slate-600'
+                                            )}>
+                                                {t.count}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </>
+                        ) : (
+                            <div className="inline-flex items-center gap-2 h-10 px-4 rounded-sm bg-orange-700 text-white text-sm font-medium max-md:flex max-md:justify-center">
+                                <Bell size={16} /> Pre-order requests
+                                <span className="grid place-items-center min-w-[22px] h-5 px-1.5 rounded-sm text-[11px] font-semibold bg-white/25">
+                                    {preOrderRows.length}
+                                </span>
+                            </div>
+                        )}
+                    </TutorialStep>
+                </div>
             </div>
 
             {/* --- PAGE CONTENT --- */}
-            <main className="flex-1 w-full min-w-0 px-4 pb-6 lg:px-6 lg:pb-6">
+            <main className={cx(
+                'flex-1 w-full min-w-0 px-4 pb-6 lg:px-6 lg:pb-6',
+                isTutorialActive && 'pb-72 lg:pb-72' // room for the tutorial tooltip below the highlighted block
+            )}>
 
                 {/* ========== PRE-ORDERS: list (left) + detail (right) ========== */}
                 {tab === 'notify' && (
@@ -1276,67 +1429,89 @@ function RequestPage() {
                     ) : (
                         <div className="grid grid-cols-[minmax(0,1fr)] gap-5 xl:grid-cols-[380px_minmax(0,1fr)] xl:items-start">
                             {/* LEFT: list */}
-                            <div className="grid grid-cols-[minmax(0,1fr)] gap-3 xl:gap-0 xl:bg-white xl:border xl:border-[#f6e1d0] xl:rounded-sm xl:shadow-sm xl:overflow-hidden">
-                                <div className="xl:px-4 xl:py-3 xl:border-b xl:border-[#f6e1d0] overflow-x-auto">
-                                    <div className={cx(SEG, 'max-sm:flex max-sm:w-full')} role="group">
-                                        {([
-                                            ['all', 'All'], ['notify', 'Notify me'], ['bulk', 'Bulk'], ['query', 'Queries'],
-                                        ] as [KindFilter, string][]).map(([id, label]) => (
-                                            <button key={id} onClick={() => setKindFilter(id)} aria-pressed={kindFilter === id} className={cx(segBtn(kindFilter === id), 'max-sm:flex-1 max-sm:px-1.5')}>
-                                                {label} {kindCounts[id]}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
+                            <div ref={listColRef} className="min-w-0">
+                                <TutorialStep
+                                    step={3}
+                                    currentStep={tutorialStep}
+                                    text="Each card is one customer. Filter by request type, then tap a customer to see what they asked for."
+                                    onNext={() => goNext(3)}
+                                    onSkip={skip}
+                                    isLast={isLastStep(3)}
+                                >
+                                    <div className="grid grid-cols-[minmax(0,1fr)] gap-3 xl:gap-0 xl:bg-white xl:border xl:border-[#f6e1d0] xl:rounded-sm xl:shadow-sm xl:overflow-hidden">
+                                        <div className="xl:px-4 xl:py-3 xl:border-b xl:border-[#f6e1d0] overflow-x-auto">
+                                            <div className={cx(SEG, 'max-sm:flex max-sm:w-full')} role="group">
+                                                {([
+                                                    ['all', 'All'], ['notify', 'Notify me'], ['bulk', 'Bulk'], ['query', 'Queries'],
+                                                ] as [KindFilter, string][]).map(([id, label]) => (
+                                                    <button key={id} onClick={() => setKindFilter(id)} aria-pressed={kindFilter === id} className={cx(segBtn(kindFilter === id), 'max-sm:flex-1 max-sm:px-1.5')}>
+                                                        {label} {kindCounts[id]}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
 
-                                {/* phone: 1 column · tablet: cards auto-fit into 2+ columns · desktop: single stacked list */}
-                                <div className="grid grid-cols-[minmax(0,1fr)] sm:grid-cols-[repeat(auto-fill,minmax(280px,1fr))] xl:grid-cols-[minmax(0,1fr)] gap-3 xl:gap-0 xl:max-h-[calc(100vh-250px)] xl:overflow-y-auto">
-                                    {visiblePreOrders.length === 0 && (
-                                        <div className="col-span-full p-6 text-center text-[13px] text-slate-500">Nothing in this view.</div>
-                                    )}
-                                    {visiblePreOrders.map(row => {
-                                        const selected = row.key === selectedKey;
-                                        return (
-                                            <button
-                                                key={row.key}
-                                                type="button"
-                                                onClick={() => setSelectedKey(row.key)}
-                                                aria-selected={selected}
-                                                className={cx(
-                                                    'w-full min-w-0 text-left flex items-start gap-3 p-3.5 xl:px-4 cursor-pointer transition-colors',
-                                                    'bg-white border border-[#f6e1d0] rounded-sm shadow-sm hover:border-orange-700',
-                                                    'xl:rounded-none xl:border-0 xl:border-b xl:shadow-none xl:hover:bg-[#fff8f2]',
-                                                    selected && 'xl:!bg-orange-100 xl:shadow-[inset_3px_0_0_#c2410c]'
-                                                )}
-                                            >
-                                                <Avatar name={row.name} />
-                                                <div className="flex-1 min-w-0 grid gap-1">
-                                                    <b className="text-sm font-semibold truncate">{row.name}</b>
-                                                    <span className="text-xs text-slate-500 tabular-nums">
-                                                        {formatPhone(row.phone) || '—'} · {formatDate(row.createdAt)}
-                                                    </span>
-                                                    <div>{renderKinds(row)}</div>
-                                                    {/* phone / tablet: caption under the chips */}
-                                                    <div className="xl:hidden">{renderStockCaption(row)}</div>
-                                                </div>
-                                                <ChevronRight size={18} className="xl:hidden shrink-0 self-center text-slate-400" />
-                                                <span className="hidden xl:block text-right max-w-[120px] shrink-0">{renderStockCaption(row)}</span>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
+                                        {/* phone: 1 column · tablet: cards auto-fit into 2+ columns · desktop: single stacked list */}
+                                        <div className="grid grid-cols-[minmax(0,1fr)] sm:grid-cols-[repeat(auto-fill,minmax(280px,1fr))] xl:grid-cols-[minmax(0,1fr)] gap-3 xl:gap-0 xl:max-h-[calc(100vh-250px)] xl:overflow-y-auto">
+                                            {visiblePreOrders.length === 0 && (
+                                                <div className="col-span-full p-6 text-center text-[13px] text-slate-500">Nothing in this view.</div>
+                                            )}
+                                            {visiblePreOrders.map(row => {
+                                                const selected = row.key === selectedKey;
+                                                return (
+                                                    <button
+                                                        key={row.key}
+                                                        type="button"
+                                                        onClick={() => setSelectedKey(row.key)}
+                                                        aria-selected={selected}
+                                                        className={cx(
+                                                            'w-full min-w-0 text-left flex items-start gap-3 p-3.5 xl:px-4 cursor-pointer transition-colors',
+                                                            'bg-white border border-[#f6e1d0] rounded-sm shadow-sm hover:border-orange-700',
+                                                            'xl:rounded-none xl:border-0 xl:border-b xl:shadow-none xl:hover:bg-[#fff8f2]',
+                                                            selected && 'xl:!bg-orange-100 xl:shadow-[inset_3px_0_0_#c2410c]'
+                                                        )}
+                                                    >
+                                                        <Avatar name={row.name} />
+                                                        <div className="flex-1 min-w-0 grid gap-1">
+                                                            <b className="text-sm font-semibold truncate">{row.name}</b>
+                                                            <span className="text-xs text-slate-500 tabular-nums">
+                                                                {formatPhone(row.phone) || '—'} · {formatDate(row.createdAt)}
+                                                            </span>
+                                                            <div>{renderKinds(row)}</div>
+                                                            {/* phone / tablet: caption under the chips */}
+                                                            <div className="xl:hidden">{renderStockCaption(row)}</div>
+                                                        </div>
+                                                        <ChevronRight size={18} className="xl:hidden shrink-0 self-center text-slate-400" />
+                                                        <span className="hidden xl:block text-right max-w-[120px] shrink-0">{renderStockCaption(row)}</span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </TutorialStep>
                             </div>
 
                             {/* RIGHT: desktop = side pane · phone/tablet = full-screen page in a portal */}
                             {isDesktop ? (
                                 <section className="sticky top-4 min-w-0">
-                                    <div className="flex flex-col flex-1 min-h-0 overflow-hidden max-h-[calc(100vh-130px)] bg-white border border-[#f6e1d0] rounded-sm shadow-sm">
-                                        {selectedRow ? renderDetail(selectedRow) : (
-                                            <div className="grid place-items-center gap-1.5 p-16 text-center text-slate-500">
-                                                <Inbox size={28} />
-                                                <span>Select a customer to see what they asked for.</span>
+                                    <div ref={detailRef}>
+                                        <TutorialStep
+                                            step={4}
+                                            currentStep={tutorialStep}
+                                            text="Call or WhatsApp the customer from here, and reply to each notify request, bulk quote or question below."
+                                            onNext={() => goNext(4)}
+                                            onSkip={skip}
+                                            isLast={isLastStep(4)}
+                                        >
+                                            <div className="flex flex-col flex-1 min-h-0 overflow-hidden max-h-[calc(100vh-130px)] bg-white border border-[#f6e1d0] rounded-sm shadow-sm">
+                                                {selectedRow ? renderDetail(selectedRow) : (
+                                                    <div className="grid place-items-center gap-1.5 p-16 text-center text-slate-500">
+                                                        <Inbox size={28} />
+                                                        <span>Select a customer to see what they asked for.</span>
+                                                    </div>
+                                                )}
                                             </div>
-                                        )}
+                                        </TutorialStep>
                                     </div>
                                 </section>
                             ) : (
@@ -1359,44 +1534,55 @@ function RequestPage() {
                             <span>Customers who asked to see your catalogue prices and order. Approve to let them in; you can decline later from Completed.</span>
                         </div>
 
-                        <div className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:gap-0 lg:bg-white lg:border lg:border-[#f6e1d0] lg:rounded-sm lg:shadow-sm lg:overflow-hidden">
-                            <div className="flex flex-wrap items-center gap-2 lg:px-4 lg:py-3 lg:border-b lg:border-[#f6e1d0]">
-                                <div className={cx(SEG, 'max-sm:grid max-sm:grid-cols-2 max-sm:basis-full')} role="group">
-                                    <button onClick={() => setApprovalStatus('pending')} aria-pressed={approvalStatus === 'pending'} className={segBtn(approvalStatus === 'pending')}>
-                                        Pending {pendingApprovals.length}
-                                    </button>
-                                    <button onClick={() => setApprovalStatus('completed')} aria-pressed={approvalStatus === 'completed'} className={segBtn(approvalStatus === 'completed')}>
-                                        Completed {completedAll.length}
-                                    </button>
-                                </div>
-
-                                {approvalStatus === 'completed' && (
-                                    <div className={cx(SEG, 'max-sm:grid max-sm:grid-cols-3 max-sm:basis-full')} role="group">
-                                        {(['all', 'approved', 'declined'] as const).map(o => (
-                                            <button key={o} onClick={() => setCompletedFilter(o)} aria-pressed={completedFilter === o} className={cx(segBtn(completedFilter === o), 'capitalize')}>
-                                                {o}
+                        <div ref={approvalsRef} className="min-w-0">
+                            <TutorialStep
+                                step={5}
+                                currentStep={tutorialStep}
+                                text="Approve or decline customers who asked to see your catalogue. Use Approve all for every pending request, and Completed to review past decisions."
+                                onNext={() => goNext(5)}
+                                onSkip={skip}
+                                isLast={isLastStep(5)}
+                            >
+                                <div className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:gap-0 lg:bg-white lg:border lg:border-[#f6e1d0] lg:rounded-sm lg:shadow-sm lg:overflow-hidden">
+                                    <div className="flex flex-wrap items-center gap-2 lg:px-4 lg:py-3 lg:border-b lg:border-[#f6e1d0]">
+                                        <div className={cx(SEG, 'max-sm:grid max-sm:grid-cols-2 max-sm:basis-full')} role="group">
+                                            <button onClick={() => setApprovalStatus('pending')} aria-pressed={approvalStatus === 'pending'} className={segBtn(approvalStatus === 'pending')}>
+                                                Pending {pendingApprovals.length}
                                             </button>
-                                        ))}
+                                            <button onClick={() => setApprovalStatus('completed')} aria-pressed={approvalStatus === 'completed'} className={segBtn(approvalStatus === 'completed')}>
+                                                Completed {completedAll.length}
+                                            </button>
+                                        </div>
+
+                                        {approvalStatus === 'completed' && (
+                                            <div className={cx(SEG, 'max-sm:grid max-sm:grid-cols-3 max-sm:basis-full')} role="group">
+                                                {(['all', 'approved', 'declined'] as const).map(o => (
+                                                    <button key={o} onClick={() => setCompletedFilter(o)} aria-pressed={completedFilter === o} className={cx(segBtn(completedFilter === o), 'capitalize')}>
+                                                        {o}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        <span className="flex-1 max-sm:hidden" />
+                                        {approvalStatus === 'pending' && pendingApprovals.length > 0 && (
+                                            <button onClick={approveAll} className={cx(BTN, BTN_SM, SECONDARY, 'max-sm:w-full')}>
+                                                <Check size={14} /> Approve all {pendingApprovals.length}
+                                            </button>
+                                        )}
                                     </div>
-                                )}
 
-                                <span className="flex-1 max-sm:hidden" />
-                                {approvalStatus === 'pending' && pendingApprovals.length > 0 && (
-                                    <button onClick={approveAll} className={cx(BTN, BTN_SM, SECONDARY, 'max-sm:w-full')}>
-                                        <Check size={14} /> Approve all {pendingApprovals.length}
-                                    </button>
-                                )}
-                            </div>
-
-                            {approvalList.length === 0 ? (
-                                <div className="p-8 text-center text-[13px] text-slate-500 bg-white border border-dashed border-[#7a8aa3] rounded-sm lg:border-0 lg:rounded-none">
-                                    {approvalStatus === 'pending'
-                                        ? 'No pending approvals. Try another date range if you expected some.'
-                                        : 'Nothing completed in this view.'}
+                                    {approvalList.length === 0 ? (
+                                        <div className="p-8 text-center text-[13px] text-slate-500 bg-white border border-dashed border-[#7a8aa3] rounded-sm lg:border-0 lg:rounded-none">
+                                            {approvalStatus === 'pending'
+                                                ? 'No pending approvals. Try another date range if you expected some.'
+                                                : 'Nothing completed in this view.'}
+                                        </div>
+                                    ) : (
+                                        approvalList.map(renderApprovalRow)
+                                    )}
                                 </div>
-                            ) : (
-                                approvalList.map(renderApprovalRow)
-                            )}
+                            </TutorialStep>
                         </div>
                     </div>
                 )}

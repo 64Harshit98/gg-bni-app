@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAuth, useDatabase } from '../context/auth-context';
 import { useCatalogueData } from '../context/CatalogueDataContext';
 import type { Item, ItemGroup } from '../constants/models';
@@ -18,9 +18,36 @@ import { ROUTES } from '../constants/routes.constants';
 import BackButton from '../Components/BackButton';
 import { Photo, Sheet, btnClass, toneClass } from './storefront/StoreUI';
 import { initialsOf } from './storefront/storefront.utils';
+import useTutorial from './hooks/useTutorial';
+import { completeTutorial } from './hooks/useCompleteTutorial';
+import { TutorialStep } from '../Components/TutorialStep';
+
+const TOTAL_STEPS = 4;
+const TUTORIAL_KEY = 'editCatalogueTutorialDone';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 
+// --- Sample data shown only while the tutorial is running ---
+const SAMPLE_GROUPS = [
+    { id: 'sample-group-1', name: 'Sample Snacks', description: 'Sample' },
+    { id: 'sample-group-2', name: 'Sample Beverages', description: 'Sample' },
+    { id: 'sample-group-3', name: 'Sample Stationery', description: 'Sample' },
+] as unknown as ItemGroup[];
+
+const SAMPLE_ITEMS = [
+    // Group 1: all live
+    { id: 's1', name: 'Sample Chips', mrp: 20, salesPrice: 18, itemGroupId: 'sample-group-1', isListed: true },
+    { id: 's2', name: 'Sample Biscuits', mrp: 30, salesPrice: 28, itemGroupId: 'sample-group-1', isListed: true },
+    { id: 's3', name: 'Sample Namkeen', mrp: 50, salesPrice: 45, itemGroupId: 'sample-group-1', isListed: true },
+    // Group 2: partly live
+    { id: 's4', name: 'Sample Cola', mrp: 40, salesPrice: 38, itemGroupId: 'sample-group-2', isListed: true },
+    { id: 's5', name: 'Sample Juice', mrp: 60, salesPrice: 55, itemGroupId: 'sample-group-2', isListed: false },
+    // Group 3: none live (shows the greyed-out card)
+    { id: 's6', name: 'Sample Notebook', mrp: 80, salesPrice: 70, itemGroupId: 'sample-group-3', isListed: false },
+    { id: 's7', name: 'Sample Pen', mrp: 10, salesPrice: 10, itemGroupId: 'sample-group-3', isListed: false },
+] as unknown as Item[];
+
+const SAMPLE_PINNED_IDS = new Set<string>(['sample-group-1']);
 
 // 1. Updated normalizer: Converts ANY image format (WebP, AVIF, PNG) into a jsPDF-safe JPEG
 const blobToNormalizedBase64 = (blob: Blob): Promise<string> => {
@@ -107,7 +134,7 @@ const getEffectivePriceInfo = (item: Item, rounding?: PriceRounding) => {
     } else if (mrp > 0) {
         salePrice = mrp * (1 - (presetDiscount / 100));
     }
-        salePrice = Math.round((salePrice + Number.EPSILON) * 100) / 100;
+    salePrice = Math.round((salePrice + Number.EPSILON) * 100) / 100;
     salePrice = roundToInterval(salePrice, rounding);
 
     return {
@@ -128,8 +155,8 @@ const OrderingPage: React.FC = () => {
     // Local mirrors (not direct context reads) — this page optimistically
     // mutates both after live-toggling items and renaming/deleting groups,
     // ahead of the shared listener echoing those writes back.
-    const [items, setItems] = useState<Item[]>(catalogueItems);
-    const [itemGroups, setItemGroups] = useState<ItemGroup[]>(catalogueItemGroups);
+    const [realItems, setItems] = useState<Item[]>(catalogueItems);
+    const [realItemGroups, setItemGroups] = useState<ItemGroup[]>(catalogueItemGroups);
     useEffect(() => { setItems(catalogueItems); }, [catalogueItems]);
     useEffect(() => { setItemGroups(catalogueItemGroups); }, [catalogueItemGroups]);
     const [searchQuery, _setSearchQuery] = useState('');
@@ -149,9 +176,49 @@ const OrderingPage: React.FC = () => {
     // --- YOUR NEW STATES ---
     const [editingId, setEditingId] = useState<string | null>(null);
     const [tempName, setTempName] = useState('');
-    const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
+    const [realPinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
     const [isSubdomainModalOpen, setIsSubdomainModalOpen] = useState(false); // <-- NEW STATE
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+    // --- TUTORIAL ---
+    const [tutorialStep, setTutorialStep] = useState(0);
+    const headerActionsRef = useRef<HTMLDivElement | null>(null);
+    const liveToggleRef = useRef<HTMLDivElement | null>(null);
+    const toolbarRef = useRef<HTMLDivElement | null>(null);
+    const firstCardRef = useRef<HTMLDivElement | null>(null);
+
+    const stepRefMap: Record<number, React.RefObject<HTMLDivElement | null>> = {
+        1: headerActionsRef,
+        2: liveToggleRef,
+        3: toolbarRef,
+        4: firstCardRef,
+    };
+
+    const next = useCallback((n: number) => {
+        setTutorialStep(n <= TOTAL_STEPS ? n : 0);
+    }, []);
+
+    const skip = useCallback(() => {
+        completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep);
+    }, [currentUser]);
+
+    useTutorial(currentUser, setTutorialStep, TUTORIAL_KEY);
+
+    // While the tutorial runs, show sample data instead of the real catalogue
+    const isTutorialActive = tutorialStep > 0 && tutorialStep <= TOTAL_STEPS;
+    const items = useMemo(() => (isTutorialActive ? SAMPLE_ITEMS : realItems), [isTutorialActive, realItems]);
+    const itemGroups = useMemo(() => (isTutorialActive ? SAMPLE_GROUPS : realItemGroups), [isTutorialActive, realItemGroups]);
+    const pinnedIds = useMemo(() => (isTutorialActive ? SAMPLE_PINNED_IDS : realPinnedIds), [isTutorialActive, realPinnedIds]);
+
+    useEffect(() => {
+        if (tutorialStep === 0) return;
+        const ref = stepRefMap[tutorialStep];
+        if (!ref?.current) return;
+        setTimeout(() => {
+            ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 80);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tutorialStep]);
 
     // --- GLOBAL "LIVE ENTIRE CATALOGUE" STATES ---
     const [isAllCatalogueLive, setIsAllCatalogueLive] = useState(false);
@@ -190,6 +257,7 @@ const OrderingPage: React.FC = () => {
     }, [companyId]);
     // --- HANDLERS ---
     const handleEdit = (group: any) => {
+        if (isTutorialActive) return;
         setEditingId(group.id!);
         setTempName(group.name);
     };
@@ -203,7 +271,7 @@ const OrderingPage: React.FC = () => {
     };
 
     const handleShareCategory = async (group: ItemGroup) => {
-        if (!companyId || !group?.id) return;
+        if (isTutorialActive || !companyId || !group?.id) return;
 
         const categorySlug = generateSlug(group.name);
 
@@ -243,6 +311,7 @@ const OrderingPage: React.FC = () => {
     };
     const handleTogglePin = (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
+        if (isTutorialActive) return; // don't write sample IDs to Firestore/localStorage
         setPinnedIds(prev => {
             const next = new Set(prev);
             if (next.has(id)) { next.delete(id); } else { next.add(id); }
@@ -255,6 +324,7 @@ const OrderingPage: React.FC = () => {
         });
     };
     const handleToggleAllCatalogueLive = () => {
+        if (isTutorialActive) return;
         setPendingCatalogueLiveState(!isAllCatalogueLive);
         setShowCatalogueConfirmPopup(true);
     };
@@ -266,7 +336,7 @@ const OrderingPage: React.FC = () => {
         setIsTogglingCatalogue(true);
 
         try {
-            const updates = items.map(item =>
+            const updates = realItems.map(item =>
                 dbOperations.updateItem(item.id!, { isListed: newState })
             );
             await Promise.all(updates);
@@ -306,7 +376,7 @@ const OrderingPage: React.FC = () => {
     const handleDeleteGroup = async (groupId: string) => {
         if (!dbOperations) return;
         try {
-            const itemsToUpdate = items.filter(item => item.itemGroupId === groupId);
+            const itemsToUpdate = realItems.filter(item => item.itemGroupId === groupId);
             await Promise.all(itemsToUpdate.map(item => dbOperations.updateItem(item.id!, { itemGroupId: "" })));
             await dbOperations.deleteItemGroup(groupId);
             setItemGroups(prev => prev.filter(p => p.id !== groupId));
@@ -350,14 +420,14 @@ const OrderingPage: React.FC = () => {
 
     const handleDownloadFullCatalogPDF = async () => {
         // 1. STRICT filter for live items only
-        const liveItems = items.filter(item => item.isListed === true);
+        const liveItems = realItems.filter(item => item.isListed === true);
 
         if (liveItems.length === 0) {
             setModal({ message: 'No live items available to download.', type: State.ERROR });
             return;
         }
 
-                setIsGeneratingPDF(true);
+        setIsGeneratingPDF(true);
 
         // Read the shop's round-off setting (must happen outside the try below,
         // because `const doc = new jsPDF()` shadows Firestore's `doc` there)
@@ -411,7 +481,7 @@ const OrderingPage: React.FC = () => {
 
             // --- Prepare Data (Throttled to prevent 429 errors) ---
             for (const item of sortedItems) {
-                                const { salePrice, mrp, hasBothPrices } = getEffectivePriceInfo(item, rounding);
+                const { salePrice, mrp, hasBothPrices } = getEffectivePriceInfo(item, rounding);
                 let base64Img = '';
 
                 if (item.imageUrl) {
@@ -670,93 +740,129 @@ const OrderingPage: React.FC = () => {
                     <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Edit catalogue</h1>
                     <p className="truncate text-[13px] text-slate-600">What customers see when they open {companyName ? `${companyName}'s` : 'your'} store link</p>
                 </div>
-                <div className="flex items-center gap-2">
-                    <button type="button" onClick={handleDownloadFullCatalogPDF} disabled={items.length === 0 || isGeneratingPDF}
-                        aria-label="Download catalogue PDF" className={cx(btnClass('secondary'), 'w-10 px-0! md:w-auto md:px-4!')}>
-                        {isGeneratingPDF ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
-                        <span className="hidden md:inline">{isGeneratingPDF ? 'Making PDF…' : 'PDF'}</span>
-                    </button>
-                    <button type="button" onClick={() => setIsSubdomainModalOpen(true)} aria-label="Store link"
-                        className={cx(btnClass('secondary'), 'w-10 px-0! md:w-auto md:px-4!')}>
-                        <Link2 className="size-4" /><span className="hidden md:inline">Store link</span>
-                    </button>
-                    <button type="button" onClick={handleCopyStoreLink} className={cx(btnClass('secondary'), 'max-lg:hidden')}>
-                        <Copy className="size-4" />Copy store link
-                    </button>
-                    <button type="button" onClick={handleShareCatalogue} className={btnClass('primary')}>
-                        <Share2 className="size-4" />Share<span className="hidden md:inline"> catalogue</span>
-                    </button>
+                <div ref={headerActionsRef}>
+                    <TutorialStep
+                        step={1}
+                        currentStep={tutorialStep}
+                        text="Download your catalogue as a PDF, copy your store link, or share the catalogue with customers from here."
+                        onNext={() => next(2)}
+                        onSkip={skip}
+                        mobileArrowAlign="left"
+                    >
+                        <div className="flex items-center gap-2">
+                            <button type="button" onClick={handleDownloadFullCatalogPDF} disabled={realItems.length === 0 || isGeneratingPDF || isTutorialActive}
+                                aria-label="Download catalogue PDF" className={cx(btnClass('secondary'), 'w-10 px-0! md:w-auto md:px-4!')}>
+                                {isGeneratingPDF ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+                                <span className="hidden md:inline">{isGeneratingPDF ? 'Making PDF…' : 'PDF'}</span>
+                            </button>
+                            <button type="button" onClick={() => setIsSubdomainModalOpen(true)} aria-label="Store link"
+                                className={cx(btnClass('secondary'), 'w-10 px-0! md:w-auto md:px-4!')}>
+                                <Link2 className="size-4" /><span className="hidden md:inline">Store link</span>
+                            </button>
+                            <button type="button" onClick={handleCopyStoreLink} className={cx(btnClass('secondary'), 'max-lg:hidden')}>
+                                <Copy className="size-4" />Copy store link
+                            </button>
+                            <button type="button" onClick={handleShareCatalogue} className={btnClass('primary')}>
+                                <Share2 className="size-4" />Share<span className="hidden md:inline"> catalogue</span>
+                            </button>
+                        </div>
+                    </TutorialStep>
                 </div>
             </header>
 
             <div className="grid gap-4 px-4 md:px-6">
                 {/* --- Live entire catalogue --- */}
                 <ShowWrapper requiredPermission={Cata_Permissions.ViewEditButton}>
-                    <div className="flex items-center gap-3 rounded-sm border border-sf-line bg-white p-4 shadow-sf-card md:gap-4 md:px-5">
-                        <span className={cx('size-2.5 shrink-0 rounded-full', isAllCatalogueLive ? 'bg-green-600' : 'bg-slate-400')} aria-hidden />
-                        <div className="min-w-0 flex-1">
-                            <b className="block text-[15px] font-semibold">{isAllCatalogueLive ? 'Catalogue is live' : liveTotal > 0 ? 'Part of the catalogue is live' : 'Catalogue is hidden'}</b>
-                            <p className="text-xs leading-[18px] text-slate-500">
-                                {isAllCatalogueLive
-                                    ? 'Customers can browse and order everything from your store link. Turn off to hide all products.'
-                                    : `${liveTotal} of ${items.length} products are live. Turn on to show every product.`}
-                            </p>
-                        </div>
-                        <span className="hidden text-xs text-slate-600 sm:inline">{realCategoryCount} categor{realCategoryCount === 1 ? 'y' : 'ies'}</span>
-                        <button type="button" role="switch" aria-checked={isAllCatalogueLive} aria-label="Live entire catalogue"
-                            onClick={handleToggleAllCatalogueLive} disabled={isTogglingCatalogue || items.length === 0}
-                            className={cx('relative h-6 w-11 shrink-0 rounded-sm transition-colors disabled:opacity-45', isAllCatalogueLive ? 'bg-sf-primary' : 'bg-sf-control')}>
-                            {isTogglingCatalogue
-                                ? <Loader2 className="absolute inset-0 m-auto size-4 animate-spin text-white" />
-                                : <span className={cx('absolute top-[3px] size-[18px] rounded-[2px] bg-white shadow-sm transition-transform', isAllCatalogueLive ? 'left-[23px]' : 'left-[3px]')} />}
-                        </button>
+                    <div ref={liveToggleRef}>
+                        <TutorialStep
+                            step={2}
+                            currentStep={tutorialStep}
+                            text="Use this switch to make your whole catalogue live or hidden for customers in one tap."
+                            onNext={() => next(3)}
+                            onSkip={skip}
+                        >
+                            <div className="flex items-center gap-3 rounded-sm border border-sf-line bg-white p-4 shadow-sf-card md:gap-4 md:px-5">
+                                <span className={cx('size-2.5 shrink-0 rounded-full', isAllCatalogueLive ? 'bg-green-600' : 'bg-slate-400')} aria-hidden />
+                                <div className="min-w-0 flex-1">
+                                    <b className="block text-[15px] font-semibold">{isAllCatalogueLive ? 'Catalogue is live' : liveTotal > 0 ? 'Part of the catalogue is live' : 'Catalogue is hidden'}</b>
+                                    <p className="text-xs leading-[18px] text-slate-500">
+                                        {isAllCatalogueLive
+                                            ? 'Customers can browse and order everything from your store link. Turn off to hide all products.'
+                                            : `${liveTotal} of ${items.length} products are live. Turn on to show every product.`}
+                                    </p>
+                                </div>
+                                <span className="hidden text-xs text-slate-600 sm:inline">{realCategoryCount} categor{realCategoryCount === 1 ? 'y' : 'ies'}</span>
+                                <button type="button" role="switch" aria-checked={isAllCatalogueLive} aria-label="Live entire catalogue"
+                                    onClick={handleToggleAllCatalogueLive} disabled={isTogglingCatalogue || items.length === 0}
+                                    className={cx('relative h-6 w-11 shrink-0 rounded-sm transition-colors disabled:opacity-45', isAllCatalogueLive ? 'bg-sf-primary' : 'bg-sf-control')}>
+                                    {isTogglingCatalogue
+                                        ? <Loader2 className="absolute inset-0 m-auto size-4 animate-spin text-white" />
+                                        : <span className={cx('absolute top-[3px] size-[18px] rounded-[2px] bg-white shadow-sm transition-transform', isAllCatalogueLive ? 'left-[23px]' : 'left-[3px]')} />}
+                                </button>
+                            </div>
+                        </TutorialStep>
                     </div>
                 </ShowWrapper>
 
                 {/* --- Search, sort, new category --- */}
-                <div className="flex flex-wrap items-center gap-2 md:gap-3">
-                    <div className="w-full sm:max-w-[460px] sm:flex-1">
-                        <SearchableItemInput
-                            items={items}
-                            placeholder="Search products"
-                            itemGroupMap={itemGroupMap}
-                            onItemSelected={(item) => {
-                                if (!item.id) return;
-                                const group = itemGroups.find(g => g.id === item.itemGroupId);
-                                const uncategorizedGroup = itemGroups.find(g => g.name.toLowerCase().trim() === "uncategorized");
-                                const slug = group
-                                    ? generateSlug(group.name)
-                                    : uncategorizedGroup
-                                        ? generateSlug(uncategorizedGroup.name)
-                                        : "uncategorized";
-                                navigate(`/catalogue-home/my-shop/${slug}`, {
-                                    state: { highlightItemId: item.id, isUnlisted: !item.isListed }
-                                });
-                            }}
-                        />
-                    </div>
-                    <span className="hidden flex-1 sm:block" />
-                    <div className="relative">
-                        <button type="button" onClick={() => setIsSortOpen(!isSortOpen)} aria-expanded={isSortOpen}
-                            className="inline-flex h-9 items-center gap-2 rounded-sm border border-sf-control bg-white px-3 text-[13px] font-medium">
-                            Sort: {sortOrder === 'A-Z' ? 'A–Z' : 'Z–A'}<ChevronDown className="size-4 text-slate-500" />
-                        </button>
-                        {isSortOpen && (
-                            <div className="absolute right-0 z-30 mt-1 w-36 overflow-hidden rounded-sm border border-sf-line bg-white py-1 shadow-sf-float">
-                                {(['A-Z', 'Z-A'] as const).map(opt => (
-                                    <button key={opt} type="button" onClick={() => { setSortOrder(opt); setIsSortOpen(false); }}
-                                        className={cx('block w-full px-3 py-2 text-left text-sm hover:bg-sf-sunken', sortOrder === opt && 'font-medium text-sf-primary')}>
-                                        {opt === 'A-Z' ? 'Name A–Z' : 'Name Z–A'}
-                                    </button>
-                                ))}
+                <div ref={toolbarRef}>
+                    <TutorialStep
+                        step={3}
+                        currentStep={tutorialStep}
+                        text="Search a product, sort your categories, or create a new category from here."
+                        onNext={() =>
+                            filteredItems.length > 0
+                                ? next(4)
+                                : completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep)
+                        }
+                        onSkip={skip}
+                        isLast={filteredItems.length === 0}
+                    >
+                        <div className="flex flex-wrap items-center gap-2 md:gap-3">
+                            <div className="w-full sm:max-w-[460px] sm:flex-1">
+                                <SearchableItemInput
+                                    items={items}
+                                    placeholder="Search products"
+                                    itemGroupMap={itemGroupMap}
+                                    onItemSelected={(item) => {
+                                        if (!item.id) return;
+                                        const group = itemGroups.find(g => g.id === item.itemGroupId);
+                                        const uncategorizedGroup = itemGroups.find(g => g.name.toLowerCase().trim() === "uncategorized");
+                                        const slug = group
+                                            ? generateSlug(group.name)
+                                            : uncategorizedGroup
+                                                ? generateSlug(uncategorizedGroup.name)
+                                                : "uncategorized";
+                                        navigate(`/catalogue-home/my-shop/${slug}`, {
+                                            state: { highlightItemId: item.id, isUnlisted: !item.isListed }
+                                        });
+                                    }}
+                                />
                             </div>
-                        )}
-                    </div>
-                    <ShowWrapper requiredPermission={Cata_Permissions.ManageItems}>
-                        <button type="button" onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`)} className={btnClass('secondary', 'md')}>
-                            <Plus className="size-4" />New category
-                        </button>
-                    </ShowWrapper>
+                            <span className="hidden flex-1 sm:block" />
+                            <div className="relative">
+                                <button type="button" onClick={() => setIsSortOpen(!isSortOpen)} aria-expanded={isSortOpen}
+                                    className="inline-flex h-9 items-center gap-2 rounded-sm border border-sf-control bg-white px-3 text-[13px] font-medium">
+                                    Sort: {sortOrder === 'A-Z' ? 'A–Z' : 'Z–A'}<ChevronDown className="size-4 text-slate-500" />
+                                </button>
+                                {isSortOpen && (
+                                    <div className="absolute right-0 z-30 mt-1 w-36 overflow-hidden rounded-sm border border-sf-line bg-white py-1 shadow-sf-float">
+                                        {(['A-Z', 'Z-A'] as const).map(opt => (
+                                            <button key={opt} type="button" onClick={() => { setSortOrder(opt); setIsSortOpen(false); }}
+                                                className={cx('block w-full px-3 py-2 text-left text-sm hover:bg-sf-sunken', sortOrder === opt && 'font-medium text-sf-primary')}>
+                                                {opt === 'A-Z' ? 'Name A–Z' : 'Name Z–A'}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            <ShowWrapper requiredPermission={Cata_Permissions.ManageItems}>
+                                <button type="button" onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`)} className={btnClass('secondary', 'md')}>
+                                    <Plus className="size-4" />New category
+                                </button>
+                            </ShowWrapper>
+                        </div>
+                    </TutorialStep>
                 </div>
 
                 <p className="text-xs text-slate-500">
@@ -784,11 +890,11 @@ const OrderingPage: React.FC = () => {
                             const pinned = pinnedIds.has(group.id!);
                             const liveText = itemCount === 0 ? 'No products yet' : liveCount === itemCount ? 'all live' : liveCount === 0 ? 'none live' : `${liveCount} live`;
 
-                            return (
+                            const card = (
                                 <article
                                     id={group.id}
                                     key={group.id}
-                                    onClick={() => navigate(`/catalogue-home/my-shop/${group.id}`)}
+                                    onClick={() => { if (!isTutorialActive) navigate(`/catalogue-home/my-shop/${group.id}`); }}
                                     className={cx('group flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-sm border bg-white shadow-sf-card transition-shadow hover:shadow-sf-float',
                                         highlightedId === group.id ? 'border-sf-primary outline-2 outline-offset-2 outline-sf-primary' : pinned ? 'border-sf-primary' : 'border-sf-line',
                                         isVirtual && 'border-dashed border-sf-control shadow-none',
@@ -851,6 +957,24 @@ const OrderingPage: React.FC = () => {
                                         </div>
                                     </div>
                                 </article>
+                            );
+
+                            if (gi !== 0) return card;
+
+                            return (
+                                <div key={group.id} ref={firstCardRef} className="min-w-0 [&>*]:h-full">
+                                    <TutorialStep
+                                        step={4}
+                                        currentStep={tutorialStep}
+                                        text="Tap a category to open it. Use Pin to keep it on top, Edit to rename or delete it, and the send icon to share it."
+                                        onNext={() => completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep)}
+                                        onSkip={skip}
+                                        isLast
+                                        position="top"
+                                    >
+                                        {card}
+                                    </TutorialStep>
+                                </div>
                             );
                         })}
                     </div>

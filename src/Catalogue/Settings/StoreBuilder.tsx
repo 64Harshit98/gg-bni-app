@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { ArrowDown, ArrowUp, Copy, Eye, EyeOff, Image as ImageIcon, LayoutGrid, Loader2, MapPin, Monitor, MoreHorizontal, Pin, Plus, Smartphone, Sparkles, Trash2, Type, CheckCircle2, Columns2, Images, X } from 'lucide-react';
@@ -16,8 +16,25 @@ import { deleteStoreImages } from '../storefront/uploadStoreImage';
 import { getItemGroupIds, getItemImages, initialsOf } from '../storefront/storefront.utils';
 import { productState } from '../storefront/productState';
 import BackButton from '../../Components/BackButton';
+import useTutorial from '../hooks/useTutorial';
+import { completeTutorial } from '../hooks/useCompleteTutorial';
+import { TutorialStep } from '../../Components/TutorialStep';
+
+const TUTORIAL_KEY = 'storeBuilderTutorialDone';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
+
+const useMediaQuery = (q: string) => {
+    const [match, setMatch] = useState(() => typeof window !== 'undefined' && window.matchMedia(q).matches);
+    useEffect(() => {
+        const mql = window.matchMedia(q);
+        const on = () => setMatch(mql.matches);
+        on();
+        mql.addEventListener('change', on);
+        return () => mql.removeEventListener('change', on);
+    }, [q]);
+    return match;
+};
 
 const TYPE_ICONS: Record<SectionType, React.ElementType> = {
     hero: ImageIcon, banners: Columns2, categoryGroups: LayoutGrid, products: Pin, facts: Sparkles,
@@ -123,6 +140,69 @@ const StoreBuilder: React.FC = () => {
         window.addEventListener('beforeunload', warn);
         return () => window.removeEventListener('beforeunload', warn);
     }, [dirty]);
+
+    // ───────────── tutorial ─────────────
+    const isMd = useMediaQuery('(min-width: 768px)');
+    const isXl = useMediaQuery('(min-width: 1280px)');
+    const [tutorialStep, setTutorialStep] = useState(0);
+    const headerActionsRef = useRef<HTMLDivElement | null>(null);
+    const sectionsRef = useRef<HTMLDivElement | null>(null);
+    const editorRef = useRef<HTMLDivElement | null>(null);
+    const previewRef = useRef<HTMLDivElement | null>(null);
+    const saveBarRef = useRef<HTMLDivElement | null>(null);
+
+    const stepRefMap: Record<number, React.RefObject<HTMLDivElement | null>> = {
+        1: headerActionsRef,
+        2: sectionsRef,
+        3: editorRef,
+        4: previewRef,
+        5: saveBarRef,
+    };
+
+    // Only steps that are actually on screen right now
+    const saveBarVisible = dirty || !!status;
+    const stepsAvailable = useMemo(() => {
+        const s = [1, 2];
+        if (isMd) s.push(3);
+        if (isXl) s.push(4);
+        if (saveBarVisible) s.push(5);
+        return s;
+    }, [isMd, isXl, saveBarVisible]);
+
+    const isLastStep = (s: number) => stepsAvailable[stepsAvailable.length - 1] === s;
+
+    const goNext = useCallback((current: number) => {
+        const nextStep = stepsAvailable[stepsAvailable.indexOf(current) + 1];
+        if (nextStep) setTutorialStep(nextStep);
+        else completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep);
+    }, [stepsAvailable, currentUser]);
+
+    const skip = useCallback(() => {
+        completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep);
+    }, [currentUser]);
+
+    useTutorial(currentUser, setTutorialStep, TUTORIAL_KEY);
+
+    // If the current step vanished (e.g. screen resized), jump to the next valid one
+    useEffect(() => {
+        if (tutorialStep === 0 || stepsAvailable.includes(tutorialStep)) return;
+        const fallback = stepsAvailable.find((s) => s > tutorialStep);
+        if (fallback) setTutorialStep(fallback);
+        else completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep);
+    }, [tutorialStep, stepsAvailable, currentUser]);
+
+    useEffect(() => {
+        if (tutorialStep === 0 || loading) return;
+        const t = setTimeout(() => {
+            const el = stepRefMap[tutorialStep]?.current;
+            if (!el) return;
+            // Tall targets (sections list): tooltip opens below, so keep the target's top near the top of the screen
+            const tall = el.getBoundingClientRect().height > window.innerHeight * 0.4;
+            el.scrollIntoView({ behavior: 'smooth', block: tall ? 'start' : 'center' });
+        }, 80);
+        return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tutorialStep, loading]);
 
     const current = sections.find((s) => s.id === selected) || null;
     const update = (id: string, patch: Partial<StoreSection>) => setSections((p) => p.map((s) => (s.id === id ? ({ ...s, ...patch } as StoreSection) : s)));
@@ -265,16 +345,27 @@ const StoreBuilder: React.FC = () => {
     return (
         <div className="min-h-full bg-sf-canvas font-sans text-slate-900" onClick={() => setMenuFor(null)}>
             <header className="flex flex-wrap items-center gap-3 px-4 pb-4 pt-5 md:gap-4 md:px-6">
-    <BackButton className="-ml-2" />
-    <div className="min-w-0 flex-1">
-        <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Store page</h1>
+                <BackButton className="-ml-2" />
+                <div className="min-w-0 flex-1">
+                    <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Store page</h1>
                     <p className="text-[13px] text-slate-600">The home customers see at {storeUrl.replace(/^https?:\/\//, '')}</p>
                 </div>
-                <div className="flex min-w-0 flex-wrap gap-2">
-                    <button type="button" onClick={() => setMobilePreview(true)} className={cx(btnClass('secondary'), 'md:hidden')}><Eye className="size-4" />Preview</button>
-                    <button type="button" onClick={() => navigator.clipboard?.writeText(storeUrl.startsWith('http') ? storeUrl : window.location.origin + storeUrl).then(() => setStatus({ tone: 'success', text: 'Store link copied.' })).catch(() => undefined)}
-                        className={cx(btnClass('secondary'), 'max-md:hidden')}><Copy className="size-4" />Copy link</button>
-                    <a href={storeUrl} target="_blank" rel="noopener noreferrer" className={cx(btnClass('secondary'), 'max-md:hidden')}><Monitor className="size-4" />View store</a>
+                <div ref={headerActionsRef} className="min-w-0">
+                    <TutorialStep
+                        step={1}
+                        currentStep={tutorialStep}
+                        text="Preview your Store page, copy its link, or open it the way customers see it."
+                        onNext={() => goNext(1)}
+                        onSkip={skip}
+                        isLast={isLastStep(1)}
+                    >
+                        <div className="flex min-w-0 flex-wrap gap-2">
+                            <button type="button" onClick={() => setMobilePreview(true)} className={cx(btnClass('secondary'), 'md:hidden')}><Eye className="size-4" />Preview</button>
+                            <button type="button" onClick={() => navigator.clipboard?.writeText(storeUrl.startsWith('http') ? storeUrl : window.location.origin + storeUrl).then(() => setStatus({ tone: 'success', text: 'Store link copied.' })).catch(() => undefined)}
+                                className={cx(btnClass('secondary'), 'max-md:hidden')}><Copy className="size-4" />Copy link</button>
+                            <a href={storeUrl} target="_blank" rel="noopener noreferrer" className={cx(btnClass('secondary'), 'max-md:hidden')}><Monitor className="size-4" />View store</a>
+                        </div>
+                    </TutorialStep>
                 </div>
             </header>
 
@@ -289,80 +380,127 @@ const StoreBuilder: React.FC = () => {
                         <b className="text-[15px] font-semibold">Sections</b>
                         <span className="hidden text-xs text-slate-500 md:inline">Drag to reorder</span>
                     </div>
-                    <div role="listbox" aria-label="Sections" className="grid gap-2">
-                        {sections.map(row)}
-                        <button type="button" onClick={(e) => { e.stopPropagation(); setAdding(true); }}
-                            className="flex h-11 w-full items-center justify-center gap-2 rounded-sm border-[1.5px] border-dashed border-sf-control font-medium text-sf-primary hover:bg-white">
-                            <Plus className="size-4" />Add section
-                        </button>
+                    <div ref={sectionsRef} className="scroll-mt-4">
+                        <TutorialStep
+                            step={2}
+                            currentStep={tutorialStep}
+                            text="These are the sections of your Store page. Tap one to edit it, hide it from customers, reorder it, or use Add section to create a new one."
+                            onNext={() => goNext(2)}
+                            onSkip={skip}
+                            isLast={isLastStep(2)}
+                            mobileArrowAlign="left"
+                        >
+                            <div role="listbox" aria-label="Sections" className="grid gap-2">
+                                {sections.map(row)}
+                                <button type="button" onClick={(e) => { e.stopPropagation(); setAdding(true); }}
+                                    className="flex h-11 w-full items-center justify-center gap-2 rounded-sm border-[1.5px] border-dashed border-sf-control font-medium text-sf-primary hover:bg-white">
+                                    <Plus className="size-4" />Add section
+                                </button>
+                            </div>
+                        </TutorialStep>
                     </div>
                     <p className="mt-2.5 text-xs text-slate-500">Hidden sections stay saved; customers don't see them. Edit your logo, address and phone in <Link to={`${ROUTES.CHOME}/${ROUTES.CATA_EDIT}`} className="font-medium text-sf-primary">Edit profile</Link>.</p>
                 </section>
 
                 {/* Editor (desktop) */}
-                <section className="hidden rounded-sm border border-sf-line bg-white p-5 shadow-sf-card md:block">
-                    {current ? (
-                        <>
-                            <div className="mb-4 flex items-start justify-between gap-3">
-                                <div>
-                                    <h2 className="text-base font-semibold">{SECTION_INFO[current.type].name}</h2>
-                                    <p className="text-xs text-slate-500">Section {currentIndex + 1} of {sections.length} · {SECTION_INFO[current.type].text}</p>
+                <div ref={editorRef} className="hidden min-w-0 md:block">
+                    <TutorialStep
+                        step={3}
+                        currentStep={tutorialStep}
+                        text="Edit the selected section here: change text and photos, move it up or down, duplicate it, or delete it."
+                        onNext={() => goNext(3)}
+                        onSkip={skip}
+                        isLast={isLastStep(3)}
+                    >
+                        <section className="hidden rounded-sm border border-sf-line bg-white p-5 shadow-sf-card md:block">
+                            {current ? (
+                                <>
+                                    <div className="mb-4 flex items-start justify-between gap-3">
+                                        <div>
+                                            <h2 className="text-base font-semibold">{SECTION_INFO[current.type].name}</h2>
+                                            <p className="text-xs text-slate-500">Section {currentIndex + 1} of {sections.length} · {SECTION_INFO[current.type].text}</p>
+                                        </div>
+                                        <div className="flex gap-0.5">
+                                            <button type="button" aria-label="Move up" disabled={currentIndex === 0} onClick={() => moveSection(currentIndex, currentIndex - 1)} className={cx(btnClass('ghost', 'sm'), 'w-8 px-0!')}><ArrowUp className="size-4" /></button>
+                                            <button type="button" aria-label="Move down" disabled={currentIndex === sections.length - 1} onClick={() => moveSection(currentIndex, currentIndex + 1)} className={cx(btnClass('ghost', 'sm'), 'w-8 px-0!')}><ArrowDown className="size-4" /></button>
+                                        </div>
+                                    </div>
+                                    {editorBody}
+                                    <div className="mt-5 flex justify-between border-t border-sf-line pt-4">
+                                        <button type="button" onClick={() => setConfirmDelete(current.id)} className={btnClass('danger', 'sm')}><Trash2 className="size-4" />Delete section</button>
+                                        <button type="button" onClick={() => duplicate(current.id)} className={btnClass('ghost', 'sm')}><Copy className="size-4" />Duplicate</button>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="grid place-items-center gap-2 py-16 text-center text-[13px] text-slate-500">
+                                    <b className="text-[15px] font-semibold text-slate-900">Pick a section to edit</b>
+                                    Or add a new one from the list.
                                 </div>
-                                <div className="flex gap-0.5">
-                                    <button type="button" aria-label="Move up" disabled={currentIndex === 0} onClick={() => moveSection(currentIndex, currentIndex - 1)} className={cx(btnClass('ghost', 'sm'), 'w-8 px-0!')}><ArrowUp className="size-4" /></button>
-                                    <button type="button" aria-label="Move down" disabled={currentIndex === sections.length - 1} onClick={() => moveSection(currentIndex, currentIndex + 1)} className={cx(btnClass('ghost', 'sm'), 'w-8 px-0!')}><ArrowDown className="size-4" /></button>
-                                </div>
-                            </div>
-                            {editorBody}
-                            <div className="mt-5 flex justify-between border-t border-sf-line pt-4">
-                                <button type="button" onClick={() => setConfirmDelete(current.id)} className={btnClass('danger', 'sm')}><Trash2 className="size-4" />Delete section</button>
-                                <button type="button" onClick={() => duplicate(current.id)} className={btnClass('ghost', 'sm')}><Copy className="size-4" />Duplicate</button>
-                            </div>
-                        </>
-                    ) : (
-                        <div className="grid place-items-center gap-2 py-16 text-center text-[13px] text-slate-500">
-                            <b className="text-[15px] font-semibold text-slate-900">Pick a section to edit</b>
-                            Or add a new one from the list.
-                        </div>
-                    )}
-                </section>
+                            )}
+                        </section>
+                    </TutorialStep>
+                </div>
 
                 {/* Live preview (wide screens) */}
-                <section className="sticky top-4 hidden justify-items-center gap-2.5 xl:grid">
-                    <div role="group" className="inline-flex gap-0.5 rounded-sm border border-sf-line bg-sf-sunken p-[3px]">
-                        {(['phone', 'computer'] as const).map((m) => (
-                            <button key={m} type="button" aria-pressed={previewMode === m} onClick={() => setPreviewMode(m)}
-                                className={cx('flex h-[30px] items-center gap-1.5 rounded-sm px-3 text-[13px] font-medium', previewMode === m ? 'bg-white text-sf-primary shadow-sf-card' : 'text-slate-600')}>
-                                {m === 'phone' ? <Smartphone className="size-4" /> : <Monitor className="size-4" />}{m === 'phone' ? 'Phone' : 'Computer'}
-                            </button>
-                        ))}
-                    </div>
-                    <div className="h-[520px] w-[242px] overflow-hidden rounded-[20px] border border-sf-line bg-sf-canvas shadow-sf-float">
-                        <div className={cx('pointer-events-none origin-top-left overflow-hidden', previewMode === 'phone' ? 'h-[840px] w-[390px] scale-[.62]' : 'h-[1560px] w-[1210px] scale-[.2]')}>{preview}</div>
-                    </div>
-                    <span className="text-xs text-slate-500">Live preview · unsaved changes included</span>
-                </section>
+                <div ref={previewRef} className="sticky top-4 hidden xl:block">
+                    <TutorialStep
+                        step={4}
+                        currentStep={tutorialStep}
+                        text="This is a live preview of your Store page, including changes you haven't published yet. Switch between Phone and Computer view."
+                        onNext={() => goNext(4)}
+                        onSkip={skip}
+                        isLast={isLastStep(4)}
+                        position="top"
+                    >
+                        <section className="grid justify-items-center gap-2.5">
+                            <div role="group" className="inline-flex gap-0.5 rounded-sm border border-sf-line bg-sf-sunken p-[3px]">
+                                {(['phone', 'computer'] as const).map((m) => (
+                                    <button key={m} type="button" aria-pressed={previewMode === m} onClick={() => setPreviewMode(m)}
+                                        className={cx('flex h-[30px] items-center gap-1.5 rounded-sm px-3 text-[13px] font-medium', previewMode === m ? 'bg-white text-sf-primary shadow-sf-card' : 'text-slate-600')}>
+                                        {m === 'phone' ? <Smartphone className="size-4" /> : <Monitor className="size-4" />}{m === 'phone' ? 'Phone' : 'Computer'}
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="h-[520px] w-[242px] overflow-hidden rounded-[20px] border border-sf-line bg-sf-canvas shadow-sf-float">
+                                <div className={cx('pointer-events-none origin-top-left overflow-hidden', previewMode === 'phone' ? 'h-[840px] w-[390px] scale-[.62]' : 'h-[1560px] w-[1210px] scale-[.2]')}>{preview}</div>
+                            </div>
+                            <span className="text-xs text-slate-500">Live preview · unsaved changes included</span>
+                        </section>
+                    </TutorialStep>
+                </div>
             </div>
 
             {/* Save bar */}
             {(dirty || status) && (
-                <div className="sticky bottom-0 z-40 mt-6 flex items-center gap-3 border-t border-sf-line bg-white px-4 py-3 shadow-sf-float md:px-5">
-                    <span className="min-w-0 flex-1 truncate text-[13px] text-slate-600">
-                        {status ? (
-                            <span className={cx('inline-flex items-center gap-1.5', status.tone === 'success' ? 'text-green-700' : 'text-red-700')}>
-                                {status.tone === 'success' && <CheckCircle2 className="size-4" />}{status.text}
+                <div ref={saveBarRef} className="sticky bottom-0 z-40 mt-6">
+                    <TutorialStep
+                        step={5}
+                        currentStep={tutorialStep}
+                        text="Your changes only go live when you press Publish. Use Discard to go back to the last published version."
+                        onNext={() => goNext(5)}
+                        onSkip={skip}
+                        isLast
+                        position="top"
+                    >
+                        <div className="flex items-center gap-3 border-t border-sf-line bg-white px-4 py-3 shadow-sf-float md:px-5">
+                            <span className="min-w-0 flex-1 truncate text-[13px] text-slate-600">
+                                {status ? (
+                                    <span className={cx('inline-flex items-center gap-1.5', status.tone === 'success' ? 'text-green-700' : 'text-red-700')}>
+                                        {status.tone === 'success' && <CheckCircle2 className="size-4" />}{status.text}
+                                    </span>
+                                ) : (
+                                    <><b className="font-semibold text-slate-900">{isStarter ? 'Not published yet' : `${changeNotes.length} unsaved change${changeNotes.length === 1 ? '' : 's'}`}</b>
+                                        <span className="hidden md:inline">{changeNotes.length ? ` · ${changeNotes.slice(0, 3).join(' · ')}` : ''}</span></>
+                                )}
                             </span>
-                        ) : (
-                            <><b className="font-semibold text-slate-900">{isStarter ? 'Not published yet' : `${changeNotes.length} unsaved change${changeNotes.length === 1 ? '' : 's'}`}</b>
-                                <span className="hidden md:inline">{changeNotes.length ? ` · ${changeNotes.slice(0, 3).join(' · ')}` : ''}</span></>
-                        )}
-                    </span>
-                    {status && !dirty
-                        ? <button type="button" aria-label="Dismiss" onClick={() => setStatus(null)} className={cx(btnClass('ghost'), 'w-10 px-0!')}><X className="size-4" /></button>
-                        : <>
-                            {!isStarter && <button type="button" disabled={saving} onClick={discard} className={btnClass('ghost')}>Discard</button>}
-                            <button type="button" disabled={saving} onClick={publish} className={btnClass('primary')}>{saving && <Loader2 className="size-4 animate-spin" />}Publish</button>
-                        </>}
+                            {status && !dirty
+                                ? <button type="button" aria-label="Dismiss" onClick={() => setStatus(null)} className={cx(btnClass('ghost'), 'w-10 px-0!')}><X className="size-4" /></button>
+                                : <>
+                                    {!isStarter && <button type="button" disabled={saving} onClick={discard} className={btnClass('ghost')}>Discard</button>}
+                                    <button type="button" disabled={saving} onClick={publish} className={btnClass('primary')}>{saving && <Loader2 className="size-4 animate-spin" />}Publish</button>
+                                </>}
+                        </div>
+                    </TutorialStep>
                 </div>
             )}
 

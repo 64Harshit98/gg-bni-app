@@ -18,6 +18,12 @@ import { doc, getDoc } from 'firebase/firestore';
 import type { BarcodeSettings, BarcodeFormat } from '../Settings/BarcodeSetting';
 import { getDefaultBarcodeSettings } from '../Settings/BarcodeSetting';
 import { useFormatNumber } from '../../lib/formatNumber';
+import useTutorial from '../../Catalogue/hooks/useTutorial';
+import { completeTutorial } from '../../Catalogue/hooks/useCompleteTutorial';
+import { TutorialStep } from '../../Components/TutorialStep';
+
+const TOTAL_STEPS = 5;
+const TUTORIAL_KEY = 'printLabelsTutorialDone';
 
 // --- Data Types ---
 type PrintableItem = Item & {
@@ -31,6 +37,14 @@ type PrefilledItem = { barcode: string, quantity: number, name: string };
 const getDisplayPrice = (item: Item): number => {
   return item.mrp && item.mrp > 0 ? item.mrp : item.salesPrice;
 };
+
+// Sample data shown ONLY while the tutorial is running (never saved or printed).
+// All items have an MRP so the "Set MRP" warning doesn't appear in the tutorial.
+const SAMPLE_PRINT_QUEUE: PrintableItem[] = [
+  { id: 'sample-1', name: 'Sample Item A', barcode: '100000000001', mrp: 120, salesPrice: 110, quantityToPrint: 2, queueId: 'sample-q-1' },
+  { id: 'sample-2', name: 'Sample Item B', barcode: '100000000002', mrp: 250, salesPrice: 235, quantityToPrint: 1, queueId: 'sample-q-2' },
+  { id: 'sample-3', name: 'Sample Item C', barcode: '100000000003', mrp: 80, salesPrice: 75, quantityToPrint: 3, queueId: 'sample-q-3' },
+] as unknown as PrintableItem[];
 
 // --- UI-only helpers (no logic) ---
 const FONT_STACK = 'Poppins, system-ui, -apple-system, "Segoe UI", sans-serif';
@@ -190,7 +204,7 @@ const QRCodeGeneratorPage: React.FC = () => {
   const [printQueue, setPrintQueue] = useState<PrintableItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isPrinting, setIsPrinting] = useState(false);
-    const navigate = useNavigate();
+  const navigate = useNavigate();
   const fmt = useFormatNumber();
   const [itemForPreview, setItemForPreview] = useState<PrintableItem | null>(null);
   const [companyName, setCompanyName] = useState<string>('Your Company');
@@ -221,6 +235,47 @@ const QRCodeGeneratorPage: React.FC = () => {
 
   // Item whose edit drawer should be open (used by "Set MRP")
   const [itemToEdit, setItemToEdit] = useState<Item | null>(null);
+
+  // Tutorial
+  const [tutorialStep, setTutorialStep] = useState(0);
+  const searchRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const previewRef = useRef<HTMLDivElement | null>(null);
+  const togglesRef = useRef<HTMLDivElement | null>(null);
+  const printRef = useRef<HTMLDivElement | null>(null);
+
+  const stepRefMap: Record<number, React.RefObject<HTMLDivElement | null>> = {
+    1: searchRef,
+    2: listRef,
+    3: previewRef,
+    4: togglesRef,
+    5: printRef,
+  };
+
+  const next = useCallback((n: number) => {
+    setTutorialStep(n <= TOTAL_STEPS ? n : 0);
+  }, []);
+
+  const skip = useCallback(() => {
+    completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep);
+  }, [currentUser]);
+
+  useTutorial(currentUser, setTutorialStep, TUTORIAL_KEY);
+
+  // While the tutorial runs, show sample data instead of the real print list
+  const isTutorialActive = tutorialStep > 0 && tutorialStep <= TOTAL_STEPS;
+  const displayQueue = isTutorialActive ? SAMPLE_PRINT_QUEUE : printQueue;
+  const displayPreviewItem = isTutorialActive ? SAMPLE_PRINT_QUEUE[0] : itemForPreview;
+
+  useEffect(() => {
+    if (tutorialStep === 0) return;
+    const ref = stepRefMap[tutorialStep];
+    if (!ref?.current) return;
+    setTimeout(() => {
+      ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 80);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tutorialStep]);
 
   const hasPrefilled = useRef(false);
   const location = useLocation();
@@ -329,7 +384,7 @@ const QRCodeGeneratorPage: React.FC = () => {
     setItemToEdit(null);
   }, [itemToEdit]);
 
-  const isPrintButtonDisabled = printQueue.length === 0 || isPrinting;
+  const isPrintButtonDisabled = printQueue.length === 0 || isPrinting || isTutorialActive;
 
   const handlePrint = useCallback(async () => {
     if (isPrintButtonDisabled || !dbOperations) return;
@@ -554,9 +609,9 @@ const QRCodeGeneratorPage: React.FC = () => {
   };
 
   // Display-only totals for the summary UI
-  const totalLabels = printQueue.reduce((sum, item) => sum + item.quantityToPrint, 0);
+  const totalLabels = displayQueue.reduce((sum, item) => sum + item.quantityToPrint, 0);
 
-  const missingMrpItems = printQueue.filter(i => !(i.mrp && i.mrp > 0));
+  const missingMrpItems = displayQueue.filter(i => !(i.mrp && i.mrp > 0));
   const toggleChips: { key: keyof typeof labelToggles; label: string }[] = [
     { key: 'shopName', label: 'Store name' },
     { key: 'productName', label: 'Item name' },
@@ -566,7 +621,7 @@ const QRCodeGeneratorPage: React.FC = () => {
   ];
 
   const renderContent = () => {
-    if (isLoading) {
+    if (isLoading && !isTutorialActive) {
       return (
         <div className="flex flex-col items-center justify-center gap-3 py-16 text-[#5b6b86]">
           <div className="h-7 w-7 animate-spin rounded-sm border-[3px] border-[#dfe6fb] border-t-[#155dfc]" />
@@ -582,126 +637,147 @@ const QRCodeGeneratorPage: React.FC = () => {
         <div className="flex flex-col gap-4 min-w-0">
 
           {/* Format + search card */}
-          <div className="rounded-sm border border-[#dfe6fb] bg-white p-4 flex flex-col gap-3 shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]">Format</span>
-              <span className="inline-flex items-center h-7 px-3 rounded-sm bg-[#e6eeff] text-[#155dfc] text-xs font-semibold">
-                {formatLabel[barcodeSettings.labelFormat ?? 'both']}
-              </span>
-              <span className="inline-flex items-center h-7 px-3 rounded-sm border border-[#dfe6fb] bg-[#f5f7ff] text-xs text-[#45556c]">
-                35 × 35 mm
-              </span>
-              <button
-                onClick={() => navigate('/barcode-setting')}
-                className="ml-auto text-xs font-medium text-[#155dfc] hover:text-[#1447e6] hover:underline"
-              >
-                Printer &amp; label settings →
-              </button>
-            </div>
+          <div ref={searchRef}>
+            <TutorialStep
+              step={1}
+              currentStep={tutorialStep}
+              text="Search for an item by name and add it to the print list."
+              onNext={() => next(2)}
+              onSkip={skip}
+              mobileArrowAlign="left"
+            >
+              <div className="rounded-sm border border-[#dfe6fb] bg-white p-4 flex flex-col gap-3 shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]">Format</span>
+                  <span className="inline-flex items-center h-7 px-3 rounded-sm bg-[#e6eeff] text-[#155dfc] text-xs font-semibold">
+                    {formatLabel[barcodeSettings.labelFormat ?? 'both']}
+                  </span>
+                  <span className="inline-flex items-center h-7 px-3 rounded-sm border border-[#dfe6fb] bg-[#f5f7ff] text-xs text-[#45556c]">
+                    35 × 35 mm
+                  </span>
+                  <button
+                    onClick={() => navigate('/barcode-setting')}
+                    className="ml-auto text-xs font-medium text-[#155dfc] hover:text-[#1447e6] hover:underline"
+                  >
+                    Printer &amp; label settings →
+                  </button>
+                </div>
 
-            <div className="relative rounded-sm ring-0 focus-within:ring-4 focus-within:ring-[#e6eeff]">
-              <SearchableItemInput
-                label=""
-                placeholder="Search items to add..."
-                items={availableItemsForSearch}
-                onItemSelected={handleAddItemToQueue}
-              />
-            </div>
+                <div className="relative rounded-sm ring-0 focus-within:ring-4 focus-within:ring-[#e6eeff]">
+                  <SearchableItemInput
+                    label=""
+                    placeholder="Search items to add..."
+                    items={availableItemsForSearch}
+                    onItemSelected={handleAddItemToQueue}
+                  />
+                </div>
+              </div>
+            </TutorialStep>
           </div>
 
           {/* Print list card */}
-          <div className="rounded-sm border border-[#dfe6fb] bg-white overflow-hidden shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]">
-            <div className="flex items-center gap-2.5 px-4 py-3 border-b border-[#dfe6fb]">
-              <h3 className={`text-base font-semibold ${printQueue.length > 0 ? 'text-[#0f172b]' : 'text-[#5b6b86]'}`}>Print list</h3>
-              {printQueue.length > 0 && (
-                <span className="inline-flex items-center h-6 px-2.5 rounded-sm bg-[#e6eeff] text-[#155dfc] text-xs font-semibold">
-                  {printQueue.length} item{printQueue.length > 1 ? "s" : ""}
-                </span>
-              )}
-            </div>
-
-            {printQueue.length === 0 ? (
-              <div className="flex flex-col items-center justify-center gap-1.5 px-4 py-14 text-center">
-                <div className="mb-1 grid h-14 w-14 place-items-center rounded-sm bg-[#f5f7ff] text-[#5b6b86]">
-                  <IconBarcodeEmpty />
+          <div ref={listRef}>
+            <TutorialStep
+              step={2}
+              currentStep={tutorialStep}
+              text="Added items appear here. Change the number of labels for each item here."
+              onNext={() => next(3)}
+              onSkip={skip}
+            >
+              <div className="rounded-sm border border-[#dfe6fb] bg-white overflow-hidden shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)]">
+                <div className="flex items-center gap-2.5 px-4 py-3 border-b border-[#dfe6fb]">
+                  <h3 className={`text-base font-semibold ${displayQueue.length > 0 ? 'text-[#0f172b]' : 'text-[#5b6b86]'}`}>Print list</h3>
+                  {displayQueue.length > 0 && (
+                    <span className="inline-flex items-center h-6 px-2.5 rounded-sm bg-[#e6eeff] text-[#155dfc] text-xs font-semibold">
+                      {displayQueue.length} item{displayQueue.length > 1 ? "s" : ""}
+                    </span>
+                  )}
                 </div>
-                <p className="text-sm font-medium text-[#0f172b]">Your print list is empty</p>
-                <p className="text-xs text-[#5b6b86]">Search above to add items to the print list.</p>
-              </div>
-            ) : (
-              <>
-                <div>
-                  <div className="hidden md:grid grid-cols-[minmax(0,1fr)_120px_140px_40px] items-center gap-2 bg-[#f5f7ff] border-b border-[#dfe6fb] px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]">
-                    <span>Item</span>
-                    <span className="text-right">Label price</span>
-                    <span>Labels</span>
-                    <span />
+
+                {displayQueue.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center gap-1.5 px-4 py-14 text-center">
+                    <div className="mb-1 grid h-14 w-14 place-items-center rounded-sm bg-[#f5f7ff] text-[#5b6b86]">
+                      <IconBarcodeEmpty />
+                    </div>
+                    <p className="text-sm font-medium text-[#0f172b]">Your print list is empty</p>
+                    <p className="text-xs text-[#5b6b86]">Search above to add items to the print list.</p>
                   </div>
-                  {printQueue.map((item) => {
-                    const isSelected = itemForPreview?.queueId === item.queueId;
-                    const hasMrp = !!(item.mrp && item.mrp > 0);
-                    return (
-                      <div
-                        key={item.queueId}
-                        onClick={() => setItemForPreview(item)}
-                        aria-selected={isSelected}
-                        className={`grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,1fr)_120px_140px_40px] items-center gap-x-3 gap-y-3 md:gap-y-0 md:gap-x-2 px-3 sm:px-4 py-3 cursor-pointer border-b border-[#dfe6fb] last:border-b-0 transition-colors ${isSelected ? "bg-[#e6eeff]" : "bg-white hover:bg-[#f5f7ff]"}`}
-                      >
-                        <div className="min-w-0">
-                          <div className="text-sm font-semibold text-[#0f172b] truncate">{item.name}</div>
-                          <div className="text-xs text-[#5b6b86] truncate">Barcode: {item.barcode}</div>
-                        </div>
-                        <div className="text-right whitespace-nowrap">
-                          <div className="text-sm font-semibold text-[#0f172b] tabular-nums">₹{fmt(getDisplayPrice(item), 0, 2)}</div>
-                          <div className={`text-[11px] ${hasMrp ? 'text-[#5b6b86]' : 'text-[#bb4d00] font-medium'}`}>
-                            {hasMrp ? 'MRP' : 'No MRP · sale price'}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="inline-flex items-center h-9 rounded-sm border border-[#7a8aa3] bg-white overflow-hidden">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleQuantityChange(item.queueId, item.quantityToPrint - 1); }}
-                              className="grid h-9 w-9 place-items-center text-[#45556c] hover:bg-[#f5f7ff]"
-                              aria-label="Less"
-                            >
-                              <IconMinus />
-                            </button>
-                            <Input
-                              type="number"
-                              value={item.quantityToPrint}
-                              onClick={(e) => e.stopPropagation()}
-                              onChange={(e) => { e.stopPropagation(); handleQuantityChange(item.queueId, Number(e.target.value)); }}
-                              className="w-12 h-9 text-center text-sm font-semibold tabular-nums border-0 border-x border-[#dfe6fb] rounded-none p-0 focus:ring-0 bg-white"
-                            />
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleQuantityChange(item.queueId, item.quantityToPrint + 1); }}
-                              className="grid h-9 w-9 place-items-center text-[#45556c] hover:bg-[#f5f7ff]"
-                              aria-label="More"
-                            >
-                              <IconPlus />
-                            </button>
-                          </div>
-                        </div>
-                        <div className="flex justify-end">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleRemoveItemFromQueue(item.queueId); }}
-                            className="grid h-9 w-9 place-items-center rounded-sm text-[#5b6b86] hover:bg-[#ffeef0] hover:text-[#d5000c]"
-                            aria-label="Remove"
-                          >
-                            <IconClose width={14} height={14} />
-                          </button>
-                        </div>
+                ) : (
+                  <>
+                    <div>
+                      <div className="hidden md:grid grid-cols-[minmax(0,1fr)_120px_140px_40px] items-center gap-2 bg-[#f5f7ff] border-b border-[#dfe6fb] px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]">
+                        <span>Item</span>
+                        <span className="text-right">Label price</span>
+                        <span>Labels</span>
+                        <span />
                       </div>
-                    );
-                  })}
-                </div>
+                      {displayQueue.map((item) => {
+                        const isSelected = displayPreviewItem?.queueId === item.queueId;
+                        const hasMrp = !!(item.mrp && item.mrp > 0);
+                        return (
+                          <div
+                            key={item.queueId}
+                            onClick={() => setItemForPreview(item)}
+                            aria-selected={isSelected}
+                            className={`grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,1fr)_120px_140px_40px] items-center gap-x-3 gap-y-3 md:gap-y-0 md:gap-x-2 px-3 sm:px-4 py-3 cursor-pointer border-b border-[#dfe6fb] last:border-b-0 transition-colors ${isSelected ? "bg-[#e6eeff]" : "bg-white hover:bg-[#f5f7ff]"}`}
+                          >
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-[#0f172b] truncate">{item.name}</div>
+                              <div className="text-xs text-[#5b6b86] truncate">Barcode: {item.barcode}</div>
+                            </div>
+                            <div className="text-right whitespace-nowrap">
+                              <div className="text-sm font-semibold text-[#0f172b] tabular-nums">₹{fmt(getDisplayPrice(item), 0, 2)}</div>
+                              <div className={`text-[11px] ${hasMrp ? 'text-[#5b6b86]' : 'text-[#bb4d00] font-medium'}`}>
+                                {hasMrp ? 'MRP' : 'No MRP · sale price'}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="inline-flex items-center h-9 rounded-sm border border-[#7a8aa3] bg-white overflow-hidden">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleQuantityChange(item.queueId, item.quantityToPrint - 1); }}
+                                  className="grid h-9 w-9 place-items-center text-[#45556c] hover:bg-[#f5f7ff]"
+                                  aria-label="Less"
+                                >
+                                  <IconMinus />
+                                </button>
+                                <Input
+                                  type="number"
+                                  value={item.quantityToPrint}
+                                  onClick={(e) => e.stopPropagation()}
+                                  onChange={(e) => { e.stopPropagation(); handleQuantityChange(item.queueId, Number(e.target.value)); }}
+                                  className="w-12 h-9 text-center text-sm font-semibold tabular-nums border-0 border-x border-[#dfe6fb] rounded-none p-0 focus:ring-0 bg-white"
+                                />
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleQuantityChange(item.queueId, item.quantityToPrint + 1); }}
+                                  className="grid h-9 w-9 place-items-center text-[#45556c] hover:bg-[#f5f7ff]"
+                                  aria-label="More"
+                                >
+                                  <IconPlus />
+                                </button>
+                              </div>
+                            </div>
+                            <div className="flex justify-end">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleRemoveItemFromQueue(item.queueId); }}
+                                className="grid h-9 w-9 place-items-center rounded-sm text-[#5b6b86] hover:bg-[#ffeef0] hover:text-[#d5000c]"
+                                aria-label="Remove"
+                              >
+                                <IconClose width={14} height={14} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
 
-                <div className="flex justify-end gap-6 border-t border-[#dfe6fb] bg-[#f5f7ff] px-4 py-2.5 text-[13px] text-[#45556c]">
-                  <span>Items <b className="text-[#0f172b] tabular-nums">{printQueue.length}</b></span>
-                  <span>Labels <b className="text-[#0f172b] tabular-nums">{totalLabels}</b></span>
-                </div>
-              </>
-            )}
+                    <div className="flex justify-end gap-6 border-t border-[#dfe6fb] bg-[#f5f7ff] px-4 py-2.5 text-[13px] text-[#45556c]">
+                      <span>Items <b className="text-[#0f172b] tabular-nums">{displayQueue.length}</b></span>
+                      <span>Labels <b className="text-[#0f172b] tabular-nums">{totalLabels}</b></span>
+                    </div>
+                  </>
+                )}
+              </div>
+            </TutorialStep>
           </div>
 
           {/* Missing MRP note */}
@@ -736,7 +812,7 @@ const QRCodeGeneratorPage: React.FC = () => {
             <span className="min-w-0">
               <span className="block text-base font-semibold text-[#0f172b]">Label preview</span>
               <span className="block text-xs text-[#5b6b86] truncate">
-                {itemForPreview ? `${itemForPreview.name} · actual size 35 × 35 mm` : 'Actual size 35 × 35 mm'}
+                {displayPreviewItem ? `${displayPreviewItem.name} · actual size 35 × 35 mm` : 'Actual size 35 × 35 mm'}
               </span>
             </span>
             <span className={`mt-1 text-[#5b6b86] transition-transform duration-200 ${isPreviewOpen ? "rotate-180" : "rotate-0"}`}>
@@ -745,78 +821,117 @@ const QRCodeGeneratorPage: React.FC = () => {
           </button>
 
           {isPreviewOpen && (
-            <div
-              className="relative grid place-items-center rounded-sm border border-[#dfe6fb] px-4 py-8"
-              style={CHECKER_BG}
-            >
-              {itemForPreview ? (
-                <div className="-mt-4">
-                  <LabelPreview
-                    item={itemForPreview}
-                    companyName={companyName}
-                    businessAddress={businessAddress}
-                    businessPhone={businessPhone}
-                    labelFormat={barcodeSettings.labelFormat ?? 'both'}
-                    showMrp={labelToggles.mrp}
-                    showSalePrice={labelToggles.salePrice}
-                    showProductName={labelToggles.productName}
-                    showBarcodeNumber={labelToggles.barcodeNumber}
-                    showShopName={labelToggles.shopName}
-                    showAddress={barcodeSettings.showAddressOnLabel ?? true}
-                    showPhone={barcodeSettings.showPhoneOnLabel ?? true}
-                  />
+            <div ref={previewRef}>
+              <TutorialStep
+                step={3}
+                currentStep={tutorialStep}
+                text="This is how the label will look at actual size. Select an item from the list to preview it."
+                onNext={() => next(4)}
+                onSkip={skip}
+                position="top"
+              >
+                <div
+                  className="relative grid place-items-center rounded-sm border border-[#dfe6fb] px-4 py-8"
+                  style={CHECKER_BG}
+                >
+                  {displayPreviewItem ? (
+                    <div className="-mt-4">
+                      <LabelPreview
+                        item={displayPreviewItem}
+                        companyName={companyName}
+                        businessAddress={businessAddress}
+                        businessPhone={businessPhone}
+                        labelFormat={barcodeSettings.labelFormat ?? 'both'}
+                        showMrp={labelToggles.mrp}
+                        showSalePrice={labelToggles.salePrice}
+                        showProductName={labelToggles.productName}
+                        showBarcodeNumber={labelToggles.barcodeNumber}
+                        showShopName={labelToggles.shopName}
+                        showAddress={barcodeSettings.showAddressOnLabel ?? true}
+                        showPhone={barcodeSettings.showPhoneOnLabel ?? true}
+                      />
+                    </div>
+                  ) : (
+                    <div className="rounded-sm bg-white/90 px-3 py-2 text-xs text-[#5b6b86] text-center">
+                      Select an item from the print list to preview its label.
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="rounded-sm bg-white/90 px-3 py-2 text-xs text-[#5b6b86] text-center">
-                  Select an item from the print list to preview its label.
-                </div>
-              )}
+              </TutorialStep>
             </div>
           )}
 
-          <div>
-            <span className="block mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]">Show on label</span>
-            <div className="flex flex-wrap gap-2">
-              {toggleChips.map(({ key, label }) => {
-                const on = labelToggles[key];
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    aria-pressed={on}
-                    onClick={() => setLabelToggles(prev => ({ ...prev, [key]: !prev[key] }))}
-                    className={`h-8 rounded-sm px-3 text-xs font-medium border transition-colors ${on ? 'border-[#155dfc] bg-[#e6eeff] text-[#155dfc]' : 'border-[#7a8aa3] bg-white text-[#45556c] hover:bg-[#f5f7ff]'}`}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
+          <div ref={togglesRef}>
+            <TutorialStep
+              step={4}
+              currentStep={tutorialStep}
+              text="Choose what to show on the label (store name, item name, MRP, price) from here."
+              onNext={() =>
+                displayQueue.length > 0
+                  ? next(5)
+                  : completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep)
+              }
+              onSkip={skip}
+              isLast={displayQueue.length === 0}
+              position="top"
+            >
+              <div>
+                <span className="block mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]">Show on label</span>
+                <div className="flex flex-wrap gap-2">
+                  {toggleChips.map(({ key, label }) => {
+                    const on = labelToggles[key];
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => setLabelToggles(prev => ({ ...prev, [key]: !prev[key] }))}
+                        className={`h-8 rounded-sm px-3 text-xs font-medium border transition-colors ${on ? 'border-[#155dfc] bg-[#e6eeff] text-[#155dfc]' : 'border-[#7a8aa3] bg-white text-[#45556c] hover:bg-[#f5f7ff]'}`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </TutorialStep>
           </div>
 
           <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1.5 text-[13px]">
             <dt className="text-[#5b6b86]">Format</dt>
             <dd className="font-medium text-[#0f172b] text-right">{formatLabel[barcodeSettings.labelFormat ?? 'both']}</dd>
             <dt className="text-[#5b6b86]">Items</dt>
-            <dd className="font-medium text-[#0f172b] text-right tabular-nums">{printQueue.length}</dd>
+            <dd className="font-medium text-[#0f172b] text-right tabular-nums">{displayQueue.length}</dd>
             <dt className="text-[#5b6b86]">Labels to print</dt>
             <dd className="font-semibold text-[#0f172b] text-right tabular-nums">{totalLabels}</dd>
           </dl>
 
-          {printQueue.length > 0 && (
-            <div className="flex flex-col gap-2 border-t border-[#dfe6fb] pt-4">
-              <p className="text-center text-xs text-[#5b6b86]">
-                Ready to print labels for{" "}
-                <span className="font-semibold text-[#0f172b]">{printQueue.length} item{printQueue.length > 1 ? "s" : ""}</span>.
-              </p>
-              <CustomButton
-                onClick={handlePrint}
-                disabled={isPrintButtonDisabled}
-                variant={Variant.Filled}
-                className="w-full h-12 flex items-center justify-center gap-2 !rounded-sm !bg-[#155dfc] !text-white !text-sm !font-semibold hover:!bg-[#1447e6] disabled:!opacity-60"
+          {displayQueue.length > 0 && (
+            <div ref={printRef}>
+              <TutorialStep
+                step={5}
+                currentStep={tutorialStep}
+                text="When everything is set, print your labels from here."
+                onNext={() => completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep)}
+                onSkip={skip}
+                isLast
+                position="top"
               >
-                {isPrinting ? "Generating..." : (<><IconPrinter />Print {totalLabels} label{totalLabels > 1 ? "s" : ""}</>)}
-              </CustomButton>
+                <div className="flex flex-col gap-2 border-t border-[#dfe6fb] pt-4">
+                  <p className="text-center text-xs text-[#5b6b86]">
+                    Ready to print labels for{" "}
+                    <span className="font-semibold text-[#0f172b]">{displayQueue.length} item{displayQueue.length > 1 ? "s" : ""}</span>.
+                  </p>
+                  <CustomButton
+                    onClick={handlePrint}
+                    disabled={isPrintButtonDisabled}
+                    variant={Variant.Filled}
+                    className="w-full h-12 flex items-center justify-center gap-2 !rounded-sm !bg-[#155dfc] !text-white !text-sm !font-semibold hover:!bg-[#1447e6] disabled:!opacity-60"
+                  >
+                    {isPrinting ? "Generating..." : (<><IconPrinter />Print {totalLabels} label{totalLabels > 1 ? "s" : ""}</>)}
+                  </CustomButton>
+                </div>
+              </TutorialStep>
             </div>
           )}
         </aside>

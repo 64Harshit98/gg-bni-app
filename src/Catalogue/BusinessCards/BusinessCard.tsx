@@ -363,7 +363,7 @@ function BusinessCard({ theme = 'pos' }: { theme?: BusinessCardTheme }) {
             <div
                 ref={scrollRef}
                 onScroll={handleScroll}
-                className="-mx-4 flex flex-nowrap gap-3 overflow-x-auto px-4 pb-2 snap-x snap-mandatory scrollbar-hide md:-mx-5 md:px-5"
+                className="-mx-4 flex flex-nowrap gap-3 overflow-x-auto px-4 pb-2 snap-x snap-mandatory scrollbar-hide md:-mx-5 md:px-5 md:pb-0"
             >
                 {/* ================= DESIGN 1 — dark ================= */}
                 <div className="grid w-[260px] min-w-0 shrink-0 snap-center gap-2">
@@ -502,8 +502,8 @@ function BusinessCard({ theme = 'pos' }: { theme?: BusinessCardTheme }) {
                 )}
             </div>
 
-            {/* Dots */}
-            <div className="flex justify-center gap-1 pb-3 pt-1 pointer-events-none">
+            {/* Dots (mobile/tablet only — cards fit side by side on desktop) */}
+<div className="flex justify-center gap-1 pb-3 pt-1 pointer-events-none md:hidden">
                 {cards.map((_, i) => (
                     <div
                         key={i}

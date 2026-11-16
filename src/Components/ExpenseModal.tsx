@@ -1,8 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   EXPENSE_CATEGORIES,
   EXPENSE_PAID_FROM,
 } from '../Pages/Reports/ExpenseReport/expenseRangeCache';
+import { useAuth } from '../context/auth-context';
+import useTutorial from '../Catalogue/hooks/useTutorial';
+import { completeTutorial } from '../Catalogue/hooks/useCompleteTutorial';
+import { TutorialStep } from '../Components/TutorialStep';
 
 export interface ExpenseFormData {
   title: string;
@@ -57,6 +61,19 @@ const CATEGORY_TITLES: Record<string, { title: string; monthly: boolean }> = {
   Repairs: { title: 'Repairs', monthly: false },
 };
 
+const TOTAL_STEPS = 6;
+const TUTORIAL_KEY = 'expenseModalTutorialDone';
+
+// Shown only while the tutorial is running (never saved)
+const SAMPLE_EXPENSE = {
+  amount: '15000',
+  category: 'Rent',
+  title: 'Shop rent',
+  description: 'Payment for monthly shop rent',
+  paidFrom: 'Cash',
+  repeatMonthly: true,
+};
+
 const label = 'mb-1.5 block text-xs font-medium text-[#45556c]';
 const field =
   'flex items-center gap-2 rounded-sm border border-[#7a8aa3] bg-white px-3 text-[#5b6b86] focus-within:outline focus-within:outline-2 focus-within:outline-offset-1';
@@ -98,7 +115,59 @@ export const ExpenseModal = ({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // Reset the form every time it opens (new entry, or the expense being edited).
+  // Tutorial
+  const { currentUser } = useAuth();
+  const [tutorialStep, setTutorialStep] = useState(0);
+  // Tutorial only for new expense, not while editing
+  const activeStep = isEdit ? 0 : tutorialStep;
+  const isTutorial = activeStep > 0;
+
+  // While the tutorial runs, show sample data instead of the real form state
+  const dAmount = isTutorial ? SAMPLE_EXPENSE.amount : amount;
+  const dCategory = isTutorial ? SAMPLE_EXPENSE.category : category;
+  const dTitle = isTutorial ? SAMPLE_EXPENSE.title : title;
+  const dDescription = isTutorial ? SAMPLE_EXPENSE.description : description;
+  const dPaidFrom = isTutorial ? SAMPLE_EXPENSE.paidFrom : paidFrom;
+  const dRepeat = isTutorial ? SAMPLE_EXPENSE.repeatMonthly : repeatMonthly;
+
+  const amountRef = useRef<HTMLDivElement | null>(null);
+  const categoryRef = useRef<HTMLDivElement | null>(null);
+  const titleRef = useRef<HTMLDivElement | null>(null);
+  const paidFromRef = useRef<HTMLDivElement | null>(null);
+  const repeatRef = useRef<HTMLDivElement | null>(null);
+  const saveRef = useRef<HTMLDivElement | null>(null);
+
+  const stepRefMap: Record<number, React.RefObject<HTMLDivElement | null>> = {
+    1: amountRef,
+    2: categoryRef,
+    3: titleRef,
+    4: paidFromRef,
+    5: repeatRef,
+    6: saveRef,
+  };
+
+  const next = useCallback((n: number) => {
+    setTutorialStep(n <= TOTAL_STEPS ? n : 0);
+  }, []);
+
+  const skip = useCallback(() => {
+    completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep);
+  }, [currentUser]);
+
+  useTutorial(currentUser, setTutorialStep, TUTORIAL_KEY);
+
+  // Auto-scroll to the highlighted field
+  useEffect(() => {
+    if (activeStep === 0) return;
+    const ref = stepRefMap[activeStep];
+    if (!ref?.current) return;
+    setTimeout(() => {
+      ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 80);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStep]);
+
+  // Reset the form every time it opens ... (new entry, or the expense being edited).
   // Deliberately keyed on isOpen only, so a parent re-render that passes a new
   // initialValues object can't wipe what the person is typing.
   useEffect(() => {
@@ -121,6 +190,7 @@ export const ExpenseModal = ({
   const monthName = new Date(y || 2000, (m || 1) - 1, 1).toLocaleString('en-IN', { month: 'long' });
 
   const pickCategory = (c: string) => {
+    if (isTutorial) return;
     if (category === c) return setCategory('');
     setCategory(c);
     // only overwrite the title if the person hasn't typed their own
@@ -144,6 +214,7 @@ export const ExpenseModal = ({
   };
 
   const submit = async (keepOpen: boolean) => {
+    if (isTutorial) return;
     if (!title.trim()) return setError('Title is required.');
     if (!description.trim()) return setError('Description is required.');
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0)
@@ -171,14 +242,14 @@ export const ExpenseModal = ({
   };
 
   // "This month" note (needs the optional `expenses` prop; skipped while editing)
-  const amt = Number(amount) > 0 ? Number(amount) : 0;
+  const amt = Number(dAmount) > 0 ? Number(dAmount) : 0;
   const monthList = (expenses ?? []).filter(e => {
     const d = new Date(e.date);
     return d.getFullYear() === y && d.getMonth() === m - 1;
   });
   const monthTotal = monthList.reduce((s, e) => s + e.amount, 0);
   const entries = `${monthList.length} ${monthList.length === 1 ? 'entry' : 'entries'}`;
-  const isCash = paidFrom.toLowerCase() === 'cash';
+  const isCash = dPaidFrom.toLowerCase() === 'cash';
 
   // Keep a custom/legacy category visible when editing
   const categoryOptions =
@@ -193,7 +264,7 @@ export const ExpenseModal = ({
       <div
         role="dialog"
         aria-label={heading}
-        className="flex max-h-[92vh] w-full flex-col overflow-hidden rounded-sm bg-white shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)] sm:max-w-[540px]"
+        className="relative flex max-h-[92vh] w-full flex-col overflow-visible rounded-sm bg-white shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)] sm:max-w-[540px]"
       >
         <div className="mx-auto mt-2 h-1 w-10 rounded-sm bg-[#7a8aa3]/40 sm:hidden" />
 
@@ -224,88 +295,130 @@ export const ExpenseModal = ({
         <div className="flex-1 overflow-y-auto px-5 pb-4 pt-2 sm:px-6">
           <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
             {/* Amount */}
-            <div className="sm:col-span-2">
-              <label className={label}>Amount <em className="not-italic text-[#d5000c]">*</em></label>
-              <div className={`${field} h-14 ${t.focus}`}>
-                <span className="text-[22px] text-[#5b6b86]">₹</span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="0"
-                  value={amount}
-                  onChange={e => {
-                    const val = e.target.value;
-                    // allow empty, or digits with at most one decimal point
-                    if (val === '' || /^\d*\.?\d*$/.test(val)) setAmount(val);
-                  }}
-                  className={`${input} text-2xl font-semibold`}
-                />
-              </div>
+            <div ref={amountRef} className="sm:col-span-2">
+              <TutorialStep
+                step={1}
+                currentStep={activeStep}
+                text="Enter the amount spent here."
+                onNext={() => next(2)}
+                onSkip={skip}
+              >
+                <div>
+                  <label className={label}>Amount <em className="not-italic text-[#d5000c]">*</em></label>
+                  <div className={`${field} h-14 ${t.focus}`}>
+                    <span className="text-[22px] text-[#5b6b86]">₹</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0"
+                      value={dAmount}
+                      readOnly={isTutorial}
+                      onChange={e => {
+                        if (isTutorial) return;
+                        const val = e.target.value;
+                        // allow empty, or digits with at most one decimal point
+                        if (val === '' || /^\d*\.?\d*$/.test(val)) setAmount(val);
+                      }}
+                      className={`${input} text-2xl font-semibold`}
+                    />
+                  </div>
+                </div>
+              </TutorialStep>
             </div>
 
             {/* Category */}
-            <div className="sm:col-span-2">
-              <span className={label}>Category <span className="font-normal text-[#5b6b86]">(optional)</span></span>
-              <div className="flex flex-wrap gap-1.5">
-                {categoryOptions.map(c => {
-                  const on = category === c;
-                  return (
-                    <button
-                      key={c}
-                      type="button"
-                      aria-pressed={on}
-                      onClick={() => pickCategory(c)}
-                      className={`h-[30px] rounded-sm border px-3 text-xs font-medium transition-colors ${
-                        on
-                          ? 'border-[#0f172b] bg-[#0f172b] text-white'
-                          : 'border-[#7a8aa3] bg-white text-[#0f172b] hover:bg-[#f5f7ff]'
-                      }`}
-                    >
-                      {c}
-                    </button>
-                  );
-                })}
-              </div>
+            <div ref={categoryRef} className="sm:col-span-2">
+              <TutorialStep
+                step={2}
+                currentStep={activeStep}
+                text="Pick a category. The title will be filled in automatically."
+                onNext={() => next(3)}
+                onSkip={skip}
+              >
+                <div>
+                  <span className={label}>Category <span className="font-normal text-[#5b6b86]">(optional)</span></span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {categoryOptions.map(c => {
+                      const on = dCategory === c;
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => pickCategory(c)}
+                          className={`h-[30px] rounded-sm border px-3 text-xs font-medium transition-colors ${on
+                            ? 'border-[#0f172b] bg-[#0f172b] text-white'
+                            : 'border-[#7a8aa3] bg-white text-[#0f172b] hover:bg-[#f5f7ff]'
+                            }`}
+                        >
+                          {c}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </TutorialStep>
             </div>
 
             {/* Title */}
-            <div className="sm:col-span-2">
-              <label className={label}>Title <em className="not-italic text-[#d5000c]">*</em></label>
-              <div className={`${field} h-10 ${t.focus}`}>
-                <input
-                  type="text"
-                  placeholder="e.g. Shop Rent, Staff Salary"
-                  value={title}
-                  onChange={e => setTitle(e.target.value)}
-                  className={`${input} font-medium`}
-                />
-              </div>
-              {title && title === autoTitle && (
-                <p className="mt-1 text-[11px] text-[#5b6b86]">Filled from the category — edit if you like</p>
-              )}
+            <div ref={titleRef} className="sm:col-span-2">
+              <TutorialStep
+                step={3}
+                currentStep={activeStep}
+                text="Enter a title for the expense, or edit the one filled in from the category."
+                onNext={() => next(4)}
+                onSkip={skip}
+              >
+                <div>
+                  <label className={label}>Title <em className="not-italic text-[#d5000c]">*</em></label>
+                  <div className={`${field} h-10 ${t.focus}`}>
+                    <input
+                      type="text"
+                      placeholder="e.g. Shop Rent, Staff Salary"
+                      value={dTitle}
+                      readOnly={isTutorial}
+                      onChange={e => { if (!isTutorial) setTitle(e.target.value); }}
+                      className={`${input} font-medium`}
+                    />
+                  </div>
+                  {(isTutorial || (title && title === autoTitle)) && (
+                    <p className="mt-1 text-[11px] text-[#5b6b86]">Filled from the category — edit if you like</p>
+                  )}
+                </div>
+              </TutorialStep>
             </div>
 
             {/* Paid from */}
-            <div>
-              <span className={label}>Paid from</span>
-              <div role="group" aria-label="Paid from" className="flex h-10 gap-1 rounded-sm border border-[#dfe6fb] bg-[#f5f7ff] p-1">
-                {EXPENSE_PAID_FROM.map(mode => {
-                  const on = paidFrom === mode;
-                  return (
-                    <button
-                      key={mode}
-                      type="button"
-                      aria-pressed={on}
-                      onClick={() => setPaidFrom(mode)}
-                      className={`flex-1 rounded-sm text-[13px] font-medium transition-colors ${
-                        on ? 'bg-[#0f172b] text-white' : 'text-[#45556c] hover:text-[#0f172b]'
-                      }`}
-                    >
-                      {mode}
-                    </button>
-                  );
-                })}
-              </div>
+            <div ref={paidFromRef}>
+              <TutorialStep
+                step={4}
+                currentStep={activeStep}
+                text="Choose where the money was paid from. If you pick Cash, the cash drawer goes down."
+                onNext={() => next(5)}
+                onSkip={skip}
+                mobileArrowAlign="left"
+              >
+                <div>
+                  <span className={label}>Paid from</span>
+                  <div role="group" aria-label="Paid from" className="flex h-10 gap-1 rounded-sm border border-[#dfe6fb] bg-[#f5f7ff] p-1">
+                    {EXPENSE_PAID_FROM.map(mode => {
+                      const on = dPaidFrom === mode;
+                      return (
+                        <button
+                          key={mode}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => { if (!isTutorial) setPaidFrom(mode); }}
+                          className={`flex-1 rounded-sm text-[13px] font-medium transition-colors ${on ? 'bg-[#0f172b] text-white' : 'text-[#45556c] hover:text-[#0f172b]'
+                            }`}
+                        >
+                          {mode}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </TutorialStep>
             </div>
 
             {/* Date */}
@@ -329,8 +442,9 @@ export const ExpenseModal = ({
                 <input
                   type="text"
                   placeholder="e.g. Payment for ...."
-                  value={description}
-                  onChange={e => setDescription(e.target.value)}
+                  value={dDescription}
+                  readOnly={isTutorial}
+                  onChange={e => { if (!isTutorial) setDescription(e.target.value); }}
                   className={input}
                 />
               </div>
@@ -338,21 +452,31 @@ export const ExpenseModal = ({
 
             {/* Repeat every month (new entries only) */}
             {!isEdit && (
-              <div className="flex items-center gap-2.5 rounded-sm border border-[#dfe6fb] px-3 py-2.5 text-[13px] text-[#0f172b] sm:col-span-2">
-                <svg {...ico} className="flex-none text-[#45556c]">
-                  <path d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3" />
-                </svg>
-                <span className="flex-1">Repeat every month</span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={repeatMonthly}
-                  aria-label="Repeat every month"
-                  onClick={() => setRepeatMonthly(v => !v)}
-                  className={`relative h-5 w-9 flex-none rounded-full transition-colors ${repeatMonthly ? t.on : 'bg-[#7a8aa3]'}`}
+              <div ref={repeatRef} className="sm:col-span-2">
+                <TutorialStep
+                  step={5}
+                  currentStep={activeStep}
+                  text="Turn this ON for expenses like rent or salary to add them automatically every month."
+                  onNext={() => next(6)}
+                  onSkip={skip}
                 >
-                  <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${repeatMonthly ? 'left-[18px]' : 'left-0.5'}`} />
-                </button>
+                  <div className="flex items-center gap-2.5 rounded-sm border border-[#dfe6fb] px-3 py-2.5 text-[13px] text-[#0f172b]">
+                    <svg {...ico} className="flex-none text-[#45556c]">
+                      <path d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3" />
+                    </svg>
+                    <span className="flex-1">Repeat every month</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={dRepeat}
+                      aria-label="Repeat every month"
+                      onClick={() => { if (!isTutorial) setRepeatMonthly(v => !v); }}
+                      className={`relative h-5 w-9 flex-none rounded-full transition-colors ${dRepeat ? t.on : 'bg-[#7a8aa3]'}`}
+                    >
+                      <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${dRepeat ? 'left-[18px]' : 'left-0.5'}`} />
+                    </button>
+                  </div>
+                </TutorialStep>
               </div>
             )}
 
@@ -383,10 +507,10 @@ export const ExpenseModal = ({
         </div>
 
         {/* Footer */}
-        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[#dfe6fb] bg-[#f5f7ff] px-5 py-3.5 sm:px-6">
+        <div className="flex items-center justify-end gap-1.5 border-t border-[#dfe6fb] bg-[#f5f7ff] px-4 py-3.5 sm:gap-2 sm:px-6">
           <button
             onClick={onClose}
-            className="mr-auto h-10 rounded-sm px-3 text-sm font-medium text-[#45556c] transition-colors hover:bg-white hover:text-[#0f172b]"
+            className="mr-auto h-10 flex-none rounded-sm px-2 text-[13px] font-medium text-[#45556c] transition-colors hover:bg-white hover:text-[#0f172b] sm:px-3 sm:text-sm"
           >
             Cancel
           </button>
@@ -394,19 +518,29 @@ export const ExpenseModal = ({
             <button
               onClick={() => submit(true)}
               disabled={saving}
-              className="h-10 rounded-sm border border-[#7a8aa3] bg-white px-4 text-sm font-medium text-[#0f172b] transition-colors hover:bg-[#f5f7ff] disabled:cursor-not-allowed disabled:opacity-[.45]"
+              className="h-10 flex-none whitespace-nowrap rounded-sm border border-[#7a8aa3] bg-white px-2.5 text-[13px] font-medium text-[#0f172b] transition-colors hover:bg-[#f5f7ff] disabled:cursor-not-allowed disabled:opacity-[.45] sm:px-4 sm:text-sm"
             >
               Save & add another
             </button>
           )}
-          <button
-            onClick={() => submit(false)}
-            disabled={saving}
-            className={`inline-flex h-10 items-center justify-center gap-2 rounded-sm px-5 text-sm font-medium text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-[.45] ${t.button}`}
-          >
-            {!saving && <svg {...ico}><path d="M5 12.5l4.5 4.5L19 7" /></svg>}
-            {saving ? 'Saving…' : isEdit ? 'Update expense' : 'Save expense'}
-          </button>
+          <div ref={saveRef} className="min-w-0 flex-1 sm:flex-none">
+            <TutorialStep
+              step={6}
+              currentStep={activeStep}
+              text="Once everything is filled in, save the expense from here."
+              onNext={() => completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep)}
+              onSkip={skip}
+              isLast
+            >
+              <button
+                onClick={() => submit(false)}
+                disabled={saving}
+                className={`inline-flex h-10 items-center justify-center whitespace-nowrap rounded-sm px-4 text-[13px] font-medium text-white transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-[.45] sm:px-5 sm:text-sm ${t.button}`}
+              >
+                {saving ? 'Saving…' : isEdit ? 'Update' : 'Save Expense'}
+              </button>
+            </TutorialStep>
+          </div>
         </div>
       </div>
     </div>

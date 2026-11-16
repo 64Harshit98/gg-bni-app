@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import type { ItemGroup, QuantitySlab, AddOnGroup } from '../../constants/models';
@@ -26,6 +26,9 @@ import 'react-image-crop/dist/ReactCrop.css';
 import { VariantPicker } from '../../Components/VariantPicker';
 import { useAddOnTemplates } from '../../lib/addOnTemplates';
 import BackButton from '../../Components/BackButton';
+import useTutorial from '../../Catalogue/hooks/useTutorial';
+import { completeTutorial } from '../../Catalogue/hooks/useCompleteTutorial';
+import { TutorialStep } from '../../Components/TutorialStep';
 
 interface ItemAddProps {
   theme?: 'blue' | 'orange';
@@ -186,7 +189,7 @@ const ADD_ITEM_CSS = `
 .ai-work{flex:1;display:flex;min-height:0}
 .ai-left{flex:1;min-width:0;overflow-y:auto;padding:12px 16px 150px;display:flex;flex-direction:column;gap:12px}
 .ai-root--modal .ai-left{padding:16px}
-.ai-left > *{flex-shrink:0}
+.ai-left > *,.ai-left .ai-card{flex-shrink:0}
 @media(min-width:768px){.ai-left{padding:20px 20px 24px;gap:14px}}
 .ai-right{display:none}
 @media(min-width:1280px){.ai-right{display:flex;flex-direction:column;gap:10px;width:340px;flex:none;background:var(--surface);border-left:1px solid var(--border);padding:12px 16px;overflow:hidden;min-height:0}}
@@ -300,9 +303,10 @@ const ADD_ITEM_CSS = `
 .ai-alert button{border:0;background:none;color:inherit;cursor:pointer;display:grid;place-items:center;padding:0}
 
 /* right panel (desktop >=1280 only) */
-.ai-prev__img{height:100px;background:var(--surface-sunken);display:grid;place-items:center;color:var(--ink-subtle);border-bottom:1px solid var(--border);overflow:hidden}
-.ai-prev__img img{width:100%;height:100%;object-fit:cover}
-.ai-prev__b{padding:10px 14px;display:grid;gap:6px}
+.ai-prev{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
+.ai-prev__img{position:relative;flex:1 1 auto;min-height:140px;max-height:360px;background:var(--surface-sunken);display:grid;place-items:center;color:var(--ink-subtle);border-bottom:1px solid var(--border);overflow:hidden}
+.ai-prev__img img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.ai-prev__b{flex:none;padding:10px 14px;display:grid;gap:6px}
 .ai-prev__name{font-size:15px;font-weight:600;line-height:22px;word-break:break-word}
 .ai-meta{font-size:12px;color:var(--ink-subtle)}
 .ai-price{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
@@ -318,8 +322,6 @@ const ADD_ITEM_CSS = `
 .ai-bulk__btns{display:grid;grid-template-columns:1fr auto;gap:8px}
 .ai-right .ai-bulk .ai-tint{width:28px;height:28px}
 .ai-right .ai-bulk .ai-btn--sm{height:30px}
-.ai-spacer{display:none}
-@media(min-width:1280px){.ai-spacer{display:block;flex:1 1 auto;min-height:0}}
 @media(min-width:1280px){.ai-bulk.ai-mobonly{display:none}}
 
 /* phone pinned bar (<768 only) */
@@ -337,6 +339,9 @@ const ADD_ITEM_CSS = `
 }
 /* Desktop: right panel already has the buttons */
 @media(min-width:1280px){.ai-savebar{display:none}}
+/* extra room above Save buttons while the last tutorial step is open, so the tooltip never covers them */
+.ai-savebar.ai-tutgap{padding-top:44px}
+.ai-savepair--sticky.ai-tutgap{padding-top:44px}
 .ai-modalbar{border-top:1px solid var(--border);padding:12px 16px;display:flex;justify-content:flex-end;gap:8px;background:var(--surface)}
 
 /* overlays */
@@ -373,6 +378,8 @@ const ADD_ITEM_CSS = `
 `;
 const DRAFT_STORAGE_KEY = 'sellar_item_add_draft';
 const SAVE_AND_NEW_SEEN_KEY = 'sellar_save_and_new_explained';
+const TOTAL_STEPS = 8;
+const TUTORIAL_KEY = 'addItemTutorialDone';
 
 const ItemAdd: React.FC<ItemAddProps> = ({
   theme = 'blue',
@@ -514,7 +521,56 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   const imageInputRef = useRef<HTMLInputElement>(null);
   const additionalImagesInputRef = useRef<HTMLInputElement>(null);
   const successBannerRef = useRef<HTMLDivElement>(null);
+  const leftPaneRef = useRef<HTMLDivElement>(null); // scroll container of the form (.ai-left)
   const keepForNextRef = useRef(false); // "+ Another": carry unit, tax and groups to the next item
+
+  // ---------- Tutorial ----------
+  const [tutorialStep, setTutorialStep] = useState(0);
+  // No tutorial in popup (modal) mode
+  const activeStep = isModal ? 0 : tutorialStep;
+
+  const photoRef = useRef<HTMLDivElement | null>(null);
+  const barcodeRef = useRef<HTMLDivElement | null>(null);
+  const unitRef = useRef<HTMLDivElement | null>(null);
+  const pricingRef = useRef<HTMLDivElement | null>(null);
+  const taxStockRef = useRef<HTMLDivElement | null>(null);
+  const organiseRef = useRef<HTMLDivElement | null>(null);
+  const bulkRef = useRef<HTMLDivElement | null>(null);
+
+  const tutorialRefMap: Record<number, React.RefObject<HTMLDivElement | null>> = {
+    1: photoRef,
+    2: barcodeRef,
+    3: unitRef,
+    4: pricingRef,
+    5: taxStockRef,
+    6: organiseRef,
+    7: bulkRef,
+    // 8 (Save) is in the fixed bar / side panel, no scrolling needed
+  };
+
+  const nextStep = useCallback((n: number) => {
+    setTutorialStep(n <= TOTAL_STEPS ? n : 0);
+  }, []);
+
+  const skipTutorial = useCallback(() => {
+    completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep);
+  }, [currentUser]);
+
+  const finishTutorial = useCallback(() => {
+    completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep);
+  }, [currentUser]);
+
+  useTutorial(currentUser, setTutorialStep, TUTORIAL_KEY);
+
+  useEffect(() => {
+    if (activeStep === 0) return;
+    const target = tutorialRefMap[activeStep];
+    if (!target?.current) return;
+    setTimeout(() => {
+      target.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 80);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStep]);
 
   useEffect(() => {
     // NEW: If opened as a popup with prefill data (e.g. from Purchase Smart Scan),
@@ -579,6 +635,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   }, [itemName, itemMRP, itemSalesPrice, itemPurchasePrice, itemDiscount, PurchaseDiscount, itemTax, itemAmount, restockQuantity, itemDescription, selectedCategories, itemBarcode, hsnCode, itemUnit, packetSize, moq, imageUrl, priceTiers, quantitySlabs]);
 
   const getUnitLabel = () => {
+    if (activeStep > 0) return '1 pcs'; // tutorial sample data uses "pcs"
     if (itemUnit === 'box') return '10 pcs';
     if (itemUnit === 'doz') return '12 pcs';
     if (itemUnit === 'qt') return '100 pcs';
@@ -1454,6 +1511,11 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       } else {
         setSuccess(`Completed: ${createdCount} New, ${updatedCount} Updated, ${skippedCount} Skipped.`);
       }
+      // Bring the result banner / failed-rows alert (both at the top of the form) into view
+      requestAnimationFrame(() => {
+        leftPaneRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+        window.scrollTo({ top: 0, behavior: 'smooth' }); // fallback if the page itself scrolls
+      });
       setTimeout(() => setSuccess(null), 10000);
 
     } catch (err: any) {
@@ -1627,17 +1689,54 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   if (pageIsLoading) return <Spinner />;
 
   // ---- display-only values for the live preview + margin tile (read from existing state, never written) ----
+  // ---- Tutorial sample data (display only, never written to state or draft) ----
+  const isTut = activeStep > 0;
+  const SAMPLE_ITEM = {
+    name: 'Amul Butter 500g',
+    barcode: '1001',
+    unit: 'pcs',
+    mrp: '250',
+    salesPrice: '240',
+    purchasePrice: '190',
+    discount: '2',
+    purchaseDiscount: '3',
+    tax: '5',
+    hsn: '0405',
+    stock: '50',
+    restock: '10',
+    moq: '1',
+    category: 'Dairy',
+    description: 'Fresh Amul butter, 500g pack, ideal for baking and spreads.',
+  };
+  const dName = isTut ? SAMPLE_ITEM.name : itemName;
+  const dBarcode = isTut ? SAMPLE_ITEM.barcode : itemBarcode;
+  const dUnit = isTut ? SAMPLE_ITEM.unit : itemUnit;
+  const dMrp = isTut ? SAMPLE_ITEM.mrp : itemMRP;
+  const dSales = isTut ? SAMPLE_ITEM.salesPrice : itemSalesPrice;
+  const dPurchase = isTut ? SAMPLE_ITEM.purchasePrice : itemPurchasePrice;
+  const dDiscount = isTut ? SAMPLE_ITEM.discount : itemDiscount;
+  const dPurDiscount = isTut ? SAMPLE_ITEM.purchaseDiscount : PurchaseDiscount;
+  const dTax = isTut ? SAMPLE_ITEM.tax : itemTax;
+  const dHsn = isTut ? SAMPLE_ITEM.hsn : hsnCode;
+  const dStock = isTut ? SAMPLE_ITEM.stock : itemAmount;
+  const dRestock = isTut ? SAMPLE_ITEM.restock : restockQuantity;
+  const dMoq = isTut ? SAMPLE_ITEM.moq : moq;
+  const dDesc = isTut ? SAMPLE_ITEM.description : itemDescription;
+  const dCategory = isTut ? '__sample' : (selectedCategories[0] || '');
+
   const toNum = (v: string) => parseFloat(v) || 0;
   const inr = (n: number) => '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
-  const pvMrp = toNum(itemMRP);
-  const pvSale = toNum(itemSalesPrice);
-  const pvCost = toNum(itemPurchasePrice);
+  const pvMrp = toNum(dMrp);
+  const pvSale = toNum(dSales);
+  const pvCost = toNum(dPurchase);
   const pvPrice = pvSale || pvMrp;
   const pvMargin = pvSale > 0 && pvCost > 0 ? pvSale - pvCost : null;
   const pvMarginPct = pvMargin !== null ? Math.round((pvMargin / pvSale) * 100) : null;
   const pvOff = pvMrp > 0 && pvSale > 0 && pvSale < pvMrp ? Math.round(((pvMrp - pvSale) / pvMrp) * 100) : 0;
-  const pvStock = parseInt(itemAmount, 10) || 0;
-  const pvGroup = itemGroups.find(g => g.id === selectedCategories[0])?.name;
+  const pvStock = parseInt(dStock, 10) || 0;
+  const pvGroup = isTut
+    ? SAMPLE_ITEM.category
+    : itemGroups.find(g => g.id === selectedCategories[0])?.name;
   const pvImg = imagePreview || formatImageUrl(imageUrl);
   const saveDisabled = isSaving || pageIsLoading || (loading && itemGroups.length === 0);
 
@@ -1876,7 +1975,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       <div className="ai-work">
 
         {/* ================= LEFT: FORM ================= */}
-        <div className="ai-left">
+        <div className="ai-left" ref={leftPaneRef}>
 
           {error && <div className="ai-alert ai-alert--danger"><span>{error}</span></div>}
 
@@ -1899,61 +1998,79 @@ const ItemAdd: React.FC<ItemAddProps> = ({
 
           {/* Bulk import — mobile only, hidden in modal mode */}
           {!isModal && (
-            <div className="ai-card ai-bulk ai-mobonly">
-              <div className="ai-bulk__h">
-                <span className="ai-tint"><AiIcon name="doc" /></span>
-                <div>
-                  <b>Adding many items?</b>
-                  <div>Upload an Excel/CSV file.</div>
+            <TutorialStep
+              step={7}
+              currentStep={activeStep}
+              text="Need to add many items at once? Upload an Excel file. Download the Sample first to see the format."
+              onNext={() => nextStep(8)}
+              onSkip={skipTutorial}
+              mobileArrowAlign="left"
+            >
+              <div ref={bulkRef} className="ai-card ai-bulk ai-mobonly">
+                <div className="ai-bulk__h">
+                  <span className="ai-tint"><AiIcon name="doc" /></span>
+                  <div>
+                    <b>Adding many items?</b>
+                    <div>Upload an Excel/CSV file.</div>
+                  </div>
+                </div>
+                <div className="ai-bulk__btns">
+                  <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="ai-btn ai-btn--secondary ai-btn--sm">
+                    {isUploading ? <Spinner /> : (<><AiIcon name="upload" sm />Import from Excel</>)}
+                  </button>
+                  <button type="button" onClick={handleDownloadSample} disabled={isUploading} className="ai-btn ai-btn--ghost ai-btn--sm" style={{ color: 'var(--primary-text)' }}>
+                    <AiIcon name="download" sm />Sample
+                  </button>
                 </div>
               </div>
-              <div className="ai-bulk__btns">
-                <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="ai-btn ai-btn--secondary ai-btn--sm">
-                  {isUploading ? <Spinner /> : (<><AiIcon name="upload" sm />Import from Excel</>)}
-                </button>
-                <button type="button" onClick={handleDownloadSample} disabled={isUploading} className="ai-btn ai-btn--ghost ai-btn--sm" style={{ color: 'var(--primary-text)' }}>
-                  <AiIcon name="download" sm />Sample
-                </button>
-              </div>
-            </div>
+            </TutorialStep>
           )}
 
           {/* ---------- Basic details ---------- */}
           <div className="ai-card">
             {cardHead('tag', 'amber', 'Basic details', <small>Name and price are required</small>)}
             <div className="ai-fs-b" style={{ gridTemplateColumns: 'minmax(0,1.5fr) minmax(0,1fr)' }}>
-              <div className="ai-img ai-full">
-                <div className="ai-drop" role="button" tabIndex={0} onClick={() => imageInputRef.current?.click()}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); imageInputRef.current?.click(); } }}>
-                  {isImageCompressing ? (
-                    <><Spinner /><span>Compressing…</span></>
-                  ) : imagePreview ? (
-                    <img src={imagePreview} alt="Preview" className="ai-drop__img" />
-                  ) : (
-                    <><AiIcon name="image" />Add photo</>
-                  )}
-                </div>
-                <input type="file" accept="image/*" ref={imageInputRef} onChange={handleImageChange} style={{ display: 'none' }} />
+              <TutorialStep
+                step={1}
+                currentStep={activeStep}
+                text="Enter the item name and add a photo. You can also paste an image link instead of a photo."
+                onNext={() => nextStep(2)}
+                onSkip={skipTutorial}
+                mobileArrowAlign="left"
+              >
+                <div ref={photoRef} className="ai-img ai-full">
+                  <div className="ai-drop" role="button" tabIndex={0} onClick={() => imageInputRef.current?.click()}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); imageInputRef.current?.click(); } }}>
+                    {isImageCompressing ? (
+                      <><Spinner /><span>Compressing…</span></>
+                    ) : imagePreview ? (
+                      <img src={imagePreview} alt="Preview" className="ai-drop__img" />
+                    ) : (
+                      <><AiIcon name="image" />Add photo</>
+                    )}
+                  </div>
+                  <input type="file" accept="image/*" ref={imageInputRef} onChange={handleImageChange} style={{ display: 'none' }} />
 
-                <div className="ai-stack">
-                  {fl('Item name',
-                    <div className="ai-field">
-                      <input type="text" value={itemName} onChange={(e) => setItemName(e.target.value)} placeholder="e.g. Amul butter 500 g" style={{ fontWeight: 600 }} />
-                    </div>,
-                    { req: true })}
-                  {fl('Or paste image URL',
-                    <div className={`ai-field${imageFile ? ' ai-field--dis' : ''}`}>
-                      <AiIcon name="link" sm />
-                      <input type="text" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} disabled={!!imageFile} placeholder="https://example.com/image.jpg" />
-                    </div>,
-                    { req: !!itemSettings?.requireImage })}
-                  {imageFile && (
-                    <button className="ai-linkbtn" onClick={() => { setImageFile(null); setImagePreview(null); if (imageInputRef.current) imageInputRef.current.value = ''; }}>
-                      Remove selected image
-                    </button>
-                  )}
+                  <div className="ai-stack">
+                    {fl('Item name',
+                      <div className="ai-field">
+                        <input type="text" value={dName} onChange={(e) => setItemName(e.target.value)} placeholder="e.g. Amul butter 500 g" style={{ fontWeight: 600 }} />
+                      </div>,
+                      { req: true })}
+                    {fl('Or paste image URL',
+                      <div className={`ai-field${imageFile ? ' ai-field--dis' : ''}`}>
+                        <AiIcon name="link" sm />
+                        <input type="text" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} disabled={!!imageFile} placeholder="https://example.com/image.jpg" />
+                      </div>,
+                      { req: !!itemSettings?.requireImage })}
+                    {imageFile && (
+                      <button className="ai-linkbtn" onClick={() => { setImageFile(null); setImagePreview(null); if (imageInputRef.current) imageInputRef.current.value = ''; }}>
+                        Remove selected image
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
+              </TutorialStep>
 
               <div className="ai-full">
                 <span className="ai-lab">Additional photos <span style={{ color: 'var(--ink-subtle)', fontWeight: 400 }}>(for catalogue slider)</span></span>
@@ -1992,77 +2109,107 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                 )}
               </div>
 
-              {fl('Barcode',
-                <div className="ai-field" style={{ paddingRight: 4 }}>
-                  <input type="text" value={itemBarcode} onChange={(e) => setItemBarcode(e.target.value)} placeholder="Scan or type" />
-                  <button type="button" onClick={() => setIsScannerOpen(true)} className="ai-btn ai-btn--ghost ai-btn--icon ai-btn--sm" aria-label="Scan barcode">
-                    <IconScanCircle width={18} height={18} />
-                  </button>
-                </div>,
-                { req: !!itemSettings?.requireBarcode, hint: 'Letters, numbers, - and _ only. No spaces or / .' })}
+              <TutorialStep
+                step={2}
+                currentStep={activeStep}
+                text="Scan the barcode or type it yourself. If you leave it blank, one is generated automatically."
+                onNext={() => nextStep(3)}
+                onSkip={skipTutorial}
+                mobileArrowAlign="left"
+              >
+                <div ref={barcodeRef}>
+                  {fl('Barcode',
+                    <div className="ai-field" style={{ paddingRight: 4 }}>
+                      <input type="text" value={dBarcode} onChange={(e) => setItemBarcode(e.target.value)} placeholder="Scan or type" />
+                      <button type="button" onClick={() => setIsScannerOpen(true)} className="ai-btn ai-btn--ghost ai-btn--icon ai-btn--sm" aria-label="Scan barcode">
+                        <IconScanCircle width={18} height={18} />
+                      </button>
+                    </div>,
+                    { req: !!itemSettings?.requireBarcode, hint: 'Letters, numbers, - and _ only. No spaces or / .' })}
+                </div>
+              </TutorialStep>
 
-              {fl('Unit',
-                <div style={{ display: 'grid', gap: 8 }}>
-                  <div className="ai-field" style={{ flex: 1 }}>
-                    <select value={itemUnit} onChange={(e) => { setItemUnit(e.target.value); if (e.target.value !== 'pkt') setPacketSize(''); }}>
-                      {UNIT_OPTIONS.filter(u => u.value !== '').map(unit => (<option key={unit.value} value={unit.value}>{unit.label}</option>))}
-                    </select>
-                  </div>
-                  {itemUnit === 'pkt' && (
-                    <div className="ai-field" style={{ flex: 1 }}>
-                      <input type="number" value={packetSize} onChange={(e) => setPacketSize(e.target.value)} placeholder="Qty per pkt" min="1" />
-                    </div>
-                  )}
-                </div>,
-                { req: !!(itemSettings as any)?.requireUnit, div: true })}
+              <TutorialStep
+                step={3}
+                currentStep={activeStep}
+                text="Choose how this item is sold: pieces, box, dozen or a custom packet. MRP and sales price below are per this unit."
+                onNext={() => nextStep(4)}
+                onSkip={skipTutorial}
+                mobileArrowAlign="left"
+              >
+                <div ref={unitRef}>
+                  {fl('Unit',
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      <div className="ai-field" style={{ flex: 1 }}>
+                        <select value={dUnit} onChange={(e) => { setItemUnit(e.target.value); if (e.target.value !== 'pkt') setPacketSize(''); }}>
+                          {UNIT_OPTIONS.filter(u => u.value !== '').map(unit => (<option key={unit.value} value={unit.value}>{unit.label}</option>))}
+                        </select>
+                      </div>
+                      {!isTut && itemUnit === 'pkt' && (
+                        <div className="ai-field" style={{ flex: 1 }}>
+                          <input type="number" value={packetSize} onChange={(e) => setPacketSize(e.target.value)} placeholder="Qty per pkt" min="1" />
+                        </div>
+                      )}
+                    </div>,
+                    { req: !!(itemSettings as any)?.requireUnit, div: true })}
+                </div>
+              </TutorialStep>
             </div>
           </div>
 
           {/* ---------- Pricing ---------- */}
-          <div className="ai-card">
-            {cardHead('doc', '', 'Pricing', <small>Enter MRP or sales price — at least one</small>)}
-            <div className="ai-fs-b ai-c3">
-              {fl(`MRP (${getUnitLabel()})`,
-                <div className="ai-field"><i>₹</i>
-                  <input type="number" value={itemMRP} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemMRP(e.target.value)} placeholder="0.00" />
-                </div>,
-                { hint: 'Printed on the pack' })}
-              {fl(`Sales price (${getUnitLabel()})`,
-                <div className="ai-field"><i>₹</i>
-                  <input type="number" value={itemSalesPrice} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemSalesPrice(e.target.value)} placeholder="0.00" style={{ fontWeight: 600 }} />
-                </div>,
-                { req: true, hint: 'What the customer pays' })}
-              {fl('Purchase price',
-                <div className="ai-field"><i>₹</i>
-                  <input type="number" value={itemPurchasePrice} onChange={(e) => setItemPurchasePrice(e.target.value)} placeholder="0.00" />
-                </div>,
-                { req: !!itemSettings?.requirePurchasePrice, hint: 'What you pay the supplier' })}
-              {fl('Sale discount',
-                <div className="ai-field">
-                  <input type="number" value={itemDiscount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemDiscount(e.target.value)} placeholder="0" />
-                  <i>%</i>
-                </div>,
-                { req: !!itemSettings?.requireSaleDiscount })}
-              {fl('Purchase discount',
-                <div className="ai-field">
-                  <input type="number" value={PurchaseDiscount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setPurchaseDiscount(e.target.value)} placeholder="0" />
-                  <i>%</i>
-                </div>,
-                { req: !!itemSettings?.requirePurchaseDiscount })}
-              {fl('Your margin',
-                <div className={`ai-field ai-margin${pvMargin === null ? ' ai-margin--empty' : pvMargin < 0 ? ' ai-margin--neg' : ''}`}>
-                  {pvMargin === null ? (
-                    <span>Add both prices</span>
-                  ) : (
-                    <>
-                      <span style={{ fontVariantNumeric: 'tabular-nums' }}>{inr(pvMargin)}</span>
-                      <i>{pvMarginPct}% on sales price</i>
-                    </>
-                  )}
-                </div>,
-                { div: true, hint: 'Sales price − purchase price' })}
+          <TutorialStep
+            step={4}
+            currentStep={activeStep}
+            text="Fill in at least one of MRP or Sales price. If you add a purchase price, your margin is shown automatically."
+            onNext={() => nextStep(5)}
+            onSkip={skipTutorial}
+          >
+            <div ref={pricingRef} className="ai-card">
+              {cardHead('doc', '', 'Pricing', <small>Enter MRP or sales price — at least one</small>)}
+              <div className="ai-fs-b ai-c3">
+                {fl(`MRP (${getUnitLabel()})`,
+                  <div className="ai-field"><i>₹</i>
+                    <input type="number" value={dMrp} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemMRP(e.target.value)} placeholder="0.00" />
+                  </div>,
+                  { hint: 'Printed on the pack' })}
+                {fl(`Sales price (${getUnitLabel()})`,
+                  <div className="ai-field"><i>₹</i>
+                    <input type="number" value={dSales} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemSalesPrice(e.target.value)} placeholder="0.00" style={{ fontWeight: 600 }} />
+                  </div>,
+                  { req: true, hint: 'What the customer pays' })}
+                {fl('Purchase price',
+                  <div className="ai-field"><i>₹</i>
+                    <input type="number" value={dPurchase} onChange={(e) => setItemPurchasePrice(e.target.value)} placeholder="0.00" />
+                  </div>,
+                  { req: !!itemSettings?.requirePurchasePrice, hint: 'What you pay the supplier' })}
+                {fl('Sale discount',
+                  <div className="ai-field">
+                    <input type="number" value={dDiscount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemDiscount(e.target.value)} placeholder="0" />
+                    <i>%</i>
+                  </div>,
+                  { req: !!itemSettings?.requireSaleDiscount })}
+                {fl('Purchase discount',
+                  <div className="ai-field">
+                    <input type="number" value={dPurDiscount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setPurchaseDiscount(e.target.value)} placeholder="0" />
+                    <i>%</i>
+                  </div>,
+                  { req: !!itemSettings?.requirePurchaseDiscount })}
+                {fl('Your margin',
+                  <div className={`ai-field ai-margin${pvMargin === null ? ' ai-margin--empty' : pvMargin < 0 ? ' ai-margin--neg' : ''}`}>
+                    {pvMargin === null ? (
+                      <span>Add both prices</span>
+                    ) : (
+                      <>
+                        <span style={{ fontVariantNumeric: 'tabular-nums' }}>{inr(pvMargin)}</span>
+                        <i>{pvMarginPct}% on sales price</i>
+                      </>
+                    )}
+                  </div>,
+                  { div: true, hint: 'Sales price − purchase price' })}
+              </div>
             </div>
-          </div>
+          </TutorialStep>
 
           {/* ---------- Pricing options (tiers) ---------- */}
           {itemSettings?.enablePriceTiers && (
@@ -2336,149 +2483,166 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           )}
 
           {/* ---------- Tax + Stock ---------- */}
-          <div className="ai-pair">
-            <div className="ai-card">
-              {cardHead('doc', '', 'Tax')}
-              <div className="ai-fs-b">
-                {fl('Tax',
-                  <div className="ai-field">
-                    <input type="number" value={itemTax} onChange={(e) => setItemTax(e.target.value)} placeholder="0" />
-                    <i>%</i>
-                  </div>,
-                  { req: !!itemSettings?.requireTax })}
-                {fl('HSN code',
-                  <div className="ai-field">
-                    <input type="text" value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} placeholder="e.g. 123456" />
-                  </div>,
-                  { req: !!itemSettings?.requireHsnCode, hint: 'Needed for GST bills' })}
+          <TutorialStep
+            step={5}
+            currentStep={activeStep}
+            text="Enter the GST rate and HSN code here. Opening stock and restock level are also set here."
+            onNext={() => nextStep(6)}
+            onSkip={skipTutorial}
+          >
+            <div ref={taxStockRef} className="ai-pair">
+              <div className="ai-card">
+                {cardHead('doc', '', 'Tax')}
+                <div className="ai-fs-b">
+                  {fl('Tax',
+                    <div className="ai-field">
+                      <input type="number" value={dTax} onChange={(e) => setItemTax(e.target.value)} placeholder="0" />
+                      <i>%</i>
+                    </div>,
+                    { req: !!itemSettings?.requireTax })}
+                  {fl('HSN code',
+                    <div className="ai-field">
+                      <input type="text" value={dHsn} onChange={(e) => setHsnCode(e.target.value)} placeholder="e.g. 123456" />
+                    </div>,
+                    { req: !!itemSettings?.requireHsnCode, hint: 'Needed for GST bills' })}
+                </div>
               </div>
-            </div>
 
-            <div className="ai-card">
-              {cardHead('box', 'green', 'Stock')}
-              <div className="ai-fs-b">
-                {fl('Stock',
-                  <div className="ai-field">
-                    <input type="number" value={itemAmount} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemAmount(e.target.value)} placeholder="0" />
-                  </div>,
-                  { req: !!itemSettings?.requireStock, hint: 'Opening stock' })}
-                {fl('Restock level',
-                  <div className="ai-field">
-                    <input type="number" onWheel={(e) => (e.target as HTMLInputElement).blur()} value={restockQuantity} onChange={(e) => setRestockQuantity(e.target.value)} placeholder="0" />
-                  </div>,
-                  { req: !!itemSettings?.requireRestockQuantity, hint: 'Warn me when stock drops to this' })}
-                {fl('MOQ',
-                  <div className="ai-field">
-                    <input type="number" value={moq} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setMoq(e.target.value)} placeholder="1" />
-                  </div>,
-                  { req: !!itemSettings?.requireMoq, hint: 'Minimum order quantity' })}
+              <div className="ai-card">
+                {cardHead('box', 'green', 'Stock')}
+                <div className="ai-fs-b">
+                  {fl('Stock',
+                    <div className="ai-field">
+                      <input type="number" value={dStock} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemAmount(e.target.value)} placeholder="0" />
+                    </div>,
+                    { req: !!itemSettings?.requireStock, hint: 'Opening stock' })}
+                  {fl('Restock level',
+                    <div className="ai-field">
+                      <input type="number" onWheel={(e) => (e.target as HTMLInputElement).blur()} value={dRestock} onChange={(e) => setRestockQuantity(e.target.value)} placeholder="0" />
+                    </div>,
+                    { req: !!itemSettings?.requireRestockQuantity, hint: 'Warn me when stock drops to this' })}
+                  {fl('MOQ',
+                    <div className="ai-field">
+                      <input type="number" value={dMoq} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setMoq(e.target.value)} placeholder="1" />
+                    </div>,
+                    { req: !!itemSettings?.requireMoq, hint: 'Minimum order quantity' })}
+                </div>
               </div>
             </div>
-          </div>
+          </TutorialStep>
 
           {/* ---------- Organise ---------- */}
-          <div className="ai-card">
-            {cardHead('grid', '', 'Organise')}
-            <div className="ai-fs-b" style={{ gridTemplateColumns: 'minmax(0,1fr)' }}>
+          <TutorialStep
+            step={6}
+            currentStep={activeStep}
+            text="Choose the item's category, link variants and write a description. An item can belong to several groups."
+            onNext={() => nextStep(7)}
+            onSkip={skipTutorial}
+          >
+            <div ref={organiseRef} className="ai-card">
+              {cardHead('grid', '', 'Organise')}
+              <div className="ai-fs-b" style={{ gridTemplateColumns: 'minmax(0,1fr)' }}>
 
-              {fl('Category',
-                <>
-                  <div className="ai-field">
-                    <select
-                      value={selectedCategories[0] || ''}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === 'ADD_NEW_GROUP') { navigate(routes.itemGroup); return; }
-                        setSelectedCategories(prev => {
-                          const rest = prev.slice(1); // keep extra categories
-                          return val ? [val, ...rest] : rest;
-                        });
-                      }}
-                    >
-                      <option value="">Select category</option>
-                      <option value="ADD_NEW_GROUP">+ Add new group</option>
-                      {itemGroups.map(g => (
-                        <option key={g.id} value={g.id!}>{g.name}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {selectedCategories.length > 1 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-                      {selectedCategories.slice(1).map((catId) => {
-                        const group = itemGroups.find(g => g.id === catId);
-                        if (!group) return null;
-                        return (
-                          <span key={catId} className="ai-tag">
-                            {group.name}
-                            <button type="button" onClick={() => setSelectedCategories(prev => prev.filter(id => id !== catId))} aria-label={`Remove ${group.name}`}>
-                              <AiIcon name="x" />
-                            </button>
-                          </span>
-                        );
-                      })}
+                {fl('Category',
+                  <>
+                    <div className="ai-field">
+                      <select
+                        value={dCategory}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === 'ADD_NEW_GROUP') { navigate(routes.itemGroup); return; }
+                          setSelectedCategories(prev => {
+                            const rest = prev.slice(1); // keep extra categories
+                            return val ? [val, ...rest] : rest;
+                          });
+                        }}
+                      >
+                        <option value="">Select category</option>
+                        {isTut && <option value="__sample">{SAMPLE_ITEM.category}</option>}
+                        <option value="ADD_NEW_GROUP">+ Add new group</option>
+                        {itemGroups.map(g => (
+                          <option key={g.id} value={g.id!}>{g.name}</option>
+                        ))}
+                      </select>
                     </div>
-                  )}
 
-                  {!showCategoryDropdown ? (
-                    <button type="button" onClick={() => setShowCategoryDropdown(true)} className="ai-linkbtn ai-linkbtn--primary" style={{ marginTop: 4 }}>
-                      + Add more category
-                    </button>
-                  ) : (
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4 }}>
-                      <div className="ai-field ai-field--sm" style={{ flex: 1 }}>
-                        <select
-                          defaultValue=""
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            if (!val) return;
-                            if (val === 'ADD_NEW_GROUP') { navigate(routes.itemGroup); return; }
-                            if (!selectedCategories.includes(val)) {
-                              setSelectedCategories(prev => [...prev, val]);
-                            }
-                            setShowCategoryDropdown(false);
-                          }}
-                        >
-                          <option value="">Add more</option>
-                          <option value="ADD_NEW_GROUP">+ Add new group</option>
-                          {itemGroups
-                            .filter(g => !selectedCategories.includes(g.id!))
-                            .map(g => (<option key={g.id} value={g.id!}>{g.name}</option>))}
-                        </select>
+                    {selectedCategories.length > 1 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                        {selectedCategories.slice(1).map((catId) => {
+                          const group = itemGroups.find(g => g.id === catId);
+                          if (!group) return null;
+                          return (
+                            <span key={catId} className="ai-tag">
+                              {group.name}
+                              <button type="button" onClick={() => setSelectedCategories(prev => prev.filter(id => id !== catId))} aria-label={`Remove ${group.name}`}>
+                                <AiIcon name="x" />
+                              </button>
+                            </span>
+                          );
+                        })}
                       </div>
-                      <button type="button" onClick={() => setShowCategoryDropdown(false)} className="ai-btn ai-btn--ghost ai-btn--sm">Cancel</button>
-                    </div>
-                  )}
-                </>,
-                { div: true, req: !!(itemSettings as any)?.requireCategory, hint: 'An item can be in several groups' })}
+                    )}
 
-              {fl('Variants',
-                <VariantPicker
-                  allItems={allItems}
-                  selectedIds={itemVariants}
-                  currentItemBarcode={itemBarcode}
-                  onChange={setItemVariants}
-                  activeTheme={activeTheme}
-                />,
-                { div: true })}
+                    {!showCategoryDropdown ? (
+                      <button type="button" onClick={() => setShowCategoryDropdown(true)} className="ai-linkbtn ai-linkbtn--primary" style={{ marginTop: 4 }}>
+                        + Add more category
+                      </button>
+                    ) : (
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4 }}>
+                        <div className="ai-field ai-field--sm" style={{ flex: 1 }}>
+                          <select
+                            defaultValue=""
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (!val) return;
+                              if (val === 'ADD_NEW_GROUP') { navigate(routes.itemGroup); return; }
+                              if (!selectedCategories.includes(val)) {
+                                setSelectedCategories(prev => [...prev, val]);
+                              }
+                              setShowCategoryDropdown(false);
+                            }}
+                          >
+                            <option value="">Add more</option>
+                            <option value="ADD_NEW_GROUP">+ Add new group</option>
+                            {itemGroups
+                              .filter(g => !selectedCategories.includes(g.id!))
+                              .map(g => (<option key={g.id} value={g.id!}>{g.name}</option>))}
+                          </select>
+                        </div>
+                        <button type="button" onClick={() => setShowCategoryDropdown(false)} className="ai-btn ai-btn--ghost ai-btn--sm">Cancel</button>
+                      </div>
+                    )}
+                  </>,
+                  { div: true, req: !!(itemSettings as any)?.requireCategory, hint: 'An item can be in several groups' })}
 
-              {fl('Description',
-                <div className="ai-field ai-field--area">
-                  <textarea
-                    value={itemDescription}
-                    onChange={(e) => setItemDescription(e.target.value)}
-                    rows={3}
-                    placeholder="e.g. Fresh Amul butter, 500g pack, ideal for baking and spreads."
-                  />
-                </div>)}
+                {fl('Variants',
+                  <VariantPicker
+                    allItems={allItems}
+                    selectedIds={itemVariants}
+                    currentItemBarcode={itemBarcode}
+                    onChange={setItemVariants}
+                    activeTheme={activeTheme}
+                  />,
+                  { div: true })}
+
+                {fl('Description',
+                  <div className="ai-field ai-field--area">
+                    <textarea
+                      value={dDesc}
+                      onChange={(e) => setItemDescription(e.target.value)}
+                      rows={3}
+                      placeholder="e.g. Fresh Amul butter, 500g pack, ideal for baking and spreads."
+                    />
+                  </div>)}
+              </div>
             </div>
-          </div>
+          </TutorialStep>
         </div>
 
         {/* ================= RIGHT: PREVIEW + BULK IMPORT + SAVE (desktop only) ================= */}
         {!isModal && (
           <aside className="ai-right">
-            <div className="ai-card">
+            <div className="ai-card ai-prev">
               <div className="ai-prev__img">
                 {pvImg ? (
                   <img src={pvImg} alt="" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
@@ -2489,9 +2653,9 @@ const ItemAdd: React.FC<ItemAddProps> = ({
               <div className="ai-prev__b">
                 <div>
                   <div className="ai-overline">Preview · how it appears in billing</div>
-                  <div className="ai-prev__name">{itemName.trim() || 'Item name'}</div>
+                  <div className="ai-prev__name">{dName.trim() || 'Item name'}</div>
                   <div className="ai-meta">
-                    {[itemBarcode || null, itemUnit, pvGroup || null].filter(Boolean).join(' · ')}
+                    {[dBarcode || null, dUnit, pvGroup || null].filter(Boolean).join(' · ')}
                   </div>
                 </div>
                 <div className="ai-price">
@@ -2500,38 +2664,88 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                   {pvOff > 0 && <span className="ai-badge">{pvOff}% OFF</span>}
                 </div>
                 <dl className="ai-kv">
-                  <dt>Tax</dt><dd>{toNum(itemTax)}%</dd>
-                  <dt>Margin per {itemUnit}</dt>
+                  <dt>Tax</dt><dd>{toNum(dTax)}%</dd>
+                  <dt>Margin per {dUnit}</dt>
                   <dd style={{ color: pvMargin !== null && pvMargin < 0 ? 'var(--danger)' : pvMargin !== null ? 'var(--success)' : undefined }}>
                     {pvMargin !== null ? inr(pvMargin) : '—'}
                   </dd>
                   <dt>Stock value at cost</dt><dd>{pvCost > 0 && pvStock > 0 ? inr(pvCost * pvStock) : '—'}</dd>
-                  <dt>Low-stock alert at</dt><dd>{(parseInt(restockQuantity, 10) || 0) > 0 ? `${parseInt(restockQuantity, 10)} ${itemUnit}` : '—'}</dd>
+                  <dt>Low-stock alert at</dt><dd>{(parseInt(dRestock, 10) || 0) > 0 ? `${parseInt(dRestock, 10)} ${dUnit}` : '—'}</dd>
                 </dl>
               </div>
             </div>
 
-            <div className="ai-card ai-bulk">
-              <div className="ai-bulk__h">
-                <span className="ai-tint"><AiIcon name="doc" /></span>
-                <div>
-                  <b>Adding many items?</b>
-                  <div>Upload Excel/CSV — missing categories are created automatically, images can be embedded in rows.</div>
+            <TutorialStep
+              step={7}
+              currentStep={activeStep}
+              text="Need to add many items at once? Upload an Excel file. Download the Template first to see the format."
+              onNext={() => nextStep(8)}
+              onSkip={skipTutorial}
+            >
+              <div className="ai-card ai-bulk">
+                <div className="ai-bulk__h">
+                  <span className="ai-tint"><AiIcon name="doc" /></span>
+                  <div>
+                    <b>Adding many items?</b>
+                    <div>Upload Excel/CSV — missing categories are created automatically, images can be embedded in rows.</div>
+                  </div>
+                </div>
+                <div className="ai-bulk__btns">
+                  <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="ai-btn ai-btn--secondary ai-btn--sm">
+                    {isUploading ? <Spinner /> : (<><AiIcon name="upload" sm />Upload Excel</>)}
+                  </button>
+                  <button type="button" onClick={handleDownloadSample} disabled={isUploading} className="ai-btn ai-btn--ghost ai-btn--sm" style={{ color: 'var(--primary-text)' }}>
+                    <AiIcon name="download" sm />Template
+                  </button>
                 </div>
               </div>
-              <div className="ai-bulk__btns">
-                <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="ai-btn ai-btn--secondary ai-btn--sm">
-                  {isUploading ? <Spinner /> : (<><AiIcon name="upload" sm />Upload Excel</>)}
+            </TutorialStep>
+
+            <TutorialStep
+              step={8}
+              currentStep={activeStep}
+              text="Save item saves the item. Save & new clears the form but remembers the unit, tax and category."
+              onNext={finishTutorial}
+              onSkip={skipTutorial}
+              isLast
+              position="top"
+            >
+              <div className={`ai-savepair ai-savepair--sticky${activeStep === 8 ? ' ai-tutgap' : ''}`}>
+                <button
+                  type="button"
+                  onClick={() => { keepForNextRef.current = true; handleAddItem(); }}
+                  disabled={saveDisabled}
+                  title="Save this item and start another, keeping unit, tax and groups"
+                  className="ai-btn ai-btn--secondary ai-btn--lg"
+                >
+                  Save &amp; new
                 </button>
-                <button type="button" onClick={handleDownloadSample} disabled={isUploading} className="ai-btn ai-btn--ghost ai-btn--sm" style={{ color: 'var(--primary-text)' }}>
-                  <AiIcon name="download" sm />Template
+                <button
+                  onClick={() => { keepForNextRef.current = false; handleAddItem(); }}
+                  disabled={saveDisabled}
+                  className="ai-btn ai-btn--primary ai-btn--lg"
+                >
+                  {isSaving ? <Spinner /> : (<><AiIcon name="check" sm />Save item</>)}
                 </button>
               </div>
-            </div>
-
-            <div className="ai-spacer" />
-
-            <div className="ai-savepair ai-savepair--sticky">
+            </TutorialStep>
+          </aside>
+        )}
+      </div>
+      {/* ---------- Mobile pinned save bar (non-modal) ---------- */}
+      {
+        !isModal && (
+          <TutorialStep
+            step={8}
+            currentStep={activeStep}
+            text="Save item saves the item. Save & new clears the form but remembers the unit, tax and category."
+            onNext={finishTutorial}
+            onSkip={skipTutorial}
+            isLast
+            position="top"
+            mobileArrowAlign="left"
+          >
+            <div className={`ai-savebar${activeStep === 8 ? ' ai-tutgap' : ''}`}>
               <button
                 type="button"
                 onClick={() => { keepForNextRef.current = true; handleAddItem(); }}
@@ -2549,42 +2763,22 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                 {isSaving ? <Spinner /> : (<><AiIcon name="check" sm />Save item</>)}
               </button>
             </div>
-          </aside>
-        )}
-      </div>
-
-      {/* ---------- Mobile pinned save bar (non-modal) ---------- */}
-      {!isModal && (
-        <div className="ai-savebar">
-          <button
-            type="button"
-            onClick={() => { keepForNextRef.current = true; handleAddItem(); }}
-            disabled={saveDisabled}
-            title="Save this item and start another, keeping unit, tax and groups"
-            className="ai-btn ai-btn--secondary ai-btn--lg"
-          >
-            Save &amp; new
-          </button>
-          <button
-            onClick={() => { keepForNextRef.current = false; handleAddItem(); }}
-            disabled={saveDisabled}
-            className="ai-btn ai-btn--primary ai-btn--lg"
-          >
-            {isSaving ? <Spinner /> : (<><AiIcon name="check" sm />Save item</>)}
-          </button>
-        </div>
-      )}
+          </TutorialStep>
+        )
+      }
 
       {/* ---------- Modal footer ---------- */}
-      {isModal && (
-        <div className="ai-modalbar">
-          <button onClick={onCancel} className="ai-btn ai-btn--ghost">Cancel</button>
-          <button onClick={handleAddItem} disabled={saveDisabled} className="ai-btn ai-btn--primary">
-            {isSaving ? <Spinner /> : 'Save and add to inventory'}
-          </button>
-        </div>
-      )}
-    </div>
+      {
+        isModal && (
+          <div className="ai-modalbar">
+            <button onClick={onCancel} className="ai-btn ai-btn--ghost">Cancel</button>
+            <button onClick={handleAddItem} disabled={saveDisabled} className="ai-btn ai-btn--primary">
+              {isSaving ? <Spinner /> : 'Save and add to inventory'}
+            </button>
+          </div>
+        )
+      }
+    </div >
   );
 };
 

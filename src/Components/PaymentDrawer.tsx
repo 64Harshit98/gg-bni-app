@@ -77,7 +77,9 @@ interface PaymentDrawerProps {
     /** Money goes out (paying a supplier) — wording becomes "Pay supplier / To pay". Returns flip direction per bill, so this isn't derived from mode. */
     payingOut?: boolean;
     /** Which side a newly created customer belongs to (POS and catalogue share the customers collection) */
-    customerSource?: 'pos' | 'catalogue';
+        customerSource?: 'pos' | 'catalogue';
+    /** Colour theme of the drawer. 'catalogue' = orange accents (confirm button etc.), default blue. */
+    theme?: 'pos' | 'catalogue';
     subtotal: number;
     totalTax?: number;
     billTotal: number;
@@ -378,7 +380,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     onClose,
     mode = 'sale',
     payingOut = false,
-    customerSource = 'pos',
+        customerSource = 'pos',
+    theme = 'pos',
     billTotal,
     originalBillTotal,
     totalQuantity = 0,
@@ -1396,7 +1399,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             Confirm payment
         </>
     );
-    const confirmBtnCls = 'w-full text-white rounded-sm font-semibold text-sm bg-[#155dfc] hover:bg-[#1447e6] active:scale-[0.98] transition-all disabled:opacity-45 disabled:cursor-not-allowed disabled:active:scale-100 flex items-center justify-center gap-2';
+        const isCatalogueTheme = theme === 'catalogue';
+    const confirmBtnCls = `w-full text-white rounded-sm font-semibold text-sm ${isCatalogueTheme ? 'bg-[#c2410c] hover:bg-[#9a3412]' : 'bg-[#155dfc] hover:bg-[#1447e6]'} active:scale-[0.98] transition-all disabled:opacity-45 disabled:cursor-not-allowed disabled:active:scale-100 flex items-center justify-center gap-2`;
 
     const confirmContentMobile = isSubmitting ? (
         <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Confirming...</>

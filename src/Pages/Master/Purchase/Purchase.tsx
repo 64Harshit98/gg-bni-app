@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ROUTES } from '../../../constants/routes.constants';
@@ -39,8 +39,13 @@ import {
   usePurchasePayment,
   usePurchaseSmartScan,
 } from './hooks';
-
+import useTutorial from '../../../Catalogue/hooks/useTutorial';
+import { completeTutorial } from '../../../Catalogue/hooks/useCompleteTutorial';
+import { TutorialStep } from '../../../Components/TutorialStep';
 export type { PurchaseItem, PurchaseDocumentData, Purchase };
+
+const TOTAL_STEPS = 4;
+const TUTORIAL_KEY = 'purchaseTutorialDone';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SELLAR design-system class tokens.
@@ -115,6 +120,24 @@ const normalizeUnit = (rawUnit: string | undefined | null): string => {
   if (['pkt', 'packet', 'packets', 'pack', 'pk'].includes(u)) return 'pkt';
   return 'pcs'; // safe fallback — always a valid dropdown option
 };
+// ── Tutorial sample data (shown only while the tutorial is running) ──
+const SAMPLE_SUPPLIER = { name: 'Sample Supplier', phone: '9000000000' };
+
+const SAMPLE_PURCHASE_ITEMS = [
+  { id: 'sample-line-1', productId: 'sample-1', name: 'Sample Item A', quantity: 10, unit: 'pcs', mrp: 120, purchasePrice: 96, originalPurchasePrice: 96, discount: 20, purchasediscount: 20, purchasediscount2: 0, taxRate: 12, stock: 40, barcode: '', addedAt: 1 },
+  { id: 'sample-line-2', productId: 'sample-2', name: 'Sample Item B', quantity: 5, unit: 'box', mrp: 250, purchasePrice: 200, originalPurchasePrice: 200, discount: 20, purchasediscount: 20, purchasediscount2: 0, taxRate: 18, stock: 12, barcode: '', addedAt: 2 },
+  { id: 'sample-line-3', productId: 'sample-3', name: 'Sample Item C', quantity: 20, unit: 'pcs', mrp: 50, purchasePrice: 42.5, originalPurchasePrice: 42.5, discount: 15, purchasediscount: 15, purchasediscount2: 0, taxRate: 5, stock: 80, barcode: '', addedAt: 3 },
+] as unknown as PurchaseItem[];
+
+const SAMPLE_GRID_ITEMS = [
+  { id: 'sample-1', name: 'Sample Item A', mrp: 120, purchasePrice: 96, salesPrice: 110, unit: 'pcs' },
+  { id: 'sample-2', name: 'Sample Item B', mrp: 250, purchasePrice: 200, salesPrice: 230, unit: 'box' },
+  { id: 'sample-3', name: 'Sample Item C', mrp: 50, purchasePrice: 42.5, salesPrice: 48, unit: 'pcs' },
+  { id: 'sample-4', name: 'Sample Item D', mrp: 80, purchasePrice: 64, salesPrice: 75, unit: 'pcs' },
+  { id: 'sample-5', name: 'Sample Item E', mrp: 300, purchasePrice: 240, salesPrice: 280, unit: 'pkt' },
+  { id: 'sample-6', name: 'Sample Item F', mrp: 150, purchasePrice: 120, salesPrice: 140, unit: 'pcs' },
+] as unknown as Item[];
+
 interface SupplierSuggestion {
   name: string;
   number: string;
@@ -140,6 +163,12 @@ const PurchasePage: React.FC = () => {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [showPhotos, setShowPhotos] = useState<boolean | null>(null);
+
+  // Tutorial state — declared early so sample data can drive the totals below
+  const [tutorialStep, setTutorialStep] = useState(0);
+  const activeStep = isEditMode ? 0 : tutorialStep; // no tutorial while editing
+  const isTutorialActive = activeStep > 0 && activeStep <= TOTAL_STEPS;
+
   const [items, setItems] = useState<PurchaseItem[]>(() => {
     if (isEditMode || !currentUser?.companyId) return [];
     try {
@@ -543,7 +572,8 @@ const PurchasePage: React.FC = () => {
     setModal({ message: `Linked to "${picked.name}"`, type: State.SUCCESS });
     setTimeout(() => setModal(null), 1500);
   };
-
+  // Sample lines while the tutorial runs, real cart otherwise (same idea as Home's displayData)
+  const displayItems = isTutorialActive ? SAMPLE_PURCHASE_ITEMS : items;
   const {
     subtotal,
     taxableAmount,
@@ -554,8 +584,8 @@ const PurchasePage: React.FC = () => {
     totalQuantity,
     totalMrp
   } = useMemo(
-    () => calculatePurchaseTotals(items, purchaseSettings, billTaxType),
-    [items, purchaseSettings, billTaxType]
+    () => calculatePurchaseTotals(displayItems, purchaseSettings, billTaxType),
+    [displayItems, purchaseSettings, billTaxType]
   );
 
   // Card view: optionally pull items that are already in the bill to the top.
@@ -563,12 +593,13 @@ const PurchasePage: React.FC = () => {
   const selectedOnTop =
     purchaseSettings?.purchaseViewType === 'card' && !!purchaseSettings?.cardSelectedOnTop;
   const gridItemsToShow = useMemo(() => {
+    if (isTutorialActive) return SAMPLE_GRID_ITEMS;
     if (!selectedOnTop) return sortedGridItems;
     const inCart = new Set(items.map((l) => l.productId).filter(Boolean));
     const picked = sortedGridItems.filter((it) => inCart.has(it.id));
     const rest = sortedGridItems.filter((it) => !inCart.has(it.id));
     return [...picked, ...rest];
-  }, [sortedGridItems, items, selectedOnTop]);
+  }, [sortedGridItems, items, selectedOnTop, isTutorialActive]);
 
   // ── Supplier rate-change alert ──
   // Flags only: a line's rate changes when the user taps "Use ₹x"; "Keep" accepts the new rate.
@@ -639,7 +670,18 @@ const PurchasePage: React.FC = () => {
     setGodownAssignments,
     rateAudit: rateAlertEnabled ? { supplierId: rateAlert.supplierId, forLine: rateAlert.auditFor } : undefined,
   });
+  // ---------- Tutorial ----------
+  const nextStep = useCallback((n: number) => {
+    setTutorialStep(n <= TOTAL_STEPS ? n : 0);
+  }, []);
+  const skipTutorial = useCallback(() => {
+    completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep);
+  }, [currentUser]);
+  const finishTutorial = skipTutorial;
 
+  useTutorial(currentUser, setTutorialStep, TUTORIAL_KEY);
+
+  const tour = { currentStep: activeStep, onSkip: skipTutorial };
   if (pageIsLoading) return (
     <div className="flex items-center justify-center h-screen bg-[#eef2ff] text-[#45556c]">
       <Spinner /> <p className="ml-2">Loading...</p>
@@ -739,7 +781,7 @@ const PurchasePage: React.FC = () => {
 
   const pageTitle = editModeData ? 'Edit purchase' : (purchaseSettings?.voucherName ?? 'Purchase');
   const actionLabel = isEditMode ? 'Update purchase' : 'Record purchase';
-  const disableAction = items.length === 0 || hasUnlinkedItems;
+  const disableAction = isTutorialActive || items.length === 0 || hasUnlinkedItems;
 
   // Shared footer (Components/Footer) — purchase wording passed in as props
   const footerProps = {
@@ -767,100 +809,108 @@ const PurchasePage: React.FC = () => {
 
   // Tablet (768–1279): same bottom checkout bar as the mobile footer
   const renderTabletCheckoutBar = () => (
-    <div className="hidden md:block xl:hidden flex-shrink-0 z-20 bg-[#ffffff] border-t border-[#dfe6fb]">
-      {isTabletBreakdownOpen && (
-        <div className="px-4 pt-3 space-y-1.5 text-sm">
-          <div className="flex justify-between gap-4">
-            <span className="text-[#45556c]">Items cost</span>
-            <span className="font-medium tabular-nums text-[#0f172b]">₹{fmtINR(subtotal)}</span>
+    <TutorialStep step={4} {...tour} text="Check the total here, then record the purchase." onNext={finishTutorial} isLast position="top">
+      <div className="hidden md:block xl:hidden flex-shrink-0 z-20 bg-[#ffffff] border-t border-[#dfe6fb]">
+        {isTabletBreakdownOpen && (
+          <div className="px-4 pt-3 space-y-1.5 text-sm">
+            <div className="flex justify-between gap-4">
+              <span className="text-[#45556c]">Items cost</span>
+              <span className="font-medium tabular-nums text-[#0f172b]">₹{fmtINR(subtotal)}</span>
+            </div>
+            {displayTaxTotal && (
+              <div className="flex justify-between gap-4">
+                <span className="text-[#45556c]">GST input credit</span>
+                <span className="font-medium tabular-nums text-[#155dfc]">+ ₹{fmtINR(taxAmount)}</span>
+              </div>
+            )}
+            {Number(roundingOffAmount) !== 0 && (
+              <div className="flex justify-between gap-4">
+                <span className="text-[#45556c]">Round off</span>
+                <span className="font-medium tabular-nums text-[#0f172b]">₹{fmtINR(roundingOffAmount)}</span>
+              </div>
+            )}
+            {Number(totalMrp) > 0 && (
+              <div className="flex justify-between gap-4 border-t border-[#dfe6fb] pt-1.5">
+                <span className="text-[#5b6b86]">MRP value</span>
+                <span className="tabular-nums text-[#5b6b86]">₹{fmtINR(Number(totalMrp))}</span>
+              </div>
+            )}
           </div>
-          {displayTaxTotal && (
-            <div className="flex justify-between gap-4">
-              <span className="text-[#45556c]">GST input credit</span>
-              <span className="font-medium tabular-nums text-[#155dfc]">+ ₹{fmtINR(taxAmount)}</span>
-            </div>
-          )}
-          {Number(roundingOffAmount) !== 0 && (
-            <div className="flex justify-between gap-4">
-              <span className="text-[#45556c]">Round off</span>
-              <span className="font-medium tabular-nums text-[#0f172b]">₹{fmtINR(roundingOffAmount)}</span>
-            </div>
-          )}
-          {Number(totalMrp) > 0 && (
-            <div className="flex justify-between gap-4 border-t border-[#dfe6fb] pt-1.5">
-              <span className="text-[#5b6b86]">MRP value</span>
-              <span className="tabular-nums text-[#5b6b86]">₹{fmtINR(Number(totalMrp))}</span>
-            </div>
-          )}
+        )}
+        <div className="flex items-center gap-3 px-4 pt-3 pb-4">
+          <button type="button" onClick={() => setIsTabletBreakdownOpen(v => !v)} aria-expanded={isTabletBreakdownOpen}
+            className="flex-1 min-w-0 text-left bg-transparent border-0 p-0 cursor-pointer">
+            <span className="flex items-center gap-1 text-xs text-[#45556c]">
+              <span className="truncate">{totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}</span>
+              <FiChevronUp size={14} className={`flex-shrink-0 transition-transform ${isTabletBreakdownOpen ? 'rotate-180' : ''}`} />
+            </span>
+            <b className="block text-xl leading-[26px] font-semibold tabular-nums text-[#0f172b] truncate">₹{fmtINR(finalAmount)}</b>
+          </button>
+          <button type="button" onClick={proceedToPayment} disabled={disableAction}
+            className={`${BTN_PRIMARY} !h-12 !px-4 !text-[15px]`}>
+            {actionLabel}
+            <FiChevronRight size={16} />
+          </button>
         </div>
-      )}
-      <div className="flex items-center gap-3 px-4 pt-3 pb-4">
-        <button type="button" onClick={() => setIsTabletBreakdownOpen(v => !v)} aria-expanded={isTabletBreakdownOpen}
-          className="flex-1 min-w-0 text-left bg-transparent border-0 p-0 cursor-pointer">
-          <span className="flex items-center gap-1 text-xs text-[#45556c]">
-            <span className="truncate">{totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}</span>
-            <FiChevronUp size={14} className={`flex-shrink-0 transition-transform ${isTabletBreakdownOpen ? 'rotate-180' : ''}`} />
-          </span>
-          <b className="block text-xl leading-[26px] font-semibold tabular-nums text-[#0f172b] truncate">₹{fmtINR(finalAmount)}</b>
-        </button>
-        <button type="button" onClick={proceedToPayment} disabled={disableAction}
-          className={`${BTN_PRIMARY} !h-12 !px-4 !text-[15px]`}>
-          {actionLabel}
-          <FiChevronRight size={16} />
-        </button>
       </div>
-    </div>
+    </TutorialStep>
   );
 
   // ── Supplier card (design: supplier first, shown in the summary panel on desktop, on top below xl) ──
-  const supplierDisplayName = editModeData ? (editModeData.partyName || '') : supplierName;
-  const supplierDisplayPhone = editModeData ? (editModeData.partyNumber || '') : supplierPhone;
+  const supplierDisplayName = isTutorialActive
+    ? SAMPLE_SUPPLIER.name
+    : editModeData ? (editModeData.partyName || '') : supplierName;
+  const supplierDisplayPhone = isTutorialActive
+    ? SAMPLE_SUPPLIER.phone
+    : editModeData ? (editModeData.partyNumber || '') : supplierPhone;
 
   const renderSupplierCard = () => (
-    <div>
-      {/* <span className={`block mb-1.5 ${OVERLINE}`}>
+    <TutorialStep step={1} {...tour} text="Add the supplier for this purchase here. You can also add them at payment." onNext={() => nextStep(2)}>
+      <div>
+        {/* <span className={`block mb-1.5 ${OVERLINE}`}>
         Supplier{purchaseSettings?.requireSupplierName && <span className="text-[#d5000c]"> *</span>}
       </span> */}
-      <div className={`${CARD} flex items-center gap-2.5 p-2.5`}>
-        <span className="inline-grid place-items-center w-8 h-8 flex-none rounded-sm bg-[#e9faef] text-[#008236]">
-          <FiPackage size={18} />
-        </span>
-        <div className="flex-1 min-w-0">
-          {supplierDisplayName ? (
-            <>
-              <div className="text-sm font-semibold text-[#0f172b] truncate">{supplierDisplayName}</div>
-              {supplierDisplayPhone && (
-                <div className="text-xs text-[#5b6b86] truncate">{supplierDisplayPhone}</div>
-              )}
-            </>
-          ) : (
-            <>
-              <div className="text-sm font-semibold text-[#45556c]">No supplier added</div>
-              <div className="text-xs text-[#5b6b86]">Add now, or at payment</div>
-            </>
+        <div className={`${CARD} flex items-center gap-2.5 p-2.5`}>
+          <span className="inline-grid place-items-center w-8 h-8 flex-none rounded-sm bg-[#e9faef] text-[#008236]">
+            <FiPackage size={18} />
+          </span>
+          <div className="flex-1 min-w-0">
+            {supplierDisplayName ? (
+              <>
+                <div className="text-sm font-semibold text-[#0f172b] truncate">{supplierDisplayName}</div>
+                {supplierDisplayPhone && (
+                  <div className="text-xs text-[#5b6b86] truncate">{supplierDisplayPhone}</div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="text-sm font-semibold text-[#45556c]">No supplier added</div>
+                <div className="text-xs text-[#5b6b86]">Add now, or at payment</div>
+              </>
+            )}
+          </div>
+          {!editModeData && (
+            <button type="button" onClick={openSupplierModal} className={`${BTN_GHOST} !h-8 !px-3 text-[13px] flex-shrink-0`}>
+              {supplierName ? 'Change' : 'Add'}
+            </button>
           )}
         </div>
-        {!editModeData && (
-          <button type="button" onClick={openSupplierModal} className={`${BTN_GHOST} !h-8 !px-3 text-[13px] flex-shrink-0`}>
-            {supplierName ? 'Change' : 'Add'}
-          </button>
+        {supplierPricing.offer && (
+          <div
+            className={`mt-2 flex items-center gap-2 px-3 py-2 rounded-sm text-[13px] font-medium ${supplierPricing.offer.tone === 'warn'
+              ? 'bg-[#fff3dd] text-[#bb4d00]'
+              : supplierPricing.offer.tone === 'applied' ? 'bg-[#e9faef] text-[#008236]' : 'bg-[#e6eeff] text-[#155dfc]'}`}
+            role="status"
+          >
+            <span className="flex-1 min-w-0">{supplierPricing.offer.text}</span>
+            <button type="button" onClick={supplierPricing.offer.onAction}
+              className={`flex-shrink-0 h-8 px-3 rounded-sm text-xs font-semibold ${supplierPricing.offer.tone === 'info' ? 'bg-[#155dfc] text-white hover:bg-[#1447e6]' : 'bg-white border border-current hover:opacity-80'}`}>
+              {supplierPricing.offer.actionLabel}
+            </button>
+          </div>
         )}
       </div>
-      {supplierPricing.offer && (
-        <div
-          className={`mt-2 flex items-center gap-2 px-3 py-2 rounded-sm text-[13px] font-medium ${supplierPricing.offer.tone === 'warn'
-            ? 'bg-[#fff3dd] text-[#bb4d00]'
-            : supplierPricing.offer.tone === 'applied' ? 'bg-[#e9faef] text-[#008236]' : 'bg-[#e6eeff] text-[#155dfc]'}`}
-          role="status"
-        >
-          <span className="flex-1 min-w-0">{supplierPricing.offer.text}</span>
-          <button type="button" onClick={supplierPricing.offer.onAction}
-            className={`flex-shrink-0 h-8 px-3 rounded-sm text-xs font-semibold ${supplierPricing.offer.tone === 'info' ? 'bg-[#155dfc] text-white hover:bg-[#1447e6]' : 'bg-white border border-current hover:opacity-80'}`}>
-            {supplierPricing.offer.actionLabel}
-          </button>
-        </div>
-      )}
-    </div>
+    </TutorialStep>
   );
 
   // Desktop (xl+) summary panel — card view also lists the cart lines (like Sales), list view already shows them on the left
@@ -872,14 +922,14 @@ const PurchasePage: React.FC = () => {
         <h2 className="m-0 text-base font-semibold text-[#0f172b]">Purchase summary</h2>
         <div className="flex items-center gap-2">
           <span className={BADGE}>{totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}</span>
-          {showLines && items.length > 0 && (
+          {showLines && !isTutorialActive && items.length > 0 && (
             <button type="button" onClick={handleClearCart} className={BTN_CLEAR}><FiTrash2 size={14} /> Clear</button>
           )}
         </div>
       </div>
-      {showLines && items.length > 0 && (
+      {showLines && displayItems.length > 0 && (
         <CartLinesCompact
-          items={items}
+          items={displayItems}
           getUnitPrice={(i) => Number(i.purchasePrice) || 0}
           onQuantityChange={handleQuantityChange}
           onDelete={handleDeleteItem}
@@ -887,7 +937,11 @@ const PurchasePage: React.FC = () => {
         />
       )}
       {showLines && rateChangeBanner()}
-      <GenericBillFooter {...footerProps} />
+      <TutorialStep step={4} {...tour} text="Check the total here, then record the purchase." onNext={finishTutorial} isLast position="top">
+        <div>
+          <GenericBillFooter {...footerProps} />
+        </div>
+      </TutorialStep>
     </aside>
   );
 
@@ -917,23 +971,25 @@ const PurchasePage: React.FC = () => {
           </span>
         </h1>
         {/* Supplier pill — tap = supplier popup */}
-        <button
-          type="button"
-          onClick={openSupplierModal}
-          disabled={!!editModeData}
-          aria-label="Supplier"
-          className="inline-flex items-center gap-1.5 h-9 max-w-[130px] pl-1.5 pr-3 rounded-full bg-[#e9faef] text-[#008236] text-[13px] font-semibold flex-shrink-0"
-        >
-          <span className="relative w-6 h-6 rounded-full bg-white flex items-center justify-center flex-shrink-0">
-            <FiPackage size={14} />
-            {!(supplierDisplayName || supplierDisplayPhone) && (
-              <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-[#008236] text-white flex items-center justify-center">
-                <FiPlus size={9} />
-              </span>
-            )}
-          </span>
-          <span className="truncate">{supplierDisplayName || supplierDisplayPhone || 'Supplier'}</span>
-        </button>
+        <TutorialStep step={1} {...tour} text="Tap here to add the supplier for this purchase." onNext={() => nextStep(2)}>
+          <button
+            type="button"
+            onClick={openSupplierModal}
+            disabled={!!editModeData}
+            aria-label="Supplier"
+            className="inline-flex items-center gap-1.5 h-9 max-w-[130px] pl-1.5 pr-3 rounded-full bg-[#e9faef] text-[#008236] text-[13px] font-semibold flex-shrink-0"
+          >
+            <span className="relative w-6 h-6 rounded-full bg-white flex items-center justify-center flex-shrink-0">
+              <FiPackage size={14} />
+              {!(supplierDisplayName || supplierDisplayPhone) && (
+                <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-[#008236] text-white flex items-center justify-center">
+                  <FiPlus size={9} />
+                </span>
+              )}
+            </span>
+            <span className="truncate">{supplierDisplayName || supplierDisplayPhone || 'Supplier'}</span>
+          </button>
+        </TutorialStep>
         <button type="button" onClick={() => setIsMoreOpen(true)} aria-label="More" className={ICON_BTN_CLS}>
           <FiMoreHorizontal size={20} />
         </button>
@@ -1461,7 +1517,9 @@ const PurchasePage: React.FC = () => {
               <div className="hidden md:block xl:hidden px-5 pt-4">{renderSupplierCard()}</div>
 
               {/* Desktop / tablet: pehle jaisa */}
-              <div className="hidden md:block px-5 pt-4">{renderGridSearch()}</div>
+              <TutorialStep step={2} {...tour} text="Search for items by name or scan a barcode to add them to this purchase." onNext={() => nextStep(3)}>
+                <div className="hidden md:block px-5 pt-4">{renderGridSearch()}</div>
+              </TutorialStep>
               <div className="hidden md:flex items-center gap-2 px-5 py-3">
                 <div className="flex gap-1.5 overflow-x-auto flex-1 scrollbar-hide">
                   {categories.map((cat) => (
@@ -1495,213 +1553,218 @@ const PurchasePage: React.FC = () => {
                 )}
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] md:grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] auto-rows-max content-start gap-2 bg-[#eef2ff] px-2 pt-2.5 pb-6 md:px-3">
-              {sortedGridItems.length === 0 ? (
-                <div className="col-span-full text-center text-gray-500 mt-10 py-10 bg-white rounded-sm">
-                  {gridSearchQuery ? (
-                    <>
-                      <p className="text-lg">No items found for "<span className="font-semibold">{gridSearchQuery}</span>"</p>
-                      <p className="text-sm mt-2">Try searching with different keywords or scan barcode</p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-lg">🔍 Start typing to search items</p>
-                      <p className="text-sm mt-2">Search by name or scan barcode to add items</p>
-                    </>
-                  )}
-                </div>
-              ) : (
-                gridItemsToShow.map(item => {
-                  const matchingCartItems = items.filter(i => i.productId === item.id);
-                  const lastAddedCartItem = matchingCartItems[matchingCartItems.length - 1];
-                  const isSelected = matchingCartItems.length > 0;
-                  const quantity = lastAddedCartItem?.quantity || 0;
-                  const mrp = item.mrp || 0;
-                  const masterPurchasePrice = Number(item.purchasePrice || 0);
-                  const masterPurchaseDiscount = (item as any).purchasediscount || 0;
-                  const globalDefaultDiscount = purchaseSettings?.defaultDiscount ?? 0;
+            <TutorialStep step={3} {...tour} text="Tap an item to add it. Tap again to increase the quantity, or use − to reduce it." onNext={() => nextStep(4)} mobileArrowAlign="left">
+              <div className="flex-1 overflow-y-auto grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] md:grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] auto-rows-max content-start gap-2 bg-[#eef2ff] px-2 pt-2.5 pb-6 md:px-3">
+                {!isTutorialActive && sortedGridItems.length === 0 ? (
+                  <div className="col-span-full text-center text-gray-500 mt-10 py-10 bg-white rounded-sm">
+                    {gridSearchQuery ? (
+                      <>
+                        <p className="text-lg">No items found for "<span className="font-semibold">{gridSearchQuery}</span>"</p>
+                        <p className="text-sm mt-2">Try searching with different keywords or scan barcode</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-lg">🔍 Start typing to search items</p>
+                        <p className="text-sm mt-2">Search by name or scan barcode to add items</p>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  gridItemsToShow.map(item => {
+                    const matchingCartItems = displayItems.filter(i => i.productId === item.id);
+                    const lastAddedCartItem = matchingCartItems[matchingCartItems.length - 1];
+                    const isSelected = matchingCartItems.length > 0;
+                    const quantity = lastAddedCartItem?.quantity || 0;
+                    const mrp = item.mrp || 0;
+                    const masterPurchasePrice = Number(item.purchasePrice || 0);
+                    const masterPurchaseDiscount = (item as any).purchasediscount || 0;
+                    const globalDefaultDiscount = purchaseSettings?.defaultDiscount ?? 0;
 
-                  const salesPriceBase = Number((item as any).salesPrice || 0);
-                  // const baseForCalc = masterPurchasePrice > 0 ? masterPurchasePrice
-                  //   : mrp > 0 ? mrp
-                  //   : salesPriceBase;
+                    const salesPriceBase = Number((item as any).salesPrice || 0);
+                    // const baseForCalc = masterPurchasePrice > 0 ? masterPurchasePrice
+                    //   : mrp > 0 ? mrp
+                    //   : salesPriceBase;
 
-                  let effectiveDisplayPrice = 0;
-                  let effectiveDiscPct = 0;
+                    let effectiveDisplayPrice = 0;
+                    let effectiveDiscPct = 0;
 
-                  if (lastAddedCartItem) {
-                    // Selected: show cart price and badge vs MRP or salesPrice
-                    effectiveDisplayPrice = Number(lastAddedCartItem.purchasePrice ?? 0);
-                    const badgeBase = mrp > 0 ? mrp : salesPriceBase;
-                    effectiveDiscPct = badgeBase > 0 && effectiveDisplayPrice < badgeBase
-                      ? Math.round(((badgeBase - effectiveDisplayPrice) / badgeBase) * 100)
-                      : 0;
-                  } else if (masterPurchasePrice > 0) {
-                    effectiveDisplayPrice = masterPurchasePrice;
-                    const badgeBase = mrp > 0 ? mrp : salesPriceBase;
-                    effectiveDiscPct = badgeBase > 0 && masterPurchasePrice < badgeBase
-                      ? Math.round(((badgeBase - masterPurchasePrice) / badgeBase) * 100)
-                      : 0;
-                  } else if (mrp > 0) {
-                    if (masterPurchaseDiscount > 0) {
-                      effectiveDisplayPrice = mrp * (1 - masterPurchaseDiscount / 100);
-                      effectiveDiscPct = masterPurchaseDiscount;
-                    } else if (globalDefaultDiscount > 0) {
-                      effectiveDisplayPrice = mrp * (1 - globalDefaultDiscount / 100);
-                      effectiveDiscPct = globalDefaultDiscount;
-                    } else {
-                      effectiveDisplayPrice = mrp;
-                      effectiveDiscPct = 0;
+                    if (lastAddedCartItem) {
+                      // Selected: show cart price and badge vs MRP or salesPrice
+                      effectiveDisplayPrice = Number(lastAddedCartItem.purchasePrice ?? 0);
+                      const badgeBase = mrp > 0 ? mrp : salesPriceBase;
+                      effectiveDiscPct = badgeBase > 0 && effectiveDisplayPrice < badgeBase
+                        ? Math.round(((badgeBase - effectiveDisplayPrice) / badgeBase) * 100)
+                        : 0;
+                    } else if (masterPurchasePrice > 0) {
+                      effectiveDisplayPrice = masterPurchasePrice;
+                      const badgeBase = mrp > 0 ? mrp : salesPriceBase;
+                      effectiveDiscPct = badgeBase > 0 && masterPurchasePrice < badgeBase
+                        ? Math.round(((badgeBase - masterPurchasePrice) / badgeBase) * 100)
+                        : 0;
+                    } else if (mrp > 0) {
+                      if (masterPurchaseDiscount > 0) {
+                        effectiveDisplayPrice = mrp * (1 - masterPurchaseDiscount / 100);
+                        effectiveDiscPct = masterPurchaseDiscount;
+                      } else if (globalDefaultDiscount > 0) {
+                        effectiveDisplayPrice = mrp * (1 - globalDefaultDiscount / 100);
+                        effectiveDiscPct = globalDefaultDiscount;
+                      } else {
+                        effectiveDisplayPrice = mrp;
+                        effectiveDiscPct = 0;
+                      }
+                    } else if (salesPriceBase > 0) {
+                      // No MRP, no master purchase price — use salesPrice as base
+                      if (masterPurchaseDiscount > 0) {
+                        effectiveDisplayPrice = salesPriceBase * (1 - masterPurchaseDiscount / 100);
+                        effectiveDiscPct = masterPurchaseDiscount;
+                      } else if (globalDefaultDiscount > 0) {
+                        effectiveDisplayPrice = salesPriceBase * (1 - globalDefaultDiscount / 100);
+                        effectiveDiscPct = globalDefaultDiscount;
+                      } else {
+                        effectiveDisplayPrice = salesPriceBase;
+                        effectiveDiscPct = 0;
+                      }
                     }
-                  } else if (salesPriceBase > 0) {
-                    // No MRP, no master purchase price — use salesPrice as base
-                    if (masterPurchaseDiscount > 0) {
-                      effectiveDisplayPrice = salesPriceBase * (1 - masterPurchaseDiscount / 100);
-                      effectiveDiscPct = masterPurchaseDiscount;
-                    } else if (globalDefaultDiscount > 0) {
-                      effectiveDisplayPrice = salesPriceBase * (1 - globalDefaultDiscount / 100);
-                      effectiveDiscPct = globalDefaultDiscount;
-                    } else {
-                      effectiveDisplayPrice = salesPriceBase;
-                      effectiveDiscPct = 0;
-                    }
-                  }
 
-                  const cp = effectiveDisplayPrice;
-                  const discPct = effectiveDiscPct;
-                  const lineSubtotal = Math.round((Number(cp) * quantity) * 100) / 100;
+                    const cp = effectiveDisplayPrice;
+                    const discPct = effectiveDiscPct;
+                    const lineSubtotal = Math.round((Number(cp) * quantity) * 100) / 100;
 
-                  // ── CARD WITH IMAGE ────────────────────────────────────────────────────
-                  const photoUrl: string | undefined = isCardImageView
-                    ? ((item as any).image || (item as any).imageUrl || (item as any).thumbnail || (item as any).imageURL)
-                    : undefined;
-                  const atMin = isSelected && quantity <= 1;
+                    // ── CARD WITH IMAGE ────────────────────────────────────────────────────
+                    const photoUrl: string | undefined = isCardImageView
+                      ? ((item as any).image || (item as any).imageUrl || (item as any).thumbnail || (item as any).imageURL)
+                      : undefined;
+                    const atMin = isSelected && quantity <= 1;
 
-                  const openEdit = () => {
-                    const orig = availableItems.find(a => a.id === item.id);
-                    if (orig) handleOpenEditDrawer(orig);
-                  };
-                  const handleTileTap = () => {
-                    if (tileHoldFired.current) { tileHoldFired.current = false; return; }
-                    if (isSelected) handleQuantityChange(lastAddedCartItem.id, quantity + 1);
-                    else handleAddOrPickTier(item);
-                  };
+                    const openEdit = () => {
+                      const orig = availableItems.find(a => a.id === item.id);
+                      if (orig) handleOpenEditDrawer(orig);
+                    };
+                    const handleTileTap = () => {
+                      if (isTutorialActive) return; // sample tiles must never touch the real cart
+                      if (tileHoldFired.current) { tileHoldFired.current = false; return; }
+                      if (isSelected) handleQuantityChange(lastAddedCartItem.id, quantity + 1);
+                      else handleAddOrPickTier(item);
+                    };
 
-                  return (
-                    <div key={item.id} className="relative min-w-0">
-                      <button
-                        type="button"
-                        aria-label={`Add one ${item.name}${isSelected ? `, ${quantity} in bill` : ''}`}
-                        onClick={handleTileTap}
-                        onPointerDown={(e) => {
-                          if (e.pointerType !== 'touch') return;
-                          tileHoldFired.current = false;
-                          clearTimeout(tileHoldTimer.current);
-                          tileHoldTimer.current = setTimeout(() => { tileHoldFired.current = true; openEdit(); }, 450);
-                        }}
-                        onPointerUp={() => clearTimeout(tileHoldTimer.current)}
-                        onPointerLeave={() => clearTimeout(tileHoldTimer.current)}
-                        onPointerCancel={() => clearTimeout(tileHoldTimer.current)}
-                        onContextMenu={(e) => e.preventDefault()}
-                        className={`relative flex flex-col w-full overflow-hidden p-0 text-left rounded-sm border-2 select-none cursor-pointer transition active:scale-[0.97] [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent]
+                    return (
+                      <div key={item.id} className="relative min-w-0">
+                        <button
+                          type="button"
+                          aria-label={`Add one ${item.name}${isSelected ? `, ${quantity} in bill` : ''}`}
+                          onClick={handleTileTap}
+                          onPointerDown={(e) => {
+                            if (e.pointerType !== 'touch') return;
+                            tileHoldFired.current = false;
+                            clearTimeout(tileHoldTimer.current);
+                            tileHoldTimer.current = setTimeout(() => { tileHoldFired.current = true; openEdit(); }, 450);
+                          }}
+                          onPointerUp={() => clearTimeout(tileHoldTimer.current)}
+                          onPointerLeave={() => clearTimeout(tileHoldTimer.current)}
+                          onPointerCancel={() => clearTimeout(tileHoldTimer.current)}
+                          onContextMenu={(e) => e.preventDefault()}
+                          className={`relative flex flex-col w-full overflow-hidden p-0 text-left rounded-sm border-2 select-none cursor-pointer transition active:scale-[0.97] [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent]
         ${isCardImageView ? 'h-[136px] md:h-[164px]' : 'h-[100px]'}
         ${isSelected ? 'bg-blue-50 border-blue-600' : 'bg-white border-transparent ring-1 ring-gray-200 hover:ring-gray-300'}`}
-                      >
-                        {/* Photo strip (photo mode only) */}
-                        {isCardImageView && (
-                          <span className={`relative flex items-center justify-center w-full h-[60px] md:h-[88px] p-1 shrink-0 overflow-hidden ${isSelected ? 'bg-white' : 'bg-gray-50'}`}>
-                            {photoUrl && (
-                              <img
-                                src={photoUrl}
-                                alt=""
-                                loading="lazy"
-                                className="max-w-full max-h-full object-contain block"
-                                onError={(e) => {
-                                  (e.currentTarget as HTMLImageElement).style.display = 'none';
-                                  const ph = (e.currentTarget as HTMLImageElement).parentElement?.querySelector<HTMLElement>('[data-no-image]');
-                                  if (ph) ph.style.display = 'flex';
-                                }}
-                              />
-                            )}
-                            <span data-no-image className="absolute inset-0 items-center justify-center" style={{ display: photoUrl ? 'none' : 'flex' }}>
-                              <FiCamera size={20} strokeWidth={1.5} className="text-gray-300" />
-                            </span>
-                            {discPct > 0 && (
-                              <span className="absolute top-1 left-1 inline-flex items-center h-4 px-1 rounded-sm bg-blue-600 text-white text-[10px] leading-[14px] font-bold whitespace-nowrap">
-                                {discPct}% OFF
+                        >
+                          {/* Photo strip (photo mode only) */}
+                          {isCardImageView && (
+                            <span className={`relative flex items-center justify-center w-full h-[60px] md:h-[88px] p-1 shrink-0 overflow-hidden ${isSelected ? 'bg-white' : 'bg-gray-50'}`}>
+                              {photoUrl && (
+                                <img
+                                  src={photoUrl}
+                                  alt=""
+                                  loading="lazy"
+                                  className="max-w-full max-h-full object-contain block"
+                                  onError={(e) => {
+                                    (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                    const ph = (e.currentTarget as HTMLImageElement).parentElement?.querySelector<HTMLElement>('[data-no-image]');
+                                    if (ph) ph.style.display = 'flex';
+                                  }}
+                                />
+                              )}
+                              <span data-no-image className="absolute inset-0 items-center justify-center" style={{ display: photoUrl ? 'none' : 'flex' }}>
+                                <FiCamera size={20} strokeWidth={1.5} className="text-gray-300" />
                               </span>
-                            )}
+                              {discPct > 0 && (
+                                <span className="absolute top-1 left-1 inline-flex items-center h-4 px-1 rounded-sm bg-blue-600 text-white text-[10px] leading-[14px] font-bold whitespace-nowrap">
+                                  {discPct}% OFF
+                                </span>
+                              )}
+                            </span>
+                          )}
+
+                          {/* Name + price row */}
+                          <span className={`flex flex-col flex-1 min-w-0 gap-1 ${isCardImageView ? 'px-1.5 py-1' : 'p-1.5'}`}>
+                            <span
+                              className={`block overflow-hidden pr-2 text-[12px] leading-4 font-semibold text-gray-900 break-words [display:-webkit-box] [-webkit-box-orient:vertical] ${isCardImageView ? '[-webkit-line-clamp:2] h-8' : '[-webkit-line-clamp:3] h-12'}`}
+                              title={item.name}
+                            >
+                              {item.name}
+                            </span>
+                            <span className={`flex items-center gap-1 mt-auto min-w-0 tabular-nums ${isCardImageView ? 'h-7' : 'h-8'}`}>
+                              {isSelected ? (
+                                <span className="ml-auto text-xs leading-4 font-bold text-blue-600 whitespace-nowrap md:mr-[34px]">
+                                  ₹{lineSubtotal.toLocaleString('en-IN')}
+                                </span>
+                              ) : (
+                                <>
+                                  <span className="text-[13px] leading-4 font-bold text-gray-900 whitespace-nowrap">₹{Number(cp).toLocaleString('en-IN')}</span>
+                                  {discPct > 0 && mrp > 0 && Number(cp) < mrp && (
+                                    <span className="min-w-0 truncate text-[11px] leading-[14px] text-gray-500 line-through whitespace-nowrap">₹{mrp.toLocaleString('en-IN')}</span>
+                                  )}
+                                </>
+                              )}
+                            </span>
+                          </span>
+                        </button>
+
+                        {/* Qty badge */}
+                        {isSelected && (
+                          <span aria-hidden="true" className="absolute -top-[7px] -right-[7px] z-[2] min-w-[22px] h-[22px] px-1.5 grid place-items-center rounded-full bg-blue-600 text-white text-[11px] leading-[14px] font-bold tabular-nums ring-2 ring-[#eef2ff] pointer-events-none">
+                            {quantity}
                           </span>
                         )}
 
-                        {/* Name + price row */}
-                        <span className={`flex flex-col flex-1 min-w-0 gap-1 ${isCardImageView ? 'px-1.5 py-1' : 'p-1.5'}`}>
-                          <span
-                            className={`block overflow-hidden pr-2 text-[12px] leading-4 font-semibold text-gray-900 break-words [display:-webkit-box] [-webkit-box-orient:vertical] ${isCardImageView ? '[-webkit-line-clamp:2] h-8' : '[-webkit-line-clamp:3] h-12'}`}
-                            title={item.name}
+                        {/* Minus (trash at qty 1) */}
+                        {isSelected && (
+                          <button
+                            type="button"
+                            aria-label={`${atMin ? 'Remove' : 'One less'} ${item.name}`}
+                            onClick={() => {
+                              if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1);
+                              else handleDeleteItem(lastAddedCartItem.id);
+                            }}
+                            className={`absolute z-[1] grid place-items-center rounded-sm bg-white text-blue-600 border-[1.5px] border-blue-600 hover:bg-blue-600 hover:text-white transition-colors
+          ${isCardImageView ? 'bottom-1.5 left-1.5 w-7 h-7' : 'bottom-2 left-2 w-8 h-8'}`}
                           >
-                            {item.name}
-                          </span>
-                          <span className={`flex items-center gap-1 mt-auto min-w-0 tabular-nums ${isCardImageView ? 'h-7' : 'h-8'}`}>
-                            {isSelected ? (
-                              <span className="ml-auto text-xs leading-4 font-bold text-blue-600 whitespace-nowrap md:mr-[34px]">
-                                ₹{lineSubtotal.toLocaleString('en-IN')}
-                              </span>
-                            ) : (
-                              <>
-                                <span className="text-[13px] leading-4 font-bold text-gray-900 whitespace-nowrap">₹{Number(cp).toLocaleString('en-IN')}</span>
-                                {discPct > 0 && mrp > 0 && Number(cp) < mrp && (
-                                  <span className="min-w-0 truncate text-[11px] leading-[14px] text-gray-500 line-through whitespace-nowrap">₹{mrp.toLocaleString('en-IN')}</span>
-                                )}
-                              </>
-                            )}
-                          </span>
-                        </span>
-                      </button>
+                            {atMin ? <FiTrash2 size={16} /> : <FiMinus size={16} />}
+                          </button>
+                        )}
 
-                      {/* Qty badge */}
-                      {isSelected && (
-                        <span aria-hidden="true" className="absolute -top-[7px] -right-[7px] z-[2] min-w-[22px] h-[22px] px-1.5 grid place-items-center rounded-full bg-blue-600 text-white text-[11px] leading-[14px] font-bold tabular-nums ring-2 ring-[#eef2ff] pointer-events-none">
-                          {quantity}
-                        </span>
-                      )}
-
-                      {/* Minus (trash at qty 1) */}
-                      {isSelected && (
+                        {/* Edit (md and up; touch uses long-press) */}
                         <button
                           type="button"
-                          aria-label={`${atMin ? 'Remove' : 'One less'} ${item.name}`}
-                          onClick={() => {
-                            if (quantity > 1) handleQuantityChange(lastAddedCartItem.id, quantity - 1);
-                            else handleDeleteItem(lastAddedCartItem.id);
-                          }}
-                          className={`absolute z-[1] grid place-items-center rounded-sm bg-white text-blue-600 border-[1.5px] border-blue-600 hover:bg-blue-600 hover:text-white transition-colors
-          ${isCardImageView ? 'bottom-1.5 left-1.5 w-7 h-7' : 'bottom-2 left-2 w-8 h-8'}`}
-                        >
-                          {atMin ? <FiTrash2 size={16} /> : <FiMinus size={16} />}
-                        </button>
-                      )}
-
-                      {/* Edit (md and up; touch uses long-press) */}
-                      <button
-                        type="button"
-                        aria-label={`Edit ${item.name}`}
-                        onClick={openEdit}
-                        className={`hidden md:grid absolute z-[1] place-items-center rounded-sm bg-transparent text-gray-500 border border-transparent hover:text-blue-600 hover:border-gray-200 hover:bg-white transition-colors
+                          aria-label={`Edit ${item.name}`}
+                          onClick={openEdit}
+                          className={`hidden md:grid absolute z-[1] place-items-center rounded-sm bg-transparent text-gray-500 border border-transparent hover:text-blue-600 hover:border-gray-200 hover:bg-white transition-colors
         ${isCardImageView ? 'bottom-1.5 right-1.5 w-7 h-7' : 'bottom-2 right-2 w-8 h-8'}`}
-                      >
-                        <FiEdit size={15} />
-                      </button>
-                    </div>
-                  );
-                })
-              )}
-            </div>
+                        >
+                          <FiEdit size={15} />
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </TutorialStep>
 
             {/* Mobile footer */}
-            <div className="md:hidden flex-shrink-0">
-              <GenericBillFooter {...footerProps} />
-            </div>
+            <TutorialStep step={4} {...tour} text="Check the total here, then record the purchase." onNext={finishTutorial} isLast position="top">
+              <div className="md:hidden flex-shrink-0">
+                <GenericBillFooter {...footerProps} />
+              </div>
+            </TutorialStep>
             {/* Tablet checkout bar */}
             {renderTabletCheckoutBar()}
           </div>
@@ -1904,123 +1967,131 @@ const PurchasePage: React.FC = () => {
           <div className="hidden md:block xl:hidden flex-shrink-0 px-5 pt-4">{renderSupplierCard()}</div>
 
           {/* Search row: search field · Scan · New item */}
-          <div className="flex-shrink-0 px-3 pt-3 md:px-5 md:pt-5">
-            <div className="flex gap-2.5 items-end">
-              <div className="flex-grow min-w-0">
-                <SearchableItemInput label="Search item" placeholder="Search item name or barcode" items={availableItems} onItemSelected={handleItemSelectedWrapper} isLoading={pageIsLoading} error={error} categories={categories}
-                  onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })}
-                  itemGroupMap={itemGroupMap}
-                  onSearchChange={setCartSearchQuery}
+          <TutorialStep step={2} {...tour} text="Search items by name, scan a barcode or upload a supplier bill. Use New item to create a product." onNext={() => nextStep(3)} mobileArrowAlign="left">
+            <div className="flex-shrink-0 px-3 pt-3 md:px-5 md:pt-5">
+              <div className="flex gap-2.5 items-end">
+                <div className="flex-grow min-w-0">
+                  <SearchableItemInput label="Search item" placeholder="Search item name or barcode" items={availableItems} onItemSelected={handleItemSelectedWrapper} isLoading={pageIsLoading} error={error} categories={categories}
+                    onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })}
+                    itemGroupMap={itemGroupMap}
+                    onSearchChange={setCartSearchQuery}
+                  />
+                </div>
+                {/* Opens the "Choose action" dialog (scan item / upload bill) */}
+                <button
+                  onClick={() => setShowScannerModal(true)}
+                  className={`${BTN_SECONDARY} !h-12 md:!h-[52px] !px-3 md:!px-4 flex-shrink-0`}
+                  title="Scan item or upload bill"
+                  aria-label="Scan item or upload bill"
+                >
+                  <IconScanCircle width={20} height={20} />
+                  <span className="hidden md:inline">Scan</span>
+                </button>
+                <button
+                  onClick={handleOpenNewItem}
+                  className={`${BTN_SECONDARY} !h-12 md:!h-[52px] !px-3 md:!px-4 flex-shrink-0`}
+                  title="Create a new item"
+                  aria-label="New item"
+                >
+                  <FiPlus size={18} />
+                  <span className="hidden md:inline">New item</span>
+                </button>
+
+                {/* Keep your hidden file input exactly where it is! */}
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  ref={fileInputRef}
+                  onChange={processFile}
+                  className="hidden"
                 />
               </div>
-              {/* Opens the "Choose action" dialog (scan item / upload bill) */}
-              <button
-                onClick={() => setShowScannerModal(true)}
-                className={`${BTN_SECONDARY} !h-12 md:!h-[52px] !px-3 md:!px-4 flex-shrink-0`}
-                title="Scan item or upload bill"
-                aria-label="Scan item or upload bill"
-              >
-                <IconScanCircle width={20} height={20} />
-                <span className="hidden md:inline">Scan</span>
-              </button>
-              <button
-                onClick={handleOpenNewItem}
-                className={`${BTN_SECONDARY} !h-12 md:!h-[52px] !px-3 md:!px-4 flex-shrink-0`}
-                title="Create a new item"
-                aria-label="New item"
-              >
-                <FiPlus size={18} />
-                <span className="hidden md:inline">New item</span>
-              </button>
-
-              {/* Keep your hidden file input exactly where it is! */}
-              <input
-                type="file"
-                accept="image/*,application/pdf"
-                ref={fileInputRef}
-                onChange={processFile}
-                className="hidden"
-              />
             </div>
-          </div>
+          </TutorialStep>
 
-          <div ref={cartListRef} className='flex-grow overflow-y-auto px-3 md:px-5 py-3 bg-[#eef2ff]'>
-            {hasUnlinkedItems && (
-              <div className="mb-3 flex items-start gap-2 p-2.5 rounded-sm text-[13px] leading-[19px] bg-[#fff3dd] text-[#bb4d00]">
-                <FiAlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
-                <span>
-                  <b className="font-semibold">Some scanned items aren't in your inventory yet.</b>{' '}
-                  Add them to inventory to record this purchase.
-                </span>
-              </div>
-            )}
+          <TutorialStep step={3} {...tour} text="Added items appear here. Edit the quantity, rate and discount for each line." onNext={() => nextStep(4)}>
+            <div ref={cartListRef} className='flex-grow overflow-y-auto px-3 md:px-5 py-3 bg-[#eef2ff]'>
+              {hasUnlinkedItems && (
+                <div className="mb-3 flex items-start gap-2 p-2.5 rounded-sm text-[13px] leading-[19px] bg-[#fff3dd] text-[#bb4d00]">
+                  <FiAlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+                  <span>
+                    <b className="font-semibold">Some scanned items aren't in your inventory yet.</b>{' '}
+                    Add them to inventory to record this purchase.
+                  </span>
+                </div>
+              )}
 
-            <div className="flex justify-between items-center mb-2">
-              <h3 className="m-0 flex items-center gap-2 text-base font-semibold text-[#0f172b]">
-                Items
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="m-0 flex items-center gap-2 text-base font-semibold text-[#0f172b]">
+                  Items
+                  {displayItems.length > 0 && (
+                    <span className={BADGE}>{displayItems.length} {displayItems.length === 1 ? 'line' : 'lines'} · Qty {totalQuantity}</span>
+                  )}
+                </h3>
                 {items.length > 0 && (
-                  <span className={BADGE}>{items.length} {items.length === 1 ? 'line' : 'lines'} · Qty {totalQuantity}</span>
+                  <button onClick={handleClearCart} className={BTN_CLEAR}>
+                    <FiTrash2 size={14} /> Clear
+                  </button>
                 )}
-              </h3>
-              {items.length > 0 && (
-                <button onClick={handleClearCart} className={BTN_CLEAR}>
-                  <FiTrash2 size={14} /> Clear
-                </button>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <GenericCartList
+                  items={
+                    isTutorialActive
+                      ? (SAMPLE_PURCHASE_ITEMS as any[]).map(l => ({ ...l, priceFlag: [], lockPricing: false }))
+                      : cartItemsAdapter.map(l => ({ ...l, ...decoratePurchaseLine(l as PurchaseItem) }))
+                  }
+                  availableItems={availableItems}
+                  basePriceKey="mrp"
+                  priceLabel="MRP"
+                  settings={{
+                    enableRounding: false,
+                    roundingInterval: 0,
+                    enableItemWiseDiscount: true,
+                    enableDiscount2: purchaseSettings?.enableDiscount2 ?? false,
+                    lockDiscount: false,
+                    lockPrice: false
+                  }}
+                  applyRounding={(val) => val}
+                  State={State}
+                  setModal={setModal}
+                  onOpenEditDrawer={handleOpenEditDrawer}
+                  onItemNotFound={(cartItem) => setUnlinkedChoiceItem(cartItem as PurchaseItem)}
+                  onDeleteItem={handleDeleteItem}
+                  onDiscountChange={handleDiscountChange}
+                  onDiscount2Change={handleDiscount2Change}
+                  onCustomPriceChange={handlePriceChange}
+                  onCustomPriceBlur={handlePriceBlur}
+                  onQuantityChange={(id, qty) => handleQuantityChange(id, qty)}
+                />
+              </div>
+
+              {rateChangeBanner('mt-3')}
+
+              {missingMrpItems.length > 0 && (
+                <div className="mt-3 flex flex-wrap items-start gap-2 p-2.5 rounded-sm text-[13px] leading-[19px] bg-[#fff3dd] text-[#bb4d00]">
+                  <FiAlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+                  <span className="flex-1">
+                    <b className="font-semibold">
+                      {missingMrpItems[0].name}{missingMrpItems.length > 1 ? ` and ${missingMrpItems.length - 1} more have` : ' has'} no MRP.
+                    </b>{' '}
+                    Set it so it prints on labels and sale bills — the stock will be added either way.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const orig = availableItems.find(a => a.id === missingMrpItems[0].productId);
+                      if (orig) handleOpenEditDrawer(orig);
+                    }}
+                    className="flex-shrink-0 font-semibold underline underline-offset-2 hover:opacity-80"
+                  >
+                    Set MRP
+                  </button>
+                </div>
               )}
             </div>
-
-            <div className="flex flex-col gap-2">
-              <GenericCartList
-                items={cartItemsAdapter.map(l => ({ ...l, ...decoratePurchaseLine(l as PurchaseItem) }))}
-                availableItems={availableItems}
-                basePriceKey="mrp"
-                priceLabel="MRP"
-                settings={{
-                  enableRounding: false,
-                  roundingInterval: 0,
-                  enableItemWiseDiscount: true,
-                  enableDiscount2: purchaseSettings?.enableDiscount2 ?? false,
-                  lockDiscount: false,
-                  lockPrice: false
-                }}
-                applyRounding={(val) => val}
-                State={State}
-                setModal={setModal}
-                onOpenEditDrawer={handleOpenEditDrawer}
-                onItemNotFound={(cartItem) => setUnlinkedChoiceItem(cartItem as PurchaseItem)}
-                onDeleteItem={handleDeleteItem}
-                onDiscountChange={handleDiscountChange}
-                onDiscount2Change={handleDiscount2Change}
-                onCustomPriceChange={handlePriceChange}
-                onCustomPriceBlur={handlePriceBlur}
-                onQuantityChange={(id, qty) => handleQuantityChange(id, qty)}
-              />
-            </div>
-
-            {rateChangeBanner('mt-3')}
-
-            {missingMrpItems.length > 0 && (
-              <div className="mt-3 flex flex-wrap items-start gap-2 p-2.5 rounded-sm text-[13px] leading-[19px] bg-[#fff3dd] text-[#bb4d00]">
-                <FiAlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
-                <span className="flex-1">
-                  <b className="font-semibold">
-                    {missingMrpItems[0].name}{missingMrpItems.length > 1 ? ` and ${missingMrpItems.length - 1} more have` : ' has'} no MRP.
-                  </b>{' '}
-                  Set it so it prints on labels and sale bills — the stock will be added either way.
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const orig = availableItems.find(a => a.id === missingMrpItems[0].productId);
-                    if (orig) handleOpenEditDrawer(orig);
-                  }}
-                  className="flex-shrink-0 font-semibold underline underline-offset-2 hover:opacity-80"
-                >
-                  Set MRP
-                </button>
-              </div>
-            )}
-          </div>
+          </TutorialStep>
 
           {/* Mobile checkout bar */}
           <div className="md:hidden flex-shrink-0">

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { searchParties } from '../../../lib/partySearch';
 import type { PaymentCompletionData } from '../../../Components/PaymentDrawer';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -41,8 +41,13 @@ import {
     useSalesCommunication,
     useSalesPayment,
 } from './hooks';
-
+import useTutorial from '../../../Catalogue/hooks/useTutorial';
+import { completeTutorial } from '../../../Catalogue/hooks/useCompleteTutorial';
+import { TutorialStep } from '../../../Components/TutorialStep';
 export type { SalesItem };
+
+const TOTAL_STEPS = 6;
+const TUTORIAL_KEY = 'salesTutorialDone';
 
 // Inside Sales component, add interface and button data
 interface CalcKey {
@@ -104,6 +109,16 @@ const SORT_OPTIONS = [
     { value: 'price_asc', label: 'Price ↑' },
     { value: 'price_desc', label: 'Price ↓' },
 ] as const;
+// ── Tutorial sample data (shown only while a tutorial step is active and the cart is empty) ──
+// Totals: MRP 620 − discount 70 = net 550  (2×100 + 1×80 + 2×135)
+const TUTORIAL_SAMPLE_LINES: any[] = [
+    { id: 'tour-1', productId: 'tour-1', name: 'Sample Item A', quantity: 2, mrp: 120, salesPrice: 100, customPrice: 100, discount: 0, purchasePrice: 0, tax: 0, stock: 99, amount: 200, barcode: '', isEditable: false },
+    { id: 'tour-2', productId: 'tour-2', name: 'Sample Item B', quantity: 1, mrp: 80, salesPrice: 80, customPrice: 80, discount: 0, purchasePrice: 0, tax: 0, stock: 99, amount: 80, barcode: '', isEditable: false },
+    { id: 'tour-3', productId: 'tour-3', name: 'Sample Item C', quantity: 2, mrp: 150, salesPrice: 135, customPrice: 135, discount: 0, purchasePrice: 0, tax: 0, stock: 99, amount: 270, barcode: '', isEditable: false },
+];
+const TUTORIAL_SAMPLE_CUSTOMER = { name: 'Sample Customer', phone: '9000000000' };
+const TUTORIAL_SAMPLE_SALESMAN = 'Sample Salesman';
+
 interface CustomerSuggestion {
     name: string;
     number: string;
@@ -495,6 +510,15 @@ const Sales: React.FC = () => {
     const selectedOnTop = isCardView && !!(salesSettings as any)?.cardSelectedOnTop;
     const isCardImageView = isCardView && (showPhotos ?? (salesSettings?.cardViewWithPhoto !== false));
     const isCalculatorView = salesSettings?.salesViewType === 'calculator';
+
+    // Tutorial state lives here so the totals / lists below can show sample data
+    const [tutorialStep, setTutorialStep] = useState(0);
+    // No tutorial while editing a bill or in calculator view
+    const activeStep = isEditMode || isCalculatorView ? 0 : tutorialStep;
+    const isTutorialActive = activeStep > 0 && activeStep <= TOTAL_STEPS;
+    // Sample cart only when the real cart is empty
+    const showSampleCart = isTutorialActive && items.length === 0;
+    const cartItems: any[] = showSampleCart ? TUTORIAL_SAMPLE_LINES : items;
     // Filter button par blue dot: Photos/Compact ya sort default se alag ho
     const hasViewChanges =
         isCardImageView !== (salesSettings?.cardViewWithPhoto !== false) ||
@@ -510,10 +534,21 @@ const Sales: React.FC = () => {
 
     const gstSchemeDisplay = salesSettings?.gstScheme;
 
-    const { subtotal, totalDiscount, taxAmount, finalAmount, totalQuantity, totalMrp } = useMemo(
+    const realTotals = useMemo(
         () => calculateSaleTotals(items, salesSettings, activeTaxMode, gstSchemeDisplay),
         [items, salesSettings, activeTaxMode, gstSchemeDisplay]
     );
+    const sampleTotals = useMemo(() => {
+        const net = 550;
+        const tax = activeTaxMode === 'exempt' ? 0 : Math.round(net * 0.05 * 100) / 100;
+        return {
+            subtotal: 620, totalDiscount: 70, totalMrp: 620, totalQuantity: 5,
+            taxAmount: tax,
+            finalAmount: activeTaxMode === 'exclusive' ? net + tax : net,
+        };
+    }, [activeTaxMode]);
+    const { subtotal, totalDiscount, taxAmount, finalAmount, totalQuantity, totalMrp } =
+        showSampleCart ? sampleTotals : realTotals;
 
     const amountToPayNow = useMemo(() => finalAmount, [finalAmount]);
     const netAmount = subtotal - totalDiscount;
@@ -664,7 +699,40 @@ const Sales: React.FC = () => {
             setShowPricingInfo(false);
         }
     }, [savedBillData, isEditMode]);
+    // ---------- Tutorial ----------
 
+    // A step counts only if its element is really on screen.
+    // Hidden on this screen size, or turned off in settings = skipped.
+    const isStepVisible = (s: number) =>
+        Array.from(document.querySelectorAll<HTMLElement>(`[data-tour="${s}"]`)).some(el => {
+            const r = el.getBoundingClientRect();
+            return r.width > 0 && r.height > 0;
+        });
+
+    const finishTutorial = useCallback(() => {
+        completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep);
+    }, [currentUser]);
+
+    const nextStep = (from: number) => {
+        let n = from;
+        while (n <= TOTAL_STEPS && !isStepVisible(n)) n++;
+        if (n > TOTAL_STEPS) finishTutorial();
+        else setTutorialStep(n);
+    };
+
+    useTutorial(currentUser, setTutorialStep, TUTORIAL_KEY);
+
+    // If the current step's element is not on screen, jump to the next one that is
+    useEffect(() => {
+        if (activeStep === 0 || pageIsLoading) return;
+        const t = setTimeout(() => {
+            if (!isStepVisible(activeStep)) nextStep(activeStep + 1);
+        }, 200);
+        return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeStep, pageIsLoading]);
+
+    const tour = { currentStep: activeStep, onSkip: finishTutorial };
     if (pageIsLoading) return <div className="flex items-center justify-center h-screen"><Spinner /> <p className="ml-2">Loading...</p></div>;
     if (error) return <div className="flex flex-col items-center justify-center h-screen text-red-600"><p>{error}</p><button onClick={() => navigate(-1)} className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-sm hover:bg-blue-600">Go Back</button></div>;
     const fmtINR = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -688,17 +756,18 @@ const Sales: React.FC = () => {
 
         if (isPlusTap) {
             const base = availableItems.find(a => a.id === (line.productId || line.id));
-            if (base) {
+            // Popup sirf add-on wale item par: baaki items par seedha quantity badhe
+            if (base && itemHasAddOns(base)) {
                 const existingCount = items.filter((l: any) => (l.productId || l.id) === base.id).length;
                 setDuplicateItemPrompt({
                     item: base,
-                    addOns: line.addOns,   // add-on wali line ho to popup me naam bhi dikhega
+                    addOns: line.addOns,   
                     existingCount,
                 } as any);
                 return;
             }
         }
-        // "−" ya direct quantity edit: pehle jaisa
+        
         handleQuantityChange(lineId, newQty);
     };
 
@@ -709,17 +778,19 @@ const Sales: React.FC = () => {
                 <div className="flex-shrink-0">
                     <BackButton />
                 </div>
-                <div className="flex-1 min-w-0 flex items-baseline gap-2">
-                    <h1 className="m-0 text-lg font-semibold leading-tight text-[#0f172b] whitespace-nowrap">
-                        {isEditMode ? 'Edit sale' : 'New sale'}
-                    </h1>
-                    <span className="text-xs font-normal text-[#5b6b86] truncate">
-                        {invoiceNumber}{invoiceDate ? ` · ${new Date(`${invoiceDate}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}
-                    </span>
-                </div>
+                <TutorialStep step={1} {...tour} text="Your bill number and date are shown here. To change them, tap the three dots (More) at the top." onNext={() => nextStep(2)} mobileArrowAlign="left">
+                    <div data-tour="1" className="flex-1 min-w-0 flex items-baseline gap-2">
+                        <h1 className="m-0 text-lg font-semibold leading-tight text-[#0f172b] whitespace-nowrap">
+                            {isEditMode ? 'Edit sale' : 'New sale'}
+                        </h1>
+                        <span className="text-xs font-normal text-[#5b6b86] truncate">
+                            {invoiceNumber}{invoiceDate ? ` · ${new Date(`${invoiceDate}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}
+                        </span>
+                    </div>
+                </TutorialStep>
                 {/* Card view has no cart bar on phones, so the salesman name sits here instead */}
-                {isCardView && salesSettings?.enableSalesmanSelection && selectedWorker && (
-                    <span className={`max-w-[90px] ${SALESMAN_NAME_CLS}`}>{selectedWorker.name}</span>
+                {isCardView && salesSettings?.enableSalesmanSelection && (selectedWorker || isTutorialActive) && (
+                    <span className={`max-w-[90px] ${SALESMAN_NAME_CLS}`}>{selectedWorker?.name ?? TUTORIAL_SAMPLE_SALESMAN}</span>
                 )}
                 {renderSalesmanButton()}
                 {/* List view has no second row, so the three dots stay here */}
@@ -733,50 +804,52 @@ const Sales: React.FC = () => {
             {/* Row 2 (card view): sort/filter | search + camera | clear cart | three dots
                 (the More sheet is the only place to change bill no./date on phones) */}
             {isCardView && (
-                <div className="flex items-center gap-2 px-2 pb-3">
-                    <button type="button" aria-label="View options" onClick={() => setIsFilterOpen(true)}
-                        className="relative inline-flex items-center justify-center w-10 h-10 flex-shrink-0 rounded-sm border border-[#7a8aa3] bg-white text-[#0f172b]">
-                        <FiSliders size={18} />
-                        {hasViewChanges && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#155dfc] ring-2 ring-white" />}
-                    </button>
+                <TutorialStep step={2} {...tour} text="Search for an item by name or barcode, or tap the camera to scan it." onNext={() => nextStep(3)} mobileArrowAlign="left">
+                    <div data-tour="2" className="flex items-center gap-2 px-2 pb-3">
+                        <button type="button" aria-label="View options" onClick={() => setIsFilterOpen(true)}
+                            className="relative inline-flex items-center justify-center w-10 h-10 flex-shrink-0 rounded-sm border border-[#7a8aa3] bg-white text-[#0f172b]">
+                            <FiSliders size={18} />
+                            {hasViewChanges && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-[#155dfc] ring-2 ring-white" />}
+                        </button>
 
-                    <div className="flex flex-1 min-w-0 items-center h-10 rounded-sm border border-[#7a8aa3] bg-white overflow-hidden transition-all focus-within:border-[#155dfc] focus-within:ring-4 focus-within:ring-[#e6eeff]">
-                        <FiSearch size={18} className="ml-3 text-[#5b6b86] flex-shrink-0" />
-                        <input
-                            type="text"
-                            value={gridSearchQuery}
-                            onChange={(e) => setGridSearchQuery(e.target.value)}
-                            placeholder="Search item name or barcode"
-                            className="flex-1 min-w-0 h-full px-2.5 bg-transparent border-0 outline-none text-[14px] font-medium text-[#0f172b] placeholder:text-[#5b6b86]"
-                            autoComplete="off"
-                        />
-                        {gridSearchQuery && (
-                            <button type="button" onClick={() => setGridSearchQuery('')} aria-label="Clear search"
-                                className="p-1 mr-1 rounded-full text-[#5b6b86] hover:text-[#0f172b] hover:bg-[#f5f7ff] flex-shrink-0">
-                                <FiX size={16} />
+                        <div className="flex flex-1 min-w-0 items-center h-10 rounded-sm border border-[#7a8aa3] bg-white overflow-hidden transition-all focus-within:border-[#155dfc] focus-within:ring-4 focus-within:ring-[#e6eeff]">
+                            <FiSearch size={18} className="ml-3 text-[#5b6b86] flex-shrink-0" />
+                            <input
+                                type="text"
+                                value={gridSearchQuery}
+                                onChange={(e) => setGridSearchQuery(e.target.value)}
+                                placeholder="Search item name or barcode"
+                                className="flex-1 min-w-0 h-full px-2.5 bg-transparent border-0 outline-none text-[14px] font-medium text-[#0f172b] placeholder:text-[#5b6b86]"
+                                autoComplete="off"
+                            />
+                            {gridSearchQuery && (
+                                <button type="button" onClick={() => setGridSearchQuery('')} aria-label="Clear search"
+                                    className="p-1 mr-1 rounded-full text-[#5b6b86] hover:text-[#0f172b] hover:bg-[#f5f7ff] flex-shrink-0">
+                                    <FiX size={16} />
+                                </button>
+                            )}
+                            <button type="button" aria-label="Scan barcode" onClick={() => setIsScannerOpen(true)}
+                                className="h-full w-11 flex-shrink-0 inline-flex items-center justify-center bg-[#155dfc] text-white hover:bg-[#1447e6] transition-colors">
+                                <IconScanCircle width={20} height={20} />
+                            </button>
+                        </div>
+
+                        {items.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={handleClearCart}
+                                aria-label="Clear cart"
+                                className="inline-flex items-center justify-center w-10 h-10 flex-shrink-0 rounded-sm text-[#d5000c] bg-[#ffeef0] hover:bg-[#ffdde1] transition-colors"
+                            >
+                                <FiTrash2 size={18} />
                             </button>
                         )}
-                        <button type="button" aria-label="Scan barcode" onClick={() => setIsScannerOpen(true)}
-                            className="h-full w-11 flex-shrink-0 inline-flex items-center justify-center bg-[#155dfc] text-white hover:bg-[#1447e6] transition-colors">
-                            <IconScanCircle width={20} height={20} />
+
+                        <button type="button" onClick={() => setIsMoreOpen(true)} aria-label="More" className={ICON_BTN_CLS}>
+                            <FiMoreVertical size={20} />
                         </button>
                     </div>
-
-                    {items.length > 0 && (
-                        <button
-                            type="button"
-                            onClick={handleClearCart}
-                            aria-label="Clear cart"
-                            className="inline-flex items-center justify-center w-10 h-10 flex-shrink-0 rounded-sm text-[#d5000c] bg-[#ffeef0] hover:bg-[#ffdde1] transition-colors"
-                        >
-                            <FiTrash2 size={18} />
-                        </button>
-                    )}
-
-                    <button type="button" onClick={() => setIsMoreOpen(true)} aria-label="More" className={ICON_BTN_CLS}>
-                        <FiMoreVertical size={20} />
-                    </button>
-                </div>
+                </TutorialStep>
             )}
         </header>
     );
@@ -788,30 +861,34 @@ const Sales: React.FC = () => {
                     {isEditMode ? 'Edit sale' : 'New sale'}
                 </h1>
 
-                <label className="inline-flex items-center gap-2 h-9 px-3 bg-white border border-[#7a8aa3] rounded-sm text-[13px] transition-all focus-within:border-[#155dfc] focus-within:ring-4 focus-within:ring-[#e6eeff]">
-                    <span className="text-[11px] font-semibold tracking-[.06em] uppercase text-[#5b6b86]">Bill no.</span>
-                    <input
-                        type="text"
-                        value={invoiceNumber}
-                        aria-label="Invoice number"
-                        onChange={(e) => {
-                            isInvoiceNumberManuallyEdited.current = true;
-                            setInvoiceNumber(e.target.value);
-                        }}
-                        className="w-24 bg-transparent border-0 outline-none font-semibold text-[#0f172b] tabular-nums"
-                    />
-                </label>
+                <TutorialStep step={1} {...tour} text="The bill number and date are filled in automatically. You can change them here if you need to." onNext={() => nextStep(2)}>
+                    <div data-tour="1" className="flex flex-wrap items-center gap-2 md:gap-3">
+                        <label className="inline-flex items-center gap-2 h-9 px-3 bg-white border border-[#7a8aa3] rounded-sm text-[13px] transition-all focus-within:border-[#155dfc] focus-within:ring-4 focus-within:ring-[#e6eeff]">
+                            <span className="text-[11px] font-semibold tracking-[.06em] uppercase text-[#5b6b86]">Bill no.</span>
+                            <input
+                                type="text"
+                                value={invoiceNumber}
+                                aria-label="Invoice number"
+                                onChange={(e) => {
+                                    isInvoiceNumberManuallyEdited.current = true;
+                                    setInvoiceNumber(e.target.value);
+                                }}
+                                className="w-24 bg-transparent border-0 outline-none font-semibold text-[#0f172b] tabular-nums"
+                            />
+                        </label>
 
-                <label className="inline-flex items-center gap-2 h-9 px-3 bg-white border border-[#7a8aa3] rounded-sm text-[13px] cursor-pointer transition-all focus-within:border-[#155dfc] focus-within:ring-4 focus-within:ring-[#e6eeff]">
-                    <FiCalendar size={14} className="text-[#5b6b86] flex-shrink-0" />
-                    <input
-                        type="date"
-                        value={invoiceDate}
-                        aria-label="Invoice date"
-                        onChange={(e) => setInvoiceDate(e.target.value)}
-                        className="bg-transparent border-0 outline-none font-semibold text-[#0f172b] cursor-pointer"
-                    />
-                </label>
+                        <label className="inline-flex items-center gap-2 h-9 px-3 bg-white border border-[#7a8aa3] rounded-sm text-[13px] cursor-pointer transition-all focus-within:border-[#155dfc] focus-within:ring-4 focus-within:ring-[#e6eeff]">
+                            <FiCalendar size={14} className="text-[#5b6b86] flex-shrink-0" />
+                            <input
+                                type="date"
+                                value={invoiceDate}
+                                aria-label="Invoice date"
+                                onChange={(e) => setInvoiceDate(e.target.value)}
+                                className="bg-transparent border-0 outline-none font-semibold text-[#0f172b] cursor-pointer"
+                            />
+                        </label>
+                    </div>
+                </TutorialStep>
                 {isCardView && (
                     <div role="group" aria-label="Photos" className="ml-auto inline-flex p-[3px] gap-0.5 bg-[#f5f7ff] border border-[#dfe6fb] rounded-sm">
                         {([[true, 'Photos'], [false, 'Compact']] as const).map(([val, label]) => (
@@ -895,10 +972,12 @@ const Sales: React.FC = () => {
         </nav>
     );
     const isSalesmanLocked = !hasPermission(Permissions.ViewTransactions) || (isEditMode && !isManager);
-    const renderSalesmanSelect = (extraCls = '') =>
-        salesSettings?.enableSalesmanSelection ? (
+    const renderSalesmanSelect = (extraCls = '') => {
+        // Tutorial ke dauran, agar koi salesman select nahi hai to sample dikhao
+        const showSampleSalesman = isTutorialActive && !selectedWorker;
+        return salesSettings?.enableSalesmanSelection ? (
             <select
-                value={selectedWorker?.uid || ''}
+                value={showSampleSalesman ? '__sample__' : (selectedWorker?.uid || '')}
                 onChange={(e) => {
                     if (e.target.value === 'ADD_NEW_SALESMAN') setIsAddUserModalOpen(true);
                     else setSelectedWorker(workers.find(w => w.uid === e.target.value) || null);
@@ -908,21 +987,26 @@ const Sales: React.FC = () => {
                 disabled={isSalesmanLocked}
             >
                 <option value="">Salesman</option>
+                {showSampleSalesman && <option value="__sample__">{TUTORIAL_SAMPLE_SALESMAN}</option>}
                 {workers.map(w => <option key={w.uid} value={w.uid}>{w.name}</option>)}
                 <option value="ADD_NEW_SALESMAN">+ Add New Salesman</option>
             </select>
         ) : null;
+    };
 
     // Phone: square icon button. An invisible native select covers it, so a tap opens the picker directly.
     const renderSalesmanButton = () =>
         salesSettings?.enableSalesmanSelection ? (
-            <div
-                title="Salesman"
-                className={`relative inline-flex items-center justify-center w-10 h-10 flex-shrink-0 rounded-sm border border-[#7a8aa3] bg-white text-[#0f172b] transition-all focus-within:border-[#155dfc] focus-within:ring-4 focus-within:ring-[#e6eeff] ${isSalesmanLocked ? 'opacity-[.45]' : ''}`}
-            >
-                <FiUser size={18} />
-                {renderSalesmanSelect('absolute inset-0 w-full !h-full !opacity-0 cursor-pointer disabled:cursor-not-allowed')}
-            </div>
+            <TutorialStep step={3} {...tour} text="Tap here to choose which salesman is making this sale." onNext={() => nextStep(4)}>
+                <div
+                    data-tour="3"
+                    title="Salesman"
+                    className={`relative inline-flex items-center justify-center w-10 h-10 flex-shrink-0 rounded-sm border border-[#7a8aa3] bg-white text-[#0f172b] transition-all focus-within:border-[#155dfc] focus-within:ring-4 focus-within:ring-[#e6eeff] ${isSalesmanLocked ? 'opacity-[.45]' : ''}`}
+                >
+                    <FiUser size={18} />
+                    {renderSalesmanSelect('absolute inset-0 w-full !h-full !opacity-0 cursor-pointer disabled:cursor-not-allowed')}
+                </div>
+            </TutorialStep>
         ) : null;
 
     // // Walk-in customer / filled customer card — "Add" ab popup kholta hai
@@ -1055,71 +1139,75 @@ const Sales: React.FC = () => {
     // ── Customer bar (customer-wise pricing on): pick the customer before billing ──
     const renderCustomerBar = (inPanel = false) => {
         if (!customerPricingEnabled) return null;
-        const shownName = isEditMode ? (invoiceToEdit?.partyName || '') : customerName;
-        const shownPhone = isEditMode ? (invoiceToEdit?.partyNumber || '') : customerPhone;
+        const showSampleCustomer = isTutorialActive && !isEditMode && !customerName && !customerPhone;
+        const shownName = showSampleCustomer ? TUTORIAL_SAMPLE_CUSTOMER.name : isEditMode ? (invoiceToEdit?.partyName || '') : customerName;
+        const shownPhone = showSampleCustomer ? TUTORIAL_SAMPLE_CUSTOMER.phone : isEditMode ? (invoiceToEdit?.partyNumber || '') : customerPhone;
         const hasCustomer = !!(shownName || shownPhone);
-        const offer = customerPricing.offer;
+        const hasRule = showSampleCustomer || !!customerPricing.rule;
+        const offer = showSampleCustomer ? null : customerPricing.offer;
         const status = !hasCustomer
             ? 'Add a customer to see their fixed prices'
-            : customerPricing.loading
+            : !showSampleCustomer && customerPricing.loading
                 ? 'Checking customer prices…'
-                : customerPricing.rule
+                : hasRule
                     ? 'Has fixed prices'
                     : 'No fixed prices for this customer';
         const offerCls = offer?.tone === 'warn'
             ? 'bg-[#fff3dd] text-[#bb4d00]'
             : offer?.tone === 'applied' ? 'bg-[#e9faef] text-[#008236]' : 'bg-[#e6eeff] text-[#155dfc]';
         return (
-            <div className={inPanel ? 'flex flex-col gap-2' : 'flex-shrink-0 flex flex-col gap-2 px-4 md:px-5 py-2 bg-white border-b border-[#dfe6fb]'}>
-                {!hasCustomer && !isEditMode ? (
-                    // No customer yet: the whole row is one compact "Add customer" button
-                    <button type="button" onClick={openCustomerModal}
-                        className="flex items-center gap-2.5 w-full min-h-10 px-2.5 py-1.5 rounded-sm border border-dashed border-[#a9b8de] bg-[#f8faff] text-left hover:bg-[#eef2ff] hover:border-[#155dfc]">
-                        <span className="w-7 h-7 rounded-sm bg-[#e6eeff] text-[#155dfc] flex items-center justify-center flex-shrink-0"><FiUserPlus size={14} aria-hidden /></span>
-                        <span className="text-sm font-medium text-[#155dfc] flex-shrink-0">Add customer</span>
-                        <span className="flex-1 min-w-0 text-xs text-[#5b6b86] truncate text-right">for their fixed prices</span>
-                    </button>
-                ) : (
-                    <div className="flex items-center gap-2.5">
-                        <span className="w-7 h-7 rounded-sm bg-[#e6eeff] text-[#155dfc] flex items-center justify-center flex-shrink-0"><FiUser size={14} aria-hidden /></span>
-                        <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-[#0f172b] truncate">
-                                {hasCustomer ? (shownName || shownPhone) : 'No customer'}
-                                {hasCustomer && shownName && shownPhone && <span className="font-normal text-[#5b6b86]"> · {shownPhone}</span>}
+            <TutorialStep step={5} {...tour} text="Add the customer here to apply their fixed prices. You can also add them later at payment." onNext={() => nextStep(6)}>
+                <div data-tour="5" className={inPanel ? 'flex flex-col gap-2' : 'flex-shrink-0 flex flex-col gap-2 px-4 md:px-5 py-2 bg-white border-b border-[#dfe6fb]'}>
+                    {!hasCustomer && !isEditMode ? (
+                        // No customer yet: the whole row is one compact "Add customer" button
+                        <button type="button" onClick={openCustomerModal}
+                            className="flex items-center gap-2.5 w-full min-h-10 px-2.5 py-1.5 rounded-sm border border-dashed border-[#a9b8de] bg-[#f8faff] text-left hover:bg-[#eef2ff] hover:border-[#155dfc]">
+                            <span className="w-7 h-7 rounded-sm bg-[#e6eeff] text-[#155dfc] flex items-center justify-center flex-shrink-0"><FiUserPlus size={14} aria-hidden /></span>
+                            <span className="text-sm font-medium text-[#155dfc] flex-shrink-0">Add customer</span>
+                            <span className="flex-1 min-w-0 text-xs text-[#5b6b86] truncate text-right">for their fixed prices</span>
+                        </button>
+                    ) : (
+                        <div className="flex items-center gap-2.5">
+                            <span className="w-7 h-7 rounded-sm bg-[#e6eeff] text-[#155dfc] flex items-center justify-center flex-shrink-0"><FiUser size={14} aria-hidden /></span>
+                            <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium text-[#0f172b] truncate">
+                                    {hasCustomer ? (shownName || shownPhone) : 'No customer'}
+                                    {hasCustomer && shownName && shownPhone && <span className="font-normal text-[#5b6b86]"> · {shownPhone}</span>}
+                                </div>
+                                {hasCustomer && hasRule ? (
+                                    <button type="button" onClick={() => { if (!showSampleCustomer) setShowPricingInfo(true); }}
+                                        className="inline-flex items-center gap-1 p-0 border-0 bg-transparent text-xs font-medium text-[#008236] underline underline-offset-2 cursor-pointer">
+                                        <FiTag size={12} aria-hidden /> {status} · View / edit
+                                    </button>
+                                ) : (
+                                    <div className="text-xs truncate text-[#5b6b86]">{status}</div>
+                                )}
                             </div>
-                            {hasCustomer && customerPricing.rule ? (
-                                <button type="button" onClick={() => setShowPricingInfo(true)}
-                                    className="inline-flex items-center gap-1 p-0 border-0 bg-transparent text-xs font-medium text-[#008236] underline underline-offset-2 cursor-pointer">
-                                    <FiTag size={12} aria-hidden /> {status} · View / edit
+                            {!isEditMode && !showSampleCustomer && (
+                                <button type="button" onClick={openCustomerModal}
+                                    className="inline-flex items-center h-8 px-2.5 rounded-sm text-[13px] font-medium text-[#155dfc] hover:bg-[#e6eeff] flex-shrink-0">
+                                    Change
                                 </button>
-                            ) : (
-                                <div className="text-xs truncate text-[#5b6b86]">{status}</div>
+                            )}
+                            {!isEditMode && !showSampleCustomer && (
+                                <button type="button" aria-label="Remove customer" onClick={clearCustomer}
+                                    className="inline-flex items-center justify-center w-8 h-8 rounded-sm text-[#45556c] hover:bg-[#f5f7ff] flex-shrink-0">
+                                    <FiX size={16} aria-hidden />
+                                </button>
                             )}
                         </div>
-                        {!isEditMode && (
-                            <button type="button" onClick={openCustomerModal}
-                                className="inline-flex items-center h-8 px-2.5 rounded-sm text-[13px] font-medium text-[#155dfc] hover:bg-[#e6eeff] flex-shrink-0">
-                                Change
+                    )}
+                    {offer && (
+                        <div className={`flex items-center gap-2 px-3 py-2 rounded-sm text-[13px] font-medium ${offerCls}`} role="status">
+                            <span className="flex-1 min-w-0">{offer.text}</span>
+                            <button type="button" onClick={offer.onAction}
+                                className={`flex-shrink-0 h-8 px-3 rounded-sm text-xs font-semibold ${offer.tone === 'info' ? 'bg-[#155dfc] text-white hover:bg-[#1447e6]' : 'bg-white border border-current hover:opacity-80'}`}>
+                                {offer.actionLabel}
                             </button>
-                        )}
-                        {!isEditMode && (
-                            <button type="button" aria-label="Remove customer" onClick={clearCustomer}
-                                className="inline-flex items-center justify-center w-8 h-8 rounded-sm text-[#45556c] hover:bg-[#f5f7ff] flex-shrink-0">
-                                <FiX size={16} aria-hidden />
-                            </button>
-                        )}
-                    </div>
-                )}
-                {offer && (
-                    <div className={`flex items-center gap-2 px-3 py-2 rounded-sm text-[13px] font-medium ${offerCls}`} role="status">
-                        <span className="flex-1 min-w-0">{offer.text}</span>
-                        <button type="button" onClick={offer.onAction}
-                            className={`flex-shrink-0 h-8 px-3 rounded-sm text-xs font-semibold ${offer.tone === 'info' ? 'bg-[#155dfc] text-white hover:bg-[#1447e6]' : 'bg-white border border-current hover:opacity-80'}`}>
-                            {offer.actionLabel}
-                        </button>
-                    </div>
-                )}
-            </div>
+                        </div>
+                    )}
+                </div>
+            </TutorialStep>
         );
     };
 
@@ -1146,8 +1234,9 @@ const Sales: React.FC = () => {
     /** Small customer chip for the cart bar: "+ Customer", or the picked name with ✕. */
     const renderCustomerChip = () => {
         if (!customerPricingEnabled) return null;
-        const shownName = isEditMode ? (invoiceToEdit?.partyName || '') : customerName;
-        const shownPhone = isEditMode ? (invoiceToEdit?.partyNumber || '') : customerPhone;
+        const showSampleCustomer = isTutorialActive && !isEditMode && !customerName && !customerPhone;
+        const shownName = showSampleCustomer ? TUTORIAL_SAMPLE_CUSTOMER.name : isEditMode ? (invoiceToEdit?.partyName || '') : customerName;
+        const shownPhone = showSampleCustomer ? TUTORIAL_SAMPLE_CUSTOMER.phone : isEditMode ? (invoiceToEdit?.partyNumber || '') : customerPhone;
         const label = shownName || shownPhone;
         if (!label) {
             if (isEditMode) return null;
@@ -1158,9 +1247,10 @@ const Sales: React.FC = () => {
                 </button>
             );
         }
-        const tone = customerPricing.rule ? 'border-[#b9e8c9] bg-[#e9faef] text-[#008236]' : 'border-[#c9d3ea] bg-white text-[#0f172b]';
-        const hint = customerPricing.loading ? 'Checking customer prices…'
-            : customerPricing.rule ? 'Has fixed prices' : 'No fixed prices for this customer';
+        const hasRule = showSampleCustomer || !!customerPricing.rule;
+        const tone = hasRule ? 'border-[#b9e8c9] bg-[#e9faef] text-[#008236]' : 'border-[#c9d3ea] bg-white text-[#0f172b]';
+        const hint = !showSampleCustomer && customerPricing.loading ? 'Checking customer prices…'
+            : hasRule ? 'Has fixed prices' : 'No fixed prices for this customer';
         return (
             <span className={`inline-flex items-center h-8 max-w-[170px] sm:max-w-[240px] rounded-sm border ${tone}`} title={`${label}${shownName && shownPhone ? ` · ${shownPhone}` : ''} — ${hint}`}>
                 <button type="button" onClick={isEditMode ? undefined : openCustomerModal} disabled={isEditMode}
@@ -1169,7 +1259,7 @@ const Sales: React.FC = () => {
                     <FiUser size={14} aria-hidden className="flex-shrink-0" />
                     <span className="truncate">{label}</span>
                 </button>
-                {!isEditMode && (
+                {!isEditMode && !showSampleCustomer && (
                     <button type="button" aria-label="Remove customer" onClick={clearCustomer}
                         className="inline-grid place-items-center w-7 h-full flex-shrink-0 opacity-70 hover:opacity-100">
                         <FiX size={14} aria-hidden />
@@ -1187,38 +1277,40 @@ const Sales: React.FC = () => {
         ) : null;
     // Tablet (768–1279): same bottom checkout bar as the mobile footer
     const renderTabletCheckoutBar = (actionLabel: string, onAction: () => void = handleProceedToPayment) => (
-        <div className="hidden md:block xl:hidden flex-shrink-0 z-20 bg-white border-t border-[#dfe6fb]">
-            {isTabletBreakdownOpen && (
-                <div className="px-4 pt-3 space-y-1.5 text-sm">
-                    <div className="flex justify-between gap-4"><span className="text-[#45556c]">MRP total</span><span className="font-medium tabular-nums text-[#0f172b]">₹{fmtINR(subtotal)}</span></div>
-                    {totalDiscount > 0 && (
-                        <div className="flex justify-between gap-4 text-[#008236]"><span>Discount</span><span className="font-medium tabular-nums">− ₹{fmtINR(totalDiscount)}</span></div>
-                    )}
-                    <div className="flex justify-between gap-4 border-t border-[#dfe6fb] pt-1.5"><span className="font-medium text-[#0f172b]">Net sale price</span><span className="font-semibold tabular-nums text-[#0f172b]">₹{fmtINR(netAmount)}</span></div>
-                    {showTaxRow && (
-                        <div className="flex justify-between gap-4"><span className="text-[#45556c]">Tax ({activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})</span><span className="font-medium tabular-nums text-[#155dfc]">+ ₹{fmtINR(taxAmount)}</span></div>
-                    )}
-                </div>
-            )}
-            <div className="flex items-center gap-3 px-4 pt-3 pb-4">
-                <button type="button" onClick={() => setIsTabletBreakdownOpen(v => !v)} aria-expanded={isTabletBreakdownOpen}
-                    className="flex-1 min-w-0 text-left bg-transparent border-0 p-0 cursor-pointer">
-                    <span className="flex items-center gap-1 text-xs text-[#45556c]">
-                        <span className="truncate">
-                            {totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}
-                            {totalDiscount > 0 && ` · saves ₹${fmtINR(totalDiscount)}`}
+        <TutorialStep step={6} {...tour} text="Check the total here, then tap View bill and Pay to complete the sale." onNext={finishTutorial} isLast position="top">
+            <div data-tour="6" className="hidden md:block xl:hidden flex-shrink-0 z-20 bg-white border-t border-[#dfe6fb]">
+                {isTabletBreakdownOpen && (
+                    <div className="px-4 pt-3 space-y-1.5 text-sm">
+                        <div className="flex justify-between gap-4"><span className="text-[#45556c]">MRP total</span><span className="font-medium tabular-nums text-[#0f172b]">₹{fmtINR(subtotal)}</span></div>
+                        {totalDiscount > 0 && (
+                            <div className="flex justify-between gap-4 text-[#008236]"><span>Discount</span><span className="font-medium tabular-nums">− ₹{fmtINR(totalDiscount)}</span></div>
+                        )}
+                        <div className="flex justify-between gap-4 border-t border-[#dfe6fb] pt-1.5"><span className="font-medium text-[#0f172b]">Net sale price</span><span className="font-semibold tabular-nums text-[#0f172b]">₹{fmtINR(netAmount)}</span></div>
+                        {showTaxRow && (
+                            <div className="flex justify-between gap-4"><span className="text-[#45556c]">Tax ({activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})</span><span className="font-medium tabular-nums text-[#155dfc]">+ ₹{fmtINR(taxAmount)}</span></div>
+                        )}
+                    </div>
+                )}
+                <div className="flex items-center gap-3 px-4 pt-3 pb-4">
+                    <button type="button" onClick={() => setIsTabletBreakdownOpen(v => !v)} aria-expanded={isTabletBreakdownOpen}
+                        className="flex-1 min-w-0 text-left bg-transparent border-0 p-0 cursor-pointer">
+                        <span className="flex items-center gap-1 text-xs text-[#45556c]">
+                            <span className="truncate">
+                                {totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}
+                                {totalDiscount > 0 && ` · saves ₹${fmtINR(totalDiscount)}`}
+                            </span>
+                            <FiChevronUp size={14} className={`flex-shrink-0 transition-transform ${isTabletBreakdownOpen ? 'rotate-180' : ''}`} />
                         </span>
-                        <FiChevronUp size={14} className={`flex-shrink-0 transition-transform ${isTabletBreakdownOpen ? 'rotate-180' : ''}`} />
-                    </span>
-                    <b className="block text-xl leading-[26px] font-semibold tabular-nums text-[#0f172b] truncate">₹{fmtINR(finalAmount)}</b>
-                </button>
-                <button type="button" onClick={onAction} disabled={items.length === 0}
-                    className="inline-flex items-center justify-center gap-2 h-12 px-4 rounded-sm border border-transparent text-[15px] font-medium whitespace-nowrap bg-[#155dfc] text-white hover:bg-[#1447e6] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed">
-                    {actionLabel}
-                    <FiChevronRight size={16} />
-                </button>
+                        <b className="block text-xl leading-[26px] font-semibold tabular-nums text-[#0f172b] truncate">₹{fmtINR(finalAmount)}</b>
+                    </button>
+                    <button type="button" onClick={onAction} disabled={items.length === 0}
+                        className="inline-flex items-center justify-center gap-2 h-12 px-4 rounded-sm border border-transparent text-[15px] font-medium whitespace-nowrap bg-[#155dfc] text-white hover:bg-[#1447e6] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed">
+                        {actionLabel}
+                        <FiChevronRight size={16} />
+                    </button>
+                </div>
             </div>
-        </div>
+        </TutorialStep>
     );
     const renderMoreSheet = () =>
         !isMoreOpen ? null : (
@@ -1319,7 +1411,7 @@ const Sales: React.FC = () => {
                     <span className="inline-flex items-center h-[22px] px-2 rounded-full bg-[#e6eeff] text-[#155dfc] text-[11px] font-semibold whitespace-nowrap">
                         <span className="md:hidden">{totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}</span>
                         <span className="hidden md:inline">
-                            {items.length} {items.length === 1 ? 'line' : 'lines'} · {totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}
+                            {cartItems.length} {cartItems.length === 1 ? 'line' : 'lines'} · {totalQuantity} {totalQuantity === 1 ? 'item' : 'items'}
                         </span>
                     </span>
                 )}
@@ -1327,17 +1419,21 @@ const Sales: React.FC = () => {
 
             {/* Center — Salesman name (phone) / select (tablet+) */}
             <div className="flex justify-center min-w-0">
-                {salesSettings?.enableSalesmanSelection && selectedWorker && (
-                    <span className={`md:hidden max-w-[110px] ${SALESMAN_NAME_CLS}`}>{selectedWorker.name}</span>
+                {salesSettings?.enableSalesmanSelection && (selectedWorker || isTutorialActive) && (
+                    <span className={`md:hidden max-w-[110px] ${SALESMAN_NAME_CLS}`}>{selectedWorker?.name ?? TUTORIAL_SAMPLE_SALESMAN}</span>
                 )}
-                <div className="hidden md:block">
-                    {renderSalesmanSelect('!h-8 !text-xs min-w-[160px]')}
-                </div>
+                <TutorialStep step={3} {...tour} text="Choose which salesman is making this sale." onNext={() => nextStep(4)}>
+                    <div data-tour="3" className="hidden md:block">
+                        {renderSalesmanSelect('!h-8 !text-xs min-w-[160px]')}
+                    </div>
+                </TutorialStep>
             </div>
 
             {/* Right — customer chip pinned to the right end */}
             <div className="md:flex-1 md:min-w-fit flex items-center justify-end gap-2 min-w-0">
-                <span className="xl:hidden contents">{renderCustomerChip()}</span>
+                <TutorialStep step={5} {...tour} text="Tap here to add the customer and apply their fixed prices." onNext={() => nextStep(6)} mobileArrowAlign="left">
+                    <span data-tour="5" className="xl:hidden inline-flex">{renderCustomerChip()}</span>
+                </TutorialStep>
                 {items.length > 0 && (
                     <button
                         type="button"
@@ -1616,7 +1712,7 @@ const Sales: React.FC = () => {
                 </div>
 
                 <CartLinesCompact
-                    items={items}
+                    items={cartItems}
                     getUnitPrice={(i: any) => Number(i.customPrice ?? i.salesPrice ?? i.mrp ?? 0) + (Number(i.addOnAmount) || 0)}
                     onQuantityChange={handleBillQuantityChange}
                     onDelete={handleDeleteItem}
@@ -1635,16 +1731,18 @@ const Sales: React.FC = () => {
             </div>
 
             {/* Pinned footer: grand total + pay button on one row */}
-            <div className="flex-shrink-0 flex items-center gap-3 px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-white border-t border-[#dfe6fb]">
-                <div className="min-w-0">
-                    <span className="block text-xs text-[#45556c]">Grand total</span>
-                    <b className="block text-[24px] leading-[30px] font-semibold tracking-tight tabular-nums text-[#0f172b] truncate">₹{fmtINR(finalAmount)}</b>
+            <TutorialStep step={6} {...tour} text="Check the grand total here, then press Pay to complete the sale." onNext={finishTutorial} isLast position="top">
+                <div data-tour="6" className="flex-shrink-0 flex items-center gap-3 px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-white border-t border-[#dfe6fb]">
+                    <div className="min-w-0">
+                        <span className="block text-xs text-[#45556c]">Grand total</span>
+                        <b className="block text-[24px] leading-[30px] font-semibold tracking-tight tabular-nums text-[#0f172b] truncate">₹{fmtINR(finalAmount)}</b>
+                    </div>
+                    <button type="button" onClick={onCollect} disabled={items.length === 0}
+                        className="ml-auto h-12 min-w-0 flex-1 max-w-[220px] px-3 rounded-sm bg-[#155dfc] text-white text-[15px] font-medium whitespace-nowrap hover:bg-[#1447e6] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed">
+                        {isEditMode ? 'Update invoice' : 'Pay'}
+                    </button>
                 </div>
-                <button type="button" onClick={onCollect} disabled={items.length === 0}
-                    className="ml-auto h-12 min-w-0 flex-1 max-w-[220px] px-3 rounded-sm bg-[#155dfc] text-white text-[15px] font-medium whitespace-nowrap hover:bg-[#1447e6] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed">
-                    {isEditMode ? 'Update invoice' : 'Pay'}
-                </button>
-            </div>
+            </TutorialStep>
         </div>
     );
 
@@ -1698,7 +1796,9 @@ const Sales: React.FC = () => {
                     <div className="flex flex-col w-full xl:flex-1 h-full relative min-w-0 overflow-hidden">
 
                         <div className="flex-shrink-0 bg-white border-b border-[#dfe6fb]">
-                            <div className="hidden md:block px-5 pt-4">{renderGridSearch()}</div>
+                            <TutorialStep step={2} {...tour} text="Search for an item by name or barcode, or tap Scan to use the camera." onNext={() => nextStep(3)}>
+                                <div data-tour="2" className="hidden md:block px-5 pt-4">{renderGridSearch()}</div>
+                            </TutorialStep>
                             <div className="hidden md:flex items-center gap-2 px-5 py-3">
                                 <div className="flex gap-1.5 overflow-x-auto flex-1 scrollbar-hide">
                                     {categories.map(cat => (
@@ -1725,9 +1825,11 @@ const Sales: React.FC = () => {
                                 </div>
 
                                 {/* Center — Salesman (mobile par header ka square button hai) */}
-                                <div className="hidden md:block">
-                                    {renderSalesmanSelect('!h-8 !text-xs min-w-[160px]')}
-                                </div>
+                                <TutorialStep step={3} {...tour} text="Choose which salesman is making this sale." onNext={() => nextStep(4)}>
+                                    <div data-tour="3" className="hidden md:block">
+                                        {renderSalesmanSelect('!h-8 !text-xs min-w-[160px]')}
+                                    </div>
+                                </TutorialStep>
 
                                 {/* Right */}
                                 <div className="flex-1 min-w-fit flex items-center justify-end gap-2">
@@ -1747,75 +1849,205 @@ const Sales: React.FC = () => {
                         <div className="flex-1 flex min-h-0 overflow-hidden">
                             {renderCategoryRail()}
 
-                            <div className="flex-1 min-w-0 overflow-y-auto grid grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] auto-rows-max content-start gap-2 bg-[#eef2ff] px-2 pt-2.5 pb-20 md:px-3">
-                                {gridItemsToShow.map(item => {
-                                    const matchingCartItems = items.filter(i => i.productId === item.id);
-                                    const lastAddedCartItem = matchingCartItems[matchingCartItems.length - 1];
-                                    const isSelected = matchingCartItems.length > 0;
-                                    const quantity = matchingCartItems.reduce((sum, i) => sum + i.quantity, 0);
-                                    const isRoundingEnabled = salesSettings?.enableRounding ?? true;
-                                    const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
-                                    const allowItemDiscount = salesSettings?.enableItemWiseDiscount ?? true;
-                                    const mrp = Number(item.mrp || 0);
-                                    const itemSalesPrice = Number(item.salesPrice || 0);
-                                    const presetDiscount = Number(item.discount || 0);
-                                    let baseDisplayPrice = 0;
+                            <TutorialStep step={4} {...tour} text="Tap an item to add it to the bill. Use + and − on the card to change the quantity." onNext={() => nextStep(5)} mobileArrowAlign="left">
+                                <div data-tour="4" className="flex-1 min-w-0 overflow-y-auto grid grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] auto-rows-max content-start gap-2 bg-[#eef2ff] px-2 pt-2.5 pb-20 md:px-3">
+                                    {/* sample: first two plain items look selected during the tutorial */}
+                                    {(() => { return null; })()}
+                                    {gridItemsToShow.map(item => {
+                                        const tourIdx = showSampleCart && !itemHasAddOns(item)
+                                            ? gridItemsToShow.filter(it => !itemHasAddOns(it)).slice(0, 2).findIndex(it => it.id === item.id)
+                                            : -1;
+                                        const matchingCartItems: any[] = tourIdx >= 0
+                                            ? [{ id: `tour-${item.id}`, productId: item.id, quantity: tourIdx === 0 ? 2 : 1 }]
+                                            : items.filter(i => i.productId === item.id);
+                                        const lastAddedCartItem = matchingCartItems[matchingCartItems.length - 1];
+                                        const isSelected = matchingCartItems.length > 0;
+                                        const quantity = matchingCartItems.reduce((sum, i) => sum + i.quantity, 0);
+                                        const isRoundingEnabled = salesSettings?.enableRounding ?? true;
+                                        const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
+                                        const allowItemDiscount = salesSettings?.enableItemWiseDiscount ?? true;
+                                        const mrp = Number(item.mrp || 0);
+                                        const itemSalesPrice = Number(item.salesPrice || 0);
+                                        const presetDiscount = Number(item.discount || 0);
+                                        let baseDisplayPrice = 0;
 
-                                    // --- NEW 3-TIER LOGIC FOR GRID CARDS ---
-                                    if (mrp > 0 && itemSalesPrice > 0) {
-                                        baseDisplayPrice = itemSalesPrice; // Case 1
-                                    } else if (itemSalesPrice > 0) {
-                                        baseDisplayPrice = allowItemDiscount ? itemSalesPrice * (1 - presetDiscount / 100) : itemSalesPrice; // Case 2
-                                    } else if (mrp > 0) {
-                                        baseDisplayPrice = allowItemDiscount ? mrp * (1 - presetDiscount / 100) : mrp; // Case 3
-                                    }
+                                        // --- NEW 3-TIER LOGIC FOR GRID CARDS ---
+                                        if (mrp > 0 && itemSalesPrice > 0) {
+                                            baseDisplayPrice = itemSalesPrice; // Case 1
+                                        } else if (itemSalesPrice > 0) {
+                                            baseDisplayPrice = allowItemDiscount ? itemSalesPrice * (1 - presetDiscount / 100) : itemSalesPrice; // Case 2
+                                        } else if (mrp > 0) {
+                                            baseDisplayPrice = allowItemDiscount ? mrp * (1 - presetDiscount / 100) : mrp; // Case 3
+                                        }
 
-                                    baseDisplayPrice = applyLineRounding(baseDisplayPrice, isRoundingEnabled, roundingInterval, mrp);
+                                        baseDisplayPrice = applyLineRounding(baseDisplayPrice, isRoundingEnabled, roundingInterval, mrp);
 
-                                    const effectiveSp = (lastAddedCartItem?.customPrice !== undefined && lastAddedCartItem?.customPrice !== null && lastAddedCartItem?.customPrice !== '')
-                                        ? Number(lastAddedCartItem.customPrice)
-                                        : baseDisplayPrice;
-                                    const sp = effectiveSp;
-                                    const lineSubtotal = itemHasAddOns(item)
-                                        ? Math.round(matchingCartItems.reduce((s, i) => s + (Number(i.customPrice ?? 0) + (Number((i as any).addOnAmount) || 0)) * (i.quantity || 0), 0) * 100) / 100
-                                        : Math.round((Number(sp) * quantity) * 100) / 100;
-                                    const discPct = (!hideMrp && allowItemDiscount && mrp > 0 && Number(sp) < mrp && Number(sp) > 0)
-                                        ? Math.round(((mrp - Number(sp)) / mrp) * 100)
-                                        : 0;
-                                    const photoUrl: string | undefined = isCardImageView
-                                        ? ((item as any).image || (item as any).imageUrl || (item as any).thumbnail || (item as any).imageURL)
-                                        : undefined;
-                                    const moq = Number((item as any).moq) || 1;
-                                    const atMin = isSelected && quantity <= moq;
+                                        const effectiveSp = (lastAddedCartItem?.customPrice !== undefined && lastAddedCartItem?.customPrice !== null && lastAddedCartItem?.customPrice !== '')
+                                            ? Number(lastAddedCartItem.customPrice)
+                                            : baseDisplayPrice;
+                                        const sp = effectiveSp;
+                                        const lineSubtotal = itemHasAddOns(item)
+                                            ? Math.round(matchingCartItems.reduce((s, i) => s + (Number(i.customPrice ?? 0) + (Number((i as any).addOnAmount) || 0)) * (i.quantity || 0), 0) * 100) / 100
+                                            : Math.round((Number(sp) * quantity) * 100) / 100;
+                                        const discPct = (!hideMrp && allowItemDiscount && mrp > 0 && Number(sp) < mrp && Number(sp) > 0)
+                                            ? Math.round(((mrp - Number(sp)) / mrp) * 100)
+                                            : 0;
+                                        const photoUrl: string | undefined = isCardImageView
+                                            ? ((item as any).image || (item as any).imageUrl || (item as any).thumbnail || (item as any).imageURL)
+                                            : undefined;
+                                        const moq = Number((item as any).moq) || 1;
+                                        const atMin = isSelected && quantity <= moq;
 
-                                    const openEdit = () => {
-                                        const orig = availableItems.find(a => a.id === item.id);
-                                        if (orig) handleOpenEditDrawer(orig);
-                                    };
-                                    // Add one: tile tap, ADD button aur "+" teeno yahi use karte hain
-                                    const handleAddOne = () => {
-                                        // Add-on items always open the popup: each tap can be a different customisation
-                                        if (isSelected && !itemHasAddOns(item)) handleQuantityChange(lastAddedCartItem.id, quantity + 1);
-                                        else handleAddOrPickTier(item);
-                                    };
-                                    const handleTileTap = () => {
-                                        if (tileHoldFired.current) { tileHoldFired.current = false; return; }
-                                        handleAddOne();
-                                    };
-                                    // "−" button: MOQ tak ghatao, MOQ par item hat jaye (pehle jaisa)
-                                    const handleMinusOne = () => {
-                                        if (quantity > moq) handleQuantityChange(lastAddedCartItem.id, quantity - 1);
-                                        else handleDeleteItem(lastAddedCartItem.id);
-                                    };
+                                        const openEdit = () => {
+                                            const orig = availableItems.find(a => a.id === item.id);
+                                            if (orig) handleOpenEditDrawer(orig);
+                                        };
+                                        // Add one: tile tap, ADD button aur "+" teeno yahi use karte hain
+                                        const handleAddOne = () => {
+                                            if (tourIdx >= 0) return;   // sample card, do nothing
+                                            if (isSelected && !itemHasAddOns(item)) handleQuantityChange(lastAddedCartItem.id, quantity + 1);
+                                            else handleAddOrPickTier(item);
+                                        };
+                                        const handleTileTap = () => {
+                                            if (tileHoldFired.current) { tileHoldFired.current = false; return; }
+                                            handleAddOne();
+                                        };
+                                        // "−" button: MOQ tak ghatao, MOQ par item hat jaye (pehle jaisa)
+                                        const handleMinusOne = () => {
+                                            if (tourIdx >= 0) return;
+                                            if (quantity > moq) handleQuantityChange(lastAddedCartItem.id, quantity - 1);
+                                            else handleDeleteItem(lastAddedCartItem.id);
+                                        };
 
-                                    // ───────── PHOTO CARD (naya Blinkit-style design) ─────────
-                                    if (isCardImageView) {
-                                        return (
-                                            <div
-                                                key={item.id}
-                                                className={`relative flex flex-col min-w-0 overflow-hidden rounded-sm border-2
+                                        // ───────── PHOTO CARD (naya Blinkit-style design) ─────────
+                                        if (isCardImageView) {
+                                            return (
+                                                <div
+                                                    key={item.id}
+                                                    className={`relative flex flex-col min-w-0 overflow-hidden rounded-sm border-2
                 ${isSelected ? 'bg-blue-50 border-blue-600' : 'bg-white border-transparent ring-1 ring-gray-200 hover:ring-gray-300'}`}
-                                            >
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        aria-label={`Add one ${item.name}${isSelected ? `, ${quantity} in bill` : ''}`}
+                                                        onClick={handleTileTap}
+                                                        onPointerDown={(e) => {
+                                                            if (e.pointerType !== 'touch') return;
+                                                            tileHoldFired.current = false;
+                                                            clearTimeout(tileHoldTimer.current);
+                                                            tileHoldTimer.current = setTimeout(() => { tileHoldFired.current = true; openEdit(); }, 450);
+                                                        }}
+                                                        onPointerUp={() => clearTimeout(tileHoldTimer.current)}
+                                                        onPointerLeave={() => clearTimeout(tileHoldTimer.current)}
+                                                        onPointerCancel={() => clearTimeout(tileHoldTimer.current)}
+                                                        onContextMenu={(e) => e.preventDefault()}
+                                                        className="flex flex-col w-full p-0 text-left bg-transparent border-0 select-none cursor-pointer [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent]"
+                                                    >
+                                                        {/* Top: photo mode = Blinkit-style square box, compact mode = slim header */}
+                                                        <span className="relative block w-full px-1.5 pt-1.5 shrink-0">
+                                                            {/* Square photo box: border + rounded + padding andar */}
+                                                            <span className={`relative flex items-center justify-center w-full aspect-square overflow-hidden rounded-sm border border-gray-200 p-2 ${isSelected ? 'bg-white' : 'bg-white'}`}>
+                                                                {photoUrl && (
+                                                                    <img
+                                                                        src={photoUrl}
+                                                                        alt=""
+                                                                        loading="lazy"
+                                                                        className="w-full h-full object-contain block"
+                                                                        onError={(e) => {
+                                                                            (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                                                            const ph = (e.currentTarget as HTMLImageElement).parentElement?.querySelector<HTMLElement>('[data-no-image]');
+                                                                            if (ph) ph.style.display = 'flex';
+                                                                        }}
+                                                                    />
+                                                                )}
+                                                                <span data-no-image className="absolute inset-0 items-center justify-center bg-gray-50" style={{ display: photoUrl ? 'none' : 'flex' }}>
+                                                                    <FiCamera size={22} strokeWidth={1.5} className="text-gray-300" />
+                                                                </span>
+                                                            </span>
+                                                            {/* Discount ribbon: box ke bahar rakha hai taaki clip na ho */}
+                                                            {discPct > 0 && (
+                                                                <span className="absolute top-0 left-3 px-1.5 pt-[3px] pb-[7px] bg-blue-600 text-white text-[10px] leading-[12px] font-bold text-center whitespace-nowrap [clip-path:polygon(0_0,100%_0,100%_100%,50%_82%,0_100%)]">
+                                                                    {discPct}%<br />OFF
+                                                                </span>
+                                                            )}
+                                                        </span>
+
+                                                        {/* Name */}
+                                                        <span className="block w-full px-1.5 pt-1.5 pb-1">
+                                                            <span
+                                                                className="block overflow-hidden text-[12px] leading-4 font-semibold text-gray-900 break-words [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] h-8"
+                                                                title={item.name}
+                                                            >
+                                                                {item.name}
+                                                            </span>
+                                                        </span>
+                                                    </button>
+
+                                                    {/* Footer: price (left) + ADD / stepper (right) */}
+                                                    <div className="flex items-end justify-between gap-1 min-h-[30px] px-1.5 pb-1.5 mt-auto">
+                                                        <span className="flex flex-col min-w-0 tabular-nums leading-[1.15]">
+                                                            {isSelected ? (
+                                                                <span className="text-xs font-bold text-blue-600 whitespace-nowrap">
+                                                                    ₹{lineSubtotal.toLocaleString('en-IN')}
+                                                                </span>
+                                                            ) : (
+                                                                <>
+                                                                    <span className="text-[13px] font-bold text-gray-900 whitespace-nowrap">₹{Number(sp).toLocaleString('en-IN')}</span>
+                                                                    {discPct > 0 && mrp > 0 && Number(sp) < mrp && (
+                                                                        <span className="truncate text-[10px] text-gray-500 line-through whitespace-nowrap">₹{mrp.toLocaleString('en-IN')}</span>
+                                                                    )}
+                                                                </>
+                                                            )}
+                                                        </span>
+
+                                                        {isSelected ? (
+                                                            <span className="flex items-center h-7 flex-shrink-0 rounded-sm bg-blue-600 text-white">
+                                                                <button
+                                                                    type="button"
+                                                                    aria-label={`${atMin ? 'Remove' : 'One less'} ${item.name}`}
+                                                                    onClick={handleMinusOne}
+                                                                    className="grid place-items-center w-6 h-full rounded-l-sm hover:bg-white/20 transition-colors"
+                                                                >
+                                                                    <FiMinus size={14} />
+                                                                </button>
+                                                                <span className="min-w-[18px] text-center text-xs font-bold tabular-nums">{quantity}</span>
+                                                                <button
+                                                                    type="button"
+                                                                    aria-label={`One more ${item.name}`}
+                                                                    onClick={handleAddOne}
+                                                                    className="grid place-items-center w-6 h-full rounded-r-sm hover:bg-white/20 transition-colors"
+                                                                >
+                                                                    <FiPlus size={14} />
+                                                                </button>
+                                                            </span>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                aria-label={`Add ${item.name}`}
+                                                                onClick={handleAddOne}
+                                                                className="h-7 min-w-[56px] px-2 flex-shrink-0 rounded-sm border-[1.5px] border-blue-600 bg-blue-50 text-blue-600 text-xs font-bold hover:bg-blue-600 hover:text-white transition-colors"
+                                                            >
+                                                                ADD
+                                                            </button>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Edit: hamesha dikhta hai (phone par bhi) */}
+                                                    <button
+                                                        type="button"
+                                                        aria-label={`Edit ${item.name}`}
+                                                        onClick={openEdit}
+                                                        className="absolute top-2 right-2 z-[1] grid place-items-center w-[26px] h-[26px] rounded-sm bg-white text-gray-600 border border-gray-200 hover:text-blue-600 hover:border-blue-600 transition-colors"
+                                                    >
+                                                        <FiEdit size={14} />
+                                                    </button>
+                                                </div>
+                                            );
+                                        }
+
+                                        // ───────── COMPACT CARD (bina photo): bilkul original, koi change nahi ─────────
+                                        return (
+                                            <div key={item.id} className="relative min-w-0">
                                                 <button
                                                     type="button"
                                                     aria-label={`Add one ${item.name}${isSelected ? `, ${quantity} in bill` : ''}`}
@@ -1830,208 +2062,90 @@ const Sales: React.FC = () => {
                                                     onPointerLeave={() => clearTimeout(tileHoldTimer.current)}
                                                     onPointerCancel={() => clearTimeout(tileHoldTimer.current)}
                                                     onContextMenu={(e) => e.preventDefault()}
-                                                    className="flex flex-col w-full p-0 text-left bg-transparent border-0 select-none cursor-pointer [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent]"
+                                                    className={`relative flex flex-col w-full overflow-hidden p-0 text-left rounded-sm border-2 select-none cursor-pointer transition active:scale-[0.97] [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent]
+                h-[100px]
+                ${isSelected ? 'bg-blue-50 border-blue-600' : 'bg-white border-transparent ring-1 ring-gray-200 hover:ring-gray-300'}`}
                                                 >
-                                                    {/* Top: photo mode = Blinkit-style square box, compact mode = slim header */}
-                                                    <span className="relative block w-full px-1.5 pt-1.5 shrink-0">
-                                                        {/* Square photo box: border + rounded + padding andar */}
-                                                        <span className={`relative flex items-center justify-center w-full aspect-square overflow-hidden rounded-sm border border-gray-200 p-2 ${isSelected ? 'bg-white' : 'bg-white'}`}>
-                                                            {photoUrl && (
-                                                                <img
-                                                                    src={photoUrl}
-                                                                    alt=""
-                                                                    loading="lazy"
-                                                                    className="w-full h-full object-contain block"
-                                                                    onError={(e) => {
-                                                                        (e.currentTarget as HTMLImageElement).style.display = 'none';
-                                                                        const ph = (e.currentTarget as HTMLImageElement).parentElement?.querySelector<HTMLElement>('[data-no-image]');
-                                                                        if (ph) ph.style.display = 'flex';
-                                                                    }}
-                                                                />
-                                                            )}
-                                                            <span data-no-image className="absolute inset-0 items-center justify-center bg-gray-50" style={{ display: photoUrl ? 'none' : 'flex' }}>
-                                                                <FiCamera size={22} strokeWidth={1.5} className="text-gray-300" />
-                                                            </span>
-                                                        </span>
-                                                        {/* Discount ribbon: box ke bahar rakha hai taaki clip na ho */}
-                                                        {discPct > 0 && (
-                                                            <span className="absolute top-0 left-3 px-1.5 pt-[3px] pb-[7px] bg-blue-600 text-white text-[10px] leading-[12px] font-bold text-center whitespace-nowrap [clip-path:polygon(0_0,100%_0,100%_100%,50%_82%,0_100%)]">
-                                                                {discPct}%<br />OFF
-                                                            </span>
-                                                        )}
-                                                    </span>
-
-                                                    {/* Name */}
-                                                    <span className="block w-full px-1.5 pt-1.5 pb-1">
+                                                    {/* Name + price row */}
+                                                    <span className="flex flex-col flex-1 min-w-0 gap-1 p-1.5">
                                                         <span
-                                                            className="block overflow-hidden text-[12px] leading-4 font-semibold text-gray-900 break-words [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] h-8"
+                                                            className={`block overflow-hidden text-[12px] leading-4 font-semibold text-gray-900 break-words [display:-webkit-box] [-webkit-box-orient:vertical] ${isSelected ? 'pr-7 [-webkit-line-clamp:2] h-8' : 'pr-7 [-webkit-line-clamp:3] h-12'}`}
                                                             title={item.name}
                                                         >
                                                             {item.name}
                                                         </span>
+                                                        <span className="flex items-center gap-1 mt-auto min-w-0 tabular-nums h-8">
+                                                            {isSelected ? (
+                                                                <span className="max-w-[calc(100%-72px)] md:max-w-none truncate text-[11px] md:text-xs leading-4 font-bold text-blue-600 whitespace-nowrap">
+                                                                    ₹{lineSubtotal.toLocaleString('en-IN')}
+                                                                </span>
+                                                            ) : (
+                                                                <>
+                                                                    <span className="text-[13px] leading-4 font-bold text-gray-900 whitespace-nowrap">₹{Number(sp).toLocaleString('en-IN')}</span>
+                                                                    {discPct > 0 && mrp > 0 && Number(sp) < mrp && (
+                                                                        <span className="min-w-0 truncate text-[11px] leading-[14px] text-gray-500 line-through whitespace-nowrap">₹{mrp.toLocaleString('en-IN')}</span>
+                                                                    )}
+                                                                </>
+                                                            )}
+                                                        </span>
                                                     </span>
                                                 </button>
 
-                                                {/* Footer: price (left) + ADD / stepper (right) */}
-                                                <div className="flex items-end justify-between gap-1 min-h-[30px] px-1.5 pb-1.5 mt-auto">
-                                                    <span className="flex flex-col min-w-0 tabular-nums leading-[1.15]">
-                                                        {isSelected ? (
-                                                            <span className="text-xs font-bold text-blue-600 whitespace-nowrap">
-                                                                ₹{lineSubtotal.toLocaleString('en-IN')}
-                                                            </span>
-                                                        ) : (
-                                                            <>
-                                                                <span className="text-[13px] font-bold text-gray-900 whitespace-nowrap">₹{Number(sp).toLocaleString('en-IN')}</span>
-                                                                {discPct > 0 && mrp > 0 && Number(sp) < mrp && (
-                                                                    <span className="truncate text-[10px] text-gray-500 line-through whitespace-nowrap">₹{mrp.toLocaleString('en-IN')}</span>
-                                                                )}
-                                                            </>
-                                                        )}
-                                                    </span>
-
-                                                    {isSelected ? (
-                                                        <span className="flex items-center h-7 flex-shrink-0 rounded-sm bg-blue-600 text-white">
-                                                            <button
-                                                                type="button"
-                                                                aria-label={`${atMin ? 'Remove' : 'One less'} ${item.name}`}
-                                                                onClick={handleMinusOne}
-                                                                className="grid place-items-center w-6 h-full rounded-l-sm hover:bg-white/20 transition-colors"
-                                                            >
-                                                                <FiMinus size={14} />
-                                                            </button>
-                                                            <span className="min-w-[18px] text-center text-xs font-bold tabular-nums">{quantity}</span>
-                                                            <button
-                                                                type="button"
-                                                                aria-label={`One more ${item.name}`}
-                                                                onClick={handleAddOne}
-                                                                className="grid place-items-center w-6 h-full rounded-r-sm hover:bg-white/20 transition-colors"
-                                                            >
-                                                                <FiPlus size={14} />
-                                                            </button>
-                                                        </span>
-                                                    ) : (
+                                                {/* Qty stepper: right end (photo card jaisa), wide */}
+                                                {isSelected && (
+                                                    <span className="absolute z-[1] bottom-2 right-1.5 h-7 flex items-center rounded-sm bg-blue-600 text-white">
                                                         <button
                                                             type="button"
-                                                            aria-label={`Add ${item.name}`}
-                                                            onClick={handleAddOne}
-                                                            className="h-7 min-w-[56px] px-2 flex-shrink-0 rounded-sm border-[1.5px] border-blue-600 bg-blue-50 text-blue-600 text-xs font-bold hover:bg-blue-600 hover:text-white transition-colors"
+                                                            aria-label={`${atMin ? 'Remove' : 'One less'} ${item.name}`}
+                                                            onClick={handleMinusOne}
+                                                            className="grid place-items-center w-6 md:w-9 h-full rounded-l-sm hover:bg-white/20 transition-colors"
                                                         >
-                                                            ADD
+                                                            <FiMinus size={14} />
                                                         </button>
-                                                    )}
-                                                </div>
+                                                        <span className="min-w-[20px] md:min-w-[32px] text-center text-xs md:text-sm font-bold tabular-nums">{quantity}</span>
+                                                        <button
+                                                            type="button"
+                                                            aria-label={`One more ${item.name}`}
+                                                            onClick={handleAddOne}
+                                                            className="grid place-items-center w-6 md:w-9 h-full rounded-r-sm hover:bg-white/20 transition-colors"
+                                                        >
+                                                            <FiPlus size={14} />
+                                                        </button>
+                                                    </span>
+                                                )}
 
-                                                {/* Edit: hamesha dikhta hai (phone par bhi) */}
+                                                {/* Edit: top-right, hamesha dikhta hai (phone par bhi) */}
                                                 <button
                                                     type="button"
                                                     aria-label={`Edit ${item.name}`}
                                                     onClick={openEdit}
-                                                    className="absolute top-2 right-2 z-[1] grid place-items-center w-[26px] h-[26px] rounded-sm bg-white text-gray-600 border border-gray-200 hover:text-blue-600 hover:border-blue-600 transition-colors"
+                                                    className="grid absolute top-1 right-1 z-[1] place-items-center w-6 h-6 rounded-sm bg-white text-gray-600 border border-gray-200 hover:text-blue-600 hover:border-blue-600 transition-colors"
                                                 >
-                                                    <FiEdit size={14} />
+                                                    <FiEdit size={13} />
                                                 </button>
                                             </div>
                                         );
-                                    }
-
-                                    // ───────── COMPACT CARD (bina photo): bilkul original, koi change nahi ─────────
-                                    return (
-                                        <div key={item.id} className="relative min-w-0">
-                                            <button
-                                                type="button"
-                                                aria-label={`Add one ${item.name}${isSelected ? `, ${quantity} in bill` : ''}`}
-                                                onClick={handleTileTap}
-                                                onPointerDown={(e) => {
-                                                    if (e.pointerType !== 'touch') return;
-                                                    tileHoldFired.current = false;
-                                                    clearTimeout(tileHoldTimer.current);
-                                                    tileHoldTimer.current = setTimeout(() => { tileHoldFired.current = true; openEdit(); }, 450);
-                                                }}
-                                                onPointerUp={() => clearTimeout(tileHoldTimer.current)}
-                                                onPointerLeave={() => clearTimeout(tileHoldTimer.current)}
-                                                onPointerCancel={() => clearTimeout(tileHoldTimer.current)}
-                                                onContextMenu={(e) => e.preventDefault()}
-                                                className={`relative flex flex-col w-full overflow-hidden p-0 text-left rounded-sm border-2 select-none cursor-pointer transition active:scale-[0.97] [-webkit-touch-callout:none] [-webkit-tap-highlight-color:transparent]
-                h-[100px]
-                ${isSelected ? 'bg-blue-50 border-blue-600' : 'bg-white border-transparent ring-1 ring-gray-200 hover:ring-gray-300'}`}
-                                            >
-                                                {/* Name + price row */}
-                                                <span className="flex flex-col flex-1 min-w-0 gap-1 p-1.5">
-                                                    <span
-                                                        className={`block overflow-hidden text-[12px] leading-4 font-semibold text-gray-900 break-words [display:-webkit-box] [-webkit-box-orient:vertical] ${isSelected ? 'pr-7 [-webkit-line-clamp:2] h-8' : 'pr-7 [-webkit-line-clamp:3] h-12'}`}
-                                                        title={item.name}
-                                                    >
-                                                        {item.name}
-                                                    </span>
-                                                    <span className="flex items-center gap-1 mt-auto min-w-0 tabular-nums h-8">
-                                                        {isSelected ? (
-                                                            <span className="max-w-[calc(100%-72px)] md:max-w-none truncate text-[11px] md:text-xs leading-4 font-bold text-blue-600 whitespace-nowrap">
-                                                                ₹{lineSubtotal.toLocaleString('en-IN')}
-                                                            </span>
-                                                        ) : (
-                                                            <>
-                                                                <span className="text-[13px] leading-4 font-bold text-gray-900 whitespace-nowrap">₹{Number(sp).toLocaleString('en-IN')}</span>
-                                                                {discPct > 0 && mrp > 0 && Number(sp) < mrp && (
-                                                                    <span className="min-w-0 truncate text-[11px] leading-[14px] text-gray-500 line-through whitespace-nowrap">₹{mrp.toLocaleString('en-IN')}</span>
-                                                                )}
-                                                            </>
-                                                        )}
-                                                    </span>
-                                                </span>
-                                            </button>
-
-                                            {/* Qty stepper: right end (photo card jaisa), wide */}
-                                            {isSelected && (
-                                                <span className="absolute z-[1] bottom-2 right-1.5 h-7 flex items-center rounded-sm bg-blue-600 text-white">
-                                                    <button
-                                                        type="button"
-                                                        aria-label={`${atMin ? 'Remove' : 'One less'} ${item.name}`}
-                                                        onClick={handleMinusOne}
-                                                        className="grid place-items-center w-6 md:w-9 h-full rounded-l-sm hover:bg-white/20 transition-colors"
-                                                    >
-                                                        <FiMinus size={14} />
-                                                    </button>
-                                                    <span className="min-w-[20px] md:min-w-[32px] text-center text-xs md:text-sm font-bold tabular-nums">{quantity}</span>
-                                                    <button
-                                                        type="button"
-                                                        aria-label={`One more ${item.name}`}
-                                                        onClick={handleAddOne}
-                                                        className="grid place-items-center w-6 md:w-9 h-full rounded-r-sm hover:bg-white/20 transition-colors"
-                                                    >
-                                                        <FiPlus size={14} />
-                                                    </button>
-                                                </span>
-                                            )}
-
-                                            {/* Edit: top-right, hamesha dikhta hai (phone par bhi) */}
-                                            <button
-                                                type="button"
-                                                aria-label={`Edit ${item.name}`}
-                                                onClick={openEdit}
-                                                className="grid absolute top-1 right-1 z-[1] place-items-center w-6 h-6 rounded-sm bg-white text-gray-600 border border-gray-200 hover:text-blue-600 hover:border-blue-600 transition-colors"
-                                            >
-                                                <FiEdit size={13} />
-                                            </button>
-                                        </div>
-                                    );
-                                })}
-                            </div>
+                                    })}
+                                </div>
+                            </TutorialStep>
                         </div>
 
                         {/* Mobile footer — ONCE only */}
-                        <div className="md:hidden">
-                            <GenericBillFooter
-                                isExpanded={isFooterExpanded}
-                                onToggleExpand={() => setIsFooterExpanded(!isFooterExpanded)}
-                                totalQuantity={totalQuantity} subtotal={subtotal}
-                                totalDiscount={totalDiscount} taxAmount={taxAmount}
-                                finalAmount={finalAmount} showTaxRow={showTaxRow}
-                                taxLabel={`Tax (${activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})`}
-                                actionLabel={isEditMode ? 'Update invoice' : 'View bill'}
-                                onActionClick={() => setIsBillOpen(true)}
-                                disableAction={items.length === 0}>
-                            </GenericBillFooter>
-                        </div>
+                        <TutorialStep step={6} {...tour} text="Check the total here, then tap View bill and Pay to complete the sale." onNext={finishTutorial} isLast position="top">
+                            <div data-tour="6" className="md:hidden">
+                                <GenericBillFooter
+                                    isExpanded={isFooterExpanded}
+                                    onToggleExpand={() => setIsFooterExpanded(!isFooterExpanded)}
+                                    totalQuantity={totalQuantity} subtotal={subtotal}
+                                    totalDiscount={totalDiscount} taxAmount={taxAmount}
+                                    finalAmount={finalAmount} showTaxRow={showTaxRow}
+                                    taxLabel={`Tax (${activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})`}
+                                    actionLabel={isEditMode ? 'Update invoice' : 'View bill'}
+                                    onActionClick={() => setIsBillOpen(true)}
+                                    disableAction={items.length === 0}>
+                                </GenericBillFooter>
+                            </div>
+                        </TutorialStep>
                         {renderTabletCheckoutBar(isEditMode ? 'Update invoice' : 'View bill', () => setIsBillOpen(true))}
                     </div>
 
@@ -2316,39 +2430,41 @@ ${colClass || ''}`}
 
                 <div className="flex flex-col w-full xl:flex-1 min-w-0 h-full relative">
 
-                    <div className="flex-shrink-0 px-4 md:px-5 py-3 bg-white border-b border-[#dfe6fb]">
-                        <div className="flex gap-2 items-center w-full">
-                            <div className="flex-grow">
-                                <SearchableItemInput
-                                    label="Search item"
-                                    placeholder="Search item name or barcode"
-                                    items={availableItems}
-                                    onItemSelected={handleItemSelectedWrapper}
-                                    isLoading={pageIsLoading}
-                                    error={error}
-                                    onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })}
-                                    categories={categories}
-                                    itemGroupMap={itemGroupMap}
-                                    onSearchChange={setCartSearchQuery}
-                                />
-                            </div>
-                            <button type="button" onClick={() => setIsScannerOpen(true)} title="Scan barcode" aria-label="Scan barcode" className={SCAN_BTN_CLS}>
-                                <IconScanCircle width={20} height={20} />
-                                <span className="hidden md:inline">Scan</span>
-                            </button>
-                            {/* Phone only: clear cart at the end of the search row (same as card view) */}
-                            {items.length > 0 && (
-                                <button
-                                    type="button"
-                                    onClick={handleClearCart}
-                                    aria-label="Clear cart"
-                                    className="md:hidden inline-flex items-center justify-center w-12 h-12 flex-shrink-0 rounded-sm text-[#d5000c] bg-[#ffeef0] hover:bg-[#ffdde1] transition-colors"
-                                >
-                                    <FiTrash2 size={18} />
+                    <TutorialStep step={2} {...tour} text="Search for an item by name or barcode, or tap Scan to use the camera." onNext={() => nextStep(3)} mobileArrowAlign="left">
+                        <div data-tour="2" className="flex-shrink-0 px-4 md:px-5 py-3 bg-white border-b border-[#dfe6fb]">
+                            <div className="flex gap-2 items-center w-full">
+                                <div className="flex-grow">
+                                    <SearchableItemInput
+                                        label="Search item"
+                                        placeholder="Search item name or barcode"
+                                        items={availableItems}
+                                        onItemSelected={handleItemSelectedWrapper}
+                                        isLoading={pageIsLoading}
+                                        error={error}
+                                        onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })}
+                                        categories={categories}
+                                        itemGroupMap={itemGroupMap}
+                                        onSearchChange={setCartSearchQuery}
+                                    />
+                                </div>
+                                <button type="button" onClick={() => setIsScannerOpen(true)} title="Scan barcode" aria-label="Scan barcode" className={SCAN_BTN_CLS}>
+                                    <IconScanCircle width={20} height={20} />
+                                    <span className="hidden md:inline">Scan</span>
                                 </button>
-                            )}
+                                {/* Phone only: clear cart at the end of the search row (same as card view) */}
+                                {items.length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={handleClearCart}
+                                        aria-label="Clear cart"
+                                        className="md:hidden inline-flex items-center justify-center w-12 h-12 flex-shrink-0 rounded-sm text-[#d5000c] bg-[#ffeef0] hover:bg-[#ffdde1] transition-colors"
+                                    >
+                                        <FiTrash2 size={18} />
+                                    </button>
+                                )}
+                            </div>
                         </div>
-                    </div>
+                    </TutorialStep>
 
                     {/* Cart List Container */}
                     <div className="flex-1 flex flex-col bg-[#eef2ff] overflow-y-hidden">
@@ -2357,63 +2473,68 @@ ${colClass || ''}`}
                             {discountInfo && <div className="text-xs text-red-600">{discountInfo}</div>}
                             {priceInfo && <div className="text-xs text-red-600">{priceInfo}</div>}
                         </div>
-                        <GenericCartList
-                            items={displayItems.map(i => decorateLine(
-                                (i.addOns?.length ?? 0) > 0
-                                    ? { ...i, addOnText: i.addOns!.map(a => a.name).join(', ') }
-                                    : i
-                            ))}
-                            availableItems={availableItems}
-                            scrollRef={cartListRef}
-                            basePriceKey="mrp"
-                            priceLabel="MRP"
-                            settings={{
-                                enableRounding: salesSettings?.enableRounding ?? true,
-                                roundingInterval: (salesSettings as any)?.roundingInterval ?? 1,
-                                enableItemWiseDiscount: salesSettings?.enableItemWiseDiscount ?? true,
-                                enableDiscount2: (salesSettings as any)?.enableDiscount2 ?? false,
-                                lockDiscount: isDiscountLocked,
-                                lockPrice: isPriceLocked,
-                                hideMrp: hideMrp
-                            }}
-                            applyRounding={applyRounding}
-                            State={State}
-                            setModal={setModal}
-                            onOpenEditDrawer={handleOpenEditDrawer}
-                            onNameClick={(line: any) => openAddOnEdit(line)}
-                            onDeleteItem={handleDeleteItem}
-                            onDiscountChange={handleDiscountChange}
-                            onDiscount2Change={handleDiscount2Change}
-                            onCustomPriceChange={handleCustomPriceChange}
-                            onCustomPriceBlur={handleCustomPriceBlur}
-                            onQuantityChange={handleQuantityChange}
-                            onDiscountPressStart={handleDiscountPressStart}
-                            onDiscountPressEnd={handleDiscountPressEnd}
-                            onDiscountClick={handleDiscountClick}
-                            onPricePressStart={handlePricePressStart}
-                            onPricePressEnd={handlePricePressEnd}
-                            onPriceClick={handlePriceClick}
-                        />
+                        <TutorialStep step={4} {...tour} text="Items you add appear here. You can change the quantity, price and discount on each line." onNext={() => nextStep(5)}>
+                            <div data-tour="4" className="flex-1 min-h-0 flex flex-col">
+                                <GenericCartList
+                                    items={showSampleCart ? TUTORIAL_SAMPLE_LINES : displayItems.map(i => decorateLine(
+                                        (i.addOns?.length ?? 0) > 0
+                                            ? { ...i, addOnText: i.addOns!.map(a => a.name).join(', ') }
+                                            : i
+                                    ))}
+                                    availableItems={availableItems}
+                                    scrollRef={cartListRef}
+                                    basePriceKey="mrp"
+                                    priceLabel="MRP"
+                                    settings={{
+                                        enableRounding: salesSettings?.enableRounding ?? true,
+                                        roundingInterval: (salesSettings as any)?.roundingInterval ?? 1,
+                                        enableItemWiseDiscount: salesSettings?.enableItemWiseDiscount ?? true,
+                                        enableDiscount2: (salesSettings as any)?.enableDiscount2 ?? false,
+                                        lockDiscount: isDiscountLocked,
+                                        lockPrice: isPriceLocked,
+                                        hideMrp: hideMrp
+                                    }}
+                                    applyRounding={applyRounding}
+                                    State={State}
+                                    setModal={setModal}
+                                    onOpenEditDrawer={handleOpenEditDrawer}
+                                    onNameClick={(line: any) => openAddOnEdit(line)}
+                                    onDeleteItem={handleDeleteItem}
+                                    onDiscountChange={handleDiscountChange}
+                                    onDiscount2Change={handleDiscount2Change}
+                                    onCustomPriceChange={handleCustomPriceChange}
+                                    onCustomPriceBlur={handleCustomPriceBlur}
+                                    onQuantityChange={handleQuantityChange}
+                                    onDiscountPressStart={handleDiscountPressStart}
+                                    onDiscountPressEnd={handleDiscountPressEnd}
+                                    onDiscountClick={handleDiscountClick}
+                                    onPricePressStart={handlePricePressStart}
+                                    onPricePressEnd={handlePricePressEnd}
+                                    onPriceClick={handlePriceClick}
+                                />
+                            </div>
+                        </TutorialStep>
                         <div className="xl:hidden px-4 pb-3">{renderSaveBox()}</div>
                         {/* MOBILE FOOTER (Visible only on small screens) */}
-                        <div className="md:hidden">
-
-                            <GenericBillFooter
-                                isExpanded={isFooterExpanded}
-                                onToggleExpand={() => setIsFooterExpanded(!isFooterExpanded)}
-                                totalQuantity={totalQuantity}
-                                subtotal={subtotal}
-                                totalDiscount={totalDiscount}
-                                taxAmount={taxAmount}
-                                finalAmount={finalAmount}
-                                showTaxRow={showTaxRow}
-                                taxLabel={`Tax (${activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})`}
-                                actionLabel={isEditMode ? 'Update invoice' : 'View bill'}
-                                onActionClick={() => setIsBillOpen(true)}
-                                disableAction={items.length === 0}
-                            >
-                            </GenericBillFooter>
-                        </div>
+                        <TutorialStep step={6} {...tour} text="Check the total here, then tap View bill and Pay to complete the sale." onNext={finishTutorial} isLast position="top">
+                            <div data-tour="6" className="md:hidden">
+                                <GenericBillFooter
+                                    isExpanded={isFooterExpanded}
+                                    onToggleExpand={() => setIsFooterExpanded(!isFooterExpanded)}
+                                    totalQuantity={totalQuantity}
+                                    subtotal={subtotal}
+                                    totalDiscount={totalDiscount}
+                                    taxAmount={taxAmount}
+                                    finalAmount={finalAmount}
+                                    showTaxRow={showTaxRow}
+                                    taxLabel={`Tax (${activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})`}
+                                    actionLabel={isEditMode ? 'Update invoice' : 'View bill'}
+                                    onActionClick={() => setIsBillOpen(true)}
+                                    disableAction={items.length === 0}
+                                >
+                                </GenericBillFooter>
+                            </div>
+                        </TutorialStep>
                         {renderTabletCheckoutBar(isEditMode ? 'Update invoice' : 'View bill', () => setIsBillOpen(true))}
                     </div>
                 </div>

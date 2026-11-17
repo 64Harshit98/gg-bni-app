@@ -475,12 +475,12 @@ export const useSalesCart = ({
         ));
     };
     const handleDeleteItem = (id: string) => { setItems(prev => prev.filter(item => item.id !== id)); };
-    const handleDiscountPressStart = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); longPressTimer.current = setTimeout(() => setIsDiscountLocked(false), 500); };
+    const handleDiscountPressStart = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); longPressTimer.current = setTimeout(() => { setIsDiscountLocked(false); setDiscountInfo(null); }, 500); };
     const handleDiscountPressEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
-    const handleDiscountClick = () => { if (salesSettings?.lockDiscountEntry || isDiscountLocked) { setDiscountInfo("Cannot edit discount"); setTimeout(() => setDiscountInfo(null), 3000); } };
-    const handlePricePressStart = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); longPressTimer.current = setTimeout(() => setIsPriceLocked(false), 500); };
+    const handleDiscountClick = () => { if (isDiscountLocked) { setDiscountInfo("Cannot edit discount"); setTimeout(() => setDiscountInfo(null), 3000); } };
+    const handlePricePressStart = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); longPressTimer.current = setTimeout(() => { setIsPriceLocked(false); setPriceInfo(null); }, 500); };
     const handlePricePressEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
-    const handlePriceClick = () => { if (salesSettings?.lockSalePriceEntry || isPriceLocked) { setPriceInfo("Cannot edit sale price"); setTimeout(() => setPriceInfo(null), 1000); } };
+    const handlePriceClick = () => { if (isPriceLocked) { setPriceInfo("Cannot edit sale price"); setTimeout(() => setPriceInfo(null), 1000); } };
     const handleDiscountChange = (id: string, v: number | string) => {
         const n = typeof v === 'string' ? parseFloat(v) : v;
         const safeDiscount = isNaN(n) ? 0 : Math.min(100, Math.max(0, n));

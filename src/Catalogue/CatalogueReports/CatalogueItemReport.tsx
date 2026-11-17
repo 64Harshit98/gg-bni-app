@@ -6,7 +6,6 @@ import {
   ArrowUp,
   ArrowUpDown,
   CalendarDays,
-  ChevronDown,
   Eye,
   EyeOff,
   FileText,
@@ -43,6 +42,7 @@ import DownloadMenu from '../../Pages/Reports/SalesReportComponents/DownloadMenu
 import CustomRangePanel from '../../Pages/Reports/SalesReportComponents/CustomRangePanel';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
 import BackButton from '../../Components/BackButton';
+import SearchableSelect from '../../Components/SearchableSelect';
 
 const UNASSIGNED_GROUP_NAME = 'Uncategorized';
 const PAGE_SIZE = 100;
@@ -363,7 +363,7 @@ const CatalogueItemReport: React.FC = () => {
   const periodText =
     fromDate === toDate ? `Period: ${fmtDate(fromDate)}` : `Period: ${fmtDate(fromDate)} to ${fmtDate(toDate)}`;
 
-    const downloadAsPdf = async () => {
+  const downloadAsPdf = async () => {
     try {
       // Guard clause in case filteredItems is empty
       if (!filteredItems || filteredItems.length === 0) {
@@ -548,7 +548,7 @@ const CatalogueItemReport: React.FC = () => {
       pdf.setTextColor(ON_DARK[0], ON_DARK[1], ON_DARK[2]);
       pdf.text(`${periodDays} ${periodDays === 1 ? 'day' : 'days'}`, brandRight, 45.5, { align: 'right' });
 
-            // ---------- DATA (same filteredItems + prepareExportDataForPdf) ----------
+      // ---------- DATA (same filteredItems + prepareExportDataForPdf) ----------
       const exportData = filteredItems.map(prepareExportDataForPdf);
 
       // ---------- 2. SUMMARY STRIP ----------
@@ -661,7 +661,7 @@ const CatalogueItemReport: React.FC = () => {
       ]);
 
       // Item | Group | Barcode | MRP | Purchase | Discount | Tax | Stock | Restock  (total = 269mm)
-const COLW = [52, 32, 34, 28, 34, 25, 14, 22, 28];
+      const COLW = [52, 32, 34, 28, 34, 25, 14, 22, 28];
 
       autoTable(pdf, {
         startY: listY + 4,
@@ -738,7 +738,7 @@ const COLW = [52, 32, 34, 28, 34, 25, 14, 22, 28];
         },
       });
 
-            // ---------- 4. PAGE 2+ MINI HEADER + FOOTER (every page) ----------
+      // ---------- 4. PAGE 2+ MINI HEADER + FOOTER (every page) ----------
       const totalPages = pdf.getNumberOfPages();
 
       for (let i = 1; i <= totalPages; i++) {
@@ -1138,8 +1138,8 @@ const COLW = [52, 32, 34, 28, 34, 25, 14, 22, 28];
       : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
     }`;
 
-  const selectClass =
-    'w-full appearance-none rounded-sm border border-slate-300 bg-white py-2 pl-3 pr-8 text-sm text-slate-700 outline-none transition hover:border-slate-400 focus:border-orange-600';
+  // const selectClass =
+  //   'w-full appearance-none rounded-sm border border-slate-300 bg-white py-2 pl-3 pr-8 text-sm text-slate-700 outline-none transition hover:border-slate-400 focus:border-orange-600';
 
   const visibleItems = filteredItems.slice(0, visibleCount);
   const mobileSortValue = `${String(sortConfig.key)}:${sortConfig.direction}`;
@@ -1249,29 +1249,35 @@ const COLW = [52, 32, 34, 28, 34, 25, 14, 22, 28];
       {/* FILTERS */}
       <div className="relative mb-4 flex flex-col gap-3 md:flex-row md:items-center">
         <div className="grid grid-cols-2 gap-2.5 md:flex md:gap-2">
-          <div className="relative md:w-44">
-            <select value={appliedItemGroupId} onChange={(e) => handleGroupChange(e.target.value)} className={selectClass}>
-              <option value="">All groups</option>
-              {itemGroups.map((group) => (
-                <option key={group.id} value={group.id}>
-                  {group.name}
-                </option>
-              ))}
-              <option value={UNASSIGNED_GROUP_NAME}>Uncategorized</option>
-            </select>
-            <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+          <div className="md:w-44">
+            <SearchableSelect
+              theme="orange"
+              buttonClassName="!h-[38px]"
+              options={[
+                ...itemGroups.map((g) => ({ value: g.id as string, label: g.name })),
+                { value: UNASSIGNED_GROUP_NAME, label: 'Uncategorized' },
+              ]}
+              value={appliedItemGroupId}
+              onChange={handleGroupChange}
+              placeholder="All groups"
+              searchPlaceholder="Search group..."
+              clearable
+            />
           </div>
-          <div className="relative md:w-44">
-            <select value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)} className={selectClass}>
-              <option value="">All locations</option>
-              <option value={SHOP_ID}>{SHOP_NAME}</option>
-              {godowns.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+          <div className="md:w-44">
+            <SearchableSelect
+              theme="orange"
+              buttonClassName="!h-[38px]"
+              options={[
+                { value: SHOP_ID, label: SHOP_NAME },
+                ...godowns.map((g) => ({ value: g.id as string, label: g.name })),
+              ]}
+              value={locationFilter}
+              onChange={setLocationFilter}
+              placeholder="All locations"
+              searchPlaceholder="Search location..."
+              clearable
+            />
           </div>
         </div>
 
@@ -1370,23 +1376,24 @@ const COLW = [52, 32, 34, 28, 34, 25, 14, 22, 28];
           </div>
 
           {/* Mobile sort */}
-          <div className="relative md:hidden">
-            <select
+          <div className="w-40 md:hidden">
+            <SearchableSelect
+              theme="orange"
+              buttonClassName="!h-9"
+              options={[
+                { value: 'name:asc', label: 'Name A–Z' },
+                { value: 'name:desc', label: 'Name Z–A' },
+                { value: 'stock:asc', label: 'Lowest stock' },
+                { value: 'stock:desc', label: 'Highest stock' },
+                { value: 'mrp:desc', label: 'Highest MRP' },
+                { value: 'purchasePrice:desc', label: 'Highest cost' },
+              ]}
               value={mobileSortValue}
-              onChange={(e) => {
-                const [key, direction] = e.target.value.split(':') as [keyof Item, 'asc' | 'desc'];
+              onChange={(v) => {
+                const [key, direction] = v.split(':') as [keyof Item, 'asc' | 'desc'];
                 setSortConfig({ key, direction });
               }}
-              className="appearance-none rounded-sm border border-slate-300 bg-white py-1.5 pl-3 pr-8 text-sm text-slate-700 outline-none focus:border-orange-600"
-            >
-              <option value="name:asc">Name A–Z</option>
-              <option value="name:desc">Name Z–A</option>
-              <option value="stock:asc">Lowest stock</option>
-              <option value="stock:desc">Highest stock</option>
-              <option value="mrp:desc">Highest MRP</option>
-              <option value="purchasePrice:desc">Highest cost</option>
-            </select>
-            <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+            />
           </div>
         </div>
 

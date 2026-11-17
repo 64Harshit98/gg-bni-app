@@ -4,7 +4,6 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
-  ChevronDown,
   Copy,
   LayoutGrid,
   MoreHorizontal,
@@ -27,6 +26,7 @@ import {
   type ItemIssue,
 } from '../../Pages/Reports/ItemReportComponents/itemIssues';
 import BackButton from '../../Components/BackButton';
+import SearchableSelect from '../../Components/SearchableSelect';
 import { ROUTES } from '../../constants/indesx';
 
 import type { Item } from '../../constants/models';
@@ -374,8 +374,8 @@ const ManageItems: React.FC = () => {
         key={value}
         onClick={() => setActiveFilter(active ? null : value)}
         className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-sm border px-2.5 py-1.5 text-xs font-medium transition ${active
-            ? 'border-[#F97316] bg-[#F97316] text-white'
-            : 'border-slate-300 bg-white text-slate-700 hover:border-orange-300'
+          ? 'border-[#F97316] bg-[#F97316] text-white'
+          : 'border-slate-300 bg-white text-slate-700 hover:border-orange-300'
           }`}
       >
         {isIssue && <AlertTriangle size={12} className={active ? 'text-white' : 'text-amber-500'} />}
@@ -460,37 +460,36 @@ const ManageItems: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-2 gap-2.5 md:contents">
-            <div className="relative md:w-44">
-              <LayoutGrid size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-              <select
+            <div className="md:w-44">
+              <SearchableSelect
+                theme="orange"
+                buttonClassName="!h-[38px]"
+                leftIcon={<LayoutGrid size={14} />}
+                options={[
+                  ...itemGroups.map((g) => ({ value: g.id as string, label: g.name })),
+                  { value: UNASSIGNED_GROUP_NAME, label: 'Uncategorized' },
+                ]}
                 value={appliedItemGroupId}
-                onChange={(e) => handleGroupChange(e.target.value)}
-                className="w-full appearance-none rounded-sm border border-slate-300 bg-white py-2 pl-8 pr-8 text-sm text-slate-700 outline-none transition hover:border-slate-400 focus:border-orange-600"
-              >
-                <option value="">All groups</option>
-                {itemGroups.map((group) => (
-                  <option key={group.id} value={group.id}>{group.name}</option>
-                ))}
-                <option value={UNASSIGNED_GROUP_NAME}>Uncategorized</option>
-              </select>
-              <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                onChange={handleGroupChange}
+                placeholder="All groups"
+                searchPlaceholder="Search group..."
+                clearable
+              />
             </div>
 
             {/* Sort — right on desktop, next to the group on mobile */}
-            <div className="relative md:order-last md:ml-auto md:w-44">
-              <select
+            <div className="md:order-last md:ml-auto md:w-44">
+              <SearchableSelect
+                theme="orange"
+                buttonClassName="!h-[38px]"
+                options={SORT_OPTIONS}
                 value={`${sortConfig.key}:${sortConfig.direction}`}
-                onChange={(e) => {
-                  const [key, direction] = e.target.value.split(':') as [SortKey, 'asc' | 'desc'];
+                onChange={(v) => {
+                  const [key, direction] = v.split(':') as [SortKey, 'asc' | 'desc'];
                   setSortConfig({ key, direction });
                 }}
-                className="w-full appearance-none rounded-sm border border-slate-300 bg-white py-2 pl-3 pr-8 text-sm text-slate-700 outline-none transition hover:border-slate-400 focus:border-orange-600"
-              >
-                {SORT_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-              <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                searchThreshold={99}
+              />
             </div>
           </div>
 

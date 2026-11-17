@@ -1040,12 +1040,15 @@ const CustomerPricing: React.FC = () => {
     };
 
     const renderBulkBar = () => selected.size === 0 ? null : (
-        <div className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(12px,env(safe-area-inset-bottom))] pointer-events-none">
+        <div className="fixed inset-x-0 bottom-[calc(var(--bottom-nav-h,72px)+env(safe-area-inset-bottom))] md:bottom-0 z-40 px-3 pb-2 md:pb-[max(12px,env(safe-area-inset-bottom))] pointer-events-none">
             <div role="region" aria-label={`Selected ${partiesWord}`}
-                className={`${CARD} pointer-events-auto max-w-3xl mx-auto flex flex-wrap items-center gap-2 p-3 shadow-[0_10px_28px_rgba(21,48,140,0.18),0_2px_6px_rgba(21,48,140,0.08)]`}>
-                <span className="text-sm font-semibold mr-1">{selected.size} selected</span>
-                <div className="flex items-center gap-2 flex-1 min-w-[220px]">
-                    <div className={`${FIELD} w-[96px] !h-9`}>
+                className={`${CARD} pointer-events-auto max-w-3xl mx-auto flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 shadow-[0_10px_28px_rgba(21,48,140,0.18),0_2px_6px_rgba(21,48,140,0.08)]`}>
+                <span className="order-1 flex-1 sm:flex-none text-sm font-semibold mr-1">{selected.size} selected</span>
+                <button type="button" aria-label="Clear selection" className={`${ICON_BTN} order-2 sm:order-3 !w-8 !h-8`} onClick={() => setSelected(new Set())}>
+                    <FiX size={18} aria-hidden />
+                </button>
+                <div className="order-3 sm:order-2 flex items-center gap-2 w-full sm:w-auto sm:flex-1">
+                    <div className={`${FIELD} w-[84px] sm:w-[96px] !h-9`}>
                         <input id="cp-bulk" type="text" inputMode="decimal" value={bulkPct} placeholder="0"
                             aria-label="Discount % on all items for the selected"
                             onChange={(e) => DECIMAL.test(e.target.value) && setBulkPct(e.target.value)}
@@ -1053,15 +1056,12 @@ const CustomerPricing: React.FC = () => {
                             className={`${INPUT} tabular-nums`} />
                         <span className="text-sm">%</span>
                     </div>
-                    <button type="button" className={`${BTN_PRIMARY} !h-9`} onClick={applyBulk}>Set on all items</button>
+                    <button type="button" className={`${BTN_PRIMARY} !h-9 whitespace-nowrap`} onClick={applyBulk}>Apply</button>
+                    <button type="button" className={`${BTN_OUTLINE} !h-9 whitespace-nowrap`} disabled={!selectedRows.some(r => r.rule)}
+                        onClick={() => setPendingBulkRemove(true)}>
+                        <span className="sm:hidden">Remove</span><span className="hidden sm:inline">Remove discount</span>
+                    </button>
                 </div>
-                <button type="button" className={`${BTN_OUTLINE} !h-9`} disabled={!selectedRows.some(r => r.rule)}
-                    onClick={() => setPendingBulkRemove(true)}>
-                    Remove discount
-                </button>
-                <button type="button" aria-label="Clear selection" className={ICON_BTN} onClick={() => setSelected(new Set())}>
-                    <FiX size={18} aria-hidden />
-                </button>
             </div>
         </div>
     );
@@ -1069,7 +1069,7 @@ const CustomerPricing: React.FC = () => {
     return (
         <div
             style={THEMES[isCatalogue ? 'cat' : 'pos'] as React.CSSProperties}
-                        className="flex min-h-screen w-full flex-col bg-[color:var(--cp-canvas)] font-['Poppins',system-ui,-apple-system,'Segoe_UI',sans-serif] text-[#0f172b]">
+            className="flex min-h-screen w-full flex-col bg-[color:var(--cp-canvas)] font-['Poppins',system-ui,-apple-system,'Segoe_UI',sans-serif] text-[#0f172b]">
             {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
             {confirmDiscard && (
                 <Modal message="Discard your changes? What you entered will be lost."
@@ -1100,7 +1100,7 @@ const CustomerPricing: React.FC = () => {
                 </div>
             </div>
 
-            <div className={`flex-1 w-full max-w-6xl mx-auto p-4 md:px-6 md:py-5 ${selected.size > 0 ? 'pb-36 sm:pb-28' : ''}`}>
+            <div className={`flex-1 w-full max-w-6xl mx-auto p-4 md:px-6 md:py-5 ${selected.size > 0 ? 'pb-56 md:pb-28' : ''}`}>
                 {/* Top row: tabs + search (side by side on desktop) */}
                 <div className="flex flex-col lg:flex-row lg:items-center gap-3">
                     <div role="group" aria-label="Sale or purchase" hidden={isCatalogue} className="flex w-full sm:w-auto sm:self-start lg:self-auto flex-none p-[3px] gap-0.5 bg-white border border-[color:var(--cp-border)] rounded-sm">
@@ -1171,11 +1171,11 @@ const CustomerPricing: React.FC = () => {
                         </div>
 
                         <div role="group" aria-label="Filter"
-                            className="flex gap-1.5 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 pb-0.5 lg:flex-col lg:gap-0.5 lg:overflow-visible lg:p-1.5 lg:bg-white lg:border lg:border-[color:var(--cp-border)] lg:rounded-sm">
+    className="flex flex-wrap gap-1.5 lg:flex-col lg:flex-nowrap lg:gap-0.5 lg:p-1.5 lg:bg-white lg:border lg:border-[color:var(--cp-border)] lg:rounded-sm">
                             <span className={`${LABEL} hidden lg:block px-2 pt-1.5 !mb-1`}>Show</span>
                             {FILTERS.filter(([f]) => f !== 'paused' || counts.paused > 0 || filter === 'paused').map(([f, label]) => (
                                 <button key={f} type="button" aria-pressed={filter === f} onClick={() => { setFilter(f); setLimitN(PAGE); }}
-                                    className={`flex-none inline-flex items-center gap-1.5 h-8 px-3 rounded-sm border text-sm font-medium lg:w-full lg:h-9 lg:justify-between lg:border-0 ${filter === f ? 'border-[color:var(--cp-primary)] bg-[color:var(--cp-soft)] text-[color:var(--cp-primary)]' : 'border-[color:var(--cp-border)] bg-white text-[#45556c] hover:bg-[color:var(--cp-sunken)]'}`}>
+                                    className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-sm border text-sm font-medium whitespace-nowrap lg:w-full lg:h-9 lg:px-3 lg:justify-between lg:border-0 ${filter === f ? 'border-[color:var(--cp-primary)] bg-[color:var(--cp-soft)] text-[color:var(--cp-primary)]' : 'border-[color:var(--cp-border)] bg-white text-[#45556c] hover:bg-[color:var(--cp-sunken)]'}`}>
                                     {label}
                                     <span className="text-xs tabular-nums opacity-80">{loading ? '…' : counts[f].toLocaleString('en-IN')}</span>
                                 </button>

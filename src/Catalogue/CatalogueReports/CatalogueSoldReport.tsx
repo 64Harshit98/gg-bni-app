@@ -43,6 +43,7 @@ import DownloadMenu from '../../Pages/Reports/SalesReportComponents/DownloadMenu
 import CustomRangePanel from '../../Pages/Reports/SalesReportComponents/CustomRangePanel';
 import { totalStock } from '../../Pages/Reports/ItemReportComponents/itemIssues';
 import BackButton from '../../Components/BackButton';
+import SearchableSelect from '../../Components/SearchableSelect';
 import { splitAddOns } from '../../UseComponents/addOnText';
 import sellarLogo from '../../assets/sellar-logo.png';
 
@@ -59,6 +60,9 @@ export interface AggregatedItem {
 const UNASSIGNED_GROUP_NAME = 'Uncategorized';
 const UNSOLD_PAGE_SIZE = 50;
 const BORDER = 'border-[#f6e1d0]';
+
+// Firestore auto-IDs are 20 letters/digits. Never show these to the user.
+const looksLikeId = (s: string) => /^[A-Za-z0-9]{20}$/.test(s);
 
 const inrRound = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
 
@@ -181,9 +185,29 @@ const ItemsSoldReport: React.FC = () => {
             typeof v === 'string' ? v.trim() : typeof v === 'number' ? String(v) : '';
         return (groupKey?: unknown, groupName?: unknown, category?: unknown): string => {
             const key = str(groupKey);
-            return (key && byKey[key]) || str(groupName) || key || str(category) || UNASSIGNED_GROUP_NAME;
+            if (key && byKey[key]) return byKey[key];
+
+            const name = str(groupName);
+            if (name && !looksLikeId(name)) return name;
+
+            // Older orders may store the group *name* in the key field (renamed groups)
+            if (key && !looksLikeId(key)) return key;
+
+            const cat = str(category);
+            if (cat && !looksLikeId(cat)) return cat;
+
+            return UNASSIGNED_GROUP_NAME;
         };
     }, [catalogueItemGroups]);
+
+    // Fallback: if an order line has no usable group, use the item's current group.
+    const catalogueById = useMemo(() => {
+        const m = new Map<string, (typeof catalogueItems)[number]>();
+        catalogueItems.forEach((i) => {
+            if (i.id) m.set(i.id, i);
+        });
+        return m;
+    }, [catalogueItems]);
 
     useEffect(() => {
         const fetchCompanyName = async () => {
@@ -274,12 +298,19 @@ const ItemsSoldReport: React.FC = () => {
                     const lineValue = pricePerItem * qty;
 
                     if (!itemMap.has(compositeKey)) {
+                        // 1) group from the order line, 2) else the item's current catalogue group
+                        let itemGroup = groupNameOf(groupKey, item.groupName, item.category);
+                        if (itemGroup === UNASSIGNED_GROUP_NAME) {
+                            const cat = catalogueById.get(productId);
+                            if (cat) itemGroup = groupNameOf(cat.itemGroupId);
+                        }
+
                         itemMap.set(compositeKey, {
                             id: compositeKey,
                             productId,
                             name: baseName || (typeof item.name === 'string' && item.name ? item.name : 'Unknown Item'),
                             addOnText: addOnText || '',
-                            itemGroup: groupNameOf(groupKey, item.groupName, item.category),
+                            itemGroup,
                             quantitySold: 0,
                             valueSold: 0,
                         });
@@ -297,7 +328,7 @@ const ItemsSoldReport: React.FC = () => {
         });
 
         return { soldItems: Array.from(itemMap.values()), billLines: lines, uncountedBills: uncounted };
-    }, [ordersInRange, groupNameOf]);
+    }, [ordersInRange, groupNameOf, catalogueById]);
 
     const groupOptions = useMemo(() => {
         const names = new Set<string>();
@@ -1234,19 +1265,18 @@ const ItemsSoldReport: React.FC = () => {
                         <button onClick={() => setIsRangeOpen((o) => !o)} className={`md:hidden ${chipClass(datePreset === 'custom')}`}>
                             Custom
                         </button>
-                        <div className="relative hidden shrink-0 md:block">
-                            <LayoutGrid size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                            <select
+                        <div className="hidden w-48 shrink-0 md:block">
+                            <SearchableSelect
+                                theme="orange"
+                                buttonClassName="!h-[34px]"
+                                leftIcon={<LayoutGrid size={14} />}
+                                options={groupOptions.map((g) => ({ value: g, label: g }))}
                                 value={groupFilter}
-                                onChange={(e) => setGroupFilter(e.target.value)}
-                                className="appearance-none rounded-sm border border-slate-300 bg-white py-1.5 pl-8 pr-8 text-sm font-medium text-slate-700 outline-none transition hover:border-slate-400 focus:border-orange-600"
-                            >
-                                <option value="">All groups</option>
-                                {groupOptions.map((g) => (
-                                    <option key={g} value={g}>{g}</option>
-                                ))}
-                            </select>
-                            <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                                onChange={setGroupFilter}
+                                placeholder="All groups"
+                                searchPlaceholder="Search group..."
+                                clearable
+                            />
                         </div>
                     </div>
 
@@ -1321,20 +1351,21 @@ const ItemsSoldReport: React.FC = () => {
                             </div>
 
                             {/* Mobile sort */}
-                            <div className="relative md:hidden">
-                                <select
+                            <div className="w-36 md:hidden">
+                                <SearchableSelect
+                                    theme="orange"
+                                    buttonClassName="!h-9"
+                                    options={[
+                                        { value: 'valueSold:desc', label: 'Value ↓' },
+                                        { value: 'quantitySold:desc', label: 'Qty ↓' },
+                                        { value: 'name:asc', label: 'Name A–Z' },
+                                    ]}
                                     value={mobileSortValue}
-                                    onChange={(e) => {
-                                        const [key, direction] = e.target.value.split(':') as [keyof AggregatedItem, 'asc' | 'desc'];
+                                    onChange={(v) => {
+                                        const [key, direction] = v.split(':') as [keyof AggregatedItem, 'asc' | 'desc'];
                                         setSortConfig({ key, direction });
                                     }}
-                                    className="appearance-none rounded-sm border border-slate-300 bg-white py-1.5 pl-3 pr-8 text-sm text-slate-700 outline-none focus:border-orange-600"
-                                >
-                                    <option value="valueSold:desc">Value ↓</option>
-                                    <option value="quantitySold:desc">Qty ↓</option>
-                                    <option value="name:asc">Name A–Z</option>
-                                </select>
-                                <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                                />
                             </div>
                         </div>
 
@@ -1515,8 +1546,8 @@ const ItemsSoldReport: React.FC = () => {
                         </div>
                     )}
                 </div>
-            </div>
-        </div>
+            </div >
+        </div >
     );
 };
 

@@ -76,6 +76,7 @@ const CatlogueSoldReport = lazy(() => import('../Catalogue/CatalogueReports/Cata
 const CatalogueAdditionalServices = lazy(() => import('../Catalogue/CatalogueAdditionalServices'));
 const CatalogueExpenseReport = lazy(() => import('../Catalogue/CatalogueReports/CatalogueExpenseReport'));
 const CatalogueStockTransferReport = lazy(() => import('../Catalogue/CatalogueReports/CatalogueStockTransferReportPage'));
+const CatalogueRestockReport = lazy(() => import('../Catalogue/CatalogueReports/CatalogueRestockReport'));
 const PosItemSettingWrapper = (props: any) => (
     <ItemSetting {...props} theme="blue" />
 );
@@ -252,8 +253,8 @@ export const AppRegistry: AppModule[] = [
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_SUPPORT}`, component: Catasupport, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATA_ADDITIONAL_SERVICES}`, component: CatalogueAdditionalServices, permission: null },
             { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_EXPENSE_REPORT}`, component: CatalogueExpenseReport, permission: Cata_Permissions.ViewExpenseReport },
-            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_STOCK_TRANSFER}`, component: CatalogueStockTransferReport, permission: Cata_Permissions.ViewReports },
-
+                        { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_STOCK_TRANSFER}`, component: CatalogueStockTransferReport, permission: Cata_Permissions.ViewReports },
+            { path: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_RESTOCK_REPORT}`, component: CatalogueRestockReport, permission: Cata_Permissions.ViewItemReport },
         ],
     }
 ];

@@ -12,6 +12,7 @@ interface ReportByDayChartProps {
   bestPrefix?: string;
   /** Tailwind classes for a non-empty bar. Defaults to the POS blue. */
   barClass?: string;
+  theme?: 'default' | 'catalogue';
 }
 
 interface Bucket {
@@ -39,8 +40,15 @@ export default function ReportByDayChart({
   end,
   noun = 'Sales',
   bestPrefix = 'Best',
-  barClass = 'bg-blue-600 group-hover:bg-blue-700',
+  barClass,
+  theme = 'default',
 }: ReportByDayChartProps) {
+  const isCatalogue = theme === 'catalogue';
+  const resolvedBarClass =
+    barClass ??
+    (isCatalogue
+      ? 'bg-orange-500 group-hover:bg-orange-700'
+      : 'bg-blue-600 group-hover:bg-blue-700');
   const { buckets, isMonthly, best, max } = useMemo(() => {
     // An open-ended range (e.g. custom with no start) is clamped to the first record.
     let rangeStart = start;
@@ -102,7 +110,10 @@ export default function ReportByDayChart({
   );
 
   return (
-    <div className="h-full rounded-sm border border-line bg-white shadow-card p-4">
+    <div
+      className={`h-full rounded-sm border bg-white shadow-card p-4 ${isCatalogue ? 'border-orange-100' : 'border-line'
+        }`}
+    >
       <h3 className="text-sm font-semibold text-slate-900">{noun} by {unit}</h3>
       <p className="mt-0.5 hidden text-xs text-slate-500 md:block">
         {best
@@ -120,9 +131,8 @@ export default function ReportByDayChart({
               title={`${b.fullLabel}: ${formatCurrency(b.total)}`}
             >
               <div
-                className={`w-full max-w-[18px] rounded-t-[2px] ${
-                  b.total > 0 ? barClass : 'bg-slate-200'
-                }`}
+                className={`w-full max-w-[18px] rounded-t-[2px] ${b.total > 0 ? resolvedBarClass : isCatalogue ? 'bg-orange-100' : 'bg-slate-200'
+                  }`}
                 style={{ height: b.total > 0 ? `max(${pct}%, 3px)` : '2px' }}
               />
             </div>

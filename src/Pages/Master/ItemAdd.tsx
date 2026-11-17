@@ -24,6 +24,7 @@ import ReactCrop, { type Crop, centerCrop, makeAspectCrop } from 'react-image-cr
 import 'react-image-crop/dist/ReactCrop.css';
 //import { InfoTooltip } from '../../Components/InfoToolTip';
 import { VariantPicker } from '../../Components/VariantPicker';
+import SearchableSelect from '../../Components/SearchableSelect';
 import { useAddOnTemplates } from '../../lib/addOnTemplates';
 import BackButton from '../../Components/BackButton';
 import useTutorial from '../../Catalogue/hooks/useTutorial';
@@ -856,15 +857,69 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     setPriceTiers(prev => [...prev, emptyPriceTierForm()]);
   };
 
+  // base price x quantity, rounded to 2 decimals. '' when either value is missing.
+  const calcTierPrice = (base: string, qty: number): string => {
+    const b = parseFloat(base);
+    if (!b || !qty || qty <= 0) return '';
+    return String(Math.round(b * qty * 100) / 100);
+  };
+
   const updatePriceTier = (id: string, field: keyof PriceTierForm, value: string) => {
     setPriceTiers(prev =>
-      prev.map(t => (t.id === id ? { ...t, [field]: value } : t))
+      prev.map(t => {
+        if (t.id !== id) return t;
+        const updated: any = { ...t, [field]: value };
+
+        // Quantity changed -> auto-fill price fields that are empty
+        // or still hold the previous auto-calculated value (not manually edited)
+        if (field === 'quantity') {
+          const oldQty = parseFloat(String(t.quantity)) || 0;
+          const newQty = parseFloat(value) || 0;
+          const sync = (cur: any, base: string, key: string) => {
+            const curStr = String(cur ?? '');
+            return curStr === '' || curStr === calcTierPrice(base, oldQty)
+              ? calcTierPrice(base, newQty)
+              : (t as any)[key];
+          };
+          updated.mrp = sync(t.mrp, itemMRP, 'mrp');
+          updated.salesPrice = sync(t.salesPrice, itemSalesPrice, 'salesPrice');
+          updated.purchasePrice = sync(t.purchasePrice, itemPurchasePrice, 'purchasePrice');
+        }
+        return updated;
+      })
     );
   };
 
   const removePriceTier = (id: string) => {
     setPriceTiers(prev => prev.filter(t => t.id !== id));
   };
+
+  // Keep untouched tier prices in sync when the base prices change
+  const prevBaseRef = useRef({ mrp: itemMRP, sale: itemSalesPrice, purchase: itemPurchasePrice });
+  useEffect(() => {
+    const old = prevBaseRef.current;
+    prevBaseRef.current = { mrp: itemMRP, sale: itemSalesPrice, purchase: itemPurchasePrice };
+    if (old.mrp === itemMRP && old.sale === itemSalesPrice && old.purchase === itemPurchasePrice) return;
+
+    setPriceTiers(prev =>
+      prev.map(t => {
+        const qty = parseFloat(String(t.quantity)) || 0;
+        if (!qty) return t;
+        const sync = (cur: any, oldBase: string, newBase: string) => {
+          const curStr = String(cur ?? '');
+          return curStr === '' || curStr === calcTierPrice(oldBase, qty)
+            ? calcTierPrice(newBase, qty)
+            : cur;
+        };
+        return {
+          ...t,
+          mrp: sync(t.mrp, old.mrp, itemMRP),
+          salesPrice: sync(t.salesPrice, old.sale, itemSalesPrice),
+          purchasePrice: sync(t.purchasePrice, old.purchase, itemPurchasePrice),
+        };
+      })
+    );
+  }, [itemMRP, itemSalesPrice, itemPurchasePrice]);
 
   const addQuantitySlab = () => {
     setQuantitySlabs(prev => {
@@ -2054,7 +2109,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                   <div className="ai-stack">
                     {fl('Item name',
                       <div className="ai-field">
-                        <input type="text" value={dName} onChange={(e) => setItemName(e.target.value)} placeholder="e.g. Amul butter 500 g" style={{ fontWeight: 600 }} />
+                        <input type="text" value={dName} onChange={(e) => setItemName(e.target.value)} placeholder="e.g. Amul butter 500 g" />
                       </div>,
                       { req: true })}
                     {fl('Or paste image URL',
@@ -2140,11 +2195,13 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                 <div ref={unitRef}>
                   {fl('Unit',
                     <div style={{ display: 'grid', gap: 8 }}>
-                      <div className="ai-field" style={{ flex: 1 }}>
-                        <select value={dUnit} onChange={(e) => { setItemUnit(e.target.value); if (e.target.value !== 'pkt') setPacketSize(''); }}>
-                          {UNIT_OPTIONS.filter(u => u.value !== '').map(unit => (<option key={unit.value} value={unit.value}>{unit.label}</option>))}
-                        </select>
-                      </div>
+                      <SearchableSelect
+                        theme={theme}
+                        options={UNIT_OPTIONS}
+                        value={dUnit}
+                        onChange={(v) => { setItemUnit(v); if (v !== 'pkt') setPacketSize(''); }}
+                        placeholder="Select unit"
+                      />
                       {!isTut && itemUnit === 'pkt' && (
                         <div className="ai-field" style={{ flex: 1 }}>
                           <input type="number" value={packetSize} onChange={(e) => setPacketSize(e.target.value)} placeholder="Qty per pkt" min="1" />
@@ -2175,7 +2232,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                   { hint: 'Printed on the pack' })}
                 {fl(`Sales price (${getUnitLabel()})`,
                   <div className="ai-field"><i>₹</i>
-                    <input type="number" value={dSales} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemSalesPrice(e.target.value)} placeholder="0.00" style={{ fontWeight: 600 }} />
+                    <input type="number" value={dSales} onWheel={(e) => (e.target as HTMLInputElement).blur()} onChange={(e) => setItemSalesPrice(e.target.value)} placeholder="0.00" />
                   </div>,
                   { req: true, hint: 'What the customer pays' })}
                 {fl('Purchase price',
@@ -2353,22 +2410,22 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                 {addOnTemplates.length === 0 ? (
                   <p className="m-0 text-xs text-[#5b6b86]">No add-on groups yet. Create them in Item groups → Add-ons.</p>
                 ) : (
-                  <select
+                  <SearchableSelect
+                    theme={theme}
+                    buttonClassName="!h-9"
+                    options={addOnTemplates
+                      .filter(t => !addOnGroupIds.includes(t.id))
+                      .map(t => ({ value: t.id, label: t.name }))}
                     value=""
-                    onChange={(e) => {
-                      const id = e.target.value;
+                    onChange={(id) => {
                       if (id) {
                         setAddOnGroupIds(prev => (prev.includes(id) ? prev : [...prev, id]));
                         setAddOnOpenId(id); // open its checklist right away
                       }
                     }}
-                    className="h-9 w-full min-w-0 rounded-sm border border-[#7a8aa3] bg-white px-3 text-sm text-[#0f172b] outline-none focus:border-[#155dfc] focus:ring-2 focus:ring-[#155dfc]/40"
-                  >
-                    <option value="">Add an add-on group…</option>
-                    {addOnTemplates.filter(t => !addOnGroupIds.includes(t.id)).map(t => (
-                      <option key={t.id} value={t.id}>{t.name}</option>
-                    ))}
-                  </select>
+                    placeholder="Add an add-on group…"
+                    searchPlaceholder="Search add-on group..."
+                  />
                 )}
               </div>
 
@@ -2545,26 +2602,25 @@ const ItemAdd: React.FC<ItemAddProps> = ({
 
                 {fl('Category',
                   <>
-                    <div className="ai-field">
-                      <select
-                        value={dCategory}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (val === 'ADD_NEW_GROUP') { navigate(routes.itemGroup); return; }
-                          setSelectedCategories(prev => {
-                            const rest = prev.slice(1); // keep extra categories
-                            return val ? [val, ...rest] : rest;
-                          });
-                        }}
-                      >
-                        <option value="">Select category</option>
-                        {isTut && <option value="__sample">{SAMPLE_ITEM.category}</option>}
-                        <option value="ADD_NEW_GROUP">+ Add new group</option>
-                        {itemGroups.map(g => (
-                          <option key={g.id} value={g.id!}>{g.name}</option>
-                        ))}
-                      </select>
-                    </div>
+                    <SearchableSelect
+                      theme={theme}
+                      options={[
+                        ...(isTut ? [{ value: '__sample', label: SAMPLE_ITEM.category }] : []),
+                        { value: 'ADD_NEW_GROUP', label: '+ Add new group' },
+                        ...itemGroups.map(g => ({ value: g.id!, label: g.name })),
+                      ]}
+                      value={dCategory}
+                      onChange={(val) => {
+                        if (val === 'ADD_NEW_GROUP') { navigate(routes.itemGroup); return; }
+                        setSelectedCategories(prev => {
+                          const rest = prev.slice(1); // keep extra categories
+                          return val ? [val, ...rest] : rest;
+                        });
+                      }}
+                      placeholder="Select category"
+                      searchPlaceholder="Search category..."
+                      clearable
+                    />
 
                     {selectedCategories.length > 1 && (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
@@ -2589,11 +2645,17 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                       </button>
                     ) : (
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 4 }}>
-                        <div className="ai-field ai-field--sm" style={{ flex: 1 }}>
-                          <select
-                            defaultValue=""
-                            onChange={(e) => {
-                              const val = e.target.value;
+                        <div style={{ flex: 1 }}>
+                          <SearchableSelect
+                            theme={theme}
+                            options={[
+                              { value: 'ADD_NEW_GROUP', label: '+ Add new group' },
+                              ...itemGroups
+                                .filter(g => !selectedCategories.includes(g.id!))
+                                .map(g => ({ value: g.id!, label: g.name })),
+                            ]}
+                            value=""
+                            onChange={(val) => {
                               if (!val) return;
                               if (val === 'ADD_NEW_GROUP') { navigate(routes.itemGroup); return; }
                               if (!selectedCategories.includes(val)) {
@@ -2601,13 +2663,9 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                               }
                               setShowCategoryDropdown(false);
                             }}
-                          >
-                            <option value="">Add more</option>
-                            <option value="ADD_NEW_GROUP">+ Add new group</option>
-                            {itemGroups
-                              .filter(g => !selectedCategories.includes(g.id!))
-                              .map(g => (<option key={g.id} value={g.id!}>{g.name}</option>))}
-                          </select>
+                            placeholder="Add more"
+                            searchPlaceholder="Search category..."
+                          />
                         </div>
                         <button type="button" onClick={() => setShowCategoryDropdown(false)} className="ai-btn ai-btn--ghost ai-btn--sm">Cancel</button>
                       </div>

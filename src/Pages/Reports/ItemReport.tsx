@@ -6,7 +6,6 @@ import {
   ArrowUp,
   ArrowUpDown,
   CalendarDays,
-  ChevronDown,
   Eye,
   EyeOff,
   FileText,
@@ -27,6 +26,7 @@ import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import sellarLogo from '../../assets/sellar-logo.png';
 import { useAuth } from '../../context/auth-context';
 import BackButton from '../../Components/BackButton';
+import SearchableSelect from '../../Components/SearchableSelect';
 import { useGodowns, useGodownStock, SHOP_ID, SHOP_NAME } from '../hooks/useStockTransfer';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
@@ -362,7 +362,7 @@ const ItemReport: React.FC = () => {
     };
   };
 
-    const downloadAsPdf = async () => {
+  const downloadAsPdf = async () => {
     try {
       // Guard clause in case filteredItems is empty
       if (!filteredItems || filteredItems.length === 0) {
@@ -377,7 +377,7 @@ const ItemReport: React.FC = () => {
       const PAD = 4;
       const brandRight = pageWidth - M;
       const contentW = pageWidth - M * 2;
-            const company = pdfSafe(companyName) || 'Your Business';
+      const company = pdfSafe(companyName) || 'Your Business';
 
       const generatedAtText = `Generated ${new Date().toLocaleString('en-IN', {
         day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit',
@@ -637,7 +637,7 @@ const ItemReport: React.FC = () => {
         styles: { halign: 'right' as const, textColor: v ? INK : LIGHT },
       });
 
-            const tableBody: any[] = exportData.map((e) => [
+      const tableBody: any[] = exportData.map((e) => [
         { content: pdfSafe(e.name) || 'N/A', styles: { fontStyle: 'bold' } },
         { content: pdfSafe(e.itemGroupId) || '-', styles: { textColor: GRAY } },
         { content: pdfSafe(e.barcode) || '-', styles: { textColor: GRAY } },
@@ -653,7 +653,7 @@ const ItemReport: React.FC = () => {
       ]);
 
       // Item | Group | Barcode | MRP | Purchase | Discount | Tax | Stock | Restock  (total = 269mm)
-const COLW = [52, 32, 34, 28, 34, 25, 14, 22, 28];
+      const COLW = [52, 32, 34, 28, 34, 25, 14, 22, 28];
 
       autoTable(doc, {
         startY: listY + 4,
@@ -678,7 +678,7 @@ const COLW = [52, 32, 34, 28, 34, 25, 14, 22, 28];
           acc[i] = { cellWidth: w, ...(i >= 3 ? { halign: 'right' } : {}) };
           return acc;
         }, {}),
-                didParseCell: (data) => {
+        didParseCell: (data) => {
           data.cell.styles.valign = 'middle';
 
           // Header numeric columns right-aligned (matches body)
@@ -1261,8 +1261,8 @@ const COLW = [52, 32, 34, 28, 34, 25, 14, 22, 28];
       : 'border-slate-300 bg-white text-slate-700 hover:border-slate-400'
     }`;
 
-  const selectClass =
-    'w-full appearance-none rounded-sm border border-slate-300 bg-white py-2 pl-3 pr-8 text-sm text-slate-700 outline-none transition hover:border-slate-400 focus:border-blue-500';
+  // const selectClass =
+  //   'w-full appearance-none rounded-sm border border-slate-300 bg-white py-2 pl-3 pr-8 text-sm text-slate-700 outline-none transition hover:border-slate-400 focus:border-blue-500';
 
   const visibleItems = filteredItems.slice(0, visibleCount);
   const mobileSortValue = `${String(sortConfig.key)}:${sortConfig.direction}`;
@@ -1370,25 +1370,35 @@ const COLW = [52, 32, 34, 28, 34, 25, 14, 22, 28];
       {/* FILTERS */}
       <div className="relative mb-4 flex flex-col gap-3 md:flex-row md:items-center">
         <div className="grid grid-cols-2 gap-2.5 md:flex md:gap-2">
-          <div className="relative md:w-44">
-            <select value={appliedItemGroupId} onChange={(e) => handleGroupChange(e.target.value)} className={selectClass}>
-              <option value="">All groups</option>
-              {itemGroups.map((group) => (
-                <option key={group.id} value={group.id}>{group.name}</option>
-              ))}
-              <option value={UNASSIGNED_GROUP_NAME}>Uncategorized</option>
-            </select>
-            <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+          <div className="md:w-44">
+            <SearchableSelect
+              theme="blue"
+              buttonClassName="!h-[38px]"
+              options={[
+                ...itemGroups.map((g) => ({ value: g.id as string, label: g.name })),
+                { value: UNASSIGNED_GROUP_NAME, label: 'Uncategorized' },
+              ]}
+              value={appliedItemGroupId}
+              onChange={handleGroupChange}
+              placeholder="All groups"
+              searchPlaceholder="Search group..."
+              clearable
+            />
           </div>
-          <div className="relative md:w-44">
-            <select value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)} className={selectClass}>
-              <option value="">All locations</option>
-              <option value={SHOP_ID}>{SHOP_NAME}</option>
-              {godowns.map((g) => (
-                <option key={g.id} value={g.id}>{g.name}</option>
-              ))}
-            </select>
-            <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+          <div className="md:w-44">
+            <SearchableSelect
+              theme="blue"
+              buttonClassName="!h-[38px]"
+              options={[
+                { value: SHOP_ID, label: SHOP_NAME },
+                ...godowns.map((g) => ({ value: g.id as string, label: g.name })),
+              ]}
+              value={locationFilter}
+              onChange={setLocationFilter}
+              placeholder="All locations"
+              searchPlaceholder="Search location..."
+              clearable
+            />
           </div>
         </div>
 
@@ -1484,23 +1494,24 @@ const COLW = [52, 32, 34, 28, 34, 25, 14, 22, 28];
           </div>
 
           {/* Mobile sort */}
-          <div className="relative md:hidden">
-            <select
+          <div className="w-40 md:hidden">
+            <SearchableSelect
+              theme="blue"
+              buttonClassName="!h-9"
+              options={[
+                { value: 'name:asc', label: 'Name A–Z' },
+                { value: 'name:desc', label: 'Name Z–A' },
+                { value: 'stock:asc', label: 'Lowest stock' },
+                { value: 'stock:desc', label: 'Highest stock' },
+                { value: 'mrp:desc', label: 'Highest MRP' },
+                { value: 'purchasePrice:desc', label: 'Highest cost' },
+              ]}
               value={mobileSortValue}
-              onChange={(e) => {
-                const [key, direction] = e.target.value.split(':') as [keyof Item, 'asc' | 'desc'];
+              onChange={(v) => {
+                const [key, direction] = v.split(':') as [keyof Item, 'asc' | 'desc'];
                 setSortConfig({ key, direction });
               }}
-              className="appearance-none rounded-sm border border-slate-300 bg-white py-1.5 pl-3 pr-8 text-sm text-slate-700 outline-none focus:border-blue-500"
-            >
-              <option value="name:asc">Name A–Z</option>
-              <option value="name:desc">Name Z–A</option>
-              <option value="stock:asc">Lowest stock</option>
-              <option value="stock:desc">Highest stock</option>
-              <option value="mrp:desc">Highest MRP</option>
-              <option value="purchasePrice:desc">Highest cost</option>
-            </select>
-            <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+            />
           </div>
         </div>
 

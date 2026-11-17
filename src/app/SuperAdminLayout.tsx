@@ -10,16 +10,36 @@ import { isSuperAdmin } from '../constants/superAdmin';
 import PageLoader from '../Components/PageLoader';
 import { companyStatus, loadCompanies, loadTicketSummary } from '../Pages/Account/superAdmin/data';
 
-const NAV_ITEMS = [
-  { label: 'Dashboard', to: ROUTES.SUPER_ADMINHUB, icon: LayoutGrid, end: true },
-  { label: 'Companies', to: ROUTES.SUPER_ADMIN, icon: Building2 },
-  { label: 'Billing Activity', to: ROUTES.SUPER_ADMIN_BILLING, icon: Receipt },
-  { label: 'App Leads', to: ROUTES.APP_LEADS, icon: LineChart },
-  { label: 'Web Queries', to: ROUTES.WEBSITE_QUERY, icon: MessageSquare },
-  { label: 'Support Tickets', to: ROUTES.SUPPORT_TICKET, icon: Ticket },
-  { label: 'Agents & Partners', to: ROUTES.AGENT_DASHBOARD, icon: Users },
-  { label: 'Coupon Codes', to: ROUTES.SUPER_ADMIN_COUPONS, icon: Tag },
-  { label: 'WhatsApp Config', to: ROUTES.SUPER_ADMIN_WHATSAPP, icon: MessageCircle },
+type NavItem = { label: string; to: string; icon: React.ElementType; end?: boolean };
+
+const NAV_GROUPS: { title?: string; items: NavItem[] }[] = [
+  {
+    items: [{ label: 'Dashboard', to: ROUTES.SUPER_ADMINHUB, icon: LayoutGrid, end: true }],
+  },
+  {
+    title: 'Customers',
+    items: [
+      { label: 'Companies', to: ROUTES.SUPER_ADMIN, icon: Building2 },
+      { label: 'Billing Activity', to: ROUTES.SUPER_ADMIN_BILLING, icon: Receipt },
+    ],
+  },
+  {
+    title: 'Sales',
+    items: [
+      { label: 'App Signups', to: ROUTES.APP_LEADS, icon: LineChart },
+      { label: 'Website Enquiries', to: ROUTES.WEBSITE_QUERY, icon: MessageSquare },
+      { label: 'Agents & Partners', to: ROUTES.AGENT_DASHBOARD, icon: Users },
+      { label: 'Coupons', to: ROUTES.SUPER_ADMIN_COUPONS, icon: Tag },
+    ],
+  },
+  {
+    title: 'Support',
+    items: [{ label: 'Support Tickets', to: ROUTES.SUPPORT_TICKET, icon: Ticket }],
+  },
+  {
+    title: 'Settings',
+    items: [{ label: 'WhatsApp Setup', to: ROUTES.SUPER_ADMIN_WHATSAPP, icon: MessageCircle }],
+  },
 ];
 
 // Shell + access guard for every super-admin page. Pages rendered inside
@@ -68,26 +88,38 @@ const SuperAdminLayout: React.FC = () => {
         <p className="text-[11px] font-semibold tracking-[0.15em] text-gray-500 mt-1">SUPER ADMIN</p>
       </div>
 
-      <nav className="flex-1 px-3 space-y-1 overflow-y-auto">
-        {NAV_ITEMS.map(({ label, to, icon: Icon, end }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={end}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive
-                ? 'bg-blue-50 text-blue-700'
-                : 'text-gray-700 hover:bg-gray-100'}`
-            }
-          >
-            <Icon className="w-[18px] h-[18px] shrink-0" strokeWidth={1.8} />
-            <span className="truncate flex-1">{label}</span>
-            {!!badges[to] && (
-              <span className={`text-[11px] font-bold rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center ${to === ROUTES.SUPPORT_TICKET ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>
-                {badges[to]}
-              </span>
+            <nav className="flex-1 px-3 overflow-y-auto">
+        {NAV_GROUPS.map((group, gi) => (
+          <div key={group.title || gi} className={gi > 0 ? 'mt-4' : ''}>
+            {group.title && (
+              <p className="px-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-gray-400">{group.title}</p>
             )}
-          </NavLink>
+            <div className="space-y-1">
+              {group.items.map(({ label, to, icon: Icon, end }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={end}
+                  className={({ isActive }) =>
+                    `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-700 hover:bg-gray-100'}`
+                  }
+                >
+                  <Icon className="w-[18px] h-[18px] shrink-0" strokeWidth={1.8} />
+                  <span className="truncate flex-1">{label}</span>
+                  {!!badges[to] && (
+                    <span
+                      title={to === ROUTES.SUPPORT_TICKET ? 'Open tickets' : 'Plans expiring within 7 days'}
+                      className={`text-[11px] font-bold rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center ${to === ROUTES.SUPPORT_TICKET ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}
+                    >
+                      {badges[to]}
+                    </span>
+                  )}
+                </NavLink>
+              ))}
+            </div>
+          </div>
         ))}
       </nav>
 

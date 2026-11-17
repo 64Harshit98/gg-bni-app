@@ -19,10 +19,11 @@ interface CatalogueOrderRecord {
   id: string;
   status: string;
   partyName: string;
+  partyNumber: string;
   invoiceNumber: string;
   totalAmount: number;
   createdAt: number;
-  items: Array<{ id?: string; quantity?: number; [key: string]: any }>;
+  items: Array<{ id?: string; quantity?: number;[key: string]: any }>;
 }
 
 const mapOrder = (snap: QueryDocumentSnapshot): CatalogueOrderRecord => {
@@ -30,8 +31,9 @@ const mapOrder = (snap: QueryDocumentSnapshot): CatalogueOrderRecord => {
   return {
     id: snap.id,
     status: data.status || '',
-    partyName: data.partyName || 'N/A',
-    invoiceNumber: data.invoiceNumber || 'N/A',
+    partyName: data.billingDetails?.name || data.userName || data.partyName || 'N/A',
+    partyNumber: data.billingDetails?.phone || data.userLoginPhone || data.partyNumber || '',
+    invoiceNumber: data.invoiceNumber || data.orderId || 'N/A',
     totalAmount: Number(data.totalAmount) || 0,
     createdAt:
       data.createdAt instanceof Timestamp ? data.createdAt.toMillis() : Number(data.createdAt) || 0,
@@ -40,7 +42,7 @@ const mapOrder = (snap: QueryDocumentSnapshot): CatalogueOrderRecord => {
 };
 
 const catalogueOrderCache = createRangeCache<CatalogueOrderRecord>({
-  name: 'catalogueOrdersRangeCache',
+  name: 'catalogueOrdersRangeCache_v2',
   collectionName: 'Orders',
   mapDoc: mapOrder,
   dateField: 'createdAt',
@@ -113,6 +115,7 @@ export function useCataloguePnlReport() {
         .map((o) => ({
           id: o.id,
           partyName: o.partyName,
+          partyNumber: o.partyNumber,
           invoiceNumber: o.invoiceNumber,
           totalAmount: o.totalAmount,
           paymentMethods: {},

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Bell, Check, ChevronRight, FileText, Share2, ShieldCheck, ShoppingCart, X } from 'lucide-react';
+import { Bell, Check, ChevronRight, FileText, MessageCircle, Share2, ShieldCheck, ShoppingCart, X } from 'lucide-react';
 import type { Item, ItemGroup, PriceTier, AddOnGroup, AddOnOption } from '../../constants/models';
 import { getSlabForQty, extraChargeOf } from '../../constants/models';
 import type { CatalogueSalesSettings } from '../Settings/CatalogueSalesSetting';
@@ -47,7 +47,20 @@ interface Props {
 /** Full product page (replaces the old bottom drawer): gallery, price, packs, variants, bulk rates, add to cart. */
 export const ProductView: React.FC<Props> = (p) => {
     const { item, settings, pricesVisible } = p;
-    const images = getItemImages(item);
+    const allImages = useMemo(() => getItemImages(item), [item]);
+    const [bad, setBad] = useState<Set<string>>(new Set());
+    useEffect(() => {
+        setBad(new Set());
+        let live = true;
+        allImages.forEach((u) => {
+            const im = new Image();
+            im.onload = () => { if (live && im.naturalWidth <= 1) setBad((b) => new Set(b).add(u)); };
+            im.onerror = () => { if (live) setBad((b) => new Set(b).add(u)); };
+            im.src = u;
+        });
+        return () => { live = false; };
+    }, [allImages]);
+    const images = useMemo(() => allImages.filter((u) => !bad.has(u)), [allImages, bad]);
     const [photoIdx, setPhoto] = useState(0);
     const photo = Math.min(photoIdx, Math.max(0, images.length - 1)); // photos can be removed while the builder previews
     const tiers = useMemo(() => (item.priceTiers?.length ? getAllTiers(item) : []), [item]);
@@ -241,7 +254,7 @@ export const ProductView: React.FC<Props> = (p) => {
                                     const chipClass = cx('flex min-h-12 items-center gap-2.5 rounded-sm py-1.5 pl-1.5 pr-3 text-left', on ? 'border-2 border-sf-primary bg-sf-soft' : 'border border-sf-control bg-white', vs.outOfStock && !on && 'opacity-60');
                                     const chip = (
                                         <>
-                                            <span className={cx('size-9 shrink-0 overflow-hidden rounded-sm', img ? 'bg-white' : toneClass(i))}>{img && <img src={img} alt="" className="h-full w-full object-cover" />}</span>
+                                            <span className={cx('size-9 shrink-0 overflow-hidden rounded-sm', img ? 'bg-white' : toneClass(i))}>{img && <img src={img} alt="" onError={(e) => { e.currentTarget.style.display = 'none'; }} className="h-full w-full object-cover" />}</span>
                                             <span className="min-w-0">
                                                 <b className="block max-w-[160px] truncate text-[13px] font-medium leading-[18px] text-slate-900">{v.name}</b>
                                                 <small className="block text-xs tabular-nums text-slate-500">{vs.outOfStock ? 'Out of stock' : pricesVisible ? formatINR(rp(vs.price)) : ''}</small>
@@ -312,9 +325,15 @@ export const ProductView: React.FC<Props> = (p) => {
                         </div>
                     )}
 
-                    <div className="-mt-1 flex flex-wrap gap-2">
-                        <button type="button" onClick={p.onAsk} className={btnClass('ghost')}>Ask a question</button>
-                        {p.shareUrl !== null && <button type="button" onClick={share} className={btnClass('ghost')}><Share2 className="size-4" />Share</button>}
+                    <div className="flex gap-3">
+                        <button type="button" onClick={p.onAsk} className={cx(btnClass('secondary'), 'min-w-0 flex-1')}>
+                            <MessageCircle className="size-4 shrink-0" />Ask a question
+                        </button>
+                        {p.shareUrl !== null && (
+                            <button type="button" onClick={share} className={cx(btnClass('secondary'), 'min-w-0 flex-1')}>
+                                <Share2 className="size-4 shrink-0" />Share
+                            </button>
+                        )}
                     </div>
 
                     <div className="grid gap-2.5 rounded-sm bg-sf-sunken p-4 text-[13px] text-slate-600">

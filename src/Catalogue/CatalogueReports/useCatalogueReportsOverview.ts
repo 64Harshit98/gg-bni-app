@@ -10,6 +10,7 @@ import {
 import { useStockTransfers } from '../../Pages/hooks/useStockTransfer';
 import { toPnlBill } from '../../Pages/Reports/PNLReportComponents/pnlReport.utils';
 import { loadOpeningBalancesForRange } from '../../Pages/Reports/CustomerReportComponents/customerReportCache';
+import { buildRestockRows } from '../../Pages/Reports/RestockReportComponents/restockReport.utils';
 
 // Headline numbers for the Catalogue Reports hub (last 30 days). Reads go
 // through the same range caches as the report pages, so the hub warms them.
@@ -73,6 +74,7 @@ export function useCatalogueReportsOverview() {
           .filter((ob) => inLast30(ob.createdAt) && ob.balanceType !== 'advance')
           .reduce((s, ob) => s + Math.max(0, ob.dueAmount ?? ob.amount ?? 0), 0),
       items: items.length,
+      restockItems: buildRestockRows(items, []).length,
       transfersThisMonth: stockTransfers.transfers.filter(
         (t) => t.type === 'transfer' && t.date >= thisMonth.start && t.date <= thisMonth.end,
       ).length,
@@ -87,6 +89,7 @@ export function useCatalogueReportsOverview() {
     profit: !sales.isLoading && !catExpenses.isLoading && !posExpenses.isLoading,
     transfers: !stockTransfers.loading,
     items: !itemsLoading,
+    restock: !itemsLoading, // update if the restock calc needs more data (e.g. sales)
   };
   return { stats, ready };
 }

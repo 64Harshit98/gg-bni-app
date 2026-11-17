@@ -101,6 +101,7 @@ export const ROUTES = {
   CATALOGUE_EXPENSE_REPORT: 'cata-expense-report',
   STOCK_TRANSFER: '/stock-transfer',
   CATALOGUE_STOCK_TRANSFER: 'cata-stock-transfer',
+CATALOGUE_RESTOCK_REPORT: 'cata-restock-report',
   AGENT_SIGNUP: '/agent-signup',
   PARTNER_DASHBOARD: '/partner-dashboard',
   AGENT_DASHBOARD: '/agent-dashboard',

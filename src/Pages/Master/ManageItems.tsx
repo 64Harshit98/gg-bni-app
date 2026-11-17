@@ -5,7 +5,6 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
-  ChevronDown,
   Copy,
   FileSpreadsheet,
   LayoutGrid,
@@ -26,6 +25,7 @@ import { Permissions, State } from '../../enums';
 import { ROUTES } from '../../constants/routes.constants';
 import { useAuth } from '../../context/auth-context';
 import BackButton from '../../Components/BackButton';
+import SearchableSelect from '../../Components/SearchableSelect';
 import { ITEM_ISSUES, hasItemIssue, totalStock, type ItemIssue } from '../Reports/ItemReportComponents/itemIssues';
 
 import type { Item } from '../../constants/models';
@@ -92,7 +92,7 @@ const ManageItems: React.FC = () => {
   const [isConfirmingDeleteAll, setIsConfirmingDeleteAll] = useState(false);
   const [deleteAllText, setDeleteAllText] = useState('');
   const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
-    const [pageMenuOpen, setPageMenuOpen] = useState(false);
+  const [pageMenuOpen, setPageMenuOpen] = useState(false);
   const [rowMenuId, setRowMenuId] = useState<string | null>(null);
   // Row menu is rendered `fixed` so the table's overflow container can't clip it
   const [rowMenuPos, setRowMenuPos] = useState<{ top: number; right: number } | null>(null);
@@ -170,7 +170,7 @@ const ManageItems: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseRows, activeFilter, sortConfig]);
 
-    useEffect(() => {
+  useEffect(() => {
     setVisibleCount(PAGE_SIZE);
   }, [baseRows, activeFilter, sortConfig]);
 
@@ -202,7 +202,7 @@ const ManageItems: React.FC = () => {
     }));
   };
 
-    const closeRowMenu = () => {
+  const closeRowMenu = () => {
     setRowMenuId(null);
     setRowMenuPos(null);
   };
@@ -236,7 +236,7 @@ const ManageItems: React.FC = () => {
 
   // Copies the item as a new one (no barcode, no stock — both must be its own)
   // and opens it in the edit drawer so the user can adjust it straight away.
-    const duplicateItem = async (item: Item) => {
+  const duplicateItem = async (item: Item) => {
     closeRowMenu();
     if (!currentUser?.companyId) return;
     try {
@@ -258,7 +258,7 @@ const ManageItems: React.FC = () => {
     }
   };
 
-    const printLabel = (item: Item) => {
+  const printLabel = (item: Item) => {
     closeRowMenu();
     // PrintQR matches a prefilled entry by item id first, then by barcode.
     navigate(ROUTES.PRINTQR, {
@@ -317,7 +317,7 @@ const ManageItems: React.FC = () => {
     );
   };
 
-    const renderRowMenu = (item: Item, key: string) => (
+  const renderRowMenu = (item: Item, key: string) => (
     <div className="relative">
       <button
         onClick={(e) => toggleRowMenu(e, key)}
@@ -356,7 +356,7 @@ const ManageItems: React.FC = () => {
               </button>
             )}
             <button
-                            onClick={(e) => { e.stopPropagation(); closeRowMenu(); setItemPendingDelete(item); }}
+              onClick={(e) => { e.stopPropagation(); closeRowMenu(); setItemPendingDelete(item); }}
               className="flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-sm text-red-600 hover:bg-red-50"
             >
               <Trash2 size={14} /> Delete
@@ -482,37 +482,36 @@ const ManageItems: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-2 gap-2.5 md:contents">
-          <div className="relative md:w-44">
-            <LayoutGrid size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-            <select
+          <div className="md:w-44">
+            <SearchableSelect
+              theme="blue"
+              buttonClassName="!h-[38px]"
+              leftIcon={<LayoutGrid size={14} />}
+              options={[
+                ...itemGroups.map((g) => ({ value: g.id as string, label: g.name })),
+                { value: UNASSIGNED_GROUP_NAME, label: 'Uncategorized' },
+              ]}
               value={appliedItemGroupId}
-              onChange={(e) => handleGroupChange(e.target.value)}
-              className="w-full appearance-none rounded-sm border border-slate-300 bg-white py-2 pl-8 pr-8 text-sm text-slate-700 outline-none transition hover:border-slate-400 focus:border-blue-500"
-            >
-              <option value="">All groups</option>
-              {itemGroups.map((group) => (
-                <option key={group.id} value={group.id}>{group.name}</option>
-              ))}
-              <option value={UNASSIGNED_GROUP_NAME}>Uncategorized</option>
-            </select>
-            <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+              onChange={handleGroupChange}
+              placeholder="All groups"
+              searchPlaceholder="Search group..."
+              clearable
+            />
           </div>
 
           {/* Sort — on its own line on desktop (right), next to the group on mobile */}
-          <div className="relative md:order-last md:ml-auto md:w-44">
-            <select
+          <div className="md:order-last md:ml-auto md:w-44">
+            <SearchableSelect
+              theme="blue"
+              buttonClassName="!h-[38px]"
+              options={SORT_OPTIONS}
               value={`${sortConfig.key}:${sortConfig.direction}`}
-              onChange={(e) => {
-                const [key, direction] = e.target.value.split(':') as [SortKey, 'asc' | 'desc'];
+              onChange={(v) => {
+                const [key, direction] = v.split(':') as [SortKey, 'asc' | 'desc'];
                 setSortConfig({ key, direction });
               }}
-              className="w-full appearance-none rounded-sm border border-slate-300 bg-white py-2 pl-3 pr-8 text-sm text-slate-700 outline-none transition hover:border-slate-400 focus:border-blue-500"
-            >
-              {SORT_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-            <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+              searchThreshold={99}
+            />
           </div>
         </div>
 

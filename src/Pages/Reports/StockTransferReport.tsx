@@ -957,7 +957,7 @@ const StockTransferReportPage: React.FC<StockTransferReportPageProps> = ({ theme
     { label: 'Total stock', value: `${qty(stockSummary.totalQty)} pcs`, hint: 'across all locations', icon: Boxes, iconClass: 'bg-green-50 text-green-600', valueClass: T.text },
     { label: 'Locations', value: qty(locations.length), hint: locations.map((l) => l.name).join(', '), icon: MapPin, iconClass: 'bg-blue-50 text-blue-600', valueClass: 'text-slate-900' },
     { label: 'Items in stock', value: qty(stockSummary.itemsInStock), hint: stockSummary.top ? `top: ${stockSummary.top.name} · ${qty(stockSummary.top.qty)}` : 'nothing in stock', icon: Tag, iconClass: 'bg-amber-50 text-amber-600', valueClass: 'text-slate-900' },
-    { label: 'Unit not set', value: qty(stockSummary.unitNotSet), hint: stockSummary.unitNotSet ? 'items show "—" as unit' : 'every item has a unit', icon: Ruler, iconClass: 'bg-amber-50 text-amber-600', valueClass: stockSummary.unitNotSet ? 'text-amber-700' : 'text-slate-900' },
+    { label: 'Unit not set', value: qty(stockSummary.unitNotSet), hint: stockSummary.unitNotSet ? 'items show "Not set" as unit' : 'every item has a unit', icon: Ruler, iconClass: 'bg-amber-50 text-amber-600', valueClass: stockSummary.unitNotSet ? 'text-amber-700' : 'text-slate-900' },
   ];
   const historyCards = [
     { label: 'Quantity moved', value: `${qty(historySummary.totalQty)} pcs`, hint: `in ${plural(historySummary.count, 'entry', 'entries')}`, icon: Package, iconClass: 'bg-blue-50 text-blue-600', valueClass: T.text },

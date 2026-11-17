@@ -772,13 +772,13 @@ const Sales: React.FC = () => {
                 const existingCount = items.filter((l: any) => (l.productId || l.id) === base.id).length;
                 setDuplicateItemPrompt({
                     item: base,
-                    addOns: line.addOns,   
+                    addOns: line.addOns,
                     existingCount,
                 } as any);
                 return;
             }
         }
-        
+
         handleQuantityChange(lineId, newQty);
     };
 
@@ -2482,10 +2482,16 @@ ${colClass || ''}`}
                     {/* Cart List Container */}
                     <div className="flex-1 flex flex-col bg-[#eef2ff] overflow-y-hidden">
                         {renderCartBar()}
-                        <div className="flex-shrink-0 grid grid-cols-2 px-2 py-1">
-                            {discountInfo && <div className="text-xs text-red-600">{discountInfo}</div>}
-                            {priceInfo && <div className="text-xs text-red-600">{priceInfo}</div>}
-                        </div>
+                        {(discountInfo || priceInfo) && (
+                            <div className="flex-shrink-0 flex flex-col items-start gap-1.5 px-4 md:px-5 pt-2" role="status" aria-live="polite">
+                                {discountInfo && (
+                                    <div className="px-3 py-2 rounded-sm bg-[#ffeef0] text-[#d5000c] text-[13px] font-medium">{discountInfo}</div>
+                                )}
+                                {priceInfo && (
+                                    <div className="px-3 py-2 rounded-sm bg-[#ffeef0] text-[#d5000c] text-[13px] font-medium">{priceInfo}</div>
+                                )}
+                            </div>
+                        )}
                         <TutorialStep step={4} {...tour} text="Items you add appear here. You can change the quantity, price and discount on each line." onNext={() => nextStep(5)}>
                             <div data-tour="4" className="flex-1 min-h-0 flex flex-col">
                                 <GenericCartList

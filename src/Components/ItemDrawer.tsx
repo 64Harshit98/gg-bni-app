@@ -24,6 +24,7 @@ import { type PriceTierForm, toPriceTierForm, fromPriceTierForm, emptyPriceTierF
 import { validateQuantitySlabs, buildAddOnPicks } from '../constants/models';
 import { useAddOnTemplates } from '../lib/addOnTemplates';
 import { ItemStockLocations } from './ItemStockLocation';
+import SearchableSelect from './SearchableSelect';
 
 interface ItemEditDrawerProps {
     item: Item | null;
@@ -1275,11 +1276,16 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                             {/* --- Category --- */}
                                             <FieldWrap className="col-span-2" label="Category" htmlFor="edit-category" hint="An item can be in more than one category">
                                                 {/* Primary category dropdown */}
-                                                <select
+                                                <SearchableSelect
                                                     id="edit-category"
+                                                    theme={isCatalogue ? 'orange' : 'blue'}
+                                                    options={[
+                                                        { value: 'ADD_NEW_GROUP', label: '+ Add New Group' },
+                                                        { value: '', label: 'Uncategorized' },
+                                                        ...itemGroups.map(g => ({ value: g.id as string, label: g.name })),
+                                                    ]}
                                                     value={selectedCategories[0] || ''}
-                                                    onChange={(e) => {
-                                                        const val = e.target.value;
+                                                    onChange={(val) => {
                                                         if (val === 'ADD_NEW_GROUP') {
                                                             onClose();
                                                             navigate(itemGroupRoute);
@@ -1291,16 +1297,8 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                         });
                                                     }}
                                                     disabled={isSaving}
-                                                    className={INPUT_CLS}
-                                                >
-                                                    <option value="ADD_NEW_GROUP" className="font-semibold bg-gray-100">+ Add New Group</option>
-                                                    <option value="">Uncategorized</option>
-                                                    {itemGroups.map((group) => (
-                                                        <option key={group.id} value={group.id}>
-                                                            {group.name}
-                                                        </option>
-                                                    ))}
-                                                </select>
+                                                    searchPlaceholder="Search category..."
+                                                />
 
                                                 {/* Extra category chips */}
                                                 {selectedCategories.length > 1 && (
@@ -1334,10 +1332,17 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                     </button>
                                                 ) : (
                                                     <div className="mt-1 flex gap-2 items-center">
-                                                        <select
-                                                            defaultValue=""
-                                                            onChange={(e) => {
-                                                                const val = e.target.value;
+                                                        <SearchableSelect
+                                                            className="flex-1"
+                                                            theme={isCatalogue ? 'orange' : 'blue'}
+                                                            options={[
+                                                                { value: 'ADD_NEW_GROUP', label: '+ Add New Group' },
+                                                                ...itemGroups
+                                                                    .filter(g => !selectedCategories.includes(g.id!))
+                                                                    .map(g => ({ value: g.id as string, label: g.name })),
+                                                            ]}
+                                                            value=""
+                                                            onChange={(val) => {
                                                                 if (!val) return;
                                                                 if (val === 'ADD_NEW_GROUP') {
                                                                     onClose();
@@ -1349,17 +1354,10 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                                 }
                                                                 setShowCategoryDropdown(false);
                                                             }}
-                                                            className={`${INPUT_CLS} flex-1`}
+                                                            placeholder="Add more"
+                                                            searchPlaceholder="Search category..."
                                                             disabled={isSaving}
-                                                        >
-                                                            <option value="ADD_NEW_GROUP" className="font-semibold bg-gray-100">+ Add New Group</option>
-                                                            {/* <option value="">Add more</option> */}
-                                                            {itemGroups
-                                                                .filter(g => !selectedCategories.includes(g.id!))
-                                                                .map(g => (
-                                                                    <option key={g.id} value={g.id!}>{g.name}</option>
-                                                                ))}
-                                                        </select>
+                                                        />
                                                         <button
                                                             type="button"
                                                             onClick={() => setShowCategoryDropdown(false)}
@@ -1382,28 +1380,23 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
 
                                             <FieldWrap label="Unit" htmlFor="edit-unit">
                                                 <div className="flex gap-2">
-                                                    <select
+                                                    <SearchableSelect
                                                         id="edit-unit"
-                                                        name="unit"
+                                                        className={formData.unit === 'pkt' ? 'w-1/2' : 'w-full'}
+                                                        theme={isCatalogue ? 'orange' : 'blue'}
+                                                        options={UNIT_OPTIONS.filter(u => u.value !== '')}
                                                         value={formData.unit || ''}
-                                                        onChange={(e) => {
-                                                            handleChange(e);
-                                                            if (e.target.value !== 'pkt') {
-                                                                setFormData(prev => ({ ...prev, packetSize: undefined }));
-                                                            }
-                                                            if (e.target.value && e.target.value !== '') {
-                                                                setUnitChangeWarning(true);
-                                                            }
+                                                        onChange={(v) => {
+                                                            setFormData(prev => ({
+                                                                ...prev,
+                                                                unit: v,
+                                                                ...(v !== 'pkt' ? { packetSize: undefined } : {}),
+                                                            }));
+                                                            if (v) setUnitChangeWarning(true);
                                                         }}
-                                                        className={`${INPUT_CLS} ${formData.unit === 'pkt' ? 'w-1/2' : 'w-full'}`}
+                                                        placeholder="Select unit"
                                                         disabled={isSaving}
-                                                    >
-                                                        {UNIT_OPTIONS.map(u => (
-                                                            <option key={u.value} value={u.value} disabled={u.value === ''}>
-                                                                {u.label}
-                                                            </option>
-                                                        ))}
-                                                    </select>
+                                                    />
 
                                                     {formData.unit === 'pkt' && (
                                                         <input
@@ -1866,23 +1859,23 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                                         {addOnTemplates.length === 0 ? (
                                                             <p className="m-0 text-xs text-[#5b6b86]">No add-on groups yet. Create them in Item groups → Add-ons.</p>
                                                         ) : (
-                                                            <select
-                                                                value=""
+                                                            <SearchableSelect
+                                                                theme={isCatalogue ? 'orange' : 'blue'}
+                                                                buttonClassName="!h-9"
                                                                 disabled={isSaving}
-                                                                onChange={(e) => {
-                                                                    const id = e.target.value;
+                                                                options={addOnTemplates
+                                                                    .filter(t => !addOnGroupIds.includes(t.id))
+                                                                    .map(t => ({ value: t.id, label: t.name }))}
+                                                                value=""
+                                                                onChange={(id) => {
                                                                     if (id) {
                                                                         setAddOnGroupIds(prev => (prev.includes(id) ? prev : [...prev, id]));
                                                                         setAddOnOpenId(id); // open its checklist right away
                                                                     }
                                                                 }}
-                                                                className={`${INPUT_CLS} !h-9`}
-                                                            >
-                                                                <option value="">Add an add-on group…</option>
-                                                                {addOnTemplates.filter(t => !addOnGroupIds.includes(t.id)).map(t => (
-                                                                    <option key={t.id} value={t.id}>{t.name}</option>
-                                                                ))}
-                                                            </select>
+                                                                placeholder="Add an add-on group…"
+                                                                searchPlaceholder="Search add-on group..."
+                                                            />
                                                         )}
                                                     </div>
 

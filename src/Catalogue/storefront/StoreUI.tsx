@@ -29,8 +29,10 @@ export const Photo: React.FC<{
     return (
         <div className={cx('relative overflow-hidden rounded-sm', show ? (fit === 'contain' ? 'bg-white' : 'bg-sf-sunken') : toneClass(tone), className)}>
             {show ? (
-                <img key={current} src={current} alt={alt} loading="lazy" onError={() => setBroken((b) => new Set(b).add(current))}
-                    className={cx('absolute inset-0 h-full w-full', fit === 'contain' ? 'object-contain' : 'object-cover')} />
+                <img key={current} src={current} alt={alt} loading="lazy"
+    onLoad={(e) => { if (e.currentTarget.naturalWidth <= 1) setBroken((b) => new Set(b).add(current)); }}
+    onError={() => setBroken((b) => new Set(b).add(current))}
+    className={cx('absolute inset-0 h-full w-full', fit === 'contain' ? 'object-contain' : 'object-cover')} />
             ) : (
                 <div className="absolute inset-0 grid place-items-center text-slate-500/70"><ImageIcon className="size-8" strokeWidth={1.25} aria-hidden /></div>
             )}
@@ -55,8 +57,9 @@ export const ProductPhoto: React.FC<{ images: string[]; alt: string; tone?: numb
         <div className={cx('relative overflow-hidden bg-white', className)}>
             {valid.map((url, i) => (
                 <img key={url + i} src={url} alt={alt} loading="lazy"
-                    onError={() => setBroken((p) => new Set(p).add(url))}
-                    className={cx('absolute inset-0 h-full w-full object-contain transition-opacity duration-700', i === current ? 'opacity-100' : 'opacity-0')} />
+    onLoad={(e) => { if (e.currentTarget.naturalWidth <= 1) setBroken((p) => new Set(p).add(url)); }}
+    onError={() => setBroken((p) => new Set(p).add(url))}
+    className={cx('absolute inset-0 h-full w-full object-contain transition-opacity duration-700', i === current ? 'opacity-100' : 'opacity-0')} />
             ))}
             {dots && valid.length > 1 && (
                 <span className="absolute bottom-2 left-1/2 flex -translate-x-1/2 gap-1" aria-hidden>

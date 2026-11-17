@@ -339,7 +339,7 @@ const PnlReportPage: React.FC = () => {
   );
 
   /* ---------- PDF DOWNLOAD ---------- */
-    const downloadAsPdf = async () => {
+  const downloadAsPdf = async () => {
     try {
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
@@ -1817,16 +1817,21 @@ const PnlReportPage: React.FC = () => {
               />
             </div>
 
-            {/* Mobile: only shown while reviewing, so the filter can be cleared */}
-            {billFilter !== 'all' && (
-              <button
-                onClick={() => setBillFilter('all')}
-                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 md:hidden"
+            {/* Mobile: filter dropdown in the same row */}
+            <div className="relative md:hidden">
+              <Filter size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+              <select
+                value={billFilter}
+                onChange={(e) => setBillFilter(e.target.value as BillFilter)}
+                aria-label="Filter bills"
+                className="appearance-none rounded-sm border border-slate-300 bg-white py-1.5 pl-7 pr-7 text-xs text-slate-700 outline-none focus:border-blue-500"
               >
-                {billFilter === 'missing' ? 'Cost missing' : 'Loss-making'}
-                <X size={12} />
-              </button>
-            )}
+                <option value="all">All bills</option>
+                <option value="missing">Cost missing</option>
+                <option value="loss">Loss-making</option>
+              </select>
+              <ChevronDown size={13} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500" />
+            </div>
           </div>
 
           {/* Desktop table */}

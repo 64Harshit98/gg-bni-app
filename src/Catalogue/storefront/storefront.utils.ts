@@ -18,8 +18,16 @@ export const itemInGroup = (item: Item, groupId: string) => getItemGroupIds(item
 
 // Every photo the item has: the cover (imageUrl) first, then the gallery. Excel bulk upload only
 // updates imageUrl, so it can differ from imageUrls[0]; blank entries are dropped.
+// Open Library returns a 1x1 blank GIF (status 200) when a cover is missing; default=false makes it a real 404
+const fixCoverUrl = (u: string) =>
+    /^https?:\/\/covers\.openlibrary\.org\//i.test(u) && !/[?&]default=/.test(u)
+        ? `${u}${u.includes('?') ? '&' : '?'}default=false`
+        : u;
+
 export const getItemImages = (item: Item): string[] =>
-    [...new Set([item.imageUrl, ...(item.imageUrls || [])].filter((u): u is string => typeof u === 'string' && u.trim() !== ''))];
+    [...new Set([item.imageUrl, ...(item.imageUrls || [])]
+        .filter((u): u is string => typeof u === 'string' && u.trim() !== '')
+        .map(fixCoverUrl))];
 
 /** Category slug for an item: its first real category. */
 export const findItemGroup = (item: Item, groups: ItemGroup[]) => {

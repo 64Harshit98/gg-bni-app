@@ -804,7 +804,7 @@ const QRCodeGeneratorPage: React.FC = () => {
         </div>
 
         {/* ───────── RIGHT: preview + print ───────── */}
-        <aside className="flex flex-col gap-4 rounded-sm border border-[#dfe6fb] bg-white p-4 min-w-0 shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] lg:sticky lg:top-4">
+        <aside className="flex flex-col gap-3 rounded-sm border border-[#dfe6fb] bg-white p-3 min-w-0 shadow-[0_1px_2px_rgba(21,48,140,0.05),0_2px_6px_rgba(21,48,140,0.06)] lg:sticky lg:top-4">
           <button
             onClick={() => setIsPreviewOpen(!isPreviewOpen)}
             className="w-full flex items-start justify-between gap-3 text-left"
@@ -831,11 +831,11 @@ const QRCodeGeneratorPage: React.FC = () => {
                 position="top"
               >
                 <div
-                  className="relative grid place-items-center rounded-sm border border-[#dfe6fb] px-4 py-8"
+                  className="relative grid place-items-center rounded-sm border border-[#dfe6fb] px-4 py-2"
                   style={CHECKER_BG}
                 >
                   {displayPreviewItem ? (
-                    <div className="-mt-4">
+                    <div>
                       <LabelPreview
                         item={displayPreviewItem}
                         companyName={companyName}
@@ -897,14 +897,20 @@ const QRCodeGeneratorPage: React.FC = () => {
             </TutorialStep>
           </div>
 
-          <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1.5 text-[13px]">
-            <dt className="text-[#5b6b86]">Format</dt>
-            <dd className="font-medium text-[#0f172b] text-right">{formatLabel[barcodeSettings.labelFormat ?? 'both']}</dd>
-            <dt className="text-[#5b6b86]">Items</dt>
-            <dd className="font-medium text-[#0f172b] text-right tabular-nums">{displayQueue.length}</dd>
-            <dt className="text-[#5b6b86]">Labels to print</dt>
-            <dd className="font-semibold text-[#0f172b] text-right tabular-nums">{totalLabels}</dd>
-          </dl>
+          <div className="flex flex-col gap-1 text-[13px]">
+            <div className="flex items-center justify-between">
+              <span className="text-[#5b6b86]">Format</span>
+              <span className="font-medium text-[#0f172b]">{formatLabel[barcodeSettings.labelFormat ?? 'both']}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[#5b6b86]">
+                {displayQueue.length} item{displayQueue.length !== 1 ? 's' : ''}
+              </span>
+              <span className="font-semibold text-[#0f172b] tabular-nums">
+                {totalLabels} label{totalLabels !== 1 ? 's' : ''} to print
+              </span>
+            </div>
+          </div>
 
           {displayQueue.length > 0 && (
             <div ref={printRef}>
@@ -917,16 +923,12 @@ const QRCodeGeneratorPage: React.FC = () => {
                 isLast
                 position="top"
               >
-                <div className="flex flex-col gap-2 border-t border-[#dfe6fb] pt-4">
-                  <p className="text-center text-xs text-[#5b6b86]">
-                    Ready to print labels for{" "}
-                    <span className="font-semibold text-[#0f172b]">{displayQueue.length} item{displayQueue.length > 1 ? "s" : ""}</span>.
-                  </p>
+                <div className="flex flex-col gap-2 border-t border-[#dfe6fb] pt-3">
                   <CustomButton
                     onClick={handlePrint}
                     disabled={isPrintButtonDisabled}
                     variant={Variant.Filled}
-                    className="w-full h-12 flex items-center justify-center gap-2 !rounded-sm !bg-[#155dfc] !text-white !text-sm !font-semibold hover:!bg-[#1447e6] disabled:!opacity-60"
+                    className="w-full h-11 flex items-center justify-center gap-2 !rounded-sm !bg-[#155dfc] !text-white !text-sm !font-semibold !border-0 !outline-none !ring-0 focus:!outline-none focus:!ring-0 focus-visible:!outline-none hover:!bg-[#1447e6] disabled:!opacity-60"
                   >
                     {isPrinting ? "Generating..." : (<><IconPrinter />Print {totalLabels} label{totalLabels > 1 ? "s" : ""}</>)}
                   </CustomButton>
@@ -941,7 +943,7 @@ const QRCodeGeneratorPage: React.FC = () => {
 
   return (
     <div
-      className="w-full min-h-full bg-[#eef2ff] pb-28 lg:pb-8 sm:rounded-sm overflow-hidden"
+      className="w-full min-h-full lg:h-full bg-[#eef2ff] pb-28 lg:pb-0 sm:rounded-sm overflow-hidden"
       style={{ fontFamily: FONT_STACK }}
     >
       {/* Header: flush to the very top, full width */}
@@ -955,7 +957,7 @@ const QRCodeGeneratorPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="p-3 sm:p-5">{renderContent()}</div>
+      <div className="p-3 sm:px-5 sm:pt-5 sm:pb-3">{renderContent()}</div>
 
       <ItemEditDrawer
         item={itemToEdit}

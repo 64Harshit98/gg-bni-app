@@ -32,6 +32,7 @@ import { db } from '../../lib/Firebase';
 import { useAuth } from '../../context/auth-context';
 import { useCatalogueData } from '../../context/CatalogueDataContext';
 import BackButton from '../../Components/BackButton';
+import SearchableSelect from '../../Components/SearchableSelect';
 import useSalesReport from './SalesReportComponents/useSalesReport';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -57,6 +58,9 @@ export interface AggregatedItem {
 
 const UNASSIGNED_GROUP_NAME = 'Uncategorized';
 const UNSOLD_PAGE_SIZE = 50;
+
+// Firestore auto-IDs are 20 letters/digits. Never show these to the user.
+const looksLikeId = (s: string) => /^[A-Za-z0-9]{20}$/.test(s);
 
 const inrRound = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
 
@@ -103,22 +107,22 @@ const fmtDayMonth = (ts: number) => {
 };
 
 const fmt2 = (n: number) =>
-  n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // Helvetica can only draw Latin-1 text. Anything else (Hindi, Arabic, emoji, ₹) prints
 // garbled with wrong widths, so overlaps the next column. Keep only what it can draw.
 const PDF_OK = /[\u0020-\u007E\u00A0-\u00FF\u2013\u2014\u2018\u2019\u201C\u201D\u2022\u2026\u2122]/;
 const pdfSafe = (value: unknown): string =>
-  Array.from(
-    String(value ?? '')
-      .replace(/₹/g, 'Rs.')
-      .replace(/[\u2010\u2011\u2212]/g, '-')
-      .replace(/[\r\t]/g, ' '),
-  )
-    .filter((ch) => ch === '\n' || PDF_OK.test(ch))
-    .join('')
-    .replace(/ {2,}/g, ' ')
-    .trim();
+    Array.from(
+        String(value ?? '')
+            .replace(/₹/g, 'Rs.')
+            .replace(/[\u2010\u2011\u2212]/g, '-')
+            .replace(/[\r\t]/g, ' '),
+    )
+        .filter((ch) => ch === '\n' || PDF_OK.test(ch))
+        .join('')
+        .replace(/ {2,}/g, ' ')
+        .trim();
 
 const ItemsSoldReport: React.FC = () => {
 
@@ -163,9 +167,33 @@ const ItemsSoldReport: React.FC = () => {
             if (g.id) byKey[g.id] = g.name || 'Unknown Group';
             if (g.name) byKey[g.name] = g.name;
         });
-        return (groupKey?: string, fallback?: string) =>
-            (groupKey && byKey[groupKey]) || fallback || groupKey || UNASSIGNED_GROUP_NAME;
-    }, [catalogueItemGroups]);
+                // Old bills can carry odd types here, so only trust strings and numbers.
+        const str = (v: unknown) =>
+            typeof v === 'string' ? v.trim() : typeof v === 'number' ? String(v) : '';
+
+        return (groupKey?: unknown, fallback?: unknown): string => {
+            const key = str(groupKey);
+            if (key && byKey[key]) return byKey[key];
+
+            const name = str(fallback);
+            if (name && !looksLikeId(name)) return name;
+
+            // Old bills may store the group *name* in the id field (renamed groups)
+            if (key && !looksLikeId(key)) return key;
+
+            return UNASSIGNED_GROUP_NAME;
+        };
+       }, [catalogueItemGroups]);
+
+    // Fallback: if a bill line has no usable group, use the item's current group.
+    const catalogueById = useMemo(() => {
+        const m = new Map<string, (typeof catalogueItems)[number]>();
+        catalogueItems.forEach((i) => {
+            if (i.id) m.set(i.id, i);
+        });
+        return m;
+    }, [catalogueItems]);
+
     const [companyName, setCompanyName] = useState<string>('');
 
     useEffect(() => {
@@ -263,13 +291,20 @@ const ItemsSoldReport: React.FC = () => {
                 const { baseName, addOnText } = splitAddOns(item);
                 const id = `${productId}__${addOnText || ''}`;
 
-                if (!itemMap.has(id)) {
+                                if (!itemMap.has(id)) {
+                    // 1) group from the bill line, 2) else the item's current catalogue group
+                    let itemGroup = groupNameOf(item.itemGroupId, item.category);
+                    if (itemGroup === UNASSIGNED_GROUP_NAME) {
+                        const cat = catalogueById.get(String(productId));
+                        if (cat) itemGroup = groupNameOf(cat.itemGroupId);
+                    }
+
                     itemMap.set(id, {
                         id,
                         productId,
                         name: baseName || item.name || 'Unknown Item',
                         addOnText: addOnText || '',
-                        itemGroup: groupNameOf(item.itemGroupId, item.category),
+                        itemGroup,
                         quantitySold: 0,
                         valueSold: 0,
                     });
@@ -291,7 +326,7 @@ const ItemsSoldReport: React.FC = () => {
         });
 
         return { soldItems: Array.from(itemMap.values()), billLines: lines, uncountedBills: uncounted };
-    }, [billsInRange, groupNameOf]);
+        }, [billsInRange, groupNameOf, catalogueById]);
 
     const groupOptions = useMemo(() => {
         const names = new Set<string>(catalogueItemGroups.map((g) => g.name).filter(Boolean));
@@ -366,7 +401,7 @@ const ItemsSoldReport: React.FC = () => {
     }, [aggregatedItems, summary.totalValueSold]);
 
     /* ---------- PDF DOWNLOAD ---------- */
-        const downloadAsPdf = async () => {
+    const downloadAsPdf = async () => {
         if (!appliedFilters) return;
 
         try {
@@ -377,7 +412,7 @@ const ItemsSoldReport: React.FC = () => {
             const PAD = 4;
             const brandRight = pageWidth - M;
             const contentW = pageWidth - M * 2;
-                        const company = pdfSafe(companyName) || 'Your Business';
+            const company = pdfSafe(companyName) || 'Your Business';
             const itemWord = (n: number) => (n === 1 ? 'item' : 'items');
 
             const generatedAtText = `Generated ${new Date().toLocaleString('en-IN', {
@@ -449,7 +484,7 @@ const ItemsSoldReport: React.FC = () => {
                     ? Math.round((topList.reduce((s, i) => s + i.valueSold, 0) / summary.totalValueSold) * 100)
                     : 0;
             const soldCount = catalogueCount - unsoldItems.length;
-                        const topGroupSafe = pdfSafe(topGroup.name);
+            const topGroupSafe = pdfSafe(topGroup.name);
             const topGroupText = topGroupSafe
                 ? topGroupSafe.length > 16
                     ? `${topGroupSafe.slice(0, 15)}...`
@@ -681,7 +716,7 @@ const ItemsSoldReport: React.FC = () => {
                 doc.setFont('helvetica', 'normal');
                 doc.setFontSize(9);
                 doc.setTextColor(55, 65, 81);
-                                const label = (doc.splitTextToSize(pdfSafe(it.name) || 'N/A', barLabelW) as string[])[0] || '';
+                const label = (doc.splitTextToSize(pdfSafe(it.name) || 'N/A', barLabelW) as string[])[0] || '';
                 doc.text(label, M + 6, cy + 3.2);
 
                 doc.setFillColor(238, 243, 255);
@@ -722,7 +757,7 @@ const ItemsSoldReport: React.FC = () => {
             const tableBody: any[] = aggregatedItems.map((item) => {
                 const share =
                     summary.totalValueSold > 0 ? Math.round((item.valueSold / summary.totalValueSold) * 100) : 0;
-                                const safeName = pdfSafe(item.name) || 'N/A';
+                const safeName = pdfSafe(item.name) || 'N/A';
                 const safeAddOn = pdfSafe(item.addOnText);
                 return [
                     {
@@ -784,7 +819,7 @@ const ItemsSoldReport: React.FC = () => {
                     3: { cellWidth: COLW[3], halign: 'right' },
                     4: { cellWidth: COLW[4], halign: 'right' },
                 },
-                                didParseCell: (data) => {
+                didParseCell: (data) => {
                     data.cell.styles.valign = 'middle';
 
                     // Value sold: very long numbers shrink instead of wrapping
@@ -1324,19 +1359,18 @@ const ItemsSoldReport: React.FC = () => {
                     <button onClick={() => setIsRangeOpen((o) => !o)} className={`md:hidden ${chipClass(datePreset === 'custom')}`}>
                         Custom
                     </button>
-                    <div className="relative hidden shrink-0 md:block">
-                        <LayoutGrid size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                        <select
+                    <div className="hidden w-48 shrink-0 md:block">
+                        <SearchableSelect
+                            theme="blue"
+                            buttonClassName="!h-[34px]"
+                            leftIcon={<LayoutGrid size={14} />}
+                            options={groupOptions.map((g) => ({ value: g, label: g }))}
                             value={groupFilter}
-                            onChange={(e) => setGroupFilter(e.target.value)}
-                            className="appearance-none rounded-sm border border-slate-300 bg-white py-1.5 pl-8 pr-8 text-sm font-medium text-slate-700 outline-none transition hover:border-slate-400 focus:border-blue-500"
-                        >
-                            <option value="">All groups</option>
-                            {groupOptions.map((g) => (
-                                <option key={g} value={g}>{g}</option>
-                            ))}
-                        </select>
-                        <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                            onChange={setGroupFilter}
+                            placeholder="All groups"
+                            searchPlaceholder="Search group..."
+                            clearable
+                        />
                     </div>
                 </div>
 
@@ -1411,20 +1445,21 @@ const ItemsSoldReport: React.FC = () => {
                         </div>
 
                         {/* Mobile sort */}
-                        <div className="relative md:hidden">
-                            <select
+                        <div className="w-36 md:hidden">
+                            <SearchableSelect
+                                theme="blue"
+                                buttonClassName="!h-9"
+                                options={[
+                                    { value: 'valueSold:desc', label: 'Value ↓' },
+                                    { value: 'quantitySold:desc', label: 'Qty ↓' },
+                                    { value: 'name:asc', label: 'Name A–Z' },
+                                ]}
                                 value={mobileSortValue}
-                                onChange={(e) => {
-                                    const [key, direction] = e.target.value.split(':') as [keyof AggregatedItem, 'asc' | 'desc'];
+                                onChange={(v) => {
+                                    const [key, direction] = v.split(':') as [keyof AggregatedItem, 'asc' | 'desc'];
                                     setSortConfig({ key, direction });
                                 }}
-                                className="appearance-none rounded-sm border border-slate-300 bg-white py-1.5 pl-3 pr-8 text-sm text-slate-700 outline-none focus:border-blue-500"
-                            >
-                                <option value="valueSold:desc">Value ↓</option>
-                                <option value="quantitySold:desc">Qty ↓</option>
-                                <option value="name:asc">Name A–Z</option>
-                            </select>
-                            <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                            />
                         </div>
                     </div>
 

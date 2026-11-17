@@ -6,8 +6,6 @@ import {
   ArrowUp,
   ArrowUpDown,
   Check,
-  ChevronDown,
-  ChevronLeft,
   Eye,
   EyeOff,
   IndianRupee,
@@ -29,6 +27,8 @@ import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import { useAuth } from '../../context/auth-context';
 import { Modal } from '../../constants/Modal';
 import { Spinner } from '../../constants/Spinner';
+import BackButton from '../../Components/BackButton';
+import SearchableSelect from '../../Components/SearchableSelect';
 import { Permissions, State } from '../../enums';
 import { ROUTES } from '../../constants/routes.constants';
 import { ItemEditDrawer } from '../../Components/ItemDrawer';
@@ -53,7 +53,7 @@ const RestockReportPage: React.FC = () => {
   const { currentUser, hasPermission } = useAuth();
   const canPurchase = hasPermission(Permissions.CreatePurchase);
   const canEditItems = hasPermission(Permissions.ManageItems);
-  const { rows, loading } = useRestockReport();
+  const { rows, itemGroups, loading } = useRestockReport();
 
   const [companyName, setCompanyName] = useState('');
   useEffect(() => {
@@ -112,9 +112,14 @@ const RestockReportPage: React.FC = () => {
     setVisibleCount(PAGE_SIZE);
   }, [baseRows, statusFilter, sortConfig]);
 
+  // All groups, not just those with items to reorder. Row groups are merged in
+  // so "Uncategorized" (or a legacy group name not in itemGroups) still shows up.
   const groupOptions = useMemo(
-    () => [...new Set(rows.map((r) => r.group))].sort((a, b) => a.localeCompare(b)),
-    [rows],
+    () =>
+      [...new Set([...itemGroups.map((g) => g.name), ...rows.map((r) => r.group)])]
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+    [itemGroups, rows],
   );
 
   /* ---------- SELECTION ---------- */
@@ -413,9 +418,8 @@ const RestockReportPage: React.FC = () => {
         e.stopPropagation();
         onToggle();
       }}
-      className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-sm border transition ${
-        checked ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-400 bg-white'
-      } ${disabled ? 'cursor-not-allowed opacity-40' : ''}`}
+      className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-sm border transition ${checked ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-400 bg-white'
+        } ${disabled ? 'cursor-not-allowed opacity-40' : ''}`}
     >
       {checked && <Check size={12} strokeWidth={3} />}
     </button>
@@ -423,9 +427,8 @@ const RestockReportPage: React.FC = () => {
 
   const renderStatus = (r: RestockRow) => (
     <span
-      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-sm px-2 py-0.5 text-xs font-semibold ${
-        r.status === 'out' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'
-      }`}
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-sm px-2 py-0.5 text-xs font-semibold ${r.status === 'out' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'
+        }`}
     >
       <span className={`h-1.5 w-1.5 rounded-full ${r.status === 'out' ? 'bg-red-600' : 'bg-amber-500'}`} />
       {statusText(r)}
@@ -494,8 +497,7 @@ const RestockReportPage: React.FC = () => {
 
   const visibleRows = listRows.slice(0, visibleCount);
   const segmentButtonClass = (active: boolean) =>
-    `whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition ${
-      active ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-white'
+    `whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium transition ${active ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-white'
     }`;
 
   return (
@@ -521,13 +523,7 @@ const RestockReportPage: React.FC = () => {
 
       {/* HEADER */}
       <header className="mb-4 flex items-center gap-2 md:gap-3">
-        <button
-          onClick={() => navigate(-1)}
-          aria-label="Back"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm text-slate-700 transition hover:bg-slate-200 md:border md:border-slate-300 md:bg-white"
-        >
-          <ChevronLeft size={20} />
-        </button>
+        <BackButton />
         <div className="min-w-0 flex-1">
           <p className="hidden text-xs text-slate-500 md:block">Reports /</p>
           <div className="flex items-baseline gap-3">
@@ -641,19 +637,18 @@ const RestockReportPage: React.FC = () => {
               </button>
             ))}
           </div>
-          <div className="relative">
-            <LayoutGrid size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-            <select
+          <div className="w-52 shrink-0">
+            <SearchableSelect
+              theme="blue"
+              buttonClassName="!h-[38px]"
+              leftIcon={<LayoutGrid size={14} />}
+              options={groupOptions.map((g) => ({ value: g, label: g }))}
               value={groupFilter}
-              onChange={(e) => setGroupFilter(e.target.value)}
-              className="appearance-none rounded-sm border border-slate-300 bg-white py-2 pl-8 pr-8 text-sm text-slate-700 outline-none transition hover:border-slate-400 focus:border-blue-500"
-            >
-              <option value="">All groups</option>
-              {groupOptions.map((g) => (
-                <option key={g} value={g}>{g}</option>
-              ))}
-            </select>
-            <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+              onChange={setGroupFilter}
+              placeholder="All groups"
+              searchPlaceholder="Search group..."
+              clearable
+            />
           </div>
           <div className="ml-auto flex items-center gap-2">
             <button
@@ -678,7 +673,11 @@ const RestockReportPage: React.FC = () => {
               <PackagePlus size={24} />
             </span>
             <p className="text-sm font-semibold text-slate-900">
-              {rows.length === 0 ? 'Nothing to reorder' : 'No items match these filters'}
+              {rows.length === 0
+                ? 'Nothing to reorder'
+                : groupFilter && baseRows.length === 0 && !searchQuery
+                  ? `Nothing to reorder in ${groupFilter}`
+                  : 'No items match these filters'}
             </p>
             <p className="max-w-sm text-xs text-slate-500">
               {rows.length === 0
@@ -713,9 +712,8 @@ const RestockReportPage: React.FC = () => {
                     <tr
                       key={r.id}
                       onClick={() => toggleRow(r)}
-                      className={`border-t border-line transition ${
-                        r.looksWrong ? 'bg-amber-50/80' : isSelected ? 'cursor-pointer bg-blue-50/60' : 'cursor-pointer hover:bg-sunken'
-                      }`}
+                      className={`border-t border-line transition ${r.looksWrong ? 'bg-amber-50/80' : isSelected ? 'cursor-pointer bg-blue-50/60' : 'cursor-pointer hover:bg-sunken'
+                        }`}
                     >
                       <td className="px-4 py-3">
                         {renderCheckbox(isSelected, () => toggleRow(r), `Select ${r.name}`, r.looksWrong)}
@@ -769,9 +767,8 @@ const RestockReportPage: React.FC = () => {
                 <li
                   key={r.id}
                   onClick={() => toggleRow(r)}
-                  className={`flex gap-3 px-4 py-3 ${idx > 0 ? 'border-t border-line' : ''} ${
-                    r.looksWrong ? 'bg-amber-50/80' : isSelected ? 'bg-blue-50/60' : 'active:bg-sunken'
-                  }`}
+                  className={`flex gap-3 px-4 py-3 ${idx > 0 ? 'border-t border-line' : ''} ${r.looksWrong ? 'bg-amber-50/80' : isSelected ? 'bg-blue-50/60' : 'active:bg-sunken'
+                    }`}
                 >
                   <div className="pt-0.5">{renderCheckbox(isSelected, () => toggleRow(r), `Select ${r.name}`, r.looksWrong)}</div>
                   <div className="min-w-0 flex-1">
@@ -817,9 +814,8 @@ const RestockReportPage: React.FC = () => {
         {/* Desktop selection bar */}
         {canPurchase && isListVisible && listRows.length > 0 && (
           <div
-            className={`hidden items-center gap-3 rounded-b-sm border-t border-line px-4 py-3 md:flex ${
-              selectedRows.length ? 'bg-blue-50' : 'bg-sunken'
-            }`}
+            className={`hidden items-center gap-3 rounded-b-sm border-t border-line px-4 py-3 md:flex ${selectedRows.length ? 'bg-blue-50' : 'bg-sunken'
+              }`}
           >
             {selectedRows.length ? (
               <>

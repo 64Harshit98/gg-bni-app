@@ -113,6 +113,7 @@ export const CATALOGUE_DESTINATIONS: Destination[] = [
 
   { label: 'Reports', hint: 'All catalogue reports', to: `${C}/${ROUTES.CATALOGUE_REPORTS}` },
   { label: 'Items', hint: 'Items & stock', to: `${C}/${ROUTES.CATALOGUE_ITEMS}`, keywords: 'stock' },
+  { label: 'Restock Report', hint: 'Low stock items', to: `${C}/${ROUTES.CATALOGUE_RESTOCK_REPORT}`, keywords: 'low stock' },
   { label: 'Item Report', hint: 'Item wise report', to: `${C}/${ROUTES.CATALOGUE_ITEM_REPORT}` },
   { label: 'Sales Report', hint: 'Sales summary', to: `${C}/${ROUTES.CATALOGUE_SALES}` },
   { label: 'Profit & Loss Report', hint: 'PNL report', to: `${C}/${ROUTES.CATALOGUE_PNL_REPORT}`, keywords: 'pnl' },
@@ -135,7 +136,7 @@ export const CATALOGUE_DESTINATIONS: Destination[] = [
   },
   { label: 'Sales Settings', hint: 'Sales preferences', to: `${C}/${ROUTES.CATA_SALE_SETTING}` },
   { label: 'Bill Settings', hint: 'Invoice format', to: `${C}/${ROUTES.CATA_BILL_SETTING}` },
-      { label: 'Party Pricing', hint: 'Fixed discount per customer', to: `${C}/${ROUTES.CATA_CUSTOMER_PRICING}`, keywords: 'customer party discount special price dealer wholesale rate' },
+  { label: 'Party Pricing', hint: 'Fixed discount per customer', to: `${C}/${ROUTES.CATA_CUSTOMER_PRICING}`, keywords: 'customer party discount special price dealer wholesale rate' },
   { label: 'Order Limits', hint: 'Max quantity per item a customer can order', action: 'order-limits', keywords: 'maximum max quantity qty limit restrict cap' },
   { label: 'Item Settings', hint: 'Item preferences', to: `${C}/${ROUTES.CATA_ITEM_SETTING}` },
   { label: 'User Settings', hint: 'Manage users', to: `${C}/${ROUTES.CATA_USER_SETTING}` },

@@ -95,12 +95,14 @@ const Reports = () => {
           to: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_STOCK_TRANSFER}`,
           stat: statIf(ready.transfers, `${plural(stats.transfersThisMonth, 'transfer')} this month`),
         },
-        {
-          title: 'Restock report',
-          description: 'What to reorder, and how much',
-          icon: History,
-          iconClass: 'bg-slate-100 text-slate-500',
-        },
+               {
+  title: 'Restock report',
+  description: 'What to reorder, and how much',
+  icon: History,
+  iconClass: 'bg-orange-50 text-orange-600',
+  to: `${ROUTES.CHOME}/${ROUTES.CATALOGUE_RESTOCK_REPORT}`,
+  stat: statIf(ready.restock, `${plural(stats.restockItems, 'item')} to reorder`),
+},
       ],
     },
     {

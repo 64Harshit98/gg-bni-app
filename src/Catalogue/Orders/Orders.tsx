@@ -235,6 +235,7 @@ const OrdersPage: React.FC = () => {
     const {
         showPaymentModal, setShowPaymentModal,
         customerCredit,
+        orderLoyalty,
         currentDue,
         onSubmit: handlePaymentSubmit,
     } = useOrderPayment({
@@ -678,6 +679,7 @@ const OrdersPage: React.FC = () => {
                     isOpen={!!showPaymentModal}
                     onClose={() => setShowPaymentModal(null)}
                     availableCredit={customerCredit} // <--- PASS CREDIT TO MODAL
+                    loyalty={orderLoyalty}
                     invoice={{
                         id: showPaymentModal.id,
                         invoiceNumber: showPaymentModal.orderId,

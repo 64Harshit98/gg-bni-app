@@ -49,7 +49,7 @@ export interface PricedLine {
     tierId?: string;
     mrp?: number;
     salesPrice?: number;
-    /** Price the % is taken off. Default: MRP, else sale price. Purchase passes the purchase rate. */
+    /** Purchase only: the item's purchase rate (used when the item has no MRP). */
     basePrice?: number;
     customPrice?: number | string;
     isCustomAmount?: boolean;
@@ -57,7 +57,7 @@ export interface PricedLine {
 
 export interface CustomerPriceSuggestion {
     net: number;          // suggested net unit price (before add-ons)
-    discount: number;     // % off the base (basePrice, else MRP, else sale price), 2 decimals
+    discount: number;     // % off the base (MRP, else sale price / purchase rate), 2 decimals
     pct: number;          // the rule's % (or the effective % for a fixed net price)
     source: CustomerDiscountSource;
 }
@@ -119,8 +119,7 @@ export const getCustomerPriceSuggestion = (
 
     const mrp = Number(line.mrp || 0);
     const sales = Number(line.salesPrice || 0);
-    const given = Number(line.basePrice || 0);
-    const base = given > 0 ? given : mrp > 0 ? mrp : sales;
+    const base = mrp > 0 ? mrp : sales;
     if (base <= 0) return null;
 
     let net = resolved.type === 'percent'
@@ -134,6 +133,46 @@ export const getCustomerPriceSuggestion = (
     if (Number.isFinite(current) && current > 0 && Math.abs(net - current) < 0.005) return null;
 
     const discount = parseFloat((((base - net) / base) * 100).toFixed(2));
+    const pct = resolved.type === 'percent' ? resolved.value : discount;
+    return { net, discount, pct: parseFloat(pct.toFixed(2)), source: resolved.source };
+};
+
+/**
+ * Supplier's agreed purchase rate (Busy-style party/item price structure):
+ *  - a fixed rate set for the item -> that rate (any item);
+ *  - item with MRP -> the supplier's % off MRP;
+ *  - item without MRP -> the supplier's % off the item's purchase rate (`basePrice`).
+ * Like Sales, it replaces the item's own purchase discount - returned whenever it differs.
+ */
+export const getSupplierPriceSuggestion = (
+    line: PricedLine,
+    rule: CustomerPricingRule | null | undefined,
+    isRoundingEnabled = true,
+    roundingInterval = 1
+): CustomerPriceSuggestion | null => {
+    if (!line.productId || line.isCustomAmount) return null;
+
+    const resolved = resolveCustomerDiscount(rule, line);
+    if (!resolved) return null;
+
+    const mrp = Number(line.mrp || 0);
+    const rate = Number(line.basePrice || 0);
+    let net: number;
+    if (resolved.type === 'netPrice') net = resolved.value;
+    else if (mrp > 0) net = mrp * (1 - resolved.value / 100);
+    else if (rate > 0) net = rate * (1 - resolved.value / 100);
+    else return null;
+
+    net = applyLineRounding(net, isRoundingEnabled, roundingInterval, mrp);
+    if (mrp > 0) net = Math.min(net, mrp);
+    if (net <= 0) return null;
+
+    const current = Number(line.customPrice);
+    if (Number.isFinite(current) && current > 0 && Math.abs(net - current) < 0.005) return null;
+
+    // Disc% as the Purchase screen shows it: off MRP, else off the item's purchase rate
+    const base = mrp > 0 ? mrp : rate;
+    const discount = base > 0 ? parseFloat((((base - net) / base) * 100).toFixed(2)) : 0;
     const pct = resolved.type === 'percent' ? resolved.value : discount;
     return { net, discount, pct: parseFloat(pct.toFixed(2)), source: resolved.source };
 };

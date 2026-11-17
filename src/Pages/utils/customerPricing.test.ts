@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { CustomerPricingRule } from '../../constants/models';
-import { getCustomerPriceSuggestion, resolveCustomerDiscount } from './customerPricing';
+import { getCustomerPriceSuggestion, getSupplierPriceSuggestion, resolveCustomerDiscount } from './customerPricing';
 
 const rule = (over: Partial<CustomerPricingRule> = {}): CustomerPricingRule => ({
     customerId: '9999999999',
@@ -35,6 +35,34 @@ describe('resolveCustomerDiscount', () => {
     });
 });
 
+describe('getSupplierPriceSuggestion (Purchase)', () => {
+    it('item with MRP: supplier % off MRP, replacing the item purchase discount', () => {
+        // MRP ₹100, item normally bought at ₹70 (30% off); supplier gives 20% → ₹80
+        const s = getSupplierPriceSuggestion(
+            { productId: 'p', mrp: 100, basePrice: 70, customPrice: 70 }, rule({ defaultDiscountPct: 20 }));
+        expect(s).toEqual({ net: 80, discount: 20, pct: 20, source: 'default' });
+    });
+
+    it('item without MRP: the supplier fixed rate', () => {
+        const s = getSupplierPriceSuggestion(
+            { productId: 'x', mrp: 0, basePrice: 100, customPrice: 100 }, rule());
+        expect(s).toEqual({ net: 90, discount: 10, pct: 10, source: 'item' });
+    });
+
+    it('item without MRP and only a % rule: % off its purchase rate', () => {
+        const s = getSupplierPriceSuggestion(
+            { productId: 'p', itemGroupId: 'snacks', mrp: 0, basePrice: 80, customPrice: 80 }, rule());
+        expect(s?.net).toBe(72);
+        expect(s?.source).toBe('category');
+    });
+
+    it('nothing to do without MRP or rate, or when already at the supplier rate', () => {
+        expect(getSupplierPriceSuggestion({ productId: 'p', mrp: 0, basePrice: 0, customPrice: 0 }, rule())).toBeNull();
+        expect(getSupplierPriceSuggestion(
+            { productId: 'p', mrp: 100, basePrice: 95, customPrice: 95 }, rule())).toBeNull();
+    });
+});
+
 describe('getCustomerPriceSuggestion', () => {
     it('suggests the customer price off MRP', () => {
         const s = getCustomerPriceSuggestion(
@@ -61,15 +89,6 @@ describe('getCustomerPriceSuggestion', () => {
         const s = getCustomerPriceSuggestion({ productId: 'p', mrp: 0, salesPrice: 200, customPrice: 200 }, rule());
         expect(s?.net).toBe(190);
         expect(s?.discount).toBe(5);
-    });
-
-    it('takes the % off basePrice when given (purchase rate), not MRP', () => {
-        // 5% default off a ₹80 purchase rate → ₹76, even though MRP is ₹100
-        const s = getCustomerPriceSuggestion({ productId: 'p', mrp: 100, salesPrice: 80, basePrice: 80, customPrice: 80 }, rule());
-        expect(s?.net).toBe(76);
-        expect(s?.pct).toBe(5);
-        // Without basePrice it is taken off MRP instead: ₹95
-        expect(getCustomerPriceSuggestion({ productId: 'p', mrp: 100, salesPrice: 80, customPrice: 80 }, rule())?.net).toBe(95);
     });
 
     it('handles a fixed net price override', () => {

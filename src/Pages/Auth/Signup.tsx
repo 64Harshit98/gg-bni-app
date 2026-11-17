@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, Check, Gift, Mail, RotateCcw, ShieldCheck, User, UserPlus } from 'lucide-react';
 import { ROUTES } from '../../constants/routes.constants';
+import { ONBOARDING_STORAGE_KEY as LOCAL_STORAGE_KEY, checkSignupDetails } from '../../lib/AuthOperations';
 import { newEmailError } from '../../lib/email';
 import { saveLeadProgress } from '../../lib/Lead';
 import { useEmailCheck } from '../../lib/useEmailCheck';
@@ -22,7 +23,8 @@ import {
   authLink,
 } from './AuthUI';
 
-const LOCAL_STORAGE_KEY = 'sellar_onboarding_data';
+
+const EMAIL_TAKEN = 'This email already has a Sellar account. Log in instead, or use a different email.';
 
 type FieldKey = 'fullName' | 'phoneNumber' | 'email' | 'password' | 'confirmPassword';
 type FieldErrors = Partial<Record<FieldKey, string>>;
@@ -74,6 +76,25 @@ const SignUpPage: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errors, setErrors] = useState<FieldErrors>({});
   const emailCheck = useEmailCheck(email, { newAccount: true });
+  const [takenEmail, setTakenEmail] = useState<string | null>(null);
+  const [checkingNext, setCheckingNext] = useState(false);
+
+  // Once the address looks right, ask whether it's already registered.
+  const typedEmail = email.trim().toLowerCase();
+  const emailLooksRight = emailCheck.valid;
+  useEffect(() => {
+    if (!emailLooksRight) return;
+    let live = true;
+    const timer = window.setTimeout(async () => {
+      const check = await checkSignupDetails({ email: typedEmail });
+      if (live && check?.emailTaken) setTakenEmail(typedEmail);
+    }, 600);
+    return () => {
+      live = false;
+      window.clearTimeout(timer);
+    };
+  }, [typedEmail, emailLooksRight]);
+  const emailTakenError = takenEmail && takenEmail === typedEmail ? EMAIL_TAKEN : null;
 
   useEffect(() => {
     const savedDataString = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -143,6 +164,21 @@ const SignUpPage: React.FC = () => {
     }
 
     const address = email.trim();
+
+    // Don't let someone fill in step 2 for an email that can't be used.
+    if (emailTakenError) {
+      document.getElementById('email')?.focus();
+      return;
+    }
+    setCheckingNext(true);
+    const check = await checkSignupDetails({ email: address });
+    setCheckingNext(false);
+    if (check?.emailTaken) {
+      setTakenEmail(address.toLowerCase());
+      document.getElementById('email')?.focus();
+      return;
+    }
+
     await saveLeadProgress(address, {
       fullName,
       phoneNumber,
@@ -182,8 +218,8 @@ const SignUpPage: React.FC = () => {
               </button>
               <span className="flex-1" />
               <span className="text-[13px] text-slate-500 max-sm:hidden">Step 1 of 2</span>
-              <button type="submit" className={`${authBtn.primary} max-sm:flex-1`}>
-                Next: your shop
+              <button type="submit" disabled={checkingNext} className={`${authBtn.primary} max-sm:flex-1`}>
+                {checkingNext ? 'Checking…' : 'Next: your shop'}
                 <ArrowRight size={16} strokeWidth={1.75} aria-hidden="true" />
               </button>
             </CardFooter>
@@ -220,7 +256,7 @@ const SignUpPage: React.FC = () => {
                   value={email}
                   onChange={edit('email', setEmail)}
                   check={emailCheck}
-                  error={errors.email}
+                  error={errors.email || emailTakenError}
                   help="You'll log in with this email."
                 />
               </div>

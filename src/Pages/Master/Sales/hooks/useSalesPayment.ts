@@ -19,6 +19,15 @@ import { calculateFinalizedSaleItems, toCurrency } from '../sales.calculations';
 import { omitKeys } from '../../../../lib/omitKeys';
 import { CART_ONLY_CUSTOMER_KEYS } from '../../../utils/customerPricing';
 import type { SalesInvoice, SalesItem } from '../sales.types';
+import {
+    LoyaltyBalanceError,
+    planLoyaltyForSave,
+    readLoyaltyPlanInTxn,
+    readSaleLoyalty,
+    writeLoyaltyPlanInTxn,
+    type LoyaltyAccountState,
+    type SaleLoyalty,
+} from '../../../../lib/loyalty';
 
 // Firestore document IDs can't contain '/' (and a few other characters are
 // unsafe) — an invoice number like "INV/2024/001" would otherwise throw when
@@ -82,6 +91,8 @@ interface UseSalesPaymentParams {
     setIsDrawerOpen: (open: boolean) => void;
     setSavedBillData: (data: { id: string, number: string, invoiceData?: any } | null) => void;
     showSuccessModal: (message: string, navigateTo?: string) => void;
+    /** Loyalty settings switch. When off, saving never touches points (an edited bill keeps what it had). */
+    loyaltyEnabled?: boolean;
 }
 
 // Owns the payment-drawer flow — moved verbatim from Sales.tsx:
@@ -119,6 +130,7 @@ export const useSalesPayment = ({
     setIsDrawerOpen,
     setSavedBillData,
     showSuccessModal,
+    loyaltyEnabled = false,
 }: UseSalesPaymentParams) => {
     const [isSaving, setIsSaving] = useState(false);
 
@@ -353,6 +365,26 @@ return {
         const rawInvoiceTotal = newTaxableAmount + newTaxAmount + totalExpenseAmount;
         const finalRoundOff = toCurrency(finalInvoiceTotal - rawInvoiceTotal);
 
+        // --- LOYALTY POINTS ---
+        // What this bill should do to the customer's points now. The drawer only
+        // sends a selection when loyalty is on and the customer has a 10-digit phone.
+        const loyaltySel = loyaltyEnabled ? completionData.loyalty : undefined;
+        const nextLoyalty: SaleLoyalty | null = loyaltySel && (loyaltySel.earnPoints > 0 || loyaltySel.redeemPoints > 0)
+            ? {
+                phone: loyaltySel.phone,
+                earned: loyaltySel.earnPoints,
+                redeemed: loyaltySel.redeemPoints,
+                redeemValue: loyaltySel.redeemValue,
+                ...(loyaltySel.overridden ? { autoEarned: loyaltySel.autoEarned, overriddenBy: currentUser.uid } : {}),
+            }
+            : null;
+        // undefined = leave the sale's `loyalty` field as it is (loyalty switched off).
+        // `let`: an edit of a bill saved before loyalty existed adjusts it in the transaction below.
+        let loyaltyField: SaleLoyalty | null | undefined = loyaltyEnabled ? nextLoyalty : undefined;
+        const loyaltyActor = { uid: currentUser.uid, name: currentUser.name || '' };
+        const loyaltyNames = nextLoyalty ? { [nextLoyalty.phone]: completionData.partyName || '' } : {};
+        let loyaltyBalanceAfter: number | null = null;
+
         const saveOperation = async (transaction: any, isNew: boolean, existingId?: string) => {
             const customDate = getParsedInvoiceDate();
             const saleData: SalesInvoice = {
@@ -387,6 +419,7 @@ return {
                 // Which customer's fixed pricing was applied on this bill (null when none)
                 customerPricingId: items.find(i => i.customerPricingFor)?.customerPricingFor ?? null,
             };
+            if (loyaltyField !== undefined) saleData.loyalty = loyaltyField;
 
             if (isNew) {
                 const counterRef = doc(db, 'companies', resolvedCompanyId, 'counters', 'invoiceCounter');
@@ -463,7 +496,36 @@ return {
         try {
             if (isEditMode && invoiceToEdit?.id) {
                 await runTransaction(db, async (transaction) => {
+                    // Loyalty reads first — Firestore needs every read before the first write.
+                    // The old loyalty is read from the saved bill, not the copy we navigated with.
+                    let loyaltyPlan: ReturnType<typeof planLoyaltyForSave> = [];
+                    let loyaltyAccounts = new Map<string, LoyaltyAccountState>();
+                    if (loyaltyEnabled) {
+                        const saleSnap = await transaction.get(doc(db, "companies", resolvedCompanyId, "sales", invoiceToEdit.id));
+                        const prevLoyalty = saleSnap.exists() ? readSaleLoyalty(saleSnap.data()) : null;
+                        // A bill saved before loyalty existed never earned — editing it now must
+                        // not hand out points for the whole old bill. Points used on it still count.
+                        const isLegacyBill = saleSnap.exists() && !('loyalty' in saleSnap.data());
+                        let editNext = nextLoyalty;
+                        if (isLegacyBill && editNext) {
+                            editNext = editNext.redeemed > 0
+                                ? { phone: editNext.phone, earned: 0, redeemed: editNext.redeemed, redeemValue: editNext.redeemValue }
+                                : null;
+                        }
+                        loyaltyField = editNext;
+                        loyaltyPlan = planLoyaltyForSave(prevLoyalty, editNext, {
+                            refType: 'edit',
+                            refId: invoiceToEdit.id,
+                            invoiceNumber: invoiceNumber.trim(),
+                        });
+                        loyaltyAccounts = await readLoyaltyPlanInTxn(transaction, db, resolvedCompanyId, loyaltyPlan);
+                    }
+
                     await saveOperation(transaction, false, invoiceToEdit.id);
+                    writeLoyaltyPlanInTxn(transaction, db, resolvedCompanyId, loyaltyPlan, loyaltyAccounts, {
+                        names: loyaltyNames,
+                        actor: loyaltyActor,
+                    });
 
                     const oldQuantities = new Map<string, number>();
                     (invoiceToEdit.items || []).forEach((oldItem: any) => {
@@ -519,7 +581,20 @@ return {
             } else {
                 let result: any = null;
                 await runTransaction(db, async (transaction) => {
+                    // Loyalty reads first — Firestore needs every read before the first write.
+                    const loyaltyPlan = planLoyaltyForSave(null, nextLoyalty, { refType: 'sale' });
+                    const loyaltyAccounts = await readLoyaltyPlanInTxn(transaction, db, resolvedCompanyId, loyaltyPlan);
+
                     result = await saveOperation(transaction, true);
+
+                    // Throws LoyaltyBalanceError if the customer no longer has enough
+                    // points — which aborts the whole transaction, bill included.
+                    const balances = writeLoyaltyPlanInTxn(transaction, db, resolvedCompanyId, loyaltyPlan, loyaltyAccounts, {
+                        names: loyaltyNames,
+                        actor: loyaltyActor,
+                        ref: { refId: result?.id, invoiceNumber: result?.number },
+                    });
+                    loyaltyBalanceAfter = nextLoyalty ? (balances.get(nextLoyalty.phone) ?? null) : null;
 
                     // One stock update per product: sold items + linked add-on items (e.g. a Coke sold with a burger)
                     const deductions = new Map<string, number>();
@@ -567,7 +642,10 @@ return {
                         gstScheme: finalGstScheme,   // ✅ ADDED
                         taxType: finalTaxType,       // ✅ ADDED
                         placeOfSupply: completionData.placeOfSupply || '',  // ✅ ADDED (IGST calc ke liye bhi zaroori)
-                        shippingState: completionData.shippingState || ''
+                        shippingState: completionData.shippingState || '',
+                        loyalty: nextLoyalty
+                            ? { ...nextLoyalty, balance: loyaltyBalanceAfter }
+                            : null,
                     };
 
                     setAvailableItems(prev => prev.map(item => {
@@ -595,7 +673,11 @@ return {
         } catch (e: any) {
             console.error("Save error:", e?.code, e?.message);
 
-            if (typeof e?.message === 'string' && e.message.startsWith('INVOICE_NUMBER_TAKEN:')) {
+            if (e instanceof LoyaltyBalanceError) {
+                // Re-throw so the payment drawer stays open (with the customer and
+                // payments still filled in) and shows this message.
+                throw new Error(`${e.message} The points may have been used on another bill — please lower the points used.`);
+            } else if (typeof e?.message === 'string' && e.message.startsWith('INVOICE_NUMBER_TAKEN:')) {
                 const takenNumber = e.message.split(':')[1];
 
                 // Move the counter past the duplicate(s) so the next save works.

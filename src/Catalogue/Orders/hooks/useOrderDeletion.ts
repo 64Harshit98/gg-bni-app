@@ -4,10 +4,12 @@ import {
     getDoc,
     updateDoc,
     deleteDoc,
+    writeBatch,
     increment as firebaseIncrement,
 } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
 import { State } from '../../../enums';
+import { readSaleLoyalty, undoSaleChanges, writeLoyaltyInBatch } from '../../../lib/loyalty';
 
 interface UseOrderDeletionParams {
     companyId: string | undefined;
@@ -59,6 +61,15 @@ export const useOrderDeletion = ({ currentUser, setModal }: UseOrderDeletionPara
                             } else {
                                 warningMessage += `. This order contains Credit Note returns of ${creditNoteReturnAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })} which will be removed from the customer`;
                             }
+                        }
+
+                        const loyalty = readSaleLoyalty(orderData);
+                        if (loyalty && (loyalty.earned > 0 || loyalty.redeemed > 0)) {
+                            const parts = [
+                                loyalty.earned > 0 ? `${loyalty.earned} loyalty points it earned will be taken back` : '',
+                                loyalty.redeemed > 0 ? `${loyalty.redeemed} points used on it will be given back` : '',
+                            ].filter(Boolean);
+                            warningMessage += `. ${parts.join(' and ')}`;
                         }
 
                         warningMessage += ".";
@@ -152,8 +163,21 @@ export const useOrderDeletion = ({ currentUser, setModal }: UseOrderDeletionPara
                 });
             }
             // ──────────────────────────────────────────────────────────────────
-            // Delete order
-            await deleteDoc(orderRef);
+            // Delete order — together with undoing its loyalty points, so the
+            // points can't be undone without the order going too (or vice versa).
+            const loyalty = readSaleLoyalty(orderData);
+            if (loyalty) {
+                const batch = writeBatch(db);
+                writeLoyaltyInBatch(
+                    batch, db, companyId, loyalty.phone,
+                    undoSaleChanges(loyalty, 'delete', { refId: orderId, invoiceNumber: orderData.orderId || '' }),
+                    { name: orderData.userName || orderData.billingDetails?.name || '', actor: { uid: currentUser.uid, name: currentUser.name || '' } },
+                );
+                batch.delete(orderRef);
+                await batch.commit();
+            } else {
+                await deleteDoc(orderRef);
+            }
 
             // setModal({
             //     message: "Order deleted successfully",

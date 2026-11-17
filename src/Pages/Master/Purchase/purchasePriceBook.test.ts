@@ -19,14 +19,20 @@ describe('comparePurchaseRate', () => {
     });
 
     it('treats the same rate in another tax mode as unchanged', () => {
-        expect(comparePurchaseRate({ productId: 'a', purchasePrice: 106.2, taxRate: 18 }, entry(), 'inclusive')).toBeNull();
+        expect(comparePurchaseRate({ productId: 'a', purchasePrice: 106.2, taxRate: 18 }, entry(), 'inclusive'))
+            .toMatchObject({ direction: 'same', diff: 0, diffPct: 0 });
         const r = comparePurchaseRate({ productId: 'a', purchasePrice: 118, taxRate: 18 }, entry(), 'inclusive');
         expect(r?.lastRate).toBe(106.2);
     });
 
-    it('returns null with no entry, a tiny change, or the bill being edited', () => {
+    it('reports the same rate (and tiny changes) as same', () => {
+        expect(comparePurchaseRate({ productId: 'a', purchasePrice: 90 }, entry(), 'exclusive'))
+            .toMatchObject({ direction: 'same', lastRate: 90, lastInvoice: 'INV-1' });
+        expect(comparePurchaseRate({ productId: 'a', purchasePrice: 90.004 }, entry(), 'exclusive')?.direction).toBe('same');
+    });
+
+    it('returns null with no entry or for the bill being edited', () => {
         expect(comparePurchaseRate({ productId: 'a', purchasePrice: 95 }, undefined, 'exclusive')).toBeNull();
-        expect(comparePurchaseRate({ productId: 'a', purchasePrice: 90.004 }, entry(), 'exclusive')).toBeNull();
         expect(comparePurchaseRate({ productId: 'a', purchasePrice: 95 }, entry(), 'exclusive', 'p1')).toBeNull();
     });
 });

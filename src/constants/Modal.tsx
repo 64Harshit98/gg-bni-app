@@ -120,9 +120,13 @@ interface PaymentModalProps {
         availableCredit?: number; // Added to receive credit from OrdersPage
     isDebitNote?: boolean;
     theme?: PaymentTheme; // 'pos' (blue, default) | 'catalogue' (orange)
+    /** Online orders: offer "Loyalty Points" as a method. Omit to hide it. */
+    loyalty?: { balance: number; maxPoints: number; maxValue: number; pointValue: number };
 }
 
-export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, invoice, onSubmit, availableCredit = 0, isDebitNote = false, theme = 'pos' }) => {
+const LOYALTY_METHOD = 'Loyalty Points';
+
+export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, invoice, onSubmit, availableCredit = 0, isDebitNote = false, theme = 'pos', loyalty }) => {
     const t = PAYMENT_THEME_STYLES[theme];
     const [amount, setAmount] = useState('');
     const [method, setMethod] = useState('cash');
@@ -183,6 +187,17 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
             return;
         }
         // ------------------------------------------------
+
+        if (method === LOYALTY_METHOD && loyalty) {
+            if (paymentAmount > loyalty.maxValue + 0.01) {
+                setError(`Points can pay up to ₹${loyalty.maxValue.toLocaleString('en-IN')} (${loyalty.maxPoints} pts) on this order.`);
+                return;
+            }
+            if (Math.floor(paymentAmount / loyalty.pointValue + 1e-9) < 1) {
+                setError(`Enter at least ₹${loyalty.pointValue.toLocaleString('en-IN')} (1 point).`);
+                return;
+            }
+        }
 
         if (method === 'PDC') {
             if (!chequeNumber.trim()) {
@@ -270,7 +285,13 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                         <select
                             id="method"
                             value={method}
-                            onChange={(e) => setMethod(e.target.value)}
+                            onChange={(e) => {
+                                setMethod(e.target.value);
+                                // Points: start at the most they can pay
+                                if (e.target.value === LOYALTY_METHOD && loyalty) {
+                                    setAmount(Math.min(loyalty.maxValue, invoice.dueAmount ?? 0).toFixed(2));
+                                }
+                            }}
                             className="mt-1 block w-full rounded-sm border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border"
                         >
                             <option value="cash">Cash</option>
@@ -284,7 +305,15 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                                 </option>
                             )}
                             {/* --------------------------------- */}
+                            {loyalty && loyalty.maxPoints > 0 && (
+                                <option value={LOYALTY_METHOD}>Loyalty Points</option>
+                            )}
                         </select>
+                        {method === LOYALTY_METHOD && loyalty && (
+                            <p className="mt-1.5 text-xs text-slate-600">
+                                {loyalty.balance} pts available · up to {loyalty.maxPoints} pts (₹{loyalty.maxValue.toLocaleString('en-IN')}) on this order. 1 pt = ₹{loyalty.pointValue.toLocaleString('en-IN')}; amounts round down to whole points.
+                            </p>
+                        )}
                     </div>
                     {method === 'PDC' && (
                         <div className="mb-6 bg-slate-50 p-3 rounded-sm border border-slate-200">

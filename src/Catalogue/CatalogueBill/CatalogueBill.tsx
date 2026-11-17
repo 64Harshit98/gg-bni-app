@@ -9,6 +9,8 @@ import QRCode from 'qrcode';
 import { drawWatermark } from "../../Components/pdfWatermark";
 import { splitAddOns, nameWithBase, reserveAddOnSpace, drawAddOnText } from "../../UseComponents/addOnText";
 import { needsImageText, textToImage, NAME_IMG_W, installUnicodeText } from "../../UseComponents/textToImage";
+import { loyaltyBillLine, type BillLoyalty } from "../../UseComponents/loyaltyBillLine";
+import { LOYALTY_SETTINGS_DOC, getDefaultLoyaltySettings, loyaltyForPrint, type LoyaltySettings } from "../../lib/loyalty";
 
 export interface CatalogueInvoiceData {
   companyId?: string;
@@ -84,6 +86,8 @@ export interface CatalogueInvoiceData {
   advancePaid?: number;
   previousBalance?: number;
   creditNoteBalance?: number;
+  /** Loyalty points line for the bill (null = don't print). Filled by prepareCatalogueBillData. */
+  printLoyalty?: BillLoyalty | null;
   billDiscount?: number;
   transportDetails?: {
     transportName?: string;
@@ -885,6 +889,14 @@ export const CatalogueBill = async (
     }
     finalY += wordsH;
 
+    const loyaltyLine = isEstimate ? '' : loyaltyBillLine(data.printLoyalty);
+    if (loyaltyLine) {
+      doc.rect(startX, finalY, contentWidth, 6);
+      doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+      doc.text(loyaltyLine, startX + 2, finalY + 4.2);
+      finalY += 6;
+    }
+
     if (!isEstimate && !isExemptOrUnreg) {
       doc.rect(startX, finalY, contentWidth, 10);
       doc.setFont('helvetica', 'bold'); doc.text('BANK DETAIL :', startX + 2, finalY + 4);
@@ -1162,10 +1174,25 @@ export const prepareCatalogueBillData = async (invoiceData: any) => {
   let advanceAmount = Number(invoiceData.paidAmount || invoiceData.advancePaid || invoiceData.advance || invoiceData.advanceAmount || 0);
   if (invoiceData.status === 'Paid') advanceAmount = trueGrandTotal;
 
+  // Loyalty points line — only for orders that earned / used points, when Loyalty settings say to print
+  let printLoyalty: BillLoyalty | null = null;
+  if (invoiceData.loyalty) {
+    try {
+      const loyaltySnap = await getDoc(doc(db, "companies", invoiceData.companyId, "settings", LOYALTY_SETTINGS_DOC));
+      const loyaltySettings = { ...getDefaultLoyaltySettings(), ...(loyaltySnap.exists() ? loyaltySnap.data() : {}) } as LoyaltySettings;
+      if (loyaltySettings.applyToOnlineOrders) {
+        printLoyalty = await loyaltyForPrint(db, invoiceData.companyId, invoiceData, loyaltySettings);
+      }
+    } catch (err) {
+      console.error("Loyalty print data error:", err);
+    }
+  }
+
   return {
     ...invoiceData,
     grandTotal: trueGrandTotal, // OVERRIDE PRE-TAX DB TOTAL
     previousBalance: invoiceData.previousBalance || 0,
+    printLoyalty,
     advancePaid: advanceAmount,
     billDiscount: totalBillDiscount,
     extraExpenseName: invoiceData.extraExpenseName || '',

@@ -167,6 +167,9 @@ export const useJournalData = (companyId?: string, dateRange?: JournalDateRange 
           extraExpenseAmount: Number(data.extraExpenseAmount) || 0,
           narration: data.narration || '',
           transportDetails: data.transportDetails || undefined,
+          // Needed by edit / return / delete to know what this bill did to loyalty points
+          // undefined (not null) for bills saved before loyalty existed — editing those must not earn
+          loyalty: data.loyalty,
         };
       });
     };

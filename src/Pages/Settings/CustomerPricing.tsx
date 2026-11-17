@@ -655,10 +655,12 @@ const CustomerPricing: React.FC = () => {
         const v = num(it.value);
         const fmt = (n: number) => (n > 0 ? money(n) : '—');
         if (side === 'purchase') {
-            // Supplier discounts come off the purchase rate
+            // With MRP: % off MRP. Without MRP: fixed rate (or % off the purchase rate).
             const rate = Number(src.purchasePrice || 0);
-            if (!rate || !Number.isFinite(v)) return `Rate ${fmt(rate)} · MRP ${fmt(mrp)}`;
-            return `Rate ${money(rate)} → ${money(it.type === 'percent' ? rate * (1 - v / 100) : v)}`;
+            if (!Number.isFinite(v)) return mrp > 0 ? `MRP ${money(mrp)} · rate ${fmt(rate)}` : `No MRP · rate ${fmt(rate)}`;
+            if (it.type === 'netPrice') return `Rate ${fmt(rate)} → ${money(v)}`;
+            if (mrp > 0) return `MRP ${money(mrp)} → ${money(mrp * (1 - v / 100))}`;
+            return rate > 0 ? `No MRP · rate ${money(rate)} → ${money(rate * (1 - v / 100))}` : 'No MRP or rate — set a fixed rate';
         }
         const sale = Number(src.salesPrice || 0);
         const base = mrp > 0 ? mrp : sale;
@@ -780,7 +782,7 @@ const CustomerPricing: React.FC = () => {
                             </div>
                         </div>
                         {errorFor('cp-default')}
-                        <p className="mt-1.5 mb-0 text-xs text-[#5b6b86]">{side === 'sale' ? 'Off MRP (sale price when there’s no MRP).' : 'Off the purchase rate.'} Used when no category or item rule below matches.</p>
+                        <p className="mt-1.5 mb-0 text-xs text-[#5b6b86]">{side === 'sale' ? 'Off MRP (sale price when there’s no MRP).' : 'Off MRP. For items without MRP, set a fixed rate under Specific items (otherwise it comes off their purchase rate).'} Used when no category or item rule below matches.</p>
                     </section>
 
                     {/* Categories */}
@@ -829,7 +831,7 @@ const CustomerPricing: React.FC = () => {
                         <div className={`${FIELD} relative`}>
                             <FiSearch size={16} className="flex-none" aria-hidden />
                             <input type="text" value={itemQuery} onChange={(e) => setItemQuery(e.target.value)} autoComplete="off"
-                                placeholder="Search item to add a fixed % or price…" className={INPUT} aria-label="Search item" />
+                                placeholder={side === 'purchase' ? 'Search item to add a % off MRP or a fixed rate…' : 'Search item to add a fixed % or price…'} className={INPUT} aria-label="Search item" />
                         </div>
                         {itemMatches.length > 0 && (
                             <div className="mt-1 border border-[color:var(--cp-border)] rounded-sm p-1 max-h-48 overflow-y-auto">
@@ -837,13 +839,16 @@ const CustomerPricing: React.FC = () => {
                                     <button key={i.id} type="button"
                                         onClick={() => {
                                             const idx = draft.items.length;
-                                            editDraft(d => ({ ...d, items: [...d.items, { itemId: i.id!, name: i.name, type: 'percent', value: '' }] }));
+                                            const type = side === 'purchase' && !(Number(i.mrp) > 0) ? 'netPrice' : 'percent';
+                                            editDraft(d => ({ ...d, items: [...d.items, { itemId: i.id!, name: i.name, type, value: '' }] }));
                                             setItemQuery('');
                                             requestAnimationFrame(() => document.getElementById(`cp-item-${idx}`)?.focus());
                                         }}
                                         className="w-full flex items-center gap-2 text-left px-2.5 py-2 rounded-sm hover:bg-[color:var(--cp-soft)]">
                                         <span className="flex-1 min-w-0 text-sm truncate">{i.name}</span>
-                                        <span className="text-xs text-[#5b6b86] tabular-nums">MRP {Number(i.mrp) > 0 ? money(Number(i.mrp)) : '—'}</span>
+                                        <span className="text-xs text-[#5b6b86] tabular-nums">
+                                            {Number(i.mrp) > 0 ? `MRP ${money(Number(i.mrp))}` : side === 'purchase' ? 'No MRP · fixed rate' : 'MRP —'}
+                                        </span>
                                     </button>
                                 ))}
                             </div>

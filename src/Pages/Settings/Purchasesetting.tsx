@@ -750,7 +750,7 @@ const PurchaseSettingsPage: React.FC = () => {
                                                     id="supplier-pricing"
                                                     icon={<FiPercent size={16} />}
                                                     label="Supplier-wise fixed discount"
-                                                    description="When you pick a supplier, their fixed discount (set in Party pricing → Purchase) is taken off the purchase rate of matching items automatically. Undo puts the normal rates back."
+                                                    description="When you pick a supplier, their fixed discount (set in Party pricing → Purchase) is applied automatically: % off MRP for items with MRP, their fixed rate for items without MRP. Undo puts the normal rates back."
                                                     checked={settings.enableSupplierPricing ?? false}
                                                     onChange={(checked) => handleCheckboxChange('enableSupplierPricing', checked)}
                                                 />

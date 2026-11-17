@@ -9,6 +9,7 @@ import { generateA5Invoice } from './A5PdfGenerator';
 import { drawWatermark } from '../Components/pdfWatermark';
 import { splitAddOns, nameWithBase, reserveAddOnSpace, drawAddOnText } from './addOnText';
 import { needsImageText, textToImage, NAME_IMG_W, installUnicodeText } from './textToImage';
+import { loyaltyBillLine, type BillLoyalty } from './loyaltyBillLine';
 
 export interface InvoiceData {
   printFormat?: 'A4' | 'THERMAL58' | 'THERMAL80' | 'A5';
@@ -60,6 +61,8 @@ export interface InvoiceData {
   finalAmount?: number;
   previousBalance?: number;
   creditNoteBalance?: number;
+  /** Loyalty points on this bill. Set only when Loyalty settings say to print them. */
+  loyalty?: BillLoyalty | null;
   advance?: number;
   due?: number;
   items: {
@@ -792,6 +795,14 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
       doc.text(totalDue.toLocaleString('en-IN', { minimumFractionDigits: 2 }), endX - 2, finalY + totalRowY, { align: 'right' });
     }
     finalY += wordsH;
+
+    const loyaltyLine = loyaltyBillLine(data.loyalty);
+    if (loyaltyLine && !isEstimate) {
+      doc.rect(startX, finalY, contentWidth, 6);
+      doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+      doc.text(loyaltyLine, startX + 2, finalY + 4.2);
+      finalY += 6;
+    }
 
     if (!isEstimate && safeScheme !== 'NONE') {
       doc.rect(startX, finalY, contentWidth, 10);

@@ -45,6 +45,8 @@ export const PACK_LIMITS: Record<PLANS, Permissions[]> = {
         Permissions.ViewAttendance,
         Permissions.ManageSalesSetting,
         Permissions.AllowDueBilling,
+        Permissions.ManageLoyaltyPoints,
+        Permissions.OverrideLoyaltyPoints,
     ],
     [PLANS.CALC_CATALOG]: [
         Permissions.ViewDashboard,
@@ -67,6 +69,8 @@ export const PACK_LIMITS: Record<PLANS, Permissions[]> = {
         Permissions.ViewAttendance,
         Permissions.ManageSalesSetting,
         Permissions.AllowDueBilling,
+        Permissions.ManageLoyaltyPoints,
+        Permissions.OverrideLoyaltyPoints,
     ],
     [PLANS.POS_PRO]: Object.values(Permissions).filter(
         (p) => !PRO_EXCLUDED_PERMISSIONS.includes(p)

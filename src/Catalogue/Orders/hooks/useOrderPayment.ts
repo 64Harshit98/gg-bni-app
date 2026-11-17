@@ -9,6 +9,9 @@ import {
 import { db } from '../../../lib/Firebase';
 import { State } from '../../../enums';
 import type { Order } from '../orders.types';
+import { useOptionalLoyaltySettings } from '../../../context/SettingsContext';
+import { LoyaltyBalanceError, fetchLoyaltyAccount, pointsToRupees } from '../../../lib/loyalty';
+import { LOYALTY_ORDER_PAYMENT_KEY, maxOrderRedeemPoints, orderLoyaltyOn, orderLoyaltyPhone, redeemPointsOnOrder, syncOrderEarnedPoints } from '../orderLoyalty';
 
 interface UseOrderPaymentParams {
     currentUser: any;
@@ -18,6 +21,8 @@ interface UseOrderPaymentParams {
     setEnableDiscount2: (v: boolean) => void;
     setEnableTransportDetails: (v: boolean) => void;
 }
+
+const isLoyaltyMethod = (method: string) => (method || '').toUpperCase() === LOYALTY_ORDER_PAYMENT_KEY;
 
 // Owns the "settle/advance payment" drawer flow — moved verbatim from
 // Orders.tsx (was the showPaymentModal/customerCredit state, the
@@ -32,6 +37,20 @@ export const useOrderPayment = ({
 }: UseOrderPaymentParams) => {
     const [showPaymentModal, setShowPaymentModal] = useState<Order | null>(null);
     const [customerCredit, setCustomerCredit] = useState<number>(0);
+    const loyaltySettings = useOptionalLoyaltySettings();
+    const [loyaltyBalance, setLoyaltyBalance] = useState<number>(0);
+
+    // Loyalty balance for the order's customer, when the payment modal opens
+    useEffect(() => {
+        setLoyaltyBalance(0);
+        const phone = orderLoyaltyPhone(showPaymentModal);
+        if (!showPaymentModal || !currentUser?.companyId || !phone || !orderLoyaltyOn(loyaltySettings)) return;
+        let cancelled = false;
+        fetchLoyaltyAccount(db, currentUser.companyId, phone)
+            .then((acc) => { if (!cancelled) setLoyaltyBalance(acc?.balance ?? 0); })
+            .catch((err) => console.error('Failed to load loyalty points', err));
+        return () => { cancelled = true; };
+    }, [showPaymentModal, currentUser?.companyId, loyaltySettings]);
 
     // Fetch customer credit when the Payment Modal opens
     useEffect(() => {
@@ -139,34 +158,54 @@ export const useOrderPayment = ({
 
             const currentMethods = showPaymentModal.paymentMethods || {};
 
-            const newPaidTotal = alreadyPaid + amount;
-            const remainingDue = Math.max(0, updatedTotal - newPaidTotal);
+            // Order fields for a payment of `paid` rupees (shared by the normal and the points path)
+            const buildPaymentUpdate = (paid: number) => {
+                const newPaidTotal = alreadyPaid + paid;
+                const remainingDue = Math.max(0, updatedTotal - newPaidTotal);
+                const updatedMethods = {
+                    ...currentMethods,
+                    [methodKey]: (currentMethods[methodKey] || 0) + paid,
+                    due: remainingDue // Sync the exact database due amount!
+                };
 
-            const updatedMethods = {
-                ...currentMethods,
-                [methodKey]: (currentMethods[methodKey] || 0) + amount,
-                due: remainingDue // Sync the exact database due amount!
+                let status = showPaymentModal.status;
+                // FIXED: Only alter the status automatically if it's already in the final stages.
+                // Otherwise, keep it in its current tab (Upcoming, Confirmed, Packed).
+                if (status === 'Completed' || status === 'Paid') {
+                    status = remainingDue <= 0.1 ? 'Paid' : 'Completed';
+                }
+                return {
+                    paidAmount: newPaidTotal,
+                    paymentMethods: updatedMethods,
+                    paymentMethod: methodKey,
+                    status,
+                    updatedAt: serverTimestamp(),
+                };
             };
 
-            let newStatus = showPaymentModal.status;
+            let paidNow = amount;
+            let newStatus = buildPaymentUpdate(amount).status;
 
-            // FIXED: Only alter the status automatically if it's already in the final stages.
-            // Otherwise, keep it in its current tab (Upcoming, Confirmed, Packed).
-            if (newStatus === 'Completed' || newStatus === 'Paid') {
-                if (remainingDue <= 0.1) {
-                    newStatus = 'Paid';
-                } else {
-                    newStatus = 'Completed';
+            if (methodKey === LOYALTY_ORDER_PAYMENT_KEY) {
+                if (!loyaltySettings || !orderLoyaltyOn(loyaltySettings)) {
+                    setModal({ message: 'Loyalty points are turned off for online orders.', type: State.ERROR });
+                    return;
                 }
+                // Points + order payment in one transaction; amount rounds down to whole points
+                paidNow = await redeemPointsOnOrder(
+                    currentUser.companyId, showPaymentModal.id, amount, loyaltySettings,
+                    { uid: currentUser.uid, name: currentUser.name || '' },
+                    (applied) => buildPaymentUpdate(applied),
+                );
+                newStatus = buildPaymentUpdate(paidNow).status;
+                // If the order already earned (Completed), it now earns on less — the part paid with points doesn't earn.
+                await syncOrderEarnedPoints(currentUser.companyId, showPaymentModal.id, loyaltySettings, {
+                    uid: currentUser.uid,
+                    name: currentUser.name || '',
+                });
+            } else {
+                await updateDoc(orderRef, buildPaymentUpdate(amount));
             }
-
-            await updateDoc(orderRef, {
-                paidAmount: newPaidTotal,
-                paymentMethods: updatedMethods,
-                paymentMethod: methodKey,
-                status: newStatus,
-                updatedAt: serverTimestamp(),
-            });
 
             window.dispatchEvent(
                 new CustomEvent('pdc_notification', {
@@ -174,7 +213,7 @@ export const useOrderPayment = ({
                         type: 'PAYMENT_RECEIVED',
                         invoiceNumber: showPaymentModal.orderId,
                         partyName: showPaymentModal.userName || showPaymentModal.billingDetails?.name || 'Customer',
-                        amount: Number(amount || 0),
+                        amount: Number(paidNow || 0),
                         method: methodKey,
                         status: newStatus === 'Paid' ? 'PAID' : 'UPCOMING',
                         createdAt: new Date(paymentDate).toISOString(),
@@ -190,16 +229,31 @@ export const useOrderPayment = ({
 
         } catch (err) {
             console.error("Payment Error:", err);
+            const isLoyaltyError = err instanceof LoyaltyBalanceError || isLoyaltyMethod(method);
             setModal({
-                message: "Payment failed",
+                message: isLoyaltyError && err instanceof Error ? `Payment failed: ${err.message}` : "Payment failed",
                 type: State.ERROR,
             });
         }
     };
 
+    // What the payment modal needs to offer "Loyalty Points" as a method
+    const loyaltyMaxPoints = showPaymentModal
+        ? maxOrderRedeemPoints(loyaltyBalance, showPaymentModal as any, currentDue, loyaltySettings)
+        : 0;
+    const orderLoyalty = loyaltyMaxPoints > 0 && loyaltySettings
+        ? {
+            balance: loyaltyBalance,
+            maxPoints: loyaltyMaxPoints,
+            maxValue: pointsToRupees(loyaltyMaxPoints, loyaltySettings),
+            pointValue: Number(loyaltySettings.pointValue) || 1,
+        }
+        : undefined;
+
     return {
         showPaymentModal, setShowPaymentModal,
         customerCredit,
+        orderLoyalty,
         updatedTotal,
         currentDue,
         onSubmit,

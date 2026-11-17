@@ -30,9 +30,9 @@ export interface RateComparison {
     lastRate: number;          // last rate, converted to the current bill's tax mode
     lastDate: number;
     lastInvoice: string;
-    diff: number;              // current − last (current bill's tax mode)
+    diff: number;              // current − last (current bill's tax mode); 0 when the same
     diffPct: number;
-    direction: 'up' | 'down';
+    direction: 'up' | 'down' | 'same';
 }
 
 export interface ComparableLine {
@@ -44,8 +44,8 @@ export interface ComparableLine {
 }
 
 /**
- * Compares a cart line with the supplier's last entry. Null when there is no entry,
- * the entry came from the bill being edited, or the change is under ₹0.01.
+ * Compares a cart line with the supplier's last entry. Null when there is no entry or
+ * the entry came from the bill being edited; direction 'same' when the change is under ₹0.01.
  */
 export const comparePurchaseRate = (
     line: ComparableLine,
@@ -61,19 +61,18 @@ export const comparePurchaseRate = (
 
     const taxRate = Number(line.taxRate ?? line.tax ?? 0);
     const currentExcl = toRateExclTax(current, taxRate, billTaxType);
-    if (Math.abs(currentExcl - entry.rateExclTax) < 0.01) return null;
-
     const lastRate = fromRateExclTax(entry.rateExclTax, taxRate, billTaxType);
-    const diff = round2(current - lastRate);
-    if (Math.abs(diff) < 0.01) return null;
+    const rawDiff = round2(current - lastRate);
+    const same = Math.abs(currentExcl - entry.rateExclTax) < 0.01 || Math.abs(rawDiff) < 0.01;
+    const diff = same ? 0 : rawDiff;
 
     return {
         lastRate,
         lastDate: entry.date,
         lastInvoice: entry.invoiceNumber,
         diff,
-        diffPct: lastRate > 0 ? round2((diff / lastRate) * 100) : 0,
-        direction: diff > 0 ? 'up' : 'down',
+        diffPct: !same && lastRate > 0 ? round2((diff / lastRate) * 100) : 0,
+        direction: same ? 'same' : diff > 0 ? 'up' : 'down',
     };
 };
 

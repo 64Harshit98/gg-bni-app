@@ -23,6 +23,7 @@ import {
 import type { SalesData, TransactionItem, ExchangeItem } from '../salesReturn.types';
 import type { Item } from '../../../../constants/models';
 import { addOnStockToRestore } from '../../../../constants/models';
+import { calcReturnReversal, readSaleLoyalty, writeLoyaltyInBatch } from '../../../../lib/loyalty';
 
 interface UseSaveSalesReturnParams {
     currentUser: any;
@@ -117,6 +118,13 @@ export const useSaveSalesReturn = ({
         try {
             const batch = writeBatch(db);
             const saleRef = doc(db, 'companies', companyId, 'sales', selectedSale.id);
+
+            // Loyalty: read the saved bill (selectedSale can come from route state
+            // without its loyalty block or totalAmount).
+            const savedSaleSnap = await getDoc(saleRef);
+            const savedSale: any = savedSaleSnap.exists() ? savedSaleSnap.data() : {};
+            const saleLoyalty = readSaleLoyalty(savedSale);
+            const totalBeforeReturn = Number(savedSale.totalAmount) || 0;
 
             const originalItemsMap = new Map(selectedSale.items.map((item: any) => {
                 const safeId = item.id || item.productId || 'UNKNOWN_ID';
@@ -314,6 +322,26 @@ export const useSaveSalesReturn = ({
                 isReturned: true,
                 lastUpdated: serverTimestamp()
             };
+
+            // Loyalty: take back earned points in proportion to how much the bill went down.
+            // Points the customer USED are not given back on a return — the refund / credit
+            // note above is worked out on the bill value, which already covers them.
+            if (saleLoyalty && saleLoyalty.earned > 0) {
+                const reduction = Math.max(0, totalBeforeReturn - updatedFinalAmount);
+                const takeBack = calcReturnReversal(saleLoyalty.earned, reduction, totalBeforeReturn);
+                if (takeBack > 0) {
+                    writeLoyaltyInBatch(batch, db, companyId, saleLoyalty.phone, [{
+                        type: 'reverse',
+                        points: -takeBack,
+                        refType: 'return',
+                        refId: selectedSale.id,
+                        invoiceNumber: savedSale.invoiceNumber || selectedSale.invoiceNumber,
+                        note: `Items returned (₹${reduction.toFixed(2)})`,
+                        extra: { reverses: 'earn' },
+                    }], { actor: { uid: currentUser.uid, name: currentUser.name || '' } });
+                    updateData.loyalty = { ...saleLoyalty, earned: saleLoyalty.earned - takeBack };
+                }
+            }
 
             batch.update(saleRef, updateData);
 

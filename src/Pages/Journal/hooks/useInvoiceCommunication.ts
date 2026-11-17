@@ -11,6 +11,8 @@ import { resolveCompanyLogoBase64 } from '../../../Catalogue/hooks/useCompanyLog
 import { botMasterService } from '../../Additional/Whatsapp/WhatsappApi';
 import { sendCompanyWhatsappMessage } from '../../Additional/Whatsapp/sendCompanyWhatsappMessage';
 import type { Invoice, PdfData } from '../journal.types';
+import { useOptionalLoyaltySettings } from '../../../context/SettingsContext';
+import { loyaltyForPrint } from '../../../lib/loyalty';
 
 interface UseInvoiceCommunicationParams {
   currentUser: any;
@@ -31,6 +33,7 @@ export const useInvoiceCommunication = ({
   setModal,
 }: UseInvoiceCommunicationParams) => {
   const navigate = useNavigate();
+  const loyaltySettings = useOptionalLoyaltySettings();
 
   const [pdfGenerating, setPdfGenerating] = useState<string | null>(null);
   const [invoiceToPrint, setInvoiceToPrint] = useState<Invoice | null>(null);
@@ -283,6 +286,10 @@ export const useInvoiceCommunication = ({
       due: invoice.dueAmount || 0,
       previousBalance,
       creditNoteBalance,
+      // Sales only; purchases never carry loyalty
+      loyalty: invoice.type === 'Credit'
+        ? await loyaltyForPrint(db, currentUser.companyId, invoice, loyaltySettings)
+        : null,
       items: populatedItems,
       // Strictly from Bill Settings — billSettings.termsAndConditions isn't a
       // real field in the persisted doc (posTermsAndConditions/

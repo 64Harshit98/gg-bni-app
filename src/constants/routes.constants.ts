@@ -32,6 +32,8 @@ export const ROUTES = {
   SALESETTING: '/sales-setting',
   PURCHASESETTING: '/purchase-setting',
   CUSTOMER_PRICING: '/customer-pricing',
+  LOYALTYSETTING: '/loyalty-setting',
+  LOYALTY_POINTS: '/loyalty-points',
   HISTORY: '/history',
   USERSETTING: '/user-setting',
   BILLSETTING: '/bill-setting',

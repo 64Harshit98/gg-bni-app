@@ -97,6 +97,8 @@ export interface Order {
     // order's numbers never reinterpret themselves after settings change.
     gstScheme?: string;
     taxType?: string;
+    /** What this order did to the customer's loyalty points (see lib/loyalty.ts). */
+    loyalty?: import('../../lib/loyalty').SaleLoyalty | null;
     transportDetails?: {
         transportName: string;
         grRrNo: string;

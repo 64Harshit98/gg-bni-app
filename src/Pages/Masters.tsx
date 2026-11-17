@@ -54,6 +54,7 @@ const ICONS = {
   permission: ['M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z', 'm9 12 2 2 4-4'],
   clock: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M12 7v5l3 2'],
   tag: ['M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z', 'M9 15l6-6M9.5 9.5h.01M14.5 14.5h.01'],
+  star: ['m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9z'],
   chevron: ['m9 6 6 6-6 6'],
   search: ['M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14z', 'm20 20-3.5-3.5'],
 };
@@ -171,6 +172,7 @@ const Masters = () => {
       bill: `${base}/settings/bill`,
       barcode: `${base}/settings/barcode-settings`,
       shopHours: `${base}/settings/shop-hours`,
+      loyalty: `${base}/settings/loyalty`,
     };
     const unsubs = Object.entries(paths).map(([key, path]) =>
       onSnapshot(
@@ -217,6 +219,14 @@ const Masters = () => {
     return `${p.voucherPrefix || 'PUR'}-${n} next`;
   })();
 
+  const loyaltyValue = (() => {
+    if (docs.loyalty === undefined) return undefined;
+    const l = docs.loyalty;
+    if (!l?.enabled) return 'Off';
+    const earn = `${l.earnPoints ?? 1} pt / ₹${l.earnPerAmount ?? 100}`;
+    return l.redeemEnabled === false ? earn : `${earn} · 1 pt = ₹${l.pointValue ?? 1}`;
+  })();
+
   const PRINT_LABEL: Record<string, string> = {
     A4: 'A4',
     A5: 'A5',
@@ -256,6 +266,7 @@ const Masters = () => {
     purchase: 'purchase setting numbering cost price supplier',
     bill: 'bill setting print size logo footer terms whatsapp',
     custPricing: 'customer supplier party pricing fixed discount special price dealer wholesale rate structure',
+    loyalty: 'loyalty points reward customer redeem earn',
     items: 'items setting units categories low stock alerts mrp',
     barcode: 'barcode label setting size format',
     users: 'users salesman admin staff password',
@@ -263,7 +274,7 @@ const Masters = () => {
     shop: 'shop timing opening hours weekly off day close',
   };
 
-  const showBilling = match(K.sales) || match(K.purchase) || match(K.bill) || match(K.custPricing);
+  const showBilling = match(K.sales) || match(K.purchase) || match(K.bill) || match(K.custPricing) || match(K.loyalty);
   const showItems = match(K.items) || match(K.barcode);
   const showTeam = isOwner && (match(K.users) || match(K.perm));
   const showShop = isOwner && match(K.shop);
@@ -377,6 +388,19 @@ const Masters = () => {
                       icon={ICONS.tag}
                       title="Party Pricing"
                       desc="Fixed discount per customer (sale) and supplier (purchase) — all items, by category or per item"
+                    />
+                  </ShowWrapper>
+                )}
+                {match(K.loyalty) && (
+                  <ShowWrapper requiredPermission={Permissions.ManageLoyaltyPoints}>
+                    <SettingItem
+                      to={ROUTES.LOYALTYSETTING}
+                      tint="amber"
+                      icon={ICONS.star}
+                      title="Loyalty Points"
+                      value={loyaltyValue}
+                      valueTone={loyaltyValue === 'Off' ? 'warn' : 'primary'}
+                      desc="Points customers earn on bills, how they redeem them, and who can change them"
                     />
                   </ShowWrapper>
                 )}

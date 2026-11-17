@@ -12,7 +12,7 @@ import { Spinner } from '../../../constants/Spinner';
 import {
   FiTrash2, FiEdit, FiCamera, FiX, FiSearch, FiMoreHorizontal,
   FiFileText, FiMaximize, FiAlertTriangle, FiCheckCircle, FiInfo, FiPackage, FiPlus,
-  FiChevronUp, FiChevronRight, FiMinus, FiSliders,
+  FiChevronUp, FiChevronRight, FiMinus, FiSliders, FiTrendingUp,
 } from 'react-icons/fi';
 import { ItemEditDrawer } from '../../../Components/ItemDrawer';
 import BackButton from '../../../Components/BackButton';
@@ -377,9 +377,15 @@ const PurchasePage: React.FC = () => {
     supplierSearchTimeout.current = setTimeout(() => searchSupplier(value), 400);
   };
 
+  // One tap: picking a saved supplier sets it (and their pricing) and closes the popup
   const selectSupplierSuggestion = (s: SupplierSuggestion) => {
-    setSupplierDraft({ name: s.name, phone: s.number || '' });
-    setShowSupplierSuggestions(false);
+    const name = (s.name || '').trim();
+    const phone = (s.number || '').trim();
+    setSupplierDraft({ name, phone });
+    setSupplierName(name);
+    setSupplierPhone(phone);
+    setPricingSupplier({ name, number: phone });
+    closeSupplierModal();
   };
 
   // Outside click pe dropdown band
@@ -617,7 +623,8 @@ const PurchasePage: React.FC = () => {
   const [showRateConfirm, setShowRateConfirm] = useState(false);
 
   // ── Supplier-wise fixed discount (Busy-style party pricing) ──
-  // Applied automatically when the supplier has a rule and it lowers the rate; Revert undoes it.
+  // Applied automatically when the supplier has a rule: % off MRP for MRP items, the supplier's
+  // fixed rate for items without MRP. Undo in the banner puts the normal rates back.
   const supplierPricingEnabled = !!purchaseSettings?.enableSupplierPricing;
   const supplierPricing = useSupplierPricing({
     enabled: supplierPricingEnabled,
@@ -629,6 +636,7 @@ const PurchasePage: React.FC = () => {
     setItems,
     roundingOff: purchaseSettings?.roundingOff ?? true,
     canOverride: hasPermission(Permissions.OverrideCustomerDiscount),
+    availableItems,
   });
   /** All flags for a cart line (supplier price + rate change) and its lock. */
   const decoratePurchaseLine = (l: PurchaseItem): { priceFlag: PriceFlagData[]; lockPricing: boolean } => {
@@ -725,20 +733,38 @@ const PurchasePage: React.FC = () => {
   };
   const rateChangedCount = rateAlert.unreviewed.length;
   const rateSupplierLabel = (editModeData ? editModeData.partyName : supplierName) || 'this supplier';
-  const rateChangeBanner = (extraCls = '') => rateAlertEnabled && rateChangedCount > 0 ? (
-    <div className={`flex flex-wrap items-start gap-2 p-2.5 rounded-sm text-[13px] leading-[19px] bg-[#fff3dd] text-[#bb4d00] ${extraCls}`} role="status">
-      <FiAlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
-      <span className="flex-1 min-w-0">
-        <b className="font-semibold">
-          {rateChangedCount} {rateChangedCount === 1 ? 'item has' : 'items have'} a different rate
-        </b>{' '}
-        than the last purchase from {rateSupplierLabel}. Prices are not changed — check each flagged line.
-      </span>
-      <button type="button" onClick={rateAlert.keepAll} className="flex-shrink-0 font-semibold underline underline-offset-2 hover:opacity-80">
-        Keep all
-      </button>
-    </div>
-  ) : null;
+  // "vs last purchase" summary: amber while changed rates are unreviewed, quiet once checked
+  const rateCountsText = [
+    rateAlert.counts.up > 0 && `${rateAlert.counts.up} higher`,
+    rateAlert.counts.down > 0 && `${rateAlert.counts.down} lower`,
+    rateAlert.counts.same > 0 && `${rateAlert.counts.same} same`,
+  ].filter(Boolean).join(' · ');
+  const rateChangeBanner = (extraCls = '') => {
+    if (!rateAlertEnabled || rateAlert.comparisons.size === 0) return null;
+    if (rateChangedCount > 0) {
+      return (
+        <div className={`flex flex-wrap items-start gap-2 p-2.5 rounded-sm text-[13px] leading-[19px] bg-[#fff3dd] text-[#bb4d00] ${extraCls}`} role="status">
+          <FiAlertTriangle size={16} className="mt-0.5 flex-shrink-0" aria-hidden />
+          <span className="flex-1 min-w-0">
+            <b className="font-semibold">vs last purchase from {rateSupplierLabel}: {rateCountsText}.</b>{' '}
+            Prices are not changed — check each flagged line.
+          </span>
+          <button type="button" onClick={rateAlert.keepAll} className="flex-shrink-0 font-semibold underline underline-offset-2 hover:opacity-80">
+            Keep all
+          </button>
+        </div>
+      );
+    }
+    return (
+      <div className={`flex items-center gap-2 px-2.5 py-2 rounded-sm text-[13px] leading-[19px] bg-white border border-[#dfe6fb] text-[#45556c] ${extraCls}`} role="status">
+        <FiTrendingUp size={15} className="flex-shrink-0 text-[#5b6b86]" aria-hidden />
+        <span className="flex-1 min-w-0">
+          vs last purchase from {rateSupplierLabel}: <b className="font-semibold text-[#0f172b]">{rateCountsText}</b>
+          {rateAlert.counts.up + rateAlert.counts.down > 0 && ' · checked'}
+        </span>
+      </div>
+    );
+  };
   const ratePartyNote = rateAlertEnabled && rateAlert.supplierId && rateAlert.comparisons.size > 0
     ? {
       partyId: rateAlert.supplierId,

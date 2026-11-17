@@ -1,9 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useLocation, Navigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { ArrowLeft, Check, ChevronDown, Gift, Hash, House, LoaderCircle, MapPin, ReceiptText, RotateCcw, Store } from 'lucide-react';
 import { ROUTES } from '../../constants/routes.constants';
 import { PLANS, ROLES } from '../../enums';
-import { registerUserWithDetails } from '../../lib/AuthOperations';
+import {
+  ONBOARDING_STORAGE_KEY as LOCAL_STORAGE_KEY,
+  SignupError,
+  checkSignupDetails,
+  clearOnboardingDraft,
+  registerUserWithDetails,
+} from '../../lib/AuthOperations';
 import { saveLeadProgress } from '../../lib/Lead';
 import { auth } from '../../lib/Firebase';
 import RegistrationLoading from '../Loading/BusinessInfoPage';
@@ -24,9 +30,9 @@ import {
   SupportLink,
   TextInput,
   authBtn,
+  authLink,
 } from './AuthUI';
 
-const LOCAL_STORAGE_KEY = 'sellar_onboarding_data';
 
 const businessTypeOptions = [
   { value: 'Retail', label: 'Retail' },
@@ -127,6 +133,19 @@ const PIN_NOTES: Record<PinStatus, React.ReactNode> = {
   missed: "Couldn't find it. Type your city and state.",
 };
 
+// 'unknown' = the check couldn't run (offline, etc.); the server still checks on submit.
+type ReferralStatus = 'idle' | 'checking' | 'valid' | 'invalid' | 'unknown';
+const REFERRAL_INVALID = "This code doesn't exist. Check it with your partner, or leave it empty.";
+const REFERRAL_NOTES: Partial<Record<ReferralStatus, React.ReactNode>> = {
+  checking: 'Checking code…',
+  valid: (
+    <span className="flex items-center gap-1 text-green-700">
+      <Check size={14} strokeWidth={2.25} aria-hidden="true" />
+      Code found
+    </span>
+  ),
+};
+
 // ─── Bill slideshow panel ──────────────────────────────────────────────────
 
 const BillPanel: React.FC<React.ComponentProps<typeof BillSlideshow>> = (props) => (
@@ -158,9 +177,14 @@ const BusinessInfoPage: React.FC = () => {
   const [isHydrated, setIsHydrated] = useState(false);
   const [pinStatus, setPinStatus] = useState<PinStatus>('idle');
   const [showBills, setShowBills] = useState(false); // phone: bill slideshow opened
+  const [referralStatus, setReferralStatus] = useState<ReferralStatus>('idle');
+  const [emailTaken, setEmailTaken] = useState(false);
   const pinLookup = useRef<AbortController | null>(null);
+  const referralSeq = useRef(0);
 
-  const previousData = location.state || JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '{}');
+  // Read once: the draft is cleared from storage as soon as the company is created,
+  // and that must not send the page back to step 1 while setup finishes.
+  const [previousData] = useState(() => location.state || JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '{}'));
 
   useEffect(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -186,15 +210,48 @@ const BusinessInfoPage: React.FC = () => {
   useEffect(() => {
     if (!awaitingAuth || authLoading) return;
     if (currentUser) {
-      localStorage.removeItem(LOCAL_STORAGE_KEY);
+      clearOnboardingDraft();
       navigate(ROUTES.HOME);
     }
   }, [awaitingAuth, authLoading, currentUser, navigate]);
 
   useEffect(() => () => pinLookup.current?.abort(), []);
 
-  // Guard: ensure the user came from step 1 (after every hook, so hook order never changes).
-  if (!previousData.email || !previousData.password) {
+  // The email from step 1 could have been registered since (another tab, another device).
+  useEffect(() => {
+    if (!previousData.email) return;
+    let live = true;
+    checkSignupDetails({ email: previousData.email }).then((check) => {
+      if (live && check?.emailTaken) setEmailTaken(true);
+    });
+    return () => { live = false; };
+  }, [previousData.email]);
+
+  // Live referral check, once typing pauses.
+  useEffect(() => {
+    const code = referralCode.trim();
+    const seq = ++referralSeq.current;
+    if (!code) {
+      setReferralStatus('idle');
+      return;
+    }
+    setReferralStatus('checking');
+    const timer = window.setTimeout(async () => {
+      const check = await checkSignupDetails({ referralCode: code });
+      if (seq !== referralSeq.current) return; // typed more since
+      setReferralStatus(!check || check.referralValid === undefined ? 'unknown' : check.referralValid ? 'valid' : 'invalid');
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [referralCode]);
+
+  // Guard: ensure the user came from step 1 with everything the server needs
+  // (after every hook, so hook order never changes).
+  if (
+    !previousData.fullName?.trim() ||
+    String(previousData.phoneNumber || '').length !== 10 ||
+    !previousData.email ||
+    String(previousData.password || '').length < 6
+  ) {
     return <Navigate to={ROUTES.SIGNUP} replace />;
   }
 
@@ -277,14 +334,39 @@ const BusinessInfoPage: React.FC = () => {
       document.getElementById(firstBad === 'gstType' ? 'gst-regular' : firstBad)?.focus();
       return;
     }
-
-    setIsSubmitting(true);
-    setShowLoadingScreen(true);
+    if (emailTaken) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (referralStatus === 'invalid') {
+      document.getElementById('referralCode')?.focus();
+      return;
+    }
 
     const finalBusinessType = formData.businessType === 'Other' ? formData.customBusinessType : formData.businessType;
     const finalBusinessCategory = formData.businessCategory === 'Other' ? formData.customBusinessCategory : formData.businessCategory;
     const finalGstin = formData.gstType === 'NA' ? '' : formData.gstin.toUpperCase();
     const finalReferralCode = referralCode.trim().toUpperCase();
+
+    setIsSubmitting(true);
+
+    // Last check of what the server will reject, while the form is still on screen.
+    // If the check can't run, carry on: registration checks the same things itself.
+    const check = await checkSignupDetails({ email: previousData.email, referralCode: finalReferralCode || undefined });
+    if (check?.emailTaken) {
+      setEmailTaken(true);
+      setIsSubmitting(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    if (finalReferralCode && check?.referralValid === false) {
+      setReferralStatus('invalid');
+      setIsSubmitting(false);
+      document.getElementById('referralCode')?.focus();
+      return;
+    }
+
+    setShowLoadingScreen(true);
 
     try {
       const businessInfoPayload = {
@@ -360,10 +442,19 @@ const BusinessInfoPage: React.FC = () => {
       setAwaitingAuth(true);
     } catch (err) {
       console.error('Registration failed:', err);
-      // Shows the Cloud Function's message, e.g. when the referral code is invalid.
-      setError((err as Error)?.message || 'Setup failed. Please check your internet and try again.');
+      // Back to the form with everything still filled in; the draft is only cleared once signed in.
       setIsSubmitting(false);
       setShowLoadingScreen(false);
+      if (err instanceof SignupError && err.field === 'email') {
+        setEmailTaken(true);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else if (err instanceof SignupError && err.field === 'referral') {
+        setReferralStatus('invalid');
+        window.setTimeout(() => document.getElementById('referralCode')?.focus());
+      } else {
+        setError((err as Error)?.message || "We couldn't finish setting up. Check your internet and tap Finish setup again.");
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
     }
   };
 
@@ -412,6 +503,13 @@ const BusinessInfoPage: React.FC = () => {
         >
           <CardHeading icon={Store} title="Tell us about your shop" subtitle="This prints on every bill. You can change it later in Edit profile." />
 
+          {emailTaken && (
+            <ErrorBanner>
+              <strong className="font-semibold">{previousData.email}</strong> already has a Sellar account.{' '}
+              <Link to={ROUTES.LANDING} className={authLink}>Log in</Link> with it, or{' '}
+              <button type="button" onClick={goToStepOne} className={authLink}>use a different email</button>.
+            </ErrorBanner>
+          )}
           {error && <ErrorBanner>{error}</ErrorBanner>}
 
           <div className="rounded-sm border border-line bg-white shadow-card lg:hidden">
@@ -628,7 +726,14 @@ const BusinessInfoPage: React.FC = () => {
             </FormSection>
 
             <FormSection id="bus-referral" icon={Gift} tone="pink" title="Referred by a partner?" note="Optional. Enter their code if you have one.">
-              <Field label="Referral code" htmlFor="referralCode" optional className="sm:max-w-[300px]">
+              <Field
+                label="Referral code"
+                htmlFor="referralCode"
+                optional
+                error={referralStatus === 'invalid' ? REFERRAL_INVALID : undefined}
+                help={REFERRAL_NOTES[referralStatus]}
+                className="sm:max-w-[300px]"
+              >
                 <TextInput
                   type="text"
                   autoComplete="off"

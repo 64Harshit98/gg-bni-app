@@ -8,6 +8,7 @@ import { type ItemSettings, getDefaultItemSettings } from '../Pages/Settings/Ite
 import { ROLES } from '../enums';
 import { type CatalogueSalesSettings, getDefaultCatalogueSalesSettings } from '../Catalogue/Settings/CatalogueSalesSetting';
 import { type RawBillSettings, getDefaultBillSettings } from '../Pages/Settings/BillSetting';
+import { type LoyaltySettings, getDefaultLoyaltySettings, LOYALTY_SETTINGS_DOC } from '../lib/loyalty';
 
 interface SettingsContextType {
     salesSettings: SalesSettings | null;
@@ -15,6 +16,8 @@ interface SettingsContextType {
     itemSettings: ItemSettings | null;
     catalogueSettings: CatalogueSalesSettings | null;
     billSettings: RawBillSettings | null;
+    loyaltySettings: LoyaltySettings | null;
+    loadingLoyaltySettings: boolean;
     loadingCatalogueSettings: boolean;
     loadingSalesSettings: boolean;
     loadingPurchaseSettings: boolean;
@@ -41,6 +44,9 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
 
     const [billSettings, setBillSettings] = useState<RawBillSettings | null>(null);
     const [loadingBillSettings, setLoadingBillSettings] = useState(true);
+
+    const [loyaltySettings, setLoyaltySettings] = useState<LoyaltySettings | null>(null);
+    const [loadingLoyaltySettings, setLoadingLoyaltySettings] = useState(true);
 
     useEffect(() => {
         if (!currentUser?.companyId) {
@@ -251,6 +257,34 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
         return () => unsubscribeBill();
     }, [currentUser?.companyId]);
 
+    // --- FETCH LOYALTY SETTINGS ---
+    // Not provisioned at signup, and off by default — so a missing doc simply
+    // means "loyalty off". Defaults are merged in memory only; the doc is
+    // written the first time someone saves the Loyalty settings page.
+    useEffect(() => {
+        if (!currentUser?.companyId) {
+            setLoadingLoyaltySettings(false);
+            setLoyaltySettings(null);
+            return;
+        }
+
+        setLoadingLoyaltySettings(true);
+        const companyId = currentUser.companyId;
+        const docRef = doc(db, 'companies', companyId, 'settings', LOYALTY_SETTINGS_DOC);
+
+        const unsubscribeLoyalty = onSnapshot(docRef, (docSnap) => {
+            const defaults = getDefaultLoyaltySettings(companyId);
+            setLoyaltySettings(docSnap.exists() ? ({ ...defaults, ...docSnap.data() } as LoyaltySettings) : defaults);
+            setLoadingLoyaltySettings(false);
+        }, (error) => {
+            console.error('Error fetching Loyalty Settings:', error);
+            setLoyaltySettings(getDefaultLoyaltySettings(companyId));
+            setLoadingLoyaltySettings(false);
+        });
+
+        return () => unsubscribeLoyalty();
+    }, [currentUser?.companyId]);
+
     const isLoadingSettings = loadingSalesSettings || loadingPurchaseSettings || loadingItemSettings || loadingCatalogueSettings || loadingBillSettings;
 
     const contextValue = {
@@ -259,6 +293,8 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
         itemSettings,
         catalogueSettings,
         billSettings,
+        loyaltySettings,
+        loadingLoyaltySettings,
         loadingCatalogueSettings,
         loadingSalesSettings,
         loadingPurchaseSettings,
@@ -315,6 +351,24 @@ export const useBillSettings = () => {
         throw new Error('useBillSettings must be used within a SettingsProvider');
     }
     return { billSettings: context.billSettings, loadingSettings: context.loadingBillSettings };
+};
+
+export const useLoyaltySettings = () => {
+    const context = useContext(SettingsContext);
+    if (context === undefined) {
+        throw new Error('useLoyaltySettings must be used within a SettingsProvider');
+    }
+    return { loyaltySettings: context.loyaltySettings, loadingSettings: context.loadingLoyaltySettings };
+};
+
+/**
+ * Same as useLoyaltySettings, but returns null instead of throwing outside a
+ * SettingsProvider. For shared components (PaymentDrawer, print helpers) that
+ * are also mounted from places without the provider (e.g. the catalogue app).
+ */
+export const useOptionalLoyaltySettings = (): LoyaltySettings | null => {
+    const context = useContext(SettingsContext);
+    return context?.loyaltySettings ?? null;
 };
 
 export const useIsLoadingSettings = () => {

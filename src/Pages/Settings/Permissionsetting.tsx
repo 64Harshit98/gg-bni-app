@@ -30,6 +30,8 @@ export const BASIC_ALLOWED_PERMISSIONS = [
     Permissions.ViewAttendance,
     Permissions.ManageSalesSetting,
     Permissions.AllowDueBilling,
+    Permissions.ManageLoyaltyPoints,
+    Permissions.OverrideLoyaltyPoints,
 ];
 
 export const DEFAULT_PERMISSIONS_MAP = {
@@ -119,6 +121,8 @@ const PERMISSION_DESCRIPTIONS: Partial<Record<Permissions, string>> = {
     [Permissions.ManageBillSetting]: 'Printed bill layout and footer.',
     [Permissions.ManageCustomerPricing]: 'Set fixed discounts for each customer and supplier.',
     [Permissions.OverrideCustomerDiscount]: 'Change the price on a line that has a customer or supplier fixed price.',
+    [Permissions.ManageLoyaltyPoints]: 'Loyalty settings, and add or remove a customer\'s points by hand.',
+    [Permissions.OverrideLoyaltyPoints]: 'Change the points a bill earns (only if Loyalty settings allow it).',
 };
 
 // UI-only: plain display names
@@ -139,6 +143,8 @@ const PERMISSION_LABELS: Partial<Record<Permissions, string>> = {
     [Permissions.CreateSalesReturn]: 'Create sales returns',
     [Permissions.ManageCustomerPricing]: 'Manage party pricing',
     [Permissions.OverrideCustomerDiscount]: 'Edit party-priced lines',
+    [Permissions.ManageLoyaltyPoints]: 'Manage loyalty points',
+    [Permissions.OverrideLoyaltyPoints]: 'Change points on a bill',
     // Purchases
     [Permissions.CreatePurchase]: 'Create purchase bills',
     [Permissions.CreatePurchaseReturn]: 'Create purchase returns',
@@ -312,6 +318,8 @@ const permissionGroups = {
             Permissions.CreateSalesReturn,
             Permissions.ManageCustomerPricing,
             Permissions.OverrideCustomerDiscount,
+            Permissions.ManageLoyaltyPoints,
+            Permissions.OverrideLoyaltyPoints,
             //Permissions.SalesmanwiseBilling,
         ],
     },

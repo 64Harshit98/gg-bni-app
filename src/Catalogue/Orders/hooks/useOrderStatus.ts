@@ -3,10 +3,11 @@ import {
     doc,
     getDoc,
     updateDoc,
-    serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
 import type { Order, OrderStatus } from '../orders.types';
+import { useOptionalLoyaltySettings } from '../../../context/SettingsContext';
+import { setOrderStatusWithLoyalty } from '../orderLoyalty';
 
 interface UseOrderStatusParams {
     Orders: Order[];
@@ -19,6 +20,8 @@ interface UseOrderStatusParams {
 export const useOrderStatus = ({ currentUser }: UseOrderStatusParams) => {
     const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null);
     const [selectedOrderForConfirm, setSelectedOrderForConfirm] = useState<string | null>(null);
+    const loyaltySettings = useOptionalLoyaltySettings();
+    const loyaltyActor = { uid: currentUser?.uid, name: currentUser?.name || '' };
 
     const handleUpdateStatus = async (
         orderId: string,
@@ -117,11 +120,10 @@ export const useOrderStatus = ({ currentUser }: UseOrderStatusParams) => {
                 }
             }
 
-            await updateDoc(OrderRef, {
-                status: nextStatus,
-                isLead: false,
-                updatedAt: serverTimestamp()
-            });
+            // Status + loyalty (earn on Completed / Paid) in one transaction
+            await setOrderStatusWithLoyalty(
+                currentUser.companyId, orderId, nextStatus, loyaltySettings, loyaltyActor, { isLead: false },
+            );
 
         } catch (err) {
             console.error("Error updating status:", err);
@@ -148,18 +150,8 @@ export const useOrderStatus = ({ currentUser }: UseOrderStatusParams) => {
 
         if (!currentUser?.companyId) return;
 
-        const OrderRef = doc(
-            db,
-            "companies",
-            currentUser.companyId,
-            "Orders",
-            orderId
-        );
-
-        await updateDoc(OrderRef, {
-            status: prevStatus,
-            updatedAt: serverTimestamp()
-        });
+        // Moving back out of Completed takes back the points the order earned
+        await setOrderStatusWithLoyalty(currentUser.companyId, orderId, prevStatus, loyaltySettings, loyaltyActor);
     };
 
     return {

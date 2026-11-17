@@ -11,6 +11,7 @@ import { clearSalesReportCache } from '../../Reports/SalesReportComponents/sales
 import { clearPurchaseReportCache } from '../../Reports/PurchaseReportComponents/purchaseReportCache';
 import { State, PLANS } from '../../../enums';
 import type { Invoice } from '../journal.types';
+import { readSaleLoyalty, undoSaleChanges, writeLoyaltyInBatch } from '../../../lib/loyalty';
 
 interface UseInvoiceDeletionParams {
   currentUser: any;
@@ -52,6 +53,16 @@ export const useInvoiceDeletion = ({ currentUser, setModal }: UseInvoiceDeletion
       } else {
         warningMessage += `. This bill contains Credit Note returns of ${creditNoteReturnAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })} which will be removed from the customer`;
       }
+    }
+
+    // Loyalty points this bill earned / used are undone too
+    const loyalty = invoice.type === 'Credit' ? readSaleLoyalty(invoice as any) : null;
+    if (loyalty && (loyalty.earned > 0 || loyalty.redeemed > 0)) {
+      const parts = [
+        loyalty.earned > 0 ? `${loyalty.earned} loyalty points it earned will be taken back` : '',
+        loyalty.redeemed > 0 ? `${loyalty.redeemed} points used on it will be given back` : '',
+      ].filter(Boolean);
+      warningMessage += `. ${parts.join(' and ')}`;
     }
 
     // Add stock restoration message for non-POS_BASIC plans
@@ -105,6 +116,16 @@ export const useInvoiceDeletion = ({ currentUser, setModal }: UseInvoiceDeletion
         batch.set(customerRef, {
           creditBalance: increment(netCreditAdjustment)
         }, { merge: true });
+      }
+
+      // Loyalty: take back what the bill earned, give back what it used.
+      const loyalty = collectionName === 'sales' ? readSaleLoyalty(invoiceToDelete as any) : null;
+      if (loyalty) {
+        writeLoyaltyInBatch(
+          batch, db, companyId, loyalty.phone,
+          undoSaleChanges(loyalty, 'delete', { refId: invoiceToDelete.id, invoiceNumber: invoiceToDelete.invoiceNumber }),
+          { name: invoiceToDelete.partyName, actor: { uid: currentUser.uid, name: currentUser.name || '' } },
+        );
       }
       batch.delete(invoiceDocRef);
       await batch.commit();

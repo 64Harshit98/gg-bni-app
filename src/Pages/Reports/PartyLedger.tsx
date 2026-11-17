@@ -51,6 +51,7 @@ import { doc as fsDocRef, getDoc as fsGetDoc } from 'firebase/firestore';
 import { db as firebaseDb } from '../../lib/Firebase';
 import { useAuth } from '../../context/auth-context';
 import BackButton from '../../Components/BackButton';
+import PartyLoyaltyCard from '../../Components/PartyLoyaltyCard';
 import { useSalesSettings } from '../../context/SettingsContext';
 import { State, PLANS } from '../../enums';
 import { normalizePlan } from '../../context/Plan';
@@ -2119,6 +2120,10 @@ const PartyLedger: React.FC = () => {
                                     <div className="h-full rounded-sm bg-green-600" style={{ width: `${progressPct}%` }} />
                                 </div>
                             </div>
+                        )}
+
+                        {party.partyType === 'Customer' && (
+                            <PartyLoyaltyCard phone={party.partyNumber} name={hasRealName(party) ? party.partyName : ''} />
                         )}
 
                         {/* STATEMENT */}

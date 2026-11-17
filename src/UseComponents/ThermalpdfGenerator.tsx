@@ -4,6 +4,7 @@ import type { InvoiceData } from './pdfGenerator';
 import { drawWatermark } from '../Components/pdfWatermark';
 import { splitAddOns, nameWithBase } from './addOnText';
 import { needsImageText, textToImage, installUnicodeText } from './textToImage';
+import { loyaltyBillLine } from './loyaltyBillLine';
 
 export const generateThermalReceipt = (
     data: InvoiceData,
@@ -134,8 +135,10 @@ export const generateThermalReceipt = (
     const taxAreaHeight = 15 + (taxLinesCount * 3);
     const narrationHeight = data.narration ? Math.ceil(data.narration.length / 30) * 3 + 5 : 0;
     const termsHeight = data.terms ? Math.ceil(data.terms.length / 30) * 3 + 10 : 10;
+    const loyaltyLine = isEstimate ? '' : loyaltyBillLine(data.loyalty);
+    const loyaltyHeight = loyaltyLine ? 10 : 0;
 
-    const calculatedHeight = baseHeight + itemsAreaHeight + taxAreaHeight + narrationHeight + termsHeight;
+    const calculatedHeight = baseHeight + itemsAreaHeight + taxAreaHeight + narrationHeight + termsHeight + loyaltyHeight;
 
     // --- 2. INITIALIZE DOCUMENT ---
     const doc = new jsPDF({
@@ -315,6 +318,15 @@ export const generateThermalReceipt = (
 
     drawDashedLine(currentY);
     currentY += 4;
+
+    // --- LOYALTY POINTS ---
+    if (loyaltyLine) {
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'normal');
+        const lines = doc.splitTextToSize(loyaltyLine, contentWidth);
+        doc.text(lines, margin, currentY);
+        currentY += (lines.length * 3) + 2;
+    }
 
     // --- NARRATION ---
     if (data.narration) {

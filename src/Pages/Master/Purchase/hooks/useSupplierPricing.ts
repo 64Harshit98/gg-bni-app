@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import { SUPPLIER_PRICING_COLLECTION } from '../../../../constants/customerSource';
+import type { Item } from '../../../../constants/models';
 import { usePartyPricing, type PartyPricingAdapter } from '../../../hooks/usePartyPricing';
-import { withoutSupplierPrice } from '../../../utils/customerPricing';
+import { getSupplierPriceSuggestion, withoutSupplierPrice } from '../../../utils/customerPricing';
 import type { PurchaseItem } from '../purchase.types';
 import { isRealProductLine } from '../purchasePriceBook';
 
@@ -16,11 +17,13 @@ interface Params {
     setItems: React.Dispatch<React.SetStateAction<PurchaseItem[]>>;
     roundingOff: boolean;
     canOverride: boolean;   // Permissions.OverrideCustomerDiscount
+    /** Item master - purchase lines don't carry the item's category, so it's looked up here. */
+    availableItems: Item[];
 }
 
 /**
- * The supplier's % comes off the purchase rate: the item's purchase price, else the
- * line's rate before any supplier price (e.g. MRP less the item's purchase discount).
+ * The item's purchase rate (used for items without MRP): the item's purchase price,
+ * else the line's rate before any supplier price.
  */
 const purchaseBase = (l: PurchaseItem) =>
     Number(l.originalPurchasePrice) > 0
@@ -33,16 +36,19 @@ const screenDiscount = (l: PurchaseItem, net: number) => {
     return base > 0 ? parseFloat((((base - net) / base) * 100).toFixed(2)) : 0;
 };
 
-const purchaseAdapter: PartyPricingAdapter<PurchaseItem> = {
+type Groups = { itemGroupId?: string; itemGroupIds?: string[] };
+
+const makePurchaseAdapter = (groupsOf: (productId?: string) => Groups | undefined): PartyPricingAdapter<PurchaseItem> => ({
     pricedFor: l => l.supplierPricingFor,
     pricedName: l => l.supplierPricingName,
     pricedPct: l => Number(l.supplierDiscountPct || 0),
     skip: l => l.supplierPriceSkip,
-    // Supplier discount is % off the purchase rate (not MRP); it replaces the item's own discount.
+    // With MRP: supplier's % off MRP. Without MRP: supplier's fixed rate (or % off the purchase rate).
+    suggest: getSupplierPriceSuggestion,
     toPriced: l => ({
         productId: isRealProductLine(l) ? l.productId : undefined,
-        itemGroupId: l.itemGroupId,
-        itemGroupIds: l.itemGroupIds,
+        itemGroupId: l.itemGroupId ?? groupsOf(l.productId)?.itemGroupId,
+        itemGroupIds: l.itemGroupIds ?? groupsOf(l.productId)?.itemGroupIds,
         tierId: l.tierId,
         mrp: Number(l.mrp) || 0,
         salesPrice: Number(l.originalPurchasePrice) || 0,
@@ -73,19 +79,25 @@ const purchaseAdapter: PartyPricingAdapter<PurchaseItem> = {
         purchasediscount2: l.preSupplierDiscount2 ?? l.purchasediscount2 ?? 0,
         ...(skip ? { supplierPriceSkip: skip } : {}),
     }),
-};
+});
 
 /** Supplier-wise fixed pricing on the Purchase screen (see usePartyPricing). */
 export const useSupplierPricing = ({
-    enabled, auto, companyId, supplierName, supplierPhone, items, setItems, roundingOff, canOverride,
+    enabled, auto, companyId, supplierName, supplierPhone, items, setItems, roundingOff, canOverride, availableItems,
 }: Params) => {
     const rounding = useMemo(() => ({ enabled: roundingOff, interval: 1 }), [roundingOff]);
+    const adapter = useMemo(() => {
+        const byId = new Map<string, Groups>(availableItems
+            .filter(i => i.id)
+            .map(i => [i.id!, { itemGroupId: i.itemGroupId, itemGroupIds: i.itemGroupIds }]));
+        return makePurchaseAdapter(id => (id ? byId.get(id) : undefined));
+    }, [availableItems]);
     return usePartyPricing<PurchaseItem>({
         enabled, auto, companyId,
         collectionName: SUPPLIER_PRICING_COLLECTION,
         partyName: supplierName,
         partyPhone: supplierPhone,
         items, setItems, rounding, canOverride,
-        adapter: purchaseAdapter,
+        adapter,
     });
 };

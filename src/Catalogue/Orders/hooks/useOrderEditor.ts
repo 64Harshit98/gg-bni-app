@@ -15,6 +15,8 @@ import { useCatalogueData } from '../../../context/CatalogueDataContext';
 import type { Order } from '../orders.types';
 import { computeOrderTotals, computeLineTax, isTaxEnabled as computeIsTaxEnabled, resolveUnitPrice } from '../orders.calculations';
 import { useOrderCustomerPricing } from './useOrderCustomerPricing';
+import { useOptionalLoyaltySettings } from '../../../context/SettingsContext';
+import { syncOrderEarnedPoints } from '../orderLoyalty';
 
 // ─── Live MOQ lookup for items currently in the order being edited ─────────
 // Moved verbatim from Orders.tsx (was module-level `useLiveMoqMapHook`).
@@ -86,6 +88,15 @@ export const useOrderEditor = ({
     salesSettings,
     setModal,
 }: UseOrderEditorParams) => {
+    const loyaltySettings = useOptionalLoyaltySettings();
+    // Completed / Paid orders already earned points — re-sync them after the total changes.
+    const syncLoyalty = (orderId: string) => {
+        if (!currentUser?.companyId) return;
+        void syncOrderEarnedPoints(currentUser.companyId, orderId, loyaltySettings, {
+            uid: currentUser.uid,
+            name: currentUser.name || '',
+        });
+    };
     const [activeTab, setActiveTab] = useState<'billing' | 'shipping'>('billing');
     const [editingOrder, setEditingOrder] = useState<Order | null>(null);
     const [editExpenses, setEditExpenses] = useState<{ id: number; name: string; amount: number | '' }[]>([]);
@@ -696,7 +707,7 @@ export const useOrderEditor = ({
                 gstScheme: salesSettings?.gstScheme ?? null,
                 taxType: salesSettings?.taxType ?? null,
                 updatedAt: serverTimestamp(),
-            });
+            }).then(() => syncLoyalty(editingOrder.id));
         }
 
         setIsEditDrawerOpen(false);
@@ -885,6 +896,7 @@ export const useOrderEditor = ({
                             status: resolveStatus(newTotal, originalPaid)
                         })),
                     ]);
+                    syncLoyalty(editingOrder.id);
                     setEditingOrder(null);
                     setModal({ message: 'Due reduced successfully.', type: State.SUCCESS });
                     return;
@@ -924,6 +936,7 @@ export const useOrderEditor = ({
                         extraDueAmount: netDiff,
                     })),
                 ]);
+                syncLoyalty(editingOrder.id);
                 setEditingOrder(null);
                 setModal({ message: `Due Increased: ₹${netDiff.toFixed(2)}`, type: State.SUCCESS });
                 return;
@@ -936,6 +949,7 @@ export const useOrderEditor = ({
                     status: resolveStatus(newTotal, originalPaid) // <--- FIXED
                 })),
             ]);
+            syncLoyalty(editingOrder.id);
             setEditingOrder(null);
 
         } catch (error) {
@@ -998,6 +1012,7 @@ export const useOrderEditor = ({
                     updatedAt: serverTimestamp(),
                 }
             );
+            syncLoyalty(editingOrder.id);
 
             // Credit balance update (your existing customer code stays the same)
             try {
@@ -1080,6 +1095,7 @@ export const useOrderEditor = ({
                     updatedAt: serverTimestamp(),
                 }
             );
+            syncLoyalty(editingOrder.id);
 
             setShowAdjustmentPopup(false);
             setPendingAdjustment(null);

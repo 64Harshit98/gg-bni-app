@@ -259,6 +259,10 @@ const buildRawBillData = ({
         gstScheme: order.gstScheme || "",
         taxType: order.taxType || "",
 
+        // Loyalty points line (prepareCatalogueBillData decides whether to print it)
+        loyalty: order.loyalty || null,
+        partyNumber: order.billingDetails?.phone || order.userLoginPhone || "",
+
         items,
 
         grandTotal,

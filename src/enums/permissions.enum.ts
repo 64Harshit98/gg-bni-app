@@ -66,5 +66,9 @@ export enum Permissions {
     // Customer pricing (owner-grantable)
     ManageCustomerPricing = 'ManageCustomerPricing',
     OverrideCustomerDiscount = 'OverrideCustomerDiscount',
+    // Loyalty points (owner-grantable). Everyone can SEE and REDEEM points;
+    // these two gate CHANGING them.
+    ManageLoyaltyPoints = 'ManageLoyaltyPoints',       // loyalty settings + manual add/remove
+    OverrideLoyaltyPoints = 'OverrideLoyaltyPoints',   // edit the auto-earned points on a bill
 
 }

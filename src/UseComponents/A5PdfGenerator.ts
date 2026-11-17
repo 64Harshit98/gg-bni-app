@@ -6,6 +6,7 @@ import type { InvoiceData } from "./pdfGenerator";
 import { drawWatermark } from "../Components/pdfWatermark";
 import { splitAddOns, reserveAddOnSpace, nameWithBase, drawAddOnText } from './addOnText';
 import { needsImageText, textToImage, NAME_IMG_W, installUnicodeText } from './textToImage';
+import { loyaltyBillLine } from './loyaltyBillLine';
 
 const compressBase64Image = (
     base64: string,
@@ -811,6 +812,17 @@ export const generateA5Invoice = async (
                     gstTableBottomY,
                     paymentTableBottomY
                 ) + 4;
+
+            // --- LOYALTY POINTS ---
+            const loyaltyLine = loyaltyBillLine(data.loyalty);
+            if (loyaltyLine) {
+                doc.setFontSize(7);
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(0, 0, 0);
+                const loyaltyLines = doc.splitTextToSize(loyaltyLine, pageWidth - 10);
+                doc.text(loyaltyLines, 5, finalY);
+                finalY += 4 + (loyaltyLines.length - 1) * 3;
+            }
         }
 
         // --- 5 & 6. TERMS & CONDITIONS (left) + AUTHORISED SIGNATURE (right) — side by side ---

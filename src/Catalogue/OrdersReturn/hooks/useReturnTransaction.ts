@@ -12,6 +12,7 @@ import { State } from '../../../enums';
 import { ROUTES } from '../../../constants/routes.constants';
 import type { PaymentCompletionData } from '../../../Components/PaymentDrawer';
 import { addOnStockToRestore } from '../../../constants/models';
+import { calcReturnReversal, readSaleLoyalty, writeLoyaltyInBatch } from '../../../lib/loyalty';
 import type { Order, OrderItem } from '../../Orders';
 import type { TransactionItem, ExchangeItem } from '../ordersReturn.types';
 import {
@@ -348,6 +349,30 @@ export const useReturnTransaction = ({
         );
       }
 
+      // --- 9b. LOYALTY: take back earned points in proportion to how much the order went down.
+      // Points the customer USED are not given back — the refund / credit note covers the value.
+      let loyaltyUpdate: Record<string, unknown> = {};
+      const savedOrderSnap = await getDoc(saleRef);
+      const savedOrder: any = savedOrderSnap.exists() ? savedOrderSnap.data() : {};
+      const orderLoyalty = readSaleLoyalty(savedOrder);
+      if (orderLoyalty && orderLoyalty.earned > 0) {
+        const totalBefore = Number(savedOrder.totalAmount) || 0;
+        const reduction = Math.max(0, totalBefore - updatedFinalAmount);
+        const takeBack = calcReturnReversal(orderLoyalty.earned, reduction, totalBefore);
+        if (takeBack > 0) {
+          writeLoyaltyInBatch(batch, db, companyId, orderLoyalty.phone, [{
+            type: 'reverse',
+            points: -takeBack,
+            refType: 'return',
+            refId: selectedSale.id,
+            invoiceNumber: savedOrder.orderId || '',
+            note: `Online order items returned (₹${reduction.toFixed(2)})`,
+            extra: { reverses: 'earn' },
+          }], { actor: { uid: currentUser.uid, name: currentUser.name || '' } });
+          loyaltyUpdate = { loyalty: { ...orderLoyalty, earned: orderLoyalty.earned - takeBack } };
+        }
+      }
+
       const actualPaid = selectedSale.paidAmount ?? 0;
       const { isUnpaidOrder, effectivePaid, effectiveDue, newStatus } = computePostReturnPaymentStatus(
         actualPaid,
@@ -375,6 +400,7 @@ export const useReturnTransaction = ({
         // --- NEW FIX: Update root fields for OrdersPage summary totals ---
         ...(creditAmountToAdd > 0 && { creditNoteAmount: firebaseIncrement(creditAmountToAdd) }),
         ...(refundAmountToAdd > 0 && { refundAmount: firebaseIncrement(refundAmountToAdd) }),
+        ...loyaltyUpdate,
 
         updatedAt: serverTimestamp()
       });

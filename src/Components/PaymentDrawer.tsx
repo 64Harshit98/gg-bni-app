@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { transactiontypes } from '../constants/Transactiontype';
 import { Modal } from '../constants/Modal';
-import { State } from '../enums';
+import { Permissions, State } from '../enums';
 import { db } from '../lib/Firebase';
 import {
     doc,
@@ -19,6 +19,29 @@ import {
 } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
 import { CUSTOMER_REMARKS_COLLECTION, getPartyDocId } from '../constants/customerSource';
+import { useOptionalLoyaltySettings } from '../context/SettingsContext';
+import {
+    LOYALTY_PAYMENT_KEY,
+    calcEarnPoints,
+    calcMaxRedeemPoints,
+    fetchLoyaltyAccount,
+    normalizeLoyaltyPhone,
+    pointsToRupees,
+    rupeesToPoints,
+    type SaleLoyalty,
+} from '../lib/loyalty';
+
+/** What the cashier chose for loyalty points on this bill (sales only). */
+export interface LoyaltySelection {
+    phone: string;
+    redeemPoints: number;
+    redeemValue: number;
+    earnPoints: number;
+    /** The rule-based points before any override. */
+    autoEarned: number;
+    /** True when an authorised user changed earnPoints away from autoEarned. */
+    overridden: boolean;
+}
 
 export interface PaymentDetails { [key: string]: number; }
 
@@ -68,6 +91,8 @@ export interface PaymentCompletionData {
     transportDetails?: TransportDetails;
     printBill?: boolean;
     sendWhatsApp?: boolean;
+    /** Present only when loyalty is on for this drawer and the customer has a 10-digit phone. */
+    loyalty?: LoyaltySelection;
 }
 
 interface PaymentDrawerProps {
@@ -137,6 +162,12 @@ interface PaymentDrawerProps {
     partyOffer?: { tone: 'info' | 'applied' | 'warn'; text: string; actionLabel: string; onAction: () => void } | null;
     // Tax se pehle ka asli amount (round off ke bina) — Sub total row isi se banta hai
     taxableSubtotal?: number;
+    /** Show loyalty points (earn + redeem). Only POS sale bills pass this; also needs Loyalty settings on. */
+    enableLoyalty?: boolean;
+    /** Edit mode: what the bill being edited already did to points, so its redeemed points count as available. */
+    initialLoyalty?: SaleLoyalty | null;
+    /** Edit of a bill saved before loyalty existed: it can use points but never earns. */
+    loyaltyNoEarn?: boolean;
 }
 
 // --- SESSION STORAGE KEYS ---
@@ -426,8 +457,12 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     onPartyInput,
     partyOffer,
     taxableSubtotal,
+    enableLoyalty = false,
+    initialLoyalty = null,
+    loyaltyNoEarn = false,
 }) => {
-    const { currentUser } = useAuth();
+    const { currentUser, hasPermission } = useAuth();
+    const loyaltySettings = useOptionalLoyaltySettings();
 
     // --- COMPUTED PROPERTIES BASED ON MODE ---
     const isSale = mode === 'sale' || mode === 'calculator';
@@ -521,21 +556,86 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         return parseFloat(sum.toFixed(2));
     }, [selectedPayments]);
 
+    // --- LOYALTY POINTS ---
+    // Everyone can see and redeem points. Changing the points a bill EARNS needs
+    // the setting AND the OverrideLoyaltyPoints permission (owner-grantable).
+    const loyaltyPhone = normalizeLoyaltyPhone(partyNumber);
+    const loyaltyActive = enableLoyalty && isSale && !payingOut && !!loyaltySettings?.enabled;
+    const loyaltyForCustomer = loyaltyActive && !!loyaltyPhone;
+    const [loyaltyBalance, setLoyaltyBalance] = useState<number | null>(null);
+    const [usePoints, setUsePoints] = useState(false);
+    const [pointsToUse, setPointsToUse] = useState(0);
+    // What the cashier is typing in the ₹ box (points are worked out from it); null when not typing there.
+    const [pointsRupeeDraft, setPointsRupeeDraft] = useState<string | null>(null);
+    const [earnOverride, setEarnOverride] = useState<number | null>(null);
+    const canOverrideEarn = !!loyaltySettings?.allowBillOverride && hasPermission(Permissions.OverrideLoyaltyPoints);
+
+    // In edit mode the bill's own redeemed points come back before re-applying, so they count as available.
+    const loyaltyAvailable = useMemo(() => {
+        if (loyaltyBalance === null) return 0;
+        const giveBack = initialLoyalty && initialLoyalty.phone === loyaltyPhone ? initialLoyalty.redeemed : 0;
+        return Math.max(0, loyaltyBalance + giveBack);
+    }, [loyaltyBalance, initialLoyalty, loyaltyPhone]);
+
+    const maxRedeemPoints = useMemo(
+        () => (loyaltyForCustomer ? calcMaxRedeemPoints(loyaltyAvailable, netPayable, loyaltySettings) : 0),
+        [loyaltyForCustomer, loyaltyAvailable, netPayable, loyaltySettings],
+    );
+    const redeemPoints = usePoints ? Math.max(0, Math.min(Math.floor(pointsToUse || 0), maxRedeemPoints)) : 0;
+    const appliedPointsValue = redeemPoints > 0 ? Math.min(netPayable, pointsToRupees(redeemPoints, loyaltySettings)) : 0;
+    const autoEarnPoints = loyaltyForCustomer && !loyaltyNoEarn ? calcEarnPoints(Math.max(0, netPayable - appliedPointsValue), loyaltySettings) : 0;
+    const canEditEarn = canOverrideEarn && !loyaltyNoEarn;
+    const earnPoints = canEditEarn && earnOverride !== null ? Math.max(0, Math.floor(earnOverride)) : autoEarnPoints;
+
     const appliedCreditAmount = useMemo(() => {
         if (!useCredit || partyCredit <= 0) return 0;
-        const remainingAfterManual = Math.max(0, netPayable - totalManualPayment);
+        const remainingAfterManual = Math.max(0, netPayable - totalManualPayment - appliedPointsValue);
         return Math.min(remainingAfterManual, partyCredit);
-    }, [useCredit, partyCredit, netPayable, totalManualPayment]);
+    }, [useCredit, partyCredit, netPayable, totalManualPayment, appliedPointsValue]);
 
     const appliedDebitAmount = useMemo(() => {
         if (!useDebit || partyDebit <= 0) return 0;
-        const remainingAfterManualAndCredit = Math.max(0, netPayable - totalManualPayment - appliedCreditAmount);
+        const remainingAfterManualAndCredit = Math.max(0, netPayable - totalManualPayment - appliedPointsValue - appliedCreditAmount);
         return Math.min(remainingAfterManualAndCredit, partyDebit);
-    }, [useDebit, partyDebit, netPayable, totalManualPayment, appliedCreditAmount]);
+    }, [useDebit, partyDebit, netPayable, totalManualPayment, appliedPointsValue, appliedCreditAmount]);
 
     const totalPaymentReceived = useMemo(() => {
-        return parseFloat((totalManualPayment + appliedCreditAmount + appliedDebitAmount).toFixed(2));
-    }, [totalManualPayment, appliedCreditAmount, appliedDebitAmount]);
+        return parseFloat((totalManualPayment + appliedPointsValue + appliedCreditAmount + appliedDebitAmount).toFixed(2));
+    }, [totalManualPayment, appliedPointsValue, appliedCreditAmount, appliedDebitAmount]);
+
+    // Load the customer's points whenever the phone becomes a full 10-digit number.
+    useEffect(() => {
+        setLoyaltyBalance(null);
+        if (!isOpen || !loyaltyForCustomer || !currentUser?.companyId) return;
+        let cancelled = false;
+        const companyId = currentUser.companyId;
+        const timer = setTimeout(() => {
+            fetchLoyaltyAccount(db, companyId, loyaltyPhone)
+                .then((acc) => { if (!cancelled) setLoyaltyBalance(acc?.balance ?? 0); })
+                .catch((err) => {
+                    console.error('Failed to load loyalty points', err);
+                    if (!cancelled) setLoyaltyBalance(0);
+                });
+        }, 300);
+        return () => { cancelled = true; clearTimeout(timer); };
+    }, [isOpen, loyaltyForCustomer, loyaltyPhone, currentUser?.companyId]);
+
+    // A different customer starts fresh. On edit, the bill's own points are restored once.
+    const loyaltyInitDone = useRef(false);
+    useEffect(() => {
+        if (!isOpen) { loyaltyInitDone.current = false; return; }
+        setPointsRupeeDraft(null);
+        if (!loyaltyInitDone.current && initialLoyalty && initialLoyalty.phone === loyaltyPhone) {
+            loyaltyInitDone.current = true;
+            setUsePoints(initialLoyalty.redeemed > 0);
+            setPointsToUse(initialLoyalty.redeemed);
+            setEarnOverride(initialLoyalty.overriddenBy ? initialLoyalty.earned : null);
+            return;
+        }
+        setUsePoints(false);
+        setPointsToUse(0);
+        setEarnOverride(null);
+    }, [isOpen, loyaltyPhone, initialLoyalty]);
 
     const changeToReturn = useMemo(() => {
         const diff = totalPaymentReceived - netPayable;
@@ -645,7 +745,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         }
         if (initialPaymentMethods && Object.keys(initialPaymentMethods).length > 0) {
             Object.entries(initialPaymentMethods).forEach(([key, value]) => {
-                if (key === 'due' || key === 'Credit Note' || key === 'Debit Note') return;
+                if (key === 'due' || key === 'Credit Note' || key === 'Debit Note' || key === LOYALTY_PAYMENT_KEY) return;
                 const numVal = Number(value);
                 if (!isNaN(numVal) && numVal > 0) loadedPayments[key] = numVal;
             });
@@ -964,6 +1064,15 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             return;
         }
 
+        if (loyaltyForCustomer && loyaltyBalance === null) {
+            setModal({ message: 'Loading loyalty points — please try again in a moment.', type: State.WARNING });
+            return;
+        }
+        if (usePoints && redeemPoints <= 0) {
+            setModal({ message: 'No loyalty points can be used on this bill. Turn off Use points or check the amount.', type: State.ERROR });
+            return;
+        }
+
         if (changeToReturn > 0.01) {
             setPendingReturnAmount(changeToReturn);
             return;
@@ -980,8 +1089,20 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         transactiontypes.forEach((t) => { payloadToSave[t.id] = 0; });
         Object.entries(selectedPayments).forEach(([key, value]) => { payloadToSave[key] = value; });
 
+        if (appliedPointsValue > 0) payloadToSave[LOYALTY_PAYMENT_KEY] = appliedPointsValue;
         if (appliedCreditAmount > 0) payloadToSave['Credit Note'] = appliedCreditAmount;
         if (appliedDebitAmount > 0) payloadToSave['Debit Note'] = appliedDebitAmount;
+
+        const loyaltySelection: LoyaltySelection | undefined = loyaltyForCustomer
+            ? {
+                phone: loyaltyPhone,
+                redeemPoints,
+                redeemValue: appliedPointsValue,
+                earnPoints,
+                autoEarned: autoEarnPoints,
+                overridden: earnPoints !== autoEarnPoints,
+            }
+            : undefined;
 
         setIsSubmitting(true);
         shouldSaveToLocalStorage.current = false;
@@ -1036,6 +1157,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 transportDetails: hasTransportDetails ? safeTransportDetails : undefined,
                 printBill: mode === 'sale' && showBillOptions ? printBill : undefined,
                 sendWhatsApp: mode === 'sale' && showBillOptions ? sendWhatsApp : undefined,
+                loyalty: loyaltySelection,
             });
 
             const identifier = getPartyDocId(safePartyName, safePartyNumber);
@@ -1347,6 +1469,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const allocationSegments = [
         ...transactiontypes.map(t => ({ key: t.id, amount: selectedPayments[t.id] || 0, color: (PAYMENT_UI[t.id] || PAYMENT_UI_FALLBACK).bar })),
         { key: 'other', amount: otherManual > 0.01 ? otherManual : 0, color: '#7a8aa3' },
+        { key: 'points', amount: appliedPointsValue, color: '#e17100' },
         { key: 'credit', amount: appliedCreditAmount, color: '#5b6b86' },
         { key: 'debit', amount: appliedDebitAmount, color: '#94a3c8' },
     ].filter(s => s.amount > 0);
@@ -1389,6 +1512,8 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         { label: 'Sub total', value: `₹${fmt(subTotalValue)}` },
         { label: `Tax · ${taxModeLabel}`, value: `₹${fmt(liveTax)}` },
         { label: amountLabel, value: `₹${fmt(netPayable)}`, total: true },
+        ...(appliedPointsValue > 0 ? [{ label: `Paid with points (${redeemPoints} pts)`, value: `− ₹${fmt(appliedPointsValue)}`, success: true }] : []),
+        ...(loyaltyForCustomer && earnPoints > 0 ? [{ label: 'Points earned', value: `+${earnPoints} pts`, success: true }] : []),
     ];
 
     const confirmContent = isSubmitting ? (
@@ -1939,6 +2064,144 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             )}
         </div>
     ) : null;
+    // --- LOYALTY POINTS ---
+    const starIcon = (
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9z" /></svg>
+    );
+    const loyaltyLoading = loyaltyForCustomer && loyaltyBalance === null;
+    const canRedeem = !!loyaltySettings?.redeemEnabled && maxRedeemPoints > 0;
+    const minToRedeem = loyaltySettings?.minPointsToRedeem ?? 0;
+    const loyaltyBlock = loyaltyForCustomer ? (
+        <div className="grid gap-2">
+            <div className={OVERLINE_CLS}>Loyalty points</div>
+            <div className="grid gap-2.5 p-2.5 bg-white border border-[#dfe6fb] rounded-sm">
+                {/* Balance + redeem */}
+                <div className="flex items-center gap-3">
+                    <span className="w-8 h-8 grid place-items-center rounded-sm bg-[#fff3dd] text-[#bb4d00] flex-none">{starIcon}</span>
+                    <span className="flex-1 min-w-0 text-sm font-medium text-[#0f172b]">
+                        {loyaltyLoading ? 'Loading points…' : <>{loyaltyAvailable} pts available</>}
+                        <small className="block text-[11px] leading-[15px] font-normal text-[#5b6b86]">
+                            {loyaltyLoading
+                                ? ' '
+                                : !loyaltySettings?.redeemEnabled
+                                    ? 'Redeeming is turned off'
+                                    : canRedeem
+                                        ? `Up to ${maxRedeemPoints} pts (₹${fmt(pointsToRupees(maxRedeemPoints, loyaltySettings))}) on this bill`
+                                        : loyaltyAvailable > 0 && loyaltyAvailable < minToRedeem
+                                            ? `Needs at least ${minToRedeem} pts to use`
+                                            : 'Nothing to use yet'}
+                        </small>
+                    </span>
+                    {canRedeem && (
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={usePoints}
+                                onChange={(e) => {
+                                    setUsePoints(e.target.checked);
+                                    setPointsRupeeDraft(null);
+                                    if (e.target.checked) setPointsToUse(maxRedeemPoints);
+                                }}
+                                className="w-4 h-4 accent-[#155dfc] rounded cursor-pointer"
+                            />
+                            <span className="text-sm font-medium text-[#45556c]">Use</span>
+                        </label>
+                    )}
+                </div>
+                {usePoints && canRedeem && (
+                    <div className="grid gap-1 pl-11">
+                        {/* Type either box: points, or the ₹ amount to take off (points are worked out from it) */}
+                        <div className="flex items-center gap-2">
+                            <div className="flex flex-1 min-w-0 items-center gap-1 h-10 px-2.5 rounded-sm border border-[#7a8aa3] bg-white focus-within:border-[#155dfc] focus-within:shadow-[0_0_0_3px_#e6eeff]">
+                                <input
+                                    type="number"
+                                    inputMode="numeric"
+                                    min={0}
+                                    max={maxRedeemPoints}
+                                    step={1}
+                                    aria-label="Points to use"
+                                    value={pointsToUse || ''}
+                                    placeholder="0"
+                                    onChange={(e) => {
+                                        setPointsRupeeDraft(null);
+                                        setPointsToUse(Math.max(0, Math.min(maxRedeemPoints, Math.floor(Number(e.target.value) || 0))));
+                                    }}
+                                    className="w-full min-w-0 text-right text-sm font-semibold text-[#0f172b] bg-transparent outline-none tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                />
+                                <i className="not-italic text-[#5b6b86] text-sm">pts</i>
+                            </div>
+                            <span className="text-sm text-[#5b6b86]" aria-hidden="true">=</span>
+                            <div className="flex flex-1 min-w-0 items-center gap-1 h-10 px-2.5 rounded-sm border border-[#7a8aa3] bg-white focus-within:border-[#155dfc] focus-within:shadow-[0_0_0_3px_#e6eeff]">
+                                <i className="not-italic text-[#008236] text-sm font-semibold whitespace-nowrap">− ₹</i>
+                                <input
+                                    type="number"
+                                    inputMode="decimal"
+                                    min={0}
+                                    step="0.01"
+                                    aria-label="Amount to pay with points"
+                                    value={pointsRupeeDraft ?? (appliedPointsValue ? fmtShort(appliedPointsValue) : '')}
+                                    placeholder="0.00"
+                                    onFocus={(e) => e.target.select()}
+                                    onChange={(e) => {
+                                        setPointsRupeeDraft(e.target.value);
+                                        setPointsToUse(Math.min(maxRedeemPoints, rupeesToPoints(Number(e.target.value) || 0, loyaltySettings)));
+                                    }}
+                                    onBlur={() => setPointsRupeeDraft(null)}
+                                    className="w-full min-w-0 text-right text-sm font-semibold text-[#008236] bg-transparent outline-none tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                />
+                            </div>
+                        </div>
+                        {(() => {
+                            // While typing ₹, say when it can't be matched exactly (whole points / the cap)
+                            if (pointsRupeeDraft === null || pointsRupeeDraft === '') return null;
+                            const typed = Number(pointsRupeeDraft) || 0;
+                            if (Math.abs(typed - appliedPointsValue) < 0.005) return null;
+                            const maxValue = pointsToRupees(maxRedeemPoints, loyaltySettings);
+                            return (
+                                <small className="text-[11px] leading-[15px] text-[#bb4d00]">
+                                    {typed > maxValue + 0.005
+                                        ? `Most you can use is ₹${fmt(maxValue)} (${maxRedeemPoints} pts)`
+                                        : `Nearest in whole points: ${redeemPoints} pts = ₹${fmt(appliedPointsValue)}`}
+                                </small>
+                            );
+                        })()}
+                    </div>
+                )}
+
+                {/* Earn */}
+                <div className="flex items-center gap-3 pt-2.5 border-t border-[#dfe6fb]">
+                    <span className="flex-1 min-w-0 text-sm text-[#45556c]">
+                        Earns on this bill
+                        {loyaltyNoEarn && (
+                            <small className="block text-[11px] leading-[15px] text-[#5b6b86]">Bill made before loyalty was on</small>
+                        )}
+                        {canEditEarn && earnOverride !== null && earnOverride !== autoEarnPoints && (
+                            <small className="block text-[11px] leading-[15px] text-[#5b6b86]">Rule gives {autoEarnPoints} pts</small>
+                        )}
+                    </span>
+                    {canEditEarn ? (
+                        <div className="flex items-center gap-1 h-9 w-28 px-2.5 rounded-sm border border-[#7a8aa3] bg-white focus-within:border-[#155dfc] focus-within:shadow-[0_0_0_3px_#e6eeff]">
+                            <span className="text-[#008236] text-sm">+</span>
+                            <input
+                                type="number"
+                                inputMode="numeric"
+                                min={0}
+                                step={1}
+                                aria-label="Points earned on this bill"
+                                value={earnOverride ?? autoEarnPoints}
+                                onChange={(e) => setEarnOverride(e.target.value === '' ? 0 : Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+                                className="w-full min-w-0 text-right text-sm font-semibold text-[#008236] bg-transparent outline-none tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                            />
+                            <i className="not-italic text-[#5b6b86] text-sm">pts</i>
+                        </div>
+                    ) : (
+                        <b className="text-sm font-semibold text-[#008236] tabular-nums" title="Set by the shop's loyalty rule">+{earnPoints} pts</b>
+                    )}
+                </div>
+            </div>
+        </div>
+    ) : null;
+
     return createPortal(
         <div
             className="fixed inset-0 z-[2000] flex items-end justify-center md:items-stretch md:justify-end overscroll-none"
@@ -2077,6 +2340,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                         {discountInlineBlock}
 
                         {dueNotices}
+                        {loyaltyBlock}
                         {balancesBlock}
                         {extrasBlock}
                     </div>

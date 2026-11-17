@@ -11,6 +11,8 @@ import { botMasterService } from '../../../Additional/Whatsapp/WhatsappApi';
 import { sendCompanyWhatsappMessage } from '../../../Additional/Whatsapp/sendCompanyWhatsappMessage';
 import { calculatePdfItemDiscounts } from '../sales.calculations';
 import type { SalesItem } from '../sales.types';
+import { useOptionalLoyaltySettings } from '../../../../context/SettingsContext';
+import { loyaltyForPrint } from '../../../../lib/loyalty';
 
 interface UseSalesCommunicationParams {
     currentUser: any;
@@ -49,6 +51,7 @@ export const useSalesCommunication = ({
     const [showPrintSubMenu, setShowPrintSubMenu] = useState(false);
     const [enableTriplicate, setEnableTriplicate] = useState(false);
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+    const loyaltySettings = useOptionalLoyaltySettings();
 
     useEffect(() => {
         const fetchBillSettings = async () => {
@@ -214,6 +217,7 @@ export const useSalesCommunication = ({
                     return snap.exists() ? Number(snap.data().creditBalance || 0) : 0;
                 } catch { return 0; }
             })(),
+            loyalty: await loyaltyForPrint(db, currentUser.companyId, invoice, loyaltySettings),
             bankDetails: {
                 accountName: billSettings.accountName || businessInfo?.accountHolderName,
                 accountNumber: billSettings.accountNumber || businessInfo?.accountNumber,

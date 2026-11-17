@@ -25,6 +25,8 @@ export interface PartyPricingAdapter<L> {
     apply: (line: L, s: CustomerPriceSuggestion, partyId: string, partyName: string) => L;
     /** Restore the previous price, drop the tags, and set `skip` when given. */
     revert: (line: L, skip?: string) => L;
+    /** The party's price for a line. Default: getCustomerPriceSuggestion (the Sales rule). */
+    suggest?: (line: PricedLine, rule: CustomerPricingRule, roundingEnabled: boolean, interval: number) => CustomerPriceSuggestion | null;
 }
 
 /** One-line message for the payment drawer / customer bar. */
@@ -93,7 +95,7 @@ export const usePartyPricing = <L extends { id: string; quantity?: number | stri
     }, [enabled, companyId, collectionName, partyId]);
 
     const suggestFor = (line: L) =>
-        rule ? getCustomerPriceSuggestion(adapter.toPriced(line), rule, rounding.enabled, rounding.interval) : null;
+        rule ? (adapter.suggest ?? getCustomerPriceSuggestion)(adapter.toPriced(line), rule, rounding.enabled, rounding.interval) : null;
 
     // Automatic: revert prices set for another party, then apply this party's agreed price.
     useEffect(() => {
@@ -117,7 +119,7 @@ export const usePartyPricing = <L extends { id: string; quantity?: number | stri
             return changed ? next : prev;
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [enabled, auto, resolvedFor, partyId, rule, items]);
+    }, [enabled, auto, resolvedFor, partyId, rule, items, adapter]);
 
     /** lineId → party price, for lines that don't carry an applied price. */
     const suggestions = useMemo(() => {
@@ -130,7 +132,7 @@ export const usePartyPricing = <L extends { id: string; quantity?: number | stri
         }
         return out;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [enabled, rule, items, rounding.enabled, rounding.interval]);
+    }, [enabled, rule, items, rounding.enabled, rounding.interval, adapter]);
 
     const appliedHere = items.filter(l => adapter.pricedFor(l) !== undefined && adapter.pricedFor(l) === partyId);
     const appliedElsewhere = items.filter(l => adapter.pricedFor(l) !== undefined && adapter.pricedFor(l) !== partyId);

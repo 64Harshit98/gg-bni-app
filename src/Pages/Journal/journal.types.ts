@@ -74,6 +74,8 @@ export interface Invoice {
     stationFrom?: string;
     pinCode?: string;
   };
+  /** What this bill did to the customer's loyalty points (see lib/loyalty.ts). */
+  loyalty?: import('../../lib/loyalty').SaleLoyalty | null;
 }
 
 export interface PdfData {
@@ -135,6 +137,7 @@ export interface PdfData {
   due?: number;
   previousBalance?: number;
   creditNoteBalance?: number;
+  loyalty?: import('../../UseComponents/loyaltyBillLine').BillLoyalty | null;
   isEstimate?: boolean;
   bankDetails: {
     accountName: string;

@@ -10,7 +10,8 @@ import PaymentDrawer from '../../../Components/PaymentDrawer';
 import { Modal } from '../../../constants/Modal';
 import { Permissions, ROLES, State, Variant } from '../../../enums';
 import { CustomButton } from '../../../Components';
-import { useSalesSettings, useItemSettings } from '../../../context/SettingsContext';
+import { useSalesSettings, useItemSettings, useLoyaltySettings } from '../../../context/SettingsContext';
+import { readSaleLoyalty } from '../../../lib/loyalty';
 import { Spinner } from '../../../constants/Spinner';
 import { ItemEditDrawer } from '../../../Components/ItemDrawer';
 import BackButton from '../../../Components/BackButton';
@@ -608,6 +609,15 @@ const Sales: React.FC = () => {
         finalAmount,
     });
 
+    // Loyalty points: shown in every sale drawer when Loyalty settings are on.
+    const { loyaltySettings } = useLoyaltySettings();
+    const loyaltyEnabled = !!loyaltySettings?.enabled;
+    // Memoised: the drawer resets its points state when this object changes identity.
+    const initialLoyalty = useMemo(() => (isEditMode ? readSaleLoyalty(invoiceToEdit) : null), [isEditMode, invoiceToEdit]);
+    // Bills saved before loyalty existed have no `loyalty` key at all — editing them never earns.
+    const loyaltyNoEarn = isEditMode && !!invoiceToEdit && invoiceToEdit.loyalty === undefined;
+    const loyaltyDrawerProps = { enableLoyalty: loyaltyEnabled, initialLoyalty, loyaltyNoEarn };
+
     const {
         handleProceedToPayment,
         handleSavePayment,
@@ -639,6 +649,7 @@ const Sales: React.FC = () => {
         setIsDrawerOpen,
         setSavedBillData,
         showSuccessModal,
+        loyaltyEnabled,
     });
 
     // ── Customer-wise fixed pricing ──
@@ -2164,6 +2175,7 @@ const Sales: React.FC = () => {
                 {/* Drawers & modals — rendered ONCE */}
                 <PaymentDrawer
                     mode='sale' isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)}
+                    {...loyaltyDrawerProps}
                     enableCustomerDetails={true}
                     subtotal={subtotal} billTotal={amountToPayNow}
                     totalTax={taxAmount}
@@ -2357,6 +2369,7 @@ ${colClass || ''}`}
                 {/* Modals & Drawers */}
                 <PaymentDrawer
                     mode='calculator'
+                    {...loyaltyDrawerProps}
                     isOpen={isDrawerOpen}
                     originalBillTotal={calculatedOriginalTotal}
                     onClose={() => {
@@ -2553,6 +2566,7 @@ ${colClass || ''}`}
 
             <PaymentDrawer isOpen={isDrawerOpen}
                 mode='sale'
+                {...loyaltyDrawerProps}
                 onClose={() => setIsDrawerOpen(false)}
                 subtotal={subtotal} billTotal={amountToPayNow}
                 totalTax={taxAmount}

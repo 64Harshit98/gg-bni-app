@@ -68,6 +68,8 @@ export const useOrdersData = (
             expenses: Array.isArray(data.expenses) ? data.expenses : [],
             manualDiscount: Number(data.manualDiscount || 0),
             transportDetails: data.transportDetails || undefined,
+            // What the order did to loyalty points (read by print / return / delete)
+            loyalty: data.loyalty || null,
             updatedAt,
             userName: data.userName || data.billingDetails?.name || 'Anonymous',
             userLoginPhone: data.userLoginPhone || data.billingDetails?.phone || '',

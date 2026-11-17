@@ -1376,25 +1376,71 @@ exports.generateMyReferralCode = functions.https.onCall(async (data, context) =>
     }
 });
 
+// --- Sign-up helpers: shared by the live form check and the registration itself,
+// so anything the form says is fine is exactly what registration accepts. ---
+const SIGNUP_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+async function findReferral(code) {
+    const cleanCode = String(code || '').trim().toUpperCase();
+    if (!cleanCode) return null;
+    const agentQuery = await db.collection('agents').where('ownReferralCode', '==', cleanCode).limit(1).get();
+    if (!agentQuery.empty) return { referrerId: agentQuery.docs[0].id, code: cleanCode, type: 'agent' };
+    const compQuery = await db.collection('companies').where('ownReferralCode', '==', cleanCode).limit(1).get();
+    if (!compQuery.empty) return { referrerId: compQuery.docs[0].id, code: cleanCode, type: 'company' };
+    return null;
+}
+
+async function isEmailRegistered(email) {
+    try {
+        await admin.auth().getUserByEmail(email);
+        return true;
+    } catch (error) {
+        if (error.code === 'auth/user-not-found') return false;
+        throw error;
+    }
+}
+
+// Live checks for the sign-up form. Each field is optional; only what's sent is checked.
+exports.checkSignupDetails = functions.https.onCall(async (data) => {
+    const email = String(data?.email || '').trim().toLowerCase();
+    const referralCode = String(data?.referralCode || '').trim();
+    const result = {};
+    try {
+        if (email) result.emailTaken = SIGNUP_EMAIL_RE.test(email) ? await isEmailRegistered(email) : false;
+        if (referralCode) result.referralValid = !!(await findReferral(referralCode));
+        return result;
+    } catch (error) {
+        console.error("checkSignupDetails failed:", error.code, error.message);
+        throw new functions.https.HttpsError("internal", "Could not check the details right now.");
+    }
+});
+
 exports.registerCompanyAndUser = functions.https.onCall(async (data) => {
-    const { email, password, name, phoneNumber, role, businessData, salesSettings, catalogueSalesSettings, referralCode } = data;
-    if (!email || !password || password.length < 6 || !name || !role) {
+    const { password, name, phoneNumber, role, salesSettings, catalogueSalesSettings, referralCode } = data;
+    const email = String(data.email || '').trim().toLowerCase();
+    const businessData = data.businessData || {};
+    if (!email || !SIGNUP_EMAIL_RE.test(email) || !password || password.length < 6 || !name || !role) {
         throw new functions.https.HttpsError("invalid-argument", "Missing required fields.");
     }
 
+    // Validate everything before creating anything, so a rejected sign-up leaves nothing behind.
+    let referralDetails = null;
     try {
-        let referralDetails = null;
         if (referralCode) {
-            const cleanCode = referralCode.trim().toUpperCase();
-            const agentQuery = await db.collection('agents').where('ownReferralCode', '==', cleanCode).get();
-            if (!agentQuery.empty) referralDetails = { referrerId: agentQuery.docs[0].id, code: cleanCode, type: 'agent' };
-            else {
-                const compQuery = await db.collection('companies').where('ownReferralCode', '==', cleanCode).get();
-                if (!compQuery.empty) referralDetails = { referrerId: compQuery.docs[0].id, code: cleanCode, type: 'company' };
-                else throw new functions.https.HttpsError("invalid-argument", "Invalid referral code.");
-            }
+            referralDetails = await findReferral(referralCode);
+            if (!referralDetails) throw new functions.https.HttpsError("invalid-argument", "Invalid referral code.");
         }
+        if (await isEmailRegistered(email)) {
+            throw new functions.https.HttpsError("already-exists", "Email registered.");
+        }
+    } catch (error) {
+        if (error instanceof functions.https.HttpsError) throw error;
+        console.error("registerCompanyAndUser pre-check failed:", error.code, error.message, error);
+        throw new functions.https.HttpsError("unavailable", "Registration failed.");
+    }
 
+    let createdUid = null;
+    try {
         const counterRef = db.doc("CompanyID/counter");
         const newNumber = await db.runTransaction(async (t) => {
             const counterDoc = await t.get(counterRef);
@@ -1406,6 +1452,7 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data) => {
 
         const newCompanyId = `CMP-${String(newNumber).padStart(4, "0")}`;
         const userRecord = await admin.auth().createUser({ email, password, displayName: name });
+        createdUid = userRecord.uid;
         await admin.auth().setCustomUserClaims(userRecord.uid, { companyId: newCompanyId, role });
 
         const trialDate = istEndOfDay(new Date(), 3);
@@ -1434,8 +1481,15 @@ exports.registerCompanyAndUser = functions.https.onCall(async (data) => {
         return { status: "success", userId: userRecord.uid, companyId: newCompanyId };
     } catch (error) {
         console.error("registerCompanyAndUser failed:", error.code, error.message, error);
-        if (error.message === "Invalid referral code.") throw new functions.https.HttpsError("invalid-argument", error.message);
+        // Roll back a half-made account (login created, company not written). Left in
+        // place, every retry would hit "Email registered" with no company to log into.
+        if (createdUid) {
+            await admin.auth().deleteUser(createdUid).catch((e) =>
+                console.error("registerCompanyAndUser rollback failed:", createdUid, e.message));
+        }
         if (error.code === 'auth/email-already-exists') throw new functions.https.HttpsError("already-exists", "Email registered.");
+        if (error.code === 'auth/invalid-email') throw new functions.https.HttpsError("invalid-argument", "Invalid email.");
+        if (error.code === 'auth/invalid-password') throw new functions.https.HttpsError("invalid-argument", "Invalid password.");
         throw new functions.https.HttpsError("internal", "Registration failed.");
     }
 });

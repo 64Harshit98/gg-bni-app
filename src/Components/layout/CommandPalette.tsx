@@ -79,6 +79,8 @@ export const DESTINATIONS: Destination[] = [
   { label: 'Sales Settings', hint: 'Sales preferences', to: ROUTES.SALESETTING },
   { label: 'Purchase Settings', hint: 'Purchase preferences', to: ROUTES.PURCHASESETTING },
   { label: 'Party Pricing', hint: 'Fixed discount per customer / supplier', to: ROUTES.CUSTOMER_PRICING, keywords: 'customer supplier party discount special price rate dealer wholesale structure' },
+  { label: 'Loyalty Settings', hint: 'Earn and redeem rules for customer points', to: ROUTES.LOYALTYSETTING, keywords: 'loyalty points reward redeem earn' },
+  { label: 'Customer Points', hint: 'Loyalty balances and history', to: ROUTES.LOYALTY_POINTS, keywords: 'loyalty points reward balance customer' },
   { label: 'User Settings', hint: 'Manage users', to: ROUTES.USERSETTING },
   { label: 'Item Settings', hint: 'Item preferences', to: ROUTES.ITEMSETTING },
   { label: 'Bill Settings', hint: 'Invoice / bill format', to: ROUTES.BILLSETTING, keywords: 'invoice print' },

@@ -88,6 +88,8 @@ export interface SalesInvoice {
     shippingGST?: string;
     salesmanId?: string;
     salesmanName?: string;
+    /** What this bill did to the customer's loyalty points (see lib/loyalty.ts). */
+    loyalty?: (import('../../../lib/loyalty').SaleLoyalty & { balance?: number | null }) | null;
     expenses?: { id?: string | number; name: string; amount: number }[];
     narration?: string;
     transportDetails?: any;

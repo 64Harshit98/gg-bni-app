@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import { db } from '../../lib/Firebase';
+import { planAllowsRestaurant } from '../../lib/restaurant/types';
 import {
     doc,
     getDoc,
@@ -61,6 +62,8 @@ export interface SalesSettings {
     // unlock) each time the payment drawer opens. Defaults to true.
     lockBillDiscountByDefault?: boolean;
     allowNegativeStock?: boolean;
+    /** Restaurant mode: stock is kept as raw materials and billing deducts recipes. */
+    restaurantMode?: boolean;
     allowDueBilling?: boolean;
     requireCustomerName?: boolean;
     requireCustomerMobile?: boolean;
@@ -119,6 +122,7 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     maxBillDiscountType: 'percent',
     lockBillDiscountByDefault: true,
     allowNegativeStock: true,
+    restaurantMode: false,
     allowDueBilling: true,
     requireCustomerName: false,
     requireCustomerMobile: false,
@@ -956,6 +960,18 @@ const SalesSettingsPage: React.FC = () => {
                                         icon={ico(User)}
                                         checked={settings.enableSalesmanSelection ?? false}
                                         onChange={(checked) => handleCheckboxChange('enableSalesmanSelection', checked)}
+                                    />
+
+                                    <Opt
+                                        id="restaurant-mode"
+                                        label="Restaurant mode"
+                                        description={planAllowsRestaurant(activePlan)
+                                            ? "Keep stock as raw materials. Each bill uses the recipe of every item and add-on."
+                                            : "Available on POS Pro and Enterprise. Keeps stock as raw materials and deducts each item's recipe on billing."}
+                                        icon={ico(Receipt)}
+                                        checked={planAllowsRestaurant(activePlan) && (settings.restaurantMode ?? false)}
+                                        disabled={!planAllowsRestaurant(activePlan)}
+                                        onChange={(checked) => handleCheckboxChange('restaurantMode', checked)}
                                     />
 
                                     {settings.salesViewType !== 'card' && (

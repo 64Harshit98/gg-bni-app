@@ -19,6 +19,19 @@ import { calculateFinalizedSaleItems, toCurrency } from '../sales.calculations';
 import { omitKeys } from '../../../../lib/omitKeys';
 import { CART_ONLY_CUSTOMER_KEYS } from '../../../utils/customerPricing';
 import type { SalesInvoice, SalesItem } from '../sales.types';
+import { useRestaurantData } from '../../../../context/RestaurantDataContext';
+import {
+    cartLineConsumption,
+    diffConsumption,
+    shortfalls,
+    totalConsumption,
+} from '../../../../lib/restaurant/consumption';
+import { queueMovement } from '../../../../lib/restaurant/stockApi';
+import { unitCostOf } from '../../../../lib/restaurant/units';
+import { KITCHEN_ID, KITCHEN_NAME, type ConsumptionLine } from '../../../../lib/restaurant/types';
+
+/** Items already warned about a missing recipe this session (restaurant mode). */
+const warnedNoRecipe = new Set<string>();
 import {
     LoyaltyBalanceError,
     planLoyaltyForSave,
@@ -133,6 +146,10 @@ export const useSalesPayment = ({
     loyaltyEnabled = false,
 }: UseSalesPaymentParams) => {
     const [isSaving, setIsSaving] = useState(false);
+    const { isRestaurant, recipeMap, rawMaterialMap } = useRestaurantData();
+
+    // Lines loaded from the saved bill use its snapshot (none = nothing), new lines use the recipe
+    const lineConsumptionOf = (i: any): ConsumptionLine[] => cartLineConsumption(i, recipeMap, rawMaterialMap);
 
     const handleProceedToPayment = () => {
         if (items.length === 0) {
@@ -177,37 +194,72 @@ export const useSalesPayment = ({
         // ---------------------------------
 
         if (!(salesSettings as any)?.allowNegativeStock) {
-            // Build a map of quantities already committed in the ORIGINAL invoice
-            const originalQuantities = new Map<string, number>();
-            if (isEditMode && invoiceToEdit?.items) {
-                (invoiceToEdit.items as any[]).forEach((oldItem) => {
-                    const pid = oldItem.productId || oldItem.id;
-                    const oldQty = (oldItem.quantity || 1) * (oldItem.tierQuantity || 1);
-                    originalQuantities.set(pid, (originalQuantities.get(pid) || 0) + oldQty);
-                    addOnStockOf(oldItem).forEach((a) =>
-                        originalQuantities.set(a.itemId, (originalQuantities.get(a.itemId) || 0) + a.qty * (oldItem.quantity || 1)));
+            if (isRestaurant) {
+                const alreadyTaken = isEditMode && invoiceToEdit?.items
+                    ? totalConsumption((invoiceToEdit.items as any[]).map((oldItem) => oldItem.rawConsumption))
+                    : new Map<string, number>();
+                const needs = totalConsumption(
+                    items.filter(i => i.isEditable).map(i => lineConsumptionOf(i)),
+                );
+                const short = shortfalls(needs, rawMaterialMap, alreadyTaken);
+                if (short.length > 0) {
+                    setModal({
+                        message: `Insufficient raw material stock: ${short.map(s => `${s.name} (Avail:${s.have} ${s.unit}, Need:${s.need} ${s.unit})`).join(', ')}`,
+                        type: State.ERROR,
+                    });
+                    return;
+                }
+            } else {
+                // Build a map of quantities already committed in the ORIGINAL invoice
+                const originalQuantities = new Map<string, number>();
+                if (isEditMode && invoiceToEdit?.items) {
+                    (invoiceToEdit.items as any[]).forEach((oldItem) => {
+                        const pid = oldItem.productId || oldItem.id;
+                        const oldQty = (oldItem.quantity || 1) * (oldItem.tierQuantity || 1);
+                        originalQuantities.set(pid, (originalQuantities.get(pid) || 0) + oldQty);
+                        addOnStockOf(oldItem).forEach((a) =>
+                            originalQuantities.set(a.itemId, (originalQuantities.get(a.itemId) || 0) + a.qty * (oldItem.quantity || 1)));
+                    });
+                }
+                const stockNeeds = new Map<string, number>();
+                items.filter(i => i.isEditable).forEach(i => {
+                    const pid = i.productId;
+                    const requiredStock = (i.quantity || 1) * (i.tierQuantity || 1);
+                    stockNeeds.set(pid, (stockNeeds.get(pid) || 0) + requiredStock);
+                    addOnStockOf(i).forEach((a) =>
+                        stockNeeds.set(a.itemId, (stockNeeds.get(a.itemId) || 0) + a.qty * (i.quantity || 1)));
+                });
+                const invalidItems: string[] = [];
+                stockNeeds.forEach((needed, pid) => {
+                    const avail = availableItems.find(a => a.id === pid);
+                    const currentStock = avail?.stock ?? 0;
+                    // Add back the original committed quantity — those units are already deducted
+                    const alreadyCommitted = originalQuantities.get(pid) || 0;
+                    const effectiveAvailable = currentStock + alreadyCommitted;
+                    if (effectiveAvailable < needed) {
+                        invalidItems.push(`${avail?.name} (Avail:${effectiveAvailable}, Need:${needed})`);
+                    }
+                });
+                if (invalidItems.length > 0) { setModal({ message: `Insufficient stock: ${invalidItems.join(', ')}`, type: State.ERROR }); return; }
+            }
+        }
+
+        // Restaurant: items with no recipe are sold without deducting raw materials. Say so —
+        // once per item per session, and without blocking the bill.
+        if (isRestaurant) {
+            const missing = items.filter((i: any) => {
+                const pid = i.productId || i.id;
+                return pid && !i.isCustomAmount && i._origQuantity === undefined
+                    && !recipeMap.has(pid) && !warnedNoRecipe.has(pid);
+            });
+            if (missing.length > 0) {
+                missing.forEach((i: any) => warnedNoRecipe.add(i.productId || i.id));
+                const names = [...new Set(missing.map(i => i.name))].join(', ');
+                setModal({
+                    message: `No recipe set for: ${names}. ${missing.length === 1 ? 'It' : 'They'} will be billed without deducting raw-material stock. Add recipes in Settings → Item & Add-on Recipes.`,
+                    type: State.WARNING,
                 });
             }
-            const stockNeeds = new Map<string, number>();
-            items.filter(i => i.isEditable).forEach(i => {
-                const pid = i.productId;
-                const requiredStock = (i.quantity || 1) * (i.tierQuantity || 1);
-                stockNeeds.set(pid, (stockNeeds.get(pid) || 0) + requiredStock);
-                addOnStockOf(i).forEach((a) =>
-                    stockNeeds.set(a.itemId, (stockNeeds.get(a.itemId) || 0) + a.qty * (i.quantity || 1)));
-            });
-            const invalidItems: string[] = [];
-            stockNeeds.forEach((needed, pid) => {
-                const avail = availableItems.find(a => a.id === pid);
-                const currentStock = avail?.stock ?? 0;
-                // Add back the original committed quantity — those units are already deducted
-                const alreadyCommitted = originalQuantities.get(pid) || 0;
-                const effectiveAvailable = currentStock + alreadyCommitted;
-                if (effectiveAvailable < needed) {
-                    invalidItems.push(`${avail?.name} (Avail:${effectiveAvailable}, Need:${needed})`);
-                }
-            });
-            if (invalidItems.length > 0) { setModal({ message: `Insufficient stock: ${invalidItems.join(', ')}`, type: State.ERROR }); return; }
         }
 
         setIsDrawerOpen(true);
@@ -296,7 +348,8 @@ export const useSalesPayment = ({
             const itemsWithTierNames = itemsToFormat.map(item => {
                 // addOns / addOnKey / addOnGroups / addOnGroupIds are cart-only; the add-on text goes into the saved name
                 // preCustomer* only back the cart's Revert button — not saved
-                const { addOns, addOnKey, addOnGroups, addOnGroupIds, addOnPicks, ...rest } = omitKeys(item, CART_ONLY_CUSTOMER_KEYS) as any;
+                // _origQuantity is edit-mode bookkeeping only — never saved
+                const { addOns, addOnKey, addOnGroups, addOnGroupIds, addOnPicks, _origQuantity, ...rest } = omitKeys(item, CART_ONLY_CUSTOMER_KEYS) as any;
                 const baseName = item.tierLabel ? `${item.name} - ${item.tierLabel}` : item.name;
                 const addOnText = addOns?.length ? ` + ${addOns.map((a: { name: string }) => a.name).join(', ')}` : '';
                 // Remember which inventory items the add-ons took, so editing this bill can put their stock back
@@ -337,6 +390,7 @@ return {
             return obj;
         };
 
+        const lineConsumptions = isRestaurant ? items.map(i => lineConsumptionOf(i)) : [];
         const finalizedItemsRaw = formatItemsForDB(items);
         // calculateFinalizedSaleItems nayi object banata hai, to addOnStock yahin wapas jodo (same order, isliye index se)
         const finalizedItems = finalizedItemsRaw.length === items.length
@@ -346,10 +400,14 @@ return {
     const lines = src.addOns?.length
         ? src.addOns.map((a: any) => ({ name: a.name, price: Number(a.price) || 0 }))
         : src.addOnLines;
+    const rawCons = isRestaurant ? lineConsumptions[idx] : undefined;
+    const { _origQuantity: _dropOrig, ...fiClean } = fi as any;
     return {
-        ...fi,
+        ...fiClean,
         ...(linked.length > 0 && !(fi as any).addOnStock ? { addOnStock: linked } : {}),
         ...(lines?.length && !(fi as any).addOnLines ? { addOnLines: lines } : {}),
+        // Restaurant mode only: retail bill lines stay exactly as before (no rawConsumption key)
+        ...(isRestaurant ? { rawConsumption: rawCons?.length ? rawCons : null } : {}),
     };
 })
             : finalizedItemsRaw;
@@ -527,54 +585,82 @@ return {
                         actor: loyaltyActor,
                     });
 
-                    const oldQuantities = new Map<string, number>();
-                    (invoiceToEdit.items || []).forEach((oldItem: any) => {
-                        const pid = oldItem.productId || oldItem.id;
-                        const oldQty = (oldItem.quantity || 1) * (oldItem.tierQuantity || 1);
-                        oldQuantities.set(pid, (oldQuantities.get(pid) || 0) + oldQty);
-                        addOnStockOf(oldItem).forEach((a: { itemId: string; qty: number }) =>
-                            oldQuantities.set(a.itemId, (oldQuantities.get(a.itemId) || 0) + a.qty * (oldItem.quantity || 1)));
-                    });
-
-                    const newQuantities = new Map<string, number>();
-                    items.forEach(newItem => {
-                        const pid = newItem.productId || newItem.id;
-                        if (pid) {
-                            const newQty = (newItem.quantity || 1) * (newItem.tierQuantity || 1);
-                            newQuantities.set(pid, (newQuantities.get(pid) || 0) + newQty);
-                            addOnStockOf(newItem).forEach(a =>
-                                newQuantities.set(a.itemId, (newQuantities.get(a.itemId) || 0) + a.qty * (newItem.quantity || 1)));
-                        }
-                    });
-
-                    const allProductIds = new Set([...oldQuantities.keys(), ...newQuantities.keys()]);
-
-                    allProductIds.forEach(pid => {
-                        const oldTotal = oldQuantities.get(pid) || 0;
-                        const newTotal = newQuantities.get(pid) || 0;
-                        const difference = newTotal - oldTotal;
-
-                        if (difference !== 0) {
-                            const itemRef = doc(db, "companies", resolvedCompanyId, "items", pid);
-                            transaction.update(itemRef, {
-                                stock: firebaseIncrement(-difference),
-                                updatedAt: serverTimestamp()
+                    if (isRestaurant) {
+                        const oldCons = totalConsumption((invoiceToEdit.items || []).map((oldItem: any) => oldItem.rawConsumption));
+                        const newCons = totalConsumption(lineConsumptions);
+                        const diffs = diffConsumption(oldCons, newCons);
+                        const editDateMs = getParsedInvoiceDate().getTime();
+                        diffs.forEach((d, rawMaterialId) => {
+                            const rm = rawMaterialMap.get(rawMaterialId);
+                            // A raw material deleted since the bill was made: nothing to update (would fail the whole save)
+                            if (!rm) return;
+                            queueMovement(transaction, resolvedCompanyId, {
+                                rawMaterialId,
+                                rawMaterialName: rm?.name || rawMaterialId,
+                                type: 'consumed',
+                                qty: -d,
+                                locationId: KITCHEN_ID,
+                                locationName: KITCHEN_NAME,
+                                date: editDateMs,
+                                refType: 'sale',
+                                refId: invoiceToEdit.id,
+                                refNo: invoiceNumber.trim(),
+                                unitCost: unitCostOf(rm),
+                                note: 'Invoice edited',
                             });
-                        }
-                    });
+                        });
+                    } else {
+                        const oldQuantities = new Map<string, number>();
+                        (invoiceToEdit.items || []).forEach((oldItem: any) => {
+                            const pid = oldItem.productId || oldItem.id;
+                            const oldQty = (oldItem.quantity || 1) * (oldItem.tierQuantity || 1);
+                            oldQuantities.set(pid, (oldQuantities.get(pid) || 0) + oldQty);
+                            addOnStockOf(oldItem).forEach((a: { itemId: string; qty: number }) =>
+                                oldQuantities.set(a.itemId, (oldQuantities.get(a.itemId) || 0) + a.qty * (oldItem.quantity || 1)));
+                        });
+
+                        const newQuantities = new Map<string, number>();
+                        items.forEach(newItem => {
+                            const pid = newItem.productId || newItem.id;
+                            if (pid) {
+                                const newQty = (newItem.quantity || 1) * (newItem.tierQuantity || 1);
+                                newQuantities.set(pid, (newQuantities.get(pid) || 0) + newQty);
+                                addOnStockOf(newItem).forEach(a =>
+                                    newQuantities.set(a.itemId, (newQuantities.get(a.itemId) || 0) + a.qty * (newItem.quantity || 1)));
+                            }
+                        });
+
+                        const allProductIds = new Set([...oldQuantities.keys(), ...newQuantities.keys()]);
+
+                        allProductIds.forEach(pid => {
+                            const oldTotal = oldQuantities.get(pid) || 0;
+                            const newTotal = newQuantities.get(pid) || 0;
+                            const difference = newTotal - oldTotal;
+
+                            if (difference !== 0) {
+                                const itemRef = doc(db, "companies", resolvedCompanyId, "items", pid);
+                                transaction.update(itemRef, {
+                                    stock: firebaseIncrement(-difference),
+                                    updatedAt: serverTimestamp()
+                                });
+                            }
+                        });
+                    }
                 });
 
-                setAvailableItems(prev => prev.map(item => {
-                    const oldQty = (invoiceToEdit.items || [])
-                        .filter((i: any) => (i.productId || i.id) === item.id)
-                        .reduce((sum: number, i: any) => sum + (i.quantity || 1), 0);
-                    const newQty = items
-                        .filter(i => (i.productId || i.id) === item.id && !i.isCustomAmount)
-                        .reduce((sum, i) => sum + (i.quantity || 1), 0);
-                    const delta = newQty - oldQty;
-                    if (delta === 0) return item;
-                    return { ...item, stock: Math.max(0, (item.stock || 0) - delta) };
-                }));
+                if (!isRestaurant) {
+                    setAvailableItems(prev => prev.map(item => {
+                        const oldQty = (invoiceToEdit.items || [])
+                            .filter((i: any) => (i.productId || i.id) === item.id)
+                            .reduce((sum: number, i: any) => sum + (i.quantity || 1), 0);
+                        const newQty = items
+                            .filter(i => (i.productId || i.id) === item.id && !i.isCustomAmount)
+                            .reduce((sum, i) => sum + (i.quantity || 1), 0);
+                        const delta = newQty - oldQty;
+                        if (delta === 0) return item;
+                        return { ...item, stock: Math.max(0, (item.stock || 0) - delta) };
+                    }));
+                }
                 clearSalesReportCache(currentUser?.companyId);
                 showSuccessModal("Invoice Updated", ROUTES.JOURNAL);
 
@@ -596,20 +682,43 @@ return {
                     });
                     loyaltyBalanceAfter = nextLoyalty ? (balances.get(nextLoyalty.phone) ?? null) : null;
 
-                    // One stock update per product: sold items + linked add-on items (e.g. a Coke sold with a burger)
-                    const deductions = new Map<string, number>();
-                    items.forEach(i => {
-                        const pid = i.productId || i.id;
-                        if (pid && !i.isCustomAmount) {
-                            deductions.set(pid, (deductions.get(pid) || 0) + (i.quantity || 1) * (i.tierQuantity || 1));
-                            addOnStockOf(i).forEach(a =>
-                                deductions.set(a.itemId, (deductions.get(a.itemId) || 0) + a.qty * (i.quantity || 1)));
-                        }
-                    });
-                    deductions.forEach((qty, pid) => {
-                        const itemRef = doc(db, "companies", resolvedCompanyId, "items", pid);
-                        transaction.update(itemRef, { stock: firebaseIncrement(-qty), updatedAt: serverTimestamp() });
-                    });
+                    if (isRestaurant) {
+                        const totals = totalConsumption(lineConsumptions);
+                        const saleDateMs = getParsedInvoiceDate().getTime();
+                        totals.forEach((qty, rawMaterialId) => {
+                            const rm = rawMaterialMap.get(rawMaterialId);
+                            if (qty > 0 && rm) {
+                                queueMovement(transaction, resolvedCompanyId, {
+                                    rawMaterialId,
+                                    rawMaterialName: rm?.name || rawMaterialId,
+                                    type: 'consumed',
+                                    qty: -qty,
+                                    locationId: KITCHEN_ID,
+                                    locationName: KITCHEN_NAME,
+                                    date: saleDateMs,
+                                    refType: 'sale',
+                                    refId: result?.id,
+                                    refNo: result?.number,
+                                    unitCost: unitCostOf(rm),
+                                });
+                            }
+                        });
+                    } else {
+                        // One stock update per product: sold items + linked add-on items (e.g. a Coke sold with a burger)
+                        const deductions = new Map<string, number>();
+                        items.forEach(i => {
+                            const pid = i.productId || i.id;
+                            if (pid && !i.isCustomAmount) {
+                                deductions.set(pid, (deductions.get(pid) || 0) + (i.quantity || 1) * (i.tierQuantity || 1));
+                                addOnStockOf(i).forEach(a =>
+                                    deductions.set(a.itemId, (deductions.get(a.itemId) || 0) + a.qty * (i.quantity || 1)));
+                            }
+                        });
+                        deductions.forEach((qty, pid) => {
+                            const itemRef = doc(db, "companies", resolvedCompanyId, "items", pid);
+                            transaction.update(itemRef, { stock: firebaseIncrement(-qty), updatedAt: serverTimestamp() });
+                        });
+                    }
 
                     if (settingsDocId) {
                         const settingsRef = doc(db, "companies", resolvedCompanyId, "settings", settingsDocId);
@@ -648,13 +757,15 @@ return {
                             : null,
                     };
 
-                    setAvailableItems(prev => prev.map(item => {
-                        const stockDelta = items
-                            .filter(i => (i.productId || i.id) === item.id && !i.isCustomAmount)
-                            .reduce((sum, i) => sum + (i.quantity || 1), 0);
-                        if (stockDelta === 0) return item;
-                        return { ...item, stock: Math.max(0, (item.stock || 0) - stockDelta) };
-                    }));
+                    if (!isRestaurant) {
+                        setAvailableItems(prev => prev.map(item => {
+                            const stockDelta = items
+                                .filter(i => (i.productId || i.id) === item.id && !i.isCustomAmount)
+                                .reduce((sum, i) => sum + (i.quantity || 1), 0);
+                            if (stockDelta === 0) return item;
+                            return { ...item, stock: Math.max(0, (item.stock || 0) - stockDelta) };
+                        }));
+                    }
 
                     clearSalesReportCache(currentUser?.companyId);
                     setIsDrawerOpen(false);

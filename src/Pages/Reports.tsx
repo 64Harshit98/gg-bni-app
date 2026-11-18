@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { ROUTES } from '../constants/routes.constants';
 import { useAuth } from '../context/auth-context';
+import { useRestaurantData } from '../context/RestaurantDataContext';
 import BackButton from '../Components/BackButton';
 import { Permissions } from '../enums';
 import { useReportsOverview } from './Reports/useReportsOverview';
@@ -46,6 +47,7 @@ const Reports = () => {
     location.pathname === '/reports' || location.pathname === '/reports/';
 
   const { hasPermission } = useAuth();
+  const { isRestaurant, rawMaterials } = useRestaurantData();
   const { can, stats, ready } = useReportsOverview();
   const [query, setQuery] = useState('');
 
@@ -124,6 +126,37 @@ const Reports = () => {
           permission: Permissions.ViewItemReport,
           stat: statIf(ready.items, `${plural(stats.toRestock, 'item')} to reorder`),
         },
+        ...(isRestaurant
+          ? [
+              {
+                title: 'Current stock (Raw materials)',
+                description: 'Raw material stock, value and average cost',
+                icon: Package,
+                iconClass: 'bg-blue-50 text-blue-600',
+                to: ROUTES.RAW_CURRENT_STOCK,
+                permission: Permissions.ViewItemReport,
+                stat: plural(rawMaterials.length, 'raw material'),
+              },
+              {
+                title: 'Stock summary (Raw materials)',
+                description: 'Opening, purchase, consumed, wastage & closing stock',
+                icon: History,
+                iconClass: 'bg-green-50 text-green-600',
+                to: ROUTES.RAW_STOCK_SUMMARY,
+                permission: Permissions.ViewItemReport,
+                stat: 'Opening → closing balance',
+              },
+              {
+                title: 'Orderwise consumption',
+                description: 'Raw materials consumed per bill & food cost %',
+                icon: Receipt,
+                iconClass: 'bg-orange-50 text-orange-600',
+                to: ROUTES.RAW_CONSUMPTION,
+                permission: Permissions.ViewItemReport,
+                stat: 'Recipe consumption & food cost',
+              },
+            ]
+          : []),
       ],
     },
     {

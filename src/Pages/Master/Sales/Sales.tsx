@@ -33,6 +33,8 @@ import { TierPickerModal } from '../../../Components/TierPickerModal';
 import { hasMultiplePricing } from '../../utils/pricingUtils';
 import type { Item, AddOnGroup } from '../../../constants/models';
 import { resolveAddOnGroups, addOnStockOf, extraChargeOf } from '../../../constants/models';
+import { useRestaurantData } from '../../../context/RestaurantDataContext';
+import { portionsLeft } from '../../../lib/restaurant/consumption';
 import { useAddOnTemplates } from '../../../lib/addOnTemplates';
 import { applyRounding, applyLineRounding, calculateSaleTotals } from './sales.calculations';
 import {
@@ -365,11 +367,27 @@ const Sales: React.FC = () => {
         setModal,
         companyId: currentUser?.companyId,
     });
+    const { isRestaurant, recipeMap, rawMaterialMap } = useRestaurantData();
     // allowNegative: yahan apni sales setting ka asli naam lagao jo negative stock allow karti hai
-    const groupsOf = (item: Item) => resolveAddOnGroups(item, addOnLibrary, {
-        items: availableItems,
-        allowNegative: !!(salesSettings as any)?.allowNegativeStock,
-    });
+    const groupsOf = (item: Item) => {
+        const resolved = resolveAddOnGroups(item, addOnLibrary, {
+            items: availableItems,
+            allowNegative: isRestaurant ? true : !!(salesSettings as any)?.allowNegativeStock,
+        });
+        if (!isRestaurant || (salesSettings as any)?.allowNegativeStock) return resolved;
+        const itemRecipe = item.id ? recipeMap.get(item.id) : undefined;
+        if (!itemRecipe?.addOnRecipes) return resolved;
+        return resolved.map((g) => ({
+            ...g,
+            options: g.options.map((o) => {
+                const lines = itemRecipe.addOnRecipes?.[o.id];
+                if (lines?.length && portionsLeft(lines, rawMaterialMap) < 1) {
+                    return { ...o, soldOut: true };
+                }
+                return o;
+            }),
+        }));
+    };
     const itemHasAddOns = (item: Item) => addOnsEnabled && groupsOf(item).length > 0;
 
     // Selection order matters: choices beyond the group's limit carry the extra price
@@ -445,6 +463,7 @@ const Sales: React.FC = () => {
             addOnKey: picked.length > 0 ? picked.map(o => o.id).sort().join('|') : undefined,
             addOnStock: stock.length > 0 ? stock : undefined,
             addOnAmount: amount > 0 ? amount : undefined,
+            rawConsumption: undefined,
         }));
     };
 

@@ -1,4 +1,5 @@
 import type { SalesItem as OriginalSalesItem, QuantitySlab, AddOnOption } from '../../../constants/models';
+import type { ConsumptionLine } from '../../../lib/restaurant/types';
 
 // Moved verbatim from Sales.tsx (was defined inline around L36-60). Extends
 // the base SalesItem from constants/models with all the extra fields the
@@ -36,6 +37,7 @@ export interface SalesItem extends OriginalSalesItem {
     addOnKey?: string;               // sorted add-on ids joined; same item + same key = same line
     addOnAmount?: number;            // add-ons total per 1 unit. Not part of mrp / discount
     addOnStock?: { itemId: string; qty: number }[]; // linked inventory items this line takes (saved on the invoice, used when the bill is edited)
+    rawConsumption?: ConsumptionLine[]; // restaurant mode: raw materials this line consumed (saved on the invoice)
     // Customer-wise fixed pricing — set ONLY when the user taps Apply (never automatic)
     customerDiscountPct?: number;      // the agreed % (or effective % for a fixed net price)
     customerDiscountSource?: 'item' | 'category' | 'default';

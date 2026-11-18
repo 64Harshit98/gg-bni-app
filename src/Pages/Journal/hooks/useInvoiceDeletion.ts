@@ -12,6 +12,10 @@ import { clearPurchaseReportCache } from '../../Reports/PurchaseReportComponents
 import { State, PLANS } from '../../../enums';
 import type { Invoice } from '../journal.types';
 import { readSaleLoyalty, undoSaleChanges, writeLoyaltyInBatch } from '../../../lib/loyalty';
+import { useIsRestaurant } from '../../../context/RestaurantDataContext';
+import { avgCostWithout, queueMovement, rawMaterialRef } from '../../../lib/restaurant/stockApi';
+import { KITCHEN_ID, KITCHEN_NAME, type ConsumptionLine, type RawMaterial } from '../../../lib/restaurant/types';
+import { round6 } from '../../../lib/restaurant/units';
 
 interface UseInvoiceDeletionParams {
   currentUser: any;
@@ -23,6 +27,7 @@ interface UseInvoiceDeletionParams {
 // confirmDeleteInvoice, and cancelDelete inline in the main Journal component).
 export const useInvoiceDeletion = ({ currentUser, setModal }: UseInvoiceDeletionParams) => {
   const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null);
+  const isRestaurant = useIsRestaurant();
 
   const promptDeleteInvoice = (invoice: Invoice) => {
     setInvoiceToDelete(invoice);
@@ -88,8 +93,73 @@ export const useInvoiceDeletion = ({ currentUser, setModal }: UseInvoiceDeletion
     try {
       const batch = writeBatch(db);
 
+      // Raw materials this bill touches, read once. A deleted raw material is skipped —
+      // updating a missing doc would fail the whole delete.
+      const rmCache = new Map<string, Partial<RawMaterial> | null>();
+      const rmOf = async (id: string) => {
+        if (!rmCache.has(id)) {
+          const s = await getDoc(rawMaterialRef(companyId, id));
+          rmCache.set(id, s.exists() ? (s.data() as Partial<RawMaterial>) : null);
+        }
+        return rmCache.get(id) ?? null;
+      };
+
       for (const item of invoiceToDelete.items!) {
-        if (item.id && item.quantity > 0) {
+        const rawCons: ConsumptionLine[] | undefined = (item as any).rawConsumption;
+        if (collectionName === 'sales' && Array.isArray(rawCons) && rawCons.length > 0) {
+          for (const c of rawCons) {
+            if (c.rawMaterialId && Number(c.qty) > 0 && (await rmOf(c.rawMaterialId))) {
+              queueMovement(batch, companyId, {
+                rawMaterialId: c.rawMaterialId,
+                rawMaterialName: c.name || c.rawMaterialId,
+                type: 'return',
+                qty: Number(c.qty),
+                locationId: KITCHEN_ID,
+                locationName: KITCHEN_NAME,
+                refType: 'sale',
+                refId: invoiceToDelete.id,
+                refNo: invoiceToDelete.invoiceNumber,
+                unitCost: c.unitCost,
+                note: 'Invoice deleted',
+              });
+            }
+          }
+          continue;
+        }
+        const rmPurchaseId: string | undefined = (item as any).rawMaterialId;
+        const rmBaseQty: number = Number((item as any).baseQty) || 0;
+        if (collectionName === 'purchases' && ((invoiceToDelete as any).isRawMaterialPurchase || (rmPurchaseId && rmBaseQty > 0))) {
+          const targetId = rmPurchaseId || item.id;
+          const deductQty = rmBaseQty || Number(item.quantity) || 0;
+          const rm = targetId ? await rmOf(targetId) : null;
+          if (targetId && deductQty > 0 && rm) {
+            // Take this receipt's cost back out of the average (unitCost saved per line; older bills derive it)
+            const lineUnitCost =
+              Number((item as any).unitCost) ||
+              round6(((Number((item as any).purchasePrice) || 0) * (Number(item.quantity) || 0)) / deductQty);
+            const revertedAvg = avgCostWithout(rm, deductQty, lineUnitCost);
+            // keep the cached copy in step for a second line of the same raw material
+            const locId: string = (item as any).locationId || KITCHEN_ID;
+            rm.avgCost = revertedAvg;
+            if (locId === KITCHEN_ID) rm.stock = (Number(rm.stock) || 0) - deductQty;
+            else rm.godownStock = { ...(rm.godownStock || {}), [locId]: (Number(rm.godownStock?.[locId]) || 0) - deductQty };
+            queueMovement(batch, companyId, {
+              rawMaterialId: targetId,
+              rawMaterialName: item.name || targetId,
+              type: 'purchase',
+              qty: -deductQty,
+              locationId: (item as any).locationId || KITCHEN_ID,
+              locationName: (item as any).locationName || KITCHEN_NAME,
+              refType: 'purchase',
+              refId: invoiceToDelete.id,
+              refNo: invoiceToDelete.invoiceNumber,
+              unitCost: lineUnitCost || undefined,
+              note: 'Purchase deleted',
+            }, revertedAvg);
+          }
+          continue;
+        }
+        if (!isRestaurant && item.id && item.quantity > 0) {
           const itemDocRef = doc(db, 'companies', companyId, 'items', item.id);
 
           const itemSnap = await getDoc(itemDocRef);

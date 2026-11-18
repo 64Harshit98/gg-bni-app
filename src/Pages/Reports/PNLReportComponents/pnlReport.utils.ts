@@ -48,8 +48,21 @@ export const toPnlBill = (sale: SaleRecord): PnlBill => {
   (sale.items || []).forEach((raw) => {
     const item = raw as unknown as Record<string, unknown>;
     const qty = Number(item.quantity) || 0;
-    const unitCost = Number(item.purchasePrice) || 0;
     if (qty <= 0) return;
+    const rawCons = Array.isArray(item.rawConsumption)
+      ? (item.rawConsumption as { qty?: number; unitCost?: number }[])
+      : null;
+    if (rawCons && rawCons.length > 0) {
+      const recipeLineCost = rawCons.reduce(
+        (sum, c) => sum + (Number(c.qty) || 0) * (Number(c.unitCost) || 0),
+        0,
+      );
+      if (recipeLineCost > 0) {
+        cost += recipeLineCost;
+        return;
+      }
+    }
+    const unitCost = Number(item.purchasePrice) || 0;
     if (unitCost > 0) cost += unitCost * qty;
     else missing.add(itemKey(item));
   });

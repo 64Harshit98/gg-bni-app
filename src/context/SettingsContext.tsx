@@ -329,6 +329,18 @@ export const useSalesSettings = () => {
     return { salesSettings: context.salesSettings, loadingSettings: context.loadingSalesSettings };
 };
 
+/** Same as useSalesSettings, but returns null instead of throwing outside a SettingsProvider. */
+export const useOptionalSalesSettings = (): SalesSettings | null => {
+    const context = useContext(SettingsContext);
+    return context?.salesSettings ?? null;
+};
+
+/** Same as useItemSettings, but returns nulls instead of throwing outside a SettingsProvider. */
+export const useOptionalItemSettings = (): { itemSettings: ItemSettings | null; loading: boolean } => {
+    const context = useContext(SettingsContext);
+    return { itemSettings: context?.itemSettings ?? null, loading: context?.loadingItemSettings ?? true };
+};
+
 export const usePurchaseSettings = () => {
     const context = useContext(SettingsContext);
     if (context === undefined) {

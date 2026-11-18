@@ -106,6 +106,13 @@ CATALOGUE_RESTOCK_REPORT: 'cata-restock-report',
   PARTNER_DASHBOARD: '/partner-dashboard',
   AGENT_DASHBOARD: '/agent-dashboard',
   BARCODE_SETTING: '/barcode-setting',
+  // Restaurant mode
+  RAW_MATERIALS: '/raw-materials',
+  RECIPES: '/recipes',
+  STOCK_ENTRY: '/stock-entry',
+  RAW_CURRENT_STOCK: '/raw-current-stock',
+  RAW_STOCK_SUMMARY: '/raw-stock-summary',
+  RAW_CONSUMPTION: '/raw-consumption',
 };
 
 /** Catalogue product page builder for one item (pass { groupId } in router state to keep the category breadcrumb) */

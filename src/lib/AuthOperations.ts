@@ -12,6 +12,7 @@ import {
   setPersistence,
   browserLocalPersistence,
   browserSessionPersistence,
+  indexedDBLocalPersistence,
   type ConfirmationResult,
 } from 'firebase/auth';
 import type { User } from 'firebase/auth';
@@ -30,6 +31,13 @@ export const clearOnboardingDraft = () => {
     /* storage blocked — nothing to clear */
   }
 };
+
+// Where a "Keep me logged in" session is saved. It must be IndexedDB: that is getAuth()'s
+// default, and every tab that opens moves a saved session into it. Saving to localStorage
+// split the session across two stores — a new tab moved it out from under the open tabs
+// (which then logged out on their own), and a log-out left a copy behind that logged you
+// straight back in on reload.
+const REMEMBERED_SESSION = indexedDBLocalPersistence;
 
 let recaptchaVerifier: RecaptchaVerifier | null = null;
 let confirmationResult: ConfirmationResult | null = null;
@@ -139,7 +147,7 @@ const signupErrorFrom = (error: unknown): SignupError => {
 /** True when this email + password already log in to a company: the sign-up went through. */
 const signInIfRegistered = async (email: string, password: string): Promise<boolean> => {
   try {
-    await setPersistence(auth, browserLocalPersistence);
+    await setPersistence(auth, REMEMBERED_SESSION);
     const cred = await signInWithEmailAndPassword(auth, email, password);
     const { claims } = await cred.user.getIdTokenResult(true);
     if (claims.companyId) return true;
@@ -198,7 +206,7 @@ export const inviteUser = async (fullName: string, phoneNumber: string, email: s
 // `remember` false keeps the session only until the tab closes ("Keep me logged in" unticked).
 // Errors are rethrown as-is so callers can read the Firebase `code`.
 export const loginUser = async (email: string, password: string, remember = true): Promise<User> => {
-  await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
+  await setPersistence(auth, remember ? REMEMBERED_SESSION : browserSessionPersistence);
   const userCredential = await signInWithEmailAndPassword(auth, email, password);
   clearOnboardingDraft(); // drop any half-finished sign-up left on this device
   return userCredential.user;
@@ -298,6 +306,17 @@ export const confirmPasswordResetUser = async (oobCode: string, newPassword: str
 export const logoutUser = async () => {
   clearOnboardingDraft();
   await signOut(auth);
+  // signOut only clears the store THIS tab uses. A copy left in another one (a tab logged in
+  // without "Keep me logged in", or a session saved to localStorage by an older build) would
+  // log you straight back in on reload — so clear every store, ending on the shared one.
+  for (const store of [browserSessionPersistence, browserLocalPersistence, REMEMBERED_SESSION]) {
+    try {
+      await setPersistence(auth, store);
+      await signOut(auth);
+    } catch {
+      /* store unavailable in this browser — nothing saved there */
+    }
+  }
 };
 export const resetPassword = async (email: string) => { await sendPasswordResetEmail(auth, email); };
 

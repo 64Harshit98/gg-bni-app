@@ -16,6 +16,7 @@ import {
   toSocialUrl, INSTAGRAM_BASE, FACEBOOK_BASE, TWITTER_BASE,
   stripCountryCode, toWhatsappNumber,
 } from '../../Catalogue/utils/socialLinks';
+import { RESTAURANT_CATEGORY } from '../../lib/restaurant/types';
 
 // ─── Theme tokens (Tailwind arbitrary properties) ─────────────────────────
 // Light + dark values live here as CSS variables; every class below reads them via var(--…).
@@ -48,6 +49,7 @@ const businessCategoryOptions = [
   { value: 'Health & Beauty', label: 'Health & Beauty' },
   { value: 'Home & Furniture', label: 'Home & Furniture' },
   { value: 'Food & Beverage', label: 'Food & Beverage' },
+  { value: RESTAURANT_CATEGORY, label: 'Restaurant / Café' },
   { value: 'Other', label: 'Other' },
 ];
 
@@ -767,6 +769,20 @@ const EditProfilePage: React.FC = () => {
         twitter: toSocialUrl(TWITTER_BASE, formData.twitter),
         whatsappNumber: toWhatsappNumber(formData.whatsappNumber),
       });
+      // Category drives restaurant mode when it CHANGES: into Restaurant turns it on, out of
+      // Restaurant turns it off. An unchanged category leaves the Sales Settings toggle alone
+      // (an owner may have switched it on by hand for e.g. a Food & Beverage shop).
+      const prevBusinessCategory = profile?.businessCategory || '';
+      const salesSettingsRef = currentUser?.companyId
+        ? doc(db, 'companies', currentUser.companyId, 'settings', 'sales-settings')
+        : null;
+      if (salesSettingsRef && finalBusinessCategory !== prevBusinessCategory) {
+        if (finalBusinessCategory === RESTAURANT_CATEGORY) {
+          await setDoc(salesSettingsRef, { restaurantMode: true, salesViewType: 'card' }, { merge: true });
+        } else if (prevBusinessCategory === RESTAURANT_CATEGORY) {
+          await setDoc(salesSettingsRef, { restaurantMode: false }, { merge: true });
+        }
+      }
 
       refetch(); // pull the latest from Firestore after save
       setFormData(prev => ({ ...prev, profilePicture: finalPhotoUrl, companyLogo: finalLogoUrl }));

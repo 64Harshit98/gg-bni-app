@@ -24,6 +24,11 @@ import type { SalesData, TransactionItem, ExchangeItem } from '../salesReturn.ty
 import type { Item } from '../../../../constants/models';
 import { addOnStockToRestore } from '../../../../constants/models';
 import { calcReturnReversal, readSaleLoyalty, writeLoyaltyInBatch } from '../../../../lib/loyalty';
+import { useRestaurantData } from '../../../../context/RestaurantDataContext';
+import { buildLineConsumption } from '../../../../lib/restaurant/consumption';
+import { queueMovement, rawMaterialRef } from '../../../../lib/restaurant/stockApi';
+import { KITCHEN_ID, KITCHEN_NAME, type ConsumptionLine } from '../../../../lib/restaurant/types';
+import { round3 } from '../../../../lib/restaurant/units';
 
 interface UseSaveSalesReturnParams {
     currentUser: any;
@@ -60,6 +65,7 @@ export const useSaveSalesReturn = ({
     setIsLoading,
 }: UseSaveSalesReturnParams) => {
     const [returnDate, setReturnDate] = useState<string>(new Date().toISOString().split('T')[0]);
+    const { isRestaurant, recipeMap, rawMaterialMap } = useRestaurantData();
     const [modeOfReturn, setModeOfReturn] = useState<string>('Credit Note');
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const [activeTaxMode, setActiveTaxMode] = useState<'inclusive' | 'exclusive' | 'exempt'>('exclusive');
@@ -157,33 +163,91 @@ export const useSaveSalesReturn = ({
             let returnedItemsGrossValue = 0;
             // Linked add-on items (e.g. Coke sold with a burger) that go back to stock, summed per item
             const linkedRestore = new Map<string, number>();
+            const rawRestore = new Map<string, { name: string; qty: number; unitCost?: number }>();
             itemsToReturn.forEach(returnItem => {
                 const originalItem = originalItemsMap.get(returnItem.originalItemId);
+                // Same bill line (from the untouched original bill) tells which linked items / raw materials it took
+                const billLine = selectedSale.items.find((i: any) => (i.id || i.productId) === returnItem.originalItemId);
+                // Raw materials come from the SAME line that is rescaled and saved below (originalItem),
+                // read before it is changed, so the return and the remaining line always add up.
+                const rawSource: any = originalItem ?? billLine;
+                const rawBefore: ConsumptionLine[] | null = Array.isArray(rawSource?.rawConsumption)
+                    ? rawSource.rawConsumption
+                    : null;
+                const rawLineQty = Number(rawSource?.quantity) || 1;
                 if (originalItem) {
-                    originalItem.quantity = Number(originalItem.quantity) - Number(returnItem.quantity);
+                    const prevQty = Number(originalItem.quantity) || 1;
+                    const nextQty = prevQty - Number(returnItem.quantity);
+                    originalItem.quantity = nextQty;
                     returnedItemsGrossValue += (originalItem._effectiveUnitPrice * returnItem.quantity);
-                    if (originalItem.quantity <= 0) originalItemsMap.delete(returnItem.originalItemId);
+                    if (nextQty <= 0) {
+                        originalItemsMap.delete(returnItem.originalItemId);
+                    } else if (Array.isArray(originalItem.rawConsumption) && prevQty > 0) {
+                        const remainRatio = nextQty / prevQty;
+                        originalItem.rawConsumption = originalItem.rawConsumption.map((c: ConsumptionLine) => ({
+                            ...c,
+                            qty: round3((Number(c.qty) || 0) * remainRatio),
+                        }));
+                    }
                 }
-                if (returnItem.originalItemId && validInventoryIds.has(returnItem.originalItemId)) {
+                if (!isRestaurant && returnItem.originalItemId && validInventoryIds.has(returnItem.originalItemId)) {
                     batch.update(doc(db, 'companies', companyId, 'items', returnItem.originalItemId), {
                         stock: firebaseIncrement(returnItem.quantity),
                         updatedAt: serverTimestamp()
                     });
                 }
 
-                // Same bill line (from the untouched original bill) tells which linked items it took
-                const billLine = selectedSale.items.find((i: any) => (i.id || i.productId) === returnItem.originalItemId);
                 if (billLine) {
-                    addOnStockToRestore(billLine as any, Number(returnItem.quantity)).forEach((qty, itemId) =>
-                        linkedRestore.set(itemId, (linkedRestore.get(itemId) || 0) + qty));
+                    if (isRestaurant || rawBefore) {
+                        const rawCons: ConsumptionLine[] = rawBefore || [];
+                        const retRatio = rawLineQty > 0 ? Number(returnItem.quantity) / rawLineQty : 1;
+                        rawCons.forEach((c) => {
+                            const addQty = round3((Number(c.qty) || 0) * retRatio);
+                            if (addQty > 0) {
+                                const prev = rawRestore.get(c.rawMaterialId);
+                                rawRestore.set(c.rawMaterialId, {
+                                    name: c.name || rawMaterialMap.get(c.rawMaterialId)?.name || c.rawMaterialId,
+                                    qty: round3((prev?.qty || 0) + addQty),
+                                    unitCost: c.unitCost ?? rawMaterialMap.get(c.rawMaterialId)?.avgCost,
+                                });
+                            }
+                        });
+                    } else {
+                        addOnStockToRestore(billLine as any, Number(returnItem.quantity)).forEach((qty, itemId) =>
+                            linkedRestore.set(itemId, (linkedRestore.get(itemId) || 0) + qty));
+                    }
                 }
             });
 
-            linkedRestore.forEach((qty, itemId) => {
-                if (validInventoryIds.has(itemId)) {
-                    batch.update(doc(db, 'companies', companyId, 'items', itemId), {
-                        stock: firebaseIncrement(qty),
-                        updatedAt: serverTimestamp()
+            if (!isRestaurant) {
+                linkedRestore.forEach((qty, itemId) => {
+                    if (validInventoryIds.has(itemId)) {
+                        batch.update(doc(db, 'companies', companyId, 'items', itemId), {
+                            stock: firebaseIncrement(qty),
+                            updatedAt: serverTimestamp()
+                        });
+                    }
+                });
+            }
+            // Skip raw materials deleted since the sale — updating a missing doc fails the whole return
+            const liveRaw = new Set<string>();
+            await Promise.all([...rawRestore.keys()].map(async (id) => {
+                if ((await getDoc(rawMaterialRef(companyId, id))).exists()) liveRaw.add(id);
+            }));
+            rawRestore.forEach(({ name, qty, unitCost }, rawMaterialId) => {
+                if (qty > 0 && liveRaw.has(rawMaterialId)) {
+                    queueMovement(batch, companyId, {
+                        rawMaterialId,
+                        rawMaterialName: name,
+                        type: 'return',
+                        qty,
+                        locationId: KITCHEN_ID,
+                        locationName: KITCHEN_NAME,
+                        refType: 'sale',
+                        refId: selectedSale.id,
+                        refNo: selectedSale.invoiceNumber,
+                        unitCost,
+                        note: 'Sales return',
                     });
                 }
             });
@@ -242,7 +306,44 @@ export const useSaveSalesReturn = ({
                     } as any);
                 }
 
-                if (exchangeItem.originalItemId && validInventoryIds.has(exchangeItem.originalItemId)) {
+                if (isRestaurant) {
+                    const exCons = buildLineConsumption(
+                        { productId: exchangeItem.originalItemId, quantity: exchangeItem.quantity },
+                        recipeMap,
+                        rawMaterialMap,
+                    );
+                    const targetLineKey = existingItem && priceMatchesExisting
+                        ? exchangeItem.originalItemId
+                        : (existingItem ? `${exchangeItem.originalItemId}::${exchangeItem.id}` : exchangeItem.originalItemId);
+                    const targetLine = originalItemsMap.get(targetLineKey);
+                    if (targetLine && exCons.length > 0) {
+                        const merged = new Map<string, ConsumptionLine>();
+                        (targetLine.rawConsumption || []).forEach((c: ConsumptionLine) => merged.set(c.rawMaterialId, { ...c }));
+                        exCons.forEach((c) => {
+                            const prev = merged.get(c.rawMaterialId);
+                            if (prev) prev.qty = round3(prev.qty + c.qty);
+                            else merged.set(c.rawMaterialId, { ...c });
+                        });
+                        targetLine.rawConsumption = [...merged.values()];
+                    }
+                    exCons.forEach((c) => {
+                        if (c.qty > 0) {
+                            queueMovement(batch, companyId, {
+                                rawMaterialId: c.rawMaterialId,
+                                rawMaterialName: c.name,
+                                type: 'consumed',
+                                qty: -c.qty,
+                                locationId: KITCHEN_ID,
+                                locationName: KITCHEN_NAME,
+                                refType: 'sale',
+                                refId: selectedSale.id,
+                                refNo: selectedSale.invoiceNumber,
+                                unitCost: c.unitCost,
+                                note: 'Exchange item',
+                            });
+                        }
+                    });
+                } else if (exchangeItem.originalItemId && validInventoryIds.has(exchangeItem.originalItemId)) {
                     batch.update(doc(db, 'companies', companyId, 'items', exchangeItem.originalItemId), {
                         stock: firebaseIncrement(-exchangeItem.quantity),
                         updatedAt: serverTimestamp()

@@ -7,6 +7,7 @@ import BackButton from '../Components/BackButton';
 import ShopHoursSettingPage from './Settings/ShopHoursSetting';
 import { ROLES } from '../enums';
 import { useAuth } from '../context/auth-context';
+import { useRestaurantData } from '../context/RestaurantDataContext';
 import { collection, doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
 
@@ -139,6 +140,7 @@ const Group = ({ title, children }: { title: string; children: React.ReactNode }
 
 const Masters = () => {
   const { currentUser } = useAuth();
+  const { isRestaurant, rawMaterials, recipes } = useRestaurantData();
   const location = useLocation();
   const navigate = useNavigate();
   const [shopHoursOpen, setShopHoursOpen] = useState(false);
@@ -269,13 +271,16 @@ const Masters = () => {
     loyalty: 'loyalty points reward customer redeem earn',
     items: 'items setting units categories low stock alerts mrp',
     barcode: 'barcode label setting size format',
+    rawMaterials: 'raw materials ingredients kitchen stock units packaging restaurant',
+    recipes: 'recipes bom ingredients dish addon restaurant',
+    stockEntry: 'wastage excess shortage loss transfer kitchen godown stock entry restaurant',
     users: 'users salesman admin staff password',
     perm: 'permission setting role access',
     shop: 'shop timing opening hours weekly off day close',
   };
 
   const showBilling = match(K.sales) || match(K.purchase) || match(K.bill) || match(K.custPricing) || match(K.loyalty);
-  const showItems = match(K.items) || match(K.barcode);
+  const showItems = match(K.items) || match(K.barcode) || (isRestaurant && (match(K.rawMaterials) || match(K.recipes) || match(K.stockEntry)));
   const showTeam = isOwner && (match(K.users) || match(K.perm));
   const showShop = isOwner && match(K.shop);
   const nothingFound = !!q && !showBilling && !showItems && !showTeam && !showShop;
@@ -428,6 +433,35 @@ const Masters = () => {
                     title="Barcode / Label Setting"
                     value={barcodeValue}
                     desc="Label size, format and what prints on it"
+                  />
+                )}
+                {isRestaurant && match(K.rawMaterials) && (
+                  <SettingItem
+                    to={ROUTES.RAW_MATERIALS}
+                    tint="green"
+                    icon={ICONS.purchase}
+                    title="Raw Materials"
+                    value={`${rawMaterials.length} ingredients`}
+                    desc="Manage raw materials, categories, packaging units and opening stock"
+                  />
+                )}
+                {isRestaurant && match(K.recipes) && (
+                  <SettingItem
+                    to={ROUTES.RECIPES}
+                    tint="amber"
+                    icon={ICONS.bill}
+                    title="Item & Add-on Recipes"
+                    value={`${recipes.length} recipes set`}
+                    desc="Define raw materials used by each menu item and add-on"
+                  />
+                )}
+                {isRestaurant && match(K.stockEntry) && (
+                  <SettingItem
+                    to={ROUTES.STOCK_ENTRY}
+                    tint="magenta"
+                    icon={ICONS.tag}
+                    title="Wastage & Stock Entry"
+                    desc="Record wastage, excess, shortage, normal loss and godown transfers"
                   />
                 )}
               </Group>

@@ -1,6 +1,5 @@
 import React, { useEffect, useState, type ReactNode } from 'react';
-import { signOut } from 'firebase/auth';
-import { auth } from '../lib/Firebase';
+import { logoutUser } from '../lib/AuthOperations';
 import { useAuth } from './auth-context';
 import { useShopHours } from '../Pages/hooks/useShopHours';
 import { ROLES } from '../enums';
@@ -31,7 +30,7 @@ export const ShopHoursGuard: React.FC<{ children: ReactNode }> = ({ children }) 
     if (!isWithinShopHours) {
       // Mark closed immediately for instant UI feedback, then sign out.
       setForcedClosed(true);
-      signOut(auth).catch((err) => {
+      logoutUser().catch((err) => {
         console.error('ShopHoursGuard: failed to sign out after hours', err);
       });
     } else {

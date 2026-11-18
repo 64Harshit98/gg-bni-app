@@ -25,6 +25,8 @@ import { Spinner } from '../../constants/Spinner';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import sellarLogo from '../../assets/sellar-logo.png';
 import { useAuth } from '../../context/auth-context';
+import { useRestaurantData } from '../../context/RestaurantDataContext';
+import { portionsLeft, recipeCost } from '../../lib/restaurant/consumption';
 import BackButton from '../../Components/BackButton';
 import SearchableSelect from '../../Components/SearchableSelect';
 import { useGodowns, useGodownStock, SHOP_ID, SHOP_NAME } from '../hooks/useStockTransfer';
@@ -202,6 +204,7 @@ const ItemReport: React.FC = () => {
   const { godowns } = useGodowns(currentUser?.companyId);
   const { stockRows } = useGodownStock(currentUser?.companyId, godowns);
   const { ledgerMap } = useStockLedger(currentUser?.companyId, fromDate, toDate, locationFilter);
+  const { isRestaurant, recipeMap, rawMaterialMap } = useRestaurantData();
 
   // Per-item, per-location quantity map (Shop + every godown).
   const stockByItemLocation = useMemo(() => {
@@ -220,22 +223,31 @@ const ItemReport: React.FC = () => {
     return items.map(item => {
       const locMap = stockByItemLocation.get(item.id || '');
       let stock: number;
-      if (locationFilter) {
+      if (isRestaurant) {
+        const rec = item.id ? recipeMap.get(item.id) : undefined;
+        const canMake = rec?.ingredients?.length ? portionsLeft(rec.ingredients, rawMaterialMap) : Infinity;
+        stock = Number.isFinite(canMake) ? canMake : (item.stock || 0);
+      } else if (locationFilter) {
         stock = locMap?.get(locationFilter) || 0;
       } else {
         stock = locMap ? Array.from(locMap.values()).reduce((s, q) => s + q, 0) : (item.stock || 0);
       }
+
+      const rec = isRestaurant && item.id ? recipeMap.get(item.id) : undefined;
+      const effectiveCost = rec?.ingredients?.length
+        ? recipeCost(rec.ingredients, rawMaterialMap) || (item.purchasePrice || 0)
+        : (item.purchasePrice || 0);
 
       const agg = ledgerMap.get(item.id || '') || { in: 0, out: 0 };
       const stockIn = agg.in;
       const stockOut = agg.out;
       const closingBalance = stock;
       const openingBalance = closingBalance - stockIn + stockOut;
-      const valueOfItem = stock * (item.purchasePrice || 0);
+      const valueOfItem = stock * effectiveCost;
 
-      return { ...item, stock, stockIn, stockOut, openingBalance, closingBalance, valueOfItem };
+      return { ...item, purchasePrice: effectiveCost, stock, stockIn, stockOut, openingBalance, closingBalance, valueOfItem };
     });
-  }, [items, stockByItemLocation, locationFilter, ledgerMap]);
+  }, [items, stockByItemLocation, locationFilter, ledgerMap, isRestaurant, recipeMap, rawMaterialMap]);
 
   // Items store their group by id or (after a rename) by name.
   const groupOf = (item: Pick<Item, 'itemGroupId'>) =>

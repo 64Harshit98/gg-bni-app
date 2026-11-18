@@ -111,7 +111,7 @@ export const useJournalData = (companyId?: string, dateRange?: JournalDateRange 
             hsnSac: item.hsnSac || '',
             unit: item.unit || 'Pcs',
             purchasediscount: Number(item.purchasediscount) || 0,
-                        taxType: item.taxType || '',
+            taxType: item.taxType || '',
             taxAmount: Number(item.taxAmount) || 0,
             taxableAmount: Number(item.taxableAmount) || 0,
             addOnLines: Array.isArray(item.addOnLines) ? item.addOnLines : undefined,
@@ -126,7 +126,9 @@ export const useJournalData = (companyId?: string, dateRange?: JournalDateRange 
         const savedAmount = Number(data.totalAmount) || 0;
         const changeReturned = Number(data.revDiscount) || 0;
         const fallbackAmount = calculatedTotal - changeReturned;
-        const correctDisplayAmount = savedAmount > 0 ? savedAmount : fallbackAmount;
+        // Poora return ho chuka bill: totalAmount 0 hi sahi hai, paymentMethods fallback mat lagao
+        const isFullyReturned = savedAmount === 0 && returnHistory.length > 0;
+        const correctDisplayAmount = savedAmount > 0 || isFullyReturned ? savedAmount : fallbackAmount;
 
         return {
           id: doc.id,

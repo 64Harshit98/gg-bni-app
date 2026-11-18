@@ -13,7 +13,7 @@ import { State, PLANS } from '../../enums';
 import { normalizePlan } from '../../context/Plan';
 import { Spinner } from '../../constants/Spinner';
 import { ROUTES } from '../../constants/routes.constants';
-import { Modal, PaymentModal } from '../../constants/Modal';
+import { Modal, PaymentModal, PdcEditModal, type PdcEditPayload } from '../../constants/Modal';
 //import ShinyText from '../../Components/ShinyText';
 import { useSalesSettings } from '../../context/SettingsContext';
 import { TutorialStep } from '../../Components/TutorialStep'; // ← same import as Home.tsx
@@ -91,6 +91,47 @@ const Journal: React.FC = () => {
     } finally {
       setSavingTransport(false);
     }
+  };
+
+    // PDC cheque edit: which bill + which entry of paymentHistory is being corrected
+  const [pdcEditTarget, setPdcEditTarget] = useState<{ invoice: Invoice; paymentIndex: number } | null>(null);
+
+  // Errors are intentionally NOT caught here: PdcEditModal shows them inline
+  const handleSavePdcEdit = async ({ chequeNumber, chequeDate }: PdcEditPayload) => {
+    if (!pdcEditTarget || !currentUser?.companyId) return;
+    const { invoice, paymentIndex } = pdcEditTarget;
+    const invoiceRef = doc(
+      db,
+      'companies',
+      currentUser.companyId,
+      invoice.type === 'Credit' ? 'sales' : 'purchases',
+      invoice.id
+    );
+
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(invoiceRef);
+      if (!snap.exists()) throw new Error('Bill not found.');
+
+      const data = snap.data() as any;
+      const history: any[] = [...(data.paymentHistory || [])];
+      const entry = history[paymentIndex];
+      if (!entry || entry.method !== 'PDC') {
+        throw new Error('PDC entry not found. Please refresh and try again.');
+      }
+
+      const oldDate = entry.chequeDate;
+      history[paymentIndex] = { ...entry, chequeNumber, chequeDate };
+
+      // Purani date ko "notified" list se hatao (jab tak koi doosra PDC wahi date use na kar raha ho),
+      // taaki nayi/sahi date pe notification dobara eligible ho.
+      const stillUsed = history.some((p) => p.method === 'PDC' && p.chequeDate === oldDate);
+      const existingNotified: string[] = data.pdcNotifiedDates || [];
+      const pdcNotifiedDates = stillUsed
+        ? existingNotified
+        : existingNotified.filter((d) => d !== oldDate);
+
+      transaction.update(invoiceRef, { paymentHistory: history, pdcNotifiedDates });
+    });
   };
 
   const { salesSettings } = useSalesSettings();
@@ -371,7 +412,8 @@ const Journal: React.FC = () => {
       onSettle={openPaymentModal}
       onPrint={setInvoiceToPrint}
       onPrintQr={handlePrintQr}
-      onTransport={setTransportPopupInvoice}
+            onTransport={setTransportPopupInvoice}
+      onEditPdc={(inv, paymentIndex) => setPdcEditTarget({ invoice: inv, paymentIndex })}
       onRemind={whatsappProvider === 'none' ? undefined : whatsappProvider === 'botmaster' ? handleSendReminder : handleSendReminderSnapto}
       onReturn={(inv) => (inv.type === 'Credit' ? handleSalesReturn(inv) : handlePurchaseReturn(inv))}
       onEdit={handleEditInvoice}
@@ -459,8 +501,18 @@ const Journal: React.FC = () => {
         }}
         invoice={paymentInvoice}
         onSubmit={handleSettlePayment}
-        availableCredit={customerCredit}
+                availableCredit={customerCredit}
         isDebitNote={paymentInvoice?.type === 'Debit'}
+      />
+
+      {/* EDIT PDC CHEQUE DETAILS */}
+      <PdcEditModal
+        isOpen={!!pdcEditTarget}
+        onClose={() => setPdcEditTarget(null)}
+        partyName={pdcEditTarget?.invoice.partyName}
+        initialChequeNumber={pdcEditTarget?.invoice.paymentHistory?.[pdcEditTarget.paymentIndex]?.chequeNumber || ''}
+        initialChequeDate={pdcEditTarget?.invoice.paymentHistory?.[pdcEditTarget.paymentIndex]?.chequeDate || ''}
+        onSubmit={handleSavePdcEdit}
       />
 
       {/* ACTION SELECTION MODAL */}

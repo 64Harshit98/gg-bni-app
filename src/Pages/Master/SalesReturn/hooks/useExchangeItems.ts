@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import type { Item } from '../../../../constants/models';
 import { State } from '../../../../enums';
 import { applyRounding, type SalesItem } from '../../Sales';
@@ -44,11 +44,17 @@ export const useExchangeItems = ({
     const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
     const [isItemDrawerOpen, setIsItemDrawerOpen] = useState(false);
 
-    const [isDiscountLocked, setIsDiscountLocked] = useState(true);
+    const [isDiscountLocked, setIsDiscountLocked] = useState<boolean>(!!salesSettings?.lockDiscount);
     const [discountInfo, setDiscountInfo] = useState<string | null>(null);
-    const [isPriceLocked, setIsPriceLocked] = useState(true);
+    const [isPriceLocked, setIsPriceLocked] = useState<boolean>(!!salesSettings?.lockPrice);
     const [priceInfo, setPriceInfo] = useState<string | null>(null);
     const longPressTimer = useRef<NodeJS.Timeout | null>(null);
+
+    // Keep lock state in sync with settings (settings load async via onSnapshot)
+    useEffect(() => {
+        setIsDiscountLocked(!!salesSettings?.lockDiscount);
+        setIsPriceLocked(!!salesSettings?.lockPrice);
+    }, [salesSettings?.lockDiscount, salesSettings?.lockPrice]);
 
     const handleOpenEditDrawer = (item: Item) => {
         // item.id here is the cart UUID, so find the real item from availableItems

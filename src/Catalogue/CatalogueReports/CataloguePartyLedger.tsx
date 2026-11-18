@@ -914,8 +914,8 @@ const CataloguePartyLedger: React.FC = () => {
     }, [selectedPartyLedger]);
 
     const balanceWords = (net: number) =>
-        net > 0 ? { label: 'They owe you', value: inr(net), cls: 'text-yellow-700' }
-            : { label: 'Balance', value: 'Settled ✓', cls: 'text-green-700' };
+        net > 0 ? { label: 'They owe you', value: inr(net), cls: 'text-green-700' }
+            : { label: 'Balance', value: 'Settled ✓', cls: 'text-slate-500' };
 
     const daysSince = (t: number) => Math.max(0, Math.floor((Date.now() - t) / 86_400_000));
 
@@ -1121,8 +1121,8 @@ const CataloguePartyLedger: React.FC = () => {
                     pdf.setFontSize(vSize);
                 }
                 if (i === 0) pdf.setTextColor(194, 65, 12);
-                else if (i === 3 && statement.closing > 0) pdf.setTextColor(161, 98, 7);
-                else if (i === 3 && statement.closing === 0) pdf.setTextColor(21, 128, 61);
+                else if (i === 3 && statement.closing > 0) pdf.setTextColor(21, 128, 61);
+                else if (i === 3 && statement.closing === 0) pdf.setTextColor(100, 116, 139);
                 else pdf.setTextColor(17, 24, 39);
                 pdf.text(c.value, cx, cardY + 20);
 
@@ -1707,7 +1707,7 @@ const CataloguePartyLedger: React.FC = () => {
                             rows={[
                                 { label: t.isOpeningBalance ? 'Amount' : 'Order total', value: inr(t.totalAmount) },
                                 { label: advance ? 'Adjusted' : 'Received', value: inr(paid), tone: 'text-green-700' },
-                                { label: 'Pending', value: t.dueAmount > 0 ? inr(t.dueAmount) : 'Settled ✓', tone: t.dueAmount > 0 ? 'text-yellow-700' : 'text-green-700', strong: true },
+                                { label: 'Pending', value: t.dueAmount > 0 ? inr(t.dueAmount) : 'Settled ✓', tone: t.dueAmount > 0 ? 'text-green-700' : 'text-slate-500', strong: true },
                             ]}
                         />
                     </DetailSection>
@@ -1718,7 +1718,7 @@ const CataloguePartyLedger: React.FC = () => {
         const kpis = [
             { label: 'Total billed', value: inr(party.totalBilled), hint: `${party.transactions.length} ${party.transactions.length === 1 ? 'entry' : 'entries'}${party.totalTransactions === 0 ? ' · opening balance' : ''}`, icon: FileText, iconClass: 'bg-orange-100 text-orange-700', valueClass: 'text-slate-900' },
             { label: 'Received', value: inr(statement.received), hint: `${statement.payments.length} ${statement.payments.length === 1 ? 'payment' : 'payments'}${statement.modes.length ? ` · ${statement.modes.join(', ').toLowerCase()}` : ''}`, icon: Wallet, iconClass: 'bg-green-50 text-green-600', valueClass: 'text-slate-900' },
-            { label: 'Pending', value: statement.receivable === 0 ? '₹0' : inr(statement.receivable), hint: statement.receivable > 0 ? `they owe you${statement.oldestDue ? ` · ${daysSince(statement.oldestDue)} days` : ''}` : 'settled', icon: Scale, iconClass: 'bg-yellow-50 text-yellow-700', valueClass: statement.receivable > 0 ? 'text-yellow-700' : 'text-slate-900' },
+            { label: 'Pending', value: statement.receivable === 0 ? '₹0' : inr(statement.receivable), hint: statement.receivable > 0 ? `they owe you${statement.oldestDue ? ` · ${daysSince(statement.oldestDue)} days` : ''}` : 'settled', icon: Scale, iconClass: 'bg-green-50 text-green-600', valueClass: statement.receivable > 0 ? 'text-green-700' : 'text-slate-900' },
             { label: 'Last payment', value: statement.lastPayment ? formatDayMonth(statement.lastPayment.date) : '—', hint: statement.lastPayment ? `${inr(statement.lastPayment.effect)} · ${daysSince(statement.lastPayment.date)} days ago` : 'no payments yet', icon: CalendarDays, iconClass: 'bg-orange-100 text-orange-700', valueClass: 'text-slate-900' },
         ];
 
@@ -1812,7 +1812,7 @@ const CataloguePartyLedger: React.FC = () => {
                                 <div className="flex items-center justify-between text-sm">
                                     <span className="text-slate-600">Paid <strong className="text-slate-900">{inr(progressPaid)}</strong> of {inr(progressBilled)}</span>
                                     {progressPaid < progressBilled && (
-                                        <span className="font-semibold text-yellow-700">
+                                        <span className="font-semibold text-green-700">
                                             {inr(progressBilled - progressPaid)} left · {Math.round(progressPct)}%
                                         </span>
                                     )}
@@ -1900,7 +1900,7 @@ const CataloguePartyLedger: React.FC = () => {
                                                 <td colSpan={3} className="px-4 py-3">Closing balance · {statement.closing > 0 ? 'they owe you' : statement.closing < 0 ? 'you owe' : 'settled'}</td>
                                                 <td className="px-4 py-3 text-right">{inr(statement.receivableBilled)}</td>
                                                 <td className="px-4 py-3 text-right">{inr(statement.received)}</td>
-                                                <td className={`px-4 py-3 text-right ${statement.closing > 0 ? 'text-yellow-700' : statement.closing === 0 ? 'text-green-700' : ''}`}>{statement.closing === 0 ? 'Settled ✓' : inr(statement.closing)}</td>
+                                                <td className={`px-4 py-3 text-right ${statement.closing > 0 ? 'text-green-700' : 'text-slate-500'}`}>{statement.closing === 0 ? 'Settled ✓' : inr(statement.closing)}</td>
                                                 <td />
                                             </tr>
                                         </tfoot>
@@ -1939,7 +1939,7 @@ const CataloguePartyLedger: React.FC = () => {
                                     })}
                                     <li className="flex items-center justify-between rounded-b-sm border-t border-orange-100 bg-orange-50 px-4 py-3 text-sm font-semibold">
                                         <span className="text-slate-900">Closing balance</span>
-                                        <span className={statement.closing > 0 ? 'text-yellow-700' : statement.closing === 0 ? 'text-green-700' : 'text-slate-900'}>
+                                        <span className={statement.closing > 0 ? 'text-green-700' : 'text-slate-500'}>
                                             {statement.closing === 0 ? 'Settled ✓' : `${inr(statement.closing)} ${statement.closing > 0 ? 'due' : 'you owe'}`}
                                         </span>
                                     </li>
@@ -1995,7 +1995,7 @@ const CataloguePartyLedger: React.FC = () => {
        VIEW 1 — PARTY LIST
        ===================================================================== */
     const kpis = [
-        { label: 'To collect', value: inr(totals.toCollect), hint: totals.collectCount ? `${totals.collectCount} ${totals.collectCount === 1 ? 'party owes' : 'parties owe'} you` : 'nobody owes you', icon: Wallet, iconClass: 'bg-yellow-50 text-yellow-700', valueClass: totals.toCollect > 0 ? 'text-yellow-700' : 'text-slate-900' },
+        { label: 'To collect', value: inr(totals.toCollect), hint: totals.collectCount ? `${totals.collectCount} ${totals.collectCount === 1 ? 'party owes' : 'parties owe'} you` : 'nobody owes you', icon: Wallet, iconClass: 'bg-green-50 text-green-600', valueClass: totals.toCollect > 0 ? 'text-green-700' : 'text-slate-900' },
         { label: 'Total billed', value: inr(totals.billed), hint: 'orders + opening balances', icon: FileText, iconClass: 'bg-orange-100 text-orange-700', valueClass: 'text-slate-900' },
         { label: 'Parties', value: parties.length.toLocaleString('en-IN'), hint: 'in this period', icon: Users, iconClass: 'bg-orange-100 text-orange-700', valueClass: 'text-slate-900' },
         { label: 'Settled', value: totals.settled.toLocaleString('en-IN'), hint: 'no balance', icon: Check, iconClass: 'bg-green-50 text-green-600', valueClass: 'text-slate-900' },

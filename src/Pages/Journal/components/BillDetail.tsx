@@ -36,7 +36,9 @@ interface BillDetailProps {
   onSettle: (invoice: Invoice) => void;
   onPrint: (invoice: Invoice) => void;
   onPrintQr: (invoice: Invoice) => void;
-  onTransport: (invoice: Invoice) => void;
+    onTransport: (invoice: Invoice) => void;
+  /** Opens the PDC cheque edit modal for one entry of invoice.paymentHistory. */
+  onEditPdc?: (invoice: Invoice, paymentIndex: number) => void;
   /** Sends through the connected WhatsApp provider; leave out when none is connected. */
   onRemind?: (invoice: Invoice) => void;
   onReturn: (invoice: Invoice) => void;
@@ -57,7 +59,8 @@ export const BillDetail: React.FC<BillDetailProps> = ({
   onSettle,
   onPrint,
   onPrintQr,
-  onTransport,
+   onTransport,
+  onEditPdc,
   onRemind,
   onReturn,
   onEdit,
@@ -77,7 +80,12 @@ export const BillDetail: React.FC<BillDetailProps> = ({
   const partyPhone = (invoice.partyNumber || '').replace(/\D/g, '');
   const paidVia = activeModes
     .map(([key]) => (key === 'upi' ? 'UPI' : key.charAt(0).toUpperCase() + key.slice(1)))
-    .join(' + ');
+       .join(' + ');
+
+  // PDC payments with their ORIGINAL index in paymentHistory (the edit handler matches by index)
+  const pdcEntries = (invoice.paymentHistory || [])
+    .map((payment: any, paymentIndex: number) => ({ payment, paymentIndex }))
+    .filter(({ payment }) => payment?.method === 'PDC');
 
   const query = itemQuery.trim().toLowerCase();
   const matchesQuery = (name?: string) => !query || (name || '').toLowerCase().includes(query);
@@ -501,10 +509,29 @@ export const BillDetail: React.FC<BillDetailProps> = ({
         <dt className="pt-2 mt-1 border-t border-[#dfe6fb] text-base font-semibold text-[#0f172b]">Total</dt>
         <dd className="pt-2 mt-1 border-t border-[#dfe6fb] text-right text-base font-semibold text-[#0f172b] tabular-nums" title={fmt(invoice.amount)}>{fmtCompact(invoice.amount)}</dd>
 
-        {activeModes.map(([key, val]) => (
+                {activeModes.map(([key, val]) => (
           <React.Fragment key={key}>
             <dt className="text-[#45556c]">Paid via {key === 'upi' ? 'UPI' : key.charAt(0).toUpperCase() + key.slice(1)}</dt>
             <dd className="text-right tabular-nums font-medium text-[#008236]" title={fmt(Number(val))}>{fmtCompact(Number(val))}</dd>
+
+            {key.toLowerCase() === 'pdc' && onEditPdc && pdcEntries.map(({ payment, paymentIndex }) => (
+              <div key={`pdc-${paymentIndex}`} className="col-span-2 flex items-center justify-between gap-2 text-xs text-[#5b6b86]">
+                <span className="min-w-0 truncate">
+                  Cheque {payment.chequeNumber || '—'} · {payment.chequeDate || '—'}
+                </span>
+                <ShowWrapper requiredPermission={Permissions.HiddenProFeatures}>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onEditPdc(invoice, paymentIndex); }}
+                    aria-label="Edit cheque details"
+                    title="Edit cheque details"
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-[#45556c] transition-colors hover:bg-[#f5f7ff] hover:text-[#0f172b] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#155dfc]"
+                  >
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+                  </button>
+                </ShowWrapper>
+              </div>
+            ))}
           </React.Fragment>
         ))}
 

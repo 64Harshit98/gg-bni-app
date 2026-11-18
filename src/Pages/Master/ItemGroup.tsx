@@ -111,6 +111,25 @@ const fileToCategoryImage = (file: File): Promise<string> =>
     reader.readAsDataURL(file);
   });
 
+// Image link: must be a valid https URL that actually loads as an image.
+// The link is stored as-is (no compression), so it adds almost nothing to the Firestore doc.
+const loadImageFromUrl = (rawUrl: string): Promise<string> =>
+  new Promise((resolve, reject) => {
+    let parsed: URL;
+    try {
+      parsed = new URL(rawUrl);
+    } catch {
+      return reject(new Error('Please enter a valid image link.'));
+    }
+    if (parsed.protocol !== 'https:') {
+      return reject(new Error('Image link must start with https://'));
+    }
+    const img = new Image();
+    img.onload = () => resolve(parsed.toString());
+    img.onerror = () => reject(new Error('Could not load an image from this link.'));
+    img.src = parsed.toString();
+  });
+
 export interface SharedItemGroupProps {
   routes: {
     addItem: string;
@@ -157,6 +176,8 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editingGroupName, setEditingGroupName] = useState<string>('');
   const [editingGroupImage, setEditingGroupImage] = useState<string>(''); // '' = no image
+  const [imageLinkInput, setImageLinkInput] = useState<string>('');
+  const [isCheckingImageLink, setIsCheckingImageLink] = useState(false);
   const [deleteTargetGroup, setDeleteTargetGroup] = useState<ItemGroup | null>(null);
   const [viewingGroup, setViewingGroup] = useState<ItemGroup | null>(null);
   const [allItems, setAllItems] = useState<any[]>([]);
@@ -501,12 +522,16 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
     setEditingGroupId(group.id ?? null);
     setEditingGroupName(group.name);
     setEditingGroupImage(group.imageUrl ?? '');
+    // if the saved image is a link (not an uploaded data: image), show it in the link field
+    setImageLinkInput(group.imageUrl && /^https?:\/\//i.test(group.imageUrl) ? group.imageUrl : '');
   };
 
   const handleCancelEdit = () => {
     setEditingGroupId(null);
     setEditingGroupName('');
     setEditingGroupImage('');
+    setImageLinkInput('');
+    setIsCheckingImageLink(false);
     setError(null);
   };
 
@@ -516,9 +541,24 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
     if (!file) return;
     try {
       setEditingGroupImage(await fileToCategoryImage(file));
+      setImageLinkInput(''); // upload replaces any pasted link
       setError(null);
     } catch (err: any) {
       setError(err.message || 'Failed to process image.');
+    }
+  };
+
+  const handleApplyImageLink = async () => {
+    const url = imageLinkInput.trim();
+    if (!url) return;
+    setIsCheckingImageLink(true);
+    try {
+      setEditingGroupImage(await loadImageFromUrl(url)); // preview updates instantly
+      setError(null);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load image link.');
+    } finally {
+      setIsCheckingImageLink(false);
     }
   };
 
@@ -707,7 +747,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
     }
   };
 
-   // Popups render on document.body inside a high z-index wrapper, so the bottom nav can never cover them.
+  // Popups render on document.body inside a high z-index wrapper, so the bottom nav can never cover them.
   const overlayPortal = (node: React.ReactNode) =>
     createPortal(<div style={{ position: 'relative', zIndex: 9999 }}>{node}</div>, document.body);
 
@@ -740,19 +780,19 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
           <BackButton />
         </div>
         <div className="flex-1 min-w-0 text-left xl:flex-none">
-  <div className="flex items-center gap-3">
-    <h1 className="text-lg md:text-xl xl:text-[22px] font-semibold text-slate-900 leading-6 md:leading-7 xl:leading-[30px] xl:min-w-[168px] whitespace-nowrap">Item groups</h1>
-    <div className="hidden xl:block">{renderTabs(false)}</div>
-  </div>
-  <p className="xl:hidden text-xs leading-4 text-slate-500 truncate">
-    {itemGroups.length} {itemGroups.length === 1 ? 'group' : 'groups'} · {uncategorizedCount} {uncategorizedCount === 1 ? 'item' : 'items'} not in any group
-  </p>
-</div>
+          <div className="flex items-center gap-3">
+            <h1 className="text-lg md:text-xl xl:text-[22px] font-semibold text-slate-900 leading-6 md:leading-7 xl:leading-[30px] xl:min-w-[168px] whitespace-nowrap">Item groups</h1>
+            <div className="hidden xl:block">{renderTabs(false)}</div>
+          </div>
+          <p className="xl:hidden text-xs leading-4 text-slate-500 truncate">
+            {itemGroups.length} {itemGroups.length === 1 ? 'group' : 'groups'} · {uncategorizedCount} {uncategorizedCount === 1 ? 'item' : 'items'} not in any group
+          </p>
+        </div>
 
-{/* Desktop (>=1280): caption right side me, Add page ke "Items in catalogue" jaisa */}
-<div className="hidden xl:block ml-auto text-xs text-slate-500 whitespace-nowrap">
-  {itemGroups.length} {itemGroups.length === 1 ? 'group' : 'groups'} · {uncategorizedCount} {uncategorizedCount === 1 ? 'item' : 'items'} not in any group
-</div>
+        {/* Desktop (>=1280): caption right side me, Add page ke "Items in catalogue" jaisa */}
+        <div className="hidden xl:block ml-auto text-xs text-slate-500 whitespace-nowrap">
+          {itemGroups.length} {itemGroups.length === 1 ? 'group' : 'groups'} · {uncategorizedCount} {uncategorizedCount === 1 ? 'item' : 'items'} not in any group
+        </div>
 
         {/* Phone: sort lives in the header as an icon (native picker opens on tap) */}
         <div className="relative lg:hidden flex-shrink-0">
@@ -1016,110 +1056,65 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
                 const chip = getChip(index);
                 return (
                   <div key={group.id} className="flex items-center justify-between gap-3 px-3.5 py-3 bg-white rounded-sm shadow-sm border border-gray-200 hover:border-gray-300 transition-colors">
-                    {editingGroupId === group.id ? (
-                      <div className="flex items-stretch gap-3 w-full">
-                        {/* Image block (80x80): tap = pick image, + corner = add/change, ✕ corner = remove */}
-                        <div className="relative w-20 h-20 flex-shrink-0 overflow-hidden rounded-sm border border-gray-300 bg-gray-50">
-                          <label
-                            className="w-full h-full flex items-center justify-center text-slate-400 cursor-pointer hover:bg-gray-100 transition-colors"
-                            aria-label={editingGroupImage ? 'Change category image' : 'Add category image'}
-                          >
-                            {editingGroupImage
-                              ? <img src={editingGroupImage} alt="" className="w-full h-full object-cover" />
-                              : <FiImage size={26} strokeWidth={1.5} />}
-                            <input type="file" accept="image/*" onChange={handleCategoryImagePick} className="sr-only" />
-                          </label>
-
-                          {/* + tab, bottom-right corner */}
-                          <span aria-hidden="true" className={`absolute bottom-0 right-0 w-6 h-6 inline-flex items-center justify-center rounded-full text-white pointer-events-none ${actionBg}`}>
-                            <FiPlus size={14} strokeWidth={2.5} />
+                    <div className="flex items-center gap-3 overflow-hidden min-w-0">
+                      <span className={`w-10 h-10 flex-shrink-0 inline-flex items-center justify-center overflow-hidden rounded-sm ${group.imageUrl ? 'bg-gray-50 border border-gray-200' : chip.classes}`}>
+                        {group.imageUrl
+                          ? <img src={group.imageUrl} alt="" loading="lazy" className="w-full h-full object-cover" />
+                          : <chip.Icon size={20} />}
+                      </span>
+                      <div className="min-w-0 flex flex-col items-start gap-0.5">
+                        <button
+                          onClick={() => { setViewingGroup(group); setItemSearchQuery(''); }}
+                          title={group.name}
+                          className={`max-w-full font-semibold text-sm truncate hover:underline text-left text-slate-900 ${theme.primaryHoverText}`}
+                        >
+                          {group.name}
+                        </button>
+                        <p className="max-w-full truncate whitespace-nowrap text-xs text-slate-500">
+                          <span className="font-semibold text-slate-900 tabular-nums">{count}</span> {count === 1 ? 'item' : 'items'}
+                          {count > 0 && <> · stock {formatCompactINR(stockValue)}</>}
+                        </p>
+                        {count === 0 ? (
+                          <span className="inline-flex items-center gap-1 h-5 px-2 rounded-sm text-[11px] font-semibold tracking-wide whitespace-nowrap flex-shrink-0 bg-amber-50 text-amber-700">
+                            <span className="w-1.5 h-1.5 rounded-sm bg-current" />EMPTY
                           </span>
-
-                          {/* ✕ remove, top-right (only when an image exists) */}
-                          {editingGroupImage && (
-                            <button
-                              type="button"
-                              onClick={() => setEditingGroupImage('')}
-                              aria-label="Remove category image"
-                              className="absolute top-1 left-1 w-5 h-5 inline-flex items-center justify-center rounded-full bg-black/55 hover:bg-red-600 text-white transition-colors"
-                            >
-                              <FiX size={12} strokeWidth={2.5} />
-                            </button>
+                        ) : lowStock > 0 && (
+                          <span className="inline-flex items-center gap-1 h-5 px-2 rounded-sm text-[11px] font-semibold tracking-wide whitespace-nowrap flex-shrink-0 bg-amber-50 text-amber-700">
+                            <span className="w-1.5 h-1.5 rounded-sm bg-current" />{lowStock} low stock
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {group.name.toLowerCase().trim() !== "uncategorized" && (
+                      <div className="flex gap-0.5 flex-shrink-0">
+                        <button onClick={() => handleEditClick(group)} className={`w-8 h-8 inline-flex items-center justify-center rounded-sm text-slate-500 hover:bg-gray-100 transition-colors ${theme.primaryHoverText}`} aria-label={`Edit ${group.name}`}><IconEdit width={18} height={18} /></button>
+                        <div className="relative">
+                          <button
+                            onClick={() => setOpenMenuGroupId(openMenuGroupId === group.id ? null : (group.id ?? null))}
+                            className="w-8 h-8 inline-flex items-center justify-center rounded-sm text-slate-500 hover:text-slate-900 hover:bg-gray-100 transition-colors"
+                            aria-label={`More actions for ${group.name}`}
+                            aria-haspopup="menu"
+                            aria-expanded={openMenuGroupId === group.id}
+                          >
+                            <FiMoreHorizontal size={18} />
+                          </button>
+                          {openMenuGroupId === group.id && (
+                            <>
+                              <button type="button" tabIndex={-1} aria-hidden="true" className="fixed inset-0 z-10 cursor-default" onClick={() => setOpenMenuGroupId(null)} />
+                              <div role="menu" className="absolute right-0 top-9 z-20 w-44 py-1 bg-white border border-gray-200 rounded-sm shadow-lg">
+                                <button
+                                  role="menuitem"
+                                  onClick={() => { setOpenMenuGroupId(null); setDeleteTargetGroup(group); }}
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                                >
+                                  <FiTrash2 size={16} />
+                                  Delete group
+                                </button>
+                              </div>
+                            </>
                           )}
                         </div>
-
-                        {/* Name + actions */}
-                        <div className="flex flex-col flex-1 min-w-0 gap-2">
-                          <input type="text" value={editingGroupName} onChange={(e) => setEditingGroupName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSaveEdit(group)} autoFocus className={`w-full h-10 px-3 text-sm border rounded-sm focus:outline-none focus:ring-2 ${theme.primaryBorder} ${theme.focusRing}`} />
-                          <div className="flex justify-end gap-2">
-                            <button onClick={() => handleSaveEdit(group)} className="bg-green-600 hover:bg-green-700 text-white h-8 px-3 rounded-sm text-sm font-medium transition-colors">Save</button>
-                            <button onClick={handleCancelEdit} className="bg-white hover:bg-gray-50 text-slate-700 border border-gray-300 h-8 px-3 rounded-sm text-sm font-medium transition-colors">Cancel</button>
-                          </div>
-                        </div>
                       </div>
-                    ) : (
-                      <>
-                        <div className="flex items-center gap-3 overflow-hidden min-w-0">
-                          <span className={`w-10 h-10 flex-shrink-0 inline-flex items-center justify-center overflow-hidden rounded-sm ${group.imageUrl ? 'bg-gray-50 border border-gray-200' : chip.classes}`}>
-                            {group.imageUrl
-                              ? <img src={group.imageUrl} alt="" loading="lazy" className="w-full h-full object-cover" />
-                              : <chip.Icon size={20} />}
-                          </span>
-                          <div className="min-w-0 flex flex-col items-start gap-0.5">
-                            <button
-                              onClick={() => { setViewingGroup(group); setItemSearchQuery(''); }}
-                              title={group.name}
-                              className={`max-w-full font-semibold text-sm truncate hover:underline text-left text-slate-900 ${theme.primaryHoverText}`}
-                            >
-                              {group.name}
-                            </button>
-                            <p className="max-w-full truncate whitespace-nowrap text-xs text-slate-500">
-                              <span className="font-semibold text-slate-900 tabular-nums">{count}</span> {count === 1 ? 'item' : 'items'}
-                              {count > 0 && <> · stock {formatCompactINR(stockValue)}</>}
-                            </p>
-                            {count === 0 ? (
-                              <span className="inline-flex items-center gap-1 h-5 px-2 rounded-sm text-[11px] font-semibold tracking-wide whitespace-nowrap flex-shrink-0 bg-amber-50 text-amber-700">
-                                <span className="w-1.5 h-1.5 rounded-sm bg-current" />EMPTY
-                              </span>
-                            ) : lowStock > 0 && (
-                              <span className="inline-flex items-center gap-1 h-5 px-2 rounded-sm text-[11px] font-semibold tracking-wide whitespace-nowrap flex-shrink-0 bg-amber-50 text-amber-700">
-                                <span className="w-1.5 h-1.5 rounded-sm bg-current" />{lowStock} low stock
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        {group.name.toLowerCase().trim() !== "uncategorized" && (
-                          <div className="flex gap-0.5 flex-shrink-0">
-                            <button onClick={() => handleEditClick(group)} className={`w-8 h-8 inline-flex items-center justify-center rounded-sm text-slate-500 hover:bg-gray-100 transition-colors ${theme.primaryHoverText}`} aria-label={`Edit ${group.name}`}><IconEdit width={18} height={18} /></button>
-                            <div className="relative">
-                              <button
-                                onClick={() => setOpenMenuGroupId(openMenuGroupId === group.id ? null : (group.id ?? null))}
-                                className="w-8 h-8 inline-flex items-center justify-center rounded-sm text-slate-500 hover:text-slate-900 hover:bg-gray-100 transition-colors"
-                                aria-label={`More actions for ${group.name}`}
-                                aria-haspopup="menu"
-                                aria-expanded={openMenuGroupId === group.id}
-                              >
-                                <FiMoreHorizontal size={18} />
-                              </button>
-                              {openMenuGroupId === group.id && (
-                                <>
-                                  <button type="button" tabIndex={-1} aria-hidden="true" className="fixed inset-0 z-10 cursor-default" onClick={() => setOpenMenuGroupId(null)} />
-                                  <div role="menu" className="absolute right-0 top-9 z-20 w-44 py-1 bg-white border border-gray-200 rounded-sm shadow-lg">
-                                    <button
-                                      role="menuitem"
-                                      onClick={() => { setOpenMenuGroupId(null); setDeleteTargetGroup(group); }}
-                                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                                    >
-                                      <FiTrash2 size={16} />
-                                      Delete group
-                                    </button>
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </>
                     )}
                   </div>
                 )
@@ -1147,8 +1142,123 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
         </div>
       </main>
 
-      {/* Modals & Drawers */}
-            {isNewGroupModalOpen && overlayPortal(
+            {editingGroupId && (() => {
+        const editingGroup = itemGroups.find(g => g.id === editingGroupId);
+        if (!editingGroup) return null;
+        return overlayPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={handleCancelEdit}>
+            <div
+              className="bg-white rounded-sm shadow-xl w-full max-w-sm p-4 max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center gap-2 mb-3">
+                <h2 className="text-base font-semibold text-slate-900">Edit group</h2>
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  aria-label="Close"
+                  className="w-7 h-7 inline-flex items-center justify-center rounded-sm text-slate-400 hover:text-slate-700 hover:bg-gray-100 transition-colors"
+                >
+                  <FiX size={18} />
+                </button>
+              </div>
+
+              {error && (
+                <p className="mb-2 rounded-sm bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700">{error}</p>
+              )}
+
+              {/* Image + Group name in one row */}
+              <div className="flex items-start gap-3 mb-3">
+                <div className="relative w-16 h-16 flex-shrink-0 overflow-hidden rounded-sm border border-gray-300 bg-gray-50">
+                  <label
+                    className="w-full h-full flex items-center justify-center text-slate-400 cursor-pointer hover:bg-gray-100 transition-colors"
+                    aria-label={editingGroupImage ? 'Change category image' : 'Add category image'}
+                  >
+                    {editingGroupImage
+                      ? <img src={editingGroupImage} alt="" className="w-full h-full object-cover" />
+                      : <FiImage size={24} strokeWidth={1.5} />}
+                    <input type="file" accept="image/*" onChange={handleCategoryImagePick} className="sr-only" />
+                  </label>
+
+                  <span aria-hidden="true" className={`absolute bottom-0 right-0 w-5 h-5 inline-flex items-center justify-center rounded-full text-white pointer-events-none ${actionBg}`}>
+                    <FiPlus size={12} strokeWidth={2.5} />
+                  </span>
+
+                  {editingGroupImage && (
+                    <button
+                      type="button"
+                      onClick={() => { setEditingGroupImage(''); setImageLinkInput(''); }}
+                      aria-label="Remove category image"
+                      className="absolute top-0.5 left-0.5 w-4 h-4 inline-flex items-center justify-center rounded-full bg-black/55 hover:bg-red-600 text-white transition-colors"
+                    >
+                      <FiX size={10} strokeWidth={2.5} />
+                    </button>
+                  )}
+                </div>
+
+                <label className="grid gap-1 flex-1 min-w-0">
+                  <span className="text-xs font-medium text-slate-600">Group name</span>
+                  <input
+                    type="text"
+                    value={editingGroupName}
+                    onChange={(e) => setEditingGroupName(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSaveEdit(editingGroup)}
+                    autoFocus
+                    className={`w-full h-10 px-3 text-sm border border-[#7a8aa3] rounded-sm bg-white text-slate-900 focus:outline-none focus:ring-2 ${theme.focusRing}`}
+                  />
+                </label>
+              </div>
+
+              {/* Image link */}
+              <div className="flex gap-2 mb-4">
+                <input
+                  type="url"
+                  inputMode="url"
+                  value={imageLinkInput}
+                  onChange={(e) => setImageLinkInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleApplyImageLink();
+                    }
+                  }}
+                  placeholder="Or paste image link (https://…)"
+                  aria-label="Category image link"
+                  className={`flex-1 min-w-0 h-9 px-3 text-[13px] border border-gray-300 rounded-sm bg-white text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 ${theme.focusRing}`}
+                />
+                <button
+                  type="button"
+                  onClick={handleApplyImageLink}
+                  disabled={!imageLinkInput.trim() || isCheckingImageLink}
+                  className={`h-9 px-3 flex-shrink-0 rounded-sm text-[13px] font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${actionBg} ${actionHoverBg}`}
+                >
+                  {isCheckingImageLink ? 'Checking…' : 'Use link'}
+                </button>
+              </div>
+
+              {/* Actions */}
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  className="h-9 px-4 text-sm font-medium rounded-sm bg-white text-slate-700 border border-gray-300 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveEdit(editingGroup)}
+                  className="h-9 px-4 text-sm font-medium rounded-sm bg-green-600 hover:bg-green-700 text-white transition-colors"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {isNewGroupModalOpen && overlayPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={closeNewGroupModal}>
           <div className="bg-white rounded-sm shadow-xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-semibold text-slate-900 mb-1.5">New item group</h2>
@@ -1197,7 +1307,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
           </div>
         </div>
       )}
-            {deleteTargetGroup && overlayPortal(
+      {deleteTargetGroup && overlayPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-sm shadow-xl w-full max-w-md p-5">
             <h2 className="text-lg font-semibold text-slate-900 mb-1.5">Delete "{deleteTargetGroup.name}"?</h2>
@@ -1236,7 +1346,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
         />
       )}
 
-            {isMergeOpen && overlayPortal(
+      {isMergeOpen && overlayPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-sm shadow-xl w-full max-w-lg p-5 flex flex-col max-h-[80vh]">
             <div className="flex justify-between items-start gap-2 mb-1">
@@ -1296,7 +1406,7 @@ export const SharedItemGroupPage: React.FC<SharedItemGroupProps> = ({ routes, th
         />
       )}
 
-            {overlayPortal(
+      {overlayPortal(
         <AddOnManager
           isOpen={isAddOnManagerOpen}
           onClose={() => setIsAddOnManagerOpen(false)}

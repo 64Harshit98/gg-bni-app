@@ -164,7 +164,7 @@ const SalesReturnPage: React.FC = () => {
   const {
     returnDate, setReturnDate,
     modeOfReturn, setModeOfReturn,
-        isDrawerOpen, setIsDrawerOpen,
+    isDrawerOpen, setIsDrawerOpen,
     activeTaxMode, setActiveTaxMode,
     returnSuccess, setReturnSuccess,
     totalReturnGross, totalReturnValue, totalExchangeValue, finalBalance, discountDeducted, totalMrp, totalTax,
@@ -186,7 +186,7 @@ const SalesReturnPage: React.FC = () => {
     setIsLoading,
   });
 
-   const handleProcessReturn = () => handleProcessReturnBase(exchangeBalanceAction);
+  const handleProcessReturn = () => handleProcessReturnBase(exchangeBalanceAction);
   const getBalanceLabel = () => getBalanceLabelBase(exchangeBalanceAction);
 
   // ---- WhatsApp share after return (same flow as Journal's invoice action sheet) ----
@@ -287,7 +287,7 @@ const SalesReturnPage: React.FC = () => {
   );
 
   const renderHeader = () => (
-        <div className="flex flex-shrink-0 items-center gap-3 border-b border-[#dfe6fb] bg-white px-2 py-3 md:px-6 md:py-4">
+    <div className="flex flex-shrink-0 items-center gap-3 border-b border-[#dfe6fb] bg-white px-2 py-3 md:px-6 md:py-4">
       <div className="flex-shrink-0">
         <BackButton />
       </div>
@@ -298,7 +298,7 @@ const SalesReturnPage: React.FC = () => {
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden bg-[#eef2ff] text-[#0f172b]">
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
-            <BarcodeScanner isOpen={scannerPurpose !== null} onClose={() => setScannerPurpose(null)} onScanSuccess={handleBarcodeScanned} />
+      <BarcodeScanner isOpen={scannerPurpose !== null} onClose={() => setScannerPurpose(null)} onScanSuccess={handleBarcodeScanned} />
 
       {returnSuccess && (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4">
@@ -673,12 +673,12 @@ const SalesReturnPage: React.FC = () => {
               <div className="grid gap-2 text-sm">
                 <div className="flex justify-between text-[#45556c]">
                   <span>Return sale amount</span>
-<span className="tabular-nums text-[#0f172b]">₹{fmt(totalReturnGross, 2)}</span>
+                  <span className="tabular-nums text-[#0f172b]">₹{fmt(totalReturnGross, 2)}</span>
                 </div>
                 {discountDeducted > 0 && (
                   <div className="flex justify-between text-[#d5000c]">
                     <span>Less: proportional discount</span>
-<span className="tabular-nums">- ₹{fmt(discountDeducted, 2)}</span>
+                    <span className="tabular-nums">- ₹{fmt(discountDeducted, 2)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-[#45556c]">
@@ -702,7 +702,7 @@ const SalesReturnPage: React.FC = () => {
                   {modeOfReturn === 'Exchange' && finalBalance > 0 ? balanceSelect : (
                     <span className="text-sm font-medium">{getBalanceLabel()}</span>
                   )}
-                 <b className="text-[26px] font-semibold leading-8 tracking-tight tabular-nums">₹{fmt(Math.abs(finalBalance), 2)}</b>
+                  <b className="text-[26px] font-semibold leading-8 tracking-tight tabular-nums">₹{fmt(Math.abs(finalBalance), 2)}</b>
                 </div>
                 <button
                   onClick={handleProcessReturn}
@@ -737,7 +737,7 @@ const SalesReturnPage: React.FC = () => {
         taxMode={activeTaxMode}
         onTaxModeChange={setActiveTaxMode}
         isTaxToggleLocked={true}
-
+        allowDueBilling={salesSettings?.allowDueBilling ?? false}
         totalMrp={totalMrp}
       />
 

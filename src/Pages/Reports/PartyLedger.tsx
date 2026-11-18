@@ -185,7 +185,7 @@ const PartyLedger: React.FC = () => {
                 setIsPosBasicPlan(plan === PLANS.POS_BASIC || plan === PLANS.CALC_CATALOG);
             }
         };
-                fetchPlan();
+        fetchPlan();
     }, [currentUser?.companyId]);
 
     // Company name for the statement PDF header
@@ -1185,13 +1185,13 @@ const PartyLedger: React.FC = () => {
     }, [selectedPartyLedger]);
 
     const balanceWords = (net: number) =>
-        net > 0 ? { label: 'They owe you', value: inr(net), cls: 'text-amber-700' }
-            : net < 0 ? { label: 'You owe them', value: inr(net), cls: 'text-slate-900' }
-                : { label: 'Balance', value: 'Settled ✓', cls: 'text-green-700' };
+        net > 0 ? { label: 'They owe you', value: inr(net), cls: 'text-green-700' }
+            : net < 0 ? { label: 'You owe them', value: inr(net), cls: 'text-red-600' }
+                : { label: 'Balance', value: 'Settled ✓', cls: 'text-slate-500' };
 
     const daysSince = (t: number) => Math.max(0, Math.floor((Date.now() - t) / 86_400_000));
 
-        const downloadStatementPdf = async () => {
+    const downloadStatementPdf = async () => {
         if (!selectedPartyLedger || !statement) return;
         try {
             const pdf = new jsPDF();
@@ -1343,7 +1343,7 @@ const PartyLedger: React.FC = () => {
                 pdf.setTextColor(190, 205, 255);
                 pdf.text(`${periodDays} days`, brandRight, 45.5, { align: 'right' });
             }
-                        // ---------- 2. SUMMARY CARDS ----------
+            // ---------- 2. SUMMARY CARDS ----------
             const cardY = 50;
             const cardH = 32;
             const kpiPad = 6;
@@ -1397,7 +1397,7 @@ const PartyLedger: React.FC = () => {
                 pdf.setTextColor(120, 128, 150);
                 pdf.text(c.hint, cx, cardY + 27);
             });
-                        // ---------- 3. STATEMENT TABLE ----------
+            // ---------- 3. STATEMENT TABLE ----------
             const tableTitleY = cardY + cardH + 14;
             pdf.setFont('helvetica', 'bold');
             pdf.setFontSize(14);
@@ -1471,7 +1471,7 @@ const PartyLedger: React.FC = () => {
                         pdf.setLineWidth(0.2);
                         pdf.line(x, y + height, x + width, y + height);
                     }
-                                        if (data.section === 'foot') {
+                    if (data.section === 'foot') {
                         pdf.setDrawColor(17, 24, 39);
                         pdf.setLineWidth(0.5);
                         pdf.line(x, y, x + width, y);
@@ -2014,7 +2014,7 @@ const PartyLedger: React.FC = () => {
         const kpis = [
             { label: 'Total billed', value: inr(party.totalBilled), hint: `${party.transactions.length} ${party.transactions.length === 1 ? 'entry' : 'entries'}${party.totalTransactions === 0 ? ' · opening balance' : ''}`, icon: FileText, iconClass: 'bg-blue-50 text-blue-600', valueClass: 'text-slate-900' },
             { label: side === 'receive' ? 'Received' : 'Paid', value: inr(side === 'receive' ? statement.received : statement.paidOut), hint: `${statement.payments.length} ${statement.payments.length === 1 ? 'payment' : 'payments'}${statement.modes.length ? ` · ${statement.modes.join(', ').toLowerCase()}` : ''}`, icon: Wallet, iconClass: 'bg-green-50 text-green-600', valueClass: 'text-slate-900' },
-            { label: 'Pending', value: statement.net === 0 ? '₹0' : inr(statement.net), hint: statement.net > 0 ? `they owe you${statement.oldestDue ? ` · ${daysSince(statement.oldestDue)} days` : ''}` : statement.net < 0 ? 'you owe them' : 'settled', icon: Scale, iconClass: 'bg-amber-50 text-amber-600', valueClass: statement.net > 0 ? 'text-amber-700' : 'text-slate-900' },
+            { label: 'Pending', value: statement.net === 0 ? '₹0' : inr(statement.net), hint: statement.net > 0 ? `they owe you${statement.oldestDue ? ` · ${daysSince(statement.oldestDue)} days` : ''}` : statement.net < 0 ? 'you owe them' : 'settled', icon: Scale, iconClass: statement.net < 0 ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600', valueClass: statement.net > 0 ? 'text-green-700' : statement.net < 0 ? 'text-red-600' : 'text-slate-900' },
             { label: 'Last payment', value: statement.lastPayment ? formatDayMonth(statement.lastPayment.date) : '—', hint: statement.lastPayment ? `${inr(statement.lastPayment.effect)} · ${daysSince(statement.lastPayment.date)} days ago` : 'no payments yet', icon: CalendarDays, iconClass: 'bg-blue-50 text-blue-600', valueClass: 'text-slate-900' },
         ];
 
@@ -2312,8 +2312,8 @@ const PartyLedger: React.FC = () => {
        VIEW 1 — PARTY LIST
        ===================================================================== */
     const kpis = [
-        { label: 'To collect', value: inr(totals.toCollect), hint: totals.collectCount ? `${totals.collectCount} ${totals.collectCount === 1 ? 'party owes' : 'parties owe'} you` : 'nobody owes you', icon: Wallet, iconClass: 'bg-amber-50 text-amber-600', valueClass: totals.toCollect > 0 ? 'text-amber-700' : 'text-slate-900' },
-        { label: 'To pay', value: inr(totals.toPay), hint: totals.payCount ? `you owe ${totals.payCount} ${totals.payCount === 1 ? 'party' : 'parties'}` : 'you owe nobody', icon: ArrowDownToLine, iconClass: 'bg-red-50 text-red-600', valueClass: 'text-slate-900' },
+        { label: 'To collect', value: inr(totals.toCollect), hint: totals.collectCount ? `${totals.collectCount} ${totals.collectCount === 1 ? 'party owes' : 'parties owe'} you` : 'nobody owes you', icon: Wallet, iconClass: 'bg-green-50 text-green-600', valueClass: totals.toCollect > 0 ? 'text-green-700' : 'text-slate-900' },
+        { label: 'To pay', value: inr(totals.toPay), hint: totals.payCount ? `you owe ${totals.payCount} ${totals.payCount === 1 ? 'party' : 'parties'}` : 'you owe nobody', icon: ArrowDownToLine, iconClass: 'bg-red-50 text-red-600', valueClass: totals.toPay > 0 ? 'text-red-600' : 'text-slate-900' },
         { label: 'Parties', value: parties.length.toLocaleString('en-IN'), hint: `${totals.customers} customers · ${totals.suppliers} suppliers · ${totals.both} both`, icon: Users, iconClass: 'bg-pink-50 text-pink-600', valueClass: 'text-slate-900' },
         { label: 'Settled', value: totals.settled.toLocaleString('en-IN'), hint: 'no balance', icon: Check, iconClass: 'bg-green-50 text-green-600', valueClass: 'text-slate-900' },
     ];
@@ -2507,7 +2507,7 @@ const PartyLedger: React.FC = () => {
                                     const { party } = p;
                                     const advanceOwed = p.net === 0 ? advanceOwedOf(party) : 0;
                                     const words = advanceOwed > 0
-                                        ? { label: 'You owe them', value: inr(advanceOwed), cls: 'text-slate-900' }
+                                        ? { label: 'You owe them', value: inr(advanceOwed), cls: 'text-red-600' }
                                         : balanceWords(p.net);
                                     const meta = [
                                         party.partyNumber && party.partyNumber !== 'N/A' ? formatPhone(party.partyNumber) : '',

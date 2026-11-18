@@ -167,7 +167,7 @@ const ItemsSoldReport: React.FC = () => {
             if (g.id) byKey[g.id] = g.name || 'Unknown Group';
             if (g.name) byKey[g.name] = g.name;
         });
-                // Old bills can carry odd types here, so only trust strings and numbers.
+        // Old bills can carry odd types here, so only trust strings and numbers.
         const str = (v: unknown) =>
             typeof v === 'string' ? v.trim() : typeof v === 'number' ? String(v) : '';
 
@@ -183,7 +183,7 @@ const ItemsSoldReport: React.FC = () => {
 
             return UNASSIGNED_GROUP_NAME;
         };
-       }, [catalogueItemGroups]);
+    }, [catalogueItemGroups]);
 
     // Fallback: if a bill line has no usable group, use the item's current group.
     const catalogueById = useMemo(() => {
@@ -291,7 +291,7 @@ const ItemsSoldReport: React.FC = () => {
                 const { baseName, addOnText } = splitAddOns(item);
                 const id = `${productId}__${addOnText || ''}`;
 
-                                if (!itemMap.has(id)) {
+                if (!itemMap.has(id)) {
                     // 1) group from the bill line, 2) else the item's current catalogue group
                     let itemGroup = groupNameOf(item.itemGroupId, item.category);
                     if (itemGroup === UNASSIGNED_GROUP_NAME) {
@@ -314,7 +314,9 @@ const ItemsSoldReport: React.FC = () => {
                 const qty = item.quantity || 1;
 
                 const pricePerItem = item.effectiveUnitPrice || item.customPrice || item.salesPrice || item.mrp || 0;
-                const lineValue = pricePerItem * qty;
+                // Bill me line ka saved final amount (discount ke baad) use karo, warna purana price * qty
+                const savedLine = Number(item.finalPrice) || 0;
+                const lineValue = savedLine > 0 ? savedLine : pricePerItem * qty;
 
                 existingItem.quantitySold += qty;
                 existingItem.valueSold += lineValue;
@@ -326,7 +328,7 @@ const ItemsSoldReport: React.FC = () => {
         });
 
         return { soldItems: Array.from(itemMap.values()), billLines: lines, uncountedBills: uncounted };
-        }, [billsInRange, groupNameOf, catalogueById]);
+    }, [billsInRange, groupNameOf, catalogueById]);
 
     const groupOptions = useMemo(() => {
         const names = new Set<string>(catalogueItemGroups.map((g) => g.name).filter(Boolean));

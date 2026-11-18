@@ -45,9 +45,9 @@ export const useJournalList = ({ companyId, isTutorialActive }: UseJournalListPa
       case 'all': return null;
       case 'today': return { start: today, end: endOfDay(today) };
       case 'yesterday': { const y = daysAgo(today, 1); return { start: y, end: endOfDay(y) }; }
-      case 'last7': return { start: daysAgo(today, 7), end: endOfDay(today) };
-      case 'last15': return { start: daysAgo(today, 15), end: endOfDay(today) };
-      case 'last30': return { start: daysAgo(today, 30), end: endOfDay(today) };
+      case 'last7': return { start: daysAgo(today, 6), end: endOfDay(today) };
+      case 'last15': return { start: daysAgo(today, 14), end: endOfDay(today) };
+      case 'last30': return { start: daysAgo(today, 29), end: endOfDay(today) };
       case 'custom': {
         if (!customStartDate || !customEndDate) return null;
         const start = new Date(customStartDate);
@@ -92,9 +92,9 @@ export const useJournalList = ({ companyId, isTutorialActive }: UseJournalListPa
         switch (activeDateFilter) {
           case 'today': return invoiceDate >= today;
           case 'yesterday': return invoiceDate >= daysAgo(today, 1) && invoiceDate < today;
-          case 'last7': return invoiceDate >= daysAgo(today, 7);
-          case 'last15': return invoiceDate >= daysAgo(today, 15);
-          case 'last30': return invoiceDate >= daysAgo(today, 30);
+          case 'last7': return invoiceDate >= daysAgo(today, 6);
+          case 'last15': return invoiceDate >= daysAgo(today, 14);
+          case 'last30': return invoiceDate >= daysAgo(today, 29);
           case 'custom':
             if (!customStartDate || !customEndDate) return false;
             const start = new Date(customStartDate);

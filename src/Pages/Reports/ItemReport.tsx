@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import useItemReport from './ItemReportComponents/useItemReport';
 import type { Item } from '../../constants/models';
+import { collectCustomLabels, getCustomValue } from '../../constants/models';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import XLSX from 'xlsx-js-style';
@@ -170,6 +171,15 @@ const ItemReport: React.FC = () => {
   const [isRangeOpen, setIsRangeOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
+  // ---- custom field filter / sort ----
+  const [cfLabel, setCfLabel] = useState('');
+  const [cfText, setCfText] = useState('');
+  const [cfMin, setCfMin] = useState('');
+  const [cfMax, setCfMax] = useState('');
+  const [cfFrom, setCfFrom] = useState('');
+  const [cfTo, setCfTo] = useState('');
+  const [cfSortDir, setCfSortDir] = useState<'asc' | 'desc' | null>(null);
+  const [cfWhen, setCfWhen] = useState('');
   const {
     items,
     appliedItemGroupId,
@@ -185,7 +195,46 @@ const ItemReport: React.FC = () => {
     isLoading,
     feedbackModal,
   } = useItemReport();
+  const customLabels = useMemo(() => collectCustomLabels(items), [items]);
+  const cfType = customLabels.find((l) => l.label === cfLabel)?.type ?? 'text';
+  const todayIso = formatDateForInput(new Date());
+  // "Expired" only makes sense for expiry-type fields, not Mfg/Purchase/Invoice dates
+  const isExpiryField = /expir|exp\b|best\s*before|use\s*by|valid/i.test(cfLabel);
+  const changeCfLabel = (v: string) => {
+    setCfLabel(v);
+    setCfText(''); setCfMin(''); setCfMax(''); setCfFrom(''); setCfTo('');
+    setCfWhen('');
+    const t = customLabels.find((l) => l.label === v)?.type;
+    setCfSortDir(v && t === 'date' ? 'asc' : null);   // dates: earliest first automatically
+  };
 
+  const changeCfWhen = (v: string) => {
+    setCfWhen(v);
+    setCfFrom(''); setCfTo('');
+    if (v === 'expired' || v === 'next30' || v === 'thisMonth' || v === 'nextMonth') setCfQuick(v);
+  };
+
+  const setCfQuick = (kind: 'expired' | 'next30' | 'thisMonth' | 'nextMonth') => {
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth();
+    if (kind === 'expired') {
+      const yest = new Date(y, m, now.getDate() - 1);
+      setCfFrom(''); setCfTo(formatDateForInput(yest));
+    } else if (kind === 'next30') {
+      setCfFrom(formatDateForInput(now)); setCfTo(formatDateForInput(new Date(y, m, now.getDate() + 30)));
+    } else {
+      const off = kind === 'thisMonth' ? 0 : 1;
+      setCfFrom(formatDateForInput(new Date(y, m + off, 1)));
+      setCfTo(formatDateForInput(new Date(y, m + off + 1, 0)));
+    }
+  };
+
+  const setCfMonth = (ym: string) => {          // "2026-11" from <input type="month">
+    if (!ym) { setCfFrom(''); setCfTo(''); return; }
+    const [yy, mm] = ym.split('-').map(Number);
+    setCfFrom(formatDateForInput(new Date(yy, mm - 1, 1)));
+    setCfTo(formatDateForInput(new Date(yy, mm, 0)));
+  };
   // The list is the point of this page — show it by default.
   useEffect(() => {
     setIsListVisible(true);
@@ -257,12 +306,28 @@ const ItemReport: React.FC = () => {
       // have stock there — an item with 0 stock at this location shouldn't appear.
       if (locationFilter && (item.stock || 0) <= 0) return false;
 
+      if (cfLabel) {
+        const v = getCustomValue(item, cfLabel);
+        if (cfType === 'date' && (cfFrom || cfTo)) {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+          if (cfFrom && v < cfFrom) return false;
+          if (cfTo && v > cfTo) return false;
+        } else if (cfType === 'number' && (cfMin || cfMax)) {
+          const n = parseFloat(v);
+          if (!Number.isFinite(n)) return false;
+          if (cfMin && n < Number(cfMin)) return false;
+          if (cfMax && n > Number(cfMax)) return false;
+        } else if (cfType === 'text' && cfText.trim()) {
+          if (!v.toLowerCase().includes(cfText.trim().toLowerCase())) return false;
+        }
+      }
+
       if (!appliedItemGroupId) return true;
       if (appliedItemGroupId === UNASSIGNED_GROUP_NAME) return !item.itemGroupId || !groupOf(item);
       return item.itemGroupId === appliedItemGroupId || (!!selectedGroup && item.itemGroupId === selectedGroup.name);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemsWithLocationStock, searchQuery, locationFilter, appliedItemGroupId, itemGroups]);
+  }, [itemsWithLocationStock, searchQuery, locationFilter, appliedItemGroupId, itemGroups,
+    cfLabel, cfType, cfText, cfMin, cfMax, cfFrom, cfTo]);
 
   const issueCounts = useMemo(
     () =>
@@ -290,6 +355,18 @@ const ItemReport: React.FC = () => {
       return 0;
     });
 
+    if (cfLabel && cfSortDir) {
+      const dir = cfSortDir === 'asc' ? 1 : -1;
+      newFilteredItems.sort((a, b) => {
+        const va = getCustomValue(a, cfLabel), vb = getCustomValue(b, cfLabel);
+        if (!va && !vb) return 0;
+        if (!va) return 1;               // items without a value go last
+        if (!vb) return -1;
+        if (cfType === 'number') return (parseFloat(va) - parseFloat(vb)) * dir;
+        return va.localeCompare(vb, undefined, { numeric: true }) * dir;
+      });
+    }
+
     // Averages are over the group/location/search set, not the issue filter,
     // so the cards don't jump when the user peeks at "No MRP" items.
     const totalItems = baseItems.length;
@@ -314,7 +391,7 @@ const ItemReport: React.FC = () => {
         averageMarginPercentage,
       },
     };
-  }, [baseItems, issueFilter, sortConfig]);
+  }, [baseItems, issueFilter, sortConfig, cfLabel, cfType, cfSortDir]);
 
   // Start from the top of the list whenever what's listed changes.
   useEffect(() => {
@@ -359,6 +436,7 @@ const ItemReport: React.FC = () => {
       stock: item.stock || 0,
       barcode: item.barcode || '-',
       restockQuantity: item.restockQuantity || 0,
+      cf: cfLabel ? getCustomValue(item, cfLabel) : '',
     };
   };
 
@@ -650,15 +728,23 @@ const ItemReport: React.FC = () => {
           styles: { halign: 'right' as const, textColor: e.stock ? INK : LIGHT },
         },
         numCell(e.restockQuantity),
+        ...(cfLabel
+          ? [{ content: pdfSafe(e.cf) || '—', styles: { halign: 'left' as const, textColor: e.cf ? INK : LIGHT } }]
+          : []),
       ]);
 
-      // Item | Group | Barcode | MRP | Purchase | Discount | Tax | Stock | Restock  (total = 269mm)
-      const COLW = [52, 32, 34, 28, 34, 25, 14, 22, 28];
+      // Item | Group | Barcode | MRP | Purchase | Discount | Tax | Stock | Restock [| Custom field]  (total = 269mm)
+      const COLW = cfLabel
+        ? [38, 26, 28, 28, 34, 25, 14, 22, 24, 30]
+        : [52, 32, 34, 28, 34, 25, 14, 22, 28];
 
       autoTable(doc, {
         startY: listY + 4,
         margin: { top: 26, bottom: 22, left: M, right: M },
-        head: [['Item', 'Group', 'Barcode', 'MRP (Rs.)', 'Purchase price (Rs.)', 'Discount', 'Tax', 'Stock', 'Restock qty']],
+        head: [[
+          'Item', 'Group', 'Barcode', 'MRP (Rs.)', 'Purchase price (Rs.)', 'Discount', 'Tax', 'Stock', 'Restock qty',
+          ...(cfLabel ? [pdfSafe(cfLabel)] : []),
+        ]],
         body: tableBody,
         theme: 'plain',
         styles: {
@@ -675,14 +761,14 @@ const ItemReport: React.FC = () => {
           fontSize: 9.5,
         },
         columnStyles: COLW.reduce((acc: any, w, i) => {
-          acc[i] = { cellWidth: w, ...(i >= 3 ? { halign: 'right' } : {}) };
+          acc[i] = { cellWidth: w, ...(i >= 3 && i <= 8 ? { halign: 'right' } : {}) };
           return acc;
         }, {}),
         didParseCell: (data) => {
           data.cell.styles.valign = 'middle';
 
-          // Header numeric columns right-aligned (matches body)
-          if (data.section === 'head' && data.column.index >= 3) {
+          // Header numeric columns right-aligned (matches body); custom field column stays left
+          if (data.section === 'head' && data.column.index >= 3 && data.column.index <= 8) {
             data.cell.styles.halign = 'right';
           }
 
@@ -838,8 +924,8 @@ const ItemReport: React.FC = () => {
         O: { bg: 'DCFCE7', txt: '15803D' },
         L: { bg: 'E0F2FE', txt: '0369A1' },
         X: { bg: 'F1F5F9', txt: '475569' },
+        C: { bg: 'F3E8FF', txt: '7E22CE' },
       };
-
       // Same LEGEND block as the Bulk Import template (marker + description
       // per row, colored by type) — plus a 4th row for the report-only columns.
       const legendRows = [
@@ -847,9 +933,10 @@ const ItemReport: React.FC = () => {
         { type: 'O', marker: '●  Optional', desc: 'Improves data quality; blank is fine on re-import' },
         { type: 'L', marker: '▲  Lookup', desc: 'Matched by name on re-import (category/location)' },
         { type: 'X', marker: '■  Report Only', desc: 'Ledger figures for this report — ignored if this file is re-uploaded' },
+        { type: 'C', marker: '◆  Custom', desc: 'Your custom fields (IMEI, Expiry Date...). Header = field name, re-import friendly' },
       ];
 
-      const COLS = [
+      const BASE_COLS = [
         { header: '★ Item Name', note: 'Full product name  e.g. Amul Butter 500g', type: 'R', width: 28 },
         { header: '● Barcode', note: 'Optional (Leave blank to auto-generate)', type: 'O', width: 18 },
         { header: '● MRP', note: 'Max Retail Price (₹)  Required if Sale Price blank', type: 'O', width: 14 },
@@ -872,6 +959,14 @@ const ItemReport: React.FC = () => {
         { header: '■ Closing Bal.', note: 'Stock at period end (report only)', type: 'X', width: 14 },
         { header: '■ Value (₹)', note: 'Closing stock value (report only)', type: 'X', width: 15 },
       ];
+      // one column per custom field used anywhere in the items (placed after the report-only columns)
+      const customCols = customLabels.map((l) => ({
+        header: `◆ ${l.label}`,
+        note: `Custom field (${l.type})`,
+        type: 'C',
+        width: 20,
+      }));
+      const COLS = [...BASE_COLS, ...customCols];
       const colCount = COLS.length;
       // Same label the Location column shows for this row's Stock figure.
       // With a specific location filter applied, that's the filtered godown/Shop name;
@@ -965,6 +1060,10 @@ const ItemReport: React.FC = () => {
         aoa[r][18] = (item as any).stockOut ?? 0;                   // Stock Out
         aoa[r][19] = (item as any).closingBalance ?? item.stock ?? 0; // Closing Balance
         aoa[r][20] = (item as any).valueOfItem ?? 0;                // Value
+        // custom fields: column 21 onwards, one per field name
+        customLabels.forEach((l, k) => {
+          aoa[r][21 + k] = getCustomValue(item, l.label);
+        });
       });
 
       // No footer/TOTAL row — a text row at the end would get misread as
@@ -1431,7 +1530,75 @@ const ItemReport: React.FC = () => {
           </div>
         )}
       </div>
+      {/* CUSTOM FIELD FILTER */}
+      {customLabels.length > 0 && (
+        <div className="mb-4 flex flex-col gap-2.5 md:flex-row md:flex-wrap md:items-center">
+          <div className="md:w-56">
+            <SearchableSelect
+              theme="blue"
+              buttonClassName="!h-[38px]"
+              options={customLabels.map((l) => ({ value: l.label, label: l.label }))}
+              value={cfLabel}
+              onChange={changeCfLabel}
+              placeholder="Filter by custom field"
+              searchPlaceholder="Search field..."
+              clearable
+            />
+          </div>
 
+          {cfLabel && cfType === 'date' && (
+            <>
+              <div className="md:w-52">
+                <SearchableSelect
+                  theme="blue"
+                  buttonClassName="!h-[38px]"
+                  options={isExpiryField
+                    ? [
+                      { value: 'expired', label: 'Already expired' },
+                      { value: 'next30', label: 'Expiring in next 30 days' },
+                      { value: 'thisMonth', label: 'Expiring this month' },
+                      { value: 'nextMonth', label: 'Expiring next month' },
+                      { value: 'month', label: 'Pick a month' },
+                      { value: 'upto', label: 'Up to a date' },
+                    ]
+                    : [
+                      { value: 'thisMonth', label: 'This month' },
+                      { value: 'nextMonth', label: 'Next month' },
+                      { value: 'month', label: 'Pick a month' },
+                      { value: 'upto', label: 'Up to a date' },
+                    ]}
+                  value={cfWhen}
+                  onChange={changeCfWhen}
+                  placeholder="Any date"
+                  clearable
+                />
+              </div>
+              {cfWhen === 'month' && (
+                <input type="month" onChange={(e) => setCfMonth(e.target.value)}
+                  className="h-[38px] rounded-sm border border-slate-300 bg-white px-2 text-sm" />
+              )}
+              {cfWhen === 'upto' && (
+                <input type="date" value={cfTo} onChange={(e) => { setCfFrom(''); setCfTo(e.target.value); }}
+                  className="h-[38px] rounded-sm border border-slate-300 bg-white px-2 text-sm" />
+              )}
+            </>
+          )}
+
+          {cfLabel && cfType === 'number' && (
+            <>
+              <input type="number" placeholder="Min" value={cfMin} onChange={(e) => setCfMin(e.target.value)}
+                className="h-[38px] w-28 rounded-sm border border-slate-300 bg-white px-2 text-sm" />
+              <input type="number" placeholder="Max" value={cfMax} onChange={(e) => setCfMax(e.target.value)}
+                className="h-[38px] w-28 rounded-sm border border-slate-300 bg-white px-2 text-sm" />
+            </>
+          )}
+
+          {cfLabel && cfType === 'text' && (
+            <input type="text" placeholder={`${cfLabel} contains...`} value={cfText} onChange={(e) => setCfText(e.target.value)}
+              className="h-[38px] w-56 rounded-sm border border-slate-300 bg-white px-2 text-sm" />
+          )}
+        </div>
+      )}
       {/* SUMMARY — 2 cols up to laptop width (sidebar eats tablet width), 4 cols on xl+ */}
       <div className="mb-3 grid grid-cols-2 gap-2.5 md:mb-3 md:gap-4 xl:grid-cols-4">
         {statCards.map(({ label, value, hint, icon: Icon, iconClass, valueClass }) => (
@@ -1528,12 +1695,23 @@ const ItemReport: React.FC = () => {
                   {renderSortHeader('MRP', 'mrp', 'right')}
                   {renderSortHeader('Cost price', 'purchasePrice', 'right')}
                   <th className="px-4 py-3 text-right font-semibold uppercase tracking-wide">Stock value</th>
+                  {cfLabel && (
+                    <th className="px-4 py-3 text-left font-semibold">
+                      <button
+                        onClick={() => setCfSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
+                        className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-blue-800"
+                      >
+                        {cfLabel}
+                        {cfSortDir === 'desc' ? <ArrowDown size={11} /> : cfSortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowUpDown size={11} className="opacity-40" />}
+                      </button>
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {filteredItems.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-500">
+                    <td colSpan={cfLabel ? 8 : 7} className="px-4 py-10 text-center text-sm text-slate-500">
                       No items match these filters. Clear a filter or try a different search.
                     </td>
                   </tr>
@@ -1580,6 +1758,16 @@ const ItemReport: React.FC = () => {
                       <td className="whitespace-nowrap px-4 py-3 text-right text-slate-700">
                         {hasCost && stock > 0 ? inrRound(item.valueOfItem) : <span className="text-slate-400">—</span>}
                       </td>
+                      {cfLabel && (() => {
+                        const v = getCustomValue(item, cfLabel);
+                        const expired = cfType === 'date' && isExpiryField && !!v && v < todayIso;
+                        return (
+                          <td className={`whitespace-nowrap px-4 py-3 ${expired ? 'font-semibold text-red-600' : 'text-slate-700'}`}>
+                            {v || <span className="text-slate-400">—</span>}
+                            {expired && <span className="ml-1 text-[11px]">Expired</span>}
+                          </td>
+                        );
+                      })()}
                     </tr>
                   );
                 })}
@@ -1621,6 +1809,15 @@ const ItemReport: React.FC = () => {
                     {hasCost ? `Cost ${inr(item.purchasePrice)}` : <span className="font-medium text-amber-600">No cost</span>}
                   </span>
                 </div>
+                {cfLabel && (() => {
+                  const v = getCustomValue(item, cfLabel);
+                  const expired = cfType === 'date' && isExpiryField && !!v && v < todayIso;
+                  return (
+                    <p className={`mt-0.5 text-xs ${expired ? 'font-semibold text-red-600' : 'text-slate-600'}`}>
+                      {cfLabel}: {v || '—'}{expired ? ' · Expired' : ''}
+                    </p>
+                  );
+                })()}
               </li>
             );
           })}

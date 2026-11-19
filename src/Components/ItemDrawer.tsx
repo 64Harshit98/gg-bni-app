@@ -19,9 +19,9 @@ import ShowWrapper from '../context/ShowWrapper';
 import { Permissions, State } from '../enums';
 import { Modal } from '../constants/Modal';
 import { VariantPicker } from './VariantPicker';
-import type { QuantitySlab, AddOnGroup } from '../constants/models';
+import type { QuantitySlab, AddOnGroup, CustomField } from '../constants/models';
 import { type PriceTierForm, toPriceTierForm, fromPriceTierForm, emptyPriceTierForm } from '../lib/priceTiers';
-import { validateQuantitySlabs, buildAddOnPicks } from '../constants/models';
+import { validateQuantitySlabs, buildAddOnPicks, validateCustomFields, cleanCustomFields, PRESET_CUSTOM_LABELS, canonicalCustomLabel, collectCustomLabels, fieldTypeOf } from '../constants/models';
 import { useAddOnTemplates } from '../lib/addOnTemplates';
 import { ItemStockLocations } from './ItemStockLocation';
 import SearchableSelect from './SearchableSelect';
@@ -242,6 +242,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
     const enablePriceTiers = !!itemSettings?.enablePriceTiers;
     const enableQuantitySlabs = !!itemSettings?.enableQuantitySlabs;
     const enableAddOns = !!(itemSettings as any)?.enableAddOns;
+    const enableCustomFields = !!(itemSettings as any)?.enableCustomFields;
     const { templates: addOnTemplates, loaded: addOnsLoaded } =
         useAddOnTemplates(enableAddOns ? currentUser?.companyId : undefined);
     const [formData, setFormData] = useState<Partial<Item>>({});
@@ -295,6 +296,32 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
     const [variantIds, setVariantIds] = useState<string[]>([]);
     const [priceTiers, setPriceTiers] = useState<PriceTierForm[]>([]);
     const [quantitySlabs, setQuantitySlabs] = useState<QuantitySlab[]>([]);
+    const [customFields, setCustomFields] = useState<CustomField[]>([]);
+    const addCustomField = () =>
+        setCustomFields(prev => [...prev, { id: crypto.randomUUID(), label: '', value: '', type: 'text' }]);
+    const removeCustomField = (id: string) =>
+        setCustomFields(prev => prev.filter(f => f.id !== id));
+    const knownCustom = collectCustomLabels(allItemsForVariants);
+    const customLabelSuggestions: string[] = knownCustom.map(l => l.label);
+
+    const updateCustomField = (id: string, key: 'label' | 'value' | 'type', v: string) =>
+        setCustomFields(prev => prev.map(f => {
+            if (f.id !== id) return f;
+            if (key === 'label') {
+                const t = fieldTypeOf(canonicalCustomLabel(v, customLabelSuggestions), knownCustom);
+                return { ...f, label: v, ...(t !== 'text' ? { type: t } : {}) };
+            }
+            return { ...f, [key]: v };
+        }));
+
+    const addPresetField = (label: string) =>
+        setCustomFields(prev =>
+            prev.some(f => f.label.trim().toLowerCase() === label.toLowerCase())
+                ? prev
+                : [...prev, { id: crypto.randomUUID(), label, value: '', type: fieldTypeOf(label, knownCustom) }]
+        );
+    const unusedPresets = Array.from(new Set([...PRESET_CUSTOM_LABELS, ...customLabelSuggestions]))
+        .filter(l => !customFields.some(f => f.label.trim().toLowerCase() === l.toLowerCase()));
     const [addOnGroupIds, setAddOnGroupIds] = useState<string[]>([]);
     // Older items saved their add-ons inside the item; kept working, removable here
     const [legacyAddOnGroups, setLegacyAddOnGroups] = useState<AddOnGroup[]>([]);
@@ -366,6 +393,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
 
                     setPriceTiers(((liveData as any).priceTiers || []).map(toPriceTierForm));   // 👈 NEW
                     setQuantitySlabs(liveData.quantitySlabs || []);
+                    setCustomFields(((liveData as any).customFields || []).map((f: CustomField) => ({ ...f, id: f.id || crypto.randomUUID() })));
                     setAddOnGroupIds(liveData.addOnGroupIds || []);
                     setLegacyAddOnGroups(liveData.addOnGroups || []);
                     setAddOnPick(Object.fromEntries((liveData.addOnPicks || []).filter(p => p.optionIds).map(p => [p.groupId, p.optionIds as string[]])));
@@ -466,6 +494,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                 setVariantIds([]);
                 setPriceTiers([]);
                 setQuantitySlabs([]);
+                setCustomFields([]);
                 setAddOnGroupIds([]);
                 setLegacyAddOnGroups([]);
                 setAddOnPick({});
@@ -690,6 +719,11 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
             setModal({ message: slabError, type: State.ERROR });
             return;
         }
+        const customError = enableCustomFields ? validateCustomFields(customFields) : null;
+        if (customError) {
+            setModal({ message: customError, type: State.ERROR });
+            return;
+        }
 
         const newBarcode = String(formData.barcode || '').trim();
         const oldBarcode = String((item as any).barcode || '').trim();
@@ -806,6 +840,8 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                     addOnPicks: buildAddOnPicks(addOnGroupIds, addOnPick, addOnLimit, addOnTemplates),
                     addOnGroups: legacyAddOnGroups,
                 } : {}),
+                // Same rule as tiers/slabs: if the feature is off, existing custom fields are not touched
+                ...(enableCustomFields ? { customFields: cleanCustomFields(customFields) } : {}),
             };
 
             await dbOperations.updateItem(item.id, dataToUpdate);
@@ -2029,6 +2065,78 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                             </ShowWrapper>
                                         </div>
                                     </SectionCard>
+
+                                    {/* ---------- CUSTOM FIELDS ---------- */}
+                                    {enableCustomFields && (
+                                        <SectionCard icon={<FiTag size={16} />} title="Custom fields" hint="e.g. IMEI, Warranty">
+                                            <div className="grid gap-3">
+                                                {unusedPresets.length > 0 && (
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {unusedPresets.map(l => (
+                                                            <button key={l} type="button" onClick={() => addPresetField(l)} disabled={isSaving} className={BTN_SECONDARY}>
+                                                                + {l}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                <datalist id="dr-cf-labels">
+                                                    {customLabelSuggestions.map(l => <option key={l} value={l} />)}
+                                                </datalist>
+
+                                                {customFields.length === 0 && (
+                                                    <p className="text-[11px] text-[#5b6b86] italic">No custom fields added.</p>
+                                                )}
+
+                                                {customFields.map((f) => (
+                                                    <div key={f.id} className="relative grid grid-cols-2 md:grid-cols-[1.2fr_1.2fr_0.8fr] gap-3 rounded-sm border border-(--dr-line) bg-(--dr-sunken) p-3 pr-9">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeCustomField(f.id)}
+                                                            disabled={isSaving}
+                                                            aria-label="Remove field"
+                                                            className="absolute right-2 top-2 text-[#5b6b86] hover:text-[#d5000c]"
+                                                        >
+                                                            <FiX size={16} />
+                                                        </button>
+                                                        <div>
+                                                            <label className={SMALL_LABEL_CLS}>Field name</label>
+                                                            <input
+                                                                type="text" list="dr-cf-labels" value={f.label}
+                                                                onChange={(e) => updateCustomField(f.id, 'label', e.target.value)}
+                                                                placeholder="e.g. IMEI Number" disabled={isSaving} className={SMALL_INPUT_CLS}
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className={SMALL_LABEL_CLS}>Value</label>
+                                                            <input
+                                                                type={f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : 'text'}
+                                                                value={f.value}
+                                                                onChange={(e) => updateCustomField(f.id, 'value', e.target.value)}
+                                                                placeholder="e.g. 356938035643809" disabled={isSaving} className={SMALL_INPUT_CLS}
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className={SMALL_LABEL_CLS}>Type</label>
+                                                            <select
+                                                                value={f.type ?? 'text'}
+                                                                onChange={(e) => updateCustomField(f.id, 'type', e.target.value)}
+                                                                disabled={isSaving} className={SMALL_INPUT_CLS}
+                                                            >
+                                                                <option value="text">Text</option>
+                                                                <option value="number">Number</option>
+                                                                <option value="date">Date</option>
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                ))}
+
+                                                <button type="button" onClick={addCustomField} disabled={isSaving}
+                                                    className="w-fit text-xs font-semibold text-(--dr-primary) hover:underline">
+                                                    + Your own field
+                                                </button>
+                                            </div>
+                                        </SectionCard>
+                                    )}
                                 </div>
                             </div>
                         </>

@@ -49,7 +49,9 @@ import CustomRangePanel from './SalesReportComponents/CustomRangePanel';
 import SaleBillPanel from './SalesReportComponents/SaleBillPanel';
 import { Modal } from '../../constants/Modal';
 import { useAuth } from '../../context/auth-context';
+import { useCatalogueData } from '../../context/CatalogueDataContext';
 import BackButton from '../../Components/BackButton';
+import SearchableSelect from '../../Components/SearchableSelect';
 import { useSalesSettings } from '../../context/SettingsContext';
 import { normalizePlan } from '../../context/Plan';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
@@ -126,6 +128,18 @@ const fmtCompact = (n: number) => {
   return String(Math.round(n));
 };
 
+const UNASSIGNED_GROUP_NAME = 'Uncategorized';
+// Firestore auto-IDs 20 letters/digits ke hote hain, user ko kabhi nahi dikhane
+const looksLikeId = (s: string) => /^[A-Za-z0-9]{20}$/.test(s);
+
+// Items Sold report wala hi amount logic (discount ke baad ka finalPrice pehle)
+const getItemAmount = (item: any): number => {
+  const qty = Number(item?.quantity) || 1;
+  const price = item?.effectiveUnitPrice || item?.customPrice || item?.salesPrice || item?.mrp || 0;
+  const saved = Number(item?.finalPrice) || 0;
+  return saved > 0 ? saved : Number(price) * qty;
+};
+
 const SalesReport: React.FC = () => {
   const { currentUser } = useAuth();
   const [companyName, setCompanyName] = useState<string>('');
@@ -151,6 +165,46 @@ const SalesReport: React.FC = () => {
     };
     fetchCompanyName();
   }, [currentUser?.companyId]);
+
+  /* ---------- ITEM CATEGORY (group) RESOLVER ---------- */
+  const { items: catalogueItems, itemGroups: catalogueItemGroups } = useCatalogueData();
+
+  const catalogueById = useMemo(() => {
+    const m = new Map<string, (typeof catalogueItems)[number]>();
+    catalogueItems.forEach((i) => {
+      if (i.id) m.set(i.id, i);
+    });
+    return m;
+  }, [catalogueItems]);
+
+  // Bill line ka group: 1) line ka itemGroupId/category, 2) warna catalogue item ka current group
+  const getItemCategory = useMemo(() => {
+    const byKey: Record<string, string> = {};
+    catalogueItemGroups.forEach((g) => {
+      if (g.id) byKey[g.id] = g.name || 'Unknown Group';
+      if (g.name) byKey[g.name] = g.name;
+    });
+    const str = (v: unknown) =>
+      typeof v === 'string' ? v.trim() : typeof v === 'number' ? String(v) : '';
+
+    const groupNameOf = (groupKey?: unknown, fallback?: unknown): string => {
+      const key = str(groupKey);
+      if (key && byKey[key]) return byKey[key];
+      const name = str(fallback);
+      if (name && !looksLikeId(name)) return name;
+      if (key && !looksLikeId(key)) return key;
+      return UNASSIGNED_GROUP_NAME;
+    };
+
+    return (item: any): string => {
+      let group = groupNameOf(item?.itemGroupId, item?.category);
+      if (group === UNASSIGNED_GROUP_NAME) {
+        const cat = catalogueById.get(String(item?.productId || item?.id || ''));
+        if (cat) group = groupNameOf(cat.itemGroupId);
+      }
+      return group;
+    };
+  }, [catalogueItemGroups, catalogueById]);
 
   const {
     setDatePreset,
@@ -228,6 +282,7 @@ const SalesReport: React.FC = () => {
   const [isListVisible, setIsListVisible] = useState(true);
   const [isRangeOpen, setIsRangeOpen] = useState(false);
   const [payModeFilter, setPayModeFilter] = useState<PayMode | 'all'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   // The bill open in the detail panel (side panel on desktop, bottom sheet on mobile).
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [feedbackModal, setFeedbackModal] = useState({
@@ -307,7 +362,10 @@ const SalesReport: React.FC = () => {
   // Payment mode filter + sort: drives the bill list and the downloads.
   const { filteredSales, summary } = useMemo(() => {
     const newFilteredSales = rangeSales.filter(
-      (sale) => payModeFilter === 'all' || !!getSalePayModes(sale)[payModeFilter],
+      (sale) =>
+        (payModeFilter === 'all' || !!getSalePayModes(sale)[payModeFilter]) &&
+        (categoryFilter === 'all' ||
+          (sale.items || []).some((i) => getItemCategory(i) === categoryFilter)),
     );
 
     newFilteredSales.sort((a, b) => {
@@ -330,7 +388,7 @@ const SalesReport: React.FC = () => {
     });
 
     return { filteredSales: newFilteredSales, summary: summarize(newFilteredSales) };
-  }, [rangeSales, payModeFilter, sortConfig]);
+  }, [rangeSales, payModeFilter, categoryFilter, sortConfig, getItemCategory]);
 
   const rangeSummary = useMemo(() => summarize(rangeSales), [rangeSales]);
   const paymentBreakdown = useMemo(() => getPaymentBreakdown(rangeSales), [rangeSales]);
@@ -344,6 +402,59 @@ const SalesReport: React.FC = () => {
     ).size;
     return { walkIns, customers };
   }, [rangeSales]);
+
+  // Date range mein jitni categories bikin, unki unique list
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    rangeSales.forEach((s) =>
+      (s.items || []).forEach((i) => {
+        const c = getItemCategory(i);
+        if (c) set.add(c);
+      }),
+    );
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [rangeSales, getItemCategory]);
+
+  // Selected category: kitni biki + kis party ne kitne ka liya
+  const categoryStats = useMemo(() => {
+    if (categoryFilter === 'all') return null;
+    const partyMap = new Map<
+      string,
+      { name: string; phone: string; qty: number; amount: number; bills: number }
+    >();
+    let qty = 0;
+    let amount = 0;
+    let bills = 0;
+
+    rangeSales.forEach((sale) => {
+      const matched = (sale.items || []).filter((i) => getItemCategory(i) === categoryFilter);
+      if (matched.length === 0) return;
+
+      const q = matched.reduce((n, i) => n + (Number(i.quantity) || 1), 0);
+      const a = matched.reduce((n, i) => n + getItemAmount(i), 0);
+      qty += q;
+      amount += a;
+      bills += 1;
+
+      const walk = isWalkIn(sale);
+      const digits = (sale.partyNumber || '').replace(/\D/g, '');
+      const key = walk ? 'walk-in' : `${sale.partyName.trim().toLowerCase()}|${digits}`;
+      const row = partyMap.get(key) ?? {
+        name: walk ? 'Walk-in' : sale.partyName,
+        phone: walk ? '' : sale.partyNumber || '',
+        qty: 0,
+        amount: 0,
+        bills: 0,
+      };
+      row.qty += q;
+      row.amount += a;
+      row.bills += 1;
+      partyMap.set(key, row);
+    });
+
+    const parties = Array.from(partyMap.values()).sort((x, y) => y.amount - x.amount);
+    return { qty, amount, bills, parties };
+  }, [rangeSales, categoryFilter, getItemCategory]);
 
   const downloadAsPdf = async () => {
     if (!appliedFilters) return;
@@ -1574,8 +1685,61 @@ const SalesReport: React.FC = () => {
         </div>
       </div>
 
-      {/* REPORT DETAILS */}
-      {/* No overflow-hidden here: it would clip the Download menu when the list is short. */}
+      {/* CATEGORY SUMMARY: sirf tab dikhega jab category select ho */}
+      {categoryStats && (
+        <section className={`mb-4 rounded-sm border border-line bg-white shadow-card transition-opacity ${fetchingClass}`}>
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">{categoryFilter}</h2>
+              <p className="text-xs text-slate-500">
+                {categoryStats.qty.toLocaleString('en-IN')} sold · ₹{Math.round(categoryStats.amount).toLocaleString('en-IN')} · {categoryStats.bills} {categoryStats.bills === 1 ? 'bill' : 'bills'}
+              </p>
+            </div>
+            <button
+              onClick={() => setCategoryFilter('all')}
+              className="inline-flex items-center gap-1 rounded-sm px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+            >
+              <X size={13} /> Clear
+            </button>
+          </div>
+
+          {categoryStats.parties.length === 0 ? (
+            <p className="border-t border-line px-4 py-6 text-center text-sm text-slate-500">
+              Is period mein is category ki koi sale nahi hui.
+            </p>
+          ) : (
+            <div className="overflow-x-auto border-t border-line">
+              <table className="w-full text-sm">
+                <thead className="bg-sunken text-[11px] uppercase tracking-wide text-blue-700/80">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-semibold">Party</th>
+                    <th className="px-4 py-2 text-right font-semibold">Bills</th>
+                    <th className="px-4 py-2 text-right font-semibold">Qty</th>
+                    <th className="px-4 py-2 text-right font-semibold">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {categoryStats.parties.map((p) => (
+                    <tr key={`${p.name}|${p.phone}`} className="border-t border-line">
+                      <td className="px-4 py-2.5">
+                        <p className="text-slate-800">{p.name}</p>
+                        {p.phone && <p className="text-xs text-slate-500">{formatPhone(p.phone)}</p>}
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-slate-700">{p.bills}</td>
+                      <td className="px-4 py-2.5 text-right text-slate-700">{p.qty.toLocaleString('en-IN')}</td>
+                      <td className="whitespace-nowrap px-4 py-2.5 text-right font-semibold text-slate-900">
+                        {formatCurrency(p.amount)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* REPORT DETAILS  it would clip the Download menu when the list is short. */}
       <section className={`rounded-sm border border-line bg-white shadow-card transition-opacity ${fetchingClass}`}>
         <div className="flex items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-2">
@@ -1606,6 +1770,19 @@ const SalesReport: React.FC = () => {
               </select>
               <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
             </div>
+            <div className="w-48 shrink-0">
+              <SearchableSelect
+                theme="blue"
+                buttonClassName="!h-[38px]"
+                leftIcon={<Tag size={14} />}
+                options={categories.map((c) => ({ value: c, label: c }))}
+                value={categoryFilter === 'all' ? '' : categoryFilter}
+                onChange={(v) => setCategoryFilter(v || 'all')}
+                placeholder="All categories"
+                searchPlaceholder="Search category..."
+                clearable
+              />
+            </div>
             <button
               onClick={() => setIsListVisible((v) => !v)}
               className="inline-flex items-center gap-1.5 rounded-sm px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
@@ -1633,6 +1810,21 @@ const SalesReport: React.FC = () => {
             </select>
             <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
           </div>
+        </div>
+
+        {/* Mobile category filter */}
+        <div className="px-4 pb-3 md:hidden">
+          <SearchableSelect
+            theme="blue"
+            buttonClassName="!h-9"
+            leftIcon={<Tag size={14} />}
+            options={categories.map((c) => ({ value: c, label: c }))}
+            value={categoryFilter === 'all' ? '' : categoryFilter}
+            onChange={(v) => setCategoryFilter(v || 'all')}
+            placeholder="All categories"
+            searchPlaceholder="Search category..."
+            clearable
+          />
         </div>
 
         {/* Desktop table */}

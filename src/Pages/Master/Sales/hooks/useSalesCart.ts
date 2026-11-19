@@ -112,6 +112,7 @@ export const useSalesCart = ({
                     ? Number(item.effectiveUnitPrice) - (Number(item.addOnAmount) || 0)
                     : undefined,
                 quantity: item.quantity || 1,
+                _origQuantity: item.quantity || 1,
                 mrp: item.mrp || 0,
                 discount: item.discount || 0,
                 discount2: item.discount2 || 0,

@@ -2,6 +2,7 @@ import React from 'react';
 import { Provider } from 'react-redux';
 import { SettingsProvider } from '../context/SettingsContext';
 import { CatalogueDataProvider } from '../context/CatalogueDataContext';
+import { RestaurantDataProvider } from '../context/RestaurantDataContext';
 import { AuthProvider } from '../context/AuthContext';
 import { store } from '../store/store';
 import AppRouter from '../routes/routes';
@@ -21,7 +22,9 @@ const AdminApp: React.FC = () => (
             <NotificationProvider>
               <SettingsProvider>
                 <CatalogueDataProvider>
-                  <AppRouter />
+                  <RestaurantDataProvider>
+                    <AppRouter />
+                  </RestaurantDataProvider>
                 </CatalogueDataProvider>
               </SettingsProvider>
             </NotificationProvider>

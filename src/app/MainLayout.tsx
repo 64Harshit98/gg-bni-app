@@ -4,8 +4,9 @@ import { db } from '../lib/Firebase'; // adjust path if your db export differs
 import { useAuth } from '../context/auth-context'; // adjust if your auth hook path/name differs
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '../Components/ui/button';
-import { Receipt, ShoppingCart, Package, ScanLine, UserPlus, Wallet, PackagePlus, Plus, Scan, Search } from 'lucide-react';
+import { Receipt, ShoppingCart, Package, ScanLine, UserPlus, Wallet, PackagePlus, Plus, Scan, Search, Utensils, Layers, ClipboardList } from 'lucide-react';
 import { navItems, mobileNavItems } from '../routes/bottomRoutes';
+import { useIsRestaurant } from '../context/RestaurantDataContext';
 import { FloatingButton } from '../Components/FloatingButton';
 import { ROUTES } from '../constants/routes.constants';
 import { Permissions } from '../enums';
@@ -58,6 +59,7 @@ const MainLayout = () => {
     return () => window.removeEventListener(LAYOUT_ACTION_EVENT, onAction);
   }, []);
   const { currentUser, hasPermission } = useAuth();
+  const isRestaurant = useIsRestaurant();
   const banner = useSubscriptionBanner();
   // POS pages that show the renewal banner: Home · Accounts · Journal
   const BANNER_PATHS: string[] = [ROUTES.HOME, ROUTES.ACCOUNT, ROUTES.JOURNAL]; // ← swap in your real route constants
@@ -193,6 +195,28 @@ const MainLayout = () => {
           <span className={fabLabelClass}>Item</span>
         </Button>
       </ShowWrapper>
+      {isRestaurant && (
+        <>
+          <ShowWrapper requiredPermission={Permissions.ManageItems}>
+            <Button variant="outline" className={fabActionClass} onClick={() => navigate(ROUTES.RAW_MATERIALS)}>
+              <span className={fabIconBadgeClass}><Layers size={18} /></span>
+              <span className={fabLabelClass}>Raw Mat.</span>
+            </Button>
+          </ShowWrapper>
+          <ShowWrapper requiredPermission={Permissions.ManageItems}>
+            <Button variant="outline" className={fabActionClass} onClick={() => navigate(ROUTES.RECIPES)}>
+              <span className={fabIconBadgeClass}><Utensils size={18} /></span>
+              <span className={fabLabelClass}>Recipes</span>
+            </Button>
+          </ShowWrapper>
+          <ShowWrapper requiredPermission={Permissions.ManageItems}>
+            <Button variant="outline" className={fabActionClass} onClick={() => navigate(ROUTES.STOCK_ENTRY)}>
+              <span className={fabIconBadgeClass}><ClipboardList size={18} /></span>
+              <span className={fabLabelClass}>Wastage</span>
+            </Button>
+          </ShowWrapper>
+        </>
+      )}
       <ShowWrapper requiredPermission={Permissions.PrintQR}>
         <Button variant="outline" className={fabActionClass} onClick={() => navigate(ROUTES.PRINTQR)}>
           <span className={fabIconBadgeClass}><ScanLine size={18} /></span>
@@ -247,6 +271,13 @@ const MainLayout = () => {
     { key: 'sales', to: ROUTES.SALES, icon: <ShoppingCart className="size-4" />, label: 'Add Sales', permission: Permissions.CreateSales },
     { key: 'purchase', to: ROUTES.PURCHASE, icon: <PackagePlus className="size-4" />, label: 'Add Purchase', permission: Permissions.CreatePurchase },
     { key: 'item', to: ROUTES.ITEM_ADD, icon: <Plus className="size-4" />, label: 'Add Item', permission: Permissions.ManageItems },
+    ...(isRestaurant
+      ? [
+          { key: 'raw-materials', to: ROUTES.RAW_MATERIALS, icon: <Layers className="size-4" />, label: 'Raw Materials', permission: Permissions.ManageItems },
+          { key: 'recipes', to: ROUTES.RECIPES, icon: <Utensils className="size-4" />, label: 'Recipes', permission: Permissions.ManageItems },
+          { key: 'stock-entry', to: ROUTES.STOCK_ENTRY, icon: <ClipboardList className="size-4" />, label: 'Wastage / Stock', permission: Permissions.ManageItems },
+        ]
+      : []),
     { key: 'barcode', to: ROUTES.PRINTQR, icon: <Scan className="size-4" />, label: 'Add Barcode', permission: Permissions.PrintQR },
     { key: 'user', icon: <UserPlus className="size-4" />, label: 'Add User', permission: Permissions.CreateUsers, onClick: () => setIsAddUserModalOpen(true) },
     { key: 'expense', icon: <Receipt className="size-4" />, label: 'Add Expense', permission: Permissions.ViewReports, onClick: () => setIsExpenseModalOpen(true) },

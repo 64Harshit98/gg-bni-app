@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/auth-context';
-import { auth, db } from '../lib/Firebase';
+import { db } from '../lib/Firebase';
+import { logoutUser } from '../lib/AuthOperations';
 import { doc, collection, query, where, getDocs, getDoc, updateDoc, addDoc, deleteDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
-import { signOut } from 'firebase/auth';
 import { FiCopy, FiShare2, FiUsers, FiTrendingUp, FiList, FiPhone, FiLogOut, FiAward, FiClock, FiCheckCircle, FiPlus, FiTrash2, FiX, FiEdit2, FiMessageSquare, FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import { CustomButton } from '../Components/CustomButton';
 import { ROLES, Variant } from '../enums';
@@ -452,7 +452,7 @@ const PartnerDashboard: React.FC = () => {
 
     const handleLogout = async () => {
         try {
-            await signOut(auth);
+            await logoutUser();
         } catch (error) {
             console.error("Logout failed", error);
         }

@@ -19,6 +19,9 @@ import type { PaymentCompletionData } from '../../../../Components/PaymentDrawer
 import { calculatePurchaseReturnTotals, buildNewPurchaseItemRecord } from '../purchaseReturn.calculations';
 import type { PurchaseData, TransactionItem, ReturnCartItem } from '../purchaseReturn.types';
 import type { Item } from '../../../../constants/models';
+import { avgCostWithout, queueMovement, rawMaterialRef } from '../../../../lib/restaurant/stockApi';
+import { KITCHEN_ID, KITCHEN_NAME, type RawMaterial } from '../../../../lib/restaurant/types';
+import { round3, round6 } from '../../../../lib/restaurant/units';
 
 interface UseSavePurchaseReturnParams {
     currentUser: any;
@@ -126,9 +129,67 @@ export const useSavePurchaseReturn = ({
             const purchaseRef = doc(db, 'companies', companyId, 'purchases', selectedPurchase.id);
 
             const originalItemsMap = new Map(selectedPurchase.items.map(item => [item.id, { ...item }]));
+            const isRawPurchase = !!(selectedPurchase as any).isRawMaterialPurchase;
+
+            // Restaurant raw-material bill: stock lives on rawMaterials, not items, so an
+            // exchange for catalogue items makes no sense here.
+            if (isRawPurchase && newItemsReceived.length > 0) {
+                throw new Error('Exchange is not available for raw-material purchases. Return the items, then enter a new purchase.');
+            }
+            // Raw materials read once (a deleted one is skipped; its stock no longer exists)
+            const rmCache = new Map<string, Partial<RawMaterial> | null>();
+            const rmOf = async (id: string) => {
+                if (!rmCache.has(id)) {
+                    const s = await getDoc(rawMaterialRef(companyId, id));
+                    rmCache.set(id, s.exists() ? (s.data() as Partial<RawMaterial>) : null);
+                }
+                return rmCache.get(id) ?? null;
+            };
+            const returnDateMs = new Date(`${returnDate}T${new Date().toTimeString().slice(0, 8)}`).getTime() || Date.now();
 
             for (const returnItem of itemsToReturn) {
-                const originalItem = originalItemsMap.get(returnItem.originalItemId);
+                const originalItem: any = originalItemsMap.get(returnItem.originalItemId);
+                const rawMaterialId: string | undefined = originalItem?.rawMaterialId;
+                const lineBaseQty = Number(originalItem?.baseQty) || 0;
+                const isRawLine = !!originalItem && (isRawPurchase || (!!rawMaterialId && lineBaseQty > 0));
+
+                if (isRawLine) {
+                    // Line quantity is in the purchase unit; convert the returned part to base units
+                    const prevQty = Number(originalItem.quantity) || 0;
+                    const returnBase = prevQty > 0 ? round3(lineBaseQty * (Number(returnItem.quantity) / prevQty)) : 0;
+                    const rmId = rawMaterialId || originalItem.id;
+                    const rm = rmId ? await rmOf(rmId) : null;
+                    if (rm && returnBase > 0) {
+                        const locId: string = originalItem.locationId || KITCHEN_ID;
+                        const unitCost =
+                            Number(originalItem.unitCost) ||
+                            round6(((Number(originalItem.purchasePrice) || 0) * prevQty) / lineBaseQty);
+                        const revertedAvg = avgCostWithout(rm, returnBase, unitCost);
+                        rm.avgCost = revertedAvg;
+                        if (locId === KITCHEN_ID) rm.stock = (Number(rm.stock) || 0) - returnBase;
+                        else rm.godownStock = { ...(rm.godownStock || {}), [locId]: (Number(rm.godownStock?.[locId]) || 0) - returnBase };
+                        queueMovement(batch, companyId, {
+                            rawMaterialId: rmId,
+                            rawMaterialName: originalItem.name || rmId,
+                            type: 'purchase',
+                            qty: -returnBase,
+                            locationId: locId,
+                            locationName: originalItem.locationName || (locId === KITCHEN_ID ? KITCHEN_NAME : 'Godown'),
+                            date: returnDateMs,
+                            refType: 'purchase',
+                            refId: selectedPurchase.id,
+                            refNo: selectedPurchase.invoiceNumber,
+                            unitCost,
+                            note: 'Purchase return',
+                        }, revertedAvg);
+                    }
+                    originalItem.quantity = prevQty - Number(returnItem.quantity);
+                    // Keep the remaining line's base qty in step, so a later return / delete undoes the right amount
+                    originalItem.baseQty = round3(lineBaseQty - returnBase);
+                    if (originalItem.quantity <= 0) originalItemsMap.delete(returnItem.originalItemId);
+                    continue;
+                }
+
                 if (originalItem) {
                     originalItem.quantity -= returnItem.quantity;
                     if (originalItem.quantity <= 0) originalItemsMap.delete(returnItem.originalItemId);

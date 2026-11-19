@@ -32,6 +32,7 @@ import {
   authBtn,
   authLink,
 } from './AuthUI';
+import { RESTAURANT_CATEGORY } from '../../lib/restaurant/types';
 
 
 const businessTypeOptions = [
@@ -50,6 +51,7 @@ const businessCategoryOptions = [
   { value: 'Health & Beauty', label: 'Health & Beauty' },
   { value: 'Home & Furniture', label: 'Home & Furniture' },
   { value: 'Food & Beverage', label: 'Food & Beverage' },
+  { value: RESTAURANT_CATEGORY, label: 'Restaurant / Café' },
   { value: 'Other', label: 'Other' },
 ];
 
@@ -404,10 +406,13 @@ const BusinessInfoPage: React.FC = () => {
         mappedTaxType = formData.gstType === 'Regular-Inclusive' ? 'inclusive' : 'exclusive';
       }
 
+      const isRestaurantSignup = finalBusinessCategory === RESTAURANT_CATEGORY;
       const salesSettingsPayload = {
         gstScheme: mappedGstScheme,
         gstin: finalGstin,
         taxType: mappedTaxType,
+        // Restaurants start with the card view, and keep raw-material stock instead of item stock.
+        ...(isRestaurantSignup ? { salesViewType: 'card', restaurantMode: true, allowNegativeStock: true } : {}),
       };
 
       const catalogueSalesSettingsPayload = {

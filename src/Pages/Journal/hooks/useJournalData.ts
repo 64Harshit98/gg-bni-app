@@ -115,6 +115,16 @@ export const useJournalData = (companyId?: string, dateRange?: JournalDateRange 
             taxAmount: Number(item.taxAmount) || 0,
             taxableAmount: Number(item.taxableAmount) || 0,
             addOnLines: Array.isArray(item.addOnLines) ? item.addOnLines : undefined,
+            // Restaurant mode: what the line used / received, needed by delete & return to
+            // put raw-material stock back. Only present on restaurant bills.
+            ...(Array.isArray(item.rawConsumption) ? { rawConsumption: item.rawConsumption } : {}),
+            ...(item.rawMaterialId ? {
+              rawMaterialId: item.rawMaterialId,
+              baseQty: Number(item.baseQty) || 0,
+              unitCost: Number(item.unitCost) || undefined,
+              locationId: item.locationId,
+              locationName: item.locationName,
+            } : {}),
           };
         });
 
@@ -149,6 +159,7 @@ export const useJournalData = (companyId?: string, dateRange?: JournalDateRange 
           dueAmount: dueAmount,
           returnHistory: returnHistory,
           items: items,
+          ...(data.isRawMaterialPurchase ? { isRawMaterialPurchase: true } : {}),
           returnedItemsSnapshot: data.returnedItemsSnapshot || [],
           paymentMethods: paymentMethods,
           paymentHistory: data.paymentHistory || [],

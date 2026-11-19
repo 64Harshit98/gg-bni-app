@@ -1,7 +1,9 @@
-import { lazy } from 'react';
+import { lazy, type ComponentType } from 'react';
+import { useLocation } from 'react-router-dom';
 import { ROUTES } from '../constants/routes.constants';
 import { Permissions, PLANS } from '../enums';
 import { Cata_Permissions } from '../Catalogue/enum/cata_permissions.enum';
+import { useIsRestaurant } from '../context/RestaurantDataContext';
 // --- MAIN MODULE IMPORTS ---
 const Home = lazy(() => import('../Pages/Home'));
 const Account = lazy(() => import('../Pages/Account'));
@@ -44,6 +46,13 @@ const ExpenseReport = lazy(() => import('../Pages/Reports/ExpenseReport'));
 import UserReport from '../Pages/Reports/UserReport';
 const BarcodeSettings = lazy(() => import('../Pages/Settings/BarcodeSetting'));
 const StockTransferReport = lazy(() => import('../Pages/Reports/StockTransferReport'));
+const RawMaterialsPage = lazy(() => import('../Pages/Restaurant/RawMaterials'));
+const RecipesPage = lazy(() => import('../Pages/Restaurant/Recipes'));
+const RestaurantPurchase = lazy(() => import('../Pages/Restaurant/RestaurantPurchase'));
+const StockEntryPage = lazy(() => import('../Pages/Restaurant/StockEntry'));
+const CurrentStockReportPage = lazy(() => import('../Pages/Restaurant/Reports/CurrentStockReport'));
+const StockSummaryReportPage = lazy(() => import('../Pages/Restaurant/Reports/StockSummaryReport'));
+const OrderwiseConsumptionReportPage = lazy(() => import('../Pages/Restaurant/Reports/OrderwiseConsumptionReport'));
 
 // --- CATALOGUE MODULE IMPORTS ---
 const CHome = lazy(() => import('../Catalogue/CatalogueHome'));
@@ -80,6 +89,39 @@ const CatalogueRestockReport = lazy(() => import('../Catalogue/CatalogueReports/
 const PosItemSettingWrapper = (props: any) => (
     <ItemSetting {...props} theme="blue" />
 );
+
+// The normal Purchase page is used in every mode (restaurant mode only shows a tag on it).
+// The raw-material purchase form opens only to EDIT a raw-material bill saved earlier,
+// since the normal page can't handle those lines.
+const PosPurchaseWrapper = (props: any) => {
+    const location = useLocation();
+    const isRawEdit = !!(location.state as { isRawMaterialPurchase?: boolean } | null)?.isRawMaterialPurchase;
+    return isRawEdit ? <RestaurantPurchase {...props} /> : <Purchase {...props} />;
+};
+
+// Restaurant pages open only in restaurant mode (POS Pro / Enterprise with the setting on).
+// A notice instead of a redirect: settings load async, so a redirect would fire before they arrive.
+const RestaurantModeOff = () => (
+    <div className="flex min-h-[60vh] items-center justify-center px-4">
+        <div className="max-w-sm rounded-sm border border-slate-200 bg-white p-6 text-center">
+            <p className="text-base font-semibold text-slate-900">Restaurant mode is off</p>
+            <p className="mt-2 text-sm text-slate-600">
+                Turn on Restaurant mode in Sales Settings to use raw materials, recipes and kitchen stock.
+                It is available on POS Pro and Enterprise.
+            </p>
+        </div>
+    </div>
+);
+const restaurantOnly = (Page: ComponentType<any>) => {
+    const Guarded = (props: any) => (useIsRestaurant() ? <Page {...props} /> : <RestaurantModeOff />);
+    return Guarded;
+};
+const RawMaterialsRoute = restaurantOnly(RawMaterialsPage);
+const RecipesRoute = restaurantOnly(RecipesPage);
+const StockEntryRoute = restaurantOnly(StockEntryPage);
+const CurrentStockReportRoute = restaurantOnly(CurrentStockReportPage);
+const StockSummaryReportRoute = restaurantOnly(StockSummaryReportPage);
+const OrderwiseConsumptionReportRoute = restaurantOnly(OrderwiseConsumptionReportPage);
 
 const CatalogueItemSettingWrapper = (props: any) => (
     <ItemSetting {...props} theme="orange" />
@@ -177,8 +219,11 @@ export const AppRegistry: AppModule[] = [
             { path: ROUTES.MASTERS.substring(1), component: Masters, permission: Permissions.ViewReports },
             { path: ROUTES.SALES, component: Sales, permission: Permissions.CreateSales },
             { path: ROUTES.SALES_RETURN, component: SalesReturn, permission: Permissions.CreateSalesReturn },
-            { path: ROUTES.PURCHASE, component: Purchase, permission: Permissions.CreatePurchase },
+            { path: ROUTES.PURCHASE, component: PosPurchaseWrapper, permission: Permissions.CreatePurchase },
             { path: ROUTES.PURCHASE_RETURN, component: PurchaseReturn, permission: Permissions.CreatePurchaseReturn },
+            { path: ROUTES.RAW_MATERIALS, component: RawMaterialsRoute, permission: Permissions.ManageItems },
+            { path: ROUTES.RECIPES, component: RecipesRoute, permission: Permissions.ManageItems },
+            { path: ROUTES.STOCK_ENTRY, component: StockEntryRoute, permission: Permissions.ManageItems },
             { path: ROUTES.PRINTQR, component: PrintQR, permission: Permissions.PrintQR },
             { path: ROUTES.ITEM_ADD, component: PosItemAddWrapper, permission: Permissions.ManageItems },
             { path: ROUTES.ITEM_GROUP, component: PosItemGroupWrapper, permission: Permissions.ManageItemGroup },
@@ -212,6 +257,9 @@ export const AppRegistry: AppModule[] = [
             { path: ROUTES.USER_REPORT, component: UserReport, permission: Permissions.ViewItemReport },
             { path: ROUTES.EXPENSE_REPORT, component: ExpenseReport, permission: Permissions.ViewReports },
             { path: ROUTES.STOCK_TRANSFER, component: StockTransferReport, permission: Permissions.ViewReports },
+            { path: ROUTES.RAW_CURRENT_STOCK, component: CurrentStockReportRoute, permission: Permissions.ViewItemReport },
+            { path: ROUTES.RAW_STOCK_SUMMARY, component: StockSummaryReportRoute, permission: Permissions.ViewItemReport },
+            { path: ROUTES.RAW_CONSUMPTION, component: OrderwiseConsumptionReportRoute, permission: Permissions.ViewItemReport },
         ],
     },
     {

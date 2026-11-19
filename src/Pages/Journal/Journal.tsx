@@ -336,7 +336,14 @@ const Journal: React.FC = () => {
     if (invoice.type === 'Credit') {
       navigate(ROUTES.SALES, { state: { invoiceData: invoice, isEditMode: true } });
     } else {
-      navigate(ROUTES.PURCHASE, { state: { purchaseId: invoice.id, isEditMode: true } });
+      navigate(ROUTES.PURCHASE, {
+        state: {
+          purchaseId: invoice.id,
+          isEditMode: true,
+          // raw-material bills (restaurant) open in their own form
+          ...((invoice as { isRawMaterialPurchase?: boolean }).isRawMaterialPurchase ? { isRawMaterialPurchase: true } : {}),
+        },
+      });
     }
   };
 

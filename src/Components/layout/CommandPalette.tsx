@@ -5,6 +5,7 @@ import { ArrowRight, Search } from 'lucide-react';
 import { ROUTES } from '../../constants/routes.constants';
 import { ROLES } from '../../enums';
 import { useAuth } from '../../context/auth-context';
+import { useIsRestaurant } from '../../context/RestaurantDataContext';
 
 /**
  * Some destinations are NOT pages — they open a modal that lives in the layout
@@ -22,6 +23,7 @@ export interface Destination {
   action?: LayoutAction; // opens a layout-level modal instead of navigating
   state?: Record<string, unknown>; // router state passed on navigate (e.g. open a modal on the target page)
   ownerOnly?: boolean; // hide for non-owner roles
+  restaurantOnly?: boolean; // show only when restaurant mode is on
 }
 
 // If TypeScript says a ROUTES key doesn't exist, just delete that line.
@@ -44,6 +46,9 @@ export const DESTINATIONS: Destination[] = [
   { label: 'Add Item', hint: 'Add a new catalogue item', to: ROUTES.ITEM_ADD, keywords: 'product' },
   { label: 'Item Group', hint: 'Manage item groups', to: ROUTES.ITEM_GROUP, keywords: 'category' },
   { label: 'Manage Items', hint: 'Edit or delete items', to: ROUTES.MANAGE_ITEMS, keywords: 'products stock' },
+  { label: 'Raw Materials', hint: 'Manage restaurant raw materials & stock', to: ROUTES.RAW_MATERIALS, keywords: 'ingredients kitchen restaurant', restaurantOnly: true },
+  { label: 'Recipes', hint: 'Item and add-on recipes', to: ROUTES.RECIPES, keywords: 'bom ingredients dish addon restaurant', restaurantOnly: true },
+  { label: 'Wastage & Stock Entry', hint: 'Record wastage, excess, shortage or transfer', to: ROUTES.STOCK_ENTRY, keywords: 'loss godown kitchen restaurant', restaurantOnly: true },
   // Opens the same AddUserModal as the layout's quick action (not the USER_ADD page)
   { label: 'Add User', hint: 'Invite a team member', action: 'add-user', keywords: 'staff employee' },
 
@@ -63,6 +68,9 @@ export const DESTINATIONS: Destination[] = [
   { label: 'User Report', hint: 'User wise sales report', to: ROUTES.USER_REPORT, keywords: 'staff' },
   { label: 'Expense Report', hint: 'Expenses summary', to: ROUTES.EXPENSE_REPORT },
   { label: 'Stock Transfer Report', hint: 'Stock transfer history', to: ROUTES.STOCK_TRANSFER },
+  { label: 'Current Stock Report', hint: 'Raw material current stock & value', to: ROUTES.RAW_CURRENT_STOCK, keywords: 'restaurant raw material stock', restaurantOnly: true },
+  { label: 'Stock Summary Report', hint: 'Opening, purchase, consumed, wastage & closing stock', to: ROUTES.RAW_STOCK_SUMMARY, keywords: 'restaurant closing balance', restaurantOnly: true },
+  { label: 'Orderwise Consumption', hint: 'Raw materials consumed per bill & food cost', to: ROUTES.RAW_CONSUMPTION, keywords: 'restaurant recipe consumption', restaurantOnly: true },
 
   // --- Settings ---
   { label: 'Settings', hint: 'Taxes, units & preferences', to: ROUTES.MASTERS, keywords: 'masters' },
@@ -170,13 +178,14 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const { pathname } = useLocation();
   const { currentUser } = useAuth();
   const isOwner = currentUser?.role === ROLES.OWNER;
+  const isRestaurant = useIsRestaurant();
 
   // Path decides the list: Catalogue pages -> CATALOGUE_DESTINATIONS, else POS.
   // (The old `destinations` prop passed by the Catalogue header is intentionally ignored.)
   const activeDestinations = useMemo(() => {
     const list = isCataloguePath(pathname) ? CATALOGUE_DESTINATIONS : DESTINATIONS;
-    return list.filter((d) => !d.ownerOnly || isOwner);
-  }, [pathname, isOwner]);
+    return list.filter((d) => (!d.ownerOnly || isOwner) && (!d.restaurantOnly || isRestaurant));
+  }, [pathname, isOwner, isRestaurant]);
 
   useEffect(() => {
     if (!open) setQuery('');

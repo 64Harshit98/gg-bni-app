@@ -21,6 +21,7 @@ import { TierPickerModal } from '../../../Components/TierPickerModal';
 import { hasMultiplePricing } from '../../utils/pricingUtils';
 import type { Item } from '../../../constants/models';
 import { usePurchaseSettings } from '../../../context/SettingsContext';
+import { useIsRestaurant } from '../../../context/RestaurantDataContext';
 import { GenericCartList } from '../../../Components/CartItem';
 import { GenericBillFooter } from '../../../Components/Footer';
 import { CartLinesCompact } from '../../../Components/CartLinesCompact';
@@ -76,6 +77,10 @@ const BADGE =
 const OVERLINE = 'text-[11px] font-semibold uppercase tracking-[.08em] text-[#5b6b86]';
 
 // header "meta" chips (invoice no / date)
+// Small "Restaurant mode" tag next to the title (purchase page itself is unchanged)
+const RESTAURANT_TAG_CLS =
+  'inline-flex flex-shrink-0 items-center rounded-sm bg-[#fff4e5] px-2 py-0.5 text-[11px] font-semibold leading-4 text-[#b45309]';
+
 const META_CHIP =
   'inline-flex items-center gap-2 h-9 px-3 rounded-sm border border-[#7a8aa3] bg-[#ffffff] text-[13px] text-[#0f172b] focus-within:ring-2 focus-within:ring-[#155dfc]';
 const META_LABEL = 'text-[11px] font-semibold uppercase tracking-[.06em] text-[#5b6b86] whitespace-nowrap';
@@ -147,6 +152,7 @@ const PurchasePage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { currentUser, loading: authLoading, hasPermission } = useAuth();
+  const isRestaurant = useIsRestaurant();
   const dbOperations = useDatabase();
   const { purchaseSettings, loadingSettings: loadingPurchaseSettings } = usePurchaseSettings();
 
@@ -991,7 +997,10 @@ const PurchasePage: React.FC = () => {
           <BackButton />
         </div>
         <h1 className="m-0 flex-1 min-w-0 text-lg font-semibold leading-tight text-[#0f172b]">
-          <span className="block truncate">{pageTitle}</span>
+          <span className="flex items-center gap-1.5 min-w-0">
+            <span className="truncate">{pageTitle}</span>
+            {isRestaurant && <span className={RESTAURANT_TAG_CLS}>Restaurant</span>}
+          </span>
           <span className="block text-xs font-normal text-[#5b6b86] truncate">
             {invoiceNumber}{invoiceDate ? ` · ${new Date(`${invoiceDate}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}
           </span>
@@ -1024,6 +1033,7 @@ const PurchasePage: React.FC = () => {
       {/* DESKTOP / TABLET */}
       <div className="hidden md:flex flex-wrap items-center gap-2 md:gap-3 px-4 py-3 md:px-6 md:py-4">
         <h1 className="m-0 mr-2 text-[22px] leading-[30px] font-semibold text-[#0f172b]">{pageTitle}</h1>
+        {isRestaurant && <span className={RESTAURANT_TAG_CLS}>Restaurant mode</span>}
         <label className={META_CHIP}>
           <span className={META_LABEL}>Bill no.</span>
           <input

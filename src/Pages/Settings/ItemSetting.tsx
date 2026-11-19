@@ -31,8 +31,9 @@ export interface ItemSettings {
     requireBarcode: boolean;
     autoGenerateBarcode: boolean;
     enablePriceTiers: boolean;
-    enableQuantitySlabs: boolean;
+        enableQuantitySlabs: boolean;
     enableAddOns: boolean;
+    enableCustomFields: boolean;
 }
 
 export const getDefaultItemSettings = (companyId: string): ItemSettings => ({
@@ -53,8 +54,9 @@ export const getDefaultItemSettings = (companyId: string): ItemSettings => ({
     requireBarcode: false,
     autoGenerateBarcode: true,
     enablePriceTiers: false,
-    enableQuantitySlabs: false,
+        enableQuantitySlabs: false,
     enableAddOns: false,
+    enableCustomFields: false,
 });
 
 // --- UI only: theme classes (full strings so Tailwind can detect them) ---
@@ -178,9 +180,9 @@ const CHANGE_LABELS: { key: keyof ItemSettings; label: string }[] = [
     { key: 'requireBarcode', label: 'Manual barcode input' },
     { key: 'enablePriceTiers', label: 'Multiple pricing options' },
     { key: 'enableQuantitySlabs', label: 'Quantity pricing' },
-    { key: 'enableAddOns', label: 'Item add-ons' },
+        { key: 'enableAddOns', label: 'Item add-ons' },
+    { key: 'enableCustomFields', label: 'Custom fields' },
 ];
-
 // --- UI only: search (filters which rows are shown on screen) ---
 const SearchContext = React.createContext<string>('');
 const SectionTextContext = React.createContext<string>('');
@@ -707,6 +709,15 @@ const SharedItemSettings: React.FC<SharedItemSettingsProps> = ({ theme = 'blue' 
                                 description="Extras with an item, e.g. extra cheese. Create in Item groups, pick in Add/Edit item. Sales shows a popup."
                                 checked={settings.enableAddOns}
                                 onChange={(checked: boolean) => handleCheckboxChange('enableAddOns', checked)}
+                            />
+                             <ToggleRow
+                                t={t}
+                                id="enable-custom-fields"
+                                icon="tag"
+                                label="Custom fields"
+                                description="Add your own fields to an item, e.g. IMEI Number, Warranty, Batch No. Works in Add/Edit item and Excel import."
+                                checked={settings.enableCustomFields}
+                                onChange={(checked: boolean) => handleCheckboxChange('enableCustomFields', checked)}
                             />
                         </Section>
                     </form>

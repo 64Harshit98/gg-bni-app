@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
-import type { ItemGroup, QuantitySlab, AddOnGroup } from '../../constants/models';
+import type { ItemGroup, QuantitySlab, AddOnGroup, CustomField, CustomFieldType } from '../../constants/models';
 import { type PriceTierForm, toPriceTierForm, fromPriceTierForm, emptyPriceTierForm } from '../../lib/priceTiers';
-import { validateQuantitySlabs, buildAddOnPicks } from '../../constants/models';
+import { validateQuantitySlabs, buildAddOnPicks, validateCustomFields, cleanCustomFields, mergeCustomFields, PRESET_CUSTOM_LABELS, canonicalCustomLabel, collectCustomLabels, fieldTypeOf, toIsoDate } from '../../constants/models';
 //import { CustomButton } from '../../Components';
 import { State } from '../../enums';
 import XLSX from 'xlsx-js-style';
@@ -427,6 +427,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   const { itemSettings, loadingSettings: loadingItemSettings } = useItemSettings();
   // Add-ons show in both POS and Catalogue when enabled in Item settings
   const addOnsActive = !!(itemSettings as any)?.enableAddOns;
+  const enableCustomFields = !!(itemSettings as any)?.enableCustomFields;
   const { templates: addOnTemplates, loaded: addOnsLoaded } =
     useAddOnTemplates(addOnsActive ? currentUser?.companyId : undefined);
   // Needed to resolve a Location column value (e.g. "Warehouse A") to a godown id during bulk import.
@@ -485,6 +486,33 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   const [showFailureDialog, setShowFailureDialog] = useState<boolean>(false);
   const [priceTiers, setPriceTiers] = useState<PriceTierForm[]>([]);
   const [quantitySlabs, setQuantitySlabs] = useState<QuantitySlab[]>([]);
+  const [customFields, setCustomFields] = useState<CustomField[]>([]);
+    const addCustomField = () =>
+    setCustomFields(prev => [...prev, { id: crypto.randomUUID(), label: '', value: '', type: 'text' }]);
+  const removeCustomField = (id: string) =>
+    setCustomFields(prev => prev.filter(f => f.id !== id));
+  const knownCustom = collectCustomLabels(allItems);
+  const customLabelSuggestions: string[] = knownCustom.map(l => l.label);
+
+  const updateCustomField = (id: string, key: 'label' | 'value' | 'type', v: string) =>
+    setCustomFields(prev => prev.map(f => {
+      if (f.id !== id) return f;
+      if (key === 'label') {
+        // typing a known name (e.g. "Expiry Date") picks its type automatically
+        const t = fieldTypeOf(canonicalCustomLabel(v, customLabelSuggestions), knownCustom);
+        return { ...f, label: v, ...(t !== 'text' ? { type: t } : {}) };
+      }
+      return { ...f, [key]: v };
+    }));
+
+  const addPresetField = (label: string) =>
+    setCustomFields(prev =>
+      prev.some(f => f.label.trim().toLowerCase() === label.toLowerCase())
+        ? prev
+        : [...prev, { id: crypto.randomUUID(), label, value: '', type: fieldTypeOf(label, knownCustom) }]
+    );
+  const unusedPresets = Array.from(new Set([...PRESET_CUSTOM_LABELS, ...customLabelSuggestions]))
+    .filter(l => !customFields.some(f => f.label.trim().toLowerCase() === l.toLowerCase()));
   const [addOnGroupIds, setAddOnGroupIds] = useState<string[]>([]);
   // groupId -> option ids this item shows. Missing key = all options of the group
   const [addOnPick, setAddOnPick] = useState<Record<string, string[]>>({});
@@ -517,6 +545,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     restockQuantity: true,
     moq: true,
     description: true,
+    customFields: true,
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -599,6 +628,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         if (parsed.itemMRP) setItemMRP(parsed.itemMRP);
         if (parsed.priceTiers) setPriceTiers(parsed.priceTiers.map(toPriceTierForm));
         if (parsed.quantitySlabs) setQuantitySlabs(parsed.quantitySlabs);
+        if (parsed.customFields) setCustomFields(parsed.customFields);
         if (parsed.itemSalesPrice) setItemSalesPrice(parsed.itemSalesPrice);
         if (parsed.itemPurchasePrice) setItemPurchasePrice(parsed.itemPurchasePrice);
         if (parsed.itemDiscount) setItemDiscount(parsed.itemDiscount);
@@ -630,10 +660,10 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     const draft = {
       itemName, itemMRP, itemSalesPrice, itemPurchasePrice, itemDiscount,
       PurchaseDiscount, itemTax, itemAmount, restockQuantity, itemDescription, selectedCategories,
-      itemBarcode, hsnCode, itemUnit, packetSize, moq, imageUrl, priceTiers, quantitySlabs
+      itemBarcode, hsnCode, itemUnit, packetSize, moq, imageUrl, priceTiers, quantitySlabs, customFields
     };
     sessionStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
-  }, [itemName, itemMRP, itemSalesPrice, itemPurchasePrice, itemDiscount, PurchaseDiscount, itemTax, itemAmount, restockQuantity, itemDescription, selectedCategories, itemBarcode, hsnCode, itemUnit, packetSize, moq, imageUrl, priceTiers, quantitySlabs]);
+  }, [itemName, itemMRP, itemSalesPrice, itemPurchasePrice, itemDiscount, PurchaseDiscount, itemTax, itemAmount, restockQuantity, itemDescription, selectedCategories, itemBarcode, hsnCode, itemUnit, packetSize, moq, imageUrl, priceTiers, quantitySlabs, customFields]);
 
   const getUnitLabel = () => {
     if (activeStep > 0) return '1 pcs'; // tutorial sample data uses "pcs"
@@ -734,6 +764,8 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     setItemVariants([]);
     setPriceTiers([]);
     setQuantitySlabs([]);
+    // "Save & new": keep the field names, clear the values (IMEI field stays ready for the next phone)
+    setCustomFields(prev => (keep ? prev.map(f => ({ ...f, value: '' })) : []));
     if (!keep) { setAddOnGroupIds([]); setAddOnPick({}); setAddOnLimit({}); setAddOnOpenId(null); }
     sessionStorage.removeItem(DRAFT_STORAGE_KEY);
     if (imageInputRef.current) imageInputRef.current.value = '';
@@ -1016,6 +1048,11 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       setModal({ message: slabError, type: State.ERROR });
       return;
     }
+    const customError = enableCustomFields ? validateCustomFields(customFields) : null;
+    if (customError) {
+      setModal({ message: customError, type: State.ERROR });
+      return;
+    }
     if (mrpValue > 0 && saleValue > 0 && saleValue > mrpValue) {
       setModal({ message: 'Sales Price cannot be greater than MRP', type: State.ERROR }); return;
     }
@@ -1148,6 +1185,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         quantitySlabs: [...activeSlabs].sort((a, b) => a.minQty - b.minQty),
         addOnGroupIds: addOnsActive ? addOnGroupIds : [],
         addOnPicks: addOnsActive ? buildAddOnPicks(addOnGroupIds, addOnPick, addOnLimit, addOnTemplates) : [],
+        customFields: enableCustomFields ? cleanCustomFields(customFields) : [],
       };
 
       await dbOperations.createItem(newItemData, finalBarcode);
@@ -1250,6 +1288,22 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         if (typeof val === 'object' && 'richText' in val) return val.richText.map((rt: any) => rt.text).join('').trim();
         return val.toString().trim();
       };
+      // Every non-empty header after column 16 (Description) is a custom field
+      const customColumns: { col: number; label: string; type: CustomFieldType }[] = [];
+      if (enableCustomFields) {
+        const headerRow = worksheet.getRow(headerRowNum);
+        for (let c = 17; c <= worksheet.columnCount; c++) {
+          const rawHeader = safeGetVal(headerRow, c);
+          if (rawHeader.trim().startsWith('■')) continue;   // report-only columns (Opening Bal., Stock In...)
+          const cleaned = rawHeader
+            .replace(/^[^A-Za-z0-9]+/, '')
+            .replace(/^custom\s*:\s*/i, '')
+            .trim();
+          if (!cleaned || cleaned.toLowerCase() === 'your own field') continue;
+          const label = canonicalCustomLabel(cleaned, customLabelSuggestions);
+          customColumns.push({ col: c, label, type: fieldTypeOf(label, knownCustom) });
+        }
+      }
 
       let processedCount = 0, createdCount = 0, updatedCount = 0, failedCount = 0, skippedCount = 0;
       let totalItems = 0;
@@ -1323,6 +1377,15 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         const rowMoq = parseInt(safeGetVal(row, 14)) || 1;
         const rowImageUrlStr = safeGetVal(row, 15);
         const rowDescription = safeGetVal(row, 16);
+                const rowCustom = customColumns
+          .map(c => {
+            const cell = row.getCell(c.col).value;
+            const value = c.type === 'date'
+              ? toIsoDate(cell instanceof Date ? cell : safeGetVal(row, c.col))
+              : safeGetVal(row, c.col);
+            return { label: c.label, value, type: c.type };
+          })
+          .filter(c => c.value);
         // Resolve the Location cell. Blank or "Shop" (case-insensitive) → item.stock.
         // Otherwise must match an existing godown name exactly (case-insensitive).
         const trimmedLocation = rowLocationStr.trim().toLowerCase();
@@ -1452,6 +1515,9 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           if (updateFields.restockQuantity) updates.restockQuantity = rowRestock;
           if (updateFields.moq) updates.moq = rowMoq;
           if (updateFields.description) updates.description = rowDescription;
+          if (updateFields.customFields && rowCustom.length) {
+            updates.customFields = mergeCustomFields(existingItem.customFields, rowCustom);
+          }
 
           try {
             await dbOperations.updateItem(existingItem.id, updates);
@@ -1515,6 +1581,9 @@ const ItemAdd: React.FC<ItemAddProps> = ({
             description: rowDescription || (existingItem ? existingItem.description : ''),
             imageUrl: finalUploadedImageUrl || (existingItem ? existingItem.imageUrl : null),
             isDeleted: false,
+            ...(rowCustom.length
+              ? { customFields: mergeCustomFields(existingItem?.customFields, rowCustom) }
+              : {}),
           };
 
           try {
@@ -1619,7 +1688,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
     const allBorders = thinBorder(['top', 'bottom', 'left', 'right']);
     const bblr = thinBorder(['bottom', 'left', 'right']);
 
-    const COLS = [
+    const BASE_COLS = [
       { header: '★ Item Name', note: 'Full product name  e.g. Amul Butter 500g', type: 'R', width: 24, field: 'name' },
       { header: '● Barcode', note: 'Optional (Leave blank to auto-generate)', type: 'O', width: 16, field: 'barcode' },
       { header: '● MRP', note: 'Max Retail Price (₹)  Required if Sale Price blank', type: 'O', width: 13, field: 'mrp' },
@@ -1638,10 +1707,19 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       { header: '● Description', note: 'Product details shown on Catalogue page', type: 'O', width: 30, field: 'description' },
     ];
 
+    // Custom fields: every column after Description. Header = field name.
+    const customCols = enableCustomFields ? [
+      { header: '◆ IMEI Number', note: 'Custom field: header = field name. Format column as Text.', type: 'C', width: 20, field: 'custom1' },
+      { header: '◆ Warranty', note: 'Ready-made custom field. Delete the column if not needed.', type: 'C', width: 16, field: 'custom2' },
+      { header: '◆ Your own field', note: 'Rename this header to ANY name (e.g. Batch No). Add more columns to the right the same way.', type: 'C', width: 22, field: 'custom3' },
+    ] : [];
+    const COLS = [...BASE_COLS, ...customCols];
+
     const TYPE_STYLE: Record<string, { bg: string; txt: string }> = {
       R: { bg: 'FEE2E2', txt: 'DC2626' },
       O: { bg: 'DCFCE7', txt: '15803D' },
       L: { bg: 'E0F2FE', txt: '0369A1' },
+      C: { bg: 'F3E8FF', txt: '7E22CE' },
     };
 
     const colCount = COLS.length;
@@ -1651,10 +1729,12 @@ const ItemAdd: React.FC<ItemAddProps> = ({
       { bg: 'E0F2FE', txt: '0369A1', marker: '▲  Lookup', desc: 'Accepts text name; new categories created automatically' },
     ];
 
-    const sampleRows = [
+    const baseSampleRows = [
       ['Amul Butter 500g', '', 250, 240, 190, 0, 2, 5, '0402', 'Dairy', 50, SHOP_NAME, 10, 1, 'https://example.com/amul.jpg', 'Fresh Amul butter, 500g pack, ideal for baking and spreads.'],
       ['Parle-G Biscuit', '1002', 10, 10, 7, 0, 0, 0, '', 'Snacks', 200, '', 20, 10, '', 'Classic glucose biscuits, pack of 10.'],
     ];
+    const customSample = [['356938035643809', '1 Year', ''], ['', '', '']];
+    const sampleRows = baseSampleRows.map((r, i) => [...r, ...(enableCustomFields ? customSample[i] : [])]);
 
     const totalRows = 12;
     const aoa: any[][] = Array.from({ length: totalRows }, () => Array(colCount).fill(null));
@@ -1956,16 +2036,18 @@ const ItemAdd: React.FC<ItemAddProps> = ({
               <div className="ai-fields">
                 <div className="ai-overline" style={{ marginBottom: 8 }}>Fields to update</div>
                 <div className="ai-fields__g">
-                  {Object.entries(updateFields).map(([key, value]) => (
-                    <label key={key}>
-                      <input
-                        type="checkbox"
-                        checked={value}
-                        onChange={(e) => setUpdateFields(prev => ({ ...prev, [key]: e.target.checked }))}
-                      />
-                      <span>{key.replace(/([A-Z])/g, ' $1').trim()}</span>
-                    </label>
-                  ))}
+                  {Object.entries(updateFields)
+                    .filter(([key]) => key !== 'customFields' || enableCustomFields)
+                    .map(([key, value]) => (
+                      <label key={key}>
+                        <input
+                          type="checkbox"
+                          checked={value}
+                          onChange={(e) => setUpdateFields(prev => ({ ...prev, [key]: e.target.checked }))}
+                        />
+                        <span>{key.replace(/([A-Z])/g, ' $1').trim()}</span>
+                      </label>
+                    ))}
                 </div>
               </div>
             )}
@@ -2695,6 +2777,73 @@ const ItemAdd: React.FC<ItemAddProps> = ({
               </div>
             </div>
           </TutorialStep>
+
+          {/* ---------- Custom fields ---------- */}
+          {enableCustomFields && (
+            <div className="ai-card">
+              {cardHead('tag', '', 'Custom fields',
+                <button type="button" onClick={addCustomField}
+                  className="ai-btn ai-btn--ghost ai-btn--sm"
+                  style={{ marginLeft: 'auto', color: 'var(--primary-text)' }}>
+                  <AiIcon name="plus" sm />Your own field
+                </button>
+              )}
+              <div className="ai-fs-b" style={{ gridTemplateColumns: 'minmax(0,1fr)' }}>
+                <span className="ai-hint">Tap a ready-made field, or use "Your own field" to type any name.</span>
+
+                {unusedPresets.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {unusedPresets.map(l => (
+                      <button key={l} type="button" onClick={() => addPresetField(l)}
+                        className="ai-btn ai-btn--secondary ai-btn--sm">
+                        <AiIcon name="plus" sm />{l}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <datalist id="ai-cf-labels">
+                  {customLabelSuggestions.map(l => <option key={l} value={l} />)}
+                </datalist>
+
+                {customFields.length === 0 ? (
+                  <p className="ai-empty" style={{ margin: 0 }}>No custom fields added.</p>
+                ) : (
+                  customFields.map((f) => (
+                    <div key={f.id} className="ai-sub">
+                      <button type="button" onClick={() => removeCustomField(f.id)} className="ai-iconbtn ai-x" aria-label="Remove field">
+                        <AiIcon name="x" sm />
+                      </button>
+                                            <div className="ai-g2" style={{ paddingRight: 28, gridTemplateColumns: 'minmax(0,1.2fr) minmax(0,1.2fr) minmax(0,.8fr)' }}>
+                        {fl('Field name',
+                          <div className="ai-field ai-field--sm">
+                            <input type="text" list="ai-cf-labels" value={f.label}
+                              onChange={(e) => updateCustomField(f.id, 'label', e.target.value)}
+                              placeholder="e.g. IMEI Number" />
+                          </div>)}
+                        {fl('Value',
+                          <div className="ai-field ai-field--sm">
+                            <input
+                              type={f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : 'text'}
+                              value={f.value}
+                              onChange={(e) => updateCustomField(f.id, 'value', e.target.value)}
+                              placeholder="e.g. 356938035643809" />
+                          </div>)}
+                        {fl('Type',
+                          <div className="ai-field ai-field--sm">
+                            <select value={f.type ?? 'text'} onChange={(e) => updateCustomField(f.id, 'type', e.target.value)}>
+                              <option value="text">Text</option>
+                              <option value="number">Number</option>
+                              <option value="date">Date</option>
+                            </select>
+                          </div>, { div: true })}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ================= RIGHT: PREVIEW + BULK IMPORT + SAVE (desktop only) ================= */}

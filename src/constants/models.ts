@@ -52,9 +52,10 @@ export interface Item {
   quantitySlabs?: QuantitySlab[];
   addOnGroups?: AddOnGroup[];     // legacy: groups saved inside the item (older items)
   addOnGroupIds?: string[];       // ids of groups from the add-on library (Item groups page)
-    // Per-group overrides for this item. No entry = all options + the group's own limit.
+  // Per-group overrides for this item. No entry = all options + the group's own limit.
   // optionIds missing = all options; maxSelect missing/0 = use the group's limit
   addOnPicks?: { groupId: string; optionIds?: string[]; maxSelect?: number }[];
+  customFields?: CustomField[];   // user-defined extra details (IMEI, warranty, ...)
 }
 
 export interface ItemGroup {
@@ -192,7 +193,7 @@ export interface AddOnOption {
   price: number | string;     // extra amount on top of the item price (0 = free). String only while typing in the form; saved as number
   itemId?: string;            // set when this option is an inventory item (e.g. Coke sold with a burger)
   itemQty?: number;           // pieces of that item taken from stock per 1 add-on (default 1)
-    syncPrice?: boolean;        // linked option: use the inventory item's current price instead of the saved one
+  syncPrice?: boolean;        // linked option: use the inventory item's current price instead of the saved one
   extraPrice?: number | null; // charge when picked beyond the group's limit. empty = option's Price, then the group's flat extra
   soldOut?: boolean;          // runtime only (set by resolveAddOnGroups): linked item has not enough stock
 }
@@ -201,7 +202,7 @@ export interface AddOnGroup {
   id: string;
   name: string;
   multiple: boolean;
-    maxSelect?: number;
+  maxSelect?: number;
   extraPrice?: number | null;
   order?: number;             // position in the add-on library (lower = first). Missing = old group, falls back to A-Z
   options: AddOnOption[];
@@ -264,7 +265,7 @@ export const validateQuantitySlabs = (
 export const validateAddOnGroups = (groups: AddOnGroup[]): string | null => {
   for (const g of groups) {
     if (!g.name.trim()) return 'Every add-on group needs a name (e.g. "Crust").';
-        if (g.options.length === 0) return `Add-on group "${g.name}" needs at least one option.`;
+    if (g.options.length === 0) return `Add-on group "${g.name}" needs at least one option.`;
     if (Number(g.maxSelect) < 0) return `"${g.name}": max choices cannot be negative.`;
     for (const o of g.options) {
       if (!o.name.trim()) return `Every option in "${g.name}" needs a name.`;
@@ -304,7 +305,7 @@ export const resolveAddOnGroups = (
     if (!ctx.allowNegative && Number(it.stock ?? 0) < (Number(o.itemQty) || 1)) next.soldOut = true;
     return next;
   };
-    // library is already sorted by the saved order, so filtering it keeps that order
+  // library is already sorted by the saved order, so filtering it keeps that order
   const fromLibrary = library
     .filter((g) => (item.addOnGroupIds ?? []).includes(g.id))
     .map((g) => {
@@ -313,7 +314,7 @@ export const resolveAddOnGroups = (
       let multiple = g.multiple;
       let maxSelect = Number(g.maxSelect) || 0;
       if (multiple && Number(pick?.maxSelect) > 0) maxSelect = Number(pick!.maxSelect); // this item's own limit
-            let extraPrice = g.extraPrice != null ? Number(g.extraPrice) || 0 : undefined;
+      let extraPrice = g.extraPrice != null ? Number(g.extraPrice) || 0 : undefined;
       if (multiple && maxSelect >= options.length) maxSelect = 0;                       // limit can never be reached = no limit
       if (maxSelect === 0) extraPrice = undefined;                                      // no limit = no extra price
       if (multiple && maxSelect === 1 && extraPrice === undefined) { multiple = false; maxSelect = 0; } // limit 1 = "Choose one"
@@ -357,4 +358,107 @@ export const addOnStockToRestore = (
   const out = new Map<string, number>();
   addOnStockOf(line).forEach((a) => out.set(a.itemId, (out.get(a.itemId) || 0) + a.qty * (Number(returnedQty) || 0)));
   return out;
+};
+export type CustomFieldType = 'text' | 'number' | 'date';
+
+export interface CustomField {
+  id: string;
+  label: string;
+  value: string;          // date type is always stored as yyyy-mm-dd
+  type?: CustomFieldType; // missing = text (old data)
+}
+
+/** Trims everything and drops fully empty rows. */
+export const cleanCustomFields = (fields: CustomField[]): CustomField[] =>
+  fields
+    .map(f => ({ ...f, label: f.label.trim(), value: f.value.trim() }))
+    .filter(f => f.label || f.value);
+
+/** Returns an error message if custom fields are invalid, otherwise null. */
+export const validateCustomFields = (fields: CustomField[]): string | null => {
+  const seen = new Set<string>();
+  for (const f of cleanCustomFields(fields)) {
+        if (!f.label) return `A custom field with value "${f.value}" needs a name.`;
+    if (f.value && f.type === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(f.value))
+      return `"${f.label}" must be a valid date.`;
+    if (f.value && f.type === 'number' && !Number.isFinite(Number(f.value)))
+      return `"${f.label}" must be a number.`;
+    const key = f.label.toLowerCase();
+    if (seen.has(key)) return `Custom field "${f.label}" is added twice.`;
+    seen.add(key);
+  }
+  return null;
+};
+
+/** Merge incoming values into existing fields by label (case-insensitive). Incoming wins; other fields are kept. */
+export const mergeCustomFields = (
+  existing: CustomField[] | undefined,
+  incoming: { label: string; value: string; type?: CustomFieldType }[]
+): CustomField[] => {
+  const out = [...(existing ?? [])];
+  for (const inc of incoming) {
+    const label = inc.label.trim();
+    const value = inc.value.trim();
+    if (!label || !value) continue;
+    const i = out.findIndex(f => f.label.trim().toLowerCase() === label.toLowerCase());
+     if (i >= 0) out[i] = { ...out[i], value, ...(inc.type ? { type: inc.type } : {}) };
+    else out.push({ id: crypto.randomUUID(), label, value, type: inc.type });
+  }
+  return out;
+};
+export const PRESET_CUSTOM_LABELS = [
+  'IMEI Number', 'Serial Number', 'Warranty', 'Colour',
+  'Batch No', 'Expiry Date', 'Mfg Date', 'Size', 'Brand', 'Model No',
+];
+
+export const PRESET_FIELD_TYPES: Record<string, CustomFieldType> = {
+  'Expiry Date': 'date',
+  'Mfg Date': 'date',
+};
+
+/** Match a typed/Excel header to a known name (case-insensitive) so "imei number" and "IMEI Number" are one field. */
+export const canonicalCustomLabel = (raw: string, known: string[] = []): string => {
+  const t = raw.trim();
+  const key = t.toLowerCase();
+  return [...PRESET_CUSTOM_LABELS, ...known].find(l => l.toLowerCase() === key) ?? t;
+};
+/** Type of a field name: preset first, then whatever other items already use, else text. */
+export const fieldTypeOf = (
+  label: string,
+  known: { label: string; type: CustomFieldType }[] = []
+): CustomFieldType =>
+  PRESET_FIELD_TYPES[label] ??
+  known.find(k => k.label.toLowerCase() === label.trim().toLowerCase())?.type ??
+  'text';
+
+/** Every custom field name used across items, with its type (for report filters/columns). */
+export const collectCustomLabels = (
+  items: { customFields?: CustomField[] }[]
+): { label: string; type: CustomFieldType }[] => {
+  const map = new Map<string, { label: string; type: CustomFieldType }>();
+  items.forEach(it =>
+    (it.customFields ?? []).forEach(f => {
+      const label = f.label?.trim();
+      if (!label) return;
+      const key = label.toLowerCase();
+      const type = f.type ?? PRESET_FIELD_TYPES[label] ?? 'text';
+      const cur = map.get(key);
+      if (!cur) map.set(key, { label, type });
+      else if (cur.type === 'text' && type !== 'text') cur.type = type;
+    })
+  );
+  return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
+};
+
+export const getCustomValue = (item: { customFields?: CustomField[] }, label: string): string =>
+  item.customFields?.find(f => f.label.trim().toLowerCase() === label.trim().toLowerCase())?.value ?? '';
+
+/** Excel Date object / dd-mm-yyyy / dd/mm/yyyy / yyyy-mm-dd -> yyyy-mm-dd. Unknown text is returned as is. */
+export const toIsoDate = (raw: unknown): string => {
+  if (raw instanceof Date && !isNaN(raw.getTime())) return raw.toISOString().slice(0, 10);
+  const s = String(raw ?? '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  return s;
 };

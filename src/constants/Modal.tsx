@@ -176,7 +176,7 @@ const LOYALTY_METHOD = 'Loyalty Points';
 
 export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, invoice, onSubmit, availableCredit = 0, isDebitNote = false, theme = 'pos', loyalty }) => {
     const t = PAYMENT_THEME_STYLES[theme];
-        // method value -> amount typed (string, so the input can be empty / partial)
+    // method value -> amount typed (string, so the input can be empty / partial)
     const [splits, setSplits] = useState<Record<string, string>>({});
     const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().split('T')[0]);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -204,7 +204,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
     const [chequeDate, setChequeDate] = useState('');
 
     useEffect(() => {
-                if (invoice) {
+        if (invoice) {
             // Start with the full due in Cash (same as before); user can split from here
             setSplits(invoice.dueAmount != null && invoice.dueAmount > 0 ? { cash: invoice.dueAmount.toFixed(2) } : {});
             setError('');
@@ -216,7 +216,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
 
     if (!isOpen || !invoice) return null;
 
-        const round2 = (n: number) => Math.round(n * 100) / 100;
+    const round2 = (n: number) => Math.round(n * 100) / 100;
     const due = invoice.dueAmount ?? 0;
     const amountOf = (m: string) => parseFloat(splits[m] || '') || 0;
     const totalEntered = round2(Object.keys(splits).reduce((s, k) => s + amountOf(k), 0));
@@ -249,7 +249,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
         });
     };
 
-        const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
         const entries = Object.keys(splits)
@@ -341,8 +341,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
     // Portaled like Modal so it always sits above page sheets/drawers that opened it
     return createPortal(
         <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#020618]/50 p-4">
-            <div role="dialog" aria-label="Settle payment" className="flex w-full max-w-md flex-col overflow-hidden rounded-sm bg-white shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]">
-                <div className="flex items-center gap-3 border-b border-[#dfe6fb] px-4 py-3.5">
+            <div role="dialog" aria-label="Settle payment" className="flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-sm bg-white shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]">
+                <div className="flex flex-none items-center gap-3 border-b border-[#dfe6fb] px-4 py-3.5">
                     <span className={`grid h-8 w-8 flex-none place-items-center rounded-sm ${t.chip}`}>
                         <FiCheck size={18} />
                     </span>
@@ -355,8 +355,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                     </button>
                 </div>
 
-                <form onSubmit={handleSubmit}>
-                    <div className="grid gap-4 p-4">
+                <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+                    <div className="grid min-h-0 flex-1 content-start gap-4 overflow-y-auto p-4">
                         <div className="flex items-baseline justify-between rounded-sm border border-[#dfe6fb] bg-[#f5f7ff] px-4 py-3">
                             <span className="text-sm text-[#45556c]">Amount due</span>
                             <span className="text-2xl font-semibold tracking-tight text-[#0f172b] tabular-nums">
@@ -372,7 +372,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                                 <span className={`text-sm font-semibold tabular-nums ${t.creditAmount}`}>₹{availableCredit.toLocaleString('en-IN')}</span>
                             </div>
                         )}
-                                                <div className="min-w-0">
+                        <div className="min-w-0">
                             <label htmlFor="paymentDate" className={LABEL_CLS}>Payment date</label>
                             <input
                                 type="date"
@@ -418,7 +418,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                                 <div>
                                     <span className="mb-1.5 block text-[11px] font-semibold uppercase leading-4 tracking-[0.08em] text-[#5b6b86]">Payment method</span>
                                     <div role="group" aria-label="Payment method" className="grid grid-cols-2 gap-2">
-                                                                                {methods.map((m) => {
+                                        {methods.map((m) => {
                                             const val = splits[m.value] ?? '';
                                             const cur = amountOf(m.value);
                                             const on = cur > 0;
@@ -475,7 +475,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                                             );
                                         })}
                                     </div>
-                                                                        {amountOf(LOYALTY_METHOD) > 0 && loyalty && (
+                                    {amountOf(LOYALTY_METHOD) > 0 && loyalty && (
                                         <p className="mt-2 text-xs text-[#5b6b86]">
                                             {loyalty.balance} pts available · up to {loyalty.maxPoints} pts (₹{loyalty.maxValue.toLocaleString('en-IN')}) on this order. 1 pt = ₹{loyalty.pointValue.toLocaleString('en-IN')}; amounts round down to whole points.
                                         </p>
@@ -483,7 +483,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                                 </div>
                             );
                         })()}
-                                                {amountOf('PDC') > 0 && (
+                        {amountOf('PDC') > 0 && (
                             <div className="grid gap-3 rounded-sm border border-[#dfe6fb] bg-[#f5f7ff] p-3">
                                 <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#5b6b86]">Cheque details</div>
                                 <div className="grid grid-cols-2 gap-3">
@@ -519,7 +519,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                         )}
                     </div>
 
-                    <div className="flex items-center justify-end gap-2 border-t border-[#dfe6fb] px-4 py-3">
+                    <div className="flex flex-none items-center justify-end gap-2 border-t border-[#dfe6fb] bg-white px-4 py-3">
                         <button
                             type="button"
                             onClick={onClose}

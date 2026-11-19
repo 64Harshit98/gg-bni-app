@@ -44,17 +44,23 @@ export const useExchangeItems = ({
     const [selectedItemForEdit, setSelectedItemForEdit] = useState<Item | null>(null);
     const [isItemDrawerOpen, setIsItemDrawerOpen] = useState(false);
 
-    const [isDiscountLocked, setIsDiscountLocked] = useState<boolean>(!!salesSettings?.lockDiscount);
-    const [discountInfo, setDiscountInfo] = useState<string | null>(null);
-    const [isPriceLocked, setIsPriceLocked] = useState<boolean>(!!salesSettings?.lockPrice);
-    const [priceInfo, setPriceInfo] = useState<string | null>(null);
+    const lockDiscountSetting = !!salesSettings?.lockDiscountEntry;
+const lockPriceSetting = !!salesSettings?.lockSalePriceEntry;
+// long-press sirf tabhi matter karta hai jab setting se lock ON ho
+const [discountUnlocked, setDiscountUnlocked] = useState<boolean>(false);
+const [priceUnlocked, setPriceUnlocked] = useState<boolean>(false);
+const isDiscountLocked = lockDiscountSetting && !discountUnlocked;
+const isPriceLocked = lockPriceSetting && !priceUnlocked;
+const [discountInfo, setDiscountInfo] = useState<string | null>(null);
+const [priceInfo, setPriceInfo] = useState<string | null>(null);
     const longPressTimer = useRef<NodeJS.Timeout | null>(null);
 
     // Keep lock state in sync with settings (settings load async via onSnapshot)
-    useEffect(() => {
-        setIsDiscountLocked(!!salesSettings?.lockDiscount);
-        setIsPriceLocked(!!salesSettings?.lockPrice);
-    }, [salesSettings?.lockDiscount, salesSettings?.lockPrice]);
+    // Setting change hone par long-press unlock reset ho jaye
+useEffect(() => {
+    setDiscountUnlocked(false);
+    setPriceUnlocked(false);
+}, [salesSettings?.lockDiscountEntry, salesSettings?.lockSalePriceEntry]);
 
     const handleOpenEditDrawer = (item: Item) => {
         // item.id here is the cart UUID, so find the real item from availableItems
@@ -138,10 +144,10 @@ export const useExchangeItems = ({
         if (item) addExchangeItem(item);
     };
 
-    const handleDiscountPressStart = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); longPressTimer.current = setTimeout(() => setIsDiscountLocked(false), 500); };
+    const handleDiscountPressStart = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); longPressTimer.current = setTimeout(() => setDiscountUnlocked(true), 500); };
     const handleDiscountPressEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
     const handleDiscountClick = () => { if (isDiscountLocked) { setDiscountInfo("Cannot edit discount"); setTimeout(() => setDiscountInfo(null), 3000); } };
-    const handlePricePressStart = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); longPressTimer.current = setTimeout(() => setIsPriceLocked(false), 200); };
+    const handlePricePressStart = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); longPressTimer.current = setTimeout(() => setPriceUnlocked(true), 200); };
     const handlePricePressEnd = () => { if (longPressTimer.current) clearTimeout(longPressTimer.current); };
     const handlePriceClick = () => { if (isPriceLocked) { setPriceInfo("Cannot edit price"); setTimeout(() => setPriceInfo(null), 1000); } };
 

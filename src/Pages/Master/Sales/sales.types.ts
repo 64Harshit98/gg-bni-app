@@ -26,6 +26,8 @@ export interface SalesItem extends OriginalSalesItem {
     packetSize?: number | undefined;
     isCustomAmount?: boolean;
     isStagedCalcItem?: boolean;
+    /** Quick-added on this bill: not in the catalogue yet, created when the bill is saved. */
+    isNewItem?: boolean;
     addedAt?: number;   // 👈 NEW:
     tierId?: string;          // 👈 NEW — 
     tierLabel?: string;       // 👈 NEW — "Box of 10" 

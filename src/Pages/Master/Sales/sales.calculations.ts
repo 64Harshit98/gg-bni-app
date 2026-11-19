@@ -1,4 +1,5 @@
 import type { SalesItem } from './sales.types';
+import { discountBaseOf, savedDiscountFields } from './sales.discountBase';
 
 // ─────────────────────────────────────────────────────────────────────────
 // This file holds THREE separate, independently-called calculation
@@ -121,7 +122,8 @@ export const calculateSaleTotals = (
         accumulatorSubtotal += (baseForSubtotal + addOnBase) * currentQuantity;
         accumulatorMrp += addOnUnit * currentQuantity;
 
-        const baseForDiscount = (cartItem.mrp > 0) ? cartItem.mrp : (cartItem.salesPrice || 0);
+        // Disc1 base: MRP, or the sale price when "Apply item discount on sale price" is on
+        const baseForDiscount = discountBaseOf(cartItem, !!salesSettings?.discountOnSalePrice);
         let effectiveUnitPrice = 0;
         if (cartItem.customPrice !== undefined && cartItem.customPrice !== null && cartItem.customPrice !== '') {
             effectiveUnitPrice = parseFloat(String(cartItem.customPrice));
@@ -189,6 +191,8 @@ export interface FinalizedSaleItemsContext {
     finalTaxType: string;
     currentTaxRate: number;
     billRatio: number;
+    /** Sales Settings → "Apply item discount on sale price" (Disc1 is off the sale price, not MRP). */
+    discountOnSalePrice?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -206,8 +210,13 @@ export const calculateFinalizedSaleItems = (
     ctx: FinalizedSaleItemsContext
 ) => {
     const { isRoundingEnabled, roundingInterval, finalGstScheme, finalTaxType, currentTaxRate, billRatio } = ctx;
+    const discountOnSalePrice = !!ctx.discountOnSalePrice;
 
-    return itemsToFormat.map(({ isEditable, customPrice, ...item }) => {
+    return itemsToFormat.map(({ isEditable, customPrice, ...line }) => {
+        // Drop the on-sale-price fields from an earlier save; savedDiscountFields re-adds them when they apply
+        const item: typeof line & { saleDiscount?: number; discountOnSalePrice?: boolean } = { ...line };
+        delete item.saleDiscount;
+        delete item.discountOnSalePrice;
         const currentDiscount = Number(item.discount) || 0;
         const currentDiscount2 = Number(item.discount2) || 0;
         const currentQuantity = Number(item.quantity) || 1;
@@ -216,7 +225,7 @@ export const calculateFinalizedSaleItems = (
         if (customPrice !== undefined && customPrice !== null && customPrice !== '') {
             effectiveUnitPrice = parseFloat(String(customPrice));
         } else {
-            const basePrice = (item.mrp && item.mrp > 0) ? item.mrp : (item.salesPrice || 0);
+            const basePrice = discountBaseOf(item, discountOnSalePrice);
             const priceAfterDiscount1 = basePrice * (1 - currentDiscount / 100);
             effectiveUnitPrice = priceAfterDiscount1 * (1 - currentDiscount2 / 100);
         }
@@ -263,7 +272,6 @@ export const calculateFinalizedSaleItems = (
             ...item,
             id: item.productId || item.id,
             quantity: currentQuantity,
-            discount: currentDiscount,
             discount2: currentDiscount2,
             effectiveUnitPrice: effectiveUnitPrice,
             finalPrice: itemFinalPrice,
@@ -274,7 +282,8 @@ export const calculateFinalizedSaleItems = (
             taxAmount: scaledTaxAmount,
             taxRate: itemSpecificTaxRate,     // FIX: Forces the DB to save the actual percentage!
             taxType: finalTaxType,
-            discountPercentage: currentDiscount,
+            // `discount` / `discountPercentage` stay "off MRP" so bills, Journal and returns read them as before
+            ...savedDiscountFields(item, currentDiscount, discountOnSalePrice),
         };
     });
 };

@@ -40,6 +40,10 @@ export interface PurchaseItem extends Omit<SalesItem, 'finalPrice' | 'effectiveU
   supplierPriceSkip?: string;         // cart-only: 'manual' or a supplier id the user reverted for
   itemGroupId?: string;
   itemGroupIds?: string[];
+  /** Quick-added on this bill: not in the catalogue yet, created when the bill is saved. */
+  isNewItem?: boolean;
+  /** Sale price typed for a quick-added item (saved to the new item, not used on the purchase). */
+  salesPrice?: number;
 }
 
 // Moved verbatim from Purchase.tsx (was defined inline around L54-78). The

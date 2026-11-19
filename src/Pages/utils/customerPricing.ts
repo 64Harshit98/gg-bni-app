@@ -110,7 +110,9 @@ export const getCustomerPriceSuggestion = (
     line: PricedLine,
     rule: CustomerPricingRule | null | undefined,
     isRoundingEnabled = true,
-    roundingInterval = 1
+    roundingInterval = 1,
+    /** Sales Settings → "Apply item discount on sale price": the customer's % comes off the sale price */
+    onSalePrice = false
 ): CustomerPriceSuggestion | null => {
     if (!line.productId || line.isCustomAmount) return null;
 
@@ -119,7 +121,7 @@ export const getCustomerPriceSuggestion = (
 
     const mrp = Number(line.mrp || 0);
     const sales = Number(line.salesPrice || 0);
-    const base = mrp > 0 ? mrp : sales;
+    const base = onSalePrice && sales > 0 ? sales : (mrp > 0 ? mrp : sales);
     if (base <= 0) return null;
 
     let net = resolved.type === 'percent'

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { CUSTOMER_PRICING_COLLECTION } from '../../../../constants/customerSource';
 import { usePartyPricing, type PartyPricingAdapter } from '../../../hooks/usePartyPricing';
-import { withoutCustomerPrice } from '../../../utils/customerPricing';
+import { getCustomerPriceSuggestion, withoutCustomerPrice } from '../../../utils/customerPricing';
 import type { SalesItem } from '../sales.types';
 
 export type { PartyPriceOffer as CustomerPriceOffer } from '../../../hooks/usePartyPricing';
@@ -16,7 +16,7 @@ interface Params {
     customerPhone: string;
     items: SalesItem[];
     setItems: React.Dispatch<React.SetStateAction<SalesItem[]>>;
-    salesSettings: { enableRounding?: boolean; roundingInterval?: number } | null | undefined;
+    salesSettings: { enableRounding?: boolean; roundingInterval?: number; discountOnSalePrice?: boolean } | null | undefined;
     canOverride: boolean;   // Permissions.OverrideCustomerDiscount
 }
 
@@ -60,13 +60,19 @@ export const useCustomerPricing = ({
         interval: salesSettings?.roundingInterval ?? 1,
     }), [salesSettings?.enableRounding, salesSettings?.roundingInterval]);
 
+    // "Apply item discount on sale price": the customer's % comes off the sale price too
+    const onSalePrice = !!salesSettings?.discountOnSalePrice;
+    const adapter = useMemo<PartyPricingAdapter<SalesItem>>(() => (onSalePrice
+        ? { ...salesAdapter, suggest: (line, rule, on, interval) => getCustomerPriceSuggestion(line, rule, on, interval, true) }
+        : salesAdapter), [onSalePrice]);
+
     const p = usePartyPricing<SalesItem>({
         enabled, auto, companyId,
         collectionName: CUSTOMER_PRICING_COLLECTION,
         partyName: customerName,
         partyPhone: customerPhone,
         items, setItems, rounding, canOverride,
-        adapter: salesAdapter,
+        adapter,
     });
     return { ...p, customerId: p.partyId };
 };

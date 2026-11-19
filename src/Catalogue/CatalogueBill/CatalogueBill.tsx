@@ -5,7 +5,7 @@ import { db } from "../../lib/Firebase";
 import { resolveCompanyLogoBase64 } from "../hooks/useCompanyLogo";
 import { generateA5Invoice } from "../../UseComponents/A5PdfGenerator";
 import { ACTION } from "../../enums/index";
-import QRCode from 'qrcode';
+import { makeBillUpiQr, qrPayAmount, scanToPayLabel } from '../../UseComponents/upiQr';
 import { drawWatermark } from "../../Components/pdfWatermark";
 import { splitAddOns, nameWithBase, reserveAddOnSpace, drawAddOnText } from "../../UseComponents/addOnText";
 import { needsImageText, textToImage, NAME_IMG_W, installUnicodeText } from "../../UseComponents/textToImage";
@@ -210,6 +210,8 @@ export const CatalogueBill = async (
         };
       }),
       finalAmount: data.grandTotal,
+      // unpaid part, so the A5 payment QR asks for what's still due
+      due: Math.max(0, (Number(data.grandTotal) || 0) - (Number(data.advancePaid) || 0)),
       bankDetails: {
         accountNumber: data.accountNumber,
         bankName: data.bankName,
@@ -261,16 +263,6 @@ export const CatalogueBill = async (
   doc.setTextColor(textColor);
   doc.setLineWidth(0.1);
 
-  let qrBase64: string | null = null;
-  if (data.upiId && !isEstimate) {
-    const upiString = `upi://pay?pa=${data.upiId}&pn=${encodeURIComponent(data.companyName)}&cu=INR`;
-    try {
-      // Need top-level await or a quick async resolution
-      qrBase64 = await QRCode.toDataURL(upiString, { width: 80, margin: 0, errorCorrectionLevel: "L" });
-    } catch (err) {
-      console.error("Failed to generate QR code", err);
-    }
-  }
 
   // --- STRICT TAX SCHEME LOGIC ---
   const safeScheme = (data.companyGstType && data.companyGstType.trim() !== '') ? data.companyGstType.toUpperCase() : 'NONE';
@@ -493,6 +485,14 @@ export const CatalogueBill = async (
   const settledAmount = invoiceTotal - advance;
   const prevBal = Number(data.previousBalance) || 0;
   const currentDue = Math.max(0, invoiceTotal - advance);
+
+  // UPI QR fixed to the unpaid amount (fully paid order: plain QR, no amount)
+  const billQr = isEstimate ? null : await makeBillUpiQr({
+    upiId: data.upiId,
+    payeeName: data.companyName,
+    amount: qrPayAmount(currentDue),
+    billNumber: data.order?.orderId,
+  });
   const creditNoteBal = Number(data.creditNoteBalance) || 0;
   const hasCreditNote = creditNoteBal > 0;
   const totalDue = prevBal + currentDue;
@@ -525,9 +525,9 @@ export const CatalogueBill = async (
     doc.text(`Bill generated on ${generatedAt}`, pageWidth - margin, cursorY - 2, { align: "right" });
 
     drawBox(cursorY, headerHeight);
-    if (qrBase64 && !isEstimate) {
-      doc.addImage(qrBase64, 'PNG', startX + 2, cursorY + 2, 18, 18);
-      doc.setFontSize(6); doc.text('Scan to Pay', startX + 11, cursorY + 22, { align: 'center' });
+    if (billQr) {
+      doc.addImage(billQr.image, 'PNG', startX + 2, cursorY + 2, 18, 18);
+      doc.setFontSize(6); doc.text(scanToPayLabel(billQr.amount, true), startX + 11, cursorY + 22, { align: 'center' });
     }
 
     doc.setFontSize(10); doc.setFont('helvetica', 'bold');

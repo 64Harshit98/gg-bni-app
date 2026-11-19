@@ -102,7 +102,7 @@ interface PaymentDrawerProps {
     /** Money goes out (paying a supplier) — wording becomes "Pay supplier / To pay". Returns flip direction per bill, so this isn't derived from mode. */
     payingOut?: boolean;
     /** Which side a newly created customer belongs to (POS and catalogue share the customers collection) */
-        customerSource?: 'pos' | 'catalogue';
+    customerSource?: 'pos' | 'catalogue';
     /** Colour theme of the drawer. 'catalogue' = orange accents (confirm button etc.), default blue. */
     theme?: 'pos' | 'catalogue';
     subtotal: number;
@@ -411,7 +411,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     onClose,
     mode = 'sale',
     payingOut = false,
-        customerSource = 'pos',
+    customerSource = 'pos',
     theme = 'pos',
     billTotal,
     originalBillTotal,
@@ -1524,7 +1524,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             Confirm payment
         </>
     );
-        const isCatalogueTheme = theme === 'catalogue';
+    const isCatalogueTheme = theme === 'catalogue';
     const confirmBtnCls = `w-full text-white rounded-sm font-semibold text-sm ${isCatalogueTheme ? 'bg-[#c2410c] hover:bg-[#9a3412]' : 'bg-[#155dfc] hover:bg-[#1447e6]'} active:scale-[0.98] transition-all disabled:opacity-45 disabled:cursor-not-allowed disabled:active:scale-100 flex items-center justify-center gap-2`;
 
     const confirmContentMobile = isSubmitting ? (
@@ -1703,7 +1703,7 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 </div>
             </div>
             <div className={`text-xs mt-1 ${isDiscountLocked ? 'text-[#d5000c] font-medium' : 'text-[#5b6b86]'}`}>
-                {isDiscountLocked ? 'Locked. Long press to unlock.' : 'Type either — the other fills in.'}
+                {isDiscountLocked ? 'Locked.' : 'Type either — the other fills in.'}
             </div>
         </div>
     );

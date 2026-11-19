@@ -22,8 +22,11 @@ import { FiTrash2, FiX, FiEdit, FiCamera, FiDelete, FiSearch, FiMoreVertical, Fi
 import CustomerPricingEditorModal from '../../../Components/CustomerPricingEditorModal';
 import { GenericBillFooter } from '../../../Components/Footer';
 import { CartLinesCompact } from '../../../Components/CartLinesCompact';
+import { QuickItemSheet } from '../../../Components/QuickItemSheet';
+import { looksLikeBarcode, normalizeItemName, type QuickItemDetails } from '../../../lib/quickAddItems';
 import { IconScanCircle, IconPrint } from '../../../constants/Icons';
 import QRCode from 'react-qr-code';
+import { buildUpiUri } from '../../../UseComponents/upiQr';
 import { FiSend } from 'react-icons/fi';
 import CalcDisplay from '../../../Components/CalcDisplay';
 import { useWhatsappProvider } from '../../Additional/Whatsapp/useWhatsappProvider';
@@ -330,6 +333,9 @@ const Sales: React.FC = () => {
         displayItems,
         addItemToCart,
         addItemWithAddOns,
+        handleQuickAddItem,
+        handleNewItemFieldChange,
+        applyNewItemDetails,
         handleClearCart,
         handleConfirmClearCart,
         handleItemSelected,
@@ -365,6 +371,70 @@ const Sales: React.FC = () => {
         setModal,
         companyId: currentUser?.companyId,
     });
+    // --- QUICK-ADD (item not in the catalogue yet; created when the bill is saved) ---
+    // List view: typed in the search box, details filled in the cart row.
+    // Card view / bill sheet: details filled in QuickItemSheet (bottom sheet on phone).
+    const [quickSheet, setQuickSheet] = useState<{ mode: 'create'; name: string } | { mode: 'edit'; lineId: string } | null>(null);
+    const [focusLineId, setFocusLineId] = useState<string | null>(null);
+    const catalogueNameSet = useMemo(() => new Set(availableItems.map(a => normalizeItemName(a.name))), [availableItems]);
+    const isCatalogueName = (name: string) => catalogueNameSet.has(normalizeItemName(name));
+    const gridQuickAddName = gridSearchQuery.trim();
+    const canGridQuickAdd = !!gridQuickAddName && !isCatalogueName(gridQuickAddName);
+
+    const handleListQuickAdd = (name: string) => {
+        const lineId = handleQuickAddItem(name);
+        if (lineId) setFocusLineId(lineId);
+    };
+    const openGridQuickAdd = () => {
+        if (canGridQuickAdd) setQuickSheet({ mode: 'create', name: gridQuickAddName });
+    };
+    // Card-view search: Enter with no matching item opens the new-item sheet
+    const handleGridSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key !== 'Enter' || !canGridQuickAdd || looksLikeBarcode(gridQuickAddName)) return;
+        if (sortedGridItems.length > 0) return;
+        e.preventDefault();
+        openGridQuickAdd();
+    };
+    const quickSheetLine: SalesItem | null | undefined = quickSheet?.mode === 'edit' ? items.find(i => i.id === quickSheet.lineId) : null;
+    const handleQuickSheetSubmit = (d: QuickItemDetails) => {
+        if (quickSheet?.mode === 'edit') applyNewItemDetails(quickSheet.lineId, d);
+        else handleQuickAddItem(d.name, d);
+        setQuickSheet(null);
+    };
+    const renderQuickItemSheet = () => (
+        <QuickItemSheet
+            isOpen={!!quickSheet && (quickSheet.mode === 'create' || !!quickSheetLine)}
+            mode={quickSheet?.mode ?? 'create'}
+            initial={quickSheet?.mode === 'edit' && quickSheetLine
+                ? {
+                    name: quickSheetLine.name,
+                    price: Number(quickSheetLine.customPrice) || 0,
+                    mrp: Number(quickSheetLine.mrp) || 0,
+                    tax: Number(quickSheetLine.tax) || 0,
+                    extraPrice: Number(quickSheetLine.purchasePrice) || 0,
+                    quantity: Number(quickSheetLine.quantity) || 1,
+                }
+                : { name: quickSheet?.mode === 'create' ? quickSheet.name : '', tax: Number(salesSettings?.defaultTaxRate ?? 0) || 0, quantity: 1 }}
+            priceLabel="Selling price"
+            extraLabel="Purchase price"
+            isNameTaken={isCatalogueName}
+            onSubmit={handleQuickSheetSubmit}
+            onClose={() => setQuickSheet(null)}
+        />
+    );
+    // Card view: "add as new item" tile, first in the grid while searching
+    const renderGridQuickAddTile = () => canGridQuickAdd && !isTutorialActive ? (
+        <button
+            type="button"
+            onClick={openGridQuickAdd}
+            className="flex flex-col items-center justify-center gap-1.5 min-h-[132px] p-3 rounded-sm border-2 border-dashed border-[#155dfc] bg-white text-[#155dfc] hover:bg-[#e6eeff] transition-colors text-center"
+        >
+            <FiPlus size={22} />
+            <span className="text-[13px] font-semibold leading-4 break-words [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden">Add "{gridQuickAddName}"</span>
+            <span className="text-[11px] text-[#45556c] leading-4">New item · set price</span>
+        </button>
+    ) : null;
+
     // allowNegative: yahan apni sales setting ka asli naam lagao jo negative stock allow karti hai
     const groupsOf = (item: Item) => resolveAddOnGroups(item, addOnLibrary, {
         items: availableItems,
@@ -572,6 +642,7 @@ const Sales: React.FC = () => {
         printingPdf,
         showPrintSubMenu, setShowPrintSubMenu,
         enableTriplicate,
+        upiPayee,
         isDrawerOpen, setIsDrawerOpen,
         handleSendWhatsapp,
         handleSendWhatsappSnapto,
@@ -829,6 +900,8 @@ const Sales: React.FC = () => {
                                 type="text"
                                 value={gridSearchQuery}
                                 onChange={(e) => setGridSearchQuery(e.target.value)}
+                                onKeyDown={handleGridSearchKeyDown}
+                                enterKeyHint="search"
                                 placeholder="Search item name or barcode"
                                 className="flex-1 min-w-0 h-full px-2.5 bg-transparent border-0 outline-none text-[14px] font-medium text-[#0f172b] placeholder:text-[#5b6b86]"
                                 autoComplete="off"
@@ -928,6 +1001,7 @@ const Sales: React.FC = () => {
                     type="text"
                     value={gridSearchQuery}
                     onChange={(e) => setGridSearchQuery(e.target.value)}
+                    onKeyDown={handleGridSearchKeyDown}
                     placeholder="Search item name or barcode"
                     className={FIELD_CLS}
                     autoComplete="off"
@@ -1602,73 +1676,100 @@ const Sales: React.FC = () => {
             </div>
         ) : null;
 
+    // Amount to collect on the just-saved bill (the bill total), shown big + baked into the UPI QR
+    const savedBillAmount = Math.round((Number(savedBillData?.invoiceData?.amount) || 0) * 100) / 100;
+    const savedBillAmountLabel = savedBillAmount.toLocaleString('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
     const renderSavedBillModals = () => (
         <>
             {savedBillData && (
                 <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#020618]/60 backdrop-blur-sm p-4">
-                    <div className={`bg-white border border-[#dfe6fb] rounded-sm ${SHADOW_FLOAT} p-6 w-full max-w-sm max-h-[90dvh] overflow-y-auto flex flex-col items-center animate-in fade-in zoom-in duration-300`}>
-                        <button onClick={handleCloseQrModal} aria-label="Close" className="self-end p-1 rounded-full text-[#5b6b86] hover:text-[#0f172b] hover:bg-[#f5f7ff] transition-colors">
-                            <FiX size={20} />
-                        </button>
-                        <div className="w-12 h-12 rounded-full bg-[#e9faef] text-[#008236] flex items-center justify-center mb-3">
-                            <FiCheck size={24} />
-                        </div>
-                        <h3 className="m-0 text-xl font-semibold text-[#0f172b] mb-1">Bill saved</h3>
-                        <p className="text-sm text-[#5b6b86] mb-4">Invoice #{savedBillData.number}</p>
-
-                        <div className="bg-white p-3 border border-[#dfe6fb] rounded-sm mb-4">
-                            <QRCode
-                                value={`${window.location.origin}/download-bill/${currentUser?.companyId}/${savedBillData?.id}`}
-                                size={200}
-                                viewBox={`0 0 256 256`}
-                            />
+                    <div className={`bg-white border border-[#dfe6fb] rounded-sm ${SHADOW_FLOAT} w-full max-w-sm max-h-[92dvh] overflow-y-auto flex flex-col animate-in fade-in zoom-in duration-300`}>
+                        {/* Header: status + invoice number */}
+                        <div className="flex items-center gap-3 px-5 pt-5 pb-4 shrink-0">
+                            <div className="w-10 h-10 shrink-0 rounded-full bg-[#e9faef] text-[#008236] flex items-center justify-center">
+                                <FiCheck size={20} strokeWidth={3} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <h3 className="m-0 text-lg font-semibold leading-tight text-[#0f172b]">Bill saved</h3>
+                                <p className="m-0 text-sm text-[#5b6b86] truncate">Invoice #{savedBillData.number}</p>
+                            </div>
+                            <button onClick={handleCloseQrModal} aria-label="Close" className="shrink-0 self-start p-1.5 -mr-1.5 rounded-sm text-[#5b6b86] hover:text-[#0f172b] hover:bg-[#f5f7ff] transition-colors">
+                                <FiX size={20} />
+                            </button>
                         </div>
 
-                        <p className="text-center text-sm text-[#45556c] mb-4">
-                            Ask customer to scan this QR code to download their bill.
-                        </p>
+                        {/* Collect payment */}
+                        <div className="mx-5 shrink-0 rounded-sm border border-[#dfe6fb] bg-[#f5f7ff] p-4 flex flex-col items-center">
+                            <p className="m-0 text-[11px] font-semibold uppercase tracking-wider text-[#5b6b86]">Amount to collect</p>
+                            <p className="m-0 mt-0.5 text-3xl font-bold leading-tight text-[#0f172b] tabular-nums">{savedBillAmountLabel}</p>
 
-                        {savedBillData.invoiceData?.partyNumber ? (
-                            <>
-                                {whatsappProvider === 'botmaster' && (
-                                    <button
-                                        onClick={() => handleSendWhatsapp(savedBillData.invoiceData)}
-                                        disabled={sendingPdf}
-                                        className="w-full h-12 rounded-sm bg-[#008236] text-white font-medium hover:bg-[#006b2c] transition-colors flex items-center justify-center gap-2 mb-3 disabled:opacity-[.45]"
-                                    >
-                                        {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
-                                    </button>
-                                )}
-                                {(whatsappProvider === 'snapto' || whatsappProvider === 'sellar') && (
-                                    <button
-                                        onClick={() => handleSendWhatsappSnapto(savedBillData.invoiceData)}
-                                        disabled={sendingPdf}
-                                        className="w-full h-12 rounded-sm bg-[#008236] text-white font-medium hover:bg-[#006b2c] transition-colors flex items-center justify-center gap-2 mb-3 disabled:opacity-[.45]"
-                                    >
-                                        {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
-                                    </button>
-                                )}
-                            </>
-                        ) : (
-                            <p className="text-xs text-[#bb4d00] mb-3 text-center bg-[#fff3dd] p-2 rounded-sm w-full">
-                                No phone number provided for WhatsApp.
-                            </p>
-                        )}
+                            {upiPayee.upiId && savedBillAmount > 0 ? (
+                                <>
+                                    <div className="mt-3 bg-white p-2.5 rounded-sm border border-[#dfe6fb] shrink-0">
+                                        <QRCode
+                                            value={buildUpiUri(upiPayee.upiId, upiPayee.payeeName, savedBillAmount, `Bill ${savedBillData.number}`)}
+                                            size={168}
+                                            viewBox={`0 0 256 256`}
+                                        />
+                                    </div>
+                                    <p className="m-0 mt-3 text-sm font-medium text-[#0f172b]">Scan with any UPI app to pay</p>
+                                    <p className="m-0 mt-0.5 text-xs text-[#5b6b86] text-center break-all">
+                                        {upiPayee.payeeName ? `${upiPayee.payeeName} · ` : ''}{upiPayee.upiId}
+                                    </p>
+                                </>
+                            ) : !upiPayee.upiId ? (
+                                <p className="m-0 mt-3 text-xs text-[#5b6b86] text-center">
+                                    Add your UPI ID in Bill Settings to show a payment QR here.
+                                </p>
+                            ) : null}
+                        </div>
 
-                        <button
-                            onClick={() => setShowPrintSubMenu(true)}
-                            disabled={printingPdf}
-                            className="w-full h-12 rounded-sm bg-white border border-[#7a8aa3] text-[#0f172b] font-medium hover:bg-[#f5f7ff] transition-colors flex items-center justify-center gap-2 mb-3 disabled:opacity-[.45]"
-                        >
-                            {printingPdf ? <Spinner /> : <><IconPrint /> Print</>}
-                        </button>
+                        {/* Actions */}
+                        <div className="px-5 pt-4 pb-5 flex flex-col gap-2.5 shrink-0">
+                            {savedBillData.invoiceData?.partyNumber ? (
+                                <>
+                                    {whatsappProvider === 'botmaster' && (
+                                        <button
+                                            onClick={() => handleSendWhatsapp(savedBillData.invoiceData)}
+                                            disabled={sendingPdf}
+                                            className="w-full h-11 shrink-0 rounded-sm bg-[#008236] text-white font-medium hover:bg-[#006b2c] transition-colors flex items-center justify-center gap-2 disabled:opacity-[.45]"
+                                        >
+                                            {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
+                                        </button>
+                                    )}
+                                    {(whatsappProvider === 'snapto' || whatsappProvider === 'sellar') && (
+                                        <button
+                                            onClick={() => handleSendWhatsappSnapto(savedBillData.invoiceData)}
+                                            disabled={sendingPdf}
+                                            className="w-full h-11 shrink-0 rounded-sm bg-[#008236] text-white font-medium hover:bg-[#006b2c] transition-colors flex items-center justify-center gap-2 disabled:opacity-[.45]"
+                                        >
+                                            {sendingPdf ? <Spinner /> : <><FiSend /> Send on WhatsApp</>}
+                                        </button>
+                                    )}
+                                </>
+                            ) : (
+                                <p className="m-0 text-xs text-[#bb4d00] text-center">
+                                    No customer phone number — WhatsApp unavailable.
+                                </p>
+                            )}
 
-                        <button
-                            onClick={handleCloseQrModal}
-                            className="w-full h-12 rounded-sm bg-[#155dfc] text-white font-medium hover:bg-[#1447e6] transition-colors"
-                        >
-                            Done
-                        </button>
+                            <div className="grid grid-cols-2 gap-2.5">
+                                <button
+                                    onClick={() => setShowPrintSubMenu(true)}
+                                    disabled={printingPdf}
+                                    className="h-11 rounded-sm bg-white border border-[#7a8aa3] text-[#0f172b] font-medium hover:bg-[#f5f7ff] transition-colors flex items-center justify-center gap-2 disabled:opacity-[.45]"
+                                >
+                                    {printingPdf ? <Spinner /> : <><IconPrint /> Print</>}
+                                </button>
+                                <button
+                                    onClick={handleCloseQrModal}
+                                    className="h-11 rounded-sm bg-[#155dfc] text-white font-medium hover:bg-[#1447e6] transition-colors"
+                                >
+                                    Done
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
@@ -1729,6 +1830,7 @@ const Sales: React.FC = () => {
                     onDelete={handleDeleteItem}
                     onEditAddOns={openAddOnEdit}
                     getPriceFlag={customerPricingEnabled ? (i) => customerPricing.decorate(i).priceFlag : undefined}
+                    onEditNewItem={(i) => setQuickSheet({ mode: 'edit', lineId: i.id })}
                 />
 
                 <div className="space-y-1.5 text-sm">
@@ -1797,6 +1899,7 @@ const Sales: React.FC = () => {
                     onLink={handleLinkScannedBarcode}
                 />
                 <AddUserModal isOpen={isAddUserModalOpen} onClose={() => setIsAddUserModalOpen(false)} />
+                {renderQuickItemSheet()}
                 <div className="hidden md:block">{renderHeader()}</div>
                 {renderMobileHeader()}
                 {renderMoreSheet()}
@@ -1864,6 +1967,7 @@ const Sales: React.FC = () => {
                                 <div data-tour="4" className="flex-1 min-w-0 overflow-y-auto grid grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] auto-rows-max content-start gap-2 bg-[#eef2ff] px-2 pt-2.5 pb-20 md:px-3">
                                     {/* sample: first two plain items look selected during the tutorial */}
                                     {(() => { return null; })()}
+                                    {renderGridQuickAddTile()}
                                     {gridItemsToShow.map(item => {
                                         const tourIdx = showSampleCart && !itemHasAddOns(item)
                                             ? gridItemsToShow.filter(it => !itemHasAddOns(it)).slice(0, 2).findIndex(it => it.id === item.id)
@@ -1884,7 +1988,10 @@ const Sales: React.FC = () => {
 
                                         // --- NEW 3-TIER LOGIC FOR GRID CARDS ---
                                         if (mrp > 0 && itemSalesPrice > 0) {
-                                            baseDisplayPrice = itemSalesPrice; // Case 1
+                                            // Case 1 — item discount comes off the sale price when the setting is on
+                                            baseDisplayPrice = salesSettings?.discountOnSalePrice && allowItemDiscount
+                                                ? itemSalesPrice * (1 - presetDiscount / 100)
+                                                : itemSalesPrice;
                                         } else if (itemSalesPrice > 0) {
                                             baseDisplayPrice = allowItemDiscount ? itemSalesPrice * (1 - presetDiscount / 100) : itemSalesPrice; // Case 2
                                         } else if (mrp > 0) {
@@ -2435,6 +2542,7 @@ ${colClass || ''}`}
                 onLink={handleLinkScannedBarcode}
             />
             <AddUserModal isOpen={isAddUserModalOpen} onClose={() => setIsAddUserModalOpen(false)} />
+                {renderQuickItemSheet()}
             <div className="hidden md:block">{renderHeader()}</div>
             {renderMobileHeader()}
             {renderMoreSheet()}
@@ -2455,6 +2563,7 @@ ${colClass || ''}`}
                                         isLoading={pageIsLoading}
                                         error={error}
                                         onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })}
+                                        onQuickAdd={handleListQuickAdd}
                                         categories={categories}
                                         itemGroupMap={itemGroupMap}
                                         onSearchChange={setCartSearchQuery}
@@ -2530,6 +2639,9 @@ ${colClass || ''}`}
                                     onPricePressStart={handlePricePressStart}
                                     onPricePressEnd={handlePricePressEnd}
                                     onPriceClick={handlePriceClick}
+                                    onNewItemFieldChange={handleNewItemFieldChange}
+                                    newItemExtraPrice={{ key: 'purchasePrice', label: 'Purchase' }}
+                                    focusLineId={focusLineId}
                                 />
                             </div>
                         </TutorialStep>

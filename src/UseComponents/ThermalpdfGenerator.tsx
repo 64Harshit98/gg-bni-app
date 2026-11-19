@@ -5,12 +5,13 @@ import { drawWatermark } from '../Components/pdfWatermark';
 import { splitAddOns, nameWithBase } from './addOnText';
 import { needsImageText, textToImage, installUnicodeText } from './textToImage';
 import { loyaltyBillLine } from './loyaltyBillLine';
+import { makeBillUpiQr, qrPayAmount, scanToPayLabel } from './upiQr';
 
-export const generateThermalReceipt = (
+export const generateThermalReceipt = async (
     data: InvoiceData,
     action: ACTION.DOWNLOAD | ACTION.PRINT | ACTION.BLOB,
     paperWidthMm: 58 | 80 = 58
-): Blob | void => {
+): Promise<Blob | void> => {
     // 58mm (2-inch) or 80mm (3-inch) thermal paper — all column positions
     // below are derived from contentWidth so both sizes share one layout.
     const paperWidth = paperWidthMm;
@@ -138,7 +139,17 @@ export const generateThermalReceipt = (
     const loyaltyLine = isEstimate ? '' : loyaltyBillLine(data.loyalty);
     const loyaltyHeight = loyaltyLine ? 10 : 0;
 
-    const calculatedHeight = baseHeight + itemsAreaHeight + taxAreaHeight + narrationHeight + termsHeight + loyaltyHeight;
+    // UPI "Scan to pay" QR fixed to the unpaid amount; fully paid bill = plain QR
+    const billQr = isEstimate ? null : await makeBillUpiQr({
+        upiId: data.upiId,
+        payeeName: data.companyName,
+        amount: qrPayAmount(data.due, finalRoundTotal, data.advance),
+        billNumber: data.invoice?.number,
+    });
+    const qrSize = paperWidth >= 80 ? 32 : 28;
+    const qrHeight = billQr ? qrSize + 8 : 0;
+
+    const calculatedHeight = baseHeight + itemsAreaHeight + taxAreaHeight + narrationHeight + termsHeight + loyaltyHeight + qrHeight;
 
     // --- 2. INITIALIZE DOCUMENT ---
     const doc = new jsPDF({
@@ -326,6 +337,17 @@ export const generateThermalReceipt = (
         const lines = doc.splitTextToSize(loyaltyLine, contentWidth);
         doc.text(lines, margin, currentY);
         currentY += (lines.length * 3) + 2;
+    }
+
+    // --- PAYMENT QR ---
+    if (billQr) {
+        doc.addImage(billQr.image, 'PNG', (paperWidth - qrSize) / 2, currentY, qrSize, qrSize, undefined, 'FAST');
+        currentY += qrSize + 3.5;
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'bold');
+        doc.text(scanToPayLabel(billQr.amount), paperWidth / 2, currentY, { align: 'center' });
+        doc.setFont('helvetica', 'normal');
+        currentY += 4.5;
     }
 
     // --- NARRATION ---

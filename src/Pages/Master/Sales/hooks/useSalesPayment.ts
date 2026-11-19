@@ -5,6 +5,7 @@ import {
     increment as firebaseIncrement,
     runTransaction,
     serverTimestamp,
+    type Transaction,
 } from 'firebase/firestore';
 import { db } from '../../../../lib/Firebase';
 import { clearSalesReportCache } from '../../../Reports/SalesReportComponents/salesReportCache';
@@ -16,9 +17,20 @@ import { ROUTES } from '../../../../constants/routes.constants';
 import { peekNextInvoiceNumber } from '../../../../UseComponents/InvoiceCounter';
 import type { PaymentCompletionData } from '../../../../Components/PaymentDrawer';
 import { calculateFinalizedSaleItems, toCurrency } from '../sales.calculations';
+import { discountBaseOf } from '../sales.discountBase';
 import { omitKeys } from '../../../../lib/omitKeys';
 import { CART_ONLY_CUSTOMER_KEYS } from '../../../utils/customerPricing';
 import type { SalesInvoice, SalesItem } from '../sales.types';
+import {
+    isNewItemLine,
+    itemDocFromSalesLine,
+    newItemDocs,
+    newItemTempIds,
+    remapNewItemIds,
+    reserveNewItemIdsInTxn,
+    validateNewItemLines,
+    writeNewItemsInTxn,
+} from '../../../../lib/quickAddItems';
 import {
     LoyaltyBalanceError,
     planLoyaltyForSave,
@@ -156,7 +168,7 @@ export const useSalesPayment = ({
                     effectiveUnitPrice = parseFloat(String(item.customPrice));
                 } else {
                     const currentDiscount = Number(item.discount) || 0;
-                    effectiveUnitPrice = mrp * (1 - currentDiscount / 100);
+                    effectiveUnitPrice = discountBaseOf(item, !!salesSettings?.discountOnSalePrice) * (1 - currentDiscount / 100);
                 }
 
                 // If the user's custom price is higher than the MRP, flag it (0.01 tolerance for float rounding)
@@ -176,6 +188,17 @@ export const useSalesPayment = ({
         }
         // ---------------------------------
 
+        // Quick-added items: need a name + price, and must not already be in the catalogue
+        const newItemError = validateNewItemLines(
+            items,
+            availableItems.map(a => a.name),
+            (l) => Number(l.customPrice) || 0,
+        );
+        if (newItemError) {
+            setModal({ message: newItemError, type: State.ERROR });
+            return;
+        }
+
         if (!(salesSettings as any)?.allowNegativeStock) {
             // Build a map of quantities already committed in the ORIGINAL invoice
             const originalQuantities = new Map<string, number>();
@@ -189,7 +212,8 @@ export const useSalesPayment = ({
                 });
             }
             const stockNeeds = new Map<string, number>();
-            items.filter(i => i.isEditable).forEach(i => {
+            // New (quick-added) items have no stock yet — they're allowed to go negative
+            items.filter(i => i.isEditable && !isNewItemLine(i)).forEach(i => {
                 const pid = i.productId;
                 const requiredStock = (i.quantity || 1) * (i.tierQuantity || 1);
                 stockNeeds.set(pid, (stockNeeds.get(pid) || 0) + requiredStock);
@@ -320,6 +344,7 @@ return {
                 finalTaxType,
                 currentTaxRate,
                 billRatio,
+                discountOnSalePrice: !!salesSettings?.discountOnSalePrice,
             });
         };
 
@@ -353,6 +378,33 @@ return {
     };
 })
             : finalizedItemsRaw;
+
+        // Quick-added items: their temp ids are swapped for real barcodes inside the
+        // save transaction. `itemsForDb` / `stockItems` hold the swapped copies.
+        const tempNewItemIds = newItemTempIds(items);
+        let itemsForDb = finalizedItems;
+        let createdItems: Item[] = [];
+        const reserveAndRemapNewItems = async (transaction: Transaction) => {
+            const reservation = await reserveNewItemIdsInTxn(transaction, db, resolvedCompanyId, tempNewItemIds);
+            itemsForDb = remapNewItemIds(finalizedItems, reservation.idMap);
+            const docs = newItemDocs(items, reservation.idMap, itemDocFromSalesLine);
+            createdItems = docs.map(d => ({ ...d.data, id: d.barcode, barcode: d.barcode, stock: 0, unit: 'pcs', unitMultiplier: 1, moq: 1, restockQuantity: 0, amount: 0, itemGroupId: '', isDeleted: false } as unknown as Item));
+            return {
+                stockItems: remapNewItemIds(items, reservation.idMap),
+                // Call after every transaction read: creates the items (stock 0) before the stock update runs
+                writeNewItems: () => writeNewItemsInTxn(transaction, db, resolvedCompanyId, docs, reservation.nextSequence),
+            };
+        };
+        // After a successful save: next bill finds the new items straight away (the
+        // catalogue listener also picks them up a moment later).
+        const addCreatedItemsLocally = () => {
+            if (createdItems.length === 0) return;
+            const soldQty = (barcode: string) => itemsForDb
+                .filter(i => i.productId === barcode)
+                .reduce((s, i) => s + (i.quantity || 1) * (i.tierQuantity || 1), 0);
+            const fresh = createdItems.map(it => ({ ...it, stock: -soldQty(it.id!) }));
+            setAvailableItems(prev => [...prev.filter(p => !fresh.some(f => f.id === p.id)), ...fresh]);
+        };
 
         // 3. Re-calculate total Tax and Taxable Amount from the finalized items
         const newTaxableAmount = toCurrency(finalizedItems.reduce((acc, item) => acc + item.taxableAmount, 0));
@@ -388,7 +440,7 @@ return {
         const saveOperation = async (transaction: any, isNew: boolean, existingId?: string) => {
             const customDate = getParsedInvoiceDate();
             const saleData: SalesInvoice = {
-                items: finalizedItems,
+                items: itemsForDb,
                 subtotal,
                 discount: totalInvoiceDiscount,
                 manualDiscount: completionData.discount || 0,
@@ -496,6 +548,9 @@ return {
         try {
             if (isEditMode && invoiceToEdit?.id) {
                 await runTransaction(db, async (transaction) => {
+                    // Quick-added items: reserve their barcodes (reads) before anything is written
+                    const { stockItems, writeNewItems } = await reserveAndRemapNewItems(transaction);
+
                     // Loyalty reads first — Firestore needs every read before the first write.
                     // The old loyalty is read from the saved bill, not the copy we navigated with.
                     let loyaltyPlan: ReturnType<typeof planLoyaltyForSave> = [];
@@ -536,8 +591,10 @@ return {
                             oldQuantities.set(a.itemId, (oldQuantities.get(a.itemId) || 0) + a.qty * (oldItem.quantity || 1)));
                     });
 
+                    writeNewItems();
+
                     const newQuantities = new Map<string, number>();
-                    items.forEach(newItem => {
+                    stockItems.forEach(newItem => {
                         const pid = newItem.productId || newItem.id;
                         if (pid) {
                             const newQty = (newItem.quantity || 1) * (newItem.tierQuantity || 1);
@@ -575,12 +632,16 @@ return {
                     if (delta === 0) return item;
                     return { ...item, stock: Math.max(0, (item.stock || 0) - delta) };
                 }));
+                addCreatedItemsLocally();
                 clearSalesReportCache(currentUser?.companyId);
                 showSuccessModal("Invoice Updated", ROUTES.JOURNAL);
 
             } else {
                 let result: any = null;
                 await runTransaction(db, async (transaction) => {
+                    // Quick-added items: reserve their barcodes (reads) before anything is written
+                    const { stockItems, writeNewItems } = await reserveAndRemapNewItems(transaction);
+
                     // Loyalty reads first — Firestore needs every read before the first write.
                     const loyaltyPlan = planLoyaltyForSave(null, nextLoyalty, { refType: 'sale' });
                     const loyaltyAccounts = await readLoyaltyPlanInTxn(transaction, db, resolvedCompanyId, loyaltyPlan);
@@ -597,8 +658,10 @@ return {
                     loyaltyBalanceAfter = nextLoyalty ? (balances.get(nextLoyalty.phone) ?? null) : null;
 
                     // One stock update per product: sold items + linked add-on items (e.g. a Coke sold with a burger)
+                    writeNewItems();
+
                     const deductions = new Map<string, number>();
-                    items.forEach(i => {
+                    stockItems.forEach(i => {
                         const pid = i.productId || i.id;
                         if (pid && !i.isCustomAmount) {
                             deductions.set(pid, (deductions.get(pid) || 0) + (i.quantity || 1) * (i.tierQuantity || 1));
@@ -629,7 +692,7 @@ return {
                         createdAt: getParsedInvoiceDate(),
                         manualDiscount: completionData.discount || 0,
                         salesmanName: finalSalesman.name,
-                        items: finalizedItems,
+                        items: itemsForDb,
                         expenses: completionData.expenses || [],
                         paymentMethods: completionData.paymentDetails,
                         dueAmount: completionData.paymentDetails?.due || 0,
@@ -655,6 +718,7 @@ return {
                         if (stockDelta === 0) return item;
                         return { ...item, stock: Math.max(0, (item.stock || 0) - stockDelta) };
                     }));
+                    addCreatedItemsLocally();
 
                     clearSalesReportCache(currentUser?.companyId);
                     setIsDrawerOpen(false);

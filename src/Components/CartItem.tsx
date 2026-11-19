@@ -1,5 +1,5 @@
 import { FiEdit, FiTrash2 } from 'react-icons/fi';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { Item } from '../constants/models';
 import { Permissions, State } from '../enums';
 import ShowWrapper from '../context/ShowWrapper';
@@ -56,6 +56,12 @@ interface GenericCartListProps<T extends CartItem> {
   onPricePressStart?: () => void;
   onPricePressEnd?: () => void;
   onPriceClick?: () => void;
+  /** Quick-added (NEW) lines: edit name / MRP / GST / extra price inline. */
+  onNewItemFieldChange?: (id: string, field: 'name' | 'mrp' | 'tax' | 'extraPrice', value: string) => void;
+  /** The second price shown on NEW lines: purchase price (Sales) or sale price (Purchase). */
+  newItemExtraPrice?: { key: string; label: string };
+  /** Focus this line's Net Price box once (set right after a quick-add). */
+  focusLineId?: string | null;
 }
 // "(Not in DB)" flag ko red color mein dikhane ke liye name ko split karta hai
 const NOT_IN_DB_FLAG = '(Not in DB)';
@@ -136,6 +142,85 @@ const FloatingInput = ({
 };
 
 
+// Inline details for a quick-added (NEW) line. One block for both layouts:
+// phone = name on its own row + a sideways-scrolling row of numbers (fits 360px),
+// sm+ = everything on one row under the main row.
+const NewItemStrip = ({
+  item,
+  extraPrice,
+  onChange,
+}: {
+  item: CartItem;
+  extraPrice?: { key: string; label: string };
+  onChange: (field: 'name' | 'mrp' | 'tax' | 'extraPrice', value: string) => void;
+}) => {
+  const tax = item.tax ?? item.taxRate ?? 0;
+  const numBox = 'w-full h-9 px-1.5 text-sm text-right border border-amber-300 rounded-sm bg-white focus:border-blue-500';
+  const label = 'absolute -top-1.5 left-1.5 bg-amber-50 px-1 text-[10px] text-gray-500 leading-none z-10';
+  return (
+    <div className="border-t border-amber-200 bg-amber-50 px-2.5 sm:px-3 pt-2.5 pb-2 flex flex-col sm:flex-row sm:items-center gap-2">
+      <div className="flex items-center gap-2 min-w-0 sm:flex-1">
+        <span
+          className="text-[10px] font-bold tracking-wide uppercase bg-amber-500 text-white px-1.5 py-0.5 rounded-sm flex-shrink-0"
+          title="New item: saved to your items when this bill is saved"
+        >
+          New
+        </span>
+        <div className="relative flex-1 min-w-0">
+          <label className={label}>Item name</label>
+          <input
+            type="text"
+            value={item.name}
+            onChange={(e) => onChange('name', e.target.value)}
+            placeholder="Item name"
+            autoComplete="off"
+            enterKeyHint="next"
+            className="w-full h-9 px-2 text-sm border border-amber-300 rounded-sm bg-white outline-none focus:border-blue-500"
+          />
+        </div>
+      </div>
+      <div className="flex items-center gap-2 flex-nowrap overflow-x-auto sm:overflow-visible pt-1.5 sm:pt-0">
+        <div className="relative w-[78px] flex-shrink-0">
+          <label className={label}>MRP</label>
+          <FloatingInput
+            value={Number(item.mrp) > 0 ? String(item.mrp) : ''}
+            onChange={(v) => onChange('mrp', v)}
+            onBlur={() => { }}
+            locked={false}
+            placeholder="0"
+            className={numBox}
+          />
+        </div>
+        <div className="relative w-[60px] flex-shrink-0">
+          <label className={label}>GST%</label>
+          <FloatingInput
+            value={String(Number(tax) || 0)}
+            onChange={(v) => onChange('tax', v)}
+            onBlur={() => { }}
+            locked={false}
+            placeholder="0"
+            className={numBox}
+          />
+        </div>
+        {extraPrice && (
+          <div className="relative w-[84px] flex-shrink-0">
+            <label className={label}>{extraPrice.label}</label>
+            <FloatingInput
+              value={Number(item[extraPrice.key]) > 0 ? String(item[extraPrice.key]) : ''}
+              onChange={(v) => onChange('extraPrice', v)}
+              onBlur={() => { }}
+              locked={false}
+              placeholder="0"
+              className={numBox}
+            />
+          </div>
+        )}
+        <span className="hidden lg:inline text-[11px] text-amber-700 whitespace-nowrap">Saved to items with this bill</span>
+      </div>
+    </div>
+  );
+};
+
 export const GenericCartList = <T extends CartItem>({
   items,
   availableItems,
@@ -161,11 +246,37 @@ export const GenericCartList = <T extends CartItem>({
   onPricePressStart,
   onPricePressEnd,
   onPriceClick,
+  onNewItemFieldChange,
+  newItemExtraPrice,
+  focusLineId,
 }: GenericCartListProps<T>) => {
   const fmt = useFormatNumber();
+  const listRef = useRef<HTMLDivElement | null>(null);
+
+  // After a quick-add: jump straight to the new line's price (phone keypad opens too).
+  // Both layouts render an input; only the visible one (phone card or desktop row) gets focus.
+  useEffect(() => {
+    if (!focusLineId) return;
+    const t = setTimeout(() => {
+      const root = listRef.current;
+      if (!root) return;
+      const inputs = Array.from(root.querySelectorAll<HTMLInputElement>(`[data-price-for="${focusLineId}"]`));
+      const visible = inputs.find(el => el.offsetParent !== null);
+      if (visible) {
+        visible.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        visible.focus();
+      }
+    }, 120);
+    return () => clearTimeout(t);
+  }, [focusLineId]);
+
+  const setListRef = (el: HTMLDivElement | null) => {
+    listRef.current = el;
+    if (scrollRef) (scrollRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+  };
 
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-1 sm:space-y-4 pb-2 px-1 pt-1 sm:pt-4">
+    <div ref={setListRef} className="flex-1 overflow-y-auto space-y-1 sm:space-y-4 pb-2 px-1 pt-1 sm:pt-4">
       {items.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-40 text-gray-400">
           <p>Cart is empty</p>
@@ -186,10 +297,20 @@ export const GenericCartList = <T extends CartItem>({
             ? String(item.customPrice)
             : calculatedRoundedPrice.toFixed(2);
 
+          // A quick-added item has no saved price to protect: its price is always typed here
+          const isNewLine = item.isNewItem === true;
           const discountLocked = settings.lockDiscount || !item.isEditable || !!item.lockPricing;
-          const priceLocked = settings.lockPrice || !item.isEditable || !!item.lockPricing;
+          const priceLocked = isNewLine ? false : (settings.lockPrice || !item.isEditable || !!item.lockPricing);
+          const pricePressProps = isNewLine ? {} : {
+            onMouseDown: onPricePressStart,
+            onMouseUp: onPricePressEnd,
+            onMouseLeave: onPricePressEnd,
+            onTouchStart: onPricePressStart,
+            onTouchEnd: onPricePressEnd,
+            onClick: onPriceClick,
+          };
 
-          const isZeroPrice = displayPrice !== '' && Number(displayPrice) === 0;
+          const isZeroPrice = !isNewLine && displayPrice !== '' && Number(displayPrice) === 0;
           const isUnlinked = typeof item.name === 'string' && item.name.includes('(Not in DB)');
 
           const netPrice = parseFloat(displayPrice) || 0;
@@ -210,7 +331,9 @@ export const GenericCartList = <T extends CartItem>({
           return (
             <div
               key={item.id}
-              className={`rounded-sm border overflow-hidden shadow-sm ${isZeroPrice
+              className={`rounded-sm border overflow-hidden shadow-sm ${isNewLine
+                ? 'bg-white border-amber-300'
+                : isZeroPrice
                 ? 'bg-red-50 border-red-200'
                 : isUnlinked
                   ? 'bg-yellow-50 border-yellow-300'
@@ -271,7 +394,7 @@ export const GenericCartList = <T extends CartItem>({
                         ₹{lineSubtotal.toLocaleString('en-IN')}
                       </span>
                     </div>
-                    <ShowWrapper requiredPermission={Permissions.ViewTransactions}>
+                    {!isNewLine && <ShowWrapper requiredPermission={Permissions.ViewTransactions}>
                       <button
                         onClick={() => {
                           const originalItem = availableItems.find(a => a.id === item.productId || a.id === item.id);
@@ -283,7 +406,7 @@ export const GenericCartList = <T extends CartItem>({
                       >
                         <FiEdit size={14} />
                       </button>
-                    </ShowWrapper>
+                    </ShowWrapper>}
                   </div>
                 </div>
 
@@ -343,12 +466,7 @@ export const GenericCartList = <T extends CartItem>({
                   )}
                   <div
                     className="relative flex-1 min-w-[70px]"
-                    onMouseDown={onPricePressStart}
-                    onMouseUp={onPricePressEnd}
-                    onMouseLeave={onPricePressEnd}
-                    onTouchStart={onPricePressStart}
-                    onTouchEnd={onPricePressEnd}
-                    onClick={onPriceClick}
+                    {...pricePressProps}
                   >
                     <label className="absolute -top-1 left-3.5 bg-white px-1 text-[10px] text-gray-500 leading-none z-10">Net Price</label>
                     <div className={`flex items-center border border-slate-300 rounded px-2 h-9 ${priceLocked ? 'bg-gray-50' : ''}`}>
@@ -363,6 +481,7 @@ export const GenericCartList = <T extends CartItem>({
                           onCustomPriceBlur(item.id);
                         }}
                         locked={priceLocked}
+                        data-price-for={item.id}
                         className="w-full text-sm text-right"
                       />
                     </div>
@@ -457,7 +576,7 @@ export const GenericCartList = <T extends CartItem>({
                   {item.unit && (
                     <span className="text-[11px] text-gray-400 flex-shrink-0">{item.unit}</span>
                   )}
-                  <ShowWrapper requiredPermission={Permissions.ViewTransactions}>
+                  {!isNewLine && <ShowWrapper requiredPermission={Permissions.ViewTransactions}>
                     <button
                       onClick={() => {
                         const originalItem = availableItems.find(a => a.id === item.productId || a.id === item.id);
@@ -469,7 +588,7 @@ export const GenericCartList = <T extends CartItem>({
                     >
                       <FiEdit size={16} />
                     </button>
-                  </ShowWrapper>
+                  </ShowWrapper>}
 
                 </div>
 
@@ -530,12 +649,7 @@ export const GenericCartList = <T extends CartItem>({
                 {/* Net Price — floating label box */}
                 <div
                   className="relative w-24 flex-shrink-0"
-                  onMouseDown={onPricePressStart}
-                  onMouseUp={onPricePressEnd}
-                  onMouseLeave={onPricePressEnd}
-                  onTouchStart={onPricePressStart}
-                  onTouchEnd={onPricePressEnd}
-                  onClick={onPriceClick}
+                  {...pricePressProps}
                 >
                   <label className="absolute -top-1 left-3.5 bg-white px-1 text-[10px] text-gray-500 leading-none z-10">Net Price</label>
                   <div className={`flex items-center border border-slate-300 rounded px-2 h-9 ${priceLocked ? 'bg-gray-50' : ''}`}>
@@ -550,6 +664,7 @@ export const GenericCartList = <T extends CartItem>({
                         onCustomPriceBlur(item.id);
                       }}
                       locked={priceLocked}
+                      data-price-for={item.id}
                       className="w-full text-sm text-right"
                     />
                   </div>
@@ -609,6 +724,13 @@ export const GenericCartList = <T extends CartItem>({
 
 
               </div>
+              {isNewLine && onNewItemFieldChange && (
+                <NewItemStrip
+                  item={item}
+                  extraPrice={newItemExtraPrice}
+                  onChange={(field, value) => onNewItemFieldChange(item.id, field, value)}
+                />
+              )}
               {(Array.isArray(item.priceFlag) ? item.priceFlag : item.priceFlag ? [item.priceFlag] : [])
                 .map((f, idx) => <PriceFlag key={idx} flag={f} />)}
             </div>

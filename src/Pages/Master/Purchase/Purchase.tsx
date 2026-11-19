@@ -24,6 +24,8 @@ import { usePurchaseSettings } from '../../../context/SettingsContext';
 import { GenericCartList } from '../../../Components/CartItem';
 import { GenericBillFooter } from '../../../Components/Footer';
 import { CartLinesCompact } from '../../../Components/CartLinesCompact';
+import { QuickItemSheet } from '../../../Components/QuickItemSheet';
+import { looksLikeBarcode, normalizeItemName, type QuickItemDetails } from '../../../lib/quickAddItems';
 import { IconScanCircle } from '../../../constants/Icons';
 import { PurchaseGodownAssignModal } from '../../../Components/PurchaseGodownAssign';
 import type { PurchaseItem, PurchaseDocumentData, Purchase } from './purchase.types';
@@ -214,6 +216,9 @@ const PurchasePage: React.FC = () => {
     categories,
     sortedGridItems,
     addItemToCart,
+    handleQuickAddItem,
+    handleNewItemFieldChange,
+    applyNewItemDetails,
     handlePriceChange,
     handleDiscountChange,
     handleDiscount2Change,
@@ -238,6 +243,70 @@ const PurchasePage: React.FC = () => {
     setModal,
     companyId: currentUser?.companyId, // 👈 ADD
   });
+
+  // --- QUICK-ADD (item not in the catalogue yet; created when the purchase is saved) ---
+  // List view: typed in the search box, details filled in the cart row.
+  // Card view / summary panel: details filled in QuickItemSheet (bottom sheet on phone).
+  const [quickSheet, setQuickSheet] = useState<{ mode: 'create'; name: string } | { mode: 'edit'; lineId: string } | null>(null);
+  const [focusLineId, setFocusLineId] = useState<string | null>(null);
+  const catalogueNameSet = useMemo(() => new Set(availableItems.map(a => normalizeItemName(a.name))), [availableItems]);
+  const isCatalogueName = (name: string) => catalogueNameSet.has(normalizeItemName(name));
+  const gridQuickAddName = gridSearchQuery.trim();
+  const canGridQuickAdd = !!gridQuickAddName && !isCatalogueName(gridQuickAddName);
+
+  const handleListQuickAdd = (name: string) => {
+    const lineId = handleQuickAddItem(name);
+    if (lineId) setFocusLineId(lineId);
+  };
+  const openGridQuickAdd = () => {
+    if (canGridQuickAdd) setQuickSheet({ mode: 'create', name: gridQuickAddName });
+  };
+  // Card-view search: Enter with no matching item opens the new-item sheet
+  const handleGridSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter' || !canGridQuickAdd || looksLikeBarcode(gridQuickAddName)) return;
+    if (sortedGridItems.length > 0) return;
+    e.preventDefault();
+    openGridQuickAdd();
+  };
+  const quickSheetLine: PurchaseItem | null | undefined = quickSheet?.mode === 'edit' ? items.find(i => i.id === quickSheet.lineId) : null;
+  const handleQuickSheetSubmit = (d: QuickItemDetails) => {
+    if (quickSheet?.mode === 'edit') applyNewItemDetails(quickSheet.lineId, d);
+    else handleQuickAddItem(d.name, d);
+    setQuickSheet(null);
+  };
+  const renderQuickItemSheet = () => (
+    <QuickItemSheet
+      isOpen={!!quickSheet && (quickSheet.mode === 'create' || !!quickSheetLine)}
+      mode={quickSheet?.mode ?? 'create'}
+      initial={quickSheet?.mode === 'edit' && quickSheetLine
+        ? {
+          name: quickSheetLine.name,
+          price: Number(quickSheetLine.purchasePrice) || 0,
+          mrp: Number(quickSheetLine.mrp) || 0,
+          tax: Number(quickSheetLine.taxRate) || 0,
+          extraPrice: Number(quickSheetLine.salesPrice) || 0,
+          quantity: Number(quickSheetLine.quantity) || 1,
+        }
+        : { name: quickSheet?.mode === 'create' ? quickSheet.name : '', tax: 0, quantity: 1 }}
+      priceLabel="Purchase rate"
+      extraLabel="Sale price"
+      isNameTaken={isCatalogueName}
+      onSubmit={handleQuickSheetSubmit}
+      onClose={() => setQuickSheet(null)}
+    />
+  );
+  // Card view: "add as new item" tile, first in the grid while searching
+  const renderGridQuickAddTile = () => canGridQuickAdd && !isTutorialActive ? (
+    <button
+      type="button"
+      onClick={openGridQuickAdd}
+      className="flex flex-col items-center justify-center gap-1.5 min-h-[120px] p-3 rounded-sm border-2 border-dashed border-[#155dfc] bg-white text-[#155dfc] hover:bg-[#e6eeff] transition-colors text-center"
+    >
+      <FiPlus size={22} />
+      <span className="text-[13px] font-semibold leading-4 break-words [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] overflow-hidden">Add "{gridQuickAddName}"</span>
+      <span className="text-[11px] text-[#45556c] leading-4">New item · set rate</span>
+    </button>
+  ) : null;
 
   // "Create purchase" from the Restock report: add the picked items with their
   // order quantities once the catalogue is loaded, then drop the navigation
@@ -657,6 +726,7 @@ const PurchasePage: React.FC = () => {
     navigate,
     items,
     setItems,
+    availableItems,
     setAvailableItems,
     invoiceNumber,
     setInvoiceNumber,
@@ -720,7 +790,7 @@ const PurchasePage: React.FC = () => {
 
   // Linked cart lines that have no MRP (flagged under the cart, like the design)
   const missingMrpItems = items.filter(
-    i => i.productId && !i.name.includes('(Not in DB)') && !(Number((i as any).mrp) > 0)
+    i => i.productId && !i.isNewItem && !i.name.includes('(Not in DB)') && !(Number((i as any).mrp) > 0)
   );
 
   // Before payment: list supplier rates that changed and were not reviewed (never blocks)
@@ -960,6 +1030,7 @@ const PurchasePage: React.FC = () => {
           onQuantityChange={handleQuantityChange}
           onDelete={handleDeleteItem}
           getPriceFlag={(i) => decoratePurchaseLine(i).priceFlag}
+          onEditNewItem={(i) => setQuickSheet({ mode: 'edit', lineId: i.id })}
         />
       )}
       {showLines && rateChangeBanner()}
@@ -1132,6 +1203,7 @@ const PurchasePage: React.FC = () => {
           type="text"
           value={gridSearchQuery}
           onChange={(e) => setGridSearchQuery(e.target.value)}
+          onKeyDown={handleGridSearchKeyDown}
           placeholder="Search item name or barcode"
           className={FIELD_CLS}
           autoComplete="off"
@@ -1164,6 +1236,8 @@ const PurchasePage: React.FC = () => {
             type="text"
             value={gridSearchQuery}
             onChange={(e) => setGridSearchQuery(e.target.value)}
+            onKeyDown={handleGridSearchKeyDown}
+            enterKeyHint="search"
             placeholder="Search item name or barcode"
             className="flex-1 min-w-0 h-full px-2.5 bg-transparent border-0 outline-none text-[15px] font-medium text-[#0f172b] placeholder:text-[#5b6b86]"
             autoComplete="off"
@@ -1322,6 +1396,7 @@ const PurchasePage: React.FC = () => {
         onClose={handleCloseEditDrawer}
         onSaveSuccess={handleSaveSuccess}
       />
+      {renderQuickItemSheet()}
       <TierPickerModal
         item={tierPickerItem}
         isOpen={!!tierPickerItem}
@@ -1581,12 +1656,13 @@ const PurchasePage: React.FC = () => {
             </div>
             <TutorialStep step={3} {...tour} text="Tap an item to add it. Tap again to increase the quantity, or use − to reduce it." onNext={() => nextStep(4)} mobileArrowAlign="left">
               <div className="flex-1 overflow-y-auto grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] md:grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] auto-rows-max content-start gap-2 bg-[#eef2ff] px-2 pt-2.5 pb-6 md:px-3">
+                {renderGridQuickAddTile()}
                 {!isTutorialActive && sortedGridItems.length === 0 ? (
                   <div className="col-span-full text-center text-gray-500 mt-10 py-10 bg-white rounded-sm">
                     {gridSearchQuery ? (
                       <>
                         <p className="text-lg">No items found for "<span className="font-semibold">{gridSearchQuery}</span>"</p>
-                        <p className="text-sm mt-2">Try searching with different keywords or scan barcode</p>
+                        <p className="text-sm mt-2">{canGridQuickAdd ? 'Tap the tile above to add it as a new item' : 'Try searching with different keywords or scan barcode'}</p>
                       </>
                     ) : (
                       <>
@@ -1999,6 +2075,7 @@ const PurchasePage: React.FC = () => {
                 <div className="flex-grow min-w-0">
                   <SearchableItemInput label="Search item" placeholder="Search item name or barcode" items={availableItems} onItemSelected={handleItemSelectedWrapper} isLoading={pageIsLoading} error={error} categories={categories}
                     onAddItem={(query) => navigate(ROUTES.ITEM_ADD, { state: { prefillName: query } })}
+                    onQuickAdd={handleListQuickAdd}
                     itemGroupMap={itemGroupMap}
                     onSearchChange={setCartSearchQuery}
                   />
@@ -2090,6 +2167,9 @@ const PurchasePage: React.FC = () => {
                   onCustomPriceChange={handlePriceChange}
                   onCustomPriceBlur={handlePriceBlur}
                   onQuantityChange={(id, qty) => handleQuantityChange(id, qty)}
+                  onNewItemFieldChange={handleNewItemFieldChange}
+                  newItemExtraPrice={{ key: 'salesPrice', label: 'Sale' }}
+                  focusLineId={focusLineId}
                 />
               </div>
 

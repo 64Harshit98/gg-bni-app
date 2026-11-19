@@ -6,6 +6,8 @@ export interface CompactCartLine {
   name: string;
   quantity: number;
   addOns?: { name: string; price?: number }[];
+  /** Quick-added on this bill (not in the catalogue yet). */
+  isNewItem?: boolean;
 }
 
 interface CartLinesCompactProps<T extends CompactCartLine> {
@@ -16,6 +18,8 @@ interface CartLinesCompactProps<T extends CompactCartLine> {
   onEditAddOns?: (item: T) => void;
   /** Optional price flag shown under a line (flags only — never changes the price). */
   getPriceFlag?: (item: T) => PriceFlagData | PriceFlagData[] | null | undefined;
+  /** NEW (quick-added) lines get an "Edit details" link that opens QuickItemSheet. */
+  onEditNewItem?: (item: T) => void;
 }
 
 // Desktop side-panel cart lines (name, line total, "qty × ₹unit", −/+ stepper).
@@ -27,6 +31,7 @@ export const CartLinesCompact = <T extends CompactCartLine>({
   onDelete,
   onEditAddOns,
   getPriceFlag,
+  onEditNewItem,
 }: CartLinesCompactProps<T>) => (
   <div>
     {items.map((i) => {
@@ -39,7 +44,10 @@ export const CartLinesCompact = <T extends CompactCartLine>({
       return (
         <div key={i.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2.5 gap-y-0.5 py-2.5 border-b border-[#dfe6fb] items-center">
           <b className="text-[13px] font-medium text-[#0f172b] truncate">
-            {i.name}
+            {i.isNewItem && (
+              <span className="inline-block align-[1px] mr-1.5 text-[9px] font-bold tracking-wide uppercase bg-amber-500 text-white px-1 py-px rounded-sm">New</span>
+            )}
+            {i.name || 'Unnamed item'}
             {hasAddOns && <span className="font-normal text-[#5b6b86] tabular-nums"> · ₹{basePrice.toLocaleString('en-IN')}</span>}
           </b>
           <b className="text-[13px] font-medium text-[#0f172b] tabular-nums">₹{(unit * i.quantity).toLocaleString('en-IN')}</b>
@@ -59,6 +67,12 @@ export const CartLinesCompact = <T extends CompactCartLine>({
                   );
                 })}
               </div>
+            )}
+            {i.isNewItem && onEditNewItem && (
+              <button type="button" onClick={() => onEditNewItem(i)}
+                className={`mt-1 inline-flex items-center gap-1 text-xs font-semibold hover:underline ${unit > 0 ? 'text-[#155dfc]' : 'text-[#d5000c]'}`}>
+                <FiEdit size={12} /> {unit > 0 ? 'Edit details' : 'Add price'}
+              </button>
             )}
             {onEditAddOns && (i.addOns?.length ?? 0) > 0 && (
               <button type="button" onClick={() => onEditAddOns(i)}

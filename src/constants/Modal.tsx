@@ -32,7 +32,9 @@ export const Modal: React.FC<ModalProps> = ({
 }) => {
     const t = MODAL_THEME_STYLES[theme];
     const modalContent = (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[2000] p-4">
+        // Alerts/errors must sit above every other popup (drawers, sheets and dialogs go up to z-[10001],
+        // portaled dropdowns to 99999), so a message raised from inside a popup is never hidden behind it.
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100000] p-4" role="alertdialog" aria-modal="true">
             <div className="bg-white rounded-sm shadow-2xl p-6 w-full max-w-sm text-center">
                 {/* Icon based on type */}
                 <div className={`mx-auto mb-4 w-12 h-12 rounded-sm flex items-center justify-center ${type === State.SUCCESS ? 'bg-green-100' :
@@ -52,6 +54,7 @@ export const Modal: React.FC<ModalProps> = ({
                     <div className="flex gap-3">
                         <button
                             onClick={onClose}
+                            data-esc-close
                             className="flex-1 bg-gray-200 text-gray-800 py-2 px-4 rounded-sm hover:bg-gray-300 transition-colors"
                         >
                             Cancel
@@ -67,6 +70,7 @@ export const Modal: React.FC<ModalProps> = ({
                 ) : (
                     <button
                         onClick={onClose}
+                        data-esc-close
                         className={`w-full text-white py-2 px-4 rounded-sm transition-colors ${t.primaryBtn}`}
                     >
                         OK

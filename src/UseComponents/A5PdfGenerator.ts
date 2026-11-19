@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import QRCode from "qrcode";
+import { makeBillUpiQr, qrPayAmount, scanToPayLabel } from "./upiQr";
 import { ACTION } from "../enums";
 import type { InvoiceData } from "./pdfGenerator";
 import { drawWatermark } from "../Components/pdfWatermark";
@@ -112,16 +112,13 @@ export const generateA5Invoice = async (
             }
         }
     }
-    // --- QR CODE (same UPI QR as A4) ---
-    let qrBase64: string | null = null;
-    if (data.upiId) {
-        const upiString = `upi://pay?pa=${data.upiId}&pn=${encodeURIComponent(data.companyName)}&cu=INR`;
-        try {
-            qrBase64 = await QRCode.toDataURL(upiString, { width: 80, margin: 0, errorCorrectionLevel: "L" });
-        } catch (err) {
-            console.error("Failed to generate QR code", err);
-        }
-    }
+    // --- QR CODE (same UPI QR as A4): fixed to the unpaid amount; fully paid bill = plain QR ---
+    const billQr = resolvedIsEstimate ? null : await makeBillUpiQr({
+        upiId: data.upiId,
+        payeeName: data.companyName,
+        amount: qrPayAmount(data.due, data.finalAmount, data.advance),
+        billNumber: data.invoice?.number,
+    });
     // ================= DRAW PAGE HELPER =================
     // NEW: reusable header + 3-box (Invoice Details/Billed To/Shipped To) block,
     // returns the Y position where the items table should start.
@@ -141,11 +138,11 @@ export const generateA5Invoice = async (
         }
 
         // QR code — left side (same as A4)
-        if (qrBase64 && !resolvedIsEstimate) {
-            doc.addImage(qrBase64, "JPEG", 7, 4, 18, 18, undefined, "FAST");
+        if (billQr) {
+            doc.addImage(billQr.image, "PNG", 7, 4, 18, 18, undefined, "FAST");
             doc.setFontSize(6);
             doc.setTextColor("#000000");
-            doc.text("Scan to Pay", 16, 24, { align: "center" });
+            doc.text(scanToPayLabel(billQr.amount, true), 16, 24, { align: "center" });
         }
 
         // MSME number — top right, above the logo (same placement as A4)

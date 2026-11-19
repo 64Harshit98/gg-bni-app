@@ -3,7 +3,7 @@ import autoTable from 'jspdf-autotable';
 import { ACTION } from '../enums';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../lib/Firebase';
-import QRCode from 'qrcode';
+import { makeBillUpiQr, qrPayAmount, scanToPayLabel } from './upiQr';
 import { generateThermalReceipt } from './ThermalpdfGenerator';
 import { generateA5Invoice } from './A5PdfGenerator';
 import { drawWatermark } from '../Components/pdfWatermark';
@@ -158,16 +158,6 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   doc.setDrawColor(lineColor);
   doc.setTextColor(textColor);
   doc.setLineWidth(0.1);
-
-  let qrBase64: string | null = null;
-  if (data.upiId) {
-    const upiString = `upi://pay?pa=${data.upiId}&pn=${encodeURIComponent(data.companyName)}&cu=INR`;
-    try {
-      qrBase64 = await QRCode.toDataURL(upiString, { width: 80, margin: 0, errorCorrectionLevel: 'L' });
-    } catch (err) {
-      console.error("Failed to generate QR code", err);
-    }
-  }
 
   const safeScheme = (data.gstScheme && data.gstScheme.trim() !== '') ? data.gstScheme.toUpperCase() : 'NONE';
   const safeTaxType = (data.taxType && data.taxType.trim() !== '') ? data.taxType.toLowerCase() : 'EXCLUSIVE';
@@ -398,6 +388,14 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   // Lock the settled amount to a minimum of 0
   const settledAmount = data.due !== undefined ? Number(data.due) : Math.max(0, invoiceTotal - advance);
 
+  // UPI QR fixed to the unpaid amount (fully paid bill: plain QR, no amount)
+  const billQr = isEstimate ? null : await makeBillUpiQr({
+    upiId: data.upiId,
+    payeeName: data.companyName,
+    amount: qrPayAmount(settledAmount),
+    billNumber: data.invoice?.number,
+  });
+
   const prevBal = Number(data.previousBalance) || 0;
 
   // Calculate currentDue based on the PDF's internal invoiceTotal minus payments.
@@ -431,9 +429,9 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     doc.text(`Bill generated on ${generatedAt}`, pageWidth - margin, cursorY - 2, { align: "right" });
 
     drawBox(cursorY, headerHeight);
-    if (qrBase64 && !isEstimate) {
-      doc.addImage(qrBase64, 'JPEG', startX + 2, cursorY + 2, 18, 18, undefined, 'FAST');
-      doc.setFontSize(6); doc.text('Scan to Pay', startX + 11, cursorY + 22, { align: 'center' });
+    if (billQr) {
+      doc.addImage(billQr.image, 'PNG', startX + 2, cursorY + 2, 18, 18, undefined, 'FAST');
+      doc.setFontSize(6); doc.text(scanToPayLabel(billQr.amount, true), startX + 11, cursorY + 22, { align: 'center' });
     }
 
     doc.setFontSize(10); doc.setFont('helvetica', 'bold');

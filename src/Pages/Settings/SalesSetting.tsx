@@ -51,6 +51,8 @@ export interface SalesSettings {
     hideMrp?: boolean;
     enableItemWiseDiscount?: boolean;
     enableDiscount2?: boolean;
+    // ON: item's Sale discount is taken off the sale price (then Disc2). OFF: sale price as is, Disc1 = MRP gap.
+    discountOnSalePrice?: boolean;
     lockDiscountEntry?: boolean;
     lockSalePriceEntry?: boolean;
     defaultDiscount?: number;
@@ -112,6 +114,7 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     hideMrp: false,
     enableItemWiseDiscount: true,
     enableDiscount2: false,
+    discountOnSalePrice: false,
     lockDiscountEntry: false,
     lockSalePriceEntry: false,
     defaultDiscount: 0,
@@ -1140,6 +1143,18 @@ const SalesSettingsPage: React.FC = () => {
                                         onChange={(checked) => handleCheckboxChange('enableDiscount2', checked)}
                                         disabled={!settings.enableItemWiseDiscount}
                                     />
+                                    <Opt
+                                        id="discount-on-sale-price"
+                                        label="Apply item discount on sale price"
+                                        description="If this setting is turned on, then the sale discount is put on sale price instead of MRP"
+                                        icon={ico(Percent)}
+                                        checked={settings.discountOnSalePrice ?? false}
+                                        onChange={(checked) => handleCheckboxChange('discountOnSalePrice', checked)}
+                                    >
+                                        <div className={PREVIEW}>
+                                            MRP {formatRupees(100)} · Sale {formatRupees(90)} · Disc 10% + 5% → <b>{settings.discountOnSalePrice ? `${formatRupees(90)} → ${formatRupees(81)} → ${formatRupees(76.95)}` : `${formatRupees(90)} → ${formatRupees(85.5)}`}</b>
+                                        </div>
+                                    </Opt>
                                     <Opt
                                         id="lock-discount"
                                         label="Lock discount entry"

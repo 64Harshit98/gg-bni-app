@@ -384,6 +384,7 @@ export const useSalesCalculator = ({
             } else if (key === 'Backspace') {
                 setCalcInput(prev => prev.slice(0, -1));
             } else if (key.toLowerCase() === 'c' || key === 'Escape') {
+                e.preventDefault(); // Esc clears the calculator — it must not also trigger the page's Back (BackButton)
                 if (calcInput === '') {
                     if (items.length > 0 && window.confirm("Are you sure you want to clear the bill?")) setItems([]);
                 } else {

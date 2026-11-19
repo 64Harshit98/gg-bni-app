@@ -4,6 +4,14 @@ import { State } from '../../../../enums';
 import { applyPurchaseRounding } from '../purchase.calculations';
 import type { PurchaseItem } from '../purchase.types';
 import { MANUAL_PRICE_SKIP, withoutSupplierPrice } from '../../../utils/customerPricing';
+import {
+    discountFromPrice,
+    isNewItemLine,
+    newTempProductId,
+    normalizeItemName,
+    type NewItemField,
+    type QuickItemDetails,
+} from '../../../../lib/quickAddItems';
 
 interface UsePurchaseCartParams {
     isEditMode: boolean;
@@ -194,6 +202,94 @@ export const usePurchaseCart = ({
 
             return newList;
         });
+    };
+
+    // --- QUICK-ADD: an item that isn't in the catalogue yet ---
+    // The line is created blank (or with the sheet's details) and the item itself
+    // is only written to the catalogue when the purchase is saved (usePurchasePayment).
+    const rateOfNewLine = (mrp: number, rate: number) => {
+        const d = discountFromPrice(mrp, rate);
+        return { purchasePrice: rate, originalPurchasePrice: 0, discount: d, purchasediscount: d, purchasediscount2: 0 };
+    };
+
+    const handleQuickAddItem = (rawName: string, details?: Partial<QuickItemDetails>): string | null => {
+        const name = (details?.name ?? rawName ?? '').trim().replace(/\s+/g, ' ');
+        if (!name) return null;
+
+        const existing = items.find(i => isNewItemLine(i) && normalizeItemName(i.name) === normalizeItemName(name));
+        if (existing && !details) {
+            setItems(prev => prev.map(i => i.id === existing.id ? { ...i, quantity: (Number(i.quantity) || 0) + 1 } : i));
+            setGridSearchQuery('');
+            return existing.id;
+        }
+
+        const mrp = Number(details?.mrp) || 0;
+        const lineId = crypto.randomUUID();
+        const newLine: PurchaseItem = {
+            id: lineId,
+            productId: newTempProductId(),
+            isNewItem: true,
+            name,
+            unit: 'pcs',
+            mrp,
+            ...rateOfNewLine(mrp, Number(details?.price) || 0),
+            salesPrice: Number(details?.extraPrice) || 0,
+            barcode: '',
+            quantity: Math.max(1, Number(details?.quantity) || 1),
+            unitMultiplier: 1,
+            taxRate: Number(details?.tax ?? 0) || 0,
+            stock: 0,
+            isEditable: true,
+            addedAt: Date.now(),
+            tierQuantity: 1,
+        };
+
+        setItems(prev => {
+            const order = purchaseSettings?.cartInsertionOrder || 'top';
+            setTimeout(() => {
+                if (cartListRef.current) {
+                    cartListRef.current.scrollTo({
+                        top: order === 'bottom' ? cartListRef.current.scrollHeight : 0,
+                        behavior: 'smooth',
+                    });
+                }
+            }, 50);
+            return order === 'bottom' ? [...prev, newLine] : [newLine, ...prev];
+        });
+        setGridSearchQuery('');
+        return lineId;
+    };
+
+    // Inline NEW strip edits (name / MRP / GST / sale price)
+    const handleNewItemFieldChange = (id: string, field: NewItemField, value: string) => {
+        setItems(prev => prev.map(i => {
+            if (i.id !== id || !isNewItemLine(i)) return i;
+            if (field === 'name') return { ...i, name: value };
+            const n = parseFloat(value);
+            const v = Number.isFinite(n) ? n : 0;
+            if (field === 'tax') return { ...i, taxRate: v };
+            if (field === 'extraPrice') return { ...i, salesPrice: v };
+            // MRP: a rate that's empty (or was just following the MRP) takes the MRP;
+            // otherwise the rate stays and the discount is worked out from it
+            const rate = Number(i.purchasePrice) || 0;
+            const followsMrp = rate <= 0 || rate === (Number(i.mrp) || 0);
+            return { ...i, mrp: v, ...rateOfNewLine(v, followsMrp ? v : rate) };
+        }));
+    };
+
+    // QuickItemSheet "Save" on an existing NEW line
+    const applyNewItemDetails = (id: string, d: QuickItemDetails) => {
+        setItems(prev => prev.map(i => i.id === id && isNewItemLine(i)
+            ? {
+                ...i,
+                name: d.name.trim().replace(/\s+/g, ' '),
+                mrp: d.mrp,
+                ...rateOfNewLine(d.mrp, d.price),
+                taxRate: d.tax,
+                salesPrice: d.extraPrice,
+                quantity: Math.max(1, d.quantity || 1),
+            }
+            : i));
     };
 
     // --- LOGIC 2: HANDLE PRICE CHANGE (Typing) ---
@@ -486,6 +582,9 @@ const handleAddAsNewLine = () => {
         categories,
         sortedGridItems,
         addItemToCart,
+        handleQuickAddItem,
+        handleNewItemFieldChange,
+        applyNewItemDetails,
         handlePriceChange,
         handleDiscountChange,
         handleDiscount2Change,

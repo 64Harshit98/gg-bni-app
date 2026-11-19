@@ -51,17 +51,27 @@ export const useSalesCommunication = ({
     const [showPrintSubMenu, setShowPrintSubMenu] = useState(false);
     const [enableTriplicate, setEnableTriplicate] = useState(false);
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+    // UPI ID + payee name for the "Scan to pay" QR in the Bill saved modal
+    const [upiPayee, setUpiPayee] = useState<{ upiId: string; payeeName: string }>({ upiId: '', payeeName: '' });
     const loyaltySettings = useOptionalLoyaltySettings();
 
     useEffect(() => {
         const fetchBillSettings = async () => {
             if (!currentUser?.companyId) return;
             try {
-                const billSettingsRef = doc(db, 'companies', currentUser.companyId, 'settings', 'bill');
-                const snap = await getDoc(billSettingsRef);
-                if (snap.exists()) setEnableTriplicate(!!snap.data().enableTriplicate);
+                const companyId = currentUser.companyId;
+                const [snap, businessSnap] = await Promise.all([
+                    getDoc(doc(db, 'companies', companyId, 'settings', 'bill')),
+                    getDoc(doc(db, 'companies', companyId, 'business_info', companyId)),
+                ]);
+                const bill = snap.exists() ? snap.data() : {};
+                setEnableTriplicate(!!bill.enableTriplicate);
+                setUpiPayee({
+                    upiId: String(bill.upiId || '').trim(),
+                    payeeName: String((businessSnap.exists() && businessSnap.data().businessName) || ''),
+                });
             } catch (err) {
-                console.error('Error fetching bill settings for triplicate flag:', err);
+                console.error('Error fetching bill settings for triplicate flag / UPI ID:', err);
             }
         };
         fetchBillSettings();
@@ -370,6 +380,7 @@ export const useSalesCommunication = ({
         printingPdf, setPrintingPdf,
         showPrintSubMenu, setShowPrintSubMenu,
         enableTriplicate,
+        upiPayee,
         isDrawerOpen, setIsDrawerOpen,
         preparePdfData,
         handleSendWhatsapp,

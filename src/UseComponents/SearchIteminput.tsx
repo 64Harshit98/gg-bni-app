@@ -2,8 +2,9 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import type { Item } from '../constants/models';
-import { FiSearch, FiX, FiBox } from 'react-icons/fi';
+import { FiSearch, FiX, FiBox, FiPlus } from 'react-icons/fi';
 import { useFormatNumber } from '../lib/formatNumber';
+import { looksLikeBarcode, normalizeItemName } from '../lib/quickAddItems';
 
 interface SearchableItemInputProps {
     items: Item[];
@@ -18,6 +19,8 @@ interface SearchableItemInputProps {
     categories?: string[];
     itemGroupMap?: Record<string, string>;
     onSearchChange?: (query: string) => void;
+    /** Quick-add: put a not-yet-saved item with this name straight on the bill. */
+    onQuickAdd?: (name: string) => void;
 }
 
 const THROTTLE_DELAY = 500;
@@ -34,6 +37,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
     categories = [],
     itemGroupMap = {},
     onSearchChange,
+    onQuickAdd,
 }) => {
     const [searchQuery, setSearchQuery] = useState<string>('');
     const [throttledQuery, setThrottledQuery] = useState<string>('');
@@ -92,8 +96,8 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
     }, []);
 
     // --- FILTER & SORT LOGIC ---
-    const filteredItems = useMemo(() => {
-        const trimmedQuery = throttledQuery.toLowerCase().trim();
+    const findMatches = (query: string) => {
+        const trimmedQuery = query.toLowerCase().trim();
         if (!trimmedQuery) return [];
 
         const searchTokens = trimmedQuery.split(/\s+/);
@@ -121,7 +125,41 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
             if (!aStartsWith && bStartsWith) return 1;
             return lowerA.localeCompare(lowerB);
         });
-    }, [items, throttledQuery, selectedCategory, itemGroupMap]);
+    };
+    const filteredItems = useMemo(
+        () => findMatches(throttledQuery),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [items, throttledQuery, selectedCategory, itemGroupMap],
+    );
+
+    // --- QUICK-ADD (item not in the catalogue yet) ---
+    const trimmedSearch = searchQuery.trim();
+    const hasExactName = useMemo(() => {
+        const q = normalizeItemName(trimmedSearch);
+        return !!q && items.some(item => normalizeItemName(item.name) === q);
+    }, [items, trimmedSearch]);
+    const canQuickAdd = !!onQuickAdd && !!trimmedSearch && !hasExactName;
+
+    const handleQuickAdd = () => {
+        if (!canQuickAdd || !onQuickAdd) return;
+        onQuickAdd(trimmedSearch);
+        setSearchQuery('');
+        setThrottledQuery('');
+        onSearchChange?.('');
+        setIsDropdownOpen(false);
+        setActiveIndex(-1);
+        // focus moves to the new line's price box (the cart handles that)
+    };
+
+    // Enter with nothing highlighted and no match at all -> quick-add.
+    // Scanner-like input (digits only) never quick-adds on Enter: an unknown
+    // barcode must not become an item named after the barcode.
+    const quickAddOnEnter = () => {
+        if (!canQuickAdd || looksLikeBarcode(trimmedSearch)) return false;
+        if (findMatches(searchQuery).length > 0) return false; // fresh, not the throttled list
+        handleQuickAdd();
+        return true;
+    };
 
     // --- AUTO SCROLL LOGIC ---
     useEffect(() => {
@@ -171,6 +209,8 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
                 );
                 if (exactMatch) {
                     handleSelect(exactMatch);
+                } else {
+                    quickAddOnEnter();
                 }
             }
             return;
@@ -201,7 +241,11 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
             // 2. Fallback: If no exact match, select the highlighted item from the dropdown
             if (activeIndex >= 0 && activeIndex < filteredItems.length) {
                 handleSelect(filteredItems[activeIndex]);
+                return;
             }
+
+            // 3. Nothing found at all -> put it on the bill as a new item
+            quickAddOnEnter();
         } else if (e.key === 'Escape') {
             setIsDropdownOpen(false);
         }
@@ -244,6 +288,7 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
                     }}
                     onFocus={() => setIsDropdownOpen(true)}
                     onKeyDown={handleKeyDown}
+                    enterKeyHint={onQuickAdd ? 'go' : undefined}
                     placeholder={placeholder}
                     className={`w-full h-12 md:h-[52px] pl-11 pr-11 bg-[#ffffff] border border-[#7a8aa3] rounded-sm
                                focus:border-[#155dfc] focus:ring-4 focus:ring-[#e6eeff] outline-none transition-all
@@ -293,16 +338,35 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
                                         <FiBox size={24} className="mb-2 text-[#5b6b86]" />
                                         <span>No items found for "{searchQuery}"</span>
                                     </div>
+                                    {canQuickAdd && (
+                                        <button
+                                            type="button"
+                                            onMouseDown={(e) => {
+                                                e.preventDefault(); // prevents input blur closing dropdown before click fires
+                                                handleQuickAdd();
+                                            }}
+                                            className="flex items-center gap-2 px-4 min-h-[48px] text-left text-sm font-semibold text-[#155dfc] bg-[#e6eeff] hover:bg-[#dbe6ff] border-t border-[#dfe6fb] transition-colors w-full"
+                                        >
+                                            <FiPlus size={16} className="flex-shrink-0" />
+                                            <span className="min-w-0 truncate">Add "{trimmedSearch}" to bill</span>
+                                            {!looksLikeBarcode(trimmedSearch) && (
+                                                <span className="hidden md:inline ml-auto text-[11px] font-medium text-[#5b6b86] border border-[#dfe6fb] bg-white rounded-sm px-1.5 leading-[18px] flex-shrink-0">Enter</span>
+                                            )}
+                                        </button>
+                                    )}
                                     {onAddItem && (
                                         <button
+                                            type="button"
                                             onMouseDown={(e) => {
                                                 e.preventDefault(); // prevents input blur closing dropdown before click fires
                                                 onAddItem(searchQuery);
                                             }}
-                                            className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-[#155dfc] hover:bg-[#e6eeff] border-t border-[#dfe6fb] transition-colors w-full"
+                                            className={`flex items-center gap-2 px-4 min-h-[44px] text-sm font-medium transition-colors w-full border-t border-[#dfe6fb] ${onQuickAdd
+                                                ? 'text-[#45556c] hover:bg-[#f5f7ff]'
+                                                : 'text-[#155dfc] hover:bg-[#e6eeff]'}`}
                                         >
                                             <span className="text-lg leading-none">+</span>
-                                            Add new item "{searchQuery}"
+                                            {onQuickAdd ? 'Create full item (all details)…' : `Add new item "${searchQuery}"`}
                                         </button>
                                     )}
                                 </div>
@@ -360,6 +424,20 @@ const SearchableItemInput: React.FC<SearchableItemInputProps> = ({
                                         </div>
                                     );
                                 })
+                            )}
+                            {/* Results exist but none is exactly this name: offer quick-add at the end */}
+                            {filteredItems.length > 0 && canQuickAdd && (
+                                <button
+                                    type="button"
+                                    onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        handleQuickAdd();
+                                    }}
+                                    className="sticky bottom-0 flex items-center gap-2 px-4 min-h-[44px] text-left text-sm font-semibold text-[#155dfc] bg-white hover:bg-[#e6eeff] border-t border-[#dfe6fb] transition-colors w-full"
+                                >
+                                    <FiPlus size={16} className="flex-shrink-0" />
+                                    <span className="min-w-0 truncate">Add "{trimmedSearch}" as a new item</span>
+                                </button>
                             )}
                         </>
                     )

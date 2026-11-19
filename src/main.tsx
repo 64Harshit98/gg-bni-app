@@ -5,6 +5,10 @@ import { isChunkLoadError, isReloadPending, reloadOnce } from './lib/chunkReload
 import { markAppStarted, reportBootFailure } from './lib/bootStatus';
 import { initClarity } from './lib/clarity';
 import BootSignal from './app/BootSignal';
+import { installEscToClosePopups } from './lib/escToClose';
+
+// Esc closes whichever popup is on top (presses its close button) — see lib/escToClose.ts
+installEscToClosePopups();
 
 // Thin bootstrap. Everything heavy is behind a dynamic import so the entry
 // chunk stays tiny, and the visitor only downloads the app they need:

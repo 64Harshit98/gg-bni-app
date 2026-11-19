@@ -5,6 +5,7 @@ import {
     increment as firebaseIncrement,
     runTransaction,
     serverTimestamp,
+    type Transaction,
 } from 'firebase/firestore';
 import { db } from '../../../../lib/Firebase';
 import { clearPurchaseReportCache } from '../../../Reports/PurchaseReportComponents/purchaseReportCache';
@@ -24,6 +25,15 @@ import type { RateAudit } from './useSupplierPriceAlert';
 import { omitKeys } from '../../../../lib/omitKeys';
 import { CART_ONLY_SUPPLIER_KEYS } from '../../../utils/customerPricing';
 import type { Purchase, PurchaseDocumentData, PurchaseItem, TaxOption } from '../purchase.types';
+import {
+    itemDocFromPurchaseLine,
+    newItemDocs,
+    newItemTempIds,
+    remapNewItemIds,
+    reserveNewItemIdsInTxn,
+    validateNewItemLines,
+    writeNewItemsInTxn,
+} from '../../../../lib/quickAddItems';
 
 // Moved verbatim from Purchase.tsx (was a module-level helper above the
 // component, L34-38). Removes all undefined values from an object before
@@ -88,6 +98,7 @@ interface UsePurchasePaymentParams {
     navigate: (path: any, opts?: any) => void;
     items: PurchaseItem[];
     setItems: React.Dispatch<React.SetStateAction<PurchaseItem[]>>;
+    availableItems: Item[];
     setAvailableItems: React.Dispatch<React.SetStateAction<Item[]>>;
     invoiceNumber: string;
     setInvoiceNumber: (n: string) => void;
@@ -135,6 +146,7 @@ export const usePurchasePayment = ({
     navigate,
     items,
     setItems,
+    availableItems,
     setAvailableItems,
     invoiceNumber,
     setInvoiceNumber,
@@ -169,6 +181,16 @@ export const usePurchasePayment = ({
                 setModal({ message: `Cannot proceed: MRP is required but missing or invalid for "${missingMrpItem.name}". Please input MRP for all items.`, type: State.ERROR });
                 return;
             }
+        }
+        // Quick-added items: need a name + rate, and must not already be in the catalogue
+        const newItemError = validateNewItemLines(
+            items,
+            availableItems.map(a => a.name),
+            (l) => Number(l.purchasePrice) || 0,
+        );
+        if (newItemError) {
+            setModal({ message: newItemError, type: State.ERROR });
+            return;
         }
         if (!invoiceNumber.trim()) {
             setModal({ message: "Invoice Number is required.", type: State.ERROR });
@@ -238,6 +260,24 @@ export const usePurchasePayment = ({
         }
     };
 
+    // Quick-added items: inside the save transaction, swap their temp ids for real
+    // barcodes (reads only - call before any write) and get the writer for the item docs.
+    const reserveAndRemapNewItems = async (transaction: Transaction, companyId: string, formattedItemsForDB: PurchaseItem[]) => {
+        const reservation = await reserveNewItemIdsInTxn(transaction, db, companyId, newItemTempIds(items));
+        const docs = newItemDocs(items, reservation.idMap, itemDocFromPurchaseLine);
+        return {
+            idMap: reservation.idMap,
+            dbLines: remapNewItemIds(formattedItemsForDB, reservation.idMap),
+            cartLines: remapNewItemIds(items, reservation.idMap),
+            created: docs.map(d => ({
+                ...d.data, id: d.barcode, barcode: d.barcode, stock: 0, unit: 'pcs', unitMultiplier: 1,
+                moq: 1, restockQuantity: 0, amount: 0, itemGroupId: '', isDeleted: false,
+            } as unknown as Item)),
+            // Creates the items (stock 0) - call after every read, before the stock updates
+            writeNewItems: () => writeNewItemsInTxn(transaction, db, companyId, docs, reservation.nextSequence),
+        };
+    };
+
     const createNewPurchase = async (
         completionData: PaymentCompletionData,
         formattedItemsForDB: PurchaseItem[],
@@ -252,6 +292,8 @@ export const usePurchasePayment = ({
             const manualDiscount = completionData.discount || 0;
             const finalTotalAmount = Math.max(0, finalAmount - manualDiscount);
             let finalInvoiceNumber = '';
+            let quickIdMap = new Map<string, string>();
+            let createdItems: Item[] = [];
 
             await runTransaction(db, async (transaction) => {
                 // Counter peek + uniqueness check + increment + document write all
@@ -301,6 +343,13 @@ export const usePurchasePayment = ({
                     : null;
                 const bookSnap = bookRef ? await transaction.get(bookRef) : null;
 
+                // Quick-added items: reserve barcodes now (still in the read phase)
+                const quick = await reserveAndRemapNewItems(transaction, companyId, formattedItemsForDB);
+                const dbLines = quick.dbLines;
+                const cartLines = quick.cartLines;
+                quickIdMap = quick.idMap;
+                createdItems = quick.created;
+
                 const purchaseDate = getParsedInvoiceDate();
                 const purchaseData: Omit<PurchaseDocumentData, 'id'> = {
                     userId: currentUser.uid,
@@ -309,7 +358,7 @@ export const usePurchasePayment = ({
                     partyAddress: completionData.partyAddress || '',
                     partyGstin: completionData.partyGST || '',
                     invoiceNumber: finalInvoiceNumber,
-                    items: formattedItemsForDB,
+                    items: dbLines,
                     subtotal: subtotal,
                     totalDiscount: totalDiscount,
                     taxableAmount: taxableAmount,
@@ -330,7 +379,7 @@ export const usePurchasePayment = ({
                 transaction.set(registryRef, { purchaseId: newPurchaseRef.id, createdAt: serverTimestamp() });
 
                 if (bookRef) {
-                    const incoming = entriesFromPurchase(formattedItemsForDB, {
+                    const incoming = entriesFromPurchase(dbLines, {
                         taxType: finalTaxType,
                         date: purchaseDate.getTime(),
                         invoiceNumber: finalInvoiceNumber,
@@ -355,8 +404,10 @@ export const usePurchasePayment = ({
                 // be split across multiple destinations, and the same product can
                 // appear as multiple cart lines — so aggregate per destination
                 // across every split of every line, not just per product.
+                quick.writeNewItems();
+
                 const perProductUpdates = new Map<string, { shopQty: number; godownQty: Map<string, number> }>();
-                items.forEach(cartItem => {
+                cartLines.forEach(cartItem => {
                     const pid = cartItem.productId || cartItem.id;
                     const baseQty = (cartItem.quantity || 1) * (cartItem.tierQuantity || 1);
                     const splits = godownAssignments[cartItem.id];
@@ -391,7 +442,7 @@ export const usePurchasePayment = ({
                     });
                     transaction.update(itemRef, updatePayload);
 
-                    const matchedItem = formattedItemsForDB.find(i => i.id === pid);
+                    const matchedItem = dbLines.find(i => i.id === pid);
 
                     if (upd.shopQty > 0) {
                         const transferRef = doc(collection(db, 'companies', companyId, 'stockTransfers'));
@@ -444,15 +495,32 @@ export const usePurchasePayment = ({
                 if (shopDelta === 0) return item;
                 return { ...item, stock: (item.stock || 0) + shopDelta };
             }));
+            if (createdItems.length > 0) {
+                // New items are in the catalogue now - next bill finds them straight away
+                const cartNow = remapNewItemIds(items, quickIdMap);
+                const shopQtyOf = (pid: string) => cartNow
+                    .filter(i => i.productId === pid)
+                    .reduce((sum, i) => {
+                        const baseQty = (i.quantity || 1) * (i.tierQuantity || 1);
+                        const splits = godownAssignments[i.id];
+                        if (!splits || splits.length === 0) return sum + baseQty;
+                        return sum + splits.filter(r => r.godownId === SHOP_ID).reduce((s, r) => s + (r.quantity || 0), 0);
+                    }, 0);
+                const fresh = createdItems.map(it => ({ ...it, stock: shopQtyOf(it.id!) }));
+                setAvailableItems(prev => [...prev.filter(p => !fresh.some(f => f.id === p.id)), ...fresh]);
+            }
             setIsDrawerOpen(false);
             setGodownAssignments({});
-            const savedItemsCopy = [...items];
+            // New lines now point at their real items (matters for "copy voucher" + barcode printing)
+            const savedItemsCopy = remapNewItemIds([...items], quickIdMap);
             localStorage.removeItem('purchase_cart_draft');
 
             if (!purchaseSettings?.copyVoucherAfterSaving) {
                 setItems([]);
                 const nextNum = await peekNextPurchaseNumber(companyId);
                 setInvoiceNumber(nextNum);
+            } else if (quickIdMap.size > 0) {
+                setItems(prev => remapNewItemIds(prev, quickIdMap));
             }
             if (purchaseSettings?.enableBarcodePrinting) {
                 setShowPrintQrModal(savedItemsCopy);
@@ -500,6 +568,8 @@ export const usePurchasePayment = ({
         try {
             const manualDiscount = completionData.discount || 0;
             const finalTotalAmount = Math.max(0, finalAmount - manualDiscount);
+            let editCreatedItems: Item[] = [];
+            let editDbLines: PurchaseItem[] = formattedItemsForDB;
 
             await runTransaction(db, async (transaction) => {
                 const purchaseRef = doc(db, 'companies', companyId, 'purchases', purchaseId);
@@ -513,13 +583,19 @@ export const usePurchasePayment = ({
                     : null;
                 const bookSnap = bookRef ? await transaction.get(bookRef) : null;
 
+                // Quick-added items: reserve barcodes now (still in the read phase)
+                const quick = await reserveAndRemapNewItems(transaction, companyId, formattedItemsForDB);
+                const dbLines = quick.dbLines;
+                editCreatedItems = quick.created;
+                editDbLines = dbLines;
+
                 const originalItemsMap = new Map(
                     (purchaseDoc.data().items as PurchaseItem[] || []).map(item =>
                         [item.id, (item.quantity || 1) * (item.tierQuantity || 1)]  // 👈 CHANGED
                     )
                 );
                 const currentItemsMap = new Map(
-                    formattedItemsForDB.map(item =>
+                    dbLines.map(item =>
                         [item.id, (item.quantity || 1) * (item.tierQuantity || 1)]  // 👈 CHANGED
                     )
                 );
@@ -541,6 +617,8 @@ export const usePurchasePayment = ({
                     transaction.set(registryRef, { purchaseId, createdAt: serverTimestamp() });
                 }
 
+                quick.writeNewItems();
+
                 allItemIds.forEach(id => {
                     const oldQty = originalItemsMap.get(id) || 0;
                     const newQty = currentItemsMap.get(id) || 0;
@@ -561,7 +639,7 @@ export const usePurchasePayment = ({
                     partyAddress: completionData.partyAddress || '',
                     partyGstin: completionData.partyGST || '',
                     invoiceNumber: finalInvoiceNumber,
-                    items: formattedItemsForDB,
+                    items: dbLines,
                     subtotal: subtotal,
                     totalDiscount: totalDiscount,
                     taxableAmount: taxableAmount,
@@ -579,7 +657,7 @@ export const usePurchasePayment = ({
                 transaction.update(purchaseRef, sanitizeForFirestore(updatedPurchaseData));
 
                 if (bookRef) {
-                    const incoming = entriesFromPurchase(formattedItemsForDB, {
+                    const incoming = entriesFromPurchase(dbLines, {
                         taxType: finalTaxType,
                         date: editedDate.getTime(),
                         invoiceNumber: finalInvoiceNumber,
@@ -601,13 +679,20 @@ export const usePurchasePayment = ({
                 const oldQty = ((editModeData?.items || []) as PurchaseItem[])
                     .filter(i => (i.productId || i.id) === item.id)
                     .reduce((sum, i) => sum + (i.quantity || 1), 0);
-                const newQty = formattedItemsForDB
+                const newQty = editDbLines
                     .filter(i => i.id === item.id)
                     .reduce((sum, i) => sum + (i.quantity || 1), 0);
                 const delta = newQty - oldQty;
                 if (delta === 0) return item;
                 return { ...item, stock: (item.stock || 0) + delta };
             }));
+            if (editCreatedItems.length > 0) {
+                const fresh = editCreatedItems.map(it => ({
+                    ...it,
+                    stock: editDbLines.filter(i => i.id === it.id).reduce((s, i) => s + (i.quantity || 1) * (i.tierQuantity || 1), 0),
+                }));
+                setAvailableItems(prev => [...prev.filter(p => !fresh.some(f => f.id === p.id)), ...fresh]);
+            }
 
             clearPurchaseReportCache(companyId);
             clearStockTransferCache(companyId);

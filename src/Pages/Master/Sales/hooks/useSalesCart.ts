@@ -4,8 +4,17 @@ import { getSlabForQty } from '../../../../constants/models';
 import { State } from '../../../../enums';
 import { findTierByBarcode, hasQuantitySlabs } from '../../../utils/pricingUtils';
 import { applyLineRounding } from '../sales.calculations';
+import { discountBaseOf, loadedLineDiscount, presetLinePricing } from '../sales.discountBase';
 import { withoutCustomerPrice as stripCustomerPrice, MANUAL_PRICE_SKIP } from '../../../utils/customerPricing';
 import type { SalesItem } from '../sales.types';
+import {
+    discountFromPrice,
+    isNewItemLine,
+    newTempProductId,
+    normalizeItemName,
+    type NewItemField,
+    type QuickItemDetails,
+} from '../../../../lib/quickAddItems';
 
 // Same item + same add-on combo = same cart line (order of selection doesn't matter)
 const addOnKeyOf = (addOns: AddOnOption[]) => addOns.map(a => a.id).sort().join('|');
@@ -54,6 +63,8 @@ export const useSalesCart = ({
     companyId, // 👈 NEW
 }: UseSalesCartParams) => {
     const draftKey = companyId ? `sales_cart_draft_${companyId}` : null; // 👈 NEW
+    // Sales Settings: take the item's discount off the sale price instead of MRP (see sales.discountBase.ts)
+    const discountOnSalePrice = !!salesSettings?.discountOnSalePrice;
 
     const [items, setItems] = useState<SalesItem[]>(() => {
         if (isEditMode || !draftKey) return []; // 👈 companyId aane tak draft mat uthao
@@ -101,7 +112,7 @@ export const useSalesCart = ({
 
     // ... (Edit Mode Init - Unchanged) ...
     useEffect(() => {
-        if (isEditMode && invoiceToEdit?.items) {
+        if (isEditMode && invoiceToEdit?.items && !loadingSettings) {
             const nonEditableItems = invoiceToEdit.items.map((item: any) => ({
                 ...item,
                 id: crypto.randomUUID(),
@@ -113,7 +124,7 @@ export const useSalesCart = ({
                     : undefined,
                 quantity: item.quantity || 1,
                 mrp: item.mrp || 0,
-                discount: item.discount || 0,
+                discount: loadedLineDiscount(item, discountOnSalePrice),
                 discount2: item.discount2 || 0,
                 taxableAmount: item.taxableAmount,
                 taxAmount: item.taxAmount,
@@ -135,7 +146,8 @@ export const useSalesCart = ({
             }));
             setItems(nonEditableItems);
         }
-    }, [isEditMode, invoiceToEdit]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isEditMode, invoiceToEdit, loadingSettings]);
 
     useEffect(() => {
         if (!isEditMode && !pageIsLoading && draftKey) {
@@ -183,17 +195,10 @@ export const useSalesCart = ({
         let disc = 0;
         if (slab) {
             net = slab.salesPrice;
-            const base = mrp > 0 ? mrp : baseSales;
+            const base = discountBaseOf({ mrp, salesPrice: baseSales }, discountOnSalePrice);
             disc = base > 0 ? ((base - net) / base) * 100 : 0;
-        } else if (mrp > 0 && baseSales > 0) {
-            net = baseSales;
-            disc = ((mrp - baseSales) / mrp) * 100;
-        } else if (baseSales > 0) {
-            disc = presetDiscount;
-            net = baseSales * (1 - presetDiscount / 100);
-        } else if (mrp > 0) {
-            disc = presetDiscount;
-            net = mrp * (1 - presetDiscount / 100);
+        } else {
+            ({ net, discount: disc } = presetLinePricing(mrp, baseSales, presetDiscount, discountOnSalePrice));
         }
 
         net = applyLineRounding(net, isRoundingEnabled, roundingInterval, mrp);
@@ -236,19 +241,9 @@ export const useSalesCart = ({
         const presetDiscount = Number(priceSource.discount || 0);
         const initialMoq = Number((itemToAdd as any).moq || 1);
 
-        let finalNetPrice = 0;
-        let calculatedDiscount = 0;
-
-        if (mrp > 0 && salesPrice > 0) {
-            finalNetPrice = salesPrice;
-            calculatedDiscount = ((mrp - salesPrice) / mrp) * 100;
-        } else if (salesPrice > 0) {
-            calculatedDiscount = presetDiscount;
-            finalNetPrice = salesPrice * (1 - (presetDiscount / 100));
-        } else if (mrp > 0) {
-            calculatedDiscount = presetDiscount;
-            finalNetPrice = mrp * (1 - (presetDiscount / 100));
-        }
+        const preset = presetLinePricing(mrp, salesPrice, presetDiscount, discountOnSalePrice);
+        let finalNetPrice = preset.net;
+        const calculatedDiscount = preset.discount;
 
         const isRoundingEnabled = salesSettings?.enableRounding ?? true;
         const roundingInterval = (salesSettings as any)?.roundingInterval ?? 1;
@@ -308,6 +303,102 @@ export const useSalesCart = ({
 
             return newList;
         });
+    };
+
+    // --- QUICK-ADD: an item that isn't in the catalogue yet ---
+    // The line is created blank (or with the sheet's details) and the item itself
+    // is only written to the catalogue when the bill is saved (useSalesPayment).
+    const priceOfNewLine = (mrp: number, price: number) => ({
+        customPrice: price,
+        salesPrice: price, // keeps the subtotal/discount base right while MRP is empty
+        // Disc1 is measured from the sale price (= this price) when discountOnSalePrice is on
+        discount: discountOnSalePrice ? 0 : discountFromPrice(mrp, price),
+        discount2: 0,
+    });
+
+    const handleQuickAddItem = (rawName: string, details?: Partial<QuickItemDetails>): string | null => {
+        const name = (details?.name ?? rawName ?? '').trim().replace(/\s+/g, ' ');
+        if (!name) return null;
+
+        // Same new name again → just one more of it
+        const existing = items.find(i => isNewItemLine(i) && normalizeItemName(i.name) === normalizeItemName(name));
+        if (existing && !details) {
+            setItems(prev => prev.map(i => i.id === existing.id ? { ...i, quantity: (Number(i.quantity) || 0) + 1 } : i));
+            setGridSearchQuery('');
+            return existing.id;
+        }
+
+        const mrp = Number(details?.mrp) || 0;
+        const price = Number(details?.price) || 0;
+        const lineId = crypto.randomUUID();
+        const newLine: SalesItem = {
+            id: lineId,
+            productId: newTempProductId(),
+            isNewItem: true,
+            name,
+            mrp,
+            ...priceOfNewLine(mrp, price),
+            quantity: Math.max(1, Number(details?.quantity) || 1),
+            isEditable: true,
+            purchasePrice: Number(details?.extraPrice) || 0,
+            tax: details?.tax !== undefined ? Number(details.tax) || 0 : Number(salesSettings?.defaultTaxRate ?? 0),
+            itemGroupId: '',
+            stock: 0,
+            amount: 0,
+            barcode: '',
+            restockQuantity: 0,
+            unit: 'pcs',
+            unitMultiplier: 1,
+            tierQuantity: 1,
+            addedAt: Date.now(),
+        };
+
+        setItems(prev => {
+            const insertionOrder = salesSettings?.cartInsertionOrder || 'top';
+            setTimeout(() => {
+                if (cartListRef.current) {
+                    cartListRef.current.scrollTo({
+                        top: insertionOrder === 'bottom' ? cartListRef.current.scrollHeight : 0,
+                        behavior: 'smooth',
+                    });
+                }
+            }, 50);
+            return insertionOrder === 'top' ? [newLine, ...prev] : [...prev, newLine];
+        });
+        setGridSearchQuery('');
+        return lineId;
+    };
+
+    // Inline NEW strip edits (name / MRP / GST / purchase price)
+    const handleNewItemFieldChange = (id: string, field: NewItemField, value: string) => {
+        setItems(prev => prev.map(i => {
+            if (i.id !== id || !isNewItemLine(i)) return i;
+            if (field === 'name') return { ...i, name: value };
+            const n = parseFloat(value);
+            const v = Number.isFinite(n) ? n : 0;
+            if (field === 'tax') return { ...i, tax: v };
+            if (field === 'extraPrice') return { ...i, purchasePrice: v };
+            // MRP: a price that's empty (or was just following the MRP) takes the MRP;
+            // otherwise the price stays and the discount is worked out from it
+            const price = Number(i.customPrice) || 0;
+            const followsMrp = price <= 0 || price === (Number(i.mrp) || 0);
+            return { ...i, mrp: v, ...priceOfNewLine(v, followsMrp ? v : price) };
+        }));
+    };
+
+    // QuickItemSheet "Save" on an existing NEW line
+    const applyNewItemDetails = (id: string, d: QuickItemDetails) => {
+        setItems(prev => prev.map(i => i.id === id && isNewItemLine(i)
+            ? {
+                ...i,
+                name: d.name.trim().replace(/\s+/g, ' '),
+                mrp: d.mrp,
+                ...priceOfNewLine(d.mrp, d.price),
+                tax: d.tax,
+                purchasePrice: d.extraPrice,
+                quantity: Math.max(1, d.quantity || 1),
+            }
+            : i));
     };
 
     const addItemWithAddOns = (item: Item, addOns: AddOnOption[], askIfDuplicate = false) => {
@@ -486,8 +577,8 @@ export const useSalesCart = ({
         const safeDiscount = isNaN(n) ? 0 : Math.min(100, Math.max(0, n));
         setItems(prev => prev.map(i => {
             if (i.id === id) {
-                // FIXED: Base price is MRP if it exists, otherwise Sales Price
-                const basePrice = (i.mrp > 0) ? i.mrp : (i.salesPrice || 0);
+                // Base: MRP if it exists, otherwise Sales Price (sale price first when discountOnSalePrice is on)
+                const basePrice = discountBaseOf(i, discountOnSalePrice);
                 const safeDiscount2 = i.discount2 || 0;
                 const priceAfterFirstDiscount = basePrice * (1 - safeDiscount / 100);
                 let newPrice = priceAfterFirstDiscount * (1 - safeDiscount2 / 100);
@@ -504,7 +595,7 @@ export const useSalesCart = ({
         const safeDiscount2 = isNaN(n) ? 0 : n;
         setItems(prev => prev.map(i => {
             if (i.id === id) {
-                const basePrice = (i.mrp > 0) ? i.mrp : (i.salesPrice || 0);
+                const basePrice = discountBaseOf(i, discountOnSalePrice);
                 const safeDiscount1 = i.discount || 0;
                 const priceAfterFirstDiscount = basePrice * (1 - safeDiscount1 / 100);
                 let newPrice = priceAfterFirstDiscount * (1 - safeDiscount2 / 100);
@@ -516,16 +607,25 @@ export const useSalesCart = ({
             return i;
         }));
     };
-    const handleCustomPriceChange = (id: string, v: string) => { if (v === '' || /^[0-9]*\.?[0-9]*$/.test(v)) setItems(prev => prev.map(i => i.id === id ? { ...i, customPrice: v } : i)); };
+    const handleCustomPriceChange = (id: string, v: string) => {
+        if (v === '' || /^[0-9]*\.?[0-9]*$/.test(v)) setItems(prev => prev.map(i => {
+            if (i.id !== id) return i;
+            // NEW line: its sale price IS this price (keeps the subtotal right while typing)
+            return isNewItemLine(i) ? { ...i, customPrice: v, salesPrice: parseFloat(v) || 0 } : { ...i, customPrice: v };
+        }));
+    };
     const handleCustomPriceBlur = (id: string) => {
         setItems(prev => prev.map(i => {
             if (i.id === id && typeof i.customPrice === 'string') {
                 const n = parseFloat(i.customPrice);
+                if (isNewItemLine(i)) {
+                    return { ...i, ...priceOfNewLine(Number(i.mrp) || 0, i.customPrice === '' || isNaN(n) ? 0 : n) };
+                }
                 if (i.customPrice === '' || isNaN(n)) return { ...i, customPrice: undefined };
                 let d = 0;
 
-                // FIXED: Base price is MRP if it exists, otherwise Sales Price
-                const basePrice = (i.mrp > 0) ? i.mrp : (i.salesPrice || 0);
+                // Base: MRP if it exists, otherwise Sales Price (sale price first when discountOnSalePrice is on)
+                const basePrice = discountBaseOf(i, discountOnSalePrice);
 
                 if (basePrice > 0) d = ((basePrice - n) / basePrice) * 100;
                 return { ...withoutCustomerPrice(i), customPrice: n, discount: parseFloat(d.toFixed(2)) };
@@ -561,20 +661,10 @@ export const useSalesCart = ({
                 const presetDiscount = Number(mergedItem.discount || 0);
                 const existingDiscount2 = Number(mergedItem.discount2 || 0);
 
-                let finalNetPrice = 0;
-                let calculatedDiscount = 0;
-
-                // --- NEW 3-TIER LOGIC ---
-                if (mrp > 0 && salesPrice > 0) {
-                    finalNetPrice = salesPrice;
-                    calculatedDiscount = ((mrp - salesPrice) / mrp) * 100;
-                } else if (salesPrice > 0) {
-                    calculatedDiscount = presetDiscount;
-                    finalNetPrice = salesPrice * (1 - (presetDiscount / 100));
-                } else if (mrp > 0) {
-                    calculatedDiscount = presetDiscount;
-                    finalNetPrice = mrp * (1 - (presetDiscount / 100));
-                }
+                // 3-tier logic (or item discount on sale price, per Sales Settings)
+                const preset = presetLinePricing(mrp, salesPrice, presetDiscount, discountOnSalePrice);
+                let finalNetPrice = preset.net;
+                const calculatedDiscount = preset.discount;
                 // Apply existing discount2 on top, compounding it
                 finalNetPrice = finalNetPrice * (1 - (existingDiscount2 / 100));
                 const isRoundingEnabled = salesSettings?.enableRounding ?? true;
@@ -633,6 +723,9 @@ export const useSalesCart = ({
         displayItems,
         addItemToCart,
         addItemWithAddOns,
+        handleQuickAddItem,
+        handleNewItemFieldChange,
+        applyNewItemDetails,
         handleClearCart,
         handleConfirmClearCart,
         handleItemSelected,

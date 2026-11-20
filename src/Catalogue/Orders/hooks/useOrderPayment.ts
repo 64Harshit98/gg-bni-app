@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
     doc,
     getDoc,
@@ -41,6 +41,22 @@ export const useOrderPayment = ({
     const [customerCredit, setCustomerCredit] = useState<number>(0);
     const loyaltySettings = useOptionalLoyaltySettings();
     const [loyaltyBalance, setLoyaltyBalance] = useState<number>(0);
+
+    // Split payments call onSubmit once per method in a loop, so showPaymentModal
+    // (closure) is stale after the first call. This ref carries the running
+    // paid / methods / status between those calls.
+    const livePaymentRef = useRef<{
+        orderId: string;
+        paidAmount: number;
+        paymentMethods: Record<string, any>;
+        status: string;
+    } | null>(null);
+
+    // Fresh start every time a payment modal OPENS (do NOT reset on close,
+    // because the modal closes mid-loop while later methods are still saving)
+    useEffect(() => {
+        if (showPaymentModal) livePaymentRef.current = null;
+    }, [showPaymentModal]);
 
     // Loyalty balance for the order's customer, when the payment modal opens
     useEffect(() => {
@@ -169,11 +185,16 @@ export const useOrderPayment = ({
             );
             // --------------------------------------------------------
 
-            const currentMethods = showPaymentModal.paymentMethods || {};
+            const live = livePaymentRef.current?.orderId === showPaymentModal.id
+                ? livePaymentRef.current
+                : null;
+            const basePaid = live ? live.paidAmount : alreadyPaid;
+            const currentMethods = live ? live.paymentMethods : (showPaymentModal.paymentMethods || {});
+            const baseStatus = live ? live.status : showPaymentModal.status;
 
             // Order fields for a payment of `paid` rupees (shared by the normal and the points path)
             const buildPaymentUpdate = (paid: number) => {
-                const newPaidTotal = alreadyPaid + paid;
+                const newPaidTotal = basePaid + paid;
                 const remainingDue = Math.max(0, updatedTotal - newPaidTotal);
                 const updatedMethods = {
                     ...currentMethods,
@@ -181,7 +202,7 @@ export const useOrderPayment = ({
                     due: remainingDue // Sync the exact database due amount!
                 };
 
-                let status = showPaymentModal.status;
+                let status = baseStatus;
                 // FIXED: Only alter the status automatically if it's already in the final stages.
                 // Otherwise, keep it in its current tab (Upcoming, Confirmed, Packed).
                 if (status === 'Completed' || status === 'Paid') {
@@ -219,6 +240,15 @@ export const useOrderPayment = ({
             } else {
                 await updateDoc(orderRef, buildPaymentUpdate(amount));
             }
+
+            // Remember what we just saved so the NEXT method in a split builds on it
+            const savedUpdate = buildPaymentUpdate(paidNow);
+            livePaymentRef.current = {
+                orderId: showPaymentModal.id,
+                paidAmount: savedUpdate.paidAmount,
+                paymentMethods: savedUpdate.paymentMethods,
+                status: savedUpdate.status,
+            };
 
             window.dispatchEvent(
                 new CustomEvent('pdc_notification', {

@@ -723,7 +723,7 @@ const OrderingPage: React.FC = () => {
 
     return (
         <div className="min-h-full bg-sf-canvas pb-10 font-sans text-slate-900">
-            {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
+            {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} theme="catalogue" />}
 
             {companyId && (
                 <SubdomainClaimModal

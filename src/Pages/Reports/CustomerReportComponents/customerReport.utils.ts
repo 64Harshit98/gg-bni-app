@@ -1,6 +1,7 @@
 import { isWalkIn, type SaleRecord } from '../SalesReportComponents/salesReport.utils';
 import type { CustomerRemark, NewCustomerRecord, OpeningBalanceRecord } from './customerReportCache';
 import { customerBelongsTo } from '../../../constants/customerSource';
+import { groupPhones, resolvePhone, type AliasMap } from './customerAliases';
 
 export interface Sale {
   id: string;
@@ -42,8 +43,11 @@ export interface CustomerBill {
 export interface CustomerSummaryRow {
   key: string;
   /** Real customer name, or '' when the bills carry only a phone number. */
-  name: string;
+   name: string;
+  /** Main (primary) number. Merged customer me primary hi row ki key hai. */
   phone: string;
+  /** Primary + uske saare merged numbers. Merge nahi hai to sirf [phone]. */
+  phones: string[];
   bills: number;
   sales: number;
   due: number;
@@ -90,25 +94,29 @@ export const buildCustomerRows = ({
   sales,
   openingBalances,
   newCustomers,
-  credits,
+    credits,
   remarks = [],
+  aliases = {},
 }: {
   sales: SaleRecord[];
   openingBalances: OpeningBalanceRecord[];
   newCustomers: NewCustomerRecord[];
   credits: { name: string; number: string; creditBalance: number }[];
-  remarks?: CustomerRemark[];
+    remarks?: CustomerRemark[];
+  aliases?: AliasMap;
 }): CustomerSummaryRow[] => {
   const map = new Map<string, CustomerSummaryRow>();
 
-  const rowFor = (name: string, number: string) => {
-    const key = customerKey(name, number);
+    const rowFor = (name: string, number: string) => {
+    const phone = resolvePhone(aliases, phoneDigits(number));
+    const key = customerKey(name, phone);
     let row = map.get(key);
     if (!row) {
       row = {
         key,
         name: '',
-        phone: phoneDigits(number),
+        phone,
+        phones: phone ? groupPhones(aliases, phone) : [],
         bills: 0,
         sales: 0,
         due: 0,
@@ -164,16 +172,31 @@ export const buildCustomerRows = ({
       row.dueEntries.push({ label: 'Opening Due', amount: ob.dueAmount, date: ob.createdAt, isOpeningBalance: true });
     });
 
-  const creditByKey = new Map<string, number>();
+    const creditByKey = new Map<string, number>();
   credits.forEach((c) => {
-    const digits = phoneDigits(c.number);
-    if (digits) creditByKey.set(`p:${digits}`, c.creditBalance);
+    const digits = resolvePhone(aliases, phoneDigits(c.number));
+    // Merged numbers ka credit add hota hai (overwrite nahi)
+    if (digits) creditByKey.set(`p:${digits}`, (creditByKey.get(`p:${digits}`) || 0) + c.creditBalance);
     if (c.name) creditByKey.set(`n:${c.name.toLowerCase()}`, c.creditBalance);
   });
 
   // Same key as the row, so a remark never reaches another customer who merely
   // shares the name: a name only matches for customers without a phone.
-  const remarkByKey = new Map(remarks.map((r) => [customerKey(r.name, r.number), r.remark]));
+  // Merged numbers ke remarks " · " se judte hain, primary ka remark pehle.
+  const remarkByKey = new Map<string, string>();
+  [...remarks]
+    .sort((a, b) => {
+      const aPrimary = phoneDigits(a.number) === resolvePhone(aliases, phoneDigits(a.number)) ? 0 : 1;
+      const bPrimary = phoneDigits(b.number) === resolvePhone(aliases, phoneDigits(b.number)) ? 0 : 1;
+      return aPrimary - bPrimary;
+    })
+    .forEach((r) => {
+      if (!r.remark) return;
+      const key = customerKey(r.name, resolvePhone(aliases, phoneDigits(r.number)));
+      const prev = remarkByKey.get(key);
+      if (!prev) remarkByKey.set(key, r.remark);
+      else if (!prev.includes(r.remark)) remarkByKey.set(key, `${prev} · ${r.remark}`);
+    });
 
   return [...map.values()].map((row) => ({
     ...row,

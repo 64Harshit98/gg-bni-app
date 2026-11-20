@@ -10,6 +10,7 @@ import {
   loadOpeningBalancesForRange,
   type CustomerRemark,
 } from './customerReportCache';
+import { loadAliases, type AliasMap } from './customerAliases';
 
 // Sales come from the shared per-range sales cache; opening balances and newly
 // added customers are cached per range too. This report used to keep live
@@ -49,6 +50,18 @@ export default function useCustomerReport() {
     loadCustomerRemarks(companyId)
       .then((list) => { if (!cancelled) setRemarks(list); })
       .catch((err) => console.error('Failed to load customer remarks', err));
+        return () => { cancelled = true; };
+  }, [companyId, customerDataToken]);
+
+  // Merged numbers (secondary -> primary). Date based nahi hai, credits/remarks ki tarah.
+  // Refresh pe force reload, pehli baar session cache use hota hai.
+  const [aliases, setAliases] = useState<AliasMap>({});
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    loadAliases(companyId, customerDataToken > 0)
+      .then((map) => { if (!cancelled) setAliases(map); })
+      .catch((err) => console.error('Failed to load customer aliases', err));
     return () => { cancelled = true; };
   }, [companyId, customerDataToken]);
 
@@ -79,8 +92,10 @@ export default function useCustomerReport() {
     sales: salesState.records,
     openingBalances: obState.records,
     newCustomers: newCustomersState.records,
-    credits,
+       credits,
     remarks,
+    aliases,
+    setAliases,
     isLoading: parts.some((p) => p.isLoading),
     isFetching: parts.some((p) => p.isFetching),
     // The oldest part decides how fresh the page is.

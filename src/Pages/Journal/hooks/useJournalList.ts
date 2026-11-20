@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { SAMPLE_INVOICES } from '../journal.types';
 import { useJournalData } from './useJournalData';
+import { loadAliases, linkedNumbersForToken, type AliasMap } from '../../Reports/CustomerReportComponents/customerAliases';
 
 interface UseJournalListParams {
   companyId?: string;
@@ -60,7 +61,18 @@ export const useJournalList = ({ companyId, isTutorialActive }: UseJournalListPa
     }
   }, [activeDateFilter, customStartDate, customEndDate, isTutorialActive]);
 
-  const { invoices, loading: dataLoading, error } = useJournalData(companyId, dateRange);
+    const { invoices, loading: dataLoading, error } = useJournalData(companyId, dateRange);
+
+  // Merged numbers: ek number search karo to us customer ke saare numbers ke bills aate hain.
+  const [aliases, setAliases] = useState<AliasMap>({});
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    loadAliases(companyId)
+      .then((map) => { if (!cancelled) setAliases(map); })
+      .catch((err) => console.error('Failed to load customer aliases', err));
+    return () => { cancelled = true; };
+  }, [companyId]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -81,8 +93,18 @@ export const useJournalList = ({ companyId, isTutorialActive }: UseJournalListPa
     if (isTutorialActive) {
       return SAMPLE_INVOICES.filter((invoice) => invoice.type === activeType);
     }
-    const now = new Date();
+        const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    const linkedCache = new Map<string, Set<string>>();
+    const linkedNumbers = (token: string) => {
+      let set = linkedCache.get(token);
+      if (!set) {
+        set = linkedNumbersForToken(aliases, token);
+        linkedCache.set(token, set);
+      }
+      return set;
+    };
 
     return invoices
       .filter((invoice) => {
@@ -113,7 +135,8 @@ export const useJournalList = ({ companyId, isTutorialActive }: UseJournalListPa
           const matchesDetails =
             invoice.invoiceNumber.toLowerCase().includes(token) ||
             invoice.partyName.toLowerCase().includes(token) ||
-            (invoice.partyNumber && invoice.partyNumber.includes(token));
+                        (invoice.partyNumber && invoice.partyNumber.includes(token)) ||
+            (!!invoice.partyNumber && linkedNumbers(token).has(invoice.partyNumber));
           const matchesItems = invoice.items?.some(item =>
             item.name.toLowerCase().includes(token)
           );
@@ -121,7 +144,7 @@ export const useJournalList = ({ companyId, isTutorialActive }: UseJournalListPa
         });
       })
       .filter((invoice) => invoice.type === activeType);
-  }, [invoices, activeType, searchQuery, activeDateFilter, customStartDate, customEndDate, isTutorialActive]);
+    }, [invoices, activeType, searchQuery, activeDateFilter, customStartDate, customEndDate, isTutorialActive, aliases]);
 
   const filteredInvoices = useMemo(
     () => (activeTab === 'All' ? typeInvoices : typeInvoices.filter((invoice) => invoice.status === activeTab)),

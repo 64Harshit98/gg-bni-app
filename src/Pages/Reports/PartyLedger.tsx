@@ -44,6 +44,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { clearSalesReportCache } from './SalesReportComponents/salesReportCache';
 import { clearPurchaseReportCache } from './PurchaseReportComponents/purchaseReportCache';
 import { clearOpeningBalanceCache } from './CustomerReportComponents/customerReportCache';
+import { deductGroupCredit, groupPhones, loadGroupCredit } from './CustomerReportComponents/customerAliases';
 import { sendDueReminder } from '../Additional/Whatsapp/sendDueReminder';
 import { useWhatsappProvider, type WhatsappProvider } from '../Additional/Whatsapp/useWhatsappProvider';
 import { ROUTES } from '../../constants/routes.constants';
@@ -162,8 +163,9 @@ const PartyLedger: React.FC = () => {
         addOpeningBalance,
         addBulkOpeningBalances,
         deleteParty,
-        deleteAllParties,
+                deleteAllParties,
         updatePartyDetails,
+        aliases,
     } = usePartyLedger();
 
     //const { currentUser } = useAuth();
@@ -365,7 +367,9 @@ const PartyLedger: React.FC = () => {
     const handledOpenParty = useRef(false);
     useEffect(() => {
         if (!openPartyFromState || handledOpenParty.current || isLoading) return;
-        const match = partySummaries.find((p) => normalizePartyNumber(p.partyNumber) === openPartyFromState);
+        const match = partySummaries.find(
+            (p) => normalizePartyNumber(p.partyNumber) === openPartyFromState || p.phones?.includes(openPartyFromState),
+        );
         if (match) {
             handledOpenParty.current = true;
             setSelectedPartyName(match.partyNumber);
@@ -752,7 +756,19 @@ const PartyLedger: React.FC = () => {
                     if (!sfDoc.exists()) throw new Error('Opening balance record not found.');
                     const data = sfDoc.data();
                     const currentDue = data.dueAmount ?? data.amount ?? 0;
-                    if (amount > currentDue) throw new Error(`Amount (₹${amount}) exceeds due (₹${currentDue}).`);
+                                        if (amount > currentDue) throw new Error(`Amount (₹${amount}) exceeds due (₹${currentDue}).`);
+
+                    // Merged numbers: credit note whole group se kata hai. Reads pehle write se pehle hone chahiye, isliye yahin.
+                    const obMethod = method.toLowerCase().replace(/\s+/g, '');
+                    const obPhone = normalizePartyNumber(data.partyNumber);
+                    const obGroupCredit =
+                        (obMethod === 'credit' || obMethod === 'creditnote') &&
+                        (data.partyType || 'Customer') === 'Customer' &&
+                        (data.balanceType || 'due') === 'due' &&
+                        obPhone.length === 10 &&
+                        groupPhones(aliases, obPhone).length > 1;
+                    if (obGroupCredit) await deductGroupCredit(transaction, companyId, aliases, obPhone, amount);
+
                     const paymentRecord = {
                         amount, method: method.toLowerCase(), date: new Date(paymentDate).toISOString(), timestamp: Date.now(),
                         ...(method.toUpperCase() === 'PDC' && { chequeNumber: chequeNumber || '', chequeDate: chequeDate || '' }),
@@ -791,7 +807,7 @@ const PartyLedger: React.FC = () => {
                     const normalizedMethod = method.toLowerCase().replace(/\s+/g, '');
                     const isCreditNote = normalizedMethod === 'credit' || normalizedMethod === 'creditnote';
                     const isDebitNote = normalizedMethod === 'debit' || normalizedMethod === 'debitnote'; // NEW: debit note bhi cover karo
-                    if ((isCreditNote || isDebitNote) && partyNum.length >= 3 && obBalanceType === 'due') {
+                                        if ((isCreditNote || isDebitNote) && partyNum.length >= 3 && obBalanceType === 'due' && !obGroupCredit) {
                         const collectionName = partyType === 'Customer' ? 'customers' : 'suppliers';
                         const balanceField = partyType === 'Customer' ? 'creditBalance' : 'debitBalance';
                         const partyRef = firestoreDoc(db, 'companies', companyId, collectionName, partyNum);
@@ -870,11 +886,16 @@ const PartyLedger: React.FC = () => {
                             transaction.set(supplierRef, {
                                 debitBalance: fsIncrement(-amount),
                             }, { merge: true }); // set + merge, taaki doc na hone par bhi crash na ho
-                        } else if (isCreditNote) {
-                            const customerRef = fsDoc(db, 'companies', companyId, 'customers', partyNum);
-                            transaction.set(customerRef, {
-                                creditBalance: fsIncrement(-amount),
-                            }, { merge: true });
+                                                } else if (isCreditNote) {
+                            if (groupPhones(aliases, partyNum).length > 1) {
+                                // Merged numbers: primary pehle, phir baaki numbers ke docs se
+                                await deductGroupCredit(transaction, companyId, aliases, partyNum, amount);
+                            } else {
+                                const customerRef = fsDoc(db, 'companies', companyId, 'customers', partyNum);
+                                transaction.set(customerRef, {
+                                    creditBalance: fsIncrement(-amount),
+                                }, { merge: true });
+                            }
                         }
 
                         setAvailableCredit(prev => Math.max(0, prev - amount));
@@ -1019,7 +1040,8 @@ const PartyLedger: React.FC = () => {
         const q = searchQuery.trim().toLowerCase();
         return parties
             .filter(({ party, receivable, payable }) => {
-                const matchesSearch = !q || party.partyName.toLowerCase().includes(q) || party.partyNumber.toLowerCase().includes(q);
+                const matchesSearch = !q || party.partyName.toLowerCase().includes(q) || party.partyNumber.toLowerCase().includes(q) ||
+                    !!party.phones?.some((ph) => ph.includes(q));
                 const matchesType = partyTypeFilter === 'all' || party.partyType === partyTypeFilter;
                 const hasBalance = receivable > 0 || payable > 0;
                 const matchesStatus = statusFilter === 'all' || (statusFilter === 'due' ? hasBalance : !hasBalance);
@@ -1036,8 +1058,13 @@ const PartyLedger: React.FC = () => {
     // Credit / debit notes the party already holds, offered in the payment modal.
     const loadAvailableCredit = async (partyNumber: string, isSupplier: boolean) => {
         const partyNum = (partyNumber || '').replace(/\D/g, '').slice(-10);
-        if (!partyNum || !companyId) return setAvailableCredit(0);
+                if (!partyNum || !companyId) return setAvailableCredit(0);
         try {
+            if (!isSupplier) {
+                // Merged numbers: credit note of the whole group
+                setAvailableCredit(await loadGroupCredit(companyId, aliases, partyNum));
+                return;
+            }
             const { doc, getDoc } = await import('firebase/firestore');
             const { db } = await import('../../lib/Firebase');
             const snap = await getDoc(doc(db, 'companies', companyId, isSupplier ? 'suppliers' : 'customers', partyNum));
@@ -1213,9 +1240,11 @@ const PartyLedger: React.FC = () => {
                 ? Math.max(1, Math.round((appliedFilters.end - appliedFilters.start) / 86400000))
                 : 0;
             const partyHasPhone = !!selectedPartyLedger.partyNumber && selectedPartyLedger.partyNumber !== 'N/A';
+                        // Merged party: primary + linked numbers, comma se
+            const partyPhones = selectedPartyLedger.phones?.length ? selectedPartyLedger.phones : [selectedPartyLedger.partyNumber];
             const partyLine = [
                 selectedPartyLedger.partyName,
-                partyHasPhone ? formatPhone(selectedPartyLedger.partyNumber) : '',
+                partyHasPhone ? partyPhones.map((p) => formatPhone(p)).join(', ') : '',
             ].filter(Boolean).join('  |  ');
 
             // ---------- ASSETS ----------
@@ -2036,7 +2065,7 @@ const PartyLedger: React.FC = () => {
                             <span className="hidden md:inline">{typeBadge(party.partyType)}</span>
                         </div>
                         <p className="truncate text-xs text-slate-500 md:hidden">
-                            {party.partyType}{party.partyNumber && party.partyNumber !== 'N/A' ? ` · ${formatPhone(party.partyNumber)}` : ''}
+                                                        {party.partyType}{party.partyNumber && party.partyNumber !== 'N/A' ? ` · ${(party.phones?.length ? party.phones : [party.partyNumber]).map((p) => formatPhone(p)).join(', ')}` : ''}
                         </p>
                     </div>
                     <div className="hidden items-center gap-2 md:flex">
@@ -2263,6 +2292,14 @@ const PartyLedger: React.FC = () => {
                             <dl className="mt-3 grid grid-cols-[6.5rem_1fr] gap-y-2 text-sm">
                                 <dt className="text-slate-500">Phone</dt>
                                 <dd className="text-slate-900">{party.partyNumber && party.partyNumber !== 'N/A' ? formatPhone(party.partyNumber) : '—'}</dd>
+                                {(party.phones?.length || 0) > 1 && (
+                                    <>
+                                        <dt className="text-slate-500">Linked</dt>
+                                        <dd className="text-slate-900">
+                                            {party.phones!.filter((ph) => ph !== normalizePartyNumber(party.partyNumber)).map((ph) => formatPhone(ph)).join(', ')}
+                                        </dd>
+                                    </>
+                                )}
                                 <dt className="text-slate-500">Type</dt>
                                 <dd className="text-slate-900">{party.partyType}</dd>
                                 <dt className="text-slate-500">GSTIN</dt>
@@ -2514,6 +2551,7 @@ const PartyLedger: React.FC = () => {
                                         `${party.totalTransactions} ${party.totalTransactions === 1 ? 'bill' : 'bills'}`,
                                         party.totalTransactions === 0 && party.transactions.some((t) => t.isOpeningBalance) ? 'opening balance' : '',
                                         party.gstNumber ? `GSTIN ${party.gstNumber}` : '',
+                                        (party.phones?.length || 0) > 1 ? `+${(party.phones?.length || 1) - 1} linked number${(party.phones?.length || 0) > 2 ? 's' : ''}` : '',
                                     ].filter(Boolean).join(' · ');
                                     return (
                                         <li key={`${partyKey(party)}-${party.partyType}`} onClick={() => openParty(party)} className={`cursor-pointer px-4 py-3.5 transition hover:bg-sunken ${idx > 0 ? 'border-t border-line' : ''}`}>

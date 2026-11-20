@@ -16,6 +16,7 @@ import {
 import { useAuth } from '../../context/auth-context';
 import { db } from '../../lib/Firebase';
 import { formatDateForInput } from '../../Pages/Reports/SalesReportComponents/salesReport.utils';
+import { loadAliases, resolvePhone, groupPhones, type AliasMap } from '../../Pages/Reports/CustomerReportComponents/customerAliases';
 // Deleting orders changes what the catalogue P&L cache holds.
 import { clearCatalogueOrdersRangeCache } from './useCataloguepnlreport';
 
@@ -88,6 +89,8 @@ export interface PartySummary {
   totalDue: number;
   totalTransactions: number;
   transactions: LedgerTransaction[];
+  /** Primary + merged numbers. Merge nahi hai to sirf [partyNumber]. */
+  phones?: string[];
   address?: string;
   gstNumber?: string;
 }
@@ -123,11 +126,11 @@ const mapOrder = (snap: QueryDocumentSnapshot): LedgerTransaction | null => {
     );
     history = methods.length
       ? methods.map(([method, amount]) => ({
-          amount: Number(amount),
-          method,
-          date: new Date(createdAt).toISOString(),
-          timestamp: createdAt,
-        }))
+        amount: Number(amount),
+        method,
+        date: new Date(createdAt).toISOString(),
+        timestamp: createdAt,
+      }))
       : [{ amount: paid, method: '', date: new Date(createdAt).toISOString(), timestamp: createdAt }];
   }
 
@@ -295,6 +298,17 @@ export default function useCataloguePartyLedger() {
     fetchCustomers();
   }, [companyId, authLoading]);
 
+  // Merged numbers (secondary -> primary). Customer report me merge hota hai, yahan sirf read.
+  const [aliases, setAliases] = useState<AliasMap>({});
+  useEffect(() => {
+    if (authLoading || !companyId) return;
+    let cancelled = false;
+    loadAliases(companyId)
+      .then((map) => { if (!cancelled) setAliases(map); })
+      .catch((err) => console.error('Failed to load customer aliases', err));
+    return () => { cancelled = true; };
+  }, [companyId, authLoading]);
+
   /* ---------- GROUPING ---------- */
   const partySummaries = useMemo(() => {
     const inRange = (t: number) => !!appliedFilters && t >= appliedFilters.start && t <= appliedFilters.end;
@@ -303,7 +317,8 @@ export default function useCataloguePartyLedger() {
       num || `NO_PHONE_${name.trim().toLowerCase().replace(/\s+/g, '_')}`;
 
     const ensure = (name: string, rawNumber: string, updateName = true) => {
-      const number = normalizePartyNumber(rawNumber);
+      // Merged number -> primary number, to ek hi party row banegi
+      const number = resolvePhone(aliases, normalizePartyNumber(rawNumber));
       const key = keyOf(number, name);
       let p = map.get(key);
       if (!p) {
@@ -315,6 +330,7 @@ export default function useCataloguePartyLedger() {
           totalDue: 0,
           totalTransactions: 0,
           transactions: [],
+          phones: number ? groupPhones(aliases, number).filter(Boolean) : [],
         };
         map.set(key, p);
       } else if (updateName && name.length > p.partyName.length) {
@@ -377,20 +393,26 @@ export default function useCataloguePartyLedger() {
     });
     const hasName = (name?: string) => !!name && name !== 'N/A' && name !== 'Unknown';
     map.forEach((p) => {
-      const m = masterByNumber.get(p.partyNumber);
-      if (!m) return;
-      if (hasName(m.name) && (m.nameEdited || !hasName(p.partyName))) p.partyName = m.name;
-      p.address = p.address || m.address || undefined;
-      p.gstNumber = p.gstNumber || m.gstNumber || undefined;
+      // Primary pehle, phir linked numbers
+      const nums = p.phones?.length ? p.phones : [p.partyNumber];
+      const ordered = [p.partyNumber, ...nums.filter((n) => n !== p.partyNumber)];
+      ordered.forEach((n) => {
+        const m = masterByNumber.get(n);
+        if (!m) return;
+        if (hasName(m.name) && (m.nameEdited || !hasName(p.partyName))) p.partyName = m.name;
+        p.address = p.address || m.address || undefined;
+        p.gstNumber = p.gstNumber || m.gstNumber || undefined;
+      });
     });
 
     return Array.from(map.values()).sort((a, b) => a.partyName.localeCompare(b.partyName));
-  }, [orders, openingBalances, customersMaster, appliedFilters]);
+  }, [orders, openingBalances, customersMaster, aliases, appliedFilters]);
 
   const selectedPartyLedger = useMemo(() => {
     if (!selectedPartyName) return null;
     return (
       partySummaries.find((p) => p.partyNumber && p.partyNumber === selectedPartyName) ||
+      partySummaries.find((p) => !!p.phones?.includes(selectedPartyName)) ||
       partySummaries.find((p) => p.partyName === selectedPartyName) ||
       null
     );
@@ -403,10 +425,10 @@ export default function useCataloguePartyLedger() {
         t.id !== orderId
           ? t
           : {
-              ...t,
-              dueAmount: Math.max(0, t.dueAmount - amountPaid),
-              paymentHistory: [...t.paymentHistory, paymentRecord],
-            },
+            ...t,
+            dueAmount: Math.max(0, t.dueAmount - amountPaid),
+            paymentHistory: [...t.paymentHistory, paymentRecord],
+          },
       ),
     );
   };
@@ -417,10 +439,10 @@ export default function useCataloguePartyLedger() {
         ob.id !== obId
           ? ob
           : {
-              ...ob,
-              dueAmount: Math.max(0, ob.dueAmount - amountPaid),
-              paymentHistory: [...ob.paymentHistory, paymentRecord],
-            },
+            ...ob,
+            dueAmount: Math.max(0, ob.dueAmount - amountPaid),
+            paymentHistory: [...ob.paymentHistory, paymentRecord],
+          },
       ),
     );
   };
@@ -608,6 +630,9 @@ export default function useCataloguePartyLedger() {
   // Rare, destructive action: reads all orders once so every phone/name variant is matched.
   const deleteParty = async (party: PartySummary): Promise<{ deleted: number }> => {
     if (!companyId) throw new Error('Company ID not found.');
+    if ((party.phones?.length || 0) > 1) {
+      throw new Error('This party has merged numbers. Unmerge them in the Customer report first, then delete.');
+    }
     const targetPhone = normalizePartyNumber(party.partyNumber);
 
     const ordersSnap = await getDocs(collection(db, 'companies', companyId, 'Orders'));
@@ -699,6 +724,7 @@ export default function useCataloguePartyLedger() {
     appliedFilters,
     setAppliedFilters,
     partySummaries,
+    aliases,
     selectedPartyName,
     setSelectedPartyName,
     selectedPartyLedger,

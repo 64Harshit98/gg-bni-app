@@ -9,6 +9,7 @@ import {
 import { db } from '../../../lib/Firebase';
 import { clearSalesReportCache } from '../../Reports/SalesReportComponents/salesReportCache';
 import { clearPurchaseReportCache } from '../../Reports/PurchaseReportComponents/purchaseReportCache';
+import { loadAliases, groupPhones, loadGroupCredit, deductGroupCredit } from '../../Reports/CustomerReportComponents/customerAliases';
 import type { Invoice } from '../journal.types';
 
 interface UseInvoicePaymentParams {
@@ -36,10 +37,10 @@ export const useInvoicePayment = ({ currentUser }: UseInvoicePaymentParams) => {
           const snap = await getDoc(supplierRef);
           setCustomerCredit(snap.exists() ? Number(snap.data().debitBalance || 0) : 0);
         } else {
-          // Sales invoice → fetch customer's creditBalance
-          const customerRef = doc(db, 'companies', currentUser.companyId, 'customers', phone);
-          const snap = await getDoc(customerRef);
-          setCustomerCredit(snap.exists() ? Number(snap.data().creditBalance || 0) : 0);
+          // Sales invoice → creditBalance of the whole group (merged numbers), not just this number.
+          // Merge nahi hai to group sirf ek number ka hota hai, to behaviour pehle jaisa hi rahega.
+          const aliases = await loadAliases(currentUser.companyId);
+          setCustomerCredit(await loadGroupCredit(currentUser.companyId, aliases, phone));
         }
       } catch (err) {
         console.error('Error fetching balance:', err);
@@ -71,6 +72,10 @@ export const useInvoicePayment = ({ currentUser }: UseInvoicePaymentParams) => {
       || normalizedMethod === 'debit' || normalizedMethod === 'debitnote';
     const normalizedPhone = (invoice.partyNumber || '').replace(/\D/g, '').slice(-10);
 
+    // Merged numbers: credit note ke liye aliases transaction se pehle load (session cache, extra fetch nahi lagta)
+    const aliases = invoice.type === 'Credit' && isCreditNote && normalizedPhone ? await loadAliases(companyId) : {};
+    const useGroupCredit = groupPhones(aliases, normalizedPhone).length > 1;
+
     await runTransaction(db, async (transaction) => {
       const sfDoc = await transaction.get(docRef);
       if (!sfDoc.exists()) throw new Error("Document does not exist!");
@@ -89,6 +94,10 @@ export const useInvoicePayment = ({ currentUser }: UseInvoicePaymentParams) => {
 
           const supplierRef = doc(db, 'companies', companyId, 'suppliers', normalizedPhone);
           transaction.set(supplierRef, { debitBalance: increment(-amount) }, { merge: true });
+        } else if (useGroupCredit) {
+          // Merged numbers: primary pehle, phir baaki numbers ke docs se.
+          // Yeh is transaction ka pehla write hona chahiye (reads pehle). Yahan se pehle sirf transaction.get(docRef) hua hai, to safe hai.
+          await deductGroupCredit(transaction, companyId, aliases, normalizedPhone, amount);
         } else {
 
           const customerRef = doc(db, 'companies', companyId, 'customers', normalizedPhone);

@@ -15,11 +15,14 @@ import {
     query,
     where,
     getDocs,
-    limit
+    limit,
+    runTransaction
 } from 'firebase/firestore';
 import { useAuth } from '../context/auth-context';
 import { CUSTOMER_REMARKS_COLLECTION, getPartyDocId } from '../constants/customerSource';
 import { useOptionalLoyaltySettings } from '../context/SettingsContext';
+// NOTE: path meri guess hai. PaymentDrawer se Reports/CustomerReportComponents/customerAliases ka sahi relative path daalna.
+import { loadAliases, groupPhones, loadGroupCredit, deductGroupCredit } from '../Pages/Reports/CustomerReportComponents/customerAliases';
 import {
     LOYALTY_PAYMENT_KEY,
     calcEarnPoints,
@@ -992,6 +995,15 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         setPartyGST(party.gstNumber || '');
         setPartyCredit(party.creditBalance || 0);
         setPartyDebit(party.debitBalance || 0);
+        // Merged numbers: poore group ka credit note dikhao, sirf is number ke doc ka nahi
+        const companyIdForCredit = currentUser?.companyId;
+        const pickedPhone = (party.number || '').replace(/\D/g, '').slice(-10);
+        if (isSale && companyIdForCredit && pickedPhone.length === 10) {
+            loadAliases(companyIdForCredit)
+                .then((map) => (groupPhones(map, pickedPhone).length > 1 ? loadGroupCredit(companyIdForCredit, map, pickedPhone) : null))
+                .then((total) => { if (total !== null) setPartyCredit(total); })
+                .catch((err) => console.error('Failed to load merged credit', err));
+        }
         setShippingName(party.shippingName || '');
         setShippingNumber(party.shippingNumber || '');
         setShippingAddress(party.shippingAddress || '');
@@ -1199,7 +1211,22 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                 if (isSale) partyData.lastSaleAt = serverTimestamp();
                 else partyData.lastPurchaseAt = serverTimestamp();
 
-                if (appliedCreditAmount > 0) partyData.creditBalance = firebaseIncrement(-appliedCreditAmount);
+                // Merged numbers: credit whole group se kata hai (primary pehle). Merge nahi hai to purana tarika.
+                const companyIdForDeduct = currentUser.companyId;
+                let creditDeductedAcrossGroup = false;
+                if (isSale && appliedCreditAmount > 0) {
+                    const phone10 = safePartyNumber.replace(/\D/g, '').slice(-10);
+                    if (phone10.length === 10) {
+                        const aliasMap = await loadAliases(companyIdForDeduct);
+                        if (groupPhones(aliasMap, phone10).length > 1) {
+                            await runTransaction(db, (tx) =>
+                                deductGroupCredit(tx, companyIdForDeduct, aliasMap, phone10, appliedCreditAmount),
+                            );
+                            creditDeductedAcrossGroup = true;
+                        }
+                    }
+                }
+                if (appliedCreditAmount > 0 && !creditDeductedAcrossGroup) partyData.creditBalance = firebaseIncrement(-appliedCreditAmount);
                 if (appliedDebitAmount > 0) partyData.debitBalance = firebaseIncrement(-appliedDebitAmount);
 
                 await setDoc(partyDocRef, partyData, { merge: true });

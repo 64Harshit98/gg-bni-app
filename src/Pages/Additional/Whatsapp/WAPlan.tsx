@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Stepper } from '../../../Components/Stepper';
 import { ROUTES } from '../../../constants/routes.constants';
+import BackButton from '../../../Components/BackButton';
 // --- DATA: WhatsApp Plans ---
 const WHATSAPP_PLANS = [
     {
@@ -75,9 +76,18 @@ const WhatsAppSubscriptionPage: React.FC = () => {
         <div className="min-h-screen bg-gray-100 font-sans">
 
             {/* --- SECTION 1: HEADER (Scrolls Away) --- */}
-            <div className="pt-4 pb-6 px-4 text-center max-w-2xl mx-auto">
-                <h2 className="text-base font-semibold text-emerald-600 tracking-wide uppercase">WhatsApp Marketing</h2>
-                <p className="mt-2 text-3xl leading-8 font-extrabold tracking-tight text-gray-900 sm:text-4xl">
+            <div className="pt-4 pb-6 px-4 text-center max-w-2xl mx-auto relative">
+                <div className="relative flex items-center justify-center">
+                    <div className="absolute left-0">
+                        <BackButton />
+                    </div>
+
+                    <h2 className="mt-2 text-base font-semibold text-emerald-600 tracking-wide uppercase">
+                        WhatsApp Marketing
+                    </h2>
+                </div>
+
+                <p className="mt-4 text-3xl leading-8 font-extrabold tracking-tight text-gray-900 sm:text-4xl">
                     Choose Your Message Plan
                 </p>
             </div>

@@ -5,6 +5,7 @@ interface ReportDetailsProps {
   isListVisible: boolean;
   downloadAsPdf: () => void;
   filteredSales: any[]; // Replace 'any' with your actual Sales type if you have one
+  isCatalogueMode?: boolean;
 }
 
 export default function ReportDetails({
@@ -12,6 +13,7 @@ export default function ReportDetails({
   isListVisible,
   downloadAsPdf,
   filteredSales,
+  isCatalogueMode = false
 }: ReportDetailsProps) { // 2. Apply the interface here
   return (
     <div className="bg-white p-4 rounded-lg shadow-md flex flex-col md:flex-row md:justify-between md:items-center gap-3">
@@ -26,7 +28,11 @@ export default function ReportDetails({
         <button
           onClick={downloadAsPdf}
           disabled={filteredSales.length === 0}
-          className="flex-1 md:flex-none px-4 py-2 bg-blue-600 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 "
+          className={`flex-1 md:flex-none px-4 py-2 text-white font-semibold rounded-md shadow-sm
+            ${isCatalogueMode
+              ? 'bg-[#F97316] hover:bg-orange-700'
+              : 'bg-blue-600 hover:bg-blue-700'
+            }`}
         >
           Download Report
         </button>

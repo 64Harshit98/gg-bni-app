@@ -15,9 +15,12 @@ import {
   getCountFromServer,
   onSnapshot
 } from 'firebase/firestore';
-import { get, set } from 'idb-keyval';
+import { get, set, update } from 'idb-keyval';
 import type { Item, ItemGroup } from '../constants/models';
 import { Role, type User } from '../Role/permission';
+
+// A Firestore Timestamp in memory, a plain { seconds } once it has been through IndexedDB
+const toMillis = (value: any): number => value?.toMillis?.() ?? (value?.seconds ?? 0) * 1000;
 
 export const getFirestoreOperations = (companyId: string) => {
   if (!companyId) {
@@ -31,10 +34,61 @@ export const getFirestoreOperations = (companyId: string) => {
 
   const STORE_KEY = `pos_items_${companyId}`;
   const TIME_KEY = `pos_sync_time_${companyId}`;
+  const DELETED_TIME_KEY = `pos_deleted_sync_time_${companyId}`;
+
+  // Tombstones newer than the last one applied. With none applied yet this reads
+  // them all once, which also clears items an earlier delete left in the cache.
+  const tombstonesQuery = (lastDeletedTime?: string) => {
+    const deletedRef = collection(companyRef, 'deletedItems');
+    return lastDeletedTime ? query(deletedRef, where('deletedAt', '>', new Date(lastDeletedTime))) : query(deletedRef);
+  };
+
+  // Merges into the cache as one IndexedDB transaction, so the items listener,
+  // the tombstone listener and syncItems can't overwrite each other's changes.
+  const mergeIntoCache = async (docs: { id: string; data: () => unknown }[]): Promise<Item[]> => {
+    let mergedItems: Item[] = [];
+    await update<Item[]>(STORE_KEY, (cached = []) => {
+      const itemMap = new Map(cached.map(i => [i.id, i]));
+      docs.forEach(doc => {
+        const newItem = { id: doc.id, ...(doc.data() as Item) };
+        if (newItem.isDeleted) {
+          itemMap.delete(newItem.id);
+        } else {
+          itemMap.set(newItem.id, newItem);
+        }
+      });
+      mergedItems = Array.from(itemMap.values());
+      return mergedItems;
+    });
+    return mergedItems;
+  };
+
+  // Removes tombstoned items from the cache. Barcodes are item ids, so an item
+  // updated after its tombstone was added back under the same id and stays.
+  const applyTombstones = async (tombstones: { id: string; data: () => any }[]) => {
+    // deletedAt is null on this device until the server confirms the delete
+    const deletedAtById = new Map(tombstones.map(t => [t.id, toMillis(t.data().deletedAt) || Infinity]));
+    let remaining: Item[] = [];
+    let removed = false;
+    await update<Item[]>(STORE_KEY, (cached = []) => {
+      remaining = cached.filter(item => {
+        const deletedAt = deletedAtById.get(item.id!);
+        return deletedAt === undefined || toMillis(item.updatedAt) > deletedAt;
+      });
+      removed = remaining.length !== cached.length;
+      return remaining;
+    });
+
+    const newest = Math.max(0, ...tombstones.map(t => toMillis(t.data().deletedAt)));
+    if (newest) await set(DELETED_TIME_KEY, new Date(newest).toISOString());
+    return { remaining, removed };
+  };
 
   return {
     listenToItems: (onData: (items: Item[]) => void) => {
-      let unsubscribe = () => { };
+      let cancelled = false;
+      let unsubscribeItems = () => { };
+      let unsubscribeDeletes = () => { };
 
       (async () => {
         try {
@@ -45,6 +99,9 @@ export const getFirestoreOperations = (companyId: string) => {
         }
 
         const lastSyncTime = await get(TIME_KEY);
+        const lastDeletedTime = await get(DELETED_TIME_KEY);
+        if (cancelled) return;
+
         let q;
         if (lastSyncTime) {
           console.log(`[Listener] Listening for updates since: ${lastSyncTime}`);
@@ -55,24 +112,10 @@ export const getFirestoreOperations = (companyId: string) => {
           q = query(itemRef);
         }
 
-        unsubscribe = onSnapshot(q, async (snapshot) => {
+        unsubscribeItems = onSnapshot(q, async (snapshot) => {
           if (snapshot.empty) return;
 
-          const currentLocal: Item[] = (await get(STORE_KEY)) || [];
-          const itemMap = new Map(currentLocal.map(i => [i.id, i]));
-
-          snapshot.docs.forEach(doc => {
-            const newItem = { id: doc.id, ...(doc.data() as Item) };
-            if (newItem.isDeleted) {
-              itemMap.delete(newItem.id);
-            } else {
-              itemMap.set(newItem.id, newItem);
-            }
-          });
-
-          const mergedItems = Array.from(itemMap.values());
-
-          await set(STORE_KEY, mergedItems);
+          const mergedItems = await mergeIntoCache(snapshot.docs);
           await set(TIME_KEY, new Date().toISOString());
 
           console.log(`[Listener] Synced ${snapshot.size} changes. Total items: ${mergedItems.length}`);
@@ -81,51 +124,45 @@ export const getFirestoreOperations = (companyId: string) => {
         }, (error) => {
           console.error("Live Sync Error:", error);
         });
+
+        // A hard-deleted item never shows up in the updatedAt query above,
+        // so deletes only reach the cache through their tombstones.
+        unsubscribeDeletes = onSnapshot(tombstonesQuery(lastDeletedTime), async (snapshot) => {
+          if (snapshot.empty) return;
+
+          const { remaining, removed } = await applyTombstones(snapshot.docs);
+          if (removed) onData(remaining.filter(i => !i.isDeleted));
+        }, (error) => {
+          console.error("Live Delete Sync Error:", error);
+        });
       })();
 
-      return () => unsubscribe();
+      return () => {
+        cancelled = true;
+        unsubscribeItems();
+        unsubscribeDeletes();
+      };
     },
 
 
     syncItems: async (): Promise<Item[]> => {
-      let localItems: Item[] = (await get(STORE_KEY)) || [];
       const lastSyncTime = await get(TIME_KEY);
-      const itemMap = new Map(localItems.map(i => [i.id, i]));
-
-      let itemsQuery;
-      let deletedQuery;
-
-      if (lastSyncTime) {
-        const lastDate = new Date(lastSyncTime);
-        itemsQuery = query(itemRef, where('updatedAt', '>', lastDate));
-        // Query our tombstones for anything deleted since last sync
-        deletedQuery = query(collection(companyRef, 'deletedItems'), where('deletedAt', '>', lastDate));
-      } else {
-        itemsQuery = query(itemRef);
-        // If it's a first-time sync, we don't need to check tombstones because 
-        // the item query will naturally only pull existing items.
-      }
+      const lastDeletedTime = await get(DELETED_TIME_KEY);
 
       // Fetch new/updated items
+      const itemsQuery = lastSyncTime
+        ? query(itemRef, where('updatedAt', '>', new Date(lastSyncTime)))
+        : query(itemRef);
       const itemsSnapshot = await getDocs(itemsQuery);
-      itemsSnapshot.docs.forEach(doc => {
-        itemMap.set(doc.id, { id: doc.id, ...(doc.data() as Item) });
-      });
 
-      // Fetch tombstones (only if we had a lastSyncTime)
-      if (deletedQuery) {
-        const deletedSnapshot = await getDocs(deletedQuery);
-        deletedSnapshot.docs.forEach(doc => {
-          itemMap.delete(doc.id); // Remove the hard-deleted items from local cache
-        });
-      }
+      // Fetch tombstones for anything deleted since the last one applied
+      const deletedSnapshot = await getDocs(tombstonesQuery(lastDeletedTime));
 
-      const mergedItems = Array.from(itemMap.values());
-
-      await set(STORE_KEY, mergedItems);
+      await mergeIntoCache(itemsSnapshot.docs);
+      const { remaining } = await applyTombstones(deletedSnapshot.docs);
       await set(TIME_KEY, new Date().toISOString());
 
-      return mergedItems;
+      return remaining;
     },
 
 
@@ -171,6 +208,9 @@ export const getFirestoreOperations = (companyId: string) => {
       batch.set(tombstoneRef, { deletedAt: serverTimestamp() });
 
       await batch.commit();
+
+      // 3. Drop it from this device's cache now, without waiting on the listener
+      await update<Item[]>(STORE_KEY, (cached = []) => cached.filter(item => item.id !== id));
     },
 
 
@@ -196,12 +236,16 @@ export const getFirestoreOperations = (companyId: string) => {
         return {
           name: (data.businessName as string) || "Company Name",
           address: finalAddress,
+          state: (data.state as string) || "",
           phoneNumber: (data.phoneNumber as string) || "",
           accountHolderName: (data.accountHolderName as string) || "",
           accountNumber: (data.accountNumber as string) || "",
+          ifscCode: (data.ifscCode as string) || "",
           bankName: (data.bankName as string) || "",
           email: (data.email as string) || "",
-          gstin: (data.gstin as string) || ""
+          gstin: (data.gstin as string) || "",
+          msmeNumber: (data.msmeUdyamNumber as string) || "",
+          panNumber: (data.panNumber as string) || "",
         };
       } else {
         return { name: "", address: "", phoneNumber: "", email: "", gstin: "" };

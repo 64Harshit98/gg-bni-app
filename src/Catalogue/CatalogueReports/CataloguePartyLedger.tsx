@@ -58,6 +58,7 @@ import { useOrderCommunication } from '../Orders/hooks';
 import type { Order } from '../Orders/orders.types';
 import { botMasterService } from '../../Pages/Additional/Whatsapp/WhatsappApi';
 import { ROUTES } from '../../constants/routes.constants';
+import { loadGroupCredit, deductGroupCredit, groupPhones } from '../../Pages/Reports/CustomerReportComponents/customerAliases';
 import BackButton from '../../Components/BackButton';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import sellarLogo from '../../assets/sellar-logo.png';
@@ -75,6 +76,9 @@ const receivableTxns = (party: PartySummary) => party.transactions.filter((t) =>
 const receivableOf = (party: PartySummary) => receivableTxns(party).reduce((s, t) => s + t.dueAmount, 0);
 const partyKey = (party: Pick<PartySummary, 'partyNumber' | 'partyName'>) =>
     normalizePartyNumber(party.partyNumber) || party.partyName.trim().toLowerCase();
+// Merged party: sab numbers comma se
+const phonesLabel = (party: Pick<PartySummary, 'partyNumber' | 'phones'>) =>
+    (party.phones?.length ? party.phones : [party.partyNumber]).filter(Boolean).map((p) => formatPhone(p)).join(', ');
 const inr = (n: number) => `₹${Math.round(Math.abs(n)).toLocaleString('en-IN')}`;
 const modeLabel = (m: string) => (m ? (m.toLowerCase() === 'upi' ? 'UPI' : m.replace(/_/g, ' ').toUpperCase()) : '');
 const orderLabel = (t: LedgerTransaction) => t.invoiceNumber || `#${t.id.slice(0, 6).toUpperCase()}`;
@@ -132,6 +136,7 @@ const CataloguePartyLedger: React.FC = () => {
         deleteParty,
         deleteAllParties,
         updatePartyDetails,
+        aliases,
     } = useCataloguePartyLedger();
 
     const navigate = useNavigate();
@@ -677,11 +682,18 @@ const CataloguePartyLedger: React.FC = () => {
             const isCredit = ['CREDIT NOTE', 'CREDIT'].includes(method.toUpperCase());
             const phone = normalizePartyNumber(invoice.partyNumber);
             if (isCredit && phone) {
-                await setDoc(
-                    doc(db, 'companies', companyId, 'customers', phone),
-                    { creditBalance: increment(-amount), updatedAt: serverTimestamp() },
-                    { merge: true },
-                );
+                if (groupPhones(aliases, phone).length > 1) {
+                    // Merged numbers: primary pehle, phir baaki numbers ke docs se
+                    await runTransaction(db, (transaction) =>
+                        deductGroupCredit(transaction, companyId, aliases, phone, amount),
+                    );
+                } else {
+                    await setDoc(
+                        doc(db, 'companies', companyId, 'customers', phone),
+                        { creditBalance: increment(-amount), updatedAt: serverTimestamp() },
+                        { merge: true },
+                    );
+                }
                 setAvailableCredit((prev) => Math.max(0, prev - amount));
             }
 
@@ -745,13 +757,12 @@ const CataloguePartyLedger: React.FC = () => {
         else showToast(`₹${amount} settled across ${successCount} bill(s)!`, 'success');
     };
 
-    // Credit notes the customer already holds, offered in the payment modal.
+    // Credit notes the customer already holds (merged numbers ka total), offered in the payment modal.
     const loadAvailableCredit = async (partyNumber: string) => {
         const phone = normalizePartyNumber(partyNumber);
         if (!phone || !companyId) return setAvailableCredit(0);
         try {
-            const snap = await getDoc(doc(db, 'companies', companyId, 'customers', phone));
-            setAvailableCredit(snap.exists() ? Number(snap.data().creditBalance || 0) : 0);
+            setAvailableCredit(await loadGroupCredit(companyId, aliases, phone));
         } catch {
             setAvailableCredit(0);
         }
@@ -819,7 +830,8 @@ const CataloguePartyLedger: React.FC = () => {
         const q = searchQuery.trim().toLowerCase();
         return parties
             .filter(({ party, receivable }) => {
-                const matchesSearch = !q || party.partyName.toLowerCase().includes(q) || party.partyNumber.toLowerCase().includes(q);
+                const matchesSearch = !q || party.partyName.toLowerCase().includes(q) || party.partyNumber.toLowerCase().includes(q) ||
+                    !!party.phones?.some((ph) => ph.includes(q));
                 const matchesStatus = statusFilter === 'all' || (statusFilter === 'due' ? receivable > 0 : receivable === 0);
                 return matchesSearch && matchesStatus;
             })
@@ -948,7 +960,7 @@ const CataloguePartyLedger: React.FC = () => {
             const partyHasPhone = !!selectedPartyLedger.partyNumber && selectedPartyLedger.partyNumber !== 'N/A';
             const partyLine = [
                 selectedPartyLedger.partyName,
-                partyHasPhone ? formatPhone(selectedPartyLedger.partyNumber) : '',
+                partyHasPhone ? phonesLabel(selectedPartyLedger) : '',
             ].filter(Boolean).join('  |  ');
 
             // ---------- ASSETS ----------
@@ -1737,7 +1749,7 @@ const CataloguePartyLedger: React.FC = () => {
                         <p className="hidden text-xs text-slate-500 md:block">Party ledger /</p>
                         <h1 className="truncate text-lg font-bold text-slate-900 md:text-xl">{hasRealName(party) ? party.partyName : 'No name'}</h1>
                         <p className="truncate text-xs text-slate-500 md:hidden">
-                            {party.partyNumber ? formatPhone(party.partyNumber) : 'Customer'}
+                            {party.partyNumber ? phonesLabel(party) : 'Customer'}
                         </p>
                     </div>
                     <div className="hidden items-center gap-2 md:flex">
@@ -1955,6 +1967,14 @@ const CataloguePartyLedger: React.FC = () => {
                             <dl className="mt-3 grid grid-cols-[6.5rem_1fr] gap-y-2 text-sm">
                                 <dt className="text-slate-500">Phone</dt>
                                 <dd className="text-slate-900">{party.partyNumber ? formatPhone(party.partyNumber) : '—'}</dd>
+                                {(party.phones?.length || 0) > 1 && (
+                                    <>
+                                        <dt className="text-slate-500">Linked</dt>
+                                        <dd className="text-slate-900">
+                                            {party.phones!.filter((ph) => ph !== normalizePartyNumber(party.partyNumber)).map((ph) => formatPhone(ph)).join(', ')}
+                                        </dd>
+                                    </>
+                                )}
                                 <dt className="text-slate-500">GSTIN</dt>
                                 <dd className="text-slate-900">
                                     {party.gstNumber || (hasPhone(party)
@@ -2172,6 +2192,7 @@ const CataloguePartyLedger: React.FC = () => {
                                         `${party.totalTransactions} ${party.totalTransactions === 1 ? 'order' : 'orders'}`,
                                         party.totalTransactions === 0 && party.transactions.some((t) => t.isOpeningBalance) ? 'opening balance' : '',
                                         party.gstNumber ? `GSTIN ${party.gstNumber}` : '',
+                                        (party.phones?.length || 0) > 1 ? `+${(party.phones?.length || 1) - 1} linked number${(party.phones?.length || 0) > 2 ? 's' : ''}` : '',
                                     ].filter(Boolean).join(' · ');
                                     return (
                                         <li key={partyKey(party)} onClick={() => openParty(party)} className={`cursor-pointer px-4 py-3.5 transition hover:bg-orange-50 ${idx > 0 ? 'border-t border-orange-100' : ''}`}>

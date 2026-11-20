@@ -6,12 +6,15 @@ import { formatDateForInput, getPresetRange } from '../../Pages/Reports/SalesRep
 import { collection, onSnapshot, query, where, Timestamp, limit } from 'firebase/firestore';
 import { db } from '../../lib/Firebase';
 import { type Sale } from '../../Pages/Reports/CustomerReportComponents/customerReport.utils';
+import { loadAliases, type AliasMap } from '../../Pages/Reports/CustomerReportComponents/customerAliases';
 
 export default function useCustomerReport() {
   const navigate = useNavigate();
   const { currentUser, loading: authLoading } = useAuth();
 
   const [sales, setSales] = useState<Sale[]>([]);
+  // Merged numbers (secondary -> primary)
+  const [aliases, setAliases] = useState<AliasMap>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,6 +44,16 @@ export default function useCustomerReport() {
   }, []);
 
   useEffect(() => {
+    const companyId = currentUser?.companyId;
+    if (!companyId) return;
+    let cancelled = false;
+    loadAliases(companyId, false)
+      .then((map) => { if (!cancelled) setAliases(map); })
+      .catch((err) => console.error('Failed to load customer aliases', err));
+    return () => { cancelled = true; };
+  }, [currentUser?.companyId]);
+
+  useEffect(() => {
     if (!currentUser?.companyId) {
       setLoading(false);
       return;
@@ -66,6 +79,7 @@ export default function useCustomerReport() {
             const paid = Number(data.paidAmount || 0);
             return {
               id: doc.id,
+              invoiceNumber: String(data.orderId ?? data.invoiceNumber ?? data.orderNumber ?? doc.id),
               partyName:
                 data.userName ||
                 data.billingDetails?.name ||
@@ -158,5 +172,7 @@ export default function useCustomerReport() {
     currentUser,
     setStartDate,
     setEndDate,
+    aliases,
+    setAliases,
   };
 }

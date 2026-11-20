@@ -3,9 +3,11 @@ import {
     doc,
     getDoc,
     updateDoc,
+    runTransaction,
     serverTimestamp,
     increment as firebaseIncrement,
 } from 'firebase/firestore';
+import { loadAliases, groupPhones, loadGroupCredit, deductGroupCredit } from '../../../Pages/Reports/CustomerReportComponents/customerAliases';
 import { db } from '../../../lib/Firebase';
 import { State } from '../../../enums';
 import type { Order } from '../orders.types';
@@ -76,7 +78,6 @@ export const useOrderPayment = ({
                     const snap = await getDoc(customerRef);
                     if (snap.exists()) {
                         const data = snap.data();
-                        setCustomerCredit(Number(data.creditBalance || 0));
                         setEnableItemWiseDiscount(
                             data.enableItemWiseDiscount ?? false
                         );
@@ -86,9 +87,13 @@ export const useOrderPayment = ({
                         setEnableTransportDetails(
                             data.enableTransportDetails ?? false
                         );
-                    } else {
-                        setCustomerCredit(0);
                     }
+                    // Merged numbers: sirf is number ka nahi, poore group ka creditBalance.
+                    // Merge nahi hai to group me ek hi number hota hai, behaviour pehle jaisa.
+                    const aliases = await loadAliases(currentUser.companyId);
+                    setCustomerCredit(
+                        await loadGroupCredit(currentUser.companyId, aliases, normalizedPhone)
+                    );
                 } catch (err) {
                     console.error("Error fetching credit balance:", err);
                     setCustomerCredit(0);
@@ -140,10 +145,18 @@ export const useOrderPayment = ({
                 const normalizedPhone = phone.replace(/\D/g, '').slice(-10);
 
                 if (normalizedPhone) {
-                    const customerRef = doc(db, 'companies', currentUser.companyId, 'customers', normalizedPhone);
-                    await updateDoc(customerRef, {
-                        creditBalance: firebaseIncrement(-amount) // Deduct the used amount
-                    });
+                    const aliases = await loadAliases(currentUser.companyId);
+                    if (groupPhones(aliases, normalizedPhone).length > 1) {
+                        // Merged numbers: primary pehle, phir baaki numbers ke docs se deduct
+                        await runTransaction(db, async (transaction) => {
+                            await deductGroupCredit(transaction, currentUser.companyId, aliases, normalizedPhone, amount);
+                        });
+                    } else {
+                        const customerRef = doc(db, 'companies', currentUser.companyId, 'customers', normalizedPhone);
+                        await updateDoc(customerRef, {
+                            creditBalance: firebaseIncrement(-amount) // Deduct the used amount
+                        });
+                    }
                 }
             }
 

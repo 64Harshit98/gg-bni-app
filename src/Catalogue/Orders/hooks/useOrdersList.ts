@@ -5,6 +5,7 @@ import { ORDER_STATUSES, SAMPLE_ORDERS } from '../orders.types';
 import { getDateRange } from '../../../lib/dateRange';
 import { todayDateInputValue } from '../../../lib/format';
 import { useOrdersData } from './useOrdersData';
+import { loadAliases, linkedNumbersForToken, type AliasMap } from '../../../Pages/Reports/CustomerReportComponents/customerAliases';
 
 const DATE_FILTERS = [
     { label: 'Today', value: 'today' },
@@ -86,7 +87,16 @@ export const useOrdersList = ({ companyId, isTutorialActive, tutorialStep }: Use
         dateRange.start,
         dateRange.end
     );
-
+    // Merged numbers: ek number search karo to us customer ke saare numbers ke orders aate hain.
+    const [aliases, setAliases] = useState<AliasMap>({});
+    useEffect(() => {
+        if (!companyId) return;
+        let cancelled = false;
+        loadAliases(companyId)
+            .then((map) => { if (!cancelled) setAliases(map); })
+            .catch((err) => console.error('Failed to load customer aliases', err));
+        return () => { cancelled = true; };
+    }, [companyId]);
     // When the tutorial reaches the "orders list" step, auto-expand a matching
     // sample order so the person actually sees the detail view, not a blank card.
     useEffect(() => {
@@ -177,7 +187,21 @@ export const useOrdersList = ({ companyId, isTutorialActive, tutorialStep }: Use
             .filter(order => isInStage(order, activeStatusTab) && matchesPayment(order))
 
             .filter(order => {
-                const q = searchQuery.toLowerCase();
+                const q = searchQuery.toLowerCase().trim();
+                if (!q) return true;
+
+                // Merged numbers: search kiye number se linked saare numbers
+                const linked = linkedNumbersForToken(aliases, q);
+                const norm = (p?: string) => (p || '').replace(/\D/g, '').slice(-10);
+                const matchesLinked = [
+                    order.userLoginPhone,
+                    order.billingDetails?.phone,
+                    order.shippingDetails?.phone,
+                ].some(p => {
+                    const n = norm(p);
+                    return !!n && linked.has(n);
+                });
+
                 return (
                     order.orderId?.toLowerCase().includes(q) ||
                     order.userName?.toLowerCase().includes(q) ||
@@ -185,7 +209,8 @@ export const useOrdersList = ({ companyId, isTutorialActive, tutorialStep }: Use
                     order.billingDetails?.phone?.toLowerCase().includes(q) ||
                     order.billingDetails?.name?.toLowerCase().includes(q) ||
                     order.shippingDetails?.phone?.toLowerCase().includes(q) ||
-                    order.shippingDetails?.name?.toLowerCase().includes(q)
+                    order.shippingDetails?.name?.toLowerCase().includes(q) ||
+                    matchesLinked
                 );
             });
 
@@ -217,7 +242,7 @@ export const useOrdersList = ({ companyId, isTutorialActive, tutorialStep }: Use
             return getTime(b) - getTime(a);
         });
 
-    }, [Orders, activeStatusTab, paymentFilter, searchQuery, isTutorialActive]);
+    }, [Orders, activeStatusTab, paymentFilter, searchQuery, isTutorialActive, aliases]);
 
     const handleOrderClick = (uiKey: string) => {
         setExpandedorderId(prevId => (prevId === uiKey ? null : uiKey));

@@ -28,6 +28,14 @@ import { customerBelongsTo, customerSourceFields, type CustomerSourceFields } fr
 import { State } from '../../enums';
 import { ROUTES } from '../../constants/routes.constants';
 import useCustomerReport from '../hooks/useCustomerReport';
+import { phoneDigits } from '../../Pages/Reports/CustomerReportComponents/customerReport.utils';
+import {
+  mergeCustomers,
+  unmergeNumber,
+  resolvePhone,
+  groupPhones,
+} from '../../Pages/Reports/CustomerReportComponents/customerAliases';
+import MergePhoneInput from '../../Components/MeregePhoneInput';
 import { resolveCompanyLogoBase64 } from '../../Catalogue/hooks/useCompanyLogo';
 import sellarLogo from '../../assets/sellar-logo.png';
 import {
@@ -67,7 +75,10 @@ interface DueEntry {
 interface CustomerRow {
   key: string;
   name: string;
+  /** Main (primary) number */
   phone: string;
+  /** Primary + merged numbers. Merge nahi hai to sirf [phone] */
+  phones: string[];
   bills: number;
   sales: number;
   due: number;
@@ -81,6 +92,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 const displayName = (r: { name: string; phone: string }) =>
   r.name || (r.phone ? `No name (${formatPhone(r.phone)})` : 'Walk-in');
+
+// Merged customer: sab numbers comma se
+const phoneLabel = (r: { phone: string; phones: string[] }) =>
+  r.phones.length ? r.phones.map((p) => formatPhone(p)).join(', ') : r.phone ? formatPhone(r.phone) : '';
 
 /* ---------- PDF HELPERS (same look as Sales Report PDF, catalogue orange) ---------- */
 type RGB = [number, number, number];
@@ -142,7 +157,10 @@ const CatalogueCustomerReport: React.FC = () => {
     currentUser,
     setStartDate,
     setEndDate,
+    aliases,
+    setAliases,
   } = useCustomerReport();
+  const companyId = currentUser?.companyId;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
@@ -160,6 +178,61 @@ const CatalogueCustomerReport: React.FC = () => {
     key: 'sales',
     direction: 'desc',
   });
+
+  /* ---------- MERGE / UNMERGE NUMBERS ---------- */
+  const [mergingRow, setMergingRow] = useState<CustomerRow | null>(null);
+  const [mergeTarget, setMergeTarget] = useState('');
+  const [keepThisPrimary, setKeepThisPrimary] = useState(true);
+  const [mergeError, setMergeError] = useState('');
+  const [isMerging, setIsMerging] = useState(false);
+  const [unmergingPhone, setUnmergingPhone] = useState<string | null>(null);
+
+  const openMerge = (row: CustomerRow) => {
+    setMergingRow(row);
+    setMergeTarget('');
+    setKeepThisPrimary(true);
+    setMergeError('');
+  };
+
+  const saveMerge = async () => {
+    if (!companyId || !currentUser?.uid || !mergingRow?.phone) return;
+    const target = mergeTarget.replace(/\D/g, '');
+    if (target.length !== 10) {
+      setMergeError('Enter a 10-digit phone number.');
+      return;
+    }
+    if (mergingRow.phones.includes(target)) {
+      setMergeError('This number is already linked to this customer.');
+      return;
+    }
+    setIsMerging(true);
+    setMergeError('');
+    try {
+      const [primary, secondary] = keepThisPrimary ? [mergingRow.phone, target] : [target, mergingRow.phone];
+      const next = await mergeCustomers(companyId, primary, [secondary], currentUser.uid);
+      setAliases(next);
+      setMergingRow(null);
+      setFeedbackModal({ isOpen: true, type: State.SUCCESS, message: 'Numbers merged. You can unmerge anytime.' });
+    } catch (err: any) {
+      console.error('Failed to merge numbers', err);
+      setMergeError(err?.message || 'Failed to merge. Try again.');
+    } finally {
+      setIsMerging(false);
+    }
+  };
+
+  const unmergePhone = async (phone: string) => {
+    if (!companyId) return;
+    setUnmergingPhone(phone);
+    try {
+      setAliases(await unmergeNumber(companyId, phone));
+    } catch (err: any) {
+      console.error('Failed to unmerge number', err);
+      setFeedbackModal({ isOpen: true, type: State.ERROR, message: err?.message || 'Failed to unmerge.' });
+    } finally {
+      setUnmergingPhone(null);
+    }
+  };
 
   useEffect(() => {
     const fetchCompanyName = async () => {
@@ -268,6 +341,7 @@ const CatalogueCustomerReport: React.FC = () => {
       key,
       name,
       phone,
+      phones: [],
       bills: 0,
       sales: 0,
       due: 0,
@@ -277,12 +351,27 @@ const CatalogueCustomerReport: React.FC = () => {
       recentBills: [],
     });
 
+    // Same customer (merged numbers included) -> same row.
+    const rowFor = (name: string, number: string) => {
+      const digits = phoneDigits(number);
+      const phone = digits ? resolvePhone(aliases, digits) : '';
+      const key = phone ? `p:${phone}` : `${name}-${number}`;
+      let row = map.get(key);
+      if (!row) {
+        row = blank(key, name, phone || number);
+        row.phones = phone ? groupPhones(aliases, phone) : [];
+        map.set(key, row);
+      }
+      // Real name milne par row ka naam update karo
+      if ((!row.name || row.name === 'N/A') && name && name !== 'N/A') row.name = name;
+      return row;
+    };
+
     // POS customers share the customers collection; only catalogue customers are listed here
     customersMasterList
       .filter((c) => c.createdAt !== undefined && c.createdAt >= rangeStartMs && c.createdAt <= rangeEndMs && customerBelongsTo('catalogue', c))
       .forEach((c) => {
-        const key = `${c.name}-${c.number}`;
-        map.set(key, blank(key, c.name, c.number || ''));
+        rowFor(c.name, c.number || '');
       });
 
     sales.forEach((sale) => {
@@ -290,8 +379,7 @@ const CatalogueCustomerReport: React.FC = () => {
       if (t < rangeStartMs || t > rangeEndMs) return;
 
       const key = `${sale.partyName}-${sale.partyNumber}`;
-      if (!map.has(key)) map.set(key, blank(key, sale.partyName || '', sale.partyNumber || ''));
-      const row = map.get(key)!;
+      const row = rowFor(sale.partyName || '', sale.partyNumber || '');
 
       const isOpening = !!(sale as any).isOpeningBalance;
       const due = sale.dueAmount || 0;
@@ -315,7 +403,11 @@ const CatalogueCustomerReport: React.FC = () => {
     });
 
     let result = Array.from(map.values()).map((row) => {
-      const byNumber = customerCreditMap[`num:${row.phone}`];
+      const nums = row.phones.length ? row.phones : [row.phone];
+      const found = nums
+        .map((p) => customerCreditMap[`num:${p}`])
+        .filter((v): v is number => v !== undefined);
+      const byNumber = found.length ? found.reduce((a, b) => a + b, 0) : undefined;
       const byName = customerCreditMap[`name:${row.name.toLowerCase()}`];
       const creditNote = byNumber ?? byName ?? 0;
       return {
@@ -330,11 +422,12 @@ const CatalogueCustomerReport: React.FC = () => {
       const qDigits = q.replace(/\D/g, '');
       result = result.filter(
         (r) =>
-          displayName(r).toLowerCase().includes(q) || (!!qDigits && r.phone.replace(/\D/g, '').includes(qDigits)),
+          displayName(r).toLowerCase().includes(q) ||
+          (!!qDigits && (r.phones.length ? r.phones : [r.phone]).some((p) => p.replace(/\D/g, '').includes(qDigits))),
       );
     }
     return result;
-  }, [sales, customersMasterList, customerCreditMap, rangeStartMs, rangeEndMs, searchQuery]);
+  }, [sales, customersMasterList, customerCreditMap, aliases, rangeStartMs, rangeEndMs, searchQuery]);
 
   const summary = useMemo(() => {
     const totalSales = rows.reduce((s, r) => s + r.sales, 0);
@@ -394,7 +487,9 @@ const CatalogueCustomerReport: React.FC = () => {
   // Shape the export code below uses.
   const customerRows = listRows.map((r) => ({
     customerName: displayName(r),
-    customerNumber: r.phone ? formatPhone(r.phone) : 'N/A',
+    customerNumber: r.phone
+      ? (r.phones.length ? r.phones : [r.phone]).map((p) => formatPhone(p)).join('\n')
+      : 'N/A',
     totalBills: r.bills,
     totalSales: r.sales,
     totalDue: r.due,
@@ -491,7 +586,7 @@ const CatalogueCustomerReport: React.FC = () => {
         { hpt: 22 },
         { hpt: 8 },
         { hpt: 28 },
-        ...customerRows.map(() => ({ hpt: 20 })),
+        ...customerRows.map((r) => ({ hpt: Math.max(20, 13 * r.customerNumber.split('\n').length + 7) })),
         { hpt: 24 },
       ];
       worksheet['!merges'] = [
@@ -527,7 +622,7 @@ const CatalogueCustomerReport: React.FC = () => {
           const addr = XLSX.utils.encode_cell({ r, c: ci });
           const isCurrency = currencyCols.has(ci);
           const isNumeric = ci === 3 || isCurrency;
-          style(addr, s({ sz: 9, color: { rgb: '1E293B' } }, rowBg, { horizontal: isNumeric ? 'center' : 'left', vertical: 'center' }, bblr));
+          style(addr, s({ sz: 9, color: { rgb: '1E293B' } }, rowBg, { horizontal: isNumeric ? 'center' : 'left', vertical: 'center', ...(ci === 2 ? { wrapText: true } : {}) }, bblr));
           if (worksheet[addr] && isCurrency) {
             worksheet[addr].t = 'n';
             worksheet[addr].z = '₹#,##0.00';
@@ -585,6 +680,17 @@ const CatalogueCustomerReport: React.FC = () => {
 
       const totalCredit = customerRows.reduce((sum, c) => sum + (c.creditNote || 0), 0);
       const owingCount = customerRows.filter((c) => c.totalDue > 0).length;
+
+      // Top customers by sales (for the bar panel)
+      const shareBase = exportSummary.totalSales;
+      const topList = [...customerRows]
+        .filter((c) => c.totalSales > 0)
+        .sort((a, b) => b.totalSales - a.totalSales)
+        .slice(0, 5);
+      const topShare =
+        shareBase > 0
+          ? Math.round((topList.reduce((s, c) => s + c.totalSales, 0) / shareBase) * 100)
+          : 0;
 
       // ---------- ASSETS ----------
       const base64Logo = await resolveCompanyLogoBase64(currentUser?.companyId).catch(() => null);
@@ -778,8 +884,71 @@ const CatalogueCustomerReport: React.FC = () => {
         pdf.text(c.hint, cx, cardY + 27);
       });
 
-      // ---------- 3. CUSTOMERS TABLE ----------
-      const tableTitleY = cardY + cardH + 14;
+      // ---------- 3. TOP CUSTOMERS BY SALES (BAR PANEL) ----------
+      const chartY = cardY + cardH + 8;
+      // Box height follows the number of rows: header 18 + rows * 8 + bottom padding 6
+      const chartH = 18 + Math.max(topList.length, 1) * 8 + 6;
+      pdf.setFillColor(255, 255, 255);
+      pdf.setDrawColor(254, 215, 170);
+      pdf.setLineWidth(0.3);
+      pdf.roundedRect(M, chartY, contentW, chartH, PDF_RADIUS, PDF_RADIUS, 'FD');
+
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(12);
+      pdf.setTextColor(17, 24, 39);
+      pdf.text('Top customers by sales', M + 6, chartY + 10);
+
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
+      pdf.setTextColor(107, 114, 128);
+      pdf.text(
+        topList.length ? `Top ${topList.length} = ${topShare}% of sales` : 'No sales in this period',
+        brandRight - 6,
+        chartY + 10,
+        { align: 'right' },
+      );
+
+      const barLabelW = 50;
+      const barL = M + 6 + barLabelW + 2;
+      const valueW = 40;
+      const barR = brandRight - 6 - valueW;
+      const barMaxW = barR - barL;
+      const barRowH = 8;
+      const rowsTop = chartY + 18;
+      const maxSale = topList.length ? topList[0].totalSales : 1;
+
+      topList.forEach((c, i) => {
+        const cy = rowsTop + i * barRowH;
+
+        // customer name (cut to the label width)
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(9);
+        pdf.setTextColor(55, 65, 81);
+        const label = (pdf.splitTextToSize(c.customerName, barLabelW) as string[])[0] || '';
+        pdf.text(label, M + 6, cy + 3.2);
+
+        // bar track + fill
+        pdf.setFillColor(255, 237, 213);
+        pdf.roundedRect(barL, cy + 0.8, barMaxW, 3, PDF_RADIUS, PDF_RADIUS, 'F');
+        const fillW = Math.max((c.totalSales / maxSale) * barMaxW, 0.8);
+        pdf.setFillColor(234, 88, 12);
+        pdf.roundedRect(barL, cy + 0.8, fillW, 3, PDF_RADIUS, PDF_RADIUS, 'F');
+
+        // amount + share
+        const pct = shareBase > 0 ? Math.round((c.totalSales / shareBase) * 100) : 0;
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(8.5);
+        pdf.setTextColor(17, 24, 39);
+        pdf.text(
+          `Rs. ${Math.round(c.totalSales).toLocaleString('en-IN')} · ${pct}%`,
+          brandRight - 6,
+          cy + 3.2,
+          { align: 'right' },
+        );
+      });
+
+      // ---------- 4. CUSTOMERS TABLE ----------
+      const tableTitleY = chartY + chartH + 14;
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(14);
       pdf.setTextColor(17, 24, 39);
@@ -844,7 +1013,8 @@ const CatalogueCustomerReport: React.FC = () => {
             const base = Number(data.cell.styles.fontSize) || 10;
             pdf.setFont('helvetica', 'normal');
             pdf.setFontSize(base);
-            const w = pdf.getTextWidth(data.cell.text.join(' '));
+            // Multi-line (merged numbers): sabse lambi line ki width
+            const w = Math.max(...data.cell.text.map((t) => pdf.getTextWidth(t)));
             const avail = COLW[1] - PAD * 2;
             if (w > avail) data.cell.styles.fontSize = Math.max((base * avail) / w, 6);
           }
@@ -893,7 +1063,7 @@ const CatalogueCustomerReport: React.FC = () => {
         },
       });
 
-      // ---------- 4. PAGE 2+ MINI HEADER + FOOTER (every page) ----------
+      // ---------- 5. PAGE 2+ MINI HEADER + FOOTER (every page) ----------
       const totalPages = pdf.getNumberOfPages();
       for (let i = 1; i <= totalPages; i++) {
         pdf.setPage(i);
@@ -989,7 +1159,7 @@ const CatalogueCustomerReport: React.FC = () => {
         onClose={() => setExpandedKey(null)}
         title={displayName(row)}
         subtitle={[
-          row.phone && formatPhone(row.phone),
+          row.phone && phoneLabel(row),
           plural(row.bills, 'bill'),
           row.lastVisit > 0 && `last visit ${formatDayMonth(row.lastVisit)}`,
         ]
@@ -997,6 +1167,17 @@ const CatalogueCustomerReport: React.FC = () => {
           .join(' · ')}
         footer={
           <div className="flex flex-wrap gap-2">
+            {phoneDigits(row.phone).length === 10 && (
+              <button
+                onClick={() => {
+                  setExpandedKey(null); // never stack a pop-up on the panel
+                  openMerge(row);
+                }}
+                className="inline-flex items-center rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-orange-700 hover:border-slate-400"
+              >
+                Merge number
+              </button>
+            )}
             <button
               onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CATALOGUE_PARTY_LEDGER}`)}
               className="ml-auto inline-flex items-center gap-1.5 rounded-sm bg-orange-700 px-4 py-1.5 text-sm font-semibold text-white hover:bg-orange-800"
@@ -1006,6 +1187,30 @@ const CatalogueCustomerReport: React.FC = () => {
           </div>
         }
       >
+        {row.phones.length > 1 && (
+          <DetailSection title={`Linked numbers · ${row.phones.length}`}>
+            <ul className="divide-y divide-[#f6e1d0] rounded-sm border border-[#f6e1d0]">
+              {row.phones.map((p) => (
+                <li key={p} className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
+                  <span className="font-medium text-slate-800">
+                    {formatPhone(p)}
+                    {p === row.phone && <span className="ml-2 text-xs font-normal text-slate-500">Main</span>}
+                  </span>
+                  {p !== row.phone && (
+                    <button
+                      onClick={() => unmergePhone(p)}
+                      disabled={unmergingPhone === p}
+                      className="rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-slate-400 disabled:opacity-50"
+                    >
+                      {unmergingPhone === p ? 'Unmerging…' : 'Unmerge'}
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </DetailSection>
+        )}
+
         <DetailSection title="This period">
           <DetailRows
             rows={[
@@ -1136,6 +1341,62 @@ const CatalogueCustomerReport: React.FC = () => {
           showConfirmButton={false}
           theme="catalogue"
         />
+      )}
+
+      {/* MERGE NUMBERS: alias banta hai, bills / customers ko touch nahi karta */}
+      {mergingRow && (
+        <div className="fixed inset-0 z-[9000] flex items-end justify-center bg-black/40 md:items-center md:px-4" onClick={() => setMergingRow(null)}>
+          <form
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={(e) => {
+              e.preventDefault();
+              saveMerge();
+            }}
+            className="w-full rounded-t-sm bg-white p-5 shadow-float md:max-w-sm md:rounded-sm"
+          >
+            <h2 className="text-base font-semibold text-slate-900">Merge another number</h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {displayName(mergingRow)} · {formatPhone(mergingRow.phone)}. Bills of both numbers show as one customer.
+            </p>
+            <div className="mt-4 text-xs font-medium text-slate-600">
+  <span className="mb-1 block">Other phone number</span>
+  <MergePhoneInput
+    theme="orange"
+    value={mergeTarget}
+    onChange={setMergeTarget}
+    options={rows
+      .filter((r) => r.phone && !mergingRow.phones.includes(r.phone))
+      .map((r) => ({ phone: r.phone, name: r.name || 'No name' }))}
+  />
+</div>
+            <label className="mt-3 flex items-center gap-2 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                checked={keepThisPrimary}
+                onChange={(e) => setKeepThisPrimary(e.target.checked)}
+                className="h-4 w-4 accent-orange-600"
+              />
+              Keep {formatPhone(mergingRow.phone)} as the main number
+            </label>
+            {mergeError && <p role="alert" className="mt-2 text-xs font-medium text-red-600">{mergeError}</p>}
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setMergingRow(null)}
+                className="rounded-sm border border-slate-300 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-700 hover:border-slate-400"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={mergeTarget.length !== 10 || isMerging}
+                className="rounded-sm bg-orange-700 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-orange-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isMerging ? 'Merging…' : 'Merge'}
+              </button>
+            </div>
+          </form>
+        </div>
       )}
 
       {/* HEADER */}
@@ -1447,7 +1708,7 @@ const CatalogueCustomerReport: React.FC = () => {
                             <p className={`truncate font-semibold ${row.name ? 'text-slate-900' : 'text-slate-500'}`}>
                               {displayName(row)}
                             </p>
-                            {row.phone && <p className="text-xs text-slate-500">{formatPhone(row.phone)}</p>}
+                            {row.phone && <p className="text-xs text-slate-500">{phoneLabel(row)}</p>}
                           </div>
                         </div>
                       </td>
@@ -1522,7 +1783,7 @@ const CatalogueCustomerReport: React.FC = () => {
                   </p>
                   <p className="truncate text-xs text-slate-500">
                     {[
-                      row.phone && formatPhone(row.phone),
+                      row.phone && phoneLabel(row),
                       plural(row.bills, 'bill'),
                       row.lastVisit > 0 && `last ${formatDayMonth(row.lastVisit)}`,
                     ]

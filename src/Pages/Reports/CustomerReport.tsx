@@ -34,6 +34,8 @@ import {
   displayCustomerName,
   type CustomerSummaryRow,
 } from './CustomerReportComponents/customerReport.utils';
+import { mergeCustomers, unmergeNumber } from './CustomerReportComponents/customerAliases';
+import MergePhoneInput from '../../Components/MeregePhoneInput';
 import {
   DATE_PRESETS,
   formatCurrency,
@@ -118,6 +120,8 @@ const CustomerReport: React.FC = () => {
     newCustomers,
     credits,
     remarks,
+    aliases,
+    setAliases,
     isLoading,
     isFetching,
     lastUpdated,
@@ -225,6 +229,7 @@ const CustomerReport: React.FC = () => {
       newCustomers: newCustomers.filter((c) => inRange(c.createdAt)),
       credits,
       remarks,
+      aliases,
     }).map((r) => (r.name || !knownNames[r.phone] ? r : { ...r, name: knownNames[r.phone] }));
     const q = searchQuery.trim().toLowerCase();
     if (!q) return all;
@@ -232,10 +237,10 @@ const CustomerReport: React.FC = () => {
     return all.filter(
       (r) =>
         displayCustomerName(r).toLowerCase().includes(q) ||
-        (!!qDigits && r.phone.includes(qDigits)) ||
+        (!!qDigits && r.phones.some((p) => p.includes(qDigits))) ||
         r.remark.toLowerCase().includes(q),
     );
-  }, [appliedFilters, sales, openingBalances, newCustomers, credits, remarks, searchQuery, knownNames]);
+  }, [appliedFilters, sales, openingBalances, newCustomers, credits, remarks, aliases, searchQuery, knownNames]);
 
   // Look up names for the unnamed phones on screen (each phone once per session).
   const unnamedPhones = useMemo(
@@ -273,7 +278,60 @@ const CustomerReport: React.FC = () => {
       setIsSavingName(false);
     }
   };
+  /* ---------- MERGE / UNMERGE NUMBERS ---------- */
+  const [mergingRow, setMergingRow] = useState<CustomerSummaryRow | null>(null);
+  const [mergeTarget, setMergeTarget] = useState('');
+  const [keepThisPrimary, setKeepThisPrimary] = useState(true);
+  const [mergeError, setMergeError] = useState('');
+  const [isMerging, setIsMerging] = useState(false);
+  const [unmergingPhone, setUnmergingPhone] = useState<string | null>(null);
 
+  const openMerge = (row: CustomerSummaryRow) => {
+    setMergingRow(row);
+    setMergeTarget('');
+    setKeepThisPrimary(true);
+    setMergeError('');
+  };
+
+  const saveMerge = async () => {
+    if (!companyId || !currentUser?.uid || !mergingRow?.phone) return;
+    const target = mergeTarget.replace(/\D/g, '');
+    if (target.length !== 10) {
+      setMergeError('Enter a 10-digit phone number.');
+      return;
+    }
+    if (mergingRow.phones.includes(target)) {
+      setMergeError('This number is already linked to this customer.');
+      return;
+    }
+    setIsMerging(true);
+    setMergeError('');
+    try {
+      const [primary, secondary] = keepThisPrimary ? [mergingRow.phone, target] : [target, mergingRow.phone];
+      const next = await mergeCustomers(companyId, primary, [secondary], currentUser.uid);
+      setAliases(next);
+      setMergingRow(null);
+      setFeedbackModal({ isOpen: true, type: State.SUCCESS, message: 'Numbers merged. You can unmerge anytime.' });
+    } catch (err: any) {
+      console.error('Failed to merge numbers', err);
+      setMergeError(err?.message || 'Failed to merge. Try again.');
+    } finally {
+      setIsMerging(false);
+    }
+  };
+
+  const unmergePhone = async (phone: string) => {
+    if (!companyId) return;
+    setUnmergingPhone(phone);
+    try {
+      setAliases(await unmergeNumber(companyId, phone));
+    } catch (err: any) {
+      console.error('Failed to unmerge number', err);
+      setFeedbackModal({ isOpen: true, type: State.ERROR, message: err?.message || 'Failed to unmerge.' });
+    } finally {
+      setUnmergingPhone(null);
+    }
+  };
   const summary = useMemo(() => {
     const totalSales = rows.reduce((s, r) => s + r.sales, 0);
     const totalBills = rows.reduce((s, r) => s + r.bills, 0);
@@ -332,7 +390,8 @@ const CustomerReport: React.FC = () => {
   // Shape the export code below has always used.
   const customerRows = listRows.map((r) => ({
     customerName: r.name || (r.phone ? `No name (${formatPhone(r.phone)})` : 'Walk-in'),
-    customerNumber: r.phone ? formatPhone(r.phone) : 'N/A',
+    // Merged customer: primary + linked numbers, har number alag line me (Excel + PDF dono me)
+    customerNumber: r.phone ? r.phones.map((p) => formatPhone(p)).join('\n') : 'N/A',
     totalBills: r.bills,
     totalSales: r.sales,
     totalDue: r.due,
@@ -491,7 +550,8 @@ const CustomerReport: React.FC = () => {
         { hpt: 22 }, // 4 summary values
         { hpt: 8 }, // 5 spacer
         { hpt: 28 }, // 6 headers
-        ...customerRows.map(() => ({ hpt: 20 })),
+        // 1 number = 20, har extra number pe thodi height badhao
+        ...customerRows.map((r) => ({ hpt: Math.max(20, 13 * r.customerNumber.split('\n').length + 7) })),
         { hpt: 24 }, // footer
       ];
 
@@ -566,7 +626,7 @@ const CustomerReport: React.FC = () => {
           style(addr, s(
             { sz: 9, color: { rgb: '1E293B' } },
             rowBg,
-            { horizontal: isNumeric ? 'center' : 'left', vertical: 'center' },
+            { horizontal: isNumeric ? 'center' : 'left', vertical: 'center', ...(ci === 2 ? { wrapText: true } : {}) },
             bblr,
           ));
           if (worksheet[addr] && isCurrency) {
@@ -885,7 +945,8 @@ const CustomerReport: React.FC = () => {
 
       // ---------- 3. TOP CUSTOMERS BY SALES (BAR PANEL) ----------
       const chartY = 90;
-      const chartH = 66;
+      // Box height follows the number of rows: header 18 + rows * 8 + bottom padding 6
+      const chartH = 18 + Math.max(topList.length, 1) * 8 + 6;
       doc.setFillColor(255, 255, 255);
       doc.setDrawColor(226, 232, 240);
       doc.setLineWidth(0.3);
@@ -1061,7 +1122,8 @@ const CustomerReport: React.FC = () => {
             const base = Number(data.cell.styles.fontSize) || 10.5;
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(base);
-            const w = doc.getTextWidth(data.cell.text.join(' '));
+            // Multi-line (merged numbers): sabse lambi line ki width
+            const w = Math.max(...data.cell.text.map((t) => doc.getTextWidth(t)));
             const avail = COLW[1] - PAD * 2;
             if (w > avail) data.cell.styles.fontSize = Math.max((base * avail) / w, 6);
           }
@@ -1249,7 +1311,7 @@ const CustomerReport: React.FC = () => {
         open
         onClose={() => setExpandedKey(null)}
         title={displayCustomerName(row)}
-        subtitle={[row.phone && formatPhone(row.phone), plural(row.bills, 'bill'), row.lastVisit && `last visit ${formatDayMonth(row.lastVisit)}`]
+        subtitle={[row.phone && row.phones.map((p) => formatPhone(p)).join(', '), plural(row.bills, 'bill'), row.lastVisit && `last visit ${formatDayMonth(row.lastVisit)}`]
           .filter(Boolean)
           .join(' · ')}
         footer={
@@ -1266,6 +1328,17 @@ const CustomerReport: React.FC = () => {
                 + Add name
               </button>
             )}
+            {row.phone && (
+              <button
+                onClick={() => {
+                  setExpandedKey(null); // never stack a pop-up on the panel
+                  openMerge(row);
+                }}
+                className="inline-flex items-center rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-blue-600 hover:border-slate-400"
+              >
+                Merge number
+              </button>
+            )}
             {phone.length === 10 && (
               <button
                 onClick={() => navigate(ROUTES.PARTY_LEDGER, { state: { openParty: phone } })}
@@ -1280,6 +1353,30 @@ const CustomerReport: React.FC = () => {
         {row.remark && (
           <DetailSection title="Personal remark">
             <p className="whitespace-pre-wrap break-words rounded-sm bg-amber-50 px-3 py-2.5 text-sm text-slate-800">{row.remark}</p>
+          </DetailSection>
+        )}
+
+        {row.phones.length > 1 && (
+          <DetailSection title={`Linked numbers · ${row.phones.length}`}>
+            <ul className="divide-y divide-line rounded-sm border border-line">
+              {row.phones.map((p) => (
+                <li key={p} className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
+                  <span className="font-medium text-slate-800">
+                    {formatPhone(p)}
+                    {p === row.phone && <span className="ml-2 text-xs font-normal text-slate-500">Main</span>}
+                  </span>
+                  {p !== row.phone && (
+                    <button
+                      onClick={() => unmergePhone(p)}
+                      disabled={unmergingPhone === p}
+                      className="rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-slate-400 disabled:opacity-50"
+                    >
+                      {unmergingPhone === p ? 'Unmerging…' : 'Unmerge'}
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
           </DetailSection>
         )}
 
@@ -1451,6 +1548,62 @@ const CustomerReport: React.FC = () => {
                 className="rounded-sm bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isSavingName ? 'Saving…' : 'Save name'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* MERGE NUMBERS — alias banta hai, bills / customers ko touch nahi karta */}
+      {mergingRow && (
+        <div className="fixed inset-0 z-[9000] flex items-end justify-center bg-black/40 md:items-center md:px-4" onClick={() => setMergingRow(null)}>
+          <form
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={(e) => {
+              e.preventDefault();
+              saveMerge();
+            }}
+            className="w-full rounded-t-sm bg-white p-5 shadow-float md:max-w-sm md:rounded-sm"
+          >
+            <h2 className="text-base font-semibold text-slate-900">Merge another number</h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {displayCustomerName(mergingRow)} · {formatPhone(mergingRow.phone)}. Bills of both numbers show as one customer.
+            </p>
+            <div className="mt-4 text-xs font-medium text-slate-600">
+              <span className="mb-1 block">Other phone number</span>
+              <MergePhoneInput
+                theme="blue"
+                value={mergeTarget}
+                onChange={setMergeTarget}
+                options={rows
+                  .filter((r) => r.phone && !mergingRow.phones.includes(r.phone))
+                  .map((r) => ({ phone: r.phone, name: r.name || 'No name' }))}
+              />
+            </div>
+            <label className="mt-3 flex items-center gap-2 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                checked={keepThisPrimary}
+                onChange={(e) => setKeepThisPrimary(e.target.checked)}
+                className="h-4 w-4 accent-blue-600"
+              />
+              Keep {formatPhone(mergingRow.phone)} as the main number
+            </label>
+            {mergeError && <p role="alert" className="mt-2 text-xs font-medium text-red-600">{mergeError}</p>}
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setMergingRow(null)}
+                className="rounded-sm border border-slate-300 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-700 hover:border-slate-400"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={mergeTarget.length !== 10 || isMerging}
+                className="rounded-sm bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isMerging ? 'Merging…' : 'Merge'}
               </button>
             </div>
           </form>
@@ -1795,7 +1948,11 @@ const CustomerReport: React.FC = () => {
                                     </button>
                                   )}
                                 </p>
-                                {row.phone && <p className="text-xs text-slate-500">{formatPhone(row.phone)}</p>}
+                                {row.phone && (
+                                  <p className="text-xs text-slate-500">
+                                    {row.phones.map((p) => formatPhone(p)).join(', ')}
+                                  </p>
+                                )}
                                 {renderRemark(row)}
                               </div>
                             </div>
@@ -1873,7 +2030,7 @@ const CustomerReport: React.FC = () => {
                       {displayCustomerName(row)}
                     </p>
                     <p className="truncate text-xs text-slate-500">
-                      {[row.phone && formatPhone(row.phone), plural(row.bills, 'bill'), row.lastVisit && `last ${formatDayMonth(row.lastVisit)}`]
+                      {[row.phone && row.phones.map((p) => formatPhone(p)).join(', '), plural(row.bills, 'bill'), row.lastVisit && `last ${formatDayMonth(row.lastVisit)}`]
                         .filter(Boolean)
                         .join(' · ')}
                     </p>

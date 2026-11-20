@@ -6,6 +6,7 @@ import { clearSalesReportCache } from '../SalesReportComponents/salesReportCache
 import { clearPurchaseReportCache } from '../PurchaseReportComponents/purchaseReportCache';
 import { clearOpeningBalanceCache, saveCustomerName } from '../CustomerReportComponents/customerReportCache';
 import { CUSTOMER_REMARKS_COLLECTION } from '../../../constants/customerSource';
+import { loadAliases, resolvePhone, groupPhones, type AliasMap } from '../CustomerReportComponents/customerAliases';
 import { formatDateForInput } from '../SalesReportComponents/salesReport.utils';
 
 export const normalizePartyNumber = (num?: string): string => {
@@ -90,6 +91,8 @@ export interface PartySummary {
     totalDue: number;
     totalTransactions: number;
     transactions: LedgerTransaction[]; // Changed from 'sales' to 'transactions'
+    /** Primary + merged numbers. Merge nahi hai to sirf [partyNumber]. */
+    phones?: string[];
     address?: string;    // NEW
     gstNumber?: string;  // NEW
 }
@@ -104,7 +107,33 @@ const getMasterBalanceField = (partyType: 'Customer' | 'Supplier', balanceType: 
     }
     return 'dueBalance';
 };
+const normMethod = (m: string) => m.toLowerCase().replace(/[\s_]+/g, '');
 
+/**
+ * Bill ke saare payments = stored paymentHistory (baad ke settlements)
+ * + billing ke time ke payments jo paymentMethods me hain par history me nahi.
+ * Method-wise compare hota hai, isliye kuch double count nahi hota.
+ */
+const buildPaymentHistory = (data: any, creationMillis: number): PaymentRecord[] => {
+    const history: PaymentRecord[] = [...(data.paymentHistory || [])];
+    Object.entries(data.paymentMethods || {}).forEach(([method, amount]) => {
+        if (method === 'due' || method === 'balance' || typeof amount !== 'number' || amount <= 0) return;
+        const key = normMethod(method);
+        const inHistory = history
+            .filter((h) => normMethod(h.method || '') === key)
+            .reduce((s, h) => s + (Number(h.amount) || 0), 0);
+        const missing = amount - inHistory;
+        if (missing > 0.01) {
+            history.push({
+                amount: parseFloat(missing.toFixed(2)),
+                method,
+                date: new Date(creationMillis).toISOString(),
+                timestamp: creationMillis,
+            });
+        }
+    });
+    return history.sort((a, b) => (a.timestamp || Date.parse(a.date) || 0) - (b.timestamp || Date.parse(b.date) || 0));
+};
 export default function usePartyLedger() {
     const { currentUser, loading: authLoading } = useAuth();
     const [transactions, setTransactions] = useState<LedgerTransaction[]>([]);
@@ -175,21 +204,8 @@ export default function usePartyLedger() {
                     const data = doc.data();
                     const creationMillis = data.createdAt instanceof Timestamp ? data.createdAt.toMillis() : Date.now();
 
-                    let history: PaymentRecord[] = data.paymentHistory || [];
-
-                    // RETROACTIVE FIX: If no history exists, build it from initial paymentMethods
-                    if (history.length === 0 && data.paymentMethods) {
-                        Object.entries(data.paymentMethods).forEach(([method, amount]) => {
-                            if (method !== 'due' && method !== 'balance' && typeof amount === 'number' && amount > 0) {
-                                history.push({
-                                    amount: amount,
-                                    method: method,
-                                    date: new Date(creationMillis).toISOString(),
-                                    timestamp: creationMillis
-                                });
-                            }
-                        });
-                    }
+                    // Billing ke time ke payments + baad ke settlements, dono
+                    const history = buildPaymentHistory(data, creationMillis);
 
                     return {
                         id: doc.id,
@@ -334,6 +350,17 @@ export default function usePartyLedger() {
         fetchMasters();
     }, [currentUser?.companyId, authLoading]);
 
+    // Merged numbers (secondary -> primary). Session cache se aata hai, Customer report me merge karne pe wahi update hota hai.
+    const [aliases, setAliases] = useState<AliasMap>({});
+    useEffect(() => {
+        if (authLoading || !currentUser?.companyId) return;
+        let cancelled = false;
+        loadAliases(currentUser.companyId)
+            .then((map) => { if (!cancelled) setAliases(map); })
+            .catch((err) => console.error('Failed to load customer aliases', err));
+        return () => { cancelled = true; };
+    }, [currentUser?.companyId, authLoading]);
+
     // Group all transactions (Sales & Purchases) by party name
     const partySummaries = useMemo(() => {
         // ✅ Filter opening balances by the applied date range
@@ -377,7 +404,7 @@ export default function usePartyLedger() {
         // fills in on top of this seed using the same key, so nothing gets double-counted.
         const seed: Record<string, PartySummary> = {};
         filteredCustomersMaster.forEach(c => {
-            const normalizedNumber = normalizePartyNumber(c.number);
+            const normalizedNumber = resolvePhone(aliases, normalizePartyNumber(c.number));
             const key = normalizedNumber || c.name.trim().toLowerCase();
             seed[key] = {
                 partyName: c.name || 'N/A',
@@ -392,7 +419,7 @@ export default function usePartyLedger() {
             };
         });
         filteredSuppliersMaster.forEach(s => {
-            const normalizedNumber = normalizePartyNumber(s.number);
+            const normalizedNumber = resolvePhone(aliases, normalizePartyNumber(s.number));
             const key = normalizedNumber || s.name.trim().toLowerCase();
             if (seed[key]) {
                 seed[key] = {
@@ -417,8 +444,7 @@ export default function usePartyLedger() {
         });
 
         const grouped = allItems.reduce((acc, txn) => {
-            const normalizedNumber = normalizePartyNumber(txn.partyNumber);
-            // Falls back to lowercased name only when there's truly no number to key on
+            const normalizedNumber = resolvePhone(aliases, normalizePartyNumber(txn.partyNumber));            // Falls back to lowercased name only when there's truly no number to key on
             const key = normalizedNumber || txn.partyName.trim().toLowerCase();
             const currentTxnType = txn.type === 'sale' ? 'Customer' : 'Supplier';
 
@@ -479,8 +505,12 @@ export default function usePartyLedger() {
             p.gstNumber = p.gstNumber || m.gstNumber || undefined;
         });
 
+        Object.values(grouped).forEach(p => {
+            p.phones = groupPhones(aliases, normalizePartyNumber(p.partyNumber)).filter(Boolean);
+        });
+
         return Object.values(grouped).sort((a, b) => a.partyName.localeCompare(b.partyName));
-    }, [transactions, openingBalances, appliedFilters, customersMaster, suppliersMaster]);
+    }, [transactions, openingBalances, appliedFilters, customersMaster, suppliersMaster, aliases]);
 
     const selectedPartyLedger = useMemo(() => {
         if (!selectedPartyName) return null;
@@ -755,6 +785,9 @@ export default function usePartyLedger() {
     // direct Firestore `where` query could silently miss variants.
     const deleteParty = async (party: PartySummary): Promise<{ deleted: number }> => {
         if (!currentUser?.companyId) throw new Error('Company ID not found.');
+        if ((party.phones?.length || 0) > 1) {
+            throw new Error('This party has merged numbers. Unmerge them in the Customer report first, then delete.');
+        }
         const companyId = currentUser.companyId;
         const {
             doc, deleteDoc, writeBatch,
@@ -905,6 +938,7 @@ export default function usePartyLedger() {
         customEndDate, setCustomEndDate,
         appliedFilters, setAppliedFilters,
         partySummaries,
+        aliases,
         selectedPartyName, setSelectedPartyName,
         selectedPartyLedger,
     };

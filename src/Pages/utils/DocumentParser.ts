@@ -80,12 +80,10 @@ const detectHeaderMap = (lines: string[]): HeaderMap | null => {
             // downstream — requiring a numeric token for it was causing rows with
             // missing HSN to be skipped entirely. Drop it from the count-matching set.
             const leading = found.filter(f => f.index < descIndex && f.key !== 'HSN').map(f => f.key);
-            const trailing = found.filter(f => f.index > descIndex && f.key !== 'HSN').map(f => f.key);
-            console.log('[DocumentParser] Header detected:', { leading, trailing, headerRawLine: rawLine });
+                        const trailing = found.filter(f => f.index > descIndex && f.key !== 'HSN').map(f => f.key);
             return { leading, trailing, headerRawLine: rawLine };
         }
     }
-    console.log('[DocumentParser] No table header detected -- will fall back to fixed patterns.');
     return null;
 };
 
@@ -167,7 +165,6 @@ const parseRowWithHeaderMap = (
     const unitMatch = rawLine.match(new RegExp(`\\b(${UNIT_REGEX_PART})\\.?\\b`, 'i'));
     const unit = unitMatch ? unitMatch[1].toUpperCase() : 'PCS';
 
-    console.log('[DocumentParser] Parsed row via header map:', { rawLine, name, quantity, unit, purchasePrice, finalAmount, calculatedDiscount });
 
     return {
         id: crypto.randomUUID(),
@@ -443,14 +440,12 @@ export const parseRawText = (text: string): ParsedData => {
     let extractedItems: ParsedItem[] = headerMap ? parseItemsWithHeaderMap(lines, headerMap) : [];
 
     // STRATEGY 2: no header found, or header-driven parsing found nothing usable
-    if (extractedItems.length === 0) {
-        console.log('[DocumentParser] Header-driven parsing found nothing, trying fixed patterns.');
+        if (extractedItems.length === 0) {
         extractedItems = parseItemsWithFixedPatterns(lines);
     }
 
     // STRATEGY 3: last resort, column-block reconstruction
-    if (extractedItems.length === 0) {
-        console.log('[DocumentParser] Fixed patterns found nothing, trying column-block fallback.');
+        if (extractedItems.length === 0) {
         extractedItems = reconstructFromColumnBlocks(lines);
     }
 

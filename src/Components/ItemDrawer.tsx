@@ -63,6 +63,15 @@ const unitMultiplierFor = (unit?: string, packetSize?: unknown) => {
     return 1;
 };
 
+// base price x quantity, rounded to 2 decimals. '' when either value is missing.
+const calcTierPrice = (base: string, qty: number): string => {
+    const b = parseFloat(base);
+    if (!b || !qty || qty <= 0) return '';
+    return String(Math.round(b * qty * 100) / 100);
+};
+
+// Brought over the formatImageUrl function from ItemAdd ...
+
 // Brought over the formatImageUrl function from ItemAdd to ensure Drive/Dropbox links work seamlessly
 const formatImageUrl = (url: string | null | undefined): string | null => {
     if (!url) return null;
@@ -529,12 +538,73 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
     };
 
     const updatePriceTier = (id: string, field: keyof PriceTierForm, value: string) => {
-        setPriceTiers(prev => prev.map(t => (t.id === id ? { ...t, [field]: value } : t)));
-    };
+    setPriceTiers(prev =>
+        prev.map(t => {
+            if (t.id !== id) return t;
+            const updated: any = { ...t, [field]: value };
+
+            // Quantity changed -> auto-fill price fields that are empty
+            // or still hold the previous auto-calculated value (not manually edited)
+            if (field === 'quantity') {
+                const oldQty = parseFloat(String(t.quantity)) || 0;
+                const newQty = parseFloat(value) || 0;
+                const sync = (cur: any, base: string, key: string) => {
+                    const curStr = String(cur ?? '');
+                    return curStr === '' || curStr === calcTierPrice(base, oldQty)
+                        ? calcTierPrice(base, newQty)
+                        : (t as any)[key];
+                };
+                updated.mrp = sync(t.mrp, String(formData.mrp ?? ''), 'mrp');
+                updated.salesPrice = sync(t.salesPrice, String(formData.salesPrice ?? ''), 'salesPrice');
+                updated.purchasePrice = sync(t.purchasePrice, String(formData.purchasePrice ?? ''), 'purchasePrice');
+            }
+            return updated;
+        })
+    );
+};
 
     const removePriceTier = (id: string) => {
-        setPriceTiers(prev => prev.filter(t => t.id !== id));
+    setPriceTiers(prev => prev.filter(t => t.id !== id));
+};
+
+// Keep untouched tier prices in sync when the base prices change
+const prevBaseRef = useRef({
+    mrp: String(formData.mrp ?? ''),
+    sale: String(formData.salesPrice ?? ''),
+    purchase: String(formData.purchasePrice ?? ''),
+});
+useEffect(() => {
+    const cur = {
+        mrp: String(formData.mrp ?? ''),
+        sale: String(formData.salesPrice ?? ''),
+        purchase: String(formData.purchasePrice ?? ''),
     };
+    const old = prevBaseRef.current;
+    prevBaseRef.current = cur;
+    if (old.mrp === cur.mrp && old.sale === cur.sale && old.purchase === cur.purchase) return;
+
+    // Item abhi load ho raha hai (form fill ho raha) -> tiers ko mat chhedo
+    if (loadedItemId === null || loadedItemId !== item?.id) return;
+
+    setPriceTiers(prev =>
+        prev.map(t => {
+            const qty = parseFloat(String(t.quantity)) || 0;
+            if (!qty) return t;
+            const sync = (curVal: any, oldBase: string, newBase: string) => {
+                const curStr = String(curVal ?? '');
+                return curStr === '' || curStr === calcTierPrice(oldBase, qty)
+                    ? calcTierPrice(newBase, qty)
+                    : curVal;
+            };
+            return {
+                ...t,
+                mrp: sync(t.mrp, old.mrp, cur.mrp),
+                salesPrice: sync(t.salesPrice, old.sale, cur.sale),
+                purchasePrice: sync(t.purchasePrice, old.purchase, cur.purchase),
+            };
+        })
+    );
+}, [formData.mrp, formData.salesPrice, formData.purchasePrice]);
 
     const addQuantitySlab = () => {
         setQuantitySlabs(prev => {
@@ -1264,7 +1334,7 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                             <dd className="m-0 text-right font-semibold tabular-nums">{fmtINR(uiDiscountAmt)}</dd>
                                             <dt className="text-[#45556c]">Profit</dt>
                                             <dd className={`m-0 text-right font-semibold tabular-nums ${uiProfit === null ? 'text-[#5b6b86] font-normal' : uiProfit < 0 ? 'text-[#d5000c]' : 'text-[#008236]'}`}>
-                                                {uiProfit === null ? 'needs cost' : fmtINR(uiProfit)}
+                                                {uiProfit === null ? (uiBase <= 0 ? 'needs price' : 'needs cost') : fmtINR(uiProfit)}
                                             </dd>
                                             <dt className="text-[#45556c]">In stock</dt>
                                             <dd className={`m-0 text-right font-semibold tabular-nums ${uiStock < 0 ? 'text-[#d5000c]' : ''}`}>{uiStock} pcs</dd>
@@ -1556,10 +1626,14 @@ export const ItemEditDrawer: React.FC<ItemEditDrawerProps> = ({ item, isOpen, on
                                             </FieldWrap>
 
                                             <FieldWrap label="Your profit">
-                                                <div className="flex h-10 items-center rounded-sm bg-(--dr-sunken) px-3 text-sm tabular-nums text-[#5b6b86]">
-                                                    {uiProfit === null ? 'Add purchase price' : fmtINR(uiProfit)}
-                                                </div>
-                                            </FieldWrap>
+    <div className="flex h-10 items-center rounded-sm bg-(--dr-sunken) px-3 text-sm tabular-nums text-[#5b6b86]">
+        {uiProfit === null
+            ? (uiBase <= 0 && uiPurchase <= 0 ? 'Add both prices'
+                : uiBase <= 0 ? 'Add sales price or MRP'
+                : 'Add purchase price')
+            : fmtINR(uiProfit)}
+    </div>
+</FieldWrap>
 
                                             <FieldWrap label="Tax (%)" htmlFor="edit-tax" warn={taxWarn}>
                                                 <div className="relative">

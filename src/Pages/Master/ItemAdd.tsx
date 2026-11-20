@@ -203,6 +203,15 @@ const ADD_ITEM_CSS = `
 .ai-fs-b{padding:14px 16px;display:grid;gap:12px 16px;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
 @media(min-width:768px){.ai-c3{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .ai-full{grid-column:1/-1}
+/* Basic details: 1 column on phone so Barcode / Unit never get squeezed, 2 columns from tablet up */
+/* Barcode + Unit side by side on every screen, equal width so Unit never gets squeezed */
+.ai-basic{grid-template-columns:repeat(2,minmax(0,1fr))}
+.ai-basic > *{min-width:0}
+.ai-basic .ai-fl,.ai-basic .ai-field{min-width:0;max-width:100%}
+.ai-basic .ai-field input{min-width:0;width:100%}
+/* SearchableSelect button must never be wider than its column */
+.ai-basic button,.ai-basic [role="combobox"]{max-width:100%;min-width:0}
+.ai-basic button span,.ai-basic [role="combobox"] span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ai-pair{display:grid;gap:12px;grid-template-columns:minmax(0,1fr)}
 @media(min-width:1024px){.ai-pair{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}}
 .ai-fl{display:grid;gap:4px;min-width:0;align-content:start}
@@ -487,7 +496,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   const [priceTiers, setPriceTiers] = useState<PriceTierForm[]>([]);
   const [quantitySlabs, setQuantitySlabs] = useState<QuantitySlab[]>([]);
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
-    const addCustomField = () =>
+  const addCustomField = () =>
     setCustomFields(prev => [...prev, { id: crypto.randomUUID(), label: '', value: '', type: 'text' }]);
   const removeCustomField = (id: string) =>
     setCustomFields(prev => prev.filter(f => f.id !== id));
@@ -1377,7 +1386,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
         const rowMoq = parseInt(safeGetVal(row, 14)) || 1;
         const rowImageUrlStr = safeGetVal(row, 15);
         const rowDescription = safeGetVal(row, 16);
-                const rowCustom = customColumns
+        const rowCustom = customColumns
           .map(c => {
             const cell = row.getCell(c.col).value;
             const value = c.type === 'date'
@@ -1867,6 +1876,10 @@ const ItemAdd: React.FC<ItemAddProps> = ({
   const pvPrice = pvSale || pvMrp;
   const pvMargin = pvSale > 0 && pvCost > 0 ? pvSale - pvCost : null;
   const pvMarginPct = pvMargin !== null ? Math.round((pvMargin / pvSale) * 100) : null;
+  const pvMarginHint =
+    pvSale <= 0 && pvCost <= 0 ? 'Add both prices'
+      : pvSale <= 0 ? 'Add sales price'
+        : 'Add purchase price';
   const pvOff = pvMrp > 0 && pvSale > 0 && pvSale < pvMrp ? Math.round(((pvMrp - pvSale) / pvMrp) * 100) : 0;
   const pvStock = parseInt(dStock, 10) || 0;
   const pvGroup = isTut
@@ -2166,7 +2179,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
           {/* ---------- Basic details ---------- */}
           <div className="ai-card">
             {cardHead('tag', 'amber', 'Basic details', <small>Name and price are required</small>)}
-            <div className="ai-fs-b" style={{ gridTemplateColumns: 'minmax(0,1.5fr) minmax(0,1fr)' }}>
+            <div className="ai-fs-b ai-basic">
               <TutorialStep
                 step={1}
                 currentStep={activeStep}
@@ -2254,8 +2267,8 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                 onSkip={skipTutorial}
                 mobileArrowAlign="left"
               >
-                <div ref={barcodeRef}>
-                  {fl('Barcode',
+               <div ref={barcodeRef} style={{ minWidth: 0 }}>
+  {fl('Barcode',
                     <div className="ai-field" style={{ paddingRight: 4 }}>
                       <input type="text" value={dBarcode} onChange={(e) => setItemBarcode(e.target.value)} placeholder="Scan or type" />
                       <button type="button" onClick={() => setIsScannerOpen(true)} className="ai-btn ai-btn--ghost ai-btn--icon ai-btn--sm" aria-label="Scan barcode">
@@ -2274,10 +2287,10 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                 onSkip={skipTutorial}
                 mobileArrowAlign="left"
               >
-                <div ref={unitRef}>
+                <div ref={unitRef} style={{ minWidth: 0 }}>
                   {fl('Unit',
-                    <div style={{ display: 'grid', gap: 8 }}>
-                      <SearchableSelect
+  <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'minmax(0,1fr)', minWidth: 0 }}>
+    <SearchableSelect
                         theme={theme}
                         options={UNIT_OPTIONS}
                         value={dUnit}
@@ -2285,7 +2298,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                         placeholder="Select unit"
                       />
                       {!isTut && itemUnit === 'pkt' && (
-                        <div className="ai-field" style={{ flex: 1 }}>
+                        <div className="ai-field">
                           <input type="number" value={packetSize} onChange={(e) => setPacketSize(e.target.value)} placeholder="Qty per pkt" min="1" />
                         </div>
                       )}
@@ -2337,7 +2350,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                 {fl('Your margin',
                   <div className={`ai-field ai-margin${pvMargin === null ? ' ai-margin--empty' : pvMargin < 0 ? ' ai-margin--neg' : ''}`}>
                     {pvMargin === null ? (
-                      <span>Add both prices</span>
+                      <span>{pvMarginHint}</span>
                     ) : (
                       <>
                         <span style={{ fontVariantNumeric: 'tabular-nums' }}>{inr(pvMargin)}</span>
@@ -2814,7 +2827,7 @@ const ItemAdd: React.FC<ItemAddProps> = ({
                       <button type="button" onClick={() => removeCustomField(f.id)} className="ai-iconbtn ai-x" aria-label="Remove field">
                         <AiIcon name="x" sm />
                       </button>
-                                            <div className="ai-g2" style={{ paddingRight: 28, gridTemplateColumns: 'minmax(0,1.2fr) minmax(0,1.2fr) minmax(0,.8fr)' }}>
+                      <div className="ai-g2" style={{ paddingRight: 28, gridTemplateColumns: 'minmax(0,1.2fr) minmax(0,1.2fr) minmax(0,.8fr)' }}>
                         {fl('Field name',
                           <div className="ai-field ai-field--sm">
                             <input type="text" list="ai-cf-labels" value={f.label}

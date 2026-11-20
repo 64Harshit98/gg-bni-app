@@ -26,7 +26,6 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
     useEffect(() => {
         if (isOpen) {
             if (!scannerRef.current) {
-                console.log("Initializing Barcode Scanner with advanced config...");
                 // ✅ 1. Add experimental features for better 1D barcode detection
                 const config = {
                     verbose: false,

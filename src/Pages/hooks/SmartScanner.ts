@@ -114,9 +114,6 @@ export const useSmartScanner = () => {
                 for (let p = 1; p <= Math.min(pdf.numPages, MAX_PDF_PAGES); p++) {
                     const res = await scanSmartInvoice({ imageBase64: await renderPageToJpeg(pdf, p), previousBands });
                     const d = res.data as ScanResponse;
-                    console.log(`[SmartScan] Page ${p} raw text:\n`, d.text);
-                    console.log(`[SmartScan] Page ${p} structured items:`, d.items);
-                    console.log(`[SmartScan] Page ${p} bands used:`, d.bands);
                     if (d.text) texts.push(d.text);
                     if (d.items) items.push(...d.items);
                     if (d.bands && d.bands.length > 0) previousBands = d.bands; // reused if next page's own header isn't found
@@ -126,8 +123,6 @@ export const useSmartScanner = () => {
             } else if (file.type.startsWith('image/')) {
                 const res = await scanSmartInvoice({ imageBase64: await fileToBase64(file) });
                 const d = res.data as ScanResponse;
-                console.log('[SmartScan] raw text:\n', d.text);
-               console.log('[SmartScan] structured items:', d.items);
                 extractedData = buildExtractedData(d.text, d.items ?? []);
 
             } else {

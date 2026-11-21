@@ -358,10 +358,12 @@ const OrdersReturnPage: React.FC = () => {
   // --- CALCULATION LOGIC (UI) ---
   const {
     totalReturnGross,
+    returnExclusiveTax,
     totalExchangeValue,
+    roundOff,
     finalBalance,
     discountDeducted
-  } = useReturnSummary(itemsToReturn, exchangeItems, selectedSale, modeOfReturn);
+  } = useReturnSummary(itemsToReturn, exchangeItems, selectedSale, modeOfReturn, availableItems);
 
   const {
     isDrawerOpen, setIsDrawerOpen,
@@ -465,6 +467,10 @@ const OrdersReturnPage: React.FC = () => {
   const vReturnGross = isTutorialActive ? SAMPLE_SUMMARY.returnGross : totalReturnGross;
   const vDiscount = isTutorialActive ? SAMPLE_SUMMARY.discount : discountDeducted;
   const vExchangeValue = isTutorialActive ? SAMPLE_SUMMARY.exchangeValue : totalExchangeValue;
+  // GST added on top of the returned items (orders billed with exclusive GST)
+  const vReturnTax = isTutorialActive ? 0 : returnExclusiveTax;
+  const vRoundOff = isTutorialActive ? 0 : roundOff;
+  const showRoundOff = Math.abs(vRoundOff) >= 0.01;
   const vBalance = isTutorialActive ? SAMPLE_SUMMARY.balance : finalBalance;
   const vPaid = isTutorialActive ? SAMPLE_SUMMARY.paid : paidAmountOnSale;
   const vBalanceLabel = isTutorialActive ? 'Credit due' : getBalanceLabel();
@@ -986,6 +992,12 @@ const OrdersReturnPage: React.FC = () => {
                       <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 text-sm">
                         <dt className="text-[#45556c]">Return value</dt>
                         <dd className="text-right tabular-nums">₹{fmt(vReturnGross, 2)}</dd>
+                        {vReturnTax > 0 && (
+                          <>
+                            <dt className="text-xs text-[#45556c]">GST on returned items</dt>
+                            <dd className="text-right text-xs tabular-nums">+ ₹{fmt(vReturnTax, 2)}</dd>
+                          </>
+                        )}
                         {vDiscount > 0 && (
                           <>
                             <dt className="text-xs text-[#d5000c]">Less bill discount</dt>
@@ -994,8 +1006,14 @@ const OrdersReturnPage: React.FC = () => {
                         )}
                         {isExchange && (
                           <>
-                            <dt className="text-[#45556c]">Exchange value</dt>
+                            <dt className="text-[#45556c]">Exchange value{vReturnTax > 0 ? ' (incl. GST)' : ''}</dt>
                             <dd className="text-right tabular-nums text-[#9a3412]">₹{fmt(vExchangeValue, 2)}</dd>
+                          </>
+                        )}
+                        {showRoundOff && (
+                          <>
+                            <dt className="text-xs text-[#45556c]">Round off</dt>
+                            <dd className="text-right text-xs tabular-nums">{vRoundOff > 0 ? '+' : '-'} ₹{fmt(Math.abs(vRoundOff), 2)}</dd>
                           </>
                         )}
                       </dl>
@@ -1058,6 +1076,12 @@ const OrdersReturnPage: React.FC = () => {
               <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 text-sm">
                 <dt className="text-[#45556c]">Return value ({returnQty} {returnQty === 1 ? 'pc' : 'pcs'})</dt>
                 <dd className="text-right tabular-nums">₹{fmt(vReturnGross, 2)}</dd>
+                {vReturnTax > 0 && (
+                  <>
+                    <dt className="text-[#45556c]">Add: GST on returned items</dt>
+                    <dd className="text-right tabular-nums">+ ₹{fmt(vReturnTax, 2)}</dd>
+                  </>
+                )}
                 {vDiscount > 0 && (
                   <>
                     <dt className="text-[#d5000c]">Less: proportional discount</dt>
@@ -1068,12 +1092,18 @@ const OrdersReturnPage: React.FC = () => {
                 <dd className="text-right tabular-nums">₹{fmt(vPaid, 2)}</dd>
                 <dt className="mt-1 border-t border-[#f6e1d0] pt-2 text-base font-semibold">Net return value</dt>
                 <dd className="mt-1 border-t border-[#f6e1d0] pt-2 text-right text-base font-semibold tabular-nums">
-                  ₹{fmt(vReturnGross - vDiscount, 2)}
+                  ₹{fmt(vReturnGross + vReturnTax - vDiscount, 2)}
                 </dd>
                 {isExchange && (
                   <>
-                    <dt className="text-[#45556c]">Less: new items value</dt>
+                    <dt className="text-[#45556c]">Less: new items value{vReturnTax > 0 ? ' (incl. GST)' : ''}</dt>
                     <dd className="text-right tabular-nums text-[#9a3412]">- ₹{fmt(vExchangeValue, 2)}</dd>
+                  </>
+                )}
+                {showRoundOff && (
+                  <>
+                    <dt className="text-[#45556c]">Round off</dt>
+                    <dd className="text-right tabular-nums">{vRoundOff > 0 ? '+' : '-'} ₹{fmt(Math.abs(vRoundOff), 2)}</dd>
                   </>
                 )}
               </dl>

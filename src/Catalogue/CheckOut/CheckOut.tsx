@@ -24,7 +24,7 @@ import { EmptyState, Note, Photo, QtyStepper, Sheet, StoreFooter, StoreHeader, S
 import { formatINR, formatPhone, getPriceRounding, roundToInterval } from '../storefront/storefront.utils';
 import { storeAddress } from '../storefront/StoreSections';
 import StorefrontError from '../storefront/StorefrontError';
-import { readLeadData } from '../storefront/buyerStorage';
+import { readCheckoutDetails, readLeadData, saveCheckoutDetails } from '../storefront/buyerStorage';
 import { getMaxOrderQty } from '../storefront/productState';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
@@ -100,15 +100,25 @@ const CartPage: React.FC = () => {
         }
     };
 
-    const [shipping, setShipping] = useState<Address>(() => {
+    // Pre-fill from the last order placed on this device (city, state, address, GSTIN too),
+    // unless the buyer has since signed in with a different mobile number.
+    const [initialDetails] = useState(() => {
         const lead = getSavedLead();
-        return { name: lead.name, phone: lead.phone, city: '', state: '', address: '', gstin: '' };
+        const saved = readCheckoutDetails();
+        const usable = saved && (!lead.phone || !saved.billing.phone || saved.billing.phone === lead.phone) ? saved : null;
+        const empty: Address = { name: '', phone: '', city: '', state: '', address: '', gstin: '' };
+        const billing: Address = {
+            ...empty,
+            ...(usable?.billing ?? {}),
+            name: lead.name || usable?.billing.name || '',
+            phone: lead.phone || usable?.billing.phone || '',
+        };
+        const shipping: Address = usable && !usable.sameAsBilling && usable.shipping ? { ...empty, ...usable.shipping } : { ...billing };
+        return { billing, shipping, same: usable ? usable.sameAsBilling : true };
     });
-    const [billing, setBilling] = useState<Address>(() => {
-        const lead = getSavedLead();
-        return { name: lead.name, phone: lead.phone, city: '', state: '', address: '', gstin: '' };
-    });
-    const [isSameAsShipping, setIsSameAsShipping] = useState<boolean>(true);
+    const [shipping, setShipping] = useState<Address>(initialDetails.shipping);
+    const [billing, setBilling] = useState<Address>(initialDetails.billing);
+    const [isSameAsShipping, setIsSameAsShipping] = useState<boolean>(initialDetails.same);
         const [movError, setMovError] = useState<string | null>(null);
     const [limitError, setLimitError] = useState<string | null>(null);
     const [specialInstruction, setSpecialInstruction] = useState("");
@@ -121,6 +131,13 @@ const CartPage: React.FC = () => {
         () => getPriceRounding(roundingSource),
         [roundingSource?.enableRounding, roundingSource?.roundingInterval]
     );
+    const storeData = useMemo(() => (storefront ? toStorefrontPageData(storefront) : null), [storefront]);
+    // The cart (localStorage) keeps each item as it was when added — a GST rate set on
+    // the item afterwards would never reach the bill. Take the rate from the live catalogue.
+    const liveTaxById = useMemo(
+        () => new Map((storeData?.items ?? []).map((i) => [String(i.id), Number(i.tax ?? 0) || 0])),
+        [storeData]
+    );
     const cartItems = useMemo(() => rawCartItems.map((c) => {
         const addOnSum = ((c as { addOns?: { price?: number }[] }).addOns ?? [])
             .reduce((s, a) => s + (Number(a.price) || 0), 0);
@@ -129,11 +146,16 @@ const CartPage: React.FC = () => {
         const baseSalesPrice = c.baseSalesPrice !== undefined
             ? roundToInterval(Number(c.baseSalesPrice), rounding)
             : undefined;
-        return { ...c, salesPrice, ...(baseSalesPrice !== undefined ? { baseSalesPrice } : {}) };
-    }) as typeof rawCartItems, [rawCartItems, rounding]);
+        const liveTax = liveTaxById.get(String(c.id));
+        return {
+            ...c,
+            salesPrice,
+            ...(baseSalesPrice !== undefined ? { baseSalesPrice } : {}),
+            ...(liveTax !== undefined ? { tax: liveTax } : {}),
+        };
+    }) as typeof rawCartItems, [rawCartItems, rounding, liveTaxById]);
 
     // ── Edit add-ons of a cart line ──
-    const storeData = useMemo(() => (storefront ? toStorefrontPageData(storefront) : null), [storefront]);
     const [editLineKey, setEditLineKey] = useState<string | null>(null);
     const [editSel, setEditSel] = useState<Record<string, string[]>>({});
 
@@ -297,6 +319,21 @@ const CartPage: React.FC = () => {
     useEffect(() => {
         if (isSameAsShipping) setShipping({ ...billing });
     }, [isSameAsShipping, billing]);
+
+    // Remember the full delivery details once an order goes through
+    useEffect(() => {
+        if (!orderSuccess) return;
+        const clean = (a: Address) => ({
+            name: a.name || '', phone: a.phone || '', city: a.city || '',
+            state: a.state || '', address: a.address || '', gstin: a.gstin || '',
+        });
+        saveCheckoutDetails({
+            billing: clean(billing),
+            shipping: isSameAsShipping ? undefined : clean(shipping),
+            sameAsBilling: isSameAsShipping,
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [orderSuccess]);
 
     const shortBy = () => Math.max(0, minOrder - totalPay);
     const movMessage = () => `Minimum order is ${formatINR(minOrder)}. Add ${formatINR(shortBy())} more to place this order.`;

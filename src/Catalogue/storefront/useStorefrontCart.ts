@@ -94,19 +94,27 @@ export const useStorefrontCart = ({ companyId, settings, allItems, currentUser }
                     unitMultiplier: c.item.unitMultiplier ?? 1, tax: c.item.tax,
                 };
             });
-            const { itemsForFirebase: taxedItems, totalAmount } = buildUpcomingSyncPayload(cartItemsForTax, scheme, taxType);
+            const { itemsForFirebase: taxedItems, totalAmount, roundOff, totalTax, baseAmount } = buildUpcomingSyncPayload(cartItemsForTax, scheme, taxType);
 
             const items = updatedCart.map((c, idx) => {
+                const t = taxedItems[idx];
                 const line: Record<string, unknown> = {
                     id: String(c.item.id),
                     docId: c.item.firestoreDocId || c.item.id,
                     name: c.item.name + addOnText(c.item),
                     quantity: c.quantity,
-                    mrp: taxedItems[idx].mrp,
-                    salesPrice: taxedItems[idx].salesPrice,
+                    mrp: t.mrp,
+                    salesPrice: t.salesPrice,
                     unit: c.item.unit,
                     unitMultiplier: c.item.unitMultiplier ?? 1,
-                    finalPrice: taxedItems[idx].finalPrice,
+                    finalPrice: t.finalPrice,
+                    // GST, so the draft is a complete order once the owner confirms it
+                    effectiveUnitPrice: t.effectiveUnitPrice,
+                    tax: t.tax,
+                    taxRate: t.taxRate,
+                    taxType: t.taxType,
+                    taxableAmount: t.taxableAmount,
+                    taxAmount: t.taxAmount,
                 };
                 Object.keys(line).forEach((k) => line[k] === undefined && delete line[k]);
                 return line;
@@ -131,6 +139,11 @@ export const useStorefrontCart = ({ companyId, settings, allItems, currentUser }
                 isLead: true,
                 items,
                 totalAmount,
+                roundOff,
+                totalTax,
+                baseAmount,
+                gstScheme: scheme,
+                taxType,
                 paidAmount: 0,
                 updatedAt: serverTimestamp(),
             };

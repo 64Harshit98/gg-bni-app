@@ -81,7 +81,7 @@ export const useCart = (
             if (!snap.exists()) return;
 
             const { scheme: syncScheme, taxType: syncTaxType } = deriveTaxContext(salesSettings);
-            const { itemsForFirebase, totalAmount: roundedTotalAmount, roundOff: roundOffAmt } = buildUpcomingSyncPayload(updatedCart, syncScheme, syncTaxType);
+            const { itemsForFirebase, totalAmount: roundedTotalAmount, roundOff: roundOffAmt, totalTax, baseAmount } = buildUpcomingSyncPayload(updatedCart, syncScheme, syncTaxType);
 
             await setDoc(
                 orderRef,
@@ -89,6 +89,10 @@ export const useCart = (
                     items: itemsForFirebase,
                     totalAmount: roundedTotalAmount, // Save rounded amount
                     roundOff: roundOffAmt,           // Save round off difference
+                    totalTax,
+                    baseAmount,
+                    gstScheme: syncScheme,
+                    taxType: syncTaxType,
                     updatedAt: serverTimestamp(),
                 },
                 { merge: true }

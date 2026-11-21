@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { doc, collection, serverTimestamp, increment, runTransaction } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
 import type { CartItem, Address } from '../checkOut.types';
-import { buildOrderLineItems, computeOrderLevelTotals } from '../checkOut.calculations';
+import { buildOrderLineItems, computeOrderLevelTotals, deriveTaxContext } from '../checkOut.calculations';
 import { safeGet, safeRemove } from '../../../lib/safeStorage';
 import { getMaxOrderQty } from '../../storefront/productState';
 import { readLeadData } from '../../storefront/buyerStorage';
@@ -119,7 +119,18 @@ export const usePlaceOrder = ({
                 // payment time. Every other screen reads these persisted fields
                 // instead of recomputing from the company's *current* settings, so
                 // this order's numbers stay fixed unless the bill is itself edited.
-                const builtItems = buildOrderLineItems(cartItems, scheme, taxType, applyExclusiveTax);
+                // GST from the fresh reads above, not the page's copy: the buyer's cart keeps
+                // each item as it was when added, and the storefront bundle can be minutes old
+                // — a GST rate or scheme changed since then must still reach the bill.
+                const liveTax = settingsSnap.exists()
+                    ? deriveTaxContext(settingsSnap.data() as any)
+                    : { scheme, taxType, applyExclusiveTax };
+                const rateById = new Map(itemSnaps.filter((s) => s.exists()).map((s) => [s.id, Number(s.data()!.tax ?? 0) || 0]));
+                const taxedCart = cartItems.map((c) => {
+                    const rate = rateById.get(String(c.id));
+                    return rate === undefined ? c : { ...c, tax: rate };
+                });
+                const builtItems = buildOrderLineItems(taxedCart, liveTax.scheme, liveTax.taxType, liveTax.applyExclusiveTax);
                 // Orders / bill me naam ke saath amount dikhane ke liye add-on ka naam + price alag save karo.
                 // buildOrderLineItems cartItems ka hi map hai, isliye index se jodte hain (length match hone par hi).
                 const orderItems = builtItems.length === cartItems.length
@@ -176,8 +187,8 @@ export const usePlaceOrder = ({
                     baseAmount: Number(orderTotals.itemsBase.toFixed(2)),
                     manualDiscount: 0,
                     expenses: [],
-                    gstScheme: scheme,
-                    taxType: taxType,
+                    gstScheme: liveTax.scheme,
+                    taxType: liveTax.taxType,
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp(),
                     specialInstruction: specialInstruction || "",

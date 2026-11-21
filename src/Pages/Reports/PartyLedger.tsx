@@ -2379,9 +2379,10 @@ const PartyLedger: React.FC = () => {
                     <button onClick={(e) => { e.stopPropagation(); sendReminderFor(party, whatsappProvider); }} disabled={sendingReminderFor === party.partyNumber} className={`inline-flex items-center justify-center gap-1.5 rounded-sm bg-blue-600 font-semibold text-white hover:bg-blue-700 disabled:opacity-50 ${btn}`}>
                         <MessageCircle size={13} /> {sendingReminderFor === party.partyNumber ? 'Sending…' : 'Remind'}
                     </button>
-                ) : compact && hasDue ? <span /> : null}
+                ) : null}
                 {hasDue ? (
-                    <button onClick={(e) => { e.stopPropagation(); openSettleAll(party); }} className={`rounded-sm border border-slate-300 bg-white font-medium text-slate-700 hover:border-slate-400 ${btn}`}>
+                    // No Remind for a party you owe (supplier) — Settle takes the whole row instead of floating
+                    <button onClick={(e) => { e.stopPropagation(); openSettleAll(party); }} className={`rounded-sm border border-slate-300 bg-white font-medium text-slate-700 hover:border-slate-400 ${btn} ${compact && !showRemind ? 'col-span-2' : ''}`}>
                         Settle
                     </button>
                 ) : (

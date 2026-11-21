@@ -29,6 +29,25 @@ export const resolveUnitPrice = (item: Pick<OrderItem, 'effectiveUnitPrice' | 'c
     return Number(item.effectiveUnitPrice ?? item.customPrice ?? item.salesPrice ?? item.mrp ?? 0);
 };
 
+/**
+ * Whether an order was billed with GST. Uses the bill-level snapshot saved on the order
+ * (checkout / edit-save); older orders without it fall back to whether any tax was
+ * recorded on the order. Never reads the company's *current* settings.
+ */
+export const isOrderTaxEnabled = (order: { gstScheme?: string | null; taxType?: string | null; totalTax?: number; items?: { taxAmount?: number }[] } | null | undefined): boolean => {
+    if (!order) return false;
+    if (order.gstScheme) return isTaxEnabled({ gstScheme: order.gstScheme, taxType: order.taxType });
+    return Number(order.totalTax) > 0 || (order.items || []).some((i) => Number(i.taxAmount) > 0);
+};
+
+/**
+ * One order line's taxable value and GST — on the price the customer is charged
+ * (effectiveUnitPrice → customPrice → salesPrice → MRP only as the last fallback) × qty,
+ * exactly as computeOrderTotals builds the order total.
+ */
+export const orderLineTax = (item: MinimalItem, taxEnabled: boolean): LineTax =>
+    computeLineTax(resolveUnitPrice(item), Number(item.quantity || 0), item.taxType, Number(item.tax ?? item.taxRate ?? 0), taxEnabled);
+
 export interface OrderTotals {
     itemsBase: number;   // sum of taxable (tax-excluded) item value
     tax: number;         // total tax across all items

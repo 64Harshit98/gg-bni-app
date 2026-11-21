@@ -1,53 +1,58 @@
-import type { TransactionItem } from './ordersReturn.types';
+import type { TransactionItem, ExchangeItem } from './ordersReturn.types';
+import { computeOrderTotals, isOrderTaxEnabled as isOrderTaxEnabledShared, resolveUnitPrice, type OrderTotals } from '../Orders/orders.calculations';
+import { calculateLineTax } from '../../shared/calculations/itemCalculations';
 
 // ─────────────────────────────────────────────────────────────────────────
-// This file holds calculation functions moved verbatim out of
-// OrdersReturn.tsx (formatting/hoisting only — no behavior changes). This is
-// a verbatim extraction, not a consolidation and not a bug fix.
+// Return / exchange maths for catalogue orders.
 //
-// BIGGEST DIVERGENCE FROM Orders/orders.calculations.ts: OrdersReturn never
-// reads taxType/taxRate/tax, and never calls computeLineTax/isTaxEnabled (or
-// the shared shared/calculations/itemCalculations.ts formulas). Every return
-// and exchange line here is worked out purely from finalPrice/amount/mrp —
-// there is no tax-inclusive/exclusive reversal logic anywhere in this
-// module. Nothing in this file could be wired to the shared tax-split
-// function because OrdersReturn's original code never performed that split
-// in the first place; that gap is preserved as-is, not fixed.
+// Works the same way as Sales return (salesReturn.calculations.ts), on the
+// order's own per-line tax model:
+//  - each returned / exchanged line is valued at its unit price × qty, and GST
+//    is added on top for Exclusive lines (Inclusive lines already contain it);
+//  - the order's bill discount is taken back in proportion to the returned
+//    value (GST included on both sides of the ratio);
+//  - the remaining + exchanged lines are re-taxed and re-totalled with the
+//    exact formula the order editor uses (computeOrderTotals), so the saved
+//    order, its tax fields and the refund always agree.
 //
-// Other known divergences/oddities preserved verbatim (see each function's
-// comment for detail):
-//  - resolveSelectedSaleItemUnit vs resolveEffectiveUnitPriceForSave compute
-//    the "effective unit price" of the SAME original order line in two
-//    subtly different ways (different qty fallback, `??` vs `||`, and one
-//    of them drops `mrp` from the fallback chain entirely).
-//  - buildRecalculatedItemsList contains a real ASI (automatic semicolon
-//    insertion) bug: `Number(item.mrp)` on its own line followed by a
-//    dangling `0;` statement — the intended `|| 0` fallback never executes;
-//    it's a no-op expression statement. Preserved exactly.
+// The balance is the change in the order total (before − after). Order totals
+// are rounded to the rupee, so any rounding shows up as its own "round off".
+//
+// computeOrderReturn is the single source for both the live summary on the
+// return screen and the values written on save — they can't drift apart.
 // ─────────────────────────────────────────────────────────────────────────
 
-// ─── handleSelectSale mapping ───────────────────────────────────────────
-// Moved verbatim from the `.map()` callback inside handleSelectSale
-// (previously ~L271-296). Builds the on-screen "items available to return"
-// list from the raw items stored on the selected original Order.
-// NOTE: qty fallback is `|| 0`, lineTotal uses `??`, and the final price
-// fallback chain includes `mrp`. Compare with resolveEffectiveUnitPriceForSave
-// below, which looks similar but is NOT the same formula.
+type AnyLine = Record<string, any>;
+
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+/** The unit price the order total is built from (orders.calculations' resolveUnitPrice). */
+const unitOf = (line: AnyLine): number => resolveUnitPrice(line as Parameters<typeof resolveUnitPrice>[0]);
+const taxRateOf = (line: AnyLine) => Number(line.tax ?? line.taxRate ?? 0) || 0;
+
+/** Whether this order was billed with GST — shared with the tax report (orders.calculations). */
+export const isOrderTaxEnabled = (order: AnyLine | null | undefined): boolean => isOrderTaxEnabledShared(order);
+
+/** Tax type new (exchange) lines get: the same as the order's existing lines. */
+export const orderLineTaxType = (order: AnyLine | null | undefined): string => {
+  const fromLine = (order?.items || []).find((i: AnyLine) => i?.taxType)?.taxType;
+  if (fromLine) return String(fromLine);
+  return String(order?.taxType || '').toLowerCase() === 'exclusive' ? 'Exclusive' : 'Inclusive';
+};
+
+/** One order line at `qty`, split into taxable value / GST / line total. */
+export const splitOrderLine = (line: AnyLine, qty: number, taxEnabled: boolean) =>
+  calculateLineTax(unitOf(line) * qty, line.taxType, taxRateOf(line), taxEnabled);
+
+// ─── Original order line → row in "items to return" ────────────────────
+// Unit price is the one the order total is built from (resolveUnitPrice) —
+// before GST for Exclusive lines; the summary adds that GST on top.
 export const mapOrderItemToTransactionItem = (
   item: any
 ): (TransactionItem & { originalItemId: string; originalQuantity: number }) | null => {
   const id = item.id;
   if (!id) return null;
   const qty = Number(item.quantity) || 0;
-  const lineTotal = Number(item.finalPrice ?? item.amount ?? 0);
-  const fallbackUnit = qty > 0 ? lineTotal / qty : 0;
-  const unit =
-    item.effectiveUnitPrice !== undefined
-      ? Number(item.effectiveUnitPrice)
-      : fallbackUnit ||
-      Number(item.customPrice ?? item.unitPrice ?? item.salesPrice ?? item.mrp) ||
-      0;
-  const total = unit * qty;
+  const unit = unitOf(item);
 
   return {
     id,
@@ -56,15 +61,14 @@ export const mapOrderItemToTransactionItem = (
     quantity: qty,
     originalQuantity: qty,
     unitPrice: unit,
-    amount: total,
+    amount: round2(unit * qty),
     mrp: Number(item.mrp) || unit
   };
 };
 
 // ─── handleListChange 'discount' field branch ──────────────────────────
-// Moved verbatim from handleListChange (previously ~L405-423). Applies the
-// "round to nearest ₹5 below ₹100, else nearest ₹10" bucketing that only
-// this return/exchange screen uses — not present anywhere in Orders.
+// Applies the "round to nearest ₹5 below ₹100, else nearest ₹10" bucketing
+// that only this return/exchange screen uses — not present anywhere in Orders.
 export const computeDiscountRoundedPrice = (mrp: number, discountValue: number): number => {
   const basePrice = Number(mrp) || 0;
 
@@ -92,10 +96,8 @@ export interface CustomPriceApplication {
 }
 
 // ─── handleCustomPriceBlur ──────────────────────────────────────────────
-// Moved verbatim from the calculation portion of handleCustomPriceBlur
-// (previously ~L511-524). Caller is still responsible for the `isNaN(num)`
-// guard and for clearing `customPrice` on the item afterward — this
-// function only reproduces the numeric derivation.
+// Caller is still responsible for the `isNaN(num)` guard and for clearing
+// `customPrice` on the item afterward — this only does the numeric derivation.
 export const computeCustomPriceApplication = (
   mrp: number,
   quantity: number,
@@ -124,8 +126,7 @@ export interface ExchangeItemPricing {
 }
 
 // ─── addExchangeItem ─────────────────────────────────────────────────────
-// Moved verbatim from addExchangeItem (previously ~L537-558). Priority
-// order: salesPrice wins over presetDiscount if both are present.
+// Priority order: salesPrice wins over presetDiscount if both are present.
 export const computeExchangeItemPricing = (
   mrp: number,
   salesPrice: number,
@@ -160,13 +161,8 @@ export interface ExchangeItemEditRecompute {
 }
 
 // ─── handleSaveSuccess exchange-item recompute ──────────────────────────
-// Moved verbatim from the calculation portion of the setExchangeItems
-// updater inside handleSaveSuccess (previously ~L352-363). Runs when an
-// item's master data (mrp/salesPrice) is edited mid-return via the item
-// drawer, to keep any already-added exchange line in sync.
-// NOTE: this discount formula (gated on `newMrp > 0 && newSalesPrice > 0`,
-// no presetDiscount branch) is NOT the same formula as
-// computeExchangeItemPricing above — kept separate, not merged.
+// Runs when an item's master data (mrp/salesPrice) is edited mid-return via
+// the item drawer, to keep any already-added exchange line in sync.
 export const recomputeExchangeItemPricingOnEdit = (
   newMrp: number,
   newSalesPrice: number,
@@ -184,206 +180,157 @@ export const recomputeExchangeItemPricingOnEdit = (
   return { finalPrice, discount, newAmount };
 };
 
-// ─── shared original-invoice total ──────────────────────────────────────
-// This exact reduce (`sum + Number(item.finalPrice || 0)` over
-// selectedSale.items) appeared identically in two places in the original
-// file — the return-summary useMemo (previously ~L694-698) and
-// saveReturnTransaction's step 1 (previously ~L776-779). Proven identical,
-// so — unlike the two "effective unit price" resolvers below, which
-// diverge — this one is safely shared as a single function.
-export const computeOriginalInvoiceTotal = (items: any[] | undefined): number => {
-  return (items || []).reduce(
-    (sum: number, item: any) => sum + Number(item.finalPrice || 0),
-    0
-  );
-};
+// ─── The return / exchange itself ───────────────────────────────────────
 
-export interface ReturnSummary {
+export interface OrderReturnResult {
+  /** Returned lines at their unit price × qty — what the rows show. */
   totalReturnGross: number;
+  /** GST on the returned lines (for Inclusive lines it's already inside the gross). */
+  returnTax: number;
+  /** GST added on top of the gross (Exclusive lines only). */
+  returnExclusiveTax: number;
+  /** Gross + GST added on top: what the returned items were billed at. */
   totalReturnValue: number;
-  totalExchangeValue: number;
-  finalBalance: number;
+  /** Share of the order's bill discount that goes back with the returned items. */
   discountDeducted: number;
+  /** New (exchange) items including their GST. */
+  totalExchangeValue: number;
+  exchangeTax: number;
+  /** Rounding of the order total to the rupee, folded into the balance. */
+  roundOff: number;
+  /** > 0: owed to the customer (credit / refund). < 0: the customer pays. */
+  finalBalance: number;
+  /** The order's lines after the return, re-taxed. */
+  newItems: AnyLine[];
+  newManualDiscount: number;
+  before: OrderTotals;
+  after: OrderTotals;
 }
 
-// ─── Return summary (live UI) ───────────────────────────────────────────
-// Called from: OrdersReturn.tsx, inside the
-//   `useMemo(() => ..., [itemsToReturn, exchangeItems, selectedSale, modeOfReturn])`
-// that drives the on-screen return-value/exchange-value/final-balance
-// summary. Moved verbatim from the body of that useMemo (previously
-// ~L678-731). `totalReturnValue` is computed and returned here exactly as
-// before even though the original destructure at the call site never pulls
-// it out — dead-but-harmless, preserved as-is.
-export const computeReturnSummary = (
-  itemsToReturn: { amount?: number }[],
-  exchangeItems: { amount?: number }[],
-  selectedSale: { items?: any[]; manualDiscount?: number; paymentMethods?: Record<string, any> } | null,
-  modeOfReturn: string
-): ReturnSummary => {
-  const trg = itemsToReturn.reduce(
-    (sum, item) => sum + (item.amount || 0),
-    0
-  );
+export const computeOrderReturn = (
+  order: AnyLine | null,
+  itemsToReturn: TransactionItem[],
+  exchangeItems: ExchangeItem[],
+  modeOfReturn: string,
+  availableItems: AnyLine[]
+): OrderReturnResult => {
+  const taxEnabled = isOrderTaxEnabled(order);
+  const originalLines: AnyLine[] = order?.items || [];
+  const expenses = order?.expenses || [];
+  const manualDiscount = Number(order?.manualDiscount) || 0;
+  const isExchange = modeOfReturn === 'Exchange';
 
-  const tev = exchangeItems.reduce(
-    (sum, item) => sum + (item.amount || 0),
-    0
-  );
+  // 1. Returned lines
+  const lines = new Map<string, AnyLine>(originalLines.map((l) => [String(l.id), { ...l }]));
+  let totalReturnGross = 0;
+  let returnTax = 0;
+  let returnValue = 0;
+  itemsToReturn.forEach((r) => {
+    const line = lines.get(String(r.originalItemId));
+    if (!line) return;
+    const qty = Math.min(Number(r.quantity) || 0, Number(line.quantity) || 0);
+    if (qty <= 0) return;
+    const split = splitOrderLine(line, qty, taxEnabled);
+    totalReturnGross += unitOf(line) * qty;
+    returnTax += split.taxAmount;
+    returnValue += split.finalPrice;
+    line.quantity = Number(line.quantity) - qty;
+    if (line.quantity <= 0) lines.delete(String(r.originalItemId));
+  });
 
-  let dd = 0;
+  // 2. Exchange lines, taxed the way the order's own lines are
+  const exchangeTaxType = orderLineTaxType(order);
+  const added: AnyLine[] = [];
+  let totalExchangeValue = 0;
+  let exchangeTax = 0;
+  if (isExchange) {
+    exchangeItems.forEach((x) => {
+      const qty = Number(x.quantity) || 0;
+      if (qty <= 0) return;
+      const unit = Number(x.unitPrice) || (qty > 0 ? Number(x.amount) / qty : 0) || 0;
+      const master = availableItems.find((i) => String(i.id) === String(x.originalItemId));
+      const rate = Number(master?.tax ?? master?.taxRate ?? 0) || 0;
+      const split = calculateLineTax(unit * qty, exchangeTaxType, rate, taxEnabled);
+      totalExchangeValue += split.finalPrice;
+      exchangeTax += split.taxAmount;
 
-  if (selectedSale) {
-    const originalInvoiceTotal = computeOriginalInvoiceTotal(selectedSale.items);
-    const originalManualDiscount = Number(selectedSale.manualDiscount) || 0;
-
-    if (originalInvoiceTotal > 0 && originalManualDiscount > 0) {
-      const ratio = trg / originalInvoiceTotal;
-      dd = Math.round(originalManualDiscount * ratio * 100) / 100;
-    }
+      // Same item at the same price → just more of that line; otherwise its own line
+      const existing = [...lines.values(), ...added].find((l) =>
+        String(l.itemId || l.id) === String(x.originalItemId) && !l.tierId &&
+        Math.abs(unitOf(l) - unit) < 0.005 &&
+        Math.abs(taxRateOf(l) - rate) < 0.001
+      );
+      if (existing) {
+        existing.quantity = Number(existing.quantity) + qty;
+        return;
+      }
+      added.push({
+        id: x.id,
+        itemId: x.originalItemId,
+        name: x.name,
+        quantity: qty,
+        mrp: Number(x.mrp) || 0,
+        salesPrice: unit,
+        effectiveUnitPrice: unit,
+        customPrice: unit,
+        unitPrice: unit,
+        discount: Number(x.discount) || 0,
+        discount2: 0,
+        tax: rate,
+        taxRate: rate,
+        taxType: exchangeTaxType,
+        itemGroupId: master?.itemGroupId || '',
+        unit: master?.unit || 'pcs',
+        unitMultiplier: 1,
+        note: '',
+        imageUrl: master?.imageUrl || '',
+      });
+    });
   }
 
-  const totalReturnValue = trg - dd;
-
-  let fb = 0;
-
-  if (modeOfReturn === 'Exchange') {
-    fb = totalReturnValue - tev;
-  } else {
-    fb = totalReturnValue;
-  }
-
-  // fb is the true return/exchange difference — never capped to what was
-  // actually paid on the original order. A Credit Note is a book adjustment,
-  // not a cash outflow, so it must always reflect the real amount regardless
-  // of the order's paid status. (Matches the same fix applied to the
-  // Sales-return module's calculateReturnTotals — this cap zeroed the
-  // balance, and with it the Credit Note/Cash Refund choice, for any
-  // unpaid/due order.)
-  return {
-    totalReturnGross: trg,
-    totalReturnValue,
-    totalExchangeValue: tev,
-    finalBalance: Math.round(fb * 100) / 100,
-    discountDeducted: dd
-  };
-};
-
-// ─── saveReturnTransaction: original-items-map unit resolution ─────────
-// Moved verbatim from the forEach body that builds `originalItemsMap`
-// inside saveReturnTransaction (previously ~L758-772).
-// NOTE: this is deliberately NOT the same formula as
-// mapOrderItemToTransactionItem above, even though both resolve "the
-// effective unit price of an original order line":
-//  - qty fallback here is `|| 1` (mapOrderItemToTransactionItem uses `|| 0`)
-//  - total here uses `||` (mapOrderItemToTransactionItem uses `??`)
-//  - the final fallback chain here is customPrice ?? unitPrice ?? salesPrice
-//    — it does NOT fall through to `mrp` the way
-//    mapOrderItemToTransactionItem's chain does.
-// Both are preserved exactly as they were, not reconciled.
-export const resolveEffectiveUnitPriceForSave = (item: any): number => {
-  const qty = Number(item.quantity) || 1;
-  const total = Number(item.finalPrice || item.amount || 0);
-  const unit =
-    item.effectiveUnitPrice !== undefined
-      ? Number(item.effectiveUnitPrice)
-      : (qty > 0 ? total / qty : 0) ||
-      Number(item.customPrice ?? item.unitPrice ?? item.salesPrice) ||
-      0;
-
-  return unit;
-};
-
-// ─── saveReturnTransaction: post-merge item list recompute ─────────────
-// Moved verbatim from the `.map()` that builds `newItemsList` out of the
-// merged `originalItemsMap` (previously ~L871-889). FIXED a real ASI bug:
-// the `safeUnit` fallback chain used to end with a bare `Number(item.mrp)`
-// line followed by a dangling `0;` on the next line — with no `||` joining
-// them, JS's automatic semicolon insertion parsed this as TWO statements
-// (`const safeUnit = ... || Number(item.mrp);` then a no-op `0;` expression
-// statement), so the intended "fall back to 0" never actually ran, and
-// `safeUnit` could end up `NaN` if `item.mrp` was also falsy/NaN. Fixed by
-// joining the fallback chain with `||` as originally intended.
-export const buildRecalculatedItemsList = (itemsMap: Map<string, any>): any[] => {
-  return Array.from(itemsMap.values()).map(item => {
-    const safeUnit =
-      Number(item._effectiveUnitPrice) ||
-      Number(item.unitPrice) ||
-      Number(item.mrp) ||
-      0;
-
-    const lineTotal = safeUnit * Number(item.quantity);
-
-    const { _effectiveUnitPrice, ...clean } = item;
-
+  // 3. Re-tax every remaining / new line (same split the order editor uses)
+  const newItems = [...lines.values(), ...added].map((l) => {
+    const qty = Number(l.quantity) || 0;
+    const split = splitOrderLine(l, qty, taxEnabled);
     return {
-      ...clean,
-      unitPrice: safeUnit,
-      salesPrice: safeUnit,
-      finalPrice: lineTotal,
-      amount: lineTotal
+      ...l,
+      quantity: qty,
+      effectiveUnitPrice: round2(unitOf(l)),
+      taxableAmount: round2(split.taxableAmount),
+      taxAmount: round2(split.taxAmount),
+      finalPrice: round2(split.finalPrice),
     };
   });
-};
 
-export interface ItemGrossTotals {
-  subtotal: number;
-  totalItemDiscount: number;
-}
+  // 4. Bill discount goes back in proportion to what was returned
+  const before = computeOrderTotals(originalLines as any, expenses, manualDiscount, taxEnabled);
+  const itemsTotalBefore = before.itemsBase + before.tax;
+  const discountDeducted = manualDiscount > 0 && itemsTotalBefore > 0 && returnValue > 0
+    ? round2(Math.min(manualDiscount, manualDiscount * (returnValue / itemsTotalBefore)))
+    : 0;
+  const newManualDiscount = round2(Math.max(0, manualDiscount - discountDeducted));
+  const after = computeOrderTotals(newItems as any, expenses, newManualDiscount, taxEnabled);
 
-// ─── saveReturnTransaction: gross/discount totals over the new item list ─
-// Moved verbatim from the `.reduce()` immediately after newItemsList is
-// built (previously ~L891-900).
-export const computeItemGrossTotals = (items: { mrp: number; quantity: number; finalPrice: number }[]): ItemGrossTotals => {
-  return items.reduce(
-    (acc, item) => {
-      const gross = item.mrp * item.quantity;
-      const discount = gross - item.finalPrice;
-      acc.subtotal += gross;
-      acc.totalItemDiscount += discount;
-      return acc;
-    },
-    { subtotal: 0, totalItemDiscount: 0 }
-  );
-};
+  // 5. Balance = how much the order total went down (up, for a bigger exchange)
+  const finalBalance = round2(before.total - after.total);
+  const unrounded = returnValue - discountDeducted - totalExchangeValue;
+  const returnExclusiveTax = round2(returnValue - totalReturnGross);
 
-export interface ManualDiscountDeduction {
-  discountDeduction: number;
-  newManualDiscount: number;
-}
-
-// ─── saveReturnTransaction: proportional manual-discount deduction ─────
-// Moved verbatim from the manual-discount block of saveReturnTransaction
-// (previously ~L902-920). NOTE: this proportional-discount formula is
-// gated on `returnedItemsGrossValue` (the sum of returned items' effective
-// unit price × qty), which is DIFFERENT from the `dd`/discountDeducted
-// figure computed in computeReturnSummary above, which is gated on
-// `trg` (itemsToReturn's `.amount` sum) instead. The two are computed from
-// different source values and are not guaranteed to match — preserved as
-// two separate calculations, not reconciled.
-export const computeManualDiscountDeduction = (
-  originalManualDiscount: number,
-  originalInvoiceTotal: number,
-  returnedItemsGrossValue: number
-): ManualDiscountDeduction => {
-  let discountDeduction = 0;
-
-  if (
-    originalManualDiscount > 0 &&
-    originalInvoiceTotal > 0 &&
-    returnedItemsGrossValue > 0
-  ) {
-    discountDeduction =
-      (returnedItemsGrossValue / originalInvoiceTotal) *
-      originalManualDiscount;
-  }
-
-  discountDeduction = Math.round(discountDeduction * 100) / 100;
-  const newManualDiscount = Math.max(
-    0,
-    originalManualDiscount - discountDeduction
-  );
-
-  return { discountDeduction, newManualDiscount };
+  return {
+    totalReturnGross: round2(totalReturnGross),
+    returnTax: round2(returnTax),
+    returnExclusiveTax: returnExclusiveTax > 0 ? returnExclusiveTax : 0,
+    totalReturnValue: round2(returnValue),
+    discountDeducted,
+    totalExchangeValue: round2(totalExchangeValue),
+    exchangeTax: round2(exchangeTax),
+    roundOff: round2(finalBalance - unrounded),
+    finalBalance,
+    newItems,
+    newManualDiscount,
+    before,
+    after,
+  };
 };
 
 export interface PostReturnPaymentStatus {
@@ -395,8 +342,6 @@ export interface PostReturnPaymentStatus {
 }
 
 // ─── saveReturnTransaction: post-return payment/status clamp ───────────
-// Moved verbatim from the payment-status block near the end of
-// saveReturnTransaction (previously ~L1017-1034).
 export const computePostReturnPaymentStatus = (
   actualPaid: number,
   paymentDetails: Record<string, any> | undefined | null,

@@ -2039,9 +2039,10 @@ const CataloguePartyLedger: React.FC = () => {
                     <button onClick={(e) => { e.stopPropagation(); sendReminderFor(party); }} disabled={sendingReminderFor === party.partyNumber} className={`inline-flex items-center justify-center gap-1.5 ${primaryBtn} ${btn}`}>
                         <MessageCircle size={13} /> {sendingReminderFor === party.partyNumber ? 'Sending…' : 'Remind'}
                     </button>
-                ) : compact && hasDue ? <span /> : null}
+                ) : null}
                 {hasDue ? (
-                    <button onClick={(e) => { e.stopPropagation(); openSettleAll(party); }} className={`rounded-sm border border-slate-300 bg-white font-medium text-slate-700 hover:border-orange-300 ${btn}`}>
+                    // No Remind for a party you owe (supplier) — Settle takes the whole row instead of floating
+                    <button onClick={(e) => { e.stopPropagation(); openSettleAll(party); }} className={`rounded-sm border border-slate-300 bg-white font-medium text-slate-700 hover:border-orange-300 ${btn} ${compact && !showRemind ? 'col-span-2' : ''}`}>
                         Settle
                     </button>
                 ) : (

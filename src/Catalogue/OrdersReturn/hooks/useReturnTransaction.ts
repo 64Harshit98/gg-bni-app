@@ -16,12 +16,9 @@ import { calcReturnReversal, readSaleLoyalty, writeLoyaltyInBatch } from '../../
 import type { Order, OrderItem } from '../../Orders';
 import type { TransactionItem, ExchangeItem } from '../ordersReturn.types';
 import {
-  computeOriginalInvoiceTotal,
-  resolveEffectiveUnitPriceForSave,
-  buildRecalculatedItemsList,
-  computeItemGrossTotals,
-  computeManualDiscountDeduction,
+  computeOrderReturn,
   computePostReturnPaymentStatus,
+  mapOrderItemToTransactionItem,
 } from '../ordersReturn.calculations';
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -113,92 +110,45 @@ export const useReturnTransaction = ({
       const finalPartyNumber =
         (completionData?.partyNumber || partyNumber || '').trim();
 
-      // --- 1. ORIGINAL ITEMS MAP ---
-      const originalItemsMap = new Map<string, any>();
-
-      (selectedSale.items || []).forEach((item: any) => {
-        const safeId = item.id;
-        const unit = resolveEffectiveUnitPriceForSave(item);
-
-        originalItemsMap.set(safeId, {
-          ...item,
-          _effectiveUnitPrice: unit
-        });
+      // --- 1–5. RETURN / EXCHANGE MATHS ---
+      // Same function as the on-screen summary: re-taxes the remaining and new
+      // lines, takes back the bill discount in proportion, and works out the
+      // balance as the change in the order total.
+      const result = computeOrderReturn(
+        selectedSale as any,
+        itemsToReturn,
+        modeOfReturn === 'Exchange' ? exchangeItems : [],
+        modeOfReturn,
+        availableItems as any[]
+      );
+      const newItemsList = result.newItems.map((item) => {
+        const clean: Record<string, any> = { ...item };
+        Object.keys(clean).forEach((k) => { if (clean[k] === undefined) delete clean[k]; });
+        return clean as OrderItem;
       });
+      const discountDeduction = result.discountDeducted;
+      const newManualDiscount = result.newManualDiscount;
+      const updatedFinalAmount = result.after.total;
 
-
-      const originalInvoiceTotal = computeOriginalInvoiceTotal(selectedSale.items);
-
-      const validInventoryIds = new Set(availableItems.map(i => i.id));
-
-      // --- 2. HANDLE RETURNS ---
-      let returnedItemsGrossValue = 0;
-
-      // --- 2. HANDLE RETURNS ---
-      if (modeOfReturn !== 'Exchange') {
-        itemsToReturn.forEach(returnItem => {
-          const originalItem = originalItemsMap.get(returnItem.originalItemId);
-
-          if (originalItem) {
-            originalItem.quantity -= returnItem.quantity;
-            returnedItemsGrossValue +=
-              originalItem._effectiveUnitPrice * returnItem.quantity;
-
-            if (originalItem.quantity <= 0) {
-              originalItemsMap.delete(returnItem.originalItemId);
-            }
-          }
-        });
-      }
-
-      // --- 3. HANDLE EXCHANGE ---
-      if (modeOfReturn === 'Exchange') {
-        // 🔁 remove returned items first
-        itemsToReturn.forEach(returnItem => {
-          const originalItem = originalItemsMap.get(returnItem.originalItemId);
-
-          if (originalItem) {
-            originalItem.quantity -= returnItem.quantity;
-
-            if (originalItem.quantity <= 0) {
-              originalItemsMap.delete(returnItem.originalItemId);
-            }
-          }
-        });
-      }
-
-      // ➕ add exchange items
-      if (modeOfReturn === 'Exchange') {
-        exchangeItems.forEach(exchangeItem => {
-          const existingItem = originalItemsMap.get(exchangeItem.originalItemId);
-
-          if (existingItem) {
-            existingItem.quantity += exchangeItem.quantity;
-          } else {
-            originalItemsMap.set(exchangeItem.originalItemId, {
-              id: exchangeItem.originalItemId,
-              name: exchangeItem.name,
-              mrp: exchangeItem.mrp,
-              quantity: exchangeItem.quantity,
-              discount: exchangeItem.discount || 0,
-              finalPrice: exchangeItem.amount,
-              amount: exchangeItem.amount,
-              unitPrice:
-                exchangeItem.amount / exchangeItem.quantity || exchangeItem.mrp,
-              _effectiveUnitPrice:
-                exchangeItem.amount / exchangeItem.quantity || exchangeItem.mrp
-            });
-          }
-        });
-      }
+      const validInventoryIds = new Set(availableItems.map(i => String(i.id)));
 
       // --- 3.5 HANDLE RETURN STOCK (ADD BACK) ---
+      // Lines added in the order editor have their own line id — the stock item is
+      // `itemId`. A pack line (e.g. box of 6) took quantity × pieces out of stock at
+      // checkout, so the same goes back.
+      const restoreByItem = new Map<string, number>();
       itemsToReturn.forEach(returnItem => {
-        if (validInventoryIds.has(returnItem.originalItemId)) {
+        const billLine: any = (selectedSale.items || []).find((i: any) => i.id === returnItem.originalItemId);
+        const stockId = String(billLine?.itemId || billLine?.id || returnItem.originalItemId);
+        const pieces = Number(billLine?.unitMultiplier) || 1;
+        restoreByItem.set(stockId, (restoreByItem.get(stockId) || 0) + Number(returnItem.quantity) * pieces);
+      });
+      restoreByItem.forEach((qty, stockId) => {
+        if (validInventoryIds.has(stockId)) {
           batch.update(
-            doc(db, 'companies', companyId, 'items', returnItem.originalItemId),
+            doc(db, 'companies', companyId, 'items', stockId),
             {
-              stock: firebaseIncrement(returnItem.quantity),
+              stock: firebaseIncrement(qty),
               updatedAt: serverTimestamp()
             }
           );
@@ -225,8 +175,8 @@ export const useReturnTransaction = ({
       });
 
       // --- 3.6 HANDLE EXCHANGE STOCK (DEDUCT) ---
-      exchangeItems.forEach(exchangeItem => {
-        if (validInventoryIds.has(exchangeItem.originalItemId)) {
+      (modeOfReturn === 'Exchange' ? exchangeItems : []).forEach(exchangeItem => {
+        if (validInventoryIds.has(String(exchangeItem.originalItemId))) {
           batch.update(
             doc(db, 'companies', companyId, 'items', exchangeItem.originalItemId),
             {
@@ -236,22 +186,6 @@ export const useReturnTransaction = ({
           );
         }
       });
-
-      // --- 4. RECALCULATE BILL ---
-      const newItemsList = buildRecalculatedItemsList(originalItemsMap);
-
-      const totals = computeItemGrossTotals(newItemsList);
-
-      // --- 5. MANUAL DISCOUNT ---
-      const originalManualDiscount = Number(selectedSale.manualDiscount) || 0;
-      const { discountDeduction, newManualDiscount } = computeManualDiscountDeduction(
-        originalManualDiscount,
-        originalInvoiceTotal,
-        returnedItemsGrossValue
-      );
-
-      const updatedFinalAmount =
-        totals.subtotal - totals.totalItemDiscount - newManualDiscount;
 
       // --- 6. PAYMENTS ---
       const updatedPaymentMethods = {
@@ -288,12 +222,6 @@ export const useReturnTransaction = ({
         }
       }
 
-      const paid = Object.entries(updatedPaymentMethods)
-        .filter(([k]) => k !== 'due')
-        .reduce((sum, [, v]) => sum + Number(v), 0) + creditAmountToAdd + refundAmountToAdd;
-
-      updatedPaymentMethods.due = Math.max(0, updatedFinalAmount - paid);
-
       // --- 7. HISTORY ---
 
       const cleanItem = (item: any) => ({
@@ -318,8 +246,12 @@ export const useReturnTransaction = ({
         id: crypto.randomUUID(),
         returnedAt: new Date(),
         returnedItems: itemsToReturn.map(cleanItem),
-        exchangeItems: exchangeItems.map(cleanItem),
+        exchangeItems: (modeOfReturn === 'Exchange' ? exchangeItems : []).map(cleanItem),
         finalBalance,
+        // GST that went back with the returned items / came in with the new ones
+        returnTax: result.returnTax,
+        exchangeTax: result.exchangeTax,
+        roundOff: result.roundOff,
         discountDeducted: discountDeduction,
         modeOfReturn,
         paymentDetails: cleanPaymentDetails,
@@ -383,13 +315,17 @@ export const useReturnTransaction = ({
       batch.update(saleRef, {
         items: newItemsList,
         totalAmount: updatedFinalAmount,
+        // Bill-level figures, same as the editor saves them
+        totalTax: Number(result.after.tax.toFixed(2)),
+        baseAmount: Number(result.after.itemsBase.toFixed(2)),
+        roundOff: Number((result.after.total - Math.max(0, result.after.raw)).toFixed(2)),
 
         manualDiscount: newManualDiscount,
         paymentMethods: {
           ...updatedPaymentMethods,
-          due: isUnpaidOrder
-            ? Math.max(0, selectedSale.totalAmount - returnedItemsGrossValue)
-            : effectiveDue,
+          // Whatever is still owed on the new total (also for orders that were unpaid —
+          // the old formula ignored GST, the bill discount and exchanged-in items)
+          due: effectiveDue,
         },
 
         paidAmount: effectivePaid,
@@ -407,16 +343,9 @@ export const useReturnTransaction = ({
       await batch.commit();
       await refreshSelectedOrder(selectedSale.id);
       setOriginalSaleItems(
-        newItemsList.map((item: any) => ({
-          id: item.id,
-          originalItemId: item.id,
-          name: item.name,
-          quantity: item.quantity,
-          originalQuantity: item.quantity,
-          unitPrice: item.unitPrice,
-          amount: item.finalPrice,
-          mrp: item.mrp
-        }))
+        newItemsList
+          .map((item: any) => mapOrderItemToTransactionItem(item))
+          .filter(Boolean) as TransactionItem[]
       );
       setSelectedSale(prev =>
         prev

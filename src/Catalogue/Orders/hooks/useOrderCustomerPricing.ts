@@ -1,13 +1,17 @@
 import { useCallback, useMemo } from 'react';
 import { CUSTOMER_PRICING_COLLECTION } from '../../../constants/customerSource';
 import { usePartyPricing, type PartyPricingAdapter } from '../../../Pages/hooks/usePartyPricing';
-import { withoutCustomerPrice, type PricedLine } from '../../../Pages/utils/customerPricing';
+import { MANUAL_PRICE_SKIP, withoutCustomerPrice, type PricedLine } from '../../../Pages/utils/customerPricing';
 import { computeLineTax, isTaxEnabled as computeIsTaxEnabled } from '../orders.calculations';
 import type { Order, OrderItem } from '../orders.types';
 
 export type { PartyPriceOffer as OrderPriceOffer } from '../../../Pages/hooks/usePartyPricing';
 
 const EMPTY: OrderItem[] = [];
+
+/** A price / discount typed by hand: drop the customer-price tag and never auto-apply over it. */
+export const markManualPrice = <T extends object>(line: T): T =>
+    ({ ...withoutCustomerPrice(line), customerPriceSkip: MANUAL_PRICE_SKIP }) as T;
 // Customer prices only make sense while the order is still being prepared
 const EDITABLE_STATUSES = ['Upcoming', 'Confirmed', 'Packed'];
 
@@ -23,7 +27,12 @@ interface Params {
     salesSettings: any;
 }
 
-/** Customer-wise fixed discount inside the catalogue order editor. Never auto-applies. */
+/**
+ * Customer-wise fixed discount inside the catalogue order editor. While the order is
+ * still being prepared, the customer's agreed price replaces the item's own price
+ * (including items added in the editor); the banner's Undo puts the normal prices
+ * back. A price typed by hand is never overwritten (see markManualPrice).
+ */
 export const useOrderCustomerPricing = ({
     enabled, companyId, editingOrder, setEditingOrder, salesSettings,
 }: Params) => {
@@ -49,8 +58,21 @@ export const useOrderCustomerPricing = ({
         pricedName: l => l.customerPricingName,
         pricedPct: l => Number(l.customerDiscountPct || 0),
         skip: l => l.customerPriceSkip,
-        // Same shape the editor already gives the cart list (see mappedOrderItems)
-        toPriced: l => ({ ...l, productId: l.itemId || l.id, customPrice: unitOf(l) } as unknown as PricedLine),
+        // Same shape the editor already gives the cart list (see mappedOrderItems).
+        // Lines placed from the storefront save their category as `groupId`, lines added
+        // here as `itemGroupId` — read both so category rules match either way.
+        // Lines with add-ons are left alone: their price includes the add-ons, which
+        // the customer's % / fixed price doesn't account for.
+        toPriced: l => {
+            const line = l as OrderItem & { groupId?: string; addOnLines?: unknown[]; tierId?: string };
+            return {
+                ...line,
+                productId: line.itemId || line.id,
+                itemGroupId: line.itemGroupId || line.groupId,
+                customPrice: unitOf(l),
+                isCustomAmount: (line.addOnLines?.length ?? 0) > 0,
+            } as unknown as PricedLine;
+        },
         currentPrice: l => unitOf(l),
         previousPrice: l => (l.preCustomerPrice !== undefined ? Number(l.preCustomerPrice) : undefined),
         apply: (l, s, partyId, partyName) => withPrice({
@@ -86,7 +108,7 @@ export const useOrderCustomerPricing = ({
 
     return usePartyPricing<OrderItem>({
         enabled: enabled && !!editingOrder && EDITABLE_STATUSES.includes(editingOrder.status),
-        auto: false,                  // owner taps "Apply prices"; nothing changes by itself
+        auto: true,                   // settings text: "their discount replaces the item's own discount"
         companyId,
         collectionName: CUSTOMER_PRICING_COLLECTION,
         partyName: customerName,

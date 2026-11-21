@@ -146,14 +146,15 @@ export const useSalesPayment = ({
 }: UseSalesPaymentParams) => {
     const [isSaving, setIsSaving] = useState(false);
 
-    const handleProceedToPayment = () => {
+    /** The checks that run before any payment (drawer or quick Print). Shows the error and returns false. */
+    const validateBeforePayment = (): boolean => {
         if (items.length === 0) {
             setModal({ message: 'Please add at least one item.', type: State.INFO });
-            return;
+            return false;
         }
         if (salesSettings?.enableSalesmanSelection && !selectedWorker) {
             setModal({ message: 'Please select a salesman.', type: State.ERROR });
-            return;
+            return false;
         }
 
         // --- NEW: MRP PRICE VALIDATION ---
@@ -184,7 +185,7 @@ export const useSalesPayment = ({
                 message: `Selling price cannot exceed MRP for: ${invalidMrpItems.join(', ')}`,
                 type: State.ERROR
             });
-            return;
+            return false;
         }
         // ---------------------------------
 
@@ -196,7 +197,7 @@ export const useSalesPayment = ({
         );
         if (newItemError) {
             setModal({ message: newItemError, type: State.ERROR });
-            return;
+            return false;
         }
 
         if (!(salesSettings as any)?.allowNegativeStock) {
@@ -231,10 +232,14 @@ export const useSalesPayment = ({
                     invalidItems.push(`${avail?.name} (Avail:${effectiveAvailable}, Need:${needed})`);
                 }
             });
-            if (invalidItems.length > 0) { setModal({ message: `Insufficient stock: ${invalidItems.join(', ')}`, type: State.ERROR }); return; }
+            if (invalidItems.length > 0) { setModal({ message: `Insufficient stock: ${invalidItems.join(', ')}`, type: State.ERROR }); return false; }
         }
 
-        setIsDrawerOpen(true);
+        return true;
+    };
+
+    const handleProceedToPayment = () => {
+        if (validateBeforePayment()) setIsDrawerOpen(true);
     };
 
     const handleSavePayment = async (completionData: PaymentCompletionData) => {
@@ -785,6 +790,7 @@ return {
 
     return {
         isSaving, setIsSaving,
+        validateBeforePayment,
         handleProceedToPayment,
         handleSavePayment,
     };

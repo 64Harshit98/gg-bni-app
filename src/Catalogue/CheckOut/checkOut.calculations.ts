@@ -75,7 +75,9 @@ export interface TaxContext {
 // Moved verbatim from the top of the CartPage component body (previously
 // ~L347-354, computed inline from salesSettings on every render).
 export const deriveTaxContext = (salesSettings: CatalogueSalesSettings | null): TaxContext => {
-    const scheme = salesSettings?.gstScheme?.toLowerCase() || 'regular';
+    // No scheme saved = "None", same default Catalogue Sales Settings shows the owner
+    // (this used to assume Regular and quietly take GST out of every price).
+    const scheme = salesSettings?.gstScheme?.toLowerCase() || 'none';
     const taxType = salesSettings?.taxType?.toLowerCase() || 'inclusive';
     const applyExclusiveTax = scheme === 'regular' && taxType === 'exclusive';
     return { scheme, taxType, applyExclusiveTax };
@@ -296,6 +298,56 @@ export const computeOrderLevelTotals = (
     return { itemsBase, tax, expenses: expensesTotal, discount, raw, total, roundOff };
 };
 
+/**
+ * An Upcoming (draft) order's lines with GST worked out from the shop's CURRENT GST
+ * settings and each item's current rate — run when the owner confirms the draft.
+ * Drafts were saved from the buyer's cart without tax fields (and the cart can hold an
+ * old rate), so without this a confirmed draft became an order with no GST at all.
+ * Prices / quantities stay as they are; the bill discount and expenses on the draft count.
+ */
+export const retaxDraftOrder = (
+    order: { items?: any[]; expenses?: { amount: number | string }[]; manualDiscount?: number },
+    ctx: TaxContext,
+    rateOf: (line: any) => number | undefined
+) => {
+    const lines = order.items || [];
+    const built = buildOrderLineItems(lines.map((l) => ({
+        id: l.id,
+        name: '',
+        category: '',
+        mrp: Number(l.mrp) || 0,
+        salesPrice: Number(l.effectiveUnitPrice ?? l.customPrice ?? l.salesPrice) || 0,
+        quantity: Number(l.quantity) || 0,
+        image: '',
+        note: '',
+        unit: l.unit,
+        unitMultiplier: l.unitMultiplier,
+        tax: rateOf(l) ?? Number(l.tax ?? l.taxRate ?? 0),
+    })), ctx.scheme, ctx.taxType, ctx.applyExclusiveTax);
+
+    const items = lines.map((l, i) => ({
+        ...l,
+        itemId: l.itemId || l.docId || l.id,
+        effectiveUnitPrice: built[i].effectiveUnitPrice,
+        tax: built[i].tax,
+        taxRate: built[i].taxRate,
+        taxType: built[i].taxType,
+        taxableAmount: built[i].taxableAmount,
+        taxAmount: built[i].taxAmount,
+        finalPrice: built[i].finalPrice,
+    }));
+    const totals = computeOrderLevelTotals(built, order.expenses, Number(order.manualDiscount) || 0);
+    return {
+        items,
+        totalAmount: totals.total,
+        roundOff: totals.roundOff,
+        totalTax: Number(totals.tax.toFixed(2)),
+        baseAmount: Number(totals.itemsBase.toFixed(2)),
+        gstScheme: ctx.scheme,
+        taxType: ctx.taxType,
+    };
+};
+
 export interface UpcomingSyncItem {
     id: string;
     docId: string;
@@ -306,12 +358,22 @@ export interface UpcomingSyncItem {
     unit: string | undefined;
     unitMultiplier: number;
     finalPrice: number;
+    // GST fields, same as a placed order's lines (buildOrderLineItems) — a draft the
+    // owner confirms becomes the order, so it must carry its tax like one
+    effectiveUnitPrice: number;
+    tax: number;
+    taxRate: number;
+    taxType: string;
+    taxableAmount: number;
+    taxAmount: number;
 }
 
 export interface UpcomingSyncPayload {
     itemsForFirebase: UpcomingSyncItem[];
     totalAmount: number;
     roundOff: number;
+    totalTax: number;
+    baseAmount: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -335,42 +397,34 @@ export const buildUpcomingSyncPayload = (
     scheme: string,
     taxType: string
 ): UpcomingSyncPayload => {
-    const itemsForFirebase = updatedCart.map(item => {
-        const qty = item.quantity;
-        const price = item.salesPrice;
-        const taxRate = item.tax || 0;
+    // Exactly the lines placeOrder() would save (same tax split, same rounding)
+    const applyExclusiveTax = scheme === 'regular' && taxType === 'exclusive';
+    const lines = buildOrderLineItems(updatedCart, scheme, taxType, applyExclusiveTax);
 
-        let itemTotalAmount = price * qty;
-        if (scheme === 'regular' && taxType === 'exclusive' && taxRate > 0) {
-            const itemBaseAmount = price * qty;
-            itemTotalAmount = itemBaseAmount + itemBaseAmount * (taxRate / 100);
-        }
-        // 'inclusive': price already contains tax, so salesPrice * qty is
-        // already the correct final amount — same as before.
-        // scheme !== 'regular' (exempt/composition): no tax, also unchanged.
+    const itemsForFirebase: UpcomingSyncItem[] = updatedCart.map((item, idx) => ({
+        id: String(item.id),
+        docId: String(item.id),
+        name: item.name + addOnSuffix(item),
+        quantity: item.quantity,
+        mrp: item.mrp,
+        salesPrice: item.salesPrice,
+        unit: item.unit,
+        unitMultiplier: item.unitMultiplier || 1,
+        finalPrice: lines[idx].finalPrice,
+        effectiveUnitPrice: lines[idx].effectiveUnitPrice,
+        tax: lines[idx].tax,
+        taxRate: lines[idx].taxRate,
+        taxType: lines[idx].taxType,
+        taxableAmount: lines[idx].taxableAmount,
+        taxAmount: lines[idx].taxAmount,
+    }));
 
-        return {
-            id: String(item.id),
-            docId: String(item.id),
-            name: item.name + addOnSuffix(item),
-            quantity: item.quantity,
-            mrp: item.mrp,
-            salesPrice: item.salesPrice,
-            unit: item.unit,
-            unitMultiplier: item.unitMultiplier || 1,
-            finalPrice: itemTotalAmount,
-        };
-    });
-
-    const rawTotalAmount = itemsForFirebase.reduce(
-        (acc, curr) => acc + curr.finalPrice,
-        0
-    );
-
-    // Round the final total
-    const roundedTotalAmount = Math.round(rawTotalAmount);
-    // Calculate the exact round off difference
-    const roundOffAmt = Number((roundedTotalAmount - rawTotalAmount).toFixed(2));
-
-    return { itemsForFirebase, totalAmount: roundedTotalAmount, roundOff: roundOffAmt };
+    const totals = computeOrderLevelTotals(lines, [], 0);
+    return {
+        itemsForFirebase,
+        totalAmount: totals.total,
+        roundOff: totals.roundOff,
+        totalTax: Number(totals.tax.toFixed(2)),
+        baseAmount: Number(totals.itemsBase.toFixed(2)),
+    };
 };

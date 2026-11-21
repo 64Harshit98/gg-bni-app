@@ -441,8 +441,9 @@ export const OrderListFilters: React.FC<OrderListFiltersProps> = ({
                     </div>
                 </TutorialStep>
 
-                {/* Payment filter — sits inside the sticky block so no magic top offset is needed */}
-                {!isDesktop && activeStatusTab === 'Completed' && (
+                {/* Payment filter — sits inside the sticky block so no magic top offset is needed.
+                    Same stages as desktop: every stage except Upcoming (not confirmed yet, nothing to pay). */}
+                {!isDesktop && activeStatusTab !== 'Upcoming' && (
                     <PaymentSwitch
                         value={paymentFilter}
                         onChange={setPaymentFilter}

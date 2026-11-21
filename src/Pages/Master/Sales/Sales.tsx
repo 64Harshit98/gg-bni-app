@@ -690,6 +690,8 @@ const Sales: React.FC = () => {
     const loyaltyDrawerProps = { enableLoyalty: loyaltyEnabled, initialLoyalty, loyaltyNoEarn };
 
     const {
+        isSaving: isSavingBill,
+        validateBeforePayment,
         handleProceedToPayment,
         handleSavePayment,
     } = useSalesPayment({
@@ -756,6 +758,41 @@ const Sales: React.FC = () => {
         } catch (err) {
             postSaveOptionsRef.current = null;
             throw err;
+        }
+    };
+
+    // ── Fast billing: Print → Cash / UPI / Card → bill saved fully paid and printed ──
+    // For walk-in counter sales (e.g. a thela). Anything that needs the full drawer —
+    // a customer on the bill (customer record, points, due) or settings that require
+    // the customer's name / mobile — goes to the normal payment drawer instead.
+    const [isQuickPayOpen, setIsQuickPayOpen] = useState(false);
+    const needsFullDrawer = !!(customerName.trim() || customerPhone.trim()
+        || salesSettings?.requireCustomerName || salesSettings?.requireCustomerMobile);
+    const showQuickPrint = !isEditMode && !isCalculatorView;
+    const startQuickPrint = () => {
+        if (needsFullDrawer) { handleProceedToPayment(); return; }
+        if (validateBeforePayment()) setIsQuickPayOpen(true);
+    };
+    const handleQuickPay = async (method: 'cash' | 'upi' | 'card') => {
+        setIsQuickPayOpen(false);
+        const total = Math.round(Math.max(0, amountToPayNow));   // same rounding as the drawer's netPayable
+        try {
+            await handleSavePaymentWithOptions({
+                paymentDetails: { cash: 0, upi: 0, card: 0, due: 0, [method]: total },
+                partyName: '',
+                partyNumber: '',
+                discount: 0,
+                finalAmount: total,
+                appliedCredit: 0,
+                appliedDebit: 0,
+                revDiscount: 0,
+                expenses: [],
+                narration: '',
+                printBill: true,
+                sendWhatsApp: false,
+            });
+        } catch (err) {
+            setModal({ message: err instanceof Error ? err.message : 'Could not save the bill. Please try again.', type: State.ERROR });
         }
     };
 
@@ -1388,6 +1425,12 @@ const Sales: React.FC = () => {
                         </span>
                         <b className="block text-xl leading-[26px] font-semibold tabular-nums text-[#0f172b] truncate">₹{fmtINR(finalAmount)}</b>
                     </button>
+                    {showQuickPrint && (
+                        <button type="button" onClick={startQuickPrint} disabled={items.length === 0}
+                            className="inline-flex items-center justify-center gap-1.5 h-12 px-4 rounded-sm border border-[#155dfc] bg-white text-[#155dfc] text-[15px] font-medium whitespace-nowrap hover:bg-[#e6eeff] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed">
+                            <IconPrint /> Print
+                        </button>
+                    )}
                     <button type="button" onClick={onAction} disabled={items.length === 0}
                         className="inline-flex items-center justify-center gap-2 h-12 px-4 rounded-sm border border-transparent text-[15px] font-medium whitespace-nowrap bg-[#155dfc] text-white hover:bg-[#1447e6] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed">
                         {actionLabel}
@@ -1792,6 +1835,36 @@ const Sales: React.FC = () => {
                     </div>
                 </div>
             )}
+
+            {/* Fast billing: how was it paid? → saves fully paid and prints */}
+            {isQuickPayOpen && (
+                <div className="fixed inset-0 z-[2010] flex items-end md:items-center justify-center bg-[#020618]/45" onClick={() => setIsQuickPayOpen(false)}>
+                    <div role="dialog" aria-label="Paid by"
+                        className={`bg-white border border-[#dfe6fb] rounded-t-sm md:rounded-sm p-5 pb-[max(20px,env(safe-area-inset-bottom))] w-full md:max-w-sm md:mx-4 ${SHADOW_FLOAT}`}
+                        onClick={e => e.stopPropagation()}>
+                        <div className="text-center">
+                            <span className="block text-xs text-[#45556c]">Print bill · paid in full</span>
+                            <b className="block text-[26px] leading-8 font-semibold tabular-nums text-[#0f172b]">₹{fmtINR(Math.round(Math.max(0, amountToPayNow)))}</b>
+                        </div>
+                        <p className="mt-3 mb-2 text-xs font-medium text-[#45556c]">Paid by</p>
+                        <div className="grid grid-cols-3 gap-2">
+                            {([['cash', 'Cash'], ['upi', 'UPI'], ['card', 'Card']] as const).map(([id, label]) => (
+                                <button key={id} type="button" onClick={() => handleQuickPay(id)} disabled={isSavingBill}
+                                    className="h-14 rounded-sm bg-[#155dfc] text-white text-base font-semibold hover:bg-[#1447e6] transition-colors disabled:opacity-[.45]">
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                        <button type="button" onClick={() => { setIsQuickPayOpen(false); handleProceedToPayment(); }}
+                            className="mt-3 w-full h-10 rounded-sm border border-[#7a8aa3] bg-white text-sm font-medium text-[#0f172b] hover:bg-[#f5f7ff]">
+                            Customer, due or discount… open full payment
+                        </button>
+                        <button type="button" onClick={() => setIsQuickPayOpen(false)} className="mt-1 w-full h-9 text-xs font-medium text-[#5b6b86] hover:text-[#0f172b]">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            )}
         </>
     );
 
@@ -1850,8 +1923,15 @@ const Sales: React.FC = () => {
                         <span className="block text-xs text-[#45556c]">Grand total</span>
                         <b className="block text-[24px] leading-[30px] font-semibold tracking-tight tabular-nums text-[#0f172b] truncate">₹{fmtINR(finalAmount)}</b>
                     </div>
+                    {showQuickPrint && (
+                        <button type="button" onClick={() => { onClose?.(); startQuickPrint(); }} disabled={items.length === 0}
+                            title="Pick Cash / UPI / Card, then the bill is saved and printed"
+                            className="ml-auto h-12 shrink-0 inline-flex items-center justify-center gap-1.5 px-3 rounded-sm border border-[#155dfc] bg-white text-[#155dfc] text-[15px] font-medium whitespace-nowrap hover:bg-[#e6eeff] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed">
+                            <IconPrint /> Print
+                        </button>
+                    )}
                     <button type="button" onClick={onCollect} disabled={items.length === 0}
-                        className="ml-auto h-12 min-w-0 flex-1 max-w-[220px] px-3 rounded-sm bg-[#155dfc] text-white text-[15px] font-medium whitespace-nowrap hover:bg-[#1447e6] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed">
+                        className={`${showQuickPrint ? '' : 'ml-auto '}h-12 min-w-0 flex-1 max-w-[220px] px-3 rounded-sm bg-[#155dfc] text-white text-[15px] font-medium whitespace-nowrap hover:bg-[#1447e6] transition-colors disabled:opacity-[.45] disabled:cursor-not-allowed`}>
                         {isEditMode ? 'Update invoice' : 'Pay'}
                     </button>
                 </div>
@@ -2260,6 +2340,7 @@ const Sales: React.FC = () => {
                                     taxLabel={`Tax (${activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})`}
                                     actionLabel={isEditMode ? 'Update invoice' : 'View bill'}
                                     onActionClick={() => setIsBillOpen(true)}
+                                    secondaryAction={showQuickPrint ? { label: 'Print', icon: <IconPrint />, onClick: startQuickPrint } : undefined}
                                     disableAction={items.length === 0}>
                                 </GenericBillFooter>
                             </div>
@@ -2661,6 +2742,7 @@ ${colClass || ''}`}
                                     taxLabel={`Tax (${activeTaxMode === 'inclusive' ? 'Inc' : 'Exc'})`}
                                     actionLabel={isEditMode ? 'Update invoice' : 'View bill'}
                                     onActionClick={() => setIsBillOpen(true)}
+                                    secondaryAction={showQuickPrint ? { label: 'Print', icon: <IconPrint />, onClick: startQuickPrint } : undefined}
                                     disableAction={items.length === 0}
                                 >
                                 </GenericBillFooter>

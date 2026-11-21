@@ -831,7 +831,9 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                             {isUpcomingStatus ? Order.userName : Order.orderId}
                         </h1>
                         <span className="block text-xs text-slate-500 truncate">
-                            {isUpcomingStatus ? `Upcoming · ${placedAt}` : `${Order.userName} · ${stageLabel}`}
+                            {isUpcomingStatus
+                                ? `Upcoming · ${contactPhone ? `${contactPhone} · ` : ''}${placedAt}`
+                                : `${Order.userName}${contactPhone ? ` · ${contactPhone}` : ''} · ${stageLabel}`}
                         </span>
                     </div>
                     <ActionIcons items={moreItems} />

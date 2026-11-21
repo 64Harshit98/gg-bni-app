@@ -459,7 +459,7 @@ const CatalogueUserSetting: React.FC = () => {
         const inputBare = 'flex-1 min-w-0 bg-transparent border-0 outline-none text-sm text-[#0f172b]';
 
         return (
-            <div className="fixed inset-0 z-40 flex items-end lg:items-start justify-center lg:pt-[72px]">
+            <div className="fixed inset-0 z-[200] flex items-end lg:items-start justify-center lg:pt-[72px]">
                 <div className="absolute inset-0 bg-[#0f172b]/50" onClick={handleCancelEdit} />
                 <div
                     role="dialog"
@@ -633,7 +633,7 @@ const CatalogueUserSetting: React.FC = () => {
                     </div>
 
                     {/* Footer */}
-                    <div className="flex items-center justify-end gap-2 px-4 lg:px-6 py-3 lg:py-3.5 border-t border-[#f3e1d2] bg-[#fff7f0] rounded-sm">
+                    <div className="flex items-center justify-end gap-2 px-4 lg:px-6 pt-3 pb-[max(12px,env(safe-area-inset-bottom))] lg:py-3.5 border-t border-[#f3e1d2] bg-[#fff7f0] rounded-sm">
                         <button
                             onClick={handleCancelEdit}
                             className="hidden lg:inline-flex items-center h-10 px-4 rounded-sm text-sm font-medium text-[#45556c] hover:bg-white">

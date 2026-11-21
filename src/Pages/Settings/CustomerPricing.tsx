@@ -735,7 +735,8 @@ const CustomerPricing: React.FC = () => {
     };
 
     const renderEditor = () => !editorOpen ? null : (
-        <div className="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-[#020618]/45 md:p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) requestClose(); }}>
+        // z above the mobile bottom nav (z-[150]) so the Save / Cancel / Remove footer isn't hidden behind it
+        <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center bg-[#020618]/45 md:p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) requestClose(); }}>
             <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="cp-editor-title"
                 className="w-full md:max-w-2xl max-h-[92dvh] flex flex-col bg-white rounded-t-sm md:rounded-sm border border-[color:var(--cp-border)] shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]">
                 <div className="flex items-center gap-3 px-5 py-4 border-b border-[color:var(--cp-border)]">

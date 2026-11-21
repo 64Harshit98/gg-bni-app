@@ -4,6 +4,8 @@ import { useAuth } from '../../context/auth-context';
 import { formatDateForInput } from '../../Pages/Reports/SalesReportComponents/salesReport.utils';
 import { type TaxReportRow } from '../../Pages/Reports/TaxReportComponents/taxReport.utils';
 import { db } from '../../lib/Firebase';
+import { isOrderTaxEnabled, orderLineTax } from '../Orders/orders.calculations';
+import { calculateLineTax } from '../../shared/calculations/itemCalculations';
 import {
   collection,
   query,
@@ -152,6 +154,8 @@ export default function useTaxReport() {
 
       let docTaxable = 0;
       let docTax = 0;
+      // Orders: GST as the order was billed (its own GST snapshot, not today's settings)
+      const orderTaxOn = type === 'Sale' ? isOrderTaxEnabled(data) : true;
 
       (data.items || []).forEach((item: any) => {
 
@@ -160,12 +164,27 @@ export default function useTaxReport() {
           return;
         }
 
-        const price = item.finalPrice || item.mrp || 0;
-        const qty = item.quantity || 0;
-        const gst = item.tax || item.taxRate || item.gst || 0;
-
-        const taxable = price * qty;
-        const tax = taxable * (gst / 100);
+        // Previously: (finalPrice || mrp) × qty, then GST added on top. That fell back to
+        // MRP, counted qty twice (finalPrice is already the line total) and added GST
+        // again on amounts that already included it.
+        let taxable: number;
+        let tax: number;
+        if (type === 'Sale') {
+          // Selling price × qty, split exactly like the order total (inclusive / exclusive)
+          const split = orderLineTax(item, orderTaxOn);
+          taxable = split.taxableAmount;
+          tax = split.taxAmount;
+        } else if (item.taxableAmount !== undefined || item.taxAmount !== undefined) {
+          // Purchases save each line's taxable value and GST
+          taxable = Number(item.taxableAmount) || 0;
+          tax = Number(item.taxAmount) || 0;
+        } else {
+          // Older purchase lines: finalPrice is the line total
+          const gst = Number(item.tax ?? item.taxRate ?? item.gst ?? 0);
+          const split = calculateLineTax(Number(item.finalPrice ?? item.amount ?? 0), item.taxType || 'inclusive', gst, true);
+          taxable = split.taxableAmount;
+          tax = split.taxAmount;
+        }
 
         docTaxable += taxable;
         docTax += tax;

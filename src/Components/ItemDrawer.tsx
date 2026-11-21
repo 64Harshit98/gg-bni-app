@@ -990,9 +990,10 @@ useEffect(() => {
     /* ---------------- UI-only derived values (display only) ---------------- */
 
     // Drawer now slides in from the right (was a bottom sheet)
+    // Phones: bottom sheet that slides up. md+: drawer from the right.
     const drawerClasses = isOpen
-        ? 'translate-x-0 opacity-100'
-        : 'translate-x-full opacity-0 pointer-events-none';
+        ? 'translate-y-0 md:translate-x-0 opacity-100'
+        : 'translate-y-full md:translate-y-0 md:translate-x-full opacity-0 pointer-events-none';
     const overlayClasses = isOpen
         ? 'opacity-100 bg-[#020618]/50'
         : 'opacity-0 bg-transparent pointer-events-none';
@@ -1038,14 +1039,14 @@ useEffect(() => {
 
     return (
         <div
-            className={isPanel ? 'h-full w-full' : `fixed inset-0 z-1000 flex justify-end items-stretch transition-opacity duration-300 ease-in-out ${overlayClasses}`}
+            className={isPanel ? 'h-full w-full' : `fixed inset-0 z-1000 flex justify-end items-end md:items-stretch transition-opacity duration-300 ease-in-out ${overlayClasses}`}
             style={themeVars}
             onClick={isPanel ? undefined : onClose}
         >
             <div
                 className={isPanel
                     ? 'relative bg-(--dr-canvas) w-full h-full flex flex-col'
-                    : `relative bg-(--dr-canvas) shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)] w-full max-w-[780px] h-full flex flex-col transform transition-all duration-300 ease-in-out ${drawerClasses}`}
+                    : `relative bg-(--dr-canvas) shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)] w-full max-w-[780px] h-[92dvh] md:h-full overflow-hidden rounded-t-sm md:rounded-none flex flex-col transform transition-all duration-300 ease-in-out ${drawerClasses}`}
                 onClick={(e) => e.stopPropagation()}
                 role="dialog"
                 aria-label="Edit item"
@@ -1102,8 +1103,11 @@ useEffect(() => {
                     </div>
                 )}
 
+                {/* grab handle (phone bottom sheet) */}
+                {!isPanel && <div className="md:hidden shrink-0 bg-white pt-2"><div className="mx-auto h-1 w-10 rounded-sm bg-[#7a8aa3]/40" /></div>}
+
                 {/* ---------- HEADER ---------- */}
-                <div className="flex items-center gap-3 md:gap-3.5 px-3 md:px-5 pb-3 md:py-4 pt-[max(12px,env(safe-area-inset-top))] md:pt-4 bg-white border-b border-(--dr-line)">
+                <div className={`flex items-center gap-3 md:gap-3.5 px-3 md:px-5 pb-3 md:py-4 ${isPanel ? 'pt-[max(12px,env(safe-area-inset-top))]' : 'pt-2'} md:pt-4 bg-white border-b border-(--dr-line)`}>
                     <div className="hidden md:grid h-[52px] w-[52px] shrink-0 place-items-center overflow-hidden rounded-[10px] bg-(--dr-sunken) text-[#5b6b86]">
                         <SafeImage
                             src={imagePreview}
@@ -1228,8 +1232,8 @@ useEffect(() => {
                                         )}
 
                                         {/* URL INPUT */}
-                                        <div className="border-t border-(--dr-line) px-3 py-3">
-                                            <label htmlFor="edit-imageUrl" className={`${LABEL_CLS} mb-1 block`}>Or paste Image URL</label>
+                                        <div className="border-t border-(--dr-line) px-3 py-2.5">
+                                            <label htmlFor="edit-imageUrl" className={`${LABEL_CLS} mb-1 block`}>Or paste image link</label>
                                             <input
                                                 id="edit-imageUrl"
                                                 type="text"
@@ -1249,24 +1253,34 @@ useEffect(() => {
                                         </div>
 
                                         {/* Additional photos for catalogue slider */}
-                                        <div className="border-t border-(--dr-line) px-3 py-3">
-                                            <span className={`${LABEL_CLS} mb-1 block`}>Additional photos</span>
-                                            <p className="text-[11px] text-[#5b6b86] mb-2">Shown in the catalogue slider</p>
-                                            <label className={`${BTN_SECONDARY} w-full cursor-pointer ${isSaving ? 'pointer-events-none opacity-45' : ''}`}>
-                                                <FiUpload size={14} /> Add photos
-                                                <input
-                                                    type="file"
-                                                    accept="image/*"
-                                                    multiple
-                                                    onChange={handleAdditionalFilesChange}
-                                                    disabled={isSaving}
-                                                    className="hidden"
-                                                />
-                                            </label>
+                                        <div className="border-t border-(--dr-line) px-3 py-2.5">
+                                            <div className="mb-1.5 flex items-baseline justify-between gap-2">
+                                                <span className={LABEL_CLS}>More photos</span>
+                                                <span className="truncate text-[11px] text-[#5b6b86]">Shown in the catalogue slider</span>
+                                            </div>
+                                            {/* Thumbnails + a small "Add" tile at the end (was a full-width button) */}
+                                            <div className="flex flex-wrap gap-2">
+                                                <label
+                                                    title="Add photos"
+                                                    className={`order-last grid h-14 w-14 shrink-0 cursor-pointer place-items-center rounded-sm border border-dashed border-[#7a8aa3] bg-(--dr-sunken) text-[#45556c] hover:bg-white ${isSaving ? 'pointer-events-none opacity-45' : ''}`}
+                                                >
+                                                    <span className="grid place-items-center gap-0.5 text-[10px] font-medium leading-none">
+                                                        <FiUpload size={14} />Add
+                                                    </span>
+                                                    <input
+                                                        type="file"
+                                                        accept="image/*"
+                                                        multiple
+                                                        aria-label="Add photos"
+                                                        onChange={handleAdditionalFilesChange}
+                                                        disabled={isSaving}
+                                                        className="hidden"
+                                                    />
+                                                </label>
                                             {(existingAdditionalUrls.length > 0 || additionalImagePreviews.length > 0) && (
-                                                <div className="flex gap-2 mt-3 flex-wrap">
+                                                <div className="contents">
                                                     {existingAdditionalUrls.map((url) => (
-                                                        <div key={url} className="relative w-16 h-16">
+                                                        <div key={url} className="relative w-14 h-14">
                                                             <SafeImage
                                                                 src={url}
                                                                 className="w-full h-full object-cover rounded-sm border border-(--dr-line)"
@@ -1291,7 +1305,7 @@ useEffect(() => {
                                                         </div>
                                                     ))}
                                                     {additionalImagePreviews.map((src, idx) => (
-                                                        <div key={src + idx} className="relative w-16 h-16">
+                                                        <div key={src + idx} className="relative w-14 h-14">
                                                             <SafeImage
                                                                 src={src}
                                                                 className="w-full h-full object-cover rounded-sm border border-(--dr-line)"
@@ -1317,6 +1331,7 @@ useEffect(() => {
                                                     ))}
                                                 </div>
                                             )}
+                                            </div>
                                         </div>
                                     </div>
 

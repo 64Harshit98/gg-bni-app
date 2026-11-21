@@ -2,9 +2,11 @@ import { useState } from 'react';
 import {
     doc,
     getDoc,
+    serverTimestamp,
     updateDoc,
 } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
+import { deriveTaxContext, retaxDraftOrder } from '../../CheckOut/checkOut.calculations';
 import type { Order, OrderStatus } from '../orders.types';
 import { useOptionalLoyaltySettings } from '../../../context/SettingsContext';
 import { setOrderStatusWithLoyalty } from '../orderLoyalty';
@@ -117,6 +119,25 @@ export const useOrderStatus = ({ currentUser }: UseOrderStatusParams) => {
                             }
                         })
                     );
+                }
+            }
+
+            // Draft → order: put GST on its lines (current GST settings + each item's current
+            // rate). Drafts are saved from the buyer's cart and could carry no / stale tax.
+            if (currentStatus === 'Upcoming' && nextStatus === 'Confirmed') {
+                try {
+                    const companyId = currentUser.companyId;
+                    const draftSnap = await getDoc(OrderRef);
+                    const draft = draftSnap.data() || {};
+                    const settingsSnap = await getDoc(doc(db, 'companies', companyId, 'settings', 'catalogue-sales-settings'));
+                    const ctx = deriveTaxContext(settingsSnap.exists() ? (settingsSnap.data() as any) : null);
+                    const ids = Array.from(new Set((draft.items || []).map((l: any) => String(l.itemId || l.docId || l.id)).filter(Boolean))) as string[];
+                    const itemSnaps = await Promise.all(ids.map((id) => getDoc(doc(db, 'companies', companyId, 'items', id))));
+                    const rateById = new Map(itemSnaps.filter((s) => s.exists()).map((s) => [s.id, Number(s.data()!.tax ?? 0) || 0]));
+                    const retaxed = retaxDraftOrder(draft, ctx, (l) => rateById.get(String(l.itemId || l.docId || l.id)));
+                    await updateDoc(OrderRef, { ...retaxed, updatedAt: serverTimestamp() });
+                } catch (err) {
+                    console.error('Could not add GST to the confirmed draft:', err);
                 }
             }
 

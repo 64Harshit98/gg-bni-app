@@ -1599,7 +1599,6 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
     const expenseSummary = `${filledExpenses[0]?.name?.trim() || 'Expense'}${filledExpenses.length > 1 ? ` +${filledExpenses.length - 1} more` : ''} · ₹${fmtShort(parsedExpense)} · added to bill`;
 
     const transportSummary = [transportName, grRrNo && `GR/RR ${grRrNo}`, grRrDate, vehicleNo, stationFrom, pinCode].filter(Boolean).join(' · ') || 'Transport details added';
-    const discountRowSummary = `₹${fmtShort(discount)} off · whole bill`;
 
     // Locked = parent says so (Sales Settings) OR no handler given (card view: nothing can change it)
     const toggleLocked = isTaxToggleLocked || !onTaxModeChange;
@@ -1637,22 +1636,22 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
         </div>
     );
 
-    const hasDiscountExtra = discount > 0;
+    // Bill discount is an inline field on every screen size now (discountInlineBlock), not an extra
     const showGstRow = showPartyExtras && hasGst;
     const showExpenseRow = showExpenseExtra && hasExpense;
     const showTransportRow = showTransportExtra && hasTransportDetails;
     const showNoteRow = showNoteExtra && !!narration;
     const otherRow = showGstRow || showExpenseRow || showTransportRow || showNoteRow;
     const otherChip = (showPartyExtras && !hasGst) || (showTransportExtra && !hasTransportDetails) || (showNoteExtra && !narration) || (showExpenseExtra && !hasExpense);
-    const anyRow = otherRow || hasDiscountExtra;
-    const anyAddChip = otherChip || !hasDiscountExtra;
+    const anyRow = otherRow;
+    const anyAddChip = otherChip;
 
     // Filled extras -> row with "Edit". Empty extras -> dashed "+" chip (like Note).
     const extrasBlock = (
         <>
-            <div className={`${OVERLINE_CLS} ${otherRow || otherChip ? '' : 'md:hidden'}`}>Extras <span className="normal-case tracking-normal font-normal">· each opens a pop-up</span></div>
+            {(otherRow || otherChip) && <div className={OVERLINE_CLS}>Extras <span className="normal-case tracking-normal font-normal">· each opens a pop-up</span></div>}
             {anyRow && (
-                <div className={`grid gap-2 ${otherRow ? '' : 'md:hidden'}`}>
+                <div className="grid gap-2">
                     {showGstRow && (
                         <ExtraRow tint={TINT_BLUE} icon={gstIcon} title="GST & address" subtitle={gstSummary} onClick={() => openPopup('gst')} />
                     )}
@@ -1665,18 +1664,12 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     {showNoteRow && (
                         <ExtraRow tint={TINT_AMBER} icon={noteIcon} title="Narration" subtitle={narration} onClick={() => openPopup('note')} />
                     )}
-                    {hasDiscountExtra && (
-                        <div className="md:hidden">
-                            <ExtraRow tint={TINT_GREEN} icon={discountTaxIcon} title="Bill discount" subtitle={discountRowSummary} onClick={() => openPopup('discount')} />
-                        </div>
-                    )}
                 </div>
             )}
             {anyAddChip && (
-                <div className={`flex flex-wrap gap-2 ${otherChip ? '' : 'md:hidden'}`}>
+                <div className="flex flex-wrap gap-2">
                     {showPartyExtras && !hasGst && <AddChip label="GST & address" onClick={() => openPopup('gst')} />}
                     {showTransportExtra && !hasTransportDetails && <AddChip label="Transport details" onClick={() => openPopup('transport')} />}
-                    {!hasDiscountExtra && <span className="md:hidden"><AddChip label="Bill discount" onClick={() => openPopup('discount')} /></span>}
                     {showNoteExtra && !narration && <AddChip label="Narration" onClick={() => openPopup('note')} />}
                     {showExpenseExtra && !hasExpense && <AddChip label="Shop expense" onClick={() => openPopup('expense')} />}
                 </div>
@@ -1695,14 +1688,16 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
             onTouchEnd={handleDiscountPressEnd}
             onClick={handleDiscountClick}
         >
-            <div className="flex items-center gap-1.5 mb-1">
+            {/* Phones: one row — "Bill discount" then the % and ₹ boxes beside it. md+: label above. */}
+            <div className="flex items-center gap-2 md:block">
+            <div className="flex shrink-0 items-center gap-1.5 md:mb-1">
                 <span className={`text-xs font-medium ${isDiscountLocked ? 'text-[#d5000c]' : 'text-[#155dfc]'}`}>Bill discount</span>
                 {isDiscountLocked && lockIcon}
                 {discountBlocked && (
                     <span className="text-[11px] font-semibold text-white bg-[#d5000c] px-1.5 py-0.5 rounded-sm">Cannot edit</span>
                 )}
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid min-w-0 flex-1 grid-cols-2 gap-2">
                 <div className={`${DISC_BOX} ${isDiscountLocked ? 'border-[#d5000c] bg-[#ffeef0]' : 'border-[#7a8aa3] bg-white'}`}>
                     <input
                         type="number"
@@ -1729,14 +1724,15 @@ const PaymentDrawer: React.FC<PaymentDrawerProps> = ({
                     <i className="not-italic text-[#5b6b86] text-sm pl-1">₹</i>
                 </div>
             </div>
-            <div className={`text-xs mt-1 ${isDiscountLocked ? 'text-[#d5000c] font-medium' : 'text-[#5b6b86]'}`}>
+            </div>
+            <div className={`text-xs mt-1 ${isDiscountLocked ? 'text-[#d5000c] font-medium' : 'hidden md:block text-[#5b6b86]'}`}>
                 {isDiscountLocked ? 'Locked.' : 'Type either — the other fills in.'}
             </div>
         </div>
     );
 
-    // Desktop: inline (popup nahi). Mobile pe hidden.
-    const discountInlineBlock = <div className="hidden md:block">{discountFields}</div>;
+    // Inline on every screen size (was a "+ Bill discount" pop-up chip on phones)
+    const discountInlineBlock = <div>{discountFields}</div>;
 
     const currentRemark = savedRemark?.id === remarkId ? savedRemark.text : '';
 

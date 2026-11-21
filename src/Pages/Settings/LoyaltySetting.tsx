@@ -101,32 +101,41 @@ const Opt: React.FC<{
     );
 };
 
+/** The number boxes on this page. Kept as text while typing so a box can stay empty. */
+type NumKey = 'earnPoints' | 'earnPerAmount' | 'minBillForEarn' | 'pointValue' | 'minPointsToRedeem' | 'maxRedeemPercent';
+const NUM_KEYS: NumKey[] = ['earnPoints', 'earnPerAmount', 'minBillForEarn', 'pointValue', 'minPointsToRedeem', 'maxRedeemPercent'];
+/** Optional boxes: left empty they mean "no minimum" (0) / "no limit" (100%). */
+const EMPTY_MEANS: Partial<Record<NumKey, number>> = { minBillForEarn: 0, minPointsToRedeem: 0, maxRedeemPercent: 100 };
+const DECIMAL = /^\d*\.?\d*$/;
+
+/** Saved value → box text. Nothing saved yet, or 0, shows an empty box. */
+const toText = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v !== 0 ? String(v) : '');
+/** Box text → number; an empty required box becomes NaN so validation flags it. */
+const toNum = (key: NumKey, text: string) =>
+    text.trim() === '' ? (EMPTY_MEANS[key] ?? NaN) : Number(text);
+
 const NumberField: React.FC<{
     id: string;
     label: string;
-    value: number;
-    onChange: (v: number) => void;
+    value: string;
+    onChange: (v: string) => void;
     prefix?: string;
     suffix?: string;
-    min?: number;
-    max?: number;
-    step?: number;
-}> = ({ id, label, value, onChange, prefix, suffix, min = 0, max, step = 1 }) => (
+    placeholder?: string;
+}> = ({ id, label, value, onChange, prefix, suffix, placeholder }) => (
     <div className="min-w-0">
         <label htmlFor={id} className={FIELD_LABEL}>{label}</label>
         <div className={FIELD}>
             {prefix && <span className="text-[#5b6b86]">{prefix}</span>}
             <input
                 id={id}
-                type="number"
+                type="text"
                 inputMode="decimal"
-                min={min}
-                max={max}
-                step={step}
+                autoComplete="off"
                 className={FIELD_INPUT}
-                value={Number.isFinite(value) ? value : ''}
-                onChange={(e) => onChange(e.target.value === '' ? 0 : Number(e.target.value))}
-                onWheel={(e) => (e.target as HTMLInputElement).blur()}
+                value={value}
+                placeholder={placeholder}
+                onChange={(e) => DECIMAL.test(e.target.value) && onChange(e.target.value)}
             />
             {suffix && <span className="whitespace-nowrap text-[#5b6b86]">{suffix}</span>}
         </div>
@@ -155,6 +164,10 @@ const LoyaltySettingPage: React.FC = () => {
     const companyId = currentUser?.companyId;
 
     const [settings, setSettings] = useState<LoyaltySettings | null>(null);
+    // Number boxes start empty (no pre-filled defaults); see toText / toNum
+    const [nums, setNums] = useState<Record<NumKey, string>>(
+        () => Object.fromEntries(NUM_KEYS.map((k) => [k, ''])) as Record<NumKey, string>,
+    );
     const [isSaving, setIsSaving] = useState(false);
     const [modal, setModal] = useState<{ message: string; type: State } | null>(null);
 
@@ -165,7 +178,10 @@ const LoyaltySettingPage: React.FC = () => {
             const defaults = getDefaultLoyaltySettings(companyId);
             try {
                 const snap = await getDoc(doc(db, 'companies', companyId, 'settings', LOYALTY_SETTINGS_DOC));
-                if (!cancelled) setSettings(snap.exists() ? ({ ...defaults, ...snap.data() } as LoyaltySettings) : defaults);
+                if (cancelled) return;
+                const data = snap.exists() ? snap.data() : {};
+                setSettings({ ...defaults, ...data } as LoyaltySettings);
+                setNums(Object.fromEntries(NUM_KEYS.map((k) => [k, toText(data[k])])) as Record<NumKey, string>);
             } catch (err) {
                 console.error('Failed to load loyalty settings:', err);
                 if (!cancelled) {
@@ -179,22 +195,32 @@ const LoyaltySettingPage: React.FC = () => {
 
     const set = <K extends keyof LoyaltySettings>(key: K, value: LoyaltySettings[K]) =>
         setSettings((prev) => (prev ? { ...prev, [key]: value } : prev));
+    const setNum = (key: NumKey) => (v: string) => setNums((prev) => ({ ...prev, [key]: v }));
+
+    /** The settings as they'd be saved — empty required boxes are NaN. */
+    const parsed: LoyaltySettings | null = settings
+        ? { ...settings, ...(Object.fromEntries(NUM_KEYS.map((k) => [k, toNum(k, nums[k])])) as Record<NumKey, number>) }
+        : null;
 
     const handleSave = async () => {
-        if (!companyId || !settings) return;
-        const error = validate(settings);
+        if (!companyId || !parsed) return;
+        const error = validate(parsed);
         if (error) {
             setModal({ message: error, type: State.ERROR });
             return;
         }
+        // A box left empty while its feature is off isn't saved, so nothing already saved is wiped
+        const payload: Record<string, unknown> = { ...parsed };
+        NUM_KEYS.forEach((k) => {
+            if (!Number.isFinite(parsed[k])) delete payload[k];
+            else if (k === 'earnPoints' || k === 'minPointsToRedeem') payload[k] = Math.trunc(parsed[k]);
+        });
         setIsSaving(true);
         try {
             await setDoc(
                 doc(db, 'companies', companyId, 'settings', LOYALTY_SETTINGS_DOC),
                 {
-                    ...settings,
-                    earnPoints: Math.trunc(settings.earnPoints),
-                    minPointsToRedeem: Math.trunc(settings.minPointsToRedeem),
+                    ...payload,
                     companyId,
                     settingType: 'loyalty',
                     updatedAt: new Date(),
@@ -210,7 +236,7 @@ const LoyaltySettingPage: React.FC = () => {
         }
     };
 
-    if (!settings) {
+    if (!settings || !parsed) {
         return (
             <div className={ROOT_BASE}>
                 <div className="flex min-h-screen flex-col items-center justify-center text-[#45556c]">
@@ -223,7 +249,9 @@ const LoyaltySettingPage: React.FC = () => {
 
     const off = !settings.enabled;
     const exampleBill = 1250;
-    const exampleEarn = calcEarnPoints(exampleBill, { ...settings, enabled: true });
+    const earnReady = parsed.earnPoints > 0 && parsed.earnPerAmount > 0;
+    const exampleEarn = earnReady ? calcEarnPoints(exampleBill, { ...parsed, enabled: true }) : 0;
+    const redeemReady = parsed.pointValue > 0;
 
     return (
         <div className={`${ROOT_BASE} flex min-h-screen w-full flex-col`}>
@@ -263,16 +291,18 @@ const LoyaltySettingPage: React.FC = () => {
                     <Section title="Earning" subtitle="How many points a bill gives" icon={ico(Award)} tint="green">
                         <Opt label="Points per spend" disabled={off}>
                             <div className="grid grid-cols-2 gap-3 sm:max-w-[420px]">
-                                <NumberField id="earn-points" label="Give" suffix="pts" value={settings.earnPoints} onChange={(v) => set('earnPoints', v)} min={1} />
-                                <NumberField id="earn-per" label="For every" prefix="₹" value={settings.earnPerAmount} onChange={(v) => set('earnPerAmount', v)} min={1} />
+                                <NumberField id="earn-points" label="Give" suffix="pts" value={nums.earnPoints} onChange={setNum('earnPoints')} />
+                                <NumberField id="earn-per" label="For every" prefix="₹" value={nums.earnPerAmount} onChange={setNum('earnPerAmount')} />
                             </div>
                             <div className={PREVIEW}>
-                                A <b>{rupees(exampleBill)}</b> bill earns <b>{exampleEarn} pts</b>. Points are rounded down.
+                                {earnReady
+                                    ? <>A <b>{rupees(exampleBill)}</b> bill earns <b>{exampleEarn} pts</b>. Points are rounded down.</>
+                                    : <>Enter the points and the spend amount to see an example.</>}
                             </div>
                         </Opt>
-                        <Opt label="Minimum bill to earn" description="Bills below this amount don't earn points. Use 0 for no minimum." disabled={off}>
+                        <Opt label="Minimum bill to earn" description="Bills below this amount don't earn points. Leave empty for no minimum." disabled={off}>
                             <div className="sm:max-w-[200px]">
-                                <NumberField id="earn-min" label="Minimum bill" prefix="₹" value={settings.minBillForEarn} onChange={(v) => set('minBillForEarn', v)} />
+                                <NumberField id="earn-min" label="Minimum bill" prefix="₹" value={nums.minBillForEarn} onChange={setNum('minBillForEarn')} placeholder="No minimum" />
                             </div>
                         </Opt>
                         <Opt
@@ -302,13 +332,17 @@ const LoyaltySettingPage: React.FC = () => {
                         />
                         <Opt label="Value and limits" disabled={off || !settings.redeemEnabled}>
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                                <NumberField id="point-value" label="1 point is worth" prefix="₹" value={settings.pointValue} onChange={(v) => set('pointValue', v)} step={0.01} />
-                                <NumberField id="min-redeem" label="Minimum points to use" suffix="pts" value={settings.minPointsToRedeem} onChange={(v) => set('minPointsToRedeem', v)} />
-                                <NumberField id="max-pct" label="Max share of a bill" suffix="%" value={settings.maxRedeemPercent} onChange={(v) => set('maxRedeemPercent', v)} min={1} max={100} />
+                                <NumberField id="point-value" label="1 point is worth" prefix="₹" value={nums.pointValue} onChange={setNum('pointValue')} />
+                                <NumberField id="min-redeem" label="Minimum points to use" suffix="pts" value={nums.minPointsToRedeem} onChange={setNum('minPointsToRedeem')} placeholder="No minimum" />
+                                <NumberField id="max-pct" label="Max share of a bill" suffix="%" value={nums.maxRedeemPercent} onChange={setNum('maxRedeemPercent')} placeholder="No limit" />
                             </div>
                             <div className={PREVIEW}>
-                                <b>100 pts</b> = <b>{rupees(pointsToRupees(100, settings))}</b>. On a <b>₹1,000</b> bill, points can pay up to{' '}
-                                <b>{rupees((1000 * Math.min(100, Math.max(0, settings.maxRedeemPercent))) / 100)}</b>.
+                                {redeemReady ? (
+                                    <>
+                                        <b>100 pts</b> = <b>{rupees(pointsToRupees(100, parsed))}</b>. On a <b>₹1,000</b> bill, points can pay up to{' '}
+                                        <b>{rupees((1000 * Math.min(100, Math.max(0, parsed.maxRedeemPercent || 0))) / 100)}</b>.
+                                    </>
+                                ) : <>Enter what 1 point is worth to see an example.</>}
                             </div>
                         </Opt>
                     </Section>

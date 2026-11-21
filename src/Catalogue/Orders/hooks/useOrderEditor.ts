@@ -14,7 +14,7 @@ import { getSlabForQty } from '../../../constants/models';
 import { useCatalogueData } from '../../../context/CatalogueDataContext';
 import type { Order } from '../orders.types';
 import { computeOrderTotals, computeLineTax, isTaxEnabled as computeIsTaxEnabled, resolveUnitPrice } from '../orders.calculations';
-import { useOrderCustomerPricing } from './useOrderCustomerPricing';
+import { markManualPrice, useOrderCustomerPricing } from './useOrderCustomerPricing';
 import { useOptionalLoyaltySettings } from '../../../context/SettingsContext';
 import { syncOrderEarnedPoints } from '../orderLoyalty';
 
@@ -123,7 +123,7 @@ export const useOrderEditor = ({
     const liveMoqMap = useLiveMoqMapHook(companyId, editingOrder);
     const { items: catalogueItems } = useCatalogueData();
 
-    // Customer-wise fixed discount: offered in the edit modal, never auto-applied
+    // Customer-wise fixed discount: applied in the edit modal while the order is open, Undo restores
     const customerPricing = useOrderCustomerPricing({
         enabled: !!salesSettings?.enableCustomerPricing,
         companyId,
@@ -202,7 +202,7 @@ export const useOrderEditor = ({
             const newFinalPrice = lineBase + lineTax;
 
             return {
-                ...item,
+                ...markManualPrice(item),
                 effectiveUnitPrice: Number(newNetPrice.toFixed(2)),
                 customPrice: Number(newNetPrice.toFixed(2)),
                 finalPrice: Number(newFinalPrice.toFixed(2)),
@@ -360,7 +360,7 @@ export const useOrderEditor = ({
             }
 
             return {
-                ...item,
+                ...markManualPrice(item),
                 discount: Number(discountValue.toFixed(2)),
                 effectiveUnitPrice: Number(newNetPrice.toFixed(2)),
                 customPrice: Number(newNetPrice.toFixed(2)),
@@ -397,7 +397,7 @@ export const useOrderEditor = ({
             }
 
             return {
-                ...item,
+                ...markManualPrice(item),
                 discount2: Number(discount2Value.toFixed(2)),
                 effectiveUnitPrice: Number(newNetPrice.toFixed(2)),
                 customPrice: Number(newNetPrice.toFixed(2)),

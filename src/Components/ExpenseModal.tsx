@@ -114,6 +114,15 @@ export const ExpenseModal = ({
   const [repeatMonthly, setRepeatMonthly] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // "Expense saved" confirmation — shown as a toast after the pop-up closes, or inline
+  // after "Save & add another" (the form clears, so without it nothing says it worked)
+  const [savedMsg, setSavedMsg] = useState('');
+  const [savedInline, setSavedInline] = useState(false);
+  useEffect(() => {
+    if (!savedMsg) return;
+    const id = setTimeout(() => setSavedMsg(''), 3000);
+    return () => clearTimeout(id);
+  }, [savedMsg]);
 
   // Tutorial
   const { currentUser } = useAuth();
@@ -181,10 +190,23 @@ export const ExpenseModal = ({
     setPaidFrom(initialValues?.paidFrom || 'Cash');
     setRepeatMonthly(false);
     setError('');
+    setSavedInline(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
-  if (!isOpen) return null;
+  const savedToast = savedMsg ? (
+    <div
+      role="status"
+      className="fixed inset-x-0 bottom-[calc(80px+env(safe-area-inset-bottom))] z-[8001] flex justify-center px-4 md:bottom-6 pointer-events-none"
+    >
+      <div className="flex max-w-md items-center gap-2 rounded-sm bg-[#008236] px-4 py-3 text-sm font-medium text-white shadow-[0_10px_28px_rgba(21,48,140,0.14),0_2px_6px_rgba(21,48,140,0.08)]">
+        <svg {...ico} className="flex-none"><path d="M5 12.5l4.5 4.5L19 7" /></svg>
+        <span className="min-w-0 truncate">{savedMsg}</span>
+      </div>
+    </div>
+  ) : null;
+
+  if (!isOpen) return savedToast;
 
   const [y, m] = date.split('-').map(Number);
   const monthName = new Date(y || 2000, (m || 1) - 1, 1).toLocaleString('en-IN', { month: 'long' });
@@ -216,10 +238,10 @@ export const ExpenseModal = ({
   const submit = async (keepOpen: boolean) => {
     if (isTutorial) return;
     if (!title.trim()) return setError('Title is required.');
-    if (!description.trim()) return setError('Description is required.');
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0)
       return setError('Enter a valid amount.');
     setError('');
+    setSavedInline(false);
     setSaving(true);
     try {
       await onSave({
@@ -232,7 +254,9 @@ export const ExpenseModal = ({
         paidFrom,
         ...(isEdit ? {} : { repeatMonthly }),
       });
-      if (keepOpen && !isEdit) resetForm();
+      const msg = `${isEdit ? 'Expense updated' : 'Expense saved'}: ${inr(Number(amount))} · ${title.trim()}`;
+      setSavedMsg(msg);
+      if (keepOpen && !isEdit) { resetForm(); setSavedInline(true); }
       else onClose();
     } catch {
       setError('Failed to save. Try again.');
@@ -437,7 +461,7 @@ export const ExpenseModal = ({
 
             {/* Description */}
             <div className="sm:col-span-2">
-              <label className={label}>Description <em className="not-italic text-[#d5000c]">*</em></label>
+              <label className={label}>Description <span className="font-normal text-[#5b6b86]">(optional)</span></label>
               <div className={`${field} h-10 ${t.focus}`}>
                 <input
                   type="text"
@@ -494,6 +518,13 @@ export const ExpenseModal = ({
                     ? <> Cash drawer goes down by {inr(amt)}.</>
                     : <> Cash drawer is not affected.</>)}
                 </span>
+              </div>
+            )}
+
+            {savedInline && savedMsg && !error && (
+              <div role="status" className="flex items-start gap-2 rounded-sm bg-[#e9faef] px-3 py-2.5 text-[13px] leading-[19px] text-[#008236] sm:col-span-2">
+                <svg {...ico} className="mt-[1.5px] flex-none"><path d="M5 12.5l4.5 4.5L19 7" /></svg>
+                <span>{savedMsg}. Add the next one.</span>
               </div>
             )}
 

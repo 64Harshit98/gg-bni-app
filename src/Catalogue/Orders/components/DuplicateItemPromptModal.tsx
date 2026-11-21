@@ -20,8 +20,8 @@ export const DuplicateItemPromptModal: React.FC<DuplicateItemPromptModalProps> =
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[2500] p-4">
             <div className="bg-white rounded-sm shadow-2xl p-6 w-full max-w-sm text-center">
-                <div className="mx-auto mb-4 w-12 h-12 rounded-sm flex items-center justify-center bg-blue-100">
-                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="mx-auto mb-4 w-12 h-12 rounded-sm flex items-center justify-center bg-[#ffedd5]">
+                    <svg className="w-6 h-6 text-[#c2410c]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                 </div>
@@ -38,13 +38,13 @@ export const DuplicateItemPromptModal: React.FC<DuplicateItemPromptModalProps> =
                 <div className="flex flex-col gap-2">
                     <button
                         onClick={handleIncreaseExistingOrderItemQuantity}
-                        className="w-full bg-blue-600 text-white py-2.5 px-4 rounded-sm font-semibold hover:bg-blue-700 transition-colors"
+                        className="w-full bg-[#c2410c] text-white py-2.5 px-4 rounded-sm font-semibold hover:bg-[#9a3412] transition-colors"
                     >
                         Increase Quantity
                     </button>
                     <button
                         onClick={handleAddOrderItemAsNew}
-                        className="w-full bg-gray-200 text-gray-800 py-2.5 px-4 rounded-sm font-semibold hover:bg-gray-300 transition-colors"
+                        className="w-full bg-white border border-[#f6e1d0] text-slate-800 py-2.5 px-4 rounded-sm font-semibold hover:bg-[#fff5ec] transition-colors"
                     >
                         Add as New Item
                     </button>

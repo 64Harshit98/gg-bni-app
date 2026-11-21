@@ -50,6 +50,8 @@ interface GenericBillFooterProps {
   onActionClick: () => void;
   disableAction?: boolean;
   children?: React.ReactNode;
+  /** Phone bar: an extra outline button before the main action (Sales: quick "Print"). */
+  secondaryAction?: { label: string; icon?: React.ReactNode; onClick: () => void };
 
   // ── Optional wording / rows (defaults keep Sale exactly as before) ──
   subtotalLabel?: string;                          // default 'MRP total'
@@ -71,6 +73,7 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
   onActionClick,
   disableAction = false,
   children,
+  secondaryAction,
   subtotalLabel = 'MRP total',
   netLabel = 'Net sale price',
   showNetRow = true,
@@ -162,6 +165,18 @@ export const GenericBillFooter: React.FC<GenericBillFooterProps> = ({
             ₹{formatINR(finalAmount)}
           </b>
         </button>
+
+        {secondaryAction && (
+          <button
+            type="button"
+            onClick={secondaryAction.onClick}
+            disabled={disableAction}
+            className="inline-flex h-12 items-center justify-center gap-1.5 whitespace-nowrap rounded-sm border border-[#155dfc] bg-white px-3 text-[15px] font-medium text-[#155dfc] transition-colors hover:bg-[#e6eeff] disabled:cursor-not-allowed disabled:opacity-[.45]"
+          >
+            {secondaryAction.icon}
+            {secondaryAction.label}
+          </button>
+        )}
 
         <button
           type="button"

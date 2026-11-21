@@ -1048,96 +1048,98 @@ const OrdersReturnPage: React.FC = () => {
         {/* --- RIGHT PANEL (wide screens only, xl+) --- */}
         <aside className="relative z-10 hidden h-full w-[380px] flex-none flex-col border-l border-[#f6e1d0] bg-white p-5 xl:flex">
           {vSale ? (
-            <div className="flex h-full flex-col gap-3.5 overflow-y-auto">
-              <h2 className="text-base font-semibold">Return summary</h2>
+            <div className="flex h-full min-h-0 flex-col gap-3.5">
+              {/* Scrollable body */}
+              <div className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto pr-1">
+                <h2 className="text-base font-semibold">Return summary</h2>
 
-              {/* Transaction Type */}
-              <div ref={typeDesktopRef}>
-                <TutorialStep
-                  step={3}
-                  currentStep={tutorialStep}
-                  text="Choose Refund, Exchange or Credit note. Exchange lets you add new items for the customer."
-                  onNext={() => next(4)}
-                  onSkip={skip}
-                >
-                  <div>
-                    <span className="mb-1 block text-xs font-medium text-[#45556c]">Transaction type</span>
-                    <TypeCards
-                      value={vMode}
-                      onChange={(v) => !isTutorialActive && setModeOfReturn(v)}
-                      refundValue="Cash Refund"
-                      disableCredit={isTutorialActive ? false : isDueSale}
-                    />
-                  </div>
-                </TutorialStep>
-              </div>
+                {/* Transaction Type */}
+                <div ref={typeDesktopRef}>
+                  <TutorialStep
+                    step={3}
+                    currentStep={tutorialStep}
+                    text="Choose Refund, Exchange or Credit note. Exchange lets you add new items for the customer."
+                    onNext={() => next(4)}
+                    onSkip={skip}
+                  >
+                    <div>
+                      <span className="mb-1 block text-xs font-medium text-[#45556c]">Transaction type</span>
+                      <TypeCards
+                        value={vMode}
+                        onChange={(v) => !isTutorialActive && setModeOfReturn(v)}
+                        refundValue="Cash Refund"
+                        disableCredit={isTutorialActive ? false : isDueSale}
+                      />
+                    </div>
+                  </TutorialStep>
+                </div>
 
-              {/* Financials */}
-              <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 text-sm">
-                <dt className="text-[#45556c]">Return value ({returnQty} {returnQty === 1 ? 'pc' : 'pcs'})</dt>
-                <dd className="text-right tabular-nums">₹{fmt(vReturnGross, 2)}</dd>
-                {vReturnTax > 0 && (
-                  <>
-                    <dt className="text-[#45556c]">Add: GST on returned items</dt>
-                    <dd className="text-right tabular-nums">+ ₹{fmt(vReturnTax, 2)}</dd>
-                  </>
-                )}
-                {vDiscount > 0 && (
-                  <>
-                    <dt className="text-[#d5000c]">Less: proportional discount</dt>
-                    <dd className="text-right tabular-nums text-[#d5000c]">- ₹{fmt(vDiscount, 2)}</dd>
-                  </>
-                )}
-                <dt className="text-[#45556c]">Paid on this order</dt>
-                <dd className="text-right tabular-nums">₹{fmt(vPaid, 2)}</dd>
-                <dt className="mt-1 border-t border-[#f6e1d0] pt-2 text-base font-semibold">Net return value</dt>
-                <dd className="mt-1 border-t border-[#f6e1d0] pt-2 text-right text-base font-semibold tabular-nums">
-                  ₹{fmt(vReturnGross + vReturnTax - vDiscount, 2)}
-                </dd>
-                {isExchange && (
-                  <>
-                    <dt className="text-[#45556c]">Less: new items value{vReturnTax > 0 ? ' (incl. GST)' : ''}</dt>
-                    <dd className="text-right tabular-nums text-[#9a3412]">- ₹{fmt(vExchangeValue, 2)}</dd>
-                  </>
-                )}
-                {showRoundOff && (
-                  <>
-                    <dt className="text-[#45556c]">Round off</dt>
-                    <dd className="text-right tabular-nums">{vRoundOff > 0 ? '+' : '-'} ₹{fmt(Math.abs(vRoundOff), 2)}</dd>
-                  </>
-                )}
-              </dl>
-
-              {/* Result panel sits right under the summary, like the artifact */}
-              <div ref={summaryDesktopRef}>
-                <TutorialStep
-                  step={5}
-                  currentStep={tutorialStep}
-                  text="Check the final balance here. When everything looks right, use the button below to process the return."
-                  onNext={() => completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep)}
-                  onSkip={skip}
-                  isLast
-                  position="top"
-                >
-                  {renderBalance(true)}
-                </TutorialStep>
-              </div>
-
-              {/* What this return changes */}
-              <div>
-                <span className="mb-1 block text-xs font-medium text-[#45556c]">What this return changes</span>
-                <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 rounded-sm bg-[#fff8f2] p-3 text-[13px]">
-                  <dt className="flex items-center gap-1.5 text-[#45556c]"><Ico d={ICON.order} size={16} />Stock in</dt>
-                  <dd className="break-words text-right font-semibold">{stockLine(vReturnItems, '+')}</dd>
+                {/* Financials */}
+                <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 text-sm">
+                  <dt className="text-[#45556c]">Return value ({returnQty} {returnQty === 1 ? 'pc' : 'pcs'})</dt>
+                  <dd className="text-right tabular-nums">₹{fmt(vReturnGross, 2)}</dd>
+                  {vReturnTax > 0 && (
+                    <>
+                      <dt className="text-[#45556c]">Add: GST on returned items</dt>
+                      <dd className="text-right tabular-nums">+ ₹{fmt(vReturnTax, 2)}</dd>
+                    </>
+                  )}
+                  {vDiscount > 0 && (
+                    <>
+                      <dt className="text-[#d5000c]">Less: proportional discount</dt>
+                      <dd className="text-right tabular-nums text-[#d5000c]">- ₹{fmt(vDiscount, 2)}</dd>
+                    </>
+                  )}
+                  <dt className="text-[#45556c]">Paid on this order</dt>
+                  <dd className="text-right tabular-nums">₹{fmt(vPaid, 2)}</dd>
+                  <dt className="mt-1 border-t border-[#f6e1d0] pt-2 text-base font-semibold">Net return value</dt>
+                  <dd className="mt-1 border-t border-[#f6e1d0] pt-2 text-right text-base font-semibold tabular-nums">
+                    ₹{fmt(vReturnGross + vReturnTax - vDiscount, 2)}
+                  </dd>
                   {isExchange && (
                     <>
-                      <dt className="flex items-center gap-1.5 text-[#45556c]"><Ico d={ICON.box} size={16} />Stock out</dt>
-                      <dd className="break-words text-right font-semibold">{stockLine(vExchangeItems, '−')}</dd>
+                      <dt className="text-[#45556c]">Less: new items value{vReturnTax > 0 ? ' (incl. GST)' : ''}</dt>
+                      <dd className="text-right tabular-nums text-[#9a3412]">- ₹{fmt(vExchangeValue, 2)}</dd>
+                    </>
+                  )}
+                  {showRoundOff && (
+                    <>
+                      <dt className="text-[#45556c]">Round off</dt>
+                      <dd className="text-right tabular-nums">{vRoundOff > 0 ? '+' : '-'} ₹{fmt(Math.abs(vRoundOff), 2)}</dd>
                     </>
                   )}
                 </dl>
-              </div>
 
+                {/* Result panel sits right under the summary, like the artifact */}
+                <div ref={summaryDesktopRef}>
+                  <TutorialStep
+                    step={5}
+                    currentStep={tutorialStep}
+                    text="Check the final balance here. When everything looks right, use the button below to process the return."
+                    onNext={() => completeTutorial(currentUser, TUTORIAL_KEY, setTutorialStep)}
+                    onSkip={skip}
+                    isLast
+                    position="top"
+                  >
+                    {renderBalance(true)}
+                  </TutorialStep>
+                </div>
+
+                {/* What this return changes */}
+                <div>
+                  <span className="mb-1 block text-xs font-medium text-[#45556c]">What this return changes</span>
+                  <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 rounded-sm bg-[#fff8f2] p-3 text-[13px]">
+                    <dt className="flex items-center gap-1.5 text-[#45556c]"><Ico d={ICON.order} size={16} />Stock in</dt>
+                    <dd className="break-words text-right font-semibold">{stockLine(vReturnItems, '+')}</dd>
+                    {isExchange && (
+                      <>
+                        <dt className="flex items-center gap-1.5 text-[#45556c]"><Ico d={ICON.box} size={16} />Stock out</dt>
+                        <dd className="break-words text-right font-semibold">{stockLine(vExchangeItems, '−')}</dd>
+                      </>
+                    )}
+                  </dl>
+                </div>
+              </div>
               <button
                 onClick={isTutorialActive ? undefined : handleProcessReturn}
                 disabled={isTutorialActive}

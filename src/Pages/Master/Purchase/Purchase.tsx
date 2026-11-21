@@ -667,7 +667,7 @@ const PurchasePage: React.FC = () => {
   // Array.prototype.filter keeps order, so both groups keep the A-Z / price sort the user chose.
   const selectedOnTop =
     purchaseSettings?.purchaseViewType === 'card' && !!purchaseSettings?.cardSelectedOnTop;
-  const gridItemsToShow = useMemo(() => {
+    const gridItemsToShow = useMemo(() => {
     if (isTutorialActive) return SAMPLE_GRID_ITEMS;
     if (!selectedOnTop) return sortedGridItems;
     const inCart = new Set(items.map((l) => l.productId).filter(Boolean));
@@ -675,6 +675,12 @@ const PurchasePage: React.FC = () => {
     const rest = sortedGridItems.filter((it) => !inCart.has(it.id));
     return [...picked, ...rest];
   }, [sortedGridItems, items, selectedOnTop, isTutorialActive]);
+
+  // Card view: a new category should always start from the top of the grid
+  const gridScrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    gridScrollRef.current?.scrollTo({ top: 0 });
+  }, [selectedCategory]);
 
   // ── Supplier rate-change alert ──
   // Flags only: a line's rate changes when the user taps "Use ₹x"; "Keep" accepts the new rate.
@@ -1655,7 +1661,7 @@ const PurchasePage: React.FC = () => {
               </div>
             </div>
             <TutorialStep step={3} {...tour} text="Tap an item to add it. Tap again to increase the quantity, or use − to reduce it." onNext={() => nextStep(4)} mobileArrowAlign="left">
-              <div className="flex-1 overflow-y-auto grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] md:grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] auto-rows-max content-start gap-2 bg-[#eef2ff] px-2 pt-2.5 pb-6 md:px-3">
+              <div ref={gridScrollRef} className="flex-1 overflow-y-auto grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] md:grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] auto-rows-max content-start gap-2 bg-[#eef2ff] px-2 pt-2.5 pb-6 md:px-3">
                 {renderGridQuickAddTile()}
                 {!isTutorialActive && sortedGridItems.length === 0 ? (
                   <div className="col-span-full text-center text-gray-500 mt-10 py-10 bg-white rounded-sm">
@@ -2004,8 +2010,8 @@ const PurchasePage: React.FC = () => {
       )}
       {/* CAMERA SELECTION MODAL */}
       {showScannerModal && (
-        <div className={OVERLAY}>
-          <div className={DIALOG}>
+        <div className={OVERLAY} onClick={() => setShowScannerModal(false)}>
+          <div className={DIALOG} onClick={(e) => e.stopPropagation()}>
             <h3 className="m-0 mb-4 text-lg font-semibold text-center">
               Choose action
             </h3>

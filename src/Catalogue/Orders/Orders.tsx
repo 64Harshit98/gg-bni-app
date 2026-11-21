@@ -410,9 +410,8 @@ const OrdersPage: React.FC = () => {
 
                 if (snap.exists()) {
                     const data = snap.data();
-                    console.log("Sales settings loaded:", data);
 
-                    setSalesSettings(data); // 👈 Add this line to store the settings
+                    setSalesSettings(data);
 
                     setEnableItemWiseDiscount(data.enableItemWiseDiscount ?? false);
                     setEnableDiscount2(data.enableDiscount2 ?? false);

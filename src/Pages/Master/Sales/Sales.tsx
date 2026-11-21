@@ -626,13 +626,19 @@ const Sales: React.FC = () => {
 
     // Card view: optionally pull items that are already in the cart to the top.
     // Array.sort is stable, so the rest keep the A-Z / price order the user chose.
-    const gridItemsToShow = useMemo(() => {
+     const gridItemsToShow = useMemo(() => {
         if (!selectedOnTop) return sortedGridItems;
         const inCart = new Set(items.map((l: any) => l.productId || l.id));
         const picked = sortedGridItems.filter(it => inCart.has(it.id));
         const rest = sortedGridItems.filter(it => !inCart.has(it.id));
         return [...picked, ...rest];
     }, [sortedGridItems, items, selectedOnTop]);
+
+    // Card view: a new category should always start from the top of the grid
+    const gridScrollRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        gridScrollRef.current?.scrollTo({ top: 0 });
+    }, [selectedCategory]);
     // const taxableValue = activeTaxMode === 'inclusive' ? netAmount - taxAmount : netAmount;
     // const roundOff = finalAmount - (activeTaxMode === 'inclusive' ? netAmount : netAmount + taxAmount);
 
@@ -2044,7 +2050,7 @@ const Sales: React.FC = () => {
                             {renderCategoryRail()}
 
                             <TutorialStep step={4} {...tour} text="Tap an item to add it to the bill. Use + and − on the card to change the quantity." onNext={() => nextStep(5)} mobileArrowAlign="left">
-                                <div data-tour="4" className="flex-1 min-w-0 overflow-y-auto grid grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] auto-rows-max content-start gap-2 bg-[#eef2ff] px-2 pt-2.5 pb-20 md:px-3">
+                                <div ref={gridScrollRef} data-tour="4" className="flex-1 min-w-0 overflow-y-auto grid grid-cols-2 md:grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] auto-rows-max content-start gap-2 bg-[#eef2ff] px-2 pt-2.5 pb-20 md:px-3">
                                     {/* sample: first two plain items look selected during the tutorial */}
                                     {(() => { return null; })()}
                                     {renderGridQuickAddTile()}

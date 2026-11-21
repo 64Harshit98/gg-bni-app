@@ -11,12 +11,7 @@ const logoBase64Cache: Record<string, string> = {};
 // ── Helper: convert any image URL → base64 data URL ──────────────
 const urlToBase64 = (url: string): Promise<string> => {
   return new Promise((resolve, reject) => {
-    if (!url) {
-      console.warn("⚠️ urlToBase64 was given an empty URL. Check Firestore database!");
-      return resolve("");
-    }
-
-    console.log("🔄 Attempting to convert logo URL to Base64:", url);
+    if (!url) return resolve("");
 
     const img = new Image();
     // CRITICAL for Canvas export
@@ -32,7 +27,6 @@ const urlToBase64 = (url: string): Promise<string> => {
       ctx.drawImage(img, 0, 0);
       const base64Str = canvas.toDataURL('image/png');
 
-      console.log("✅ Successfully converted logo to Base64!");
       resolve(base64Str);
     };
 

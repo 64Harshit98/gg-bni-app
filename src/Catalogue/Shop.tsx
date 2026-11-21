@@ -4,7 +4,8 @@ import { useCatalogueData } from '../context/CatalogueDataContext';
 import type { Item, ItemGroup } from '../constants/models';
 import { Modal } from '../constants/Modal';
 import { State } from '../enums';
-import { Trash2, Send, Pin, Download, Loader2, Copy, Share2, Plus, Pencil, ChevronDown, Link2 } from 'lucide-react';
+import { Trash2, Send, Pin, Download, Loader2, Copy, Share2, Plus, Pencil, ChevronDown, Link2, Image as ImageIcon, X } from 'lucide-react';
+import { fileToCategoryImage, loadImageFromUrl } from '../constants/categoryImage';
 import { db } from '../lib/Firebase';
 import { addDoc, collection, serverTimestamp, doc, getDoc, setDoc } from 'firebase/firestore';
 import { OrderInvoiceNumber } from '../UseComponents/InvoiceCounter';
@@ -14,7 +15,7 @@ import SubdomainClaimModal from '../Components/SubDomainModal';
 import SearchableItemInput from '../UseComponents/SearchIteminput';
 import ShowWrapper from '../context/ShowWrapper';
 import { Cata_Permissions } from './enum/cata_permissions.enum';
-import { ROUTES } from '../constants/routes.constants';
+//import { ROUTES } from '../constants/routes.constants';
 //import BackButton from '../Components/BackButton';
 import { Photo, Sheet, btnClass, toneClass } from './storefront/StoreUI';
 import { initialsOf } from './storefront/storefront.utils';
@@ -157,7 +158,6 @@ const OrderingPage: React.FC = () => {
     // ahead of the shared listener echoing those writes back.
     const [realItems, setItems] = useState<Item[]>(catalogueItems);
     const [realItemGroups, setItemGroups] = useState<ItemGroup[]>(catalogueItemGroups);
-    useEffect(() => { setItems(catalogueItems); }, [catalogueItems]);
     useEffect(() => { setItemGroups(catalogueItemGroups); }, [catalogueItemGroups]);
     const [searchQuery, _setSearchQuery] = useState('');
     const pageIsLoading = authLoading || !dbOperations || itemsLoading || itemGroupsLoading;
@@ -179,6 +179,22 @@ const OrderingPage: React.FC = () => {
     const [realPinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
     const [isSubdomainModalOpen, setIsSubdomainModalOpen] = useState(false); // <-- NEW STATE
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+    // --- New category popup ---
+    const [isNewCategoryOpen, setIsNewCategoryOpen] = useState(false);
+    const [newCategoryName, setNewCategoryName] = useState('');
+    const [newCategoryImage, setNewCategoryImage] = useState(''); // '' = no image
+    const [newCategoryLink, setNewCategoryLink] = useState('');
+    const [isCheckingLink, setIsCheckingLink] = useState(false);
+    const [newCategoryError, setNewCategoryError] = useState<string | null>(null);
+    const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+
+    // --- Edit category popup: image ---
+    const [tempImage, setTempImage] = useState(''); // '' = no image
+    const [tempImageLink, setTempImageLink] = useState('');
+    const [isCheckingEditLink, setIsCheckingEditLink] = useState(false);
+    const [isSavingEdit, setIsSavingEdit] = useState(false);
+    const [editError, setEditError] = useState<string | null>(null);
 
     // --- TUTORIAL ---
     const [tutorialStep, setTutorialStep] = useState(0);
@@ -221,18 +237,21 @@ const OrderingPage: React.FC = () => {
     }, [tutorialStep]);
 
     // --- GLOBAL "LIVE ENTIRE CATALOGUE" STATES ---
-    const [isAllCatalogueLive, setIsAllCatalogueLive] = useState(false);
     const [showCatalogueConfirmPopup, setShowCatalogueConfirmPopup] = useState(false);
     const [pendingCatalogueLiveState, setPendingCatalogueLiveState] = useState<boolean | null>(null);
     const [isTogglingCatalogue, setIsTogglingCatalogue] = useState(false);
 
+    // State nahi, derived value: items se hi nikalta hai, isliye alag se flip nahi hoga
+    const isAllCatalogueLive = useMemo(
+        () => items.length > 0 && items.every(item => item.isListed === true),
+        [items],
+    );
+
+    // Context se sync: bulk toggle ke dauran partial snapshots ignore
     useEffect(() => {
-        if (!items || items.length === 0) {
-            setIsAllCatalogueLive(false);
-            return;
-        }
-        setIsAllCatalogueLive(items.every(item => item.isListed === true));
-    }, [items]);
+        if (isTogglingCatalogue) return;
+        setItems(catalogueItems);
+    }, [catalogueItems, isTogglingCatalogue]);
 
     useEffect(() => {
         if (!companyId) return;
@@ -260,6 +279,47 @@ const OrderingPage: React.FC = () => {
         if (isTutorialActive) return;
         setEditingId(group.id!);
         setTempName(group.name);
+        setTempImage(group.imageUrl ?? '');
+        // saved image link hai (data: upload nahi) to link field me dikhao
+        setTempImageLink(group.imageUrl && /^https?:\/\//i.test(group.imageUrl) ? group.imageUrl : '');
+        setEditError(null);
+    };
+
+    const closeEdit = () => {
+        if (isSavingEdit) return;
+        setEditingId(null);
+        setConfirmDeleteId(null);
+        setTempImage('');
+        setTempImageLink('');
+        setIsCheckingEditLink(false);
+        setEditError(null);
+    };
+
+    const handleEditImagePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file) return;
+        try {
+            setTempImage(await fileToCategoryImage(file));
+            setTempImageLink(''); // upload replaces pasted link
+            setEditError(null);
+        } catch (err: any) {
+            setEditError(err.message || 'Failed to process image.');
+        }
+    };
+
+    const handleApplyEditLink = async () => {
+        const url = tempImageLink.trim();
+        if (!url) return;
+        setIsCheckingEditLink(true);
+        try {
+            setTempImage(await loadImageFromUrl(url));
+            setEditError(null);
+        } catch (err: any) {
+            setEditError(err.message || 'Failed to load image link.');
+        } finally {
+            setIsCheckingEditLink(false);
+        }
     };
 
     const generateSlug = (name: string) => {
@@ -305,8 +365,8 @@ const OrderingPage: React.FC = () => {
                 // Using your existing modal state instead of a native alert for a cleaner UI!
                 setModal({ message: "Category link copied to clipboard!", type: State.SUCCESS });
             }
-        } catch (error) {
-            console.log("Share cancelled:", error);
+        } catch {
+            // Share cancelled by the user
         }
     };
     const handleTogglePin = (e: React.MouseEvent, id: string) => {
@@ -342,7 +402,6 @@ const OrderingPage: React.FC = () => {
             await Promise.all(updates);
 
             setItems(prev => prev.map(item => ({ ...item, isListed: newState })));
-            setIsAllCatalogueLive(newState);
             setModal({ message: `Entire catalogue is now ${newState ? 'LIVE' : 'UNLIVE'}`, type: State.SUCCESS });
         } catch (err) {
             console.error("Bulk catalogue toggle failed:", err);
@@ -355,20 +414,51 @@ const OrderingPage: React.FC = () => {
 
     const handleSaveEdit = async (id: string) => {
         if (!dbOperations) {
-            setModal({ message: 'Database connection error', type: State.ERROR });
+            setEditError('Database connection error');
             return;
         }
-        try {
-            await dbOperations.updateItemGroup(id, { name: tempName });
-            setItemGroups(prev => prev.map(group =>
-                group.id === id ? { ...group, name: tempName } : group
-            ));
+        const group = realItemGroups.find(g => g.id === id);
+        if (!group) return;
 
-            setEditingId(null);
-            setModal({ message: 'Name updated successfully!', type: State.SUCCESS });
-        } catch (err) {
-            console.error("Update Error:", err);
-            setModal({ message: 'Failed to update name', type: State.ERROR });
+        const name = tempName.trim();
+        if (!name) return setEditError('Category name cannot be empty.');
+        const lower = name.toLowerCase();
+        if (lower === 'uncategorized' || realItemGroups.some(g => g.id !== id && g.name.trim().toLowerCase() === lower)) {
+            return setEditError('A category with this name already exists.');
+        }
+
+        setIsSavingEdit(true);
+        setEditError(null);
+        try {
+            // link paste kiya par "Use link" nahi dabaya? Save pe khud check kar lo
+            let imageUrl = tempImage;
+            if (!imageUrl && tempImageLink.trim()) {
+                imageUrl = await loadImageFromUrl(tempImageLink.trim());
+            }
+
+            const nameChanged = name !== group.name;
+            const imageChanged = imageUrl !== ((group as any).imageUrl ?? '');
+            if (!nameChanged && !imageChanged) {
+                setIsSavingEdit(false);
+                closeEdit();
+                return;
+            }
+
+            const updates: Record<string, any> = {};
+            if (nameChanged) updates.name = name;
+            if (imageChanged) updates.imageUrl = imageUrl; // '' = image hata di
+
+            await dbOperations.updateItemGroup(id, updates);
+            setItemGroups(prev => prev.map(g => (g.id === id ? { ...g, ...updates } : g)));
+
+            setIsSavingEdit(false);
+            closeEdit();
+            setModal({ message: nameChanged ? 'Category updated successfully!' : 'Category image updated!', type: State.SUCCESS });
+        } catch (err: any) {
+            console.error('Update Error:', err);
+            setEditError(err?.message || 'Failed to update category.');
+        } finally {
+            setIsSavingEdit(false);
         }
     };
 
@@ -386,6 +476,89 @@ const OrderingPage: React.FC = () => {
         } catch (err) {
             console.error(err);
             setModal({ message: 'Delete failed', type: State.ERROR });
+        }
+    };
+
+    // --- New category popup ---
+    const resetNewCategory = () => {
+        setNewCategoryName('');
+        setNewCategoryImage('');
+        setNewCategoryLink('');
+        setIsCheckingLink(false);
+        setNewCategoryError(null);
+    };
+
+    const openNewCategory = () => {
+        if (isTutorialActive) return;
+        resetNewCategory();
+        setIsNewCategoryOpen(true);
+    };
+
+    const closeNewCategory = () => {
+        if (isCreatingCategory) return;
+        setIsNewCategoryOpen(false);
+        resetNewCategory();
+    };
+
+    const handleNewCategoryImagePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        e.target.value = ''; // same file dobara choose ho sake
+        if (!file) return;
+        try {
+            setNewCategoryImage(await fileToCategoryImage(file));
+            setNewCategoryLink(''); // upload replaces any pasted link
+            setNewCategoryError(null);
+        } catch (err: any) {
+            setNewCategoryError(err.message || 'Failed to process image.');
+        }
+    };
+
+    const handleApplyNewCategoryLink = async () => {
+        const url = newCategoryLink.trim();
+        if (!url) return;
+        setIsCheckingLink(true);
+        try {
+            setNewCategoryImage(await loadImageFromUrl(url)); // preview updates instantly
+            setNewCategoryError(null);
+        } catch (err: any) {
+            setNewCategoryError(err.message || 'Failed to load image link.');
+        } finally {
+            setIsCheckingLink(false);
+        }
+    };
+
+    const handleCreateCategory = async () => {
+        const name = newCategoryName.trim();
+        if (!name) return setNewCategoryError('Category name cannot be empty.');
+        const lower = name.toLowerCase();
+        if (lower === 'uncategorized' || realItemGroups.some(g => g.name.trim().toLowerCase() === lower)) {
+            return setNewCategoryError('A category with this name already exists.');
+        }
+        if (!dbOperations) return;
+
+        setIsCreatingCategory(true);
+        setNewCategoryError(null);
+        try {
+            // link paste kiya par "Use link" nahi dabaya? Create pe khud check kar lo
+            let imageUrl = newCategoryImage;
+            if (!imageUrl && newCategoryLink.trim()) {
+                imageUrl = await loadImageFromUrl(newCategoryLink.trim());
+            }
+
+            await dbOperations.createItemGroup({
+                name,
+                description: '',
+                ...(imageUrl ? { imageUrl } : {}),
+            });
+            // the shared catalogue listener adds it to the grid automatically
+            setIsNewCategoryOpen(false);
+            resetNewCategory();
+            setModal({ message: `Category "${name}" created!`, type: State.SUCCESS });
+        } catch (err: any) {
+            console.error('Create category failed:', err);
+            setNewCategoryError(err?.message || 'Failed to create category. Please try again.');
+        } finally {
+            setIsCreatingCategory(false);
         }
     };
 
@@ -720,6 +893,11 @@ const OrderingPage: React.FC = () => {
     const liveTotal = items.filter(i => i.isListed === true).length;
     const realCategoryCount = filteredItems.filter(g => g.id !== 'uncategorized').length;
     const editingGroup = itemGroups.find(g => g.id === editingId) || null;
+    const hasEditChanges = !!editingGroup && (
+        tempName.trim() !== editingGroup.name ||
+        tempImage !== ((editingGroup as any).imageUrl ?? '') ||
+        (!tempImage && !!tempImageLink.trim())
+    );
 
     return (
         <div className="min-h-full bg-sf-canvas pb-10 font-sans text-slate-900">
@@ -825,14 +1003,10 @@ const OrderingPage: React.FC = () => {
                                     itemGroupMap={itemGroupMap}
                                     onItemSelected={(item) => {
                                         if (!item.id) return;
-                                        const group = itemGroups.find(g => g.id === item.itemGroupId);
-                                        const uncategorizedGroup = itemGroups.find(g => g.name.toLowerCase().trim() === "uncategorized");
-                                        const slug = group
-                                            ? generateSlug(group.name)
-                                            : uncategorizedGroup
-                                                ? generateSlug(uncategorizedGroup.name)
-                                                : "uncategorized";
-                                        navigate(`/catalogue-home/my-shop/${slug}`, {
+                                        // Card click jaisa hi logic: itemGroupId + itemGroupIds dono dekho, URL me group id use karo
+                                        const allIds = [item.itemGroupId, ...(item.itemGroupIds || [])].filter(Boolean) as string[];
+                                        const targetId = allIds.find(id => itemGroups.some(g => g.id === id)) ?? 'uncategorized';
+                                        navigate(`/catalogue-home/my-shop/${targetId}`, {
                                             state: { highlightItemId: item.id, isUnlisted: !item.isListed }
                                         });
                                     }}
@@ -845,7 +1019,7 @@ const OrderingPage: React.FC = () => {
                                     Sort: {sortOrder === 'A-Z' ? 'A–Z' : 'Z–A'}<ChevronDown className="size-4 text-slate-500" />
                                 </button>
                                 {isSortOpen && (
-                                    <div className="absolute right-0 z-30 mt-1 w-36 overflow-hidden rounded-sm border border-sf-line bg-white py-1 shadow-sf-float">
+    <div className="absolute left-0 z-30 mt-1 w-36 overflow-hidden rounded-sm border border-sf-line bg-white py-1 shadow-sf-float">
                                         {(['A-Z', 'Z-A'] as const).map(opt => (
                                             <button key={opt} type="button" onClick={() => { setSortOrder(opt); setIsSortOpen(false); }}
                                                 className={cx('block w-full px-3 py-2 text-left text-sm hover:bg-sf-sunken', sortOrder === opt && 'font-medium text-sf-primary')}>
@@ -856,7 +1030,7 @@ const OrderingPage: React.FC = () => {
                                 )}
                             </div>
                             <ShowWrapper requiredPermission={Cata_Permissions.ManageItems}>
-                                <button type="button" onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`)} className={btnClass('secondary', 'md')}>
+                                <button type="button" onClick={openNewCategory} className={btnClass('secondary', 'md')}>
                                     <Plus className="size-4" />New category
                                 </button>
                             </ShowWrapper>
@@ -873,7 +1047,7 @@ const OrderingPage: React.FC = () => {
                     <div className="grid place-items-center gap-2 rounded-sm border border-sf-line bg-white px-4 py-14 text-center text-[13px] text-slate-500">
                         <b className="text-[15px] font-semibold text-slate-900">No categories yet</b>
                         Add a category, then add products to it so customers can browse them.
-                        <button type="button" onClick={() => navigate(`${ROUTES.CHOME}/${ROUTES.CAT_ITEM_GROUP}`)} className={cx(btnClass('secondary', 'sm'), 'mt-2')}>
+                        <button type="button" onClick={openNewCategory} className={cx(btnClass('secondary', 'sm'), 'mt-2')}>
                             <Plus className="size-4" />New category
                         </button>
                     </div>
@@ -902,7 +1076,9 @@ const OrderingPage: React.FC = () => {
                                     {/* Photo: the category's products as a collage, or its first letter */}
                                     <div className="relative">
                                         <div className={cx('relative aspect-[4/3] overflow-hidden bg-sf-sunken', isFullyUnlive && 'grayscale opacity-60')}>
-                                            {collageImages.length > 0 ? (
+                                            {group.imageUrl ? (
+                                                <Photo src={group.imageUrl} alt="" fit="cover" className="h-full w-full rounded-none" />
+                                            ) : collageImages.length > 0 ? (
                                                 <div className={cx('grid h-full w-full gap-0.5',
                                                     collageImages.length === 1 ? 'grid-cols-1' : 'grid-cols-2',
                                                     collageImages.length > 2 && 'grid-rows-2')}>
@@ -980,8 +1156,75 @@ const OrderingPage: React.FC = () => {
                 )}
             </div>
 
+            {/* --- New category --- */}
+            <Sheet open={isNewCategoryOpen} title="New category" onClose={closeNewCategory}
+                footer={<>
+                    <button type="button" onClick={closeNewCategory} disabled={isCreatingCategory} className={btnClass('ghost')}>Cancel</button>
+                    <button type="button" onClick={handleCreateCategory}
+                        disabled={isCreatingCategory || isCheckingLink || !newCategoryName.trim()}
+                        className={btnClass('primary')}>
+                        {isCreatingCategory ? 'Creating…' : 'Create category'}
+                    </button>
+                </>}>
+                <form onSubmit={(e) => { e.preventDefault(); handleCreateCategory(); }}>
+                    {newCategoryError && (
+                        <p className="mb-3 rounded-sm bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{newCategoryError}</p>
+                    )}
+
+                    {/* Image + name in one row */}
+                    <div className="mb-3 flex items-start gap-3">
+                        <div className="relative size-16 shrink-0 overflow-hidden rounded-sm border border-sf-control bg-sf-sunken">
+                            <label
+                                className="flex size-full cursor-pointer items-center justify-center text-slate-400 transition-colors hover:bg-sf-line"
+                                aria-label={newCategoryImage ? 'Change category image' : 'Add category image'}
+                            >
+                                {newCategoryImage
+                                    ? <img src={newCategoryImage} alt="" className="size-full object-cover" />
+                                    : <ImageIcon className="size-6" strokeWidth={1.5} />}
+                                <input type="file" accept="image/*" onChange={handleNewCategoryImagePick} className="sr-only" />
+                            </label>
+                            <span aria-hidden className="pointer-events-none absolute bottom-0 right-0 inline-flex size-5 items-center justify-center rounded-full bg-sf-primary text-white">
+                                <Plus className="size-3" strokeWidth={2.5} />
+                            </span>
+                            {newCategoryImage && (
+                                <button type="button" onClick={() => { setNewCategoryImage(''); setNewCategoryLink(''); }}
+                                    aria-label="Remove category image"
+                                    className="absolute left-0.5 top-0.5 inline-flex size-4 items-center justify-center rounded-full bg-black/55 text-white transition-colors hover:bg-red-600">
+                                    <X className="size-2.5" strokeWidth={2.5} />
+                                </button>
+                            )}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                            <label htmlFor="new-cat-name" className="mb-1.5 block text-[13px] font-medium">Category name</label>
+                            <input id="new-cat-name" autoFocus value={newCategoryName} maxLength={60}
+                                placeholder="e.g. Beverages"
+                                onChange={(e) => { setNewCategoryName(e.target.value); setNewCategoryError(null); }}
+                                className="h-10 w-full rounded-sm border border-sf-control px-3 text-sm focus:outline-2 focus:outline-offset-1 focus:outline-sf-primary" />
+                        </div>
+                    </div>
+
+                    {/* Image link */}
+                    <div className="flex gap-2">
+                        <input type="url" inputMode="url" value={newCategoryLink}
+                            onChange={(e) => setNewCategoryLink(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyNewCategoryLink(); } }}
+                            placeholder="Or paste image link (https://…)"
+                            aria-label="Category image link"
+                            className="h-9 min-w-0 flex-1 rounded-sm border border-sf-control px-3 text-[13px] focus:outline-2 focus:outline-offset-1 focus:outline-sf-primary" />
+                        <button type="button" onClick={handleApplyNewCategoryLink}
+                            disabled={!newCategoryLink.trim() || isCheckingLink}
+                            className={btnClass('secondary', 'sm')}>
+                            {isCheckingLink ? 'Checking…' : 'Use link'}
+                        </button>
+                    </div>
+
+                    <p className="mt-2 text-xs text-slate-500">Customers will see this name on your store. Image is optional, you can add products after creating.</p>
+                </form>
+            </Sheet>
+
             {/* --- Edit category: rename or delete --- */}
-            <Sheet open={!!editingGroup} title={confirmDeleteId ? 'Delete this category?' : 'Edit category'} onClose={() => { setEditingId(null); setConfirmDeleteId(null); }}
+            <Sheet open={!!editingGroup} title={confirmDeleteId ? 'Delete this category?' : 'Edit category'} onClose={closeEdit}
                 footer={confirmDeleteId ? (
                     <>
                         <button type="button" onClick={() => setConfirmDeleteId(null)} className={btnClass('ghost')}>Cancel</button>
@@ -992,12 +1235,16 @@ const OrderingPage: React.FC = () => {
                     </>
                 ) : (
                     <>
-                        <button type="button" onClick={() => editingGroup && setConfirmDeleteId(editingGroup.id!)} className={cx(btnClass('danger'), 'mr-auto')}>
+                        <button type="button" onClick={() => editingGroup && setConfirmDeleteId(editingGroup.id!)} disabled={isSavingEdit} className={cx(btnClass('danger'), 'mr-auto')}>
                             <Trash2 className="size-4" />Delete
                         </button>
-                        <button type="button" onClick={() => setEditingId(null)} className={btnClass('ghost')}>Cancel</button>
-                        <button type="button" disabled={!tempName.trim() || tempName.trim() === editingGroup?.name} onClick={() => editingGroup && handleSaveEdit(editingGroup.id!)}
-                            className={btnClass('primary')}>Save</button>
+                        <button type="button" onClick={closeEdit} disabled={isSavingEdit} className={btnClass('ghost')}>Cancel</button>
+                        <button type="button"
+                            disabled={isSavingEdit || isCheckingEditLink || !tempName.trim() || !hasEditChanges}
+                            onClick={() => editingGroup && handleSaveEdit(editingGroup.id!)}
+                            className={btnClass('primary')}>
+                            {isSavingEdit ? 'Saving…' : 'Save'}
+                        </button>
                     </>
                 )}>
                 {editingGroup && (confirmDeleteId ? (
@@ -1005,11 +1252,59 @@ const OrderingPage: React.FC = () => {
                         <b className="font-semibold text-slate-900">{editingGroup.name}</b> will be removed. Its {groupItemsOf(editingGroup.id!).length} product{groupItemsOf(editingGroup.id!).length === 1 ? '' : 's'} stay in your catalogue without a category.
                     </p>
                 ) : (
-                    <form onSubmit={(e) => { e.preventDefault(); if (tempName.trim() && tempName.trim() !== editingGroup.name) handleSaveEdit(editingGroup.id!); }}>
-                        <label htmlFor="cat-name" className="mb-1.5 block text-[13px] font-medium">Category name</label>
-                        <input id="cat-name" autoFocus value={tempName} maxLength={60} onChange={(e) => setTempName(e.target.value)}
-                            className="h-10 w-full rounded-sm border border-sf-control px-3 text-sm focus:outline-2 focus:outline-offset-1 focus:outline-sf-primary" />
-                        <p className="mt-1.5 text-xs text-slate-500">Customers see this name on your store. Changing it also changes the category's link.</p>
+                    <form onSubmit={(e) => { e.preventDefault(); if (tempName.trim() && hasEditChanges && !isSavingEdit) handleSaveEdit(editingGroup.id!); }}>
+                        {editError && (
+                            <p className="mb-3 rounded-sm bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{editError}</p>
+                        )}
+
+                        {/* Image + name in one row */}
+                        <div className="mb-3 flex items-start gap-3">
+                            <div className="relative size-16 shrink-0 overflow-hidden rounded-sm border border-sf-control bg-sf-sunken">
+                                <label
+                                    className="flex size-full cursor-pointer items-center justify-center text-slate-400 transition-colors hover:bg-sf-line"
+                                    aria-label={tempImage ? 'Change category image' : 'Add category image'}
+                                >
+                                    {tempImage
+                                        ? <img src={tempImage} alt="" className="size-full object-cover" />
+                                        : <ImageIcon className="size-6" strokeWidth={1.5} />}
+                                    <input type="file" accept="image/*" onChange={handleEditImagePick} className="sr-only" />
+                                </label>
+                                <span aria-hidden className="pointer-events-none absolute bottom-0 right-0 inline-flex size-5 items-center justify-center rounded-full bg-sf-primary text-white">
+                                    <Plus className="size-3" strokeWidth={2.5} />
+                                </span>
+                                {tempImage && (
+                                    <button type="button" onClick={() => { setTempImage(''); setTempImageLink(''); }}
+                                        aria-label="Remove category image"
+                                        className="absolute left-0.5 top-0.5 inline-flex size-4 items-center justify-center rounded-full bg-black/55 text-white transition-colors hover:bg-red-600">
+                                        <X className="size-2.5" strokeWidth={2.5} />
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                                <label htmlFor="cat-name" className="mb-1.5 block text-[13px] font-medium">Category name</label>
+                                <input id="cat-name" autoFocus value={tempName} maxLength={60}
+                                    onChange={(e) => { setTempName(e.target.value); setEditError(null); }}
+                                    className="h-10 w-full rounded-sm border border-sf-control px-3 text-sm focus:outline-2 focus:outline-offset-1 focus:outline-sf-primary" />
+                            </div>
+                        </div>
+
+                        {/* Image link */}
+                        <div className="flex gap-2">
+                            <input type="url" inputMode="url" value={tempImageLink}
+                                onChange={(e) => setTempImageLink(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyEditLink(); } }}
+                                placeholder="Or paste image link (https://…)"
+                                aria-label="Category image link"
+                                className="h-9 min-w-0 flex-1 rounded-sm border border-sf-control px-3 text-[13px] focus:outline-2 focus:outline-offset-1 focus:outline-sf-primary" />
+                            <button type="button" onClick={handleApplyEditLink}
+                                disabled={!tempImageLink.trim() || isCheckingEditLink}
+                                className={btnClass('secondary', 'sm')}>
+                                {isCheckingEditLink ? 'Checking…' : 'Use link'}
+                            </button>
+                        </div>
+
+                        <p className="mt-2 text-xs text-slate-500">Customers see this name on your store. Changing it also changes the category's link.</p>
                     </form>
                 ))}
             </Sheet>

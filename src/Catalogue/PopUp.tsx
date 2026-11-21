@@ -128,8 +128,8 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
                             userLoginPhone: formData.number,
                         });
                     }
-                } catch (err) {
-                    console.log("No upcoming order to update yet");
+                                } catch {
+                    // No upcoming order to update yet
                 }
 
                 setStep(2);
@@ -227,8 +227,8 @@ const LeadPopUp: React.FC<LeadPopUpProps> = ({
                         userLoginPhone: formData.number
                     });
                 }
-            } catch (err) {
-                console.log("No upcoming order to update");
+                        } catch {
+                // No upcoming order to update
             }
 
             setStep(2);

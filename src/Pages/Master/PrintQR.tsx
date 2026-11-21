@@ -2,7 +2,9 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/auth-context';
 import { useCatalogueData } from '../../context/CatalogueDataContext';
-import type { Item } from '../../constants/models';
+import type { Item, PriceTier } from '../../constants/models';
+import { TierPickerModal } from '../../Components/TierPickerModal';
+import { hasMultiplePricing } from '../utils/pricingUtils';
 import { getFirestoreOperations } from '../../lib/ItemsFirebase';
 import { CustomButton } from '../../Components';
 import { Variant } from '../../enums';
@@ -29,6 +31,22 @@ const TUTORIAL_KEY = 'printLabelsTutorialDone';
 type PrintableItem = Item & {
   quantityToPrint: number;
   queueId: string;
+  tierId?: string; // set when this row is a pricing option (tier) of the item
+};
+
+// Builds one print-list row. A tier row uses the tier's own barcode and prices.
+const buildQueueRow = (item: Item, tier?: PriceTier): PrintableItem => {
+  if (!tier) return { ...item, quantityToPrint: 1, queueId: crypto.randomUUID() as string };
+  return {
+    ...item,
+    name: `${item.name} (${tier.label})`,
+    barcode: (tier.barcode || '').trim(),
+    mrp: tier.mrp,
+    salesPrice: tier.salesPrice,
+    tierId: tier.id,
+    quantityToPrint: 1,
+    queueId: crypto.randomUUID() as string,
+  };
 };
 
 type PrefilledItem = { barcode: string, quantity: number, name: string };
@@ -235,6 +253,8 @@ const QRCodeGeneratorPage: React.FC = () => {
 
   // Item whose edit drawer should be open (used by "Set MRP")
   const [itemToEdit, setItemToEdit] = useState<Item | null>(null);
+  const [tierPickerItem, setTierPickerItem] = useState<Item | null>(null);
+  const [tierNotice, setTierNotice] = useState<string | null>(null);
 
   // Tutorial
   const [tutorialStep, setTutorialStep] = useState(0);
@@ -340,15 +360,30 @@ const QRCodeGeneratorPage: React.FC = () => {
     else if (printQueue.length === 0) setItemForPreview(null);
   }, [printQueue, itemForPreview]);
 
+  // Items with pricing options stay searchable, because another pack may still need adding
   const availableItemsForSearch = useMemo(() => {
-    const itemIdsInQueue = new Set(printQueue.map(item => item.id));
-    return allItems.filter(item => !itemIdsInQueue.has(item.id));
+    const plainIdsInQueue = new Set(printQueue.filter(q => !q.tierId).map(q => q.id));
+    return allItems.filter(item => hasMultiplePricing(item) || !plainIdsInQueue.has(item.id));
   }, [allItems, printQueue]);
 
+  const addToQueue = useCallback((item: Item, tier?: PriceTier) => {
+    const realTier = tier && tier.id !== '__base__' ? tier : undefined; // '__base__' = the item itself
+    if (realTier && !realTier.barcode?.trim()) {
+      setTierNotice(`"${realTier.label}" has no barcode of its own. Add one in Edit item to print its label.`);
+      return;
+    }
+    setTierNotice(null);
+    setPrintQueue(prev =>
+      prev.some(q => q.id === item.id && q.tierId === realTier?.id)
+        ? prev
+        : [...prev, buildQueueRow(item, realTier)]
+    );
+  }, []);
+
   const handleAddItemToQueue = useCallback((item: Item) => {
-    if (printQueue.some(qi => qi.id === item.id)) return;
-    setPrintQueue(prev => [...prev, { ...item, quantityToPrint: 1, queueId: crypto.randomUUID() as string }]);
-  }, [printQueue]);
+    if (hasMultiplePricing(item)) { setTierPickerItem(item); return; } // same as Sales
+    addToQueue(item);
+  }, [addToQueue]);
 
   const handleRemoveItemFromQueue = useCallback((queueId: string) => {
     setPrintQueue(prev => prev.filter(item => item.queueId !== queueId));
@@ -364,23 +399,27 @@ const QRCodeGeneratorPage: React.FC = () => {
   useEffect(() => {
     if (allItems.length === 0) return;
     const byId = new Map(allItems.map(i => [i.id, i]));
-    setPrintQueue(prev => prev.map(q => {
+
+    const refresh = (q: PrintableItem): PrintableItem => {
       const fresh = byId.get(q.id);
-      return fresh ? { ...fresh, quantityToPrint: q.quantityToPrint, queueId: q.queueId } : q;
-    }));
-    setItemForPreview(prev => {
-      if (!prev) return prev;
-      const fresh = byId.get(prev.id);
-      return fresh ? { ...fresh, quantityToPrint: prev.quantityToPrint, queueId: prev.queueId } : prev;
-    });
+      if (!fresh) return q;
+      if (!q.tierId) return { ...fresh, quantityToPrint: q.quantityToPrint, queueId: q.queueId };
+      const tier = fresh.priceTiers?.find(t => t.id === q.tierId);
+      if (!tier?.barcode?.trim()) return q; // tier deleted or barcode removed: keep old row
+      return { ...buildQueueRow(fresh, tier), quantityToPrint: q.quantityToPrint, queueId: q.queueId };
+    };
+
+    setPrintQueue(prev => prev.map(refresh));
+    setItemForPreview(prev => (prev ? refresh(prev) : prev));
   }, [allItems]);
 
   // Called by ItemEditDrawer after a successful save (e.g. MRP set)
   const handleItemSaved = useCallback((updated: Partial<Item>) => {
     const id = itemToEdit?.id;
     if (!id) return;
-    setPrintQueue(prev => prev.map(q => q.id === id ? { ...q, ...updated } : q));
-    setItemForPreview(prev => prev && prev.id === id ? { ...prev, ...updated } : prev);
+    // Tier rows are rebuilt by the sync effect above, so merging base fields here would overwrite them
+    setPrintQueue(prev => prev.map(q => q.id === id && !q.tierId ? { ...q, ...updated } : q));
+    setItemForPreview(prev => prev && prev.id === id && !prev.tierId ? { ...prev, ...updated } : prev);
     setItemToEdit(null);
   }, [itemToEdit]);
 
@@ -779,7 +818,12 @@ const QRCodeGeneratorPage: React.FC = () => {
               </div>
             </TutorialStep>
           </div>
-
+          {tierNotice && (
+            <div className="flex items-center gap-3 rounded-sm border border-[#f3d49a] bg-[#fff3dd] px-4 py-3 text-[13px] text-[#bb4d00]">
+              <span className="min-w-0 flex-1">{tierNotice}</span>
+              <button onClick={() => setTierNotice(null)} className="shrink-0 text-xs font-semibold">Dismiss</button>
+            </div>
+          )}
           {/* Missing MRP note */}
           {missingMrpItems.length > 0 && (
             <div className="flex flex-wrap items-center gap-3 rounded-sm border border-[#f3d49a] bg-[#fff3dd] px-4 py-3 text-[13px] text-[#bb4d00]">
@@ -964,6 +1008,12 @@ const QRCodeGeneratorPage: React.FC = () => {
         isOpen={!!itemToEdit}
         onClose={() => setItemToEdit(null)}
         onSaveSuccess={handleItemSaved}
+      />
+      <TierPickerModal
+        item={tierPickerItem}
+        isOpen={!!tierPickerItem}
+        onClose={() => setTierPickerItem(null)}
+        onSelect={(item, tier) => addToQueue(item, tier)}
       />
     </div>
   );

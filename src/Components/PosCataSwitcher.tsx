@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { doc, getDoc } from 'firebase/firestore';
 import { MonitorSmartphone, Store } from 'lucide-react';
@@ -60,17 +60,42 @@ const useCompanyName = (enabled: boolean) => {
 const PosCataSwitcher = ({ current, showCompany = false }: PosCataSwitcherProps) => {
   const { currentUser } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const companyName = useCompanyName(showCompany);
+
+  // Close the dropdown on outside click / tap or Escape.
+  // Listener is attached only while the menu is open.
+  useEffect(() => {
+    if (!isMenuOpen) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsMenuOpen(false);
+    };
+
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [isMenuOpen]);
 
   const hasCataloguePermission = currentUser?.permissions?.includes(Permissions.ViewCatalogue);
   const label = showCompany && companyName ? `${companyName} · ${current}` : current;
   const mode = MODE_STYLE[current];
 
   return (
-    <div className={showCompany ? 'relative block w-full' : 'relative inline-block'}>
+    <div ref={wrapperRef} className={showCompany ? 'relative block w-full' : 'relative inline-block'}>
       <button
         disabled={!hasCataloguePermission}
-        onClick={() => setIsMenuOpen(!isMenuOpen)}
+        onClick={() => setIsMenuOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={isMenuOpen}
         title={label}
         className={`flex h-[34px] items-center gap-1 whitespace-nowrap rounded-sm border pl-2.5 pr-1.5 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#155dfc] md:h-10 md:px-3 md:text-sm ${
           // desktop sidebar: full width, arrow pushed right. Mobile header: shrink to content so arrow sits right next to the label

@@ -23,8 +23,8 @@ const BATCH = 24;
 type Sort = 'popular' | 'az' | 'za' | 'low' | 'high';
 type Filter = 'all' | 'stock' | 'offer' | 'bulk';
 const SORTS: { id: Sort; label: string }[] = [
-    { id: 'popular', label: 'Pinned first' }, { id: 'az', label: 'Name A–Z' }, { id: 'za', label: 'Name Z–A' },
-    { id: 'low', label: 'Price: low to high' }, { id: 'high', label: 'Price: high to low' },
+    { id: 'popular', label: 'Pinned' }, { id: 'az', label: 'A–Z' }, { id: 'za', label: 'Z–A' },
+    { id: 'low', label: 'Price ↑' }, { id: 'high', label: 'Price ↓' },
 ];
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
@@ -244,14 +244,16 @@ const CategoryPage: React.FC = () => {
     } else {
         body = (
             <div className="grid items-start gap-6 pt-4 md:grid-cols-[232px_minmax(0,1fr)] md:gap-8 md:pt-6">
-                <aside aria-label="Categories" className="sticky top-24 hidden max-h-[calc(100dvh-7rem)] overflow-y-auto md:grid md:gap-0.5">
+                <aside aria-label="Categories"
+                    className="sticky top-24 hidden max-h-[calc(100dvh-7rem)] overflow-y-auto pr-2 [scrollbar-gutter:stable] [scrollbar-width:thin] md:grid md:gap-0.5">
                     {sideGroups.map((g, gi) => (
                         <div key={g.id} className={gi ? 'mt-4' : ''}>
                             <h2 className="mb-2 px-3 text-[13px] font-semibold text-slate-500">{g.name}</h2>
                             {g.categories.map((c) => (
                                 <Link key={c.id} to={links.category(slugify(c.name))} aria-current={c.id === groupId ? 'page' : undefined}
-                                    className={cx('flex justify-between gap-2 rounded-sm px-3 py-2 text-sm', c.id === groupId ? 'bg-sf-soft font-medium text-sf-soft-ink' : 'text-slate-600 hover:bg-white hover:text-slate-900')}>
-                                    <span className="truncate">{c.name}</span><span className="text-xs tabular-nums opacity-80">{countIn(c.id!)}</span>
+                                    className={cx('flex items-center justify-between gap-2 rounded-sm px-3 py-2 text-sm', c.id === groupId ? 'bg-sf-soft font-medium text-sf-soft-ink' : 'text-slate-600 hover:bg-white hover:text-slate-900')}>
+                                    <span className="min-w-0 truncate">{c.name}</span>
+                                    <span className="shrink-0 text-xs tabular-nums opacity-80">{countIn(c.id!)}</span>
                                 </Link>
                             ))}
                         </div>
@@ -275,12 +277,28 @@ const CategoryPage: React.FC = () => {
                         <span>{group.name}</span>
                     </nav>
 
-                    <div className="flex flex-wrap items-end justify-between gap-3 md:mt-2">
+                    <div className="md:mt-2">
                         <div className="min-w-0">
                             <h1 className="text-lg font-semibold tracking-tight text-slate-900 md:text-2xl">{group.name}</h1>
-                            <p className="text-xs text-slate-500 md:text-[13px]">{categoryItems.length} product{categoryItems.length === 1 ? '' : 's'}{group.description ? ` · ${group.description}` : ''}</p>
+                            <p className="text-xs text-slate-500 md:text-[13px]">{categoryItems.length} product{categoryItems.length === 1 ? '' : 's'}</p>
                         </div>
-                        <label className="relative inline-flex items-center">
+                    </div>
+
+                    <div className="-mx-4 mb-4 mt-3 flex items-center gap-2 px-4 md:mx-0 md:mb-5 md:mt-4 md:px-0">
+                        {/* Filter chips: scroll hote hain agar jagah kam ho */}
+                        <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto [scrollbar-width:none]">
+                            {([['all', `All ${categoryItems.length}`, true], ['stock', 'In stock', counts.stock > 0], ['offer', 'On offer', pricesVisible && counts.offer > 0], ['bulk', 'Bulk rates', pricesVisible && counts.bulk > 0]] as [Filter, string, boolean][])
+                                .filter(([, , show]) => show)
+                                .map(([id, label]) => (
+                                    <button key={id} type="button" aria-pressed={filter === id} onClick={() => { setFilter(id); setRenderCount(BATCH); }}
+                                        className={cx('inline-flex h-[34px] shrink-0 items-center rounded-sm border px-3.5 text-[13px] font-medium', filter === id ? 'border-slate-900 bg-slate-900 text-white' : 'border-sf-control bg-white text-slate-600')}>
+                                        {label}
+                                    </button>
+                                ))}
+                        </div>
+
+                        {/* Sort dropdown: sabse last me, right side pe fixed */}
+                        <label className="relative inline-flex shrink-0 items-center">
                             <span className="sr-only">Sort</span>
                             <select value={sort} onChange={(e) => setSort(e.target.value as Sort)}
                                 className="h-[34px] appearance-none rounded-sm border border-sf-control bg-white pl-3 pr-8 text-[13px] font-medium text-slate-900">
@@ -288,17 +306,6 @@ const CategoryPage: React.FC = () => {
                             </select>
                             <ChevronDown className="pointer-events-none absolute right-2.5 size-4 text-slate-500" />
                         </label>
-                    </div>
-
-                    <div className="-mx-4 mb-4 mt-3 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none] md:mx-0 md:mb-5 md:mt-4 md:flex-wrap md:px-0">
-                        {([['all', `All ${categoryItems.length}`, true], ['stock', 'In stock', counts.stock > 0], ['offer', 'On offer', pricesVisible && counts.offer > 0], ['bulk', 'Bulk rates', pricesVisible && counts.bulk > 0]] as [Filter, string, boolean][])
-                            .filter(([, , show]) => show)
-                            .map(([id, label]) => (
-                                <button key={id} type="button" aria-pressed={filter === id} onClick={() => { setFilter(id); setRenderCount(BATCH); }}
-                                    className={cx('inline-flex h-[34px] shrink-0 items-center rounded-sm border px-3.5 text-[13px] font-medium', filter === id ? 'border-slate-900 bg-slate-900 text-white' : 'border-sf-control bg-white text-slate-600')}>
-                                    {label}
-                                </button>
-                            ))}
                     </div>
 
                     {filtered.length === 0 ? (

@@ -65,7 +65,6 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({
                                 // Prevent multiple rapid scans
                                 if (scanner.isScanning) {
                                     scanner.stop();
-                                    console.log(decodedText, "clg")
                                     onScanSuccess(decodedText);
                                 }
                             },

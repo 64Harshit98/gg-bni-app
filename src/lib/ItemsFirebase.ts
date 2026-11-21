@@ -104,11 +104,9 @@ export const getFirestoreOperations = (companyId: string) => {
 
         let q;
         if (lastSyncTime) {
-          console.log(`[Listener] Listening for updates since: ${lastSyncTime}`);
           const lastDate = new Date(lastSyncTime);
           q = query(itemRef, where('updatedAt', '>', lastDate));
         } else {
-          console.log(`[Listener] First time sync. Listening to full collection.`);
           q = query(itemRef);
         }
 
@@ -117,8 +115,6 @@ export const getFirestoreOperations = (companyId: string) => {
 
           const mergedItems = await mergeIntoCache(snapshot.docs);
           await set(TIME_KEY, new Date().toISOString());
-
-          console.log(`[Listener] Synced ${snapshot.size} changes. Total items: ${mergedItems.length}`);
 
           onData(mergedItems.filter(i => !i.isDeleted));
         }, (error) => {

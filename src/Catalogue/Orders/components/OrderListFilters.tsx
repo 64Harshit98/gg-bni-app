@@ -121,6 +121,7 @@ export const OrderListFilters: React.FC<OrderListFiltersProps> = ({
     paymentCounts,
     isDesktop,
 }) => {
+    const activeIdx = Math.max(0, orderStatuses.indexOf(activeStatusTab));
     // Shared by mobile + desktop headers
     const dateDropdown = isFilterOpen && (
         <div className="absolute top-full right-0 mt-2 w-72 max-w-[calc(100vw-2rem)] bg-white rounded-sm shadow-xl z-[1000] border border-[#f6e1d0] p-2">
@@ -347,58 +348,59 @@ export const OrderListFilters: React.FC<OrderListFiltersProps> = ({
                     <div ref={setTutorialRef(4) as any}>
                         {/* ===== MOBILE + TABLET: stepper timeline (no scroll, all 4 visible) ===== */}
                         <div className="lg:hidden bg-white border border-[#f6e1d0] rounded-sm px-2 pt-3 pb-2.5 md:px-4 md:pt-4 md:pb-3">
-                            <div className="grid grid-cols-4">
-                                {orderStatuses.map((status, i) => {
-                                    const activeIdx = orderStatuses.indexOf(activeStatusTab);
-                                    const isActive = i === activeIdx;
-                                    const count = statusCounts[status] || 0;
-                                    const isHot = status === 'Upcoming' && count > 0;
+                            <div className="relative">
+                                {/* connector track: pehle circle ke center se aakhri circle ke center tak (12.5% = 1 column ka aadha) */}
+                                <div className="absolute top-[13px] md:top-[15px] left-[12.5%] right-[12.5%] h-0.5 bg-[#f6e1d0]" aria-hidden="true">
+                                    <div
+                                        className="h-full bg-[#c2410c] transition-[width] duration-300"
+                                        style={{ width: `${(activeIdx / Math.max(orderStatuses.length - 1, 1)) * 100}%` }}
+                                    />
+                                </div>
 
-                                    return (
-                                        <button
-                                            key={status}
-                                            type="button"
-                                            aria-pressed={isActive}
-                                            onClick={() => setActiveStatusTab(status)}
-                                            className="relative flex flex-col items-center gap-1.5 min-w-0 active:scale-95 transition"
-                                        >
-                                            {/* connector line: pichle circle ke center se is circle ke center tak */}
-                                            {i > 0 && (
+                                <div className="relative z-10 grid grid-cols-4">
+                                    {orderStatuses.map((status, i) => {
+                                        const isActive = i === activeIdx;
+                                        const count = statusCounts[status] || 0;
+                                        const isHot = status === 'Upcoming' && count > 0;
+
+                                        return (
+                                            <button
+                                                key={status}
+                                                type="button"
+                                                aria-pressed={isActive}
+                                                onClick={() => setActiveStatusTab(status)}
+                                                className="flex flex-col items-center gap-1.5 min-w-0 active:scale-95 transition"
+                                            >
+                                                {/* circle with count (line ab upar track se aati hai, to overlap nahi hoga) */}
                                                 <span
-                                                    className={`absolute top-[13px] md:top-[15px] right-1/2 w-full h-0.5 ${i <= activeIdx ? 'bg-[#c2410c]' : 'bg-[#f6e1d0]'
+                                                    className={`relative z-10 w-7 h-7 md:w-8 md:h-8 rounded-full grid place-items-center text-xs md:text-sm font-semibold ring-4 ring-white transition ${isActive
+                                                        ? 'bg-[#c2410c] text-white scale-110 shadow-sm'
+                                                        : isHot
+                                                            ? 'bg-[#f97316] text-white'
+                                                            : i < activeIdx
+                                                                ? 'bg-[#ffedd5] text-[#9a3412] border border-[#c2410c]'
+                                                                : 'bg-[#fff8f2] text-slate-600 border border-[#f6e1d0]'
                                                         }`}
-                                                />
-                                            )}
+                                                >
+                                                    {count}
+                                                </span>
 
-                                            {/* circle with count */}
-                                            <span
-                                                className={`relative z-10 w-7 h-7 md:w-8 md:h-8 rounded-full grid place-items-center text-xs md:text-sm font-semibold ring-4 ring-white transition ${isActive
-                                                    ? 'bg-[#c2410c] text-white scale-110 shadow-sm'
-                                                    : isHot
-                                                        ? 'bg-[#f97316] text-white'
-                                                        : i < activeIdx
-                                                            ? 'bg-[#ffedd5] text-[#9a3412] border border-[#c2410c]'
-                                                            : 'bg-[#fff8f2] text-slate-600 border border-[#f6e1d0]'
-                                                    }`}
-                                            >
-                                                {count}
-                                            </span>
+                                                {/* label */}
+                                                <span
+                                                    className={`w-full text-center truncate text-[11px] md:text-xs leading-4 ${isActive ? 'font-semibold text-[#9a3412]' : 'font-medium text-slate-600'
+                                                        }`}
+                                                >
+                                                    {status}
+                                                </span>
 
-                                            {/* label */}
-                                            <span
-                                                className={`w-full text-center truncate text-[11px] md:text-xs leading-4 ${isActive ? 'font-semibold text-[#9a3412]' : 'font-medium text-slate-600'
-                                                    }`}
-                                            >
-                                                {status}
-                                            </span>
-
-                                            {/* active underline */}
-                                            <span className={`h-0.5 w-6 rounded-full transition ${isActive ? 'bg-[#c2410c]' : 'bg-transparent'}`} />
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
+                                                {/* active underline */}
+                                                <span className={`h-0.5 w-6 rounded-full transition ${isActive ? 'bg-[#c2410c]' : 'bg-transparent'}`} />
+                                            </button>
+                                        );
+                                    })}
+                                </div>   {/* grid */}
+                            </div>       {/* relative wrapper */}
+                        </div>           {/* card */}
 
                         {/* ===== DESKTOP ONLY (>=1024px): 4 cards with hint ===== */}
                         <div className="hidden lg:grid lg:grid-cols-4 lg:gap-2">

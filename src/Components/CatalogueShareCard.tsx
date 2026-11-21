@@ -229,8 +229,8 @@ const GlobalCatalogueModal = () => {
                                         url: shareUrl,
                                     });
                                     return;
-                                } catch (err) {
-                                    console.log("Share cancelled");
+                                                                } catch {
+                                    // Share cancelled by the user
                                 }
                             }
 

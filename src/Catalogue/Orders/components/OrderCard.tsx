@@ -48,6 +48,8 @@ const BADGE = 'text-[10px] font-semibold tracking-wider px-2 py-0.5 rounded-sm w
 const BADGE_STATUS = `${BADGE} bg-[#ffedd5] text-[#9a3412] uppercase`;
 const BADGE_UNPAID = `${BADGE} bg-[#fef6d7] text-[#a16207]`;
 const BADGE_PAID = `${BADGE} bg-emerald-50 text-emerald-700`;
+// Mobile card ke liye: kabhi bhi container se bahar nahi jayega
+const BADGE_PAID_CARD = `${BADGE_PAID} block max-w-full truncate`;
 // compact mobile card icon buttons (Call / WhatsApp)
 const ICON_BTN = 'w-10 h-10 shrink-0 rounded-sm grid place-items-center transition active:scale-[0.97]';
 const ICON_BTN_SECONDARY = `${ICON_BTN} bg-white border border-[#f6e1d0] text-slate-800 hover:bg-[#fff8f2]`;
@@ -207,7 +209,19 @@ export const OrderCard: React.FC<OrderCardProps> = ({
         return Array.from(seen);
     })();
 
-    const paidBadgeText = paymentMethodLabels.length > 0 ? `PAID · ${paymentMethodLabels.join(' + ')}` : 'PAID';
+    // Card par sirf pehla method + "+N more". Poori list detail view ke payment chips me already hai.
+    const paidBadgeText = (() => {
+        if (paymentMethodLabels.length === 0) return 'PAID';
+        const [first, ...rest] = paymentMethodLabels;
+        return rest.length > 0
+            ? `PAID · ${first} +${rest.length}`
+            : `PAID · ${first}`;
+    })();
+
+    // Hover / long-press par poori list dikhane ke liye
+    const paidBadgeTitle = paymentMethodLabels.length > 0
+        ? `Paid via ${paymentMethodLabels.join(' + ')}`
+        : 'Paid';
 
     // ─────────────────────────────────────────────────────────────────────────
     // DESKTOP LIST ROW
@@ -892,7 +906,7 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                 >
                     <div className="p-3 grid gap-2.5">
                         <div className="flex items-center gap-2.5 min-w-0">
-                            <span className="shrink-0 w-9 h-9 rounded-full grid place-items-center bg-[#fff8f2] text-slate-600 font-semibold text-[13px]">
+                            <span className="shrink-0 w-9 h-9 rounded-full grid place-items-center bg-[#fff8f2] text-slate-600 font-semibold text-[13px] self-start">
                                 {avatarLetter}
                             </span>
 
@@ -905,21 +919,21 @@ export const OrderCard: React.FC<OrderCardProps> = ({
                                 </div>
                             </div>
 
-                            <div className="shrink-0 max-w-[55%] flex flex-col items-end gap-0.5">
-    <div className="flex items-center gap-1">
-        {!isUpcomingStatus && due > 0 && (
-            <span className={`${BADGE_UNPAID} !px-1.5 !text-[9px]`}>UNPAID</span>
-        )}
-        <b className="text-[15px] font-semibold text-slate-900 tabular-nums whitespace-nowrap">₹{money(total)}</b>
-    </div>
-    {isUpcomingStatus ? (
-        <div className="text-xs text-slate-500">{itemCount} {itemCount === 1 ? 'item' : 'items'}</div>
-    ) : due > 0 ? (
-        <div className="text-[11px] font-medium text-[#a16207] tabular-nums whitespace-nowrap">₹{money(due)} due</div>
-    ) : (
-        <span className={BADGE_PAID}>{paidBadgeText}</span>
-    )}
-</div>
+                            <div className="min-w-0 max-w-[50%] shrink-0 flex flex-col items-end gap-0.5">
+                                <div className="flex items-center justify-end gap-1">
+                                    {!isUpcomingStatus && due > 0 && (
+                                        <span className={`${BADGE_UNPAID} !px-1.5 !text-[9px]`}>UNPAID</span>
+                                    )}
+                                    <b className="text-[15px] font-semibold text-slate-900 tabular-nums whitespace-nowrap">₹{money(total)}</b>
+                                </div>
+                                {isUpcomingStatus ? (
+                                    <div className="text-xs text-slate-500">{itemCount} {itemCount === 1 ? 'item' : 'items'}</div>
+                                ) : due > 0 ? (
+                                    <div className="text-[11px] font-medium text-[#a16207] tabular-nums whitespace-nowrap">₹{money(due)} due</div>
+                                ) : (
+                                    <span className={BADGE_PAID_CARD} title={paidBadgeTitle}>{paidBadgeText}</span>
+                                )}
+                            </div>
                         </div>
 
                         {/* Return-method chips (only when the order has returns) */}

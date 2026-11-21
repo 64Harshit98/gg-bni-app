@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { State } from "../enums";
+import { useLocation } from 'react-router';
 import { FiAlertTriangle, FiX, FiCheck, FiFileText } from 'react-icons/fi';
 
 export type PaymentTheme = 'pos' | 'catalogue';   // ← Modal ke upar move karo (neeche wala hata do)
@@ -28,9 +29,12 @@ interface ModalProps {
 }
 
 export const Modal: React.FC<ModalProps> = ({
-    message, onClose, onConfirm, showConfirmButton = false, type, theme = 'pos',
+    message, onClose, onConfirm, showConfirmButton = false, type, theme,
 }) => {
-    const t = MODAL_THEME_STYLES[theme];
+    const { pathname } = useLocation();
+    const resolvedTheme: PaymentTheme =
+        theme ?? (pathname.startsWith('/catalogue-home') ? 'catalogue' : 'pos');
+    const t = MODAL_THEME_STYLES[resolvedTheme];
     const modalContent = (
         // Alerts/errors must sit above every other popup (drawers, sheets and dialogs go up to z-[10001],
         // portaled dropdowns to 99999), so a message raised from inside a popup is never hidden behind it.
@@ -515,12 +519,6 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                                 </div>
                             </div>
                         )}
-                        {error && (
-                            <div role="alert" className="flex items-start gap-2 rounded-sm bg-[#ffeef0] px-3 py-2.5 text-[13px] text-[#d5000c]">
-                                <FiAlertTriangle size={16} className="mt-0.5 flex-none" />
-                                <span>{error}</span>
-                            </div>
-                        )}
                     </div>
 
                     <div className="flex flex-none items-center justify-end gap-2 border-t border-[#dfe6fb] bg-white px-4 py-3">
@@ -542,6 +540,15 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, inv
                     </div>
                 </form>
             </div>
+
+            {error && (
+                <Modal
+                    type={State.ERROR}
+                    message={error}
+                    theme={theme}
+                    onClose={() => setError('')}
+                />
+            )}
         </div>,
         document.body,
     );

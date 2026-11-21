@@ -248,17 +248,17 @@ const PurchaseReturnPage: React.FC = () => {
   );
 
   return (
-    <div className="flex h-screen w-full flex-col overflow-hidden bg-[#eef2ff] text-[#0f172b]">
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-[#eef2ff] text-[#0f172b]">
       {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
       <BarcodeScanner isOpen={scannerPurpose !== null} onClose={() => setScannerPurpose(null)} onScanSuccess={handleBarcodeScanned} />
 
       {/* HEADER */}
       {renderHeader()}
 
-      <div className="relative flex flex-1 flex-col overflow-hidden xl:flex-row">
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden xl:flex-row">
 
         {/* --- LEFT PANEL --- */}
-        <div className="relative min-w-0 flex-1 overflow-y-auto bg-[#eef2ff]">
+        <div className="relative min-h-0 min-w-0 flex-1 overflow-y-auto bg-[#eef2ff]">
           <div className="flex flex-col gap-3 p-3 pb-32 md:gap-3.5 md:p-5 md:pb-6">
 
             {/* Original purchase — search + party details */}
@@ -552,40 +552,44 @@ const PurchaseReturnPage: React.FC = () => {
         </div>
 
         {/* --- RIGHT PANEL (Desktop only) --- */}
-        <div className="relative z-10 hidden h-full w-[380px] flex-none flex-col border-l border-[#dfe6fb] bg-white p-5 shadow-[-4px_0_15px_-3px_rgba(21,48,140,0.05)] xl:flex">
+        <div className="relative z-10 hidden h-full min-h-0 w-[380px] flex-none flex-col overflow-hidden border-l border-[#dfe6fb] bg-white p-5 shadow-[-4px_0_15px_-3px_rgba(21,48,140,0.05)] xl:flex">
           {selectedPurchase ? (
-            <div className="flex h-full flex-col gap-3.5">
-              <h2 className="text-base font-semibold text-[#0f172b]">Return summary</h2>
+            <div className="flex h-full min-h-0 flex-col gap-3.5">
+              {/* Scrollable body: sirf zarurat padne par scroll hoga */}
+              <div className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto pr-1">
+                <h2 className="text-base font-semibold text-[#0f172b]">Return summary</h2>
 
-              <div>
-                <span className="mb-1 block text-xs font-medium text-[#45556c]">Transaction type</span>
-                <ModePicker value={modeOfReturn} onChange={setModeOfReturn} options={modeOptions} />
-              </div>
+                <div>
+                  <span className="mb-1 block text-xs font-medium text-[#45556c]">Transaction type</span>
+                  <ModePicker value={modeOfReturn} onChange={setModeOfReturn} options={modeOptions} />
+                </div>
 
-              <div className="grid gap-2 text-sm">
-                <div className="flex justify-between text-[#45556c]">
-                  <span>Gross return value</span>
-                  <span className="tabular-nums text-[#0f172b]">₹{fmt(totalReturnValue, 2)}</span>
-                </div>
-                {discountDeducted > 0 && (
-                  <div className="flex justify-between text-[#bb4d00]">
-                    <span>Less: proportional discount</span>
-                    <span className="tabular-nums">- ₹{fmt(discountDeducted, 2)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between border-t border-[#dfe6fb] pt-2 text-base font-semibold text-[#0f172b]">
-                  <span>Net return value</span>
-                  <span className="tabular-nums">₹{fmt(totalReturnValue - discountDeducted, 2)}</span>
-                </div>
-                {modeOfReturn === 'Exchange' && (
+                <div className="grid gap-2 text-sm">
                   <div className="flex justify-between text-[#45556c]">
-                    <span>New items value</span>
-                    <span className="tabular-nums text-[#008236]">- ₹{fmt(totalNewItemsValue, 2)}</span>
+                    <span>Gross return value</span>
+                    <span className="tabular-nums text-[#0f172b]">₹{fmt(totalReturnValue, 2)}</span>
                   </div>
-                )}
+                  {discountDeducted > 0 && (
+                    <div className="flex justify-between text-[#bb4d00]">
+                      <span>Less: proportional discount</span>
+                      <span className="tabular-nums">- ₹{fmt(discountDeducted, 2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between border-t border-[#dfe6fb] pt-2 text-base font-semibold text-[#0f172b]">
+                    <span>Net return value</span>
+                    <span className="tabular-nums">₹{fmt(totalReturnValue - discountDeducted, 2)}</span>
+                  </div>
+                  {modeOfReturn === 'Exchange' && (
+                    <div className="flex justify-between text-[#45556c]">
+                      <span>New items value</span>
+                      <span className="tabular-nums text-[#008236]">- ₹{fmt(totalNewItemsValue, 2)}</span>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="mt-auto grid gap-3">
+              {/* Pinned footer: balance + button hamesha visible */}
+              <div className="grid flex-none gap-3">
                 <div className={`flex items-center justify-between gap-3 rounded-sm px-3.5 py-3 ${balanceTone}`}>
                   {modeOfReturn === 'Exchange' && finalBalance > 0 ? balanceSelect : (
                     <span className="text-sm font-medium">{getBalanceLabel()}</span>
@@ -594,7 +598,7 @@ const PurchaseReturnPage: React.FC = () => {
                 </div>
                 <button
                   onClick={handleProcessReturn}
-                  className="h-[54px] w-full rounded-sm bg-[#155dfc] text-[15px] font-medium text-white transition-colors hover:bg-[#1447e6] active:scale-[0.99]"
+                  className="h-[54px] w-full flex-none shrink-0 rounded-sm bg-[#155dfc] text-[15px] font-medium text-white transition-colors hover:bg-[#1447e6] active:scale-[0.99]"
                 >
                   Process Transaction
                 </button>

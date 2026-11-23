@@ -17,8 +17,8 @@ import { IconClose } from '../../constants/Icons';
 import BackButton from '../../Components/BackButton';
 import { db } from '../../lib/Firebase';
 import { doc, getDoc } from 'firebase/firestore';
-import type { BarcodeSettings, BarcodeFormat } from '../Settings/BarcodeSetting';
-import { getDefaultBarcodeSettings } from '../Settings/BarcodeSetting';
+import type { BarcodeSettings, BarcodeFormat, LabelSize } from '../Settings/BarcodeSetting';
+import { getDefaultBarcodeSettings, getLabelSize } from '../Settings/BarcodeSetting';
 import { useFormatNumber } from '../../lib/formatNumber';
 import useTutorial from '../../Catalogue/hooks/useTutorial';
 import { completeTutorial } from '../../Catalogue/hooks/useCompleteTutorial';
@@ -95,6 +95,7 @@ const LabelPreview: React.FC<{
   businessAddress: string;
   businessPhone: string;
   labelFormat: BarcodeFormat;
+  labelSize: LabelSize;
   showMrp: boolean;
   showSalePrice: boolean;
   showProductName: boolean;
@@ -102,7 +103,7 @@ const LabelPreview: React.FC<{
   showShopName: boolean;
   showAddress: boolean;
   showPhone: boolean;
-}> = ({ item, companyName, businessAddress, businessPhone, labelFormat, showMrp, showSalePrice, showProductName, showBarcodeNumber, showShopName, showAddress, showPhone }) => {
+}> = ({ item, companyName, businessAddress, businessPhone, labelFormat, labelSize, showMrp, showSalePrice, showProductName, showBarcodeNumber, showShopName, showAddress, showPhone }) => {
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [barcodeDataUrl, setBarcodeDataUrl] = useState('');
 
@@ -138,6 +139,38 @@ const LabelPreview: React.FC<{
   }, [item.barcode, labelFormat]);
 
   const isBoth = barcodeDataUrl && qrDataUrl;
+
+  // 28 × 14 mm (landscape): same 1.5x preview scale as the 35 × 35 box, so 160 × 80px
+  if (labelSize === '14x28') {
+    return (
+      <div
+        className="w-[160px] h-[80px] border border-[#cfd6e4] rounded-sm p-1 flex flex-row items-center gap-1 bg-white text-black shadow-[0_6px_20px_rgba(21,48,140,0.12)]"
+        style={{ fontFamily: 'Arial, sans-serif' }}
+      >
+        {qrDataUrl && (
+          <img src={qrDataUrl} alt="QR Code Preview" className="w-[56px] h-[56px] shrink-0" style={{ imageRendering: 'pixelated' }} />
+        )}
+        <div className="flex-1 min-w-0 flex flex-col items-center justify-center gap-px">
+          {showShopName && (
+            <div className="w-full text-[6px] leading-tight font-bold text-center whitespace-nowrap overflow-hidden">{companyName}</div>
+          )}
+          {showProductName && <div className="w-full text-[6px] leading-tight font-semibold text-center truncate">{item.name}</div>}
+          {showMrp && (
+            <div className="text-[8px] leading-tight font-bold text-center">
+              {item.mrp && item.mrp > 0 ? `MRP: ₹${item.mrp}` : `Price: ₹${item.salesPrice}`}
+            </div>
+          )}
+          {showSalePrice && item.mrp && item.mrp > 0 && (
+            <div className="text-[6px] leading-tight font-semibold text-center">Sale: ₹{item.salesPrice}</div>
+          )}
+          {barcodeDataUrl && (
+            <img src={barcodeDataUrl} alt="Barcode Preview" className="w-full h-[18px] object-contain" style={{ imageRendering: 'pixelated' }} />
+          )}
+          {showBarcodeNumber && <div className="text-[5px] leading-tight tracking-[0.05em] text-center">{item.barcode}</div>}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -437,6 +470,11 @@ const QRCodeGeneratorPage: React.FC = () => {
     const showSale = labelToggles.salePrice;
     const showAddress = barcodeSettings.showAddressOnLabel ?? true;
     const showPhone = barcodeSettings.showPhoneOnLabel ?? true;
+    const isCompact = barcodeSettings.labelSize === '14x28';
+    // 28 × 14 mm roll: ek row mein kitne labels. Roll ke hisaab se badlo.
+    const COMPACT_COLS = 3;
+    const COMPACT_GAP_MM = 2.5; // do labels ke beech ka gap
+    const compactPageWidthMm = COMPACT_COLS * 28 + (COMPACT_COLS - 1) * COMPACT_GAP_MM;
 
     try {
       const businessInfo = await dbOperations.getBusinessInfo();
@@ -487,6 +525,23 @@ const QRCodeGeneratorPage: React.FC = () => {
         }
 
         for (let i = 0; i < item.quantityToPrint; i++) {
+          // 28 × 14 mm: QR left, text + barcode right (no address/phone)
+          if (isCompact) {
+            allLabelsHtml += `
+              <div class="label-container compact">
+                ${qrDataUrl ? `<img class="qr-image" src="${qrDataUrl}" alt="QR" />` : ''}
+                <div class="compact-text">
+                  ${showShopName ? `<p class="company-name">${cName}</p>` : ''}
+                  ${showProductName ? `<p class="item-name">${item.name}</p>` : ''}
+                  ${showMrp ? `<p class="item-mrp">${item.mrp && item.mrp > 0 ? `MRP: ₹${item.mrp}` : `Price: ₹${item.salesPrice}`}</p>` : ''}
+                  ${showSale && item.mrp && item.mrp > 0 ? `<p class="item-sale">Sale: ₹${item.salesPrice}</p>` : ''}
+                  ${barcodeDataUrl ? `<img class="barcode-image" src="${barcodeDataUrl}" alt="Barcode" />` : ''}
+                  ${showBarcodeNum ? `<p class="item-barcode">${item.barcode}</p>` : ''}
+                </div>
+              </div>
+            `;
+            continue;
+          }
           allLabelsHtml += `
             <div class="label-container">
               <div>
@@ -517,7 +572,7 @@ const QRCodeGeneratorPage: React.FC = () => {
         <head>
           <title>Print Labels</title>
           <style>
-            @page { size: 110mm 35mm; margin: 0; }
+                                    @page { size: ${isCompact ? `${compactPageWidthMm}mm 14mm` : '110mm 35mm'}; margin: 0; }
             body {
               margin: 0;
               padding-left: 2.5mm;
@@ -619,8 +674,46 @@ const QRCodeGeneratorPage: React.FC = () => {
 
             .item-barcode { font-size: 4pt; font-weight: bold; margin: 0; }
             .item-name { font-size: 6pt; font-weight: bold; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 33mm; display: block; }
-            .item-mrp { font-size: 7pt; font-weight: bold; margin: 0; }
+                        .item-mrp { font-size: 7pt; font-weight: bold; margin: 0; }
             .item-sale { font-size: 5pt; font-weight: bold; margin: 0; }
+
+                        ${isCompact ? `
+                       /* 28 × 14 mm landscape: COMPACT_COLS labels per row, QR left, text + barcode right */
+            body {
+              padding: 0;
+              display: flex;
+              flex-wrap: wrap;
+              justify-content: flex-start;
+              gap: 0 ${COMPACT_GAP_MM}mm;
+            }
+            .label-container.compact {
+              width: 28mm;
+              height: 14mm;
+              padding: 0.5mm;
+              flex-direction: row;
+              align-items: center;
+              justify-content: flex-start;
+              gap: 0.8mm;
+              flex-shrink: 0;
+              break-inside: avoid;
+            }
+            .compact .qr-image { width: 11mm; height: 11mm; flex-shrink: 0; }
+            .compact-text {
+              flex: 1;
+              min-width: 0;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              overflow: hidden;
+            }
+            .compact .company-name { font-size: 4pt; white-space: nowrap; max-width: 100%; overflow: hidden; }
+            .compact .item-name { font-size: 4pt; max-width: 100%; }
+            .compact .item-mrp { font-size: 5pt; }
+            .compact .item-sale { font-size: 3.5pt; }
+            .compact .barcode-image { width: 100%; height: 4.5mm; margin: 0.3mm 0; }
+            .compact .item-barcode { font-size: 3pt; }
+            ` : ''}
           </style>
         </head>
         <body>
@@ -692,7 +785,7 @@ const QRCodeGeneratorPage: React.FC = () => {
                     {formatLabel[barcodeSettings.labelFormat ?? 'both']}
                   </span>
                   <span className="inline-flex items-center h-7 px-3 rounded-sm border border-[#dfe6fb] bg-[#f5f7ff] text-xs text-[#45556c]">
-                    35 × 35 mm
+                    {getLabelSize(barcodeSettings.labelSize).label}
                   </span>
                   <button
                     onClick={() => navigate('/barcode-setting')}
@@ -856,7 +949,9 @@ const QRCodeGeneratorPage: React.FC = () => {
             <span className="min-w-0">
               <span className="block text-base font-semibold text-[#0f172b]">Label preview</span>
               <span className="block text-xs text-[#5b6b86] truncate">
-                {displayPreviewItem ? `${displayPreviewItem.name} · actual size 35 × 35 mm` : 'Actual size 35 × 35 mm'}
+                {displayPreviewItem
+                  ? `${displayPreviewItem.name} · actual size ${getLabelSize(barcodeSettings.labelSize).label}`
+                  : `Actual size ${getLabelSize(barcodeSettings.labelSize).label}`}
               </span>
             </span>
             <span className={`mt-1 text-[#5b6b86] transition-transform duration-200 ${isPreviewOpen ? "rotate-180" : "rotate-0"}`}>
@@ -886,6 +981,7 @@ const QRCodeGeneratorPage: React.FC = () => {
                         businessAddress={businessAddress}
                         businessPhone={businessPhone}
                         labelFormat={barcodeSettings.labelFormat ?? 'both'}
+                        labelSize={barcodeSettings.labelSize ?? '35x35'}
                         showMrp={labelToggles.mrp}
                         showSalePrice={labelToggles.salePrice}
                         showProductName={labelToggles.productName}
@@ -987,7 +1083,7 @@ const QRCodeGeneratorPage: React.FC = () => {
 
   return (
     <div
-      className="w-full min-h-full lg:h-full bg-[#eef2ff] pb-28 lg:pb-0 sm:rounded-sm overflow-hidden"
+      className="w-full min-h-full lg:h-full bg-[#eef2ff] pb-28 lg:pb-0 sm:rounded-sm overflow-hidden lg:overflow-y-auto"
       style={{ fontFamily: FONT_STACK }}
     >
       {/* Header: flush to the very top, full width */}

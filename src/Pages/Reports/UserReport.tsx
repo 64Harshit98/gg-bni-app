@@ -4,6 +4,7 @@ import { CustomCard } from '../../Components/CustomCard';
 import { CardVariant } from '../../enums';
 import useUserReport from './UserReportComponents/useUserReport';
 import BackButton from '../../Components/BackButton';
+import { KSeriesButton } from '../../Components/KBillButton';
 
 // ─── Donut Chart ───────────────────────────────────────────────────────────────
 const DonutChart: React.FC<{ cash: number; upi: number; card: number; total: number }> = ({
@@ -92,6 +93,8 @@ const UserReport: React.FC = () => {
     isLoading,
     error,
     formatDateForInput,
+    billSeriesMode,
+    setBillSeriesMode,
   } = useUserReport();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'items'>('overview');
@@ -164,6 +167,7 @@ const UserReport: React.FC = () => {
         <h1 className="flex-1 text-2xl text-center font-bold text-gray-800">
           User Report
         </h1>
+        <KSeriesButton mode={billSeriesMode} onChange={setBillSeriesMode} />
       </div>
 
       {/* ── STAFF SELECTOR ─────────────────────────────────────────────────── */}

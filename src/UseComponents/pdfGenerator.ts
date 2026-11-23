@@ -18,6 +18,8 @@ export interface InvoiceData {
   enableWatermark?: boolean;
   gstScheme?: string;
   taxType?: string;
+  /** K (kacha) bill — always printed without GST. */
+  isExemptBill?: boolean;
   companyGstType?: string;
   companyName: string;
   companyAddress: string;
@@ -110,6 +112,12 @@ const looksLikeUid = (name?: string | null) =>
   /^[A-Za-z0-9_-]{20,}$/.test((name || '').trim());
 
 export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | ACTION.PRINT | ACTION.BLOB = ACTION.DOWNLOAD, withDuplicate: boolean = false): Promise<Blob | void> => {
+  // K (kacha) bills carry no GST. Their items still remember the item's GST %,
+  // so without this the A4 / A5 / thermal bills printed tax columns, a GST
+  // summary and "TAX INVOICE". Treat them as a no-GST bill in every format.
+  if (data.isExemptBill) {
+    data = { ...data, gstScheme: 'none', taxType: 'none' };
+  }
   const isEstimate = (data as any).isEstimate === true;
   // UID aaya ho to "Billed by" hide (A4 / Thermal / A5 sab ke liye)
   if (data.invoice && looksLikeUid(data.invoice.billedBy)) {
@@ -160,7 +168,10 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
   doc.setLineWidth(0.1);
 
   const safeScheme = (data.gstScheme && data.gstScheme.trim() !== '') ? data.gstScheme.toUpperCase() : 'NONE';
-  const safeTaxType = (data.taxType && data.taxType.trim() !== '') ? data.taxType.toLowerCase() : 'EXCLUSIVE';
+  // Upper-cased like safeScheme: every check below compares against 'EXEMPT' / 'NONE'.
+  // (It used to be lower-cased, so a bill saved with taxType 'none' never matched
+  // and still printed GST % / tax columns.)
+  const safeTaxType = (data.taxType && data.taxType.trim() !== '') ? data.taxType.toUpperCase() : 'EXCLUSIVE';
 
   // NEW: exempt (NONE scheme / exempt taxType) bills lose GST columns just like an estimate,
   // but heading/bank/terms/signature stay normal (SCRUM-1266).
@@ -477,7 +488,7 @@ export const generatePdf = async (data: InvoiceData, action: ACTION.DOWNLOAD | A
     doc.text(`Place of Supply : ${displayPos}`, (pageWidth / 2) + 2, cursorY + 5);
     if (showGstinDetails) {
       doc.setFont('helvetica', 'bold');
-      doc.text(`GST Type: ${safeScheme}${safeScheme === 'REGULAR' ? ` (tax ${safeTaxType})` : ''}`, (pageWidth / 2) + 2, cursorY + 10);
+      doc.text(`GST Type: ${safeScheme}${safeScheme === 'REGULAR' ? ` (tax ${safeTaxType.toLowerCase()})` : ''}`, (pageWidth / 2) + 2, cursorY + 10);
       doc.setFont('helvetica', 'normal');
     }
     cursorY += metaHeight;

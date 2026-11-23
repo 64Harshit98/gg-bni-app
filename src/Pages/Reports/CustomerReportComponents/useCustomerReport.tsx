@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../../context/auth-context';
 import { formatDateForInput, getPresetRange } from '../SalesReportComponents/salesReport.utils';
-import { loadSalesForRange } from '../SalesReportComponents/salesReportCache';
+import { salesLoaderFor } from '../SalesReportComponents/salesReportCache';
+import { useBillSeriesMode } from '../../../lib/billSeries';
 import { useCachedRange } from '../useCachedRange';
 import {
   loadCustomerCredits,
@@ -33,7 +34,8 @@ export default function useCustomerReport() {
   setAppliedFilters({ start: range.start.getTime(), end: range.end.getTime() });
 }, []);
 
-  const salesState = useCachedRange(loadSalesForRange, companyId, appliedFilters, authLoading);
+  const { billSeriesMode, setBillSeriesMode } = useBillSeriesMode();
+  const salesState = useCachedRange(salesLoaderFor(billSeriesMode), companyId, appliedFilters, authLoading);
   const obState = useCachedRange(loadOpeningBalancesForRange, companyId, appliedFilters, authLoading);
   const newCustomersState = useCachedRange(loadCustomersCreatedForRange, companyId, appliedFilters, authLoading);
 
@@ -81,6 +83,8 @@ export default function useCustomerReport() {
   return {
     currentUser,
     authLoading,
+    billSeriesMode,
+    setBillSeriesMode,
     datePreset,
     setDatePreset,
     startDate,

@@ -32,6 +32,7 @@ import { db } from '../../lib/Firebase';
 import { useAuth } from '../../context/auth-context';
 import { useCatalogueData } from '../../context/CatalogueDataContext';
 import BackButton from '../../Components/BackButton';
+import { KSeriesButton } from '../../Components/KBillButton';
 import SearchableSelect from '../../Components/SearchableSelect';
 import useSalesReport from './SalesReportComponents/useSalesReport';
 import { jsPDF } from 'jspdf';
@@ -142,6 +143,8 @@ const ItemsSoldReport: React.FC = () => {
         error,
         datePreset,
         authLoading,
+        billSeriesMode,
+        setBillSeriesMode,
     } = useSalesReport();
 
     /* ---------- LOCAL STATES ---------- */
@@ -1350,8 +1353,9 @@ const ItemsSoldReport: React.FC = () => {
             )}
 
             {/* DATE + GROUP FILTERS */}
-            <div className="relative mb-4 flex items-center gap-3">
-                <div className="flex flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="relative mb-4 flex items-center gap-2 md:gap-3">
+                <KSeriesButton mode={billSeriesMode} onChange={setBillSeriesMode} />
+                <div className="flex flex-1 min-w-0 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {DATE_PRESETS.filter((p) => p.value !== 'lastMonth').map((p) => (
                         <button key={p.value} onClick={() => handleDatePresetChange(p.value)} className={chipClass(datePreset === p.value)}>
                             <span className="md:hidden">{p.shortLabel}</span>

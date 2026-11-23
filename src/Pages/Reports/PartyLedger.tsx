@@ -41,7 +41,9 @@ import ExcelJS from 'exceljs';
 import { Spinner } from '../../constants/Spinner';
 import { PaymentModal } from '../../constants/Modal';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { clearSalesReportCache } from './SalesReportComponents/salesReportCache';
+import { clearSalesReportCache, clearExemptSalesReportCache } from './SalesReportComponents/salesReportCache';
+import { EXEMPT_SALES_COLLECTION, salesCollectionOf } from '../../lib/billSeries';
+import { KSeriesButton } from '../../Components/KBillButton';
 import { clearPurchaseReportCache } from './PurchaseReportComponents/purchaseReportCache';
 import { clearOpeningBalanceCache } from './CustomerReportComponents/customerReportCache';
 import { deductGroupCredit, groupPhones, loadGroupCredit } from './CustomerReportComponents/customerAliases';
@@ -153,6 +155,7 @@ const PartyLedger: React.FC = () => {
     const {
         companyId, isLoading, authLoading, error,
         datePreset, setDatePreset,
+        billSeriesMode, setBillSeriesMode,
         customStartDate, setCustomStartDate,
         customEndDate, setCustomEndDate,
         appliedFilters, setAppliedFilters, partySummaries,
@@ -841,7 +844,8 @@ const PartyLedger: React.FC = () => {
             const { doc, runTransaction } = await import('firebase/firestore');
 
             // ✅ Use correct collection based on invoice type
-            const collectionName = invoice.type === 'sale' ? 'sales' : 'purchases';
+            // K bills live in exemptSales — settle the payment on the right document
+            const collectionName = invoice.type === 'sale' ? salesCollectionOf(invoice) : 'purchases';
             const docRef = doc(db, 'companies', companyId, collectionName, invoice.id);
 
             await runTransaction(db, async (transaction) => {
@@ -922,6 +926,7 @@ const PartyLedger: React.FC = () => {
                 });
             });
             if (collectionName === 'sales') clearSalesReportCache(companyId);
+            else if (collectionName === EXEMPT_SALES_COLLECTION) clearExemptSalesReportCache(companyId);
             else clearPurchaseReportCache(companyId);
 
             // ✅ Update local state immediately — no refresh needed
@@ -1586,12 +1591,13 @@ const PartyLedger: React.FC = () => {
         if (!companyId) return;
         try {
             // Full sale document, so the PDF gets tax, discount, expenses, GST etc. like on the Transactions page
-            const snap = await fsGetDoc(fsDocRef(firebaseDb, 'companies', companyId, 'sales', t.id));
+            const snap = await fsGetDoc(fsDocRef(firebaseDb, 'companies', companyId, salesCollectionOf(t), t.id));
             const data: any = snap.exists() ? snap.data() : {};
             setInvoiceToPrint({
                 ...data,
                 id: t.id,
                 type: 'Credit', // Journal uses 'Credit' for sale bills
+                isExemptBill: Boolean(t.isExemptBill),
                 invoiceNumber: data.invoiceNumber ?? t.invoiceNumber,
                 partyName: data.partyName || party.partyName,
                 partyNumber: data.partyNumber || party.partyNumber,
@@ -2484,6 +2490,7 @@ const PartyLedger: React.FC = () => {
                                 </select>
                                 <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
                             </div>
+                            <KSeriesButton mode={billSeriesMode} onChange={setBillSeriesMode} />
                         </div>
                         {isRangeOpen && (
                             <div className="absolute right-0 top-14 z-30 w-full md:right-4 md:w-80">

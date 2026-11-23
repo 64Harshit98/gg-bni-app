@@ -235,6 +235,7 @@ export const useInvoiceCommunication = ({
       enableWatermark: billSettings.enableWatermark ?? true,
       gstScheme: salesSettings?.gstScheme || '',
       taxType: invoice.taxType || salesSettings?.taxType || '',
+      isExemptBill: invoice.type === 'Credit' && Boolean(invoice.isExemptBill),
       companyName: businessInfo?.name || '',
       companyAddress: businessInfo?.address || '',
       companyContact: businessInfo?.phoneNumber || '',
@@ -464,7 +465,7 @@ export const useInvoiceCommunication = ({
         messageType: 'invoice',
         fileUrl,
         templateVariables: [invoice.partyName, dataForPdf.companyName || '', 'invoice', invoice.invoiceNumber, formattedAmount],
-        refCollection: 'sales',
+        refCollection: invoice.isExemptBill ? 'exemptSales' : 'sales',
         refId: invoice.id,
       });
 
@@ -601,7 +602,7 @@ export const useInvoiceCommunication = ({
         messageType: 'reminder',
         fileUrl,
         templateVariables: [invoice.partyName, dataForPdf.companyName || '', dueAmt, `invoice #${invoice.invoiceNumber}`, totalAmt],
-        refCollection: 'sales',
+        refCollection: invoice.isExemptBill ? 'exemptSales' : 'sales',
         refId: invoice.id,
       });
 

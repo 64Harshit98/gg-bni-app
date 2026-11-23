@@ -25,6 +25,7 @@ import { Header } from '../Components/layout/Header';
 import { CommandPalette, LAYOUT_ACTION_EVENT, type LayoutAction } from '../Components/layout/CommandPalette';
 import { SubscriptionBanner, useSubscriptionBanner } from '../Components/layout/SubscriptionBanner';
 import { InstallAppPrompt } from '../Components/InstallAppPrompt';
+import { SHORTCUTS, useAltShortcut } from '../lib/shortcuts';
 
 const MainLayout = () => {
   const location = useLocation();
@@ -58,6 +59,16 @@ const MainLayout = () => {
     return () => window.removeEventListener(LAYOUT_ACTION_EVENT, onAction);
   }, []);
   const { currentUser, hasPermission } = useAuth();
+
+  // Alt+S → new sale, Alt+P → new purchase, from any POS page (only for users
+  // allowed to open that page). Pressing it on the page itself does nothing,
+  // so an open bill — or a bill being edited — is never reset.
+  const goToShortcut = (to: string) => {
+    if (location.pathname === to) return;
+    navigate(to);
+  };
+  useAltShortcut(SHORTCUTS.newSale.code, () => goToShortcut(ROUTES.SALES), hasPermission(Permissions.CreateSales));
+  useAltShortcut(SHORTCUTS.newPurchase.code, () => goToShortcut(ROUTES.PURCHASE), hasPermission(Permissions.CreatePurchase));
   const banner = useSubscriptionBanner();
   // POS pages that show the renewal banner: Home · Accounts · Journal
   const BANNER_PATHS: string[] = [ROUTES.HOME, ROUTES.ACCOUNT, ROUTES.JOURNAL]; // ← swap in your real route constants
@@ -244,8 +255,8 @@ const MainLayout = () => {
 
   // Desktop sidebar quick actions
   const quickActions: QuickAction[] = [
-    { key: 'sales', to: ROUTES.SALES, icon: <ShoppingCart className="size-4" />, label: 'Add Sales', permission: Permissions.CreateSales },
-    { key: 'purchase', to: ROUTES.PURCHASE, icon: <PackagePlus className="size-4" />, label: 'Add Purchase', permission: Permissions.CreatePurchase },
+    { key: 'sales', to: ROUTES.SALES, icon: <ShoppingCart className="size-4" />, label: 'Add Sales', permission: Permissions.CreateSales, shortcut: SHORTCUTS.newSale.label },
+    { key: 'purchase', to: ROUTES.PURCHASE, icon: <PackagePlus className="size-4" />, label: 'Add Purchase', permission: Permissions.CreatePurchase, shortcut: SHORTCUTS.newPurchase.label },
     { key: 'item', to: ROUTES.ITEM_ADD, icon: <Plus className="size-4" />, label: 'Add Item', permission: Permissions.ManageItems },
     { key: 'barcode', to: ROUTES.PRINTQR, icon: <Scan className="size-4" />, label: 'Add Barcode', permission: Permissions.PrintQR },
     { key: 'user', icon: <UserPlus className="size-4" />, label: 'Add User', permission: Permissions.CreateUsers, onClick: () => setIsAddUserModalOpen(true) },

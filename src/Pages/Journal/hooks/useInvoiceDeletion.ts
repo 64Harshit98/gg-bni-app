@@ -7,7 +7,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
-import { clearSalesReportCache } from '../../Reports/SalesReportComponents/salesReportCache';
+import { clearSalesReportCache, clearExemptSalesReportCache } from '../../Reports/SalesReportComponents/salesReportCache';
 import { clearPurchaseReportCache } from '../../Reports/PurchaseReportComponents/purchaseReportCache';
 import { State, PLANS } from '../../../enums';
 import type { Invoice } from '../journal.types';
@@ -82,7 +82,9 @@ export const useInvoiceDeletion = ({ currentUser, setModal }: UseInvoiceDeletion
       return;
     }
     const companyId = currentUser.companyId;
-    const collectionName = invoiceToDelete.type === 'Credit' ? 'sales' : 'purchases';
+    const collectionName = invoiceToDelete.type === 'Credit'
+      ? (invoiceToDelete.isExemptBill ? 'exemptSales' : 'sales')
+      : 'purchases';
     const invoiceDocRef = doc(db, 'companies', companyId, collectionName, invoiceToDelete.id);
 
     try {
@@ -119,7 +121,7 @@ export const useInvoiceDeletion = ({ currentUser, setModal }: UseInvoiceDeletion
       }
 
       // Loyalty: take back what the bill earned, give back what it used.
-      const loyalty = collectionName === 'sales' ? readSaleLoyalty(invoiceToDelete as any) : null;
+      const loyalty = (collectionName === 'sales' || collectionName === 'exemptSales') ? readSaleLoyalty(invoiceToDelete as any) : null;
       if (loyalty) {
         writeLoyaltyInBatch(
           batch, db, companyId, loyalty.phone,
@@ -130,6 +132,7 @@ export const useInvoiceDeletion = ({ currentUser, setModal }: UseInvoiceDeletion
       batch.delete(invoiceDocRef);
       await batch.commit();
       if (collectionName === 'sales') clearSalesReportCache(companyId);
+      else if (collectionName === 'exemptSales') clearExemptSalesReportCache(companyId);
       else clearPurchaseReportCache(companyId);
 
       setModal({ message: "Invoice deleted ", type: State.SUCCESS });

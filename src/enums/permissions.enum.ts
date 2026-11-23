@@ -70,5 +70,8 @@ export enum Permissions {
     // these two gate CHANGING them.
     ManageLoyaltyPoints = 'ManageLoyaltyPoints',       // loyalty settings + manual add/remove
     OverrideLoyaltyPoints = 'OverrideLoyaltyPoints',   // edit the auto-earned points on a bill
+    // K bills (exempt series): owners get it by default; staff only if granted.
+    // Shows the K button + K figures on the dashboard, Transactions and reports.
+    ViewKBills = 'ViewKBills',
 
 }

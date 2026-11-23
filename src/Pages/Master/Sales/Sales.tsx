@@ -48,6 +48,8 @@ import {
 import useTutorial from '../../../Catalogue/hooks/useTutorial';
 import { completeTutorial } from '../../../Catalogue/hooks/useCompleteTutorial';
 import { TutorialStep } from '../../../Components/TutorialStep';
+import { KBillToggle } from '../../../Components/KBillButton';
+import { SHORTCUTS, useAltShortcut } from '../../../lib/shortcuts';
 export type { SalesItem };
 
 const TOTAL_STEPS = 6;
@@ -272,6 +274,8 @@ const Sales: React.FC = () => {
     const {
         salesSettings,
         activeTaxMode,
+        isExemptBill,
+        handleExemptBillToggle,
         invoiceNumber, setInvoiceNumber,
         isInvoiceNumberManuallyEdited,
         invoiceDate, setInvoiceDate,
@@ -705,6 +709,7 @@ const Sales: React.FC = () => {
         companyId: currentUser?.companyId,
         salesSettings,
         activeTaxMode,
+        isExemptBill,
         items,
         setItems,
         availableItems,
@@ -857,6 +862,14 @@ const Sales: React.FC = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeStep, pageIsLoading]);
 
+    // Alt+K flips the K bill series from anywhere on the page (Ctrl+K is the
+    // app's command palette). `code` instead of `key` so it still works on Mac
+    // (Option+K types "˚") and non-English keyboard layouts. Skipped while
+    // editing (series is fixed), while the payment drawer is open (it would
+    // re-price a bill mid-payment) and while the "bill saved" screen is up.
+    const exemptShortcutBlocked = pageIsLoading || isEditMode || isDrawerOpen || Boolean(savedBillData);
+    useAltShortcut(SHORTCUTS.kBill.code, () => handleExemptBillToggle(!isExemptBill), !exemptShortcutBlocked);
+
     const tour = { currentStep: activeStep, onSkip: finishTutorial };
     if (pageIsLoading) return <div className="flex items-center justify-center h-screen"><Spinner /> <p className="ml-2">Loading...</p></div>;
     if (error) return <div className="flex flex-col items-center justify-center h-screen text-red-600"><p>{error}</p><button onClick={() => navigate(-1)} className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-sm hover:bg-blue-600">Go Back</button></div>;
@@ -896,6 +909,20 @@ const Sales: React.FC = () => {
         handleQuantityChange(lineId, newQty);
     };
 
+    // Shared K button (same look on every page). Click or Alt+K selects it,
+    // click again to go back to the regular series.
+    const renderExemptSwitch = () => (
+        <KBillToggle
+            checked={isExemptBill}
+            onToggle={() => handleExemptBillToggle(!isExemptBill)}
+            disabled={isEditMode}
+            shortcut="Alt+K"
+            title={isEditMode
+                ? "The bill series can't be changed while editing"
+                : `${isExemptBill ? 'Switch back to the regular series' : 'Switch to the K bill series'} (Alt+K)`}
+        />
+    );
+
     const renderMobileHeader = () => (
         <header className="md:hidden flex-shrink-0 bg-white border-b border-[#dfe6fb]">
             {/* Row 1: back + centered title */}
@@ -904,8 +931,8 @@ const Sales: React.FC = () => {
                     <BackButton />
                 </div>
                 <TutorialStep step={1} {...tour} text="Your bill number and date are shown here. To change them, tap the three dots (More) at the top." onNext={() => nextStep(2)} mobileArrowAlign="left">
-                    <div data-tour="1" className="flex-1 min-w-0 flex items-baseline gap-2">
-                        <h1 className="m-0 text-lg font-semibold leading-tight text-[#0f172b] whitespace-nowrap">
+                    <div data-tour="1" className="flex-1 min-w-0 flex items-baseline gap-1.5">
+                        <h1 className="m-0 text-base font-semibold leading-tight text-[#0f172b] whitespace-nowrap">
                             {isEditMode ? 'Edit sale' : 'New sale'}
                         </h1>
                         <span className="text-xs font-normal text-[#5b6b86] truncate">
@@ -913,6 +940,7 @@ const Sales: React.FC = () => {
                         </span>
                     </div>
                 </TutorialStep>
+                {renderExemptSwitch()}
                 {/* Card view has no cart bar on phones, so the salesman name sits here instead */}
                 {isCardView && salesSettings?.enableSalesmanSelection && (selectedWorker || isTutorialActive) && (
                     <span className={`max-w-[90px] ${SALESMAN_NAME_CLS}`}>{selectedWorker?.name ?? TUTORIAL_SAMPLE_SALESMAN}</span>
@@ -1016,6 +1044,7 @@ const Sales: React.FC = () => {
                         </label>
                     </div>
                 </TutorialStep>
+                {renderExemptSwitch()}
                 {isCardView && (
                     <div role="group" aria-label="Photos" className="ml-auto inline-flex p-[3px] gap-0.5 bg-[#f5f7ff] border border-[#dfe6fb] rounded-sm">
                         {([[true, 'Photos'], [false, 'Compact']] as const).map(([val, label]) => (
@@ -1454,6 +1483,13 @@ const Sales: React.FC = () => {
                         <h3 className="m-0 text-base font-semibold text-[#0f172b]">More</h3>
                         <button type="button" onClick={() => setIsMoreOpen(false)} aria-label="Close" className={ICON_BTN_CLS}><FiX size={18} /></button>
                     </div>
+
+                    {!isEditMode && (
+                        <div className="flex items-center justify-between">
+                            <span className={LABEL_CLS}>Bill series</span>
+                            {renderExemptSwitch()}
+                        </div>
+                    )}
 
                     {/* Invoice number + Date — 2 columns */}
                     <div className="grid grid-cols-2 gap-3">
@@ -2447,16 +2483,17 @@ const Sales: React.FC = () => {
                 {modal && <Modal message={modal.message} onClose={() => setModal(null)} type={modal.type} />}
 
                 {/* Header */}
-                <div className="shrink-0 bg-white border-b border-[#dfe6fb] flex items-center gap-1 h-14 px-2 md:px-6 md:h-auto md:py-4">
+                <div className="shrink-0 bg-white border-b border-[#dfe6fb] flex items-center gap-2 h-14 px-2 md:px-6 md:h-auto md:py-4">
                     <div className="flex-shrink-0 md:hidden">
                         <BackButton />
                     </div>
-                    <h1 className="m-0 text-lg md:text-[22px] md:leading-[30px] font-semibold text-[#0f172b] flex items-baseline gap-2">
+                    <h1 className="m-0 flex-1 min-w-0 text-lg md:text-[22px] md:leading-[30px] font-semibold text-[#0f172b] flex items-baseline gap-2">
                         New sale
-                        <span className="text-xs font-normal text-[#5b6b86]">
+                        <span className="text-xs font-normal text-[#5b6b86] truncate">
                             Calculator billing{invoiceNumber ? ` · ${invoiceNumber}` : ''}
                         </span>
                     </h1>
+                    {renderExemptSwitch()}
                 </div>
 
                 {/* Calculator card (full-bleed on phone, centred card on desktop) */}

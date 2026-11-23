@@ -47,6 +47,7 @@ export const PACK_LIMITS: Record<PLANS, Permissions[]> = {
         Permissions.AllowDueBilling,
         Permissions.ManageLoyaltyPoints,
         Permissions.OverrideLoyaltyPoints,
+        Permissions.ViewKBills, // K billing itself isn't plan-gated, so seeing K bills isn't either
     ],
     [PLANS.CALC_CATALOG]: [
         Permissions.ViewDashboard,
@@ -71,6 +72,7 @@ export const PACK_LIMITS: Record<PLANS, Permissions[]> = {
         Permissions.AllowDueBilling,
         Permissions.ManageLoyaltyPoints,
         Permissions.OverrideLoyaltyPoints,
+        Permissions.ViewKBills,
     ],
     [PLANS.POS_PRO]: Object.values(Permissions).filter(
         (p) => !PRO_EXCLUDED_PERMISSIONS.includes(p)

@@ -69,6 +69,8 @@ export interface SalesSettings {
     voucherName?: string;
     voucherPrefix?: string;
     currentVoucherNumber?: number;
+    exemptVoucherPrefix?: string;
+    currentExemptVoucherNumber?: number;
     copyVoucherAfterSaving?: boolean;
     cartInsertionOrder?: 'top' | 'bottom';
     cardViewWithPhoto?: boolean;
@@ -128,6 +130,8 @@ export const getDefaultSalesSettings = (companyId: string): SalesSettings => ({
     voucherName: 'Invoice',
     voucherPrefix: 'INV',
     currentVoucherNumber: 1,
+    exemptVoucherPrefix: 'EXM',
+    currentExemptVoucherNumber: 1,
     copyVoucherAfterSaving: false,
     enableShippingDetails: false,
     enableExtraExpense: false,
@@ -404,11 +408,13 @@ const SalesSettingsPage: React.FC = () => {
 
             const settingsDocRef = doc(db, 'companies', companyId, 'settings', 'sales-settings');
             const counterDocRef = doc(db, 'companies', companyId, 'counters', 'invoiceCounter');
+            const exemptCounterDocRef = doc(db, 'companies', companyId, 'counters', 'exemptInvoiceCounter');
 
             try {
-                const [docSnap, counterSnap] = await Promise.all([
+                const [docSnap, counterSnap, exemptCounterSnap] = await Promise.all([
                     getDoc(settingsDocRef),
-                    getDoc(counterDocRef)
+                    getDoc(counterDocRef),
+                    getDoc(exemptCounterDocRef)
                 ]);
 
                 // 1. Start with safe defaults
@@ -434,6 +440,12 @@ const SalesSettingsPage: React.FC = () => {
                     dbSettings.currentVoucherNumber = counterSnap.data().currentNumber;
                 } else {
                     await setDoc(counterDocRef, { currentNumber: dbSettings.currentVoucherNumber }, { merge: true });
+                }
+
+                if (exemptCounterSnap.exists() && exemptCounterSnap.data().currentNumber !== undefined) {
+                    dbSettings.currentExemptVoucherNumber = exemptCounterSnap.data().currentNumber;
+                } else {
+                    await setDoc(exemptCounterDocRef, { currentNumber: dbSettings.currentExemptVoucherNumber ?? 1 }, { merge: true });
                 }
 
                 // 3. APPLY PLAN MASK TO UI ONLY (Never deletes backend data)
@@ -486,8 +498,9 @@ const SalesSettingsPage: React.FC = () => {
             const companyId = currentUser.companyId;
             const settingsRef = doc(db, 'companies', companyId, 'settings', 'sales-settings');
             const counterRef = doc(db, 'companies', companyId, 'counters', 'invoiceCounter');
+            const exemptCounterRef = doc(db, 'companies', companyId, 'counters', 'exemptInvoiceCounter');
 
-            const { currentVoucherNumber, ...restOfSettings } = settings;
+            const { currentVoucherNumber, currentExemptVoucherNumber, ...restOfSettings } = settings;
 
             // FORCES UNAUTHORIZED FEATURES TO FALSE/DEFAULT IN THE DATABASE
             const validView = allowedFeatures.allowedViews?.includes(restOfSettings.salesViewType || 'list')
@@ -505,7 +518,8 @@ const SalesSettingsPage: React.FC = () => {
 
             await Promise.all([
                 setDoc(settingsRef, settingsToSave, { merge: true }),
-                setDoc(counterRef, { currentNumber: currentVoucherNumber }, { merge: true })
+                setDoc(counterRef, { currentNumber: currentVoucherNumber }, { merge: true }),
+                setDoc(exemptCounterRef, { currentNumber: currentExemptVoucherNumber ?? 1 }, { merge: true })
             ]);
 
             setModal({ message: 'Settings saved successfully!', type: State.SUCCESS });
@@ -522,18 +536,28 @@ const SalesSettingsPage: React.FC = () => {
 
         try {
             const counterDocRef = doc(db, 'companies', currentUser.companyId, 'counters', 'invoiceCounter');
-            const counterSnap = await getDoc(counterDocRef);
+            const exemptCounterDocRef = doc(db, 'companies', currentUser.companyId, 'counters', 'exemptInvoiceCounter');
+            const [counterSnap, exemptCounterSnap] = await Promise.all([
+                getDoc(counterDocRef),
+                getDoc(exemptCounterDocRef)
+            ]);
 
             let backendCounter = 1;
             if (counterSnap.exists() && counterSnap.data().currentNumber) {
                 backendCounter = counterSnap.data().currentNumber;
+            }
+            let backendExemptCounter = 1;
+            if (exemptCounterSnap.exists() && exemptCounterSnap.data().currentNumber) {
+                backendExemptCounter = exemptCounterSnap.data().currentNumber;
             }
 
             setSettings({
                 ...settings,
                 voucherName: 'Invoice',
                 voucherPrefix: 'INV',
-                currentVoucherNumber: backendCounter
+                currentVoucherNumber: backendCounter,
+                exemptVoucherPrefix: 'EXM',
+                currentExemptVoucherNumber: backendExemptCounter,
             });
 
         } catch (error) {
@@ -541,7 +565,8 @@ const SalesSettingsPage: React.FC = () => {
             setSettings({
                 ...settings,
                 voucherName: 'Invoice',
-                voucherPrefix: 'INV'
+                voucherPrefix: 'INV',
+                exemptVoucherPrefix: 'EXM',
             });
         }
     };
@@ -552,6 +577,7 @@ const SalesSettingsPage: React.FC = () => {
         const numericFields = [
             'defaultDiscount',
             'currentVoucherNumber',
+            'currentExemptVoucherNumber',
             'roundingInterval',
             'maxBillDiscountValue',
         ];
@@ -659,6 +685,7 @@ const SalesSettingsPage: React.FC = () => {
     const roundingStep = Number(settings.roundingInterval ?? 1) || 1;
     const roundedExample = Math.round(1357.6 / roundingStep) * roundingStep;
     const nextBillLabel = `${settings.voucherPrefix ? `${settings.voucherPrefix}-` : ''}${settings.currentVoucherNumber ?? 1}`;
+    const nextExemptBillLabel = `${settings.exemptVoucherPrefix ? `${settings.exemptVoucherPrefix}-` : 'EXM-'}${settings.currentExemptVoucherNumber ?? 1}`;
 
     return (
         <div className={`${ROOT_BASE} flex min-h-screen w-full flex-col`}>
@@ -1408,6 +1435,45 @@ const SalesSettingsPage: React.FC = () => {
                                     </div>
                                     <div className={PREVIEW}>
                                         Next bill will be <b>{nextBillLabel}</b>
+                                    </div>
+                                </Opt>
+                                <Opt
+                                    label="Exempt bill numbering"
+                                    description="Separate prefix and counter used when creating an Exempt bill on the Sales screen."
+                                >
+                                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                        <div>
+                                            <label htmlFor="exempt-voucher-prefix" className={FIELD_LABEL}>Exempt prefix</label>
+                                            <div className={FIELD}>
+                                                <input
+                                                    type="text"
+                                                    id="exempt-voucher-prefix"
+                                                    className={FIELD_INPUT}
+                                                    value={settings.exemptVoucherPrefix ?? 'EXM'}
+                                                    onChange={(e) => handleChange('exemptVoucherPrefix', e.target.value)}
+                                                    placeholder="e.g., EXM"
+                                                    style={{ fontWeight: 600 }}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label htmlFor="exempt-current-number" className={FIELD_LABEL}>Next exempt number</label>
+                                            <div className={FIELD}>
+                                                <input
+                                                    type="number"
+                                                    id="exempt-current-number"
+                                                    className={FIELD_INPUT}
+                                                    value={settings.currentExemptVoucherNumber ?? 1}
+                                                    onChange={(e) => handleChange('currentExemptVoucherNumber', e.target.value)}
+                                                    min="1"
+                                                    step="1"
+                                                    style={{ fontWeight: 600 }}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className={PREVIEW}>
+                                        Next exempt bill will be <b>{nextExemptBillLabel}</b>
                                     </div>
                                 </Opt>
                             </Section>

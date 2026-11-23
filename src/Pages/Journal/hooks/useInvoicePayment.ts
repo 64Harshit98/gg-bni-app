@@ -7,7 +7,7 @@ import {
   increment,
 } from 'firebase/firestore';
 import { db } from '../../../lib/Firebase';
-import { clearSalesReportCache } from '../../Reports/SalesReportComponents/salesReportCache';
+import { clearSalesReportCache, clearExemptSalesReportCache } from '../../Reports/SalesReportComponents/salesReportCache';
 import { clearPurchaseReportCache } from '../../Reports/PurchaseReportComponents/purchaseReportCache';
 import { loadAliases, groupPhones, loadGroupCredit, deductGroupCredit } from '../../Reports/CustomerReportComponents/customerAliases';
 import type { Invoice } from '../journal.types';
@@ -64,7 +64,9 @@ export const useInvoicePayment = ({ currentUser }: UseInvoicePaymentParams) => {
     }
 
     const companyId = currentUser.companyId;
-    const collectionName = invoice.type === 'Credit' ? 'sales' : 'purchases';
+    const collectionName = invoice.type === 'Credit'
+      ? (invoice.isExemptBill ? 'exemptSales' : 'sales')
+      : 'purchases';
     const docRef = doc(db, 'companies', companyId, collectionName, invoice.id);
 
     const normalizedMethod = method.toLowerCase().replace(/\s+/g, '');
@@ -153,6 +155,7 @@ export const useInvoicePayment = ({ currentUser }: UseInvoicePaymentParams) => {
       }
     });
     if (collectionName === 'sales') clearSalesReportCache(companyId);
+    else if (collectionName === 'exemptSales') clearExemptSalesReportCache(companyId);
     else clearPurchaseReportCache(companyId);
 
     // ✅ Transaction complete hone ke BAAD React state update karo

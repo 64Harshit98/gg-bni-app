@@ -21,6 +21,9 @@ import { TutorialStep } from '../Components/TutorialStep';
 import { CACHE_DURATION } from '../lib/fetchDashboardData';
 import useTutorial from '../Catalogue/hooks/useTutorial';
 import { completeTutorial } from '../Catalogue/hooks/useCompleteTutorial';
+import { KSeriesButton } from '../Components/KBillButton';
+import { SHORTCUTS } from '../lib/shortcuts';
+import { salesCollectionsFor, useBillSeriesMode } from '../lib/billSeries';
 
 const NEW_SALE_ROUTE = ROUTES.SALES;
 const ADD_USER_ROUTE = ROUTES.USER_ADD;
@@ -146,6 +149,7 @@ const DashboardContent = () => {
   const [loading, setLoading] = useState(true);
   const [isDataVisible, setIsDataVisible] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(0);
+  const { billSeriesMode, setBillSeriesMode } = useBillSeriesMode();
 
   const tutorialRefs = useRef<(HTMLElement | null)[]>([]);
   const mainRef = useRef<HTMLElement | null>(null);
@@ -204,7 +208,8 @@ const DashboardContent = () => {
   const fetchData = useCallback(async (forceRefresh = false) => {
     if (!currentUser?.companyId || !filters.startDate || !filters.endDate) { setLoading(false); return; }
     if (!forceRefresh) setLoading(true);
-    const CACHE_KEY = `dashboard_cache_v3_${currentUser.companyId}`; // v3: KPI + udhaar fields added
+    // v3: KPI + udhaar fields added. Regular keeps the old key; K / both get their own.
+    const CACHE_KEY = `dashboard_cache_v3_${currentUser.companyId}${billSeriesMode === 'original' ? '' : `_${billSeriesMode}`}`;
     try {
       const cached = localStorage.getItem(CACHE_KEY);
       if (!forceRefresh && cached) {
@@ -220,11 +225,16 @@ const DashboardContent = () => {
       const prevEnd = new Date(start.getTime() - 1);
       const prevStart = new Date(prevEnd.getTime() - duration);
 
-      const salesRef = collection(db, 'companies', currentUser.companyId, 'sales');
       const usersRef = collection(db, 'companies', currentUser.companyId, 'users');
-      const qSales = query(salesRef, where('createdAt', '>=', prevStart), where('createdAt', '<=', end), orderBy('createdAt', 'desc'));
+      // One query per series the K button asks for (regular / K / both).
+      const salesQueries = salesCollectionsFor(billSeriesMode).map((name) =>
+        getDocs(query(
+          collection(db, 'companies', currentUser.companyId, name),
+          where('createdAt', '>=', prevStart), where('createdAt', '<=', end), orderBy('createdAt', 'desc'),
+        )));
       const qUsers = query(usersRef, limit(1000));
-      const [snapSales, snapUsers] = await Promise.all([getDocs(qSales), getDocs(qUsers)]);
+      const [snapUsers, ...salesSnaps] = await Promise.all([getDocs(qUsers), ...salesQueries]);
+      const snapSales = { docs: salesSnaps.flatMap((s) => s.docs) };
 
       const currentSalesMap: Record<string, { amount: number, count: number }> = {};
       const paymentMap: Record<string, { amount: number, count: number }> = {};
@@ -367,7 +377,7 @@ const DashboardContent = () => {
       setData(finalData);
       localStorage.setItem(CACHE_KEY, JSON.stringify(finalData));
     } catch (e) { console.error(e); } finally { setLoading(false); }
-  }, [currentUser, filters]);
+  }, [currentUser, filters, billSeriesMode]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
   const handleRefresh = () => fetchData(true);
@@ -411,6 +421,8 @@ const DashboardContent = () => {
         </div>
 
         <div className="flex flex-none items-center gap-2">
+          {/* K series: regular → K only → regular + K (owner / permitted staff only) */}
+          <KSeriesButton mode={billSeriesMode} onChange={setBillSeriesMode} />
           {/* Step 2 — Hide / Show figures */}
           <ShowWrapper requiredPermission={Permissions.ViewHidebutton}>
             <TutorialStep step={2} currentStep={tutorialStep} text="Toggle this to show or hide sensitive sales figures." onNext={() => next(3)} onSkip={skip}>
@@ -429,6 +441,8 @@ const DashboardContent = () => {
           <ShowWrapper requiredPermission={Permissions.CreateSales}>
             <Link
               to={NEW_SALE_ROUTE}
+              title={`New sale (${SHORTCUTS.newSale.label})`}
+              aria-keyshortcuts={SHORTCUTS.newSale.label}
               className="hidden h-10 items-center gap-2 rounded-sm bg-[#155dfc] px-4 text-sm font-medium text-white transition-colors hover:bg-[#1447e6] md:inline-flex"
             >
               <FiPlus size={16} /> New sale

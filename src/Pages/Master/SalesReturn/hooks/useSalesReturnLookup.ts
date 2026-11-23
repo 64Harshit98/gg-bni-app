@@ -160,9 +160,17 @@ export const useSalesReturnLookup = ({
                     let freshSale: SalesData | null = null;
                     try {
                         const routeId = locationState.invoiceData.id;
+                        const routeCollection = locationState.invoiceData.isExemptBill ? 'exemptSales' : 'sales';
                         if (routeId) {
-                            const snap = await getDoc(doc(db, 'companies', currentUser.companyId, 'sales', routeId));
-                            if (snap.exists()) freshSale = { id: snap.id, ...snap.data() } as SalesData;
+                            const snap = await getDoc(doc(db, 'companies', currentUser.companyId, routeCollection, routeId));
+                            if (snap.exists()) {
+                                const snapData: any = snap.data();
+                                freshSale = {
+                                    id: snap.id,
+                                    ...snapData,
+                                    isExemptBill: Boolean(locationState.invoiceData.isExemptBill || snapData?.isExemptBill),
+                                } as SalesData;
+                            }
                         }
                     } catch (e) {
                         console.error('Fresh bill fetch failed, using route state', e);

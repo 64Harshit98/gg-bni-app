@@ -57,6 +57,7 @@ export const useSalesCatalogueAndSettings = ({
     // --- Active Tax Mode State ---
     // This drives the entire calculation logic now
     const [activeTaxMode, setActiveTaxMode] = useState<'inclusive' | 'exclusive' | 'exempt'>('exclusive');
+    const [isExemptBill, setIsExemptBill] = useState<boolean>(() => Boolean(isEditMode && invoiceToEdit?.isExemptBill));
 
     const [invoiceNumber, setInvoiceNumber] = useState<string>('');
 const isInvoiceNumberManuallyEdited = useRef(false);
@@ -124,9 +125,11 @@ useEffect(() => {
     useEffect(() => {
         if (loadingSettings) return;
 
-        if (isEditMode && invoiceToEdit?.taxType) {
+        if (isEditMode && invoiceToEdit) {
+            const editExempt = Boolean(invoiceToEdit.isExemptBill);
+            setIsExemptBill(editExempt);
             const savedType = invoiceToEdit.taxType;
-            if (savedType === 'none') setActiveTaxMode('exempt');
+            if (editExempt || savedType === 'none') setActiveTaxMode('exempt');
             else if (savedType === 'inclusive' || savedType === 'exclusive') setActiveTaxMode(savedType);
         } else if (salesSettings) {
             // 1. Check session storage first — but only trust it while a bill is
@@ -139,13 +142,17 @@ useEffect(() => {
             // mid-bill" behavior while letting an idle/empty page always follow the
             // live setting.
             const savedTaxMode = sessionStorage.getItem('sales_tax_mode_draft');
+            const savedExemptDraft = sessionStorage.getItem('sales_exempt_bill_draft');
             let hasCartItems = false;
             try {
                 hasCartItems = JSON.parse(sessionStorage.getItem('sales_cart_draft') || '[]').length > 0;
             } catch {
                 hasCartItems = false;
             }
-            if (
+            if (!isEditMode && hasCartItems && savedExemptDraft === 'true') {
+                setIsExemptBill(true);
+                setActiveTaxMode('exempt');
+            } else if (
                 !isEditMode &&
                 hasCartItems &&
                 (savedTaxMode === 'inclusive' || savedTaxMode === 'exclusive' || savedTaxMode === 'exempt')
@@ -154,6 +161,7 @@ useEffect(() => {
             }
             // 2. Fallback to pre-select based on Settings
             else if (
+                isExemptBill ||
                 salesSettings.gstScheme === 'none' ||
                 salesSettings.gstScheme === 'composition' ||
                 // Calculator view is quick ad-hoc billing (raw amounts typed
@@ -167,6 +175,24 @@ useEffect(() => {
             }
         }
     }, [loadingSettings, salesSettings, isEditMode, invoiceToEdit]);
+
+    const handleExemptBillToggle = (nextExempt: boolean) => {
+        if (isEditMode) return;
+        setIsExemptBill(nextExempt);
+        isInvoiceNumberManuallyEdited.current = false;
+        if (nextExempt) {
+            setActiveTaxMode('exempt');
+        } else if (
+            !salesSettings ||
+            salesSettings.gstScheme === 'none' ||
+            salesSettings.gstScheme === 'composition' ||
+            salesSettings.salesViewType === 'calculator'
+        ) {
+            setActiveTaxMode('exempt');
+        } else {
+            setActiveTaxMode((salesSettings.taxType as any) || 'exclusive');
+        }
+    };
 
     // --- Settings doc id lookup + real-time invoice counter (multi-tab fix) ---
     // Page-specific, unrelated to the shared catalogue data above.
@@ -186,17 +212,31 @@ useEffect(() => {
             }
         };
         findSettingsDocId();
+    }, [currentUser?.companyId]);
+
+    useEffect(() => {
+        const companyId = currentUser?.companyId;
+        if (!companyId) return;
 
         let unsubscribeCounter: () => void = () => { };
+        // The snapshot callback awaits the settings read, so a callback from the
+        // previous series can resolve AFTER the K switch was flipped and stamp the
+        // old prefix (e.g. INV-1106 while K is on). Drop any callback whose
+        // subscription has already been torn down.
+        let active = true;
 
         if (!isEditMode) {
-            const counterRef = doc(db, 'companies', companyId, 'counters', 'invoiceCounter');
+            const counterDocName = isExemptBill ? 'exemptInvoiceCounter' : 'invoiceCounter';
+            const counterRef = doc(db, 'companies', companyId, 'counters', counterDocName);
             const settingsRef = doc(db, 'companies', companyId, 'settings', 'sales-settings');
 
             unsubscribeCounter = onSnapshot(counterRef, async (docSnap) => {
                 if (isInvoiceNumberManuallyEdited.current) return;
                 const settingsSnap = await getDoc(settingsRef);
-                const prefix = settingsSnap.exists() ? (settingsSnap.data().voucherPrefix || 'INV') : 'INV';
+                if (!active || isInvoiceNumberManuallyEdited.current) return;
+                const prefix = isExemptBill
+                    ? (settingsSnap.exists() ? (settingsSnap.data().exemptVoucherPrefix || 'EXM') : 'EXM')
+                    : (settingsSnap.exists() ? (settingsSnap.data().voucherPrefix || 'INV') : 'INV');
 
                 if (docSnap.exists()) {
                     const nextNum = docSnap.data().currentNumber || 1;
@@ -210,8 +250,8 @@ useEffect(() => {
             setInvoiceNumber(invoiceToEdit.invoiceNumber);
         }
 
-        return () => unsubscribeCounter();
-    }, [currentUser?.companyId, isEditMode, invoiceToEdit]);
+        return () => { active = false; unsubscribeCounter(); };
+    }, [currentUser?.companyId, isEditMode, invoiceToEdit, isExemptBill]);
 
     // --- Default salesman selection — runs once, the first time the shared
     // workers list is ready, same as the old one-shot fetchData used to.
@@ -240,23 +280,17 @@ useEffect(() => {
 
     useEffect(() => {
         if (!isEditMode && activeTaxMode && !pageIsLoading) {
-            // Only persist the draft while a bill is actually in progress — an idle
-            // page with an empty cart has nothing worth protecting from a refresh,
-            // and saving it here regardless was what caused the cross-tab "stuck on
-            // old setting" bug (see the restore effect above for the full story).
-            let hasCartItems = false;
-            try {
-                hasCartItems = JSON.parse(sessionStorage.getItem('sales_cart_draft') || '[]').length > 0;
-            } catch {
-                hasCartItems = false;
-            }
-            if (hasCartItems) {
-                sessionStorage.setItem('sales_tax_mode_draft', activeTaxMode);
-            } else {
-                sessionStorage.removeItem('sales_tax_mode_draft');
-            }
+            // Always mirror the current choice. This used to be written only when
+            // the cart already had items, but this effect doesn't re-run when items
+            // are added, and the K switch is normally flipped BEFORE scanning the
+            // first item. So the draft was never written, and a refresh mid-bill
+            // silently dropped K mode: the bill then saved in the regular series.
+            // The "stuck on old setting" protection lives in the restore effect
+            // above, which only trusts these drafts while the cart has items.
+            sessionStorage.setItem('sales_tax_mode_draft', activeTaxMode);
+            sessionStorage.setItem('sales_exempt_bill_draft', String(isExemptBill));
         }
-    }, [activeTaxMode, isEditMode, pageIsLoading]);
+    }, [activeTaxMode, isExemptBill, isEditMode, pageIsLoading]);
 
     useEffect(() => {
         if (!isEditMode && !pageIsLoading) {
@@ -271,6 +305,8 @@ useEffect(() => {
     return {
         salesSettings,
         activeTaxMode, setActiveTaxMode,
+        isExemptBill, setIsExemptBill,
+        handleExemptBillToggle,
         invoiceNumber, setInvoiceNumber,
         isInvoiceNumberManuallyEdited,
         invoiceDate, setInvoiceDate,
